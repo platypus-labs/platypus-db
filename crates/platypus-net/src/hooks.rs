@@ -7,18 +7,14 @@
 
 use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
 pub use platypus_core::{AFTER_DISCONNECT, BEFORE_CONNECT};
 use platypus_core::{ConnectionConfig, Error, Result};
-use tokio::io::AsyncReadExt;
 
 /// How long the command before connecting may run: bringing a VPN up takes seconds.
 const BEFORE_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// What is kept of what the command before connecting writes on stderr.
-const STDERR_KEPT: usize = 64 * 1024;
 
 /// A connection's two commands.
 type Commands = (Option<String>, Option<String>);
@@ -113,24 +109,7 @@ async fn before(command: &str) -> Result<()> {
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| failed(e.to_string()))?;
-    // Read apart from the wait, and to the end: a process the command leaves running
-    // (`vpn &`) keeps stderr open after the command has ended, and would die of a closed
-    // pipe the next time it writes there.
-    let mut stderr = child.stderr.take();
-    let text = Arc::new(Mutex::new(String::new()));
-    let mut reading = tokio::spawn({
-        let text = Arc::clone(&text);
-        async move {
-            let Some(stderr) = &mut stderr else { return };
-            let mut chunk = [0u8; 4096];
-            while let Ok(n @ 1..) = stderr.read(&mut chunk).await {
-                let mut text = text.lock().unwrap_or_else(PoisonError::into_inner);
-                if text.len() < STDERR_KEPT {
-                    text.push_str(&String::from_utf8_lossy(&chunk[..n]));
-                }
-            }
-        }
-    });
+    let stderr = crate::cli::Stderr::read(child.stderr.take());
     let Ok(status) = tokio::time::timeout(BEFORE_TIMEOUT, child.wait()).await else {
         let _ = child.kill().await;
         return Err(failed(format!(
@@ -143,14 +122,7 @@ async fn before(command: &str) -> Result<()> {
         // The reading goes on, on its own.
         return Ok(());
     }
-    let _ = tokio::time::timeout(Duration::from_millis(200), &mut reading).await;
-    let text = text.lock().unwrap_or_else(PoisonError::into_inner);
-    Err(failed(
-        match text.lines().map(str::trim).find(|l| !l.is_empty()) {
-            Some(line) => format!("{status}: {line}"),
-            None => status.to_string(),
-        },
-    ))
+    Err(failed(stderr.explain(status).await))
 }
 
 /// Starts the command after the connection closed, without waiting for it; how it ends is

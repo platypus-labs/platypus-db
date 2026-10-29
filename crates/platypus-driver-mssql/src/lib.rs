@@ -30,7 +30,7 @@ use arrow_schema::{Schema, SchemaRef};
 use async_trait::async_trait;
 use futures::StreamExt;
 use platypus_core::{
-    CancelHandle, Canceller, CatalogColumn, CatalogForeignKey, Connection, ConnectionConfig,
+    Auth, CancelHandle, Canceller, CatalogColumn, CatalogForeignKey, Connection, ConnectionConfig,
     DbError, Driver, DriverKind, Error, ExecOptions, ExecResult, MetadataMatch, ObjectMeta,
     ObjectRef, Property, RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo,
     SslMode, TableDetails, TransactionState, TxTracker,
@@ -81,8 +81,28 @@ pub struct MssqlConnection {
     messages: Messages,
 }
 
+/// How `config` signs in: SQL Server's login, an Entra ID token (made by `platypus-net` as
+/// the password), or Windows' own sign-in, which only Windows has.
+fn authentication(config: &ConnectionConfig) -> Result<AuthMethod> {
+    let password = config.password.as_ref().map_or("", |p| p.expose());
+    Ok(match config.auth()? {
+        Auth::EntraId => AuthMethod::aad_token(password),
+        #[cfg(windows)]
+        Auth::Windows => AuthMethod::Integrated,
+        #[cfg(not(windows))]
+        Auth::Windows => {
+            return Err(Error::Config(
+                "Windows authentication needs PlatypusDB on Windows".to_owned(),
+            ));
+        }
+        Auth::Password | Auth::AwsIam | Auth::GcpIam => {
+            AuthMethod::sql_server(&config.user, password)
+        }
+    })
+}
+
 /// The `tiberius` configuration of `config`, without the address to connect to.
-fn session_config(config: &ConnectionConfig) -> tiberius::Config {
+fn session_config(config: &ConnectionConfig) -> Result<tiberius::Config> {
     let mut c = tiberius::Config::new();
     // `host` names the server for TLS even when the socket goes to a tunnel.
     c.host(&config.host);
@@ -93,10 +113,7 @@ fn session_config(config: &ConnectionConfig) -> tiberius::Config {
     if let Some(name) = &config.application_name {
         c.application_name(name);
     }
-    c.authentication(AuthMethod::sql_server(
-        &config.user,
-        config.password.as_ref().map_or("", |p| p.expose()),
-    ));
+    c.authentication(authentication(config)?);
     match config.ssl_mode {
         SslMode::Disable => c.encryption(EncryptionLevel::NotSupported),
         // Encrypts when the server can; servers usually have a self-signed certificate.
@@ -116,7 +133,7 @@ fn session_config(config: &ConnectionConfig) -> tiberius::Config {
             }
         }
     }
-    c
+    Ok(c)
 }
 
 /// The error of the vendored `tiberius` when the client asks for TLS and the server has none.
@@ -136,7 +153,7 @@ async fn login(session: tiberius::Config, host: &str, port: u16) -> tiberius::Re
 /// (`CONNECTIONPROPERTY` has no `encrypt_option`, and `sys.dm_exec_connections` needs
 /// `VIEW SERVER STATE`.)
 async fn open(config: &ConnectionConfig) -> Result<(Session, bool)> {
-    let mut session = session_config(config);
+    let mut session = session_config(config)?;
     let (host, port) = match config.connect_addr {
         Some(addr) => (addr.ip().to_string(), addr.port()),
         None => (config.host.clone(), config.port.unwrap_or(DEFAULT_PORT)),
@@ -916,5 +933,40 @@ mod tests {
         assert!(explain.root.operation.starts_with("Clustered Index Scan("));
         assert_eq!(explain.root.children.len(), 1);
         assert!(read_plan("SELECT 1").is_err());
+    }
+
+    #[test]
+    fn signs_in_with_a_login_an_entra_id_token_or_windows() {
+        let mut config = ConnectionConfig::new(DriverKind::SqlServer);
+        config.user = "sa".to_owned();
+        config.password = Some(platypus_core::Secret::new("eyJ0"));
+        assert_eq!(
+            authentication(&config).unwrap(),
+            AuthMethod::sql_server("sa", "eyJ0")
+        );
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "entra_id".to_owned());
+        assert_eq!(
+            authentication(&config).unwrap(),
+            AuthMethod::aad_token("eyJ0")
+        );
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "windows".to_owned());
+        let windows = authentication(&config);
+        if cfg!(windows) {
+            assert!(windows.is_ok());
+        } else {
+            let error = windows.unwrap_err().to_string();
+            assert!(
+                error.contains("Windows authentication needs PlatypusDB on Windows"),
+                "{error}"
+            );
+        }
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "kerberos".to_owned());
+        assert!(authentication(&config).is_err());
     }
 }

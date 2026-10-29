@@ -20,10 +20,10 @@ pub struct ParsedConnection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ParseNote {
-    /// It logs in with Windows (integrated security, NTLM, Kerberos), which the app does
-    /// not do: it needs a SQL Server login.
+    /// It logs in with Windows (integrated security, NTLM, Kerberos), which only the app on
+    /// Windows can do.
     WindowsAuth,
-    /// It logs in with Microsoft Entra ID (Azure Active Directory), which the app does not do.
+    /// It logs in with Microsoft Entra ID (Azure Active Directory), through the Azure CLI.
     EntraAuth,
     /// A SQL Server named instance without a port: the app connects to a port, not through
     /// the SQL Server Browser, so the port the instance listens on is needed.
@@ -35,6 +35,16 @@ pub enum ParseNote {
 }
 
 impl ParseNote {
+    /// The value of the option `auth` for the login this note is about, if it is one.
+    #[must_use]
+    pub const fn auth(&self) -> Option<&'static str> {
+        match self {
+            Self::WindowsAuth => Some("windows"),
+            Self::EntraAuth => Some("entra_id"),
+            _ => None,
+        }
+    }
+
     /// The note for the keys left out, or `None` when there are none.
     pub(super) fn ignored(keys: Vec<String>) -> Option<Self> {
         (!keys.is_empty()).then_some(Self::Ignored { keys })
@@ -64,6 +74,13 @@ impl ConnectionConfig {
     /// name, the connect timeout) are noted as not used.
     pub fn parse_any_for(input: &str, hint: Option<DriverKind>) -> Result<ParsedConnection> {
         let mut parsed = Self::read_any(input.trim(), hint)?;
+        // A Windows or Entra ID login is kept, as the connection's way to sign in.
+        if let Some(auth) = parsed.notes.iter().find_map(ParseNote::auth) {
+            parsed
+                .config
+                .options
+                .insert(crate::AUTH.to_owned(), auth.to_owned());
+        }
         let defaults = Self::new(parsed.config.driver);
         let mut dropped = Vec::new();
         if parsed.config.application_name != defaults.application_name {
@@ -257,6 +274,7 @@ mod tests {
                 ParseNote::WindowsAuth
             ]
         );
+        assert_eq!(p.config.options[crate::AUTH], "windows");
         let p = parse("JDBC:postgresql://h/db");
         assert_eq!(p.config.driver, DriverKind::Postgres);
         assert_eq!(p.notes, []);

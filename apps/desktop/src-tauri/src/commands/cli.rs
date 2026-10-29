@@ -6,7 +6,7 @@
 use std::process::{Output, Stdio};
 use std::time::Instant;
 
-use platypus_core::{ConnectionConfig, DriverKind, SslMode};
+use platypus_core::{Auth, ConnectionConfig, DriverKind, SslMode};
 use platypus_net::Tunnel;
 use serde::Serialize;
 use tauri::State;
@@ -140,6 +140,10 @@ pub(super) fn mysql_connection(
     if let Some(cert) = &config.ssl_root_cert {
         args.push(format!("--ssl-ca={}", cert.display()));
     }
+    // An IAM or Entra ID token goes as written, as the driver sends it.
+    if config.auth().is_ok_and(Auth::is_token) {
+        args.push("--enable-cleartext-plugin".to_owned());
+    }
     let env = config
         .password
         .as_ref()
@@ -178,7 +182,9 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
         }
         DriverKind::SqlServer => {
             args = sqlcmd_args(config, host, port);
-            env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
+            if matches!(config.auth(), Ok(Auth::Password)) {
+                env.extend(password.map(|p| ("SQLCMDPASSWORD", p)));
+            }
         }
         // No client: `program` refuses them.
         DriverKind::ClickHouse
@@ -202,9 +208,15 @@ fn sqlcmd_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Vec<
         Some(port) => format!("{host},{port}"),
         None => host.to_owned(),
     };
-    let mut args: Vec<String> = ["-b", "-I", "-f", "65001", "-S", &server, "-U", &config.user]
+    let mut args: Vec<String> = ["-b", "-I", "-f", "65001", "-S", &server]
         .map(str::to_owned)
         .into();
+    // Windows' sign-in is `-E`; Entra ID is `-G`, which signs in as `az` or Windows does.
+    match config.auth() {
+        Ok(Auth::Windows) => args.push("-E".to_owned()),
+        Ok(Auth::EntraId) => args.push("-G".to_owned()),
+        _ => args.extend(["-U".to_owned(), config.user.clone()]),
+    }
     if !config.database.is_empty() {
         args.extend(["-d".to_owned(), config.database.clone()]);
     }
@@ -218,11 +230,16 @@ fn sqlcmd_args(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Vec<
     args
 }
 
-/// The tunnel or proxy of `config`, opened when it has one, and the host and port that reach
-/// its server: the tunnel's local end, or the server itself.
+/// The tunnel, proxy or port forward of `config`, opened when it has one, and the host and
+/// port that reach its server: the tunnel's local end, or the server itself. A token the
+/// connection signs in with goes in `config` as its password; not SQL Server's, which
+/// `sqlcmd -G` gets for itself.
 pub(super) async fn reach(
-    config: &ConnectionConfig,
+    config: &mut ConnectionConfig,
 ) -> CommandResult<(Option<Tunnel>, String, Option<u16>)> {
+    if config.driver != DriverKind::SqlServer {
+        platypus_net::sign_in(config).await?;
+    }
     let tunnel = Tunnel::of(config, None).await?;
     let (host, port) = match &tunnel {
         Some(t) => ("127.0.0.1".to_owned(), Some(t.local_addr().port())),
@@ -299,10 +316,10 @@ async fn run(
     script: String,
     mut cancel: oneshot::Receiver<()>,
 ) -> CommandResult<CliOutput> {
-    let config = state.session(session_id)?.config;
+    let mut config = state.session(session_id)?.config;
     let program = program(config.driver)?;
     // The tunnel or proxy stays open while the client runs.
-    let (tunnel, host, port) = reach(&config).await?;
+    let (tunnel, host, port) = reach(&mut config).await?;
     if cancel.try_recv().is_ok() {
         return Err(stopped(program));
     }
@@ -391,6 +408,34 @@ mod tests {
         );
         assert!(!args.iter().any(|a| a.contains("s3cret")));
         assert!(env.contains(&("SQLCMDPASSWORD", "s3cret".to_owned())));
+    }
+
+    #[test]
+    fn clients_sign_in_as_the_connection_does() {
+        let mut config = ConnectionConfig::new(DriverKind::MySql);
+        config.user = "app".to_owned();
+        config.password = Some(Secret::new("token"));
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "aws_iam".to_owned());
+        let (args, env) = invocation(&config, "db", None);
+        assert!(args.iter().any(|a| a == "--enable-cleartext-plugin"));
+        assert!(env.contains(&("MYSQL_PWD", "token".to_owned())));
+
+        config.driver = DriverKind::SqlServer;
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "windows".to_owned());
+        let (args, env) = invocation(&config, "db", None);
+        assert!(args.iter().any(|a| a == "-E"));
+        assert!(!args.iter().any(|a| a == "-U"));
+        assert_eq!(env, []);
+
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "entra_id".to_owned());
+        let (args, _) = invocation(&config, "db", None);
+        assert!(args.iter().any(|a| a == "-G"));
     }
 
     #[test]

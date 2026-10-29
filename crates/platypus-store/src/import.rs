@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use platypus_core::{DriverKind, JdbcUrl, Secret, SslMode};
+use platypus_core::{AUTH, DriverKind, JdbcUrl, Secret, SslMode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -97,8 +97,8 @@ pub struct SkippedConnection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ImportNote {
-    /// It logged in with Windows (integrated, NTLM or Kerberos): here it needs a SQL Server
-    /// login.
+    /// It logged in with Windows (integrated, NTLM or Kerberos), which only the app on
+    /// Windows can do.
     WindowsAuth,
     /// It logged in with Microsoft Entra ID (Azure Active Directory).
     EntraAuth,
@@ -563,6 +563,12 @@ fn sqlserver_details(
         user.clone_into(&mut c.user);
     }
     if let Some(note) = sqlserver_login(&dbeaver_auth(config), &props) {
+        // Kept as the connection's way to sign in; the note says what it needs.
+        let auth = match note {
+            ImportNote::WindowsAuth => "windows",
+            _ => "entra_id",
+        };
+        c.options.insert(AUTH.to_owned(), auth.to_owned());
         notes.push(note);
     }
     notes
@@ -591,8 +597,7 @@ fn dbeaver_auth(config: &Value) -> String {
     auth.to_ascii_lowercase().replace('-', "_")
 }
 
-/// A login that this app's SQL Server driver does not do: it signs in with a SQL Server
-/// login and password only.
+/// A SQL Server login other than a user and password: Windows' or Entra ID's.
 fn sqlserver_login(auth: &str, props: &BTreeMap<String, String>) -> Option<ImportNote> {
     let prop = |k: &str| {
         props
@@ -1189,6 +1194,9 @@ mod tests {
         assert_eq!(notes_of(&project, "Generic"), [ImportNote::WindowsAuth]);
         assert_eq!(notes_of(&project, "NTLM"), [ImportNote::WindowsAuth]);
         assert_eq!(notes_of(&project, "Azure"), [ImportNote::EntraAuth]);
+        assert_eq!(named(&project, "NTLM").options[AUTH], "windows");
+        assert_eq!(named(&project, "Azure").options[AUTH], "entra_id");
+        assert!(!named(&project, "Fields").options.contains_key(AUTH));
 
         assert_eq!(
             project.skipped,

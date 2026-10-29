@@ -151,6 +151,9 @@ and shows the ODBC drivers and data sources of the system.
 - **Proxies**: a SOCKS5 or HTTP proxy (`socks5://user:password@host:1080`, `http://host:3128`)
   in front of the database, or of the SSH server when there is a tunnel. SOCKS5 resolves the
   server's name on the proxy.
+- **Port forwards** from a cloud's CLI: `kubectl port-forward` to a Kubernetes service or pod,
+  or an AWS Systems Manager session through an EC2 instance to a private host. The app starts
+  it on a free local port while the connection is open; the CLI must be installed and signed in.
 - **Commands around a connection**, e.g. to bring a VPN up and down: one before the first
   session that needs it, which waits for it (a minute at most) and fails with it, and one
   after the last of those sessions closes. They run in the system's shell, whose `${VAR}`
@@ -161,6 +164,11 @@ and shows the ODBC drivers and data sources of the system.
   be installed and signed in. A command that prints a JSON secret gives its `password` field.
   A **master password** can keep the saved ones in an encrypted file instead (Argon2id and
   AES-256-GCM).
+- **Cloud sign-in** without a password: AWS IAM (RDS) and Google Cloud IAM (Cloud SQL) for
+  PostgreSQL and MySQL, Microsoft Entra ID for PostgreSQL, MySQL and SQL Server. The token comes
+  from `aws`, `gcloud` or `az` at each connection and is never saved. SQL Server also signs in
+  as the Windows user (SSPI: Kerberos or NTLM) on Windows. Imported or pasted Windows and
+  Entra ID logins keep their way to sign in.
 - **Test connections**: *Test connections* in a project's menu, in the navigator's menu or in
   the command palette tries every connection of the project, four at a time, and lists how each
   went.
@@ -802,7 +810,7 @@ crates/
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-schema/         table designs, the DDL between them, schema linter and comparison
-  platypus-net/            SSH tunnels (russh), proxies, commands around a connection
+  platypus-net/            SSH tunnels (russh), proxies, cloud port forwards and tokens, commands around a connection
   platypus-store/          connections (TOML + OS keychain), imports, query history and catalog notes (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows
   platypus-docs/           schema documentation: Markdown, HTML and Mermaid ER diagrams

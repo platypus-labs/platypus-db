@@ -28,6 +28,7 @@ platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
 platypus-transfer.workspace = true
 platypus-mcp.workspace = true
+platypus-net.workspace = true
 platypus-schema.workspace = true
 platypus-sql.workspace = true
 tempfile.workspace = true

@@ -18,6 +18,10 @@ tiberius.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["compat"] }
 
+# Windows' own sign-in (SSPI, Kerberos or NTLM).
+[target.'cfg(windows)'.dependencies]
+tiberius = { workspace = true, features = ["winauth"] }
+
 [dev-dependencies]
 arrow-cast.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

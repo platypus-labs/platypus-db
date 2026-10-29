@@ -1057,6 +1057,10 @@ button.primary.danger:hover:not(:disabled) {
   gap: 10px;
 }
 
+.field-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .driver-state {
   display: flex;
   align-items: center;

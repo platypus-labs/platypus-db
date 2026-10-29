@@ -5,10 +5,15 @@
 //! [`connect`] runs the connection's command before
 //! connecting (see [`hooks`]), opens the tunnel, then the driver's connection through it,
 //! and keeps the tunnel alive as long as the connection; its command after disconnecting
-//! runs when the connection goes.
+//! runs when the connection goes. A server may also be reached through a port a cloud's CLI
+//! forwards (`kubectl`, AWS SSM: see [`forward`]), and signed in to with a token its CLI
+//! makes (IAM, Entra ID: see [`token`]).
 
+mod cli;
+mod forward;
 pub mod hooks;
 pub mod proxy;
+mod token;
 
 use std::fmt;
 use std::net::SocketAddr;
@@ -18,8 +23,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use platypus_core::{
     CancelHandle, Capabilities, CatalogColumn, CatalogForeignKey, Connection, ConnectionConfig,
-    Error, ExecOptions, ExecResult, Explain, MetadataMatch, ObjectMeta, ObjectRef, Property,
-    ReferencingKey, Result, SchemaMeta, ServerInfo, SshAuth, SshConfig, TableDetails,
+    Error, ExecOptions, ExecResult, Explain, FORWARD, MetadataMatch, ObjectMeta, ObjectRef,
+    Property, ReferencingKey, Result, SchemaMeta, ServerInfo, SshAuth, SshConfig, TableDetails,
     TransactionState,
 };
 use russh::client::{self, AuthResult, Handle};
@@ -376,9 +381,23 @@ impl Tunnel {
         })
     }
 
-    /// The path to `config`'s server, if it needs one: its SSH tunnel, its proxy, or both.
+    /// The path to `config`'s server, if it needs one: its SSH tunnel, its proxy, or both;
+    /// or the port its cloud's CLI forwards, which goes alone.
     pub async fn of(config: &ConnectionConfig, known_hosts: Option<&Path>) -> Result<Option<Self>> {
         let proxy = Proxy::of(config)?;
+        if config.options.get(FORWARD).is_some_and(|f| !f.is_empty()) {
+            if config.ssh.is_some() || proxy.is_some() {
+                return Err(Error::Config(
+                    "a port forward goes alone: without an SSH tunnel or a proxy".to_owned(),
+                ));
+            }
+            return Ok(forward::open(config).await?.map(|(local, running)| Self {
+                local,
+                session: None,
+                accept: running,
+                _jumps: Vec::new(),
+            }));
+        }
         let port = || {
             config
                 .port
@@ -430,6 +449,7 @@ where
     Proxy::of(&config)?;
     // On a failure below, the use goes, and the command after runs if it was the last.
     let hooks = hooks::acquire(&mut config).await?;
+    sign_in(&mut config).await?;
     let (inner, tunnel) = connect_direct(config, known_hosts, driver).await?;
     if tunnel.is_none() && hooks.is_none() {
         return Ok(inner);
@@ -439,6 +459,23 @@ where
         tunnel,
         _hooks: hooks,
     }))
+}
+
+/// Puts in `config` the token its cloud's CLI makes when it signs in with one (IAM, Entra
+/// ID), as the password: for a client of the database's own, which [`connect`] does not open.
+pub async fn sign_in(config: &mut ConnectionConfig) -> Result<()> {
+    let auth = config.auth()?;
+    if !auth.fits(config.driver) {
+        return Err(Error::Config(format!(
+            "{} does not sign in to {}: choose another way in the connection's settings",
+            auth.name(),
+            config.driver.name()
+        )));
+    }
+    if let Some(token) = token::fetch(config).await? {
+        config.password = Some(token);
+    }
+    Ok(())
 }
 
 /// The driver's connection, through the SSH tunnel or proxy when there is one.
