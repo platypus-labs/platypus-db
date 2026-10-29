@@ -1,4 +1,5 @@
 import { AdminTab } from "../admin/AdminTab";
+import "../admin/maintenanceActions";
 import { registerTabKind } from "./registry";
 import { t } from "../i18n";
 
@@ -9,7 +10,7 @@ registerTabKind({
   label: () => t("Server activity"),
   persist: (tab) => ({ view: tab.view, interval: tab.interval }),
   restore: (saved) => ({
-    view: saved.view === "locks" ? ("locks" as const) : ("sessions" as const),
+    view: (["locks", "statements", "objects"] as const).find((v) => v === saved.view) ?? ("sessions" as const),
     interval: typeof saved.interval === "number" ? saved.interval : 5,
   }),
 });

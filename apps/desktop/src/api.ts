@@ -177,6 +177,10 @@ export interface Capabilities {
   metadata_search: boolean;
   server_sessions: boolean;
   cancel_server_queries: boolean;
+  /** The costliest statements and the use of tables and indexes of the admin tab. */
+  server_statistics: boolean;
+  /** What "Maintenance" runs on a table; empty for none. */
+  maintenance: Maintenance[];
 }
 
 /** A session of the server; see `platypus_core::ServerSession`. */
@@ -207,6 +211,42 @@ export interface ServerLock {
 }
 
 export type EndSession = "cancel" | "terminate";
+
+/** A statement the server has run, summed over its runs; see `platypus_core::ServerQuery`. */
+export interface ServerQuery {
+  query: string;
+  /** One run with its values (MySQL 8), which can be explained as it is. */
+  sample: string | null;
+  database: string | null;
+  user: string | null;
+  calls: number;
+  total_seconds: number;
+  mean_seconds: number;
+  max_seconds: number | null;
+  rows: number | null;
+}
+
+/** How a table or an index has been used; see `platypus_core::ObjectStatistics`. */
+export interface ObjectStatistics {
+  schema: string;
+  name: string;
+  kind: "table" | "index";
+  /** The table of an index. */
+  table: string | null;
+  size_bytes: number | null;
+  rows: number | null;
+  dead_rows: number | null;
+  free_bytes: number | null;
+  full_scans: number | null;
+  index_scans: number | null;
+  last_vacuum: string | null;
+  last_analyze: string | null;
+  /** A unique or primary key index. */
+  unique: boolean;
+}
+
+/** The upkeep of a table; see `platypus_core::Maintenance`. */
+export type Maintenance = "vacuum" | "analyze" | "reindex" | "optimize" | "check";
 
 /** One step of a query plan; see `platypus_core::PlanNode`. Rows and times are per loop. */
 export interface PlanNode {
@@ -1682,6 +1722,11 @@ export const api = {
   readPlan: (document: string, source: PlanSource | null) => invoke<ReadPlan>("read_plan", { document, source }),
   serverSessions: (sessionId: number) => invoke<ServerSession[]>("server_sessions", { sessionId }),
   serverLocks: (sessionId: number) => invoke<ServerLock[]>("server_locks", { sessionId }),
+  topQueries: (sessionId: number) => invoke<ServerQuery[]>("top_queries", { sessionId }),
+  objectStatistics: (sessionId: number) => invoke<ObjectStatistics[]>("object_statistics", { sessionId }),
+  /** Runs `operation` on table `schema.table`; returns what the server said, a line each. */
+  maintainTable: (sessionId: number, schema: string, table: string, operation: Maintenance) =>
+    invoke<string[]>("maintain_table", { sessionId, schema, table, operation }),
   endServerSession: (sessionId: number, id: string, how: EndSession) =>
     invoke<void>("end_server_session", { sessionId, id, how }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),

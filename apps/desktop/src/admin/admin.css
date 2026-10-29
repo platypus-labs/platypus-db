@@ -326,3 +326,32 @@
   color: var(--error);
   font-weight: 600;
 }
+
+/* Tables and indexes: each index under its table, indented. */
+.admin-objects tr.admin-kind-index .admin-object-name {
+  padding-left: 22px;
+  color: var(--fg-muted);
+}
+
+.admin-objects tr.admin-kind-table .admin-object-name {
+  font-weight: 600;
+}
+
+.admin-issues {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.admin-maintenance-output {
+  max-height: 200px;
+}
+
+/* The statement gives way to the numbers beside it. */
+.admin-statements .admin-query {
+  max-width: 24vw;
+}
+
+.admin-table th.num {
+  white-space: nowrap;
+}
