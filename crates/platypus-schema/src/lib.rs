@@ -7,6 +7,7 @@ mod changelog;
 mod compare;
 mod create;
 mod ddl;
+mod diff;
 mod lint;
 mod model;
 
@@ -21,6 +22,7 @@ use serde::{Deserialize, Serialize};
 pub use changelog::{ChangelogFormat, changelog, flyway_file_name};
 pub use compare::compare;
 pub use ddl::script;
+pub use diff::{ChangeKind, SchemaChange, summary};
 pub use lint::{Finding, LintKind, lint};
 pub use model::{SchemaTable, load_designs, read_tables, tables_of};
 
