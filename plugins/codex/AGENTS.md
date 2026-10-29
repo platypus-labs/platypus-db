@@ -55,3 +55,10 @@ use is left out.
 While the app is open, `list_open_sessions` shows what the user has open (connection,
 database, manual commit, open transaction). Your statements run on sessions of your own,
 never on these.
+
+When the user points at something on their screen ("this query", "what I selected", "the
+result I see"), call `get_user_context`: PlatypusDB asks them to share the active tab's
+editor text, selection and result grid (`parts` limits what you ask for). It returns only
+what they allow, each time or for your whole session; a refusal comes with their reason.
+The editor and selection are cut at 64 KiB, the result at 100 rows and 32 KiB (`truncated`
+says so), and a tab on a connection that is not open to agents is not shared.

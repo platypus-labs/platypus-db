@@ -8,8 +8,8 @@ use crate::agent::locked;
 use crate::link::CLOSED;
 use crate::resource::{self, Target};
 use crate::{
-    Agent, AgentError, ExplainArgs, HistoryArgs, ListScriptsArgs, ProposeArgs, QueryArgs,
-    ReadScriptArgs, SampleArgs, origin_name,
+    Agent, AgentError, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs, ProposeArgs,
+    QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
 };
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -36,7 +36,8 @@ agent access set by the user: read_only connections run only statements that cha
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you. While the \
 PlatypusDB app is open, list_open_sessions shows what the user has open there, and changes may \
-wait for the user to allow them in the app. list_scripts and read_script \
+wait for the user to allow them in the app; when they say \"this query\", \"what I selected\" or \
+\"the result I see\", get_user_context asks them to share it. list_scripts and read_script \
 show the scripts the user saved, search_history the statements run before, to learn how the user \
 queries the data. Connections, schemas and tables are also MCP \
 resources (platypus://<connection>/<schema>/<table>), for clients that attach them as context.";
@@ -507,6 +508,31 @@ impl PlatypusServer {
                 .map_err(|e| AgentError::Store(format!("cannot list the app's sessions: {e}"))),
             None => Err(AgentError::Store(CLOSED.to_owned())),
         };
+        self.answer(call, json_text(result)).await
+    }
+
+    #[tool(
+        description = "Asks the user to share what they are looking at in the PlatypusDB app: \
+        the text of the active editor tab (editor), the part they selected (selection) and the \
+        result their grid shows (result: columns and rows). Use it when the user refers to \
+        something on their screen: \"this query\", \"what I selected\", \"the result I see\". \
+        Nothing is shared unless the user allows it in the app, each time or for your whole \
+        session; they can refuse, with a reason you get. parts limits what you ask for (all \
+        three by default). Answers connection, tab (its title) and the parts shared; the editor \
+        and selection are cut at 64 KiB, the result at 100 rows and 32 KiB (truncated says so). \
+        A tab on a connection that is not open to agents is not shared. Needs the app open; \
+        read-only: nothing runs."
+    )]
+    async fn get_user_context(
+        &self,
+        Parameters(args): Parameters<ContextArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("get_user_context", &peer, &args);
+        let result = self
+            .agent
+            .user_context(&args, (&call.agent, &self.session))
+            .await;
         self.answer(call, json_text(result)).await
     }
 

@@ -13,6 +13,7 @@
 pub mod access;
 mod agent;
 mod connect;
+mod context;
 mod error;
 mod ident;
 mod library;
@@ -35,12 +36,18 @@ pub use agent::{
     SEARCH_RESULTS, SampleArgs, origin_name,
 };
 pub use connect::{AgentBlocker, agent_blocker, connect};
+pub use context::{
+    CONTEXT_RESULT_BYTES, CONTEXT_ROWS, CONTEXT_TEXT_BYTES, ContextArgs, SharedContext,
+};
 pub use error::{AgentError, Result};
 pub use library::{
     HISTORY_PAGE, HistoryArgs, HistoryItem, ListScriptsArgs, MAX_HISTORY_PAGE, OriginArg,
     ReadScriptArgs, SCRIPT_BYTES, ScriptContent, ScriptInfo,
 };
-pub use link::{ANSWER_TIMEOUT, AppLink, BridgeFile, HttpLink, OpenSession, Verdict, WriteRequest};
+pub use link::{
+    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextPart, ContextRequest, ContextResult,
+    ContextVerdict, HttpLink, OpenSession, UserContext, Verdict, WriteRequest,
+};
 pub use output::{Format, QueryResult};
 pub use plan::PlanResult;
 pub use profile::Profile;

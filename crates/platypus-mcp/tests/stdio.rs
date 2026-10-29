@@ -132,7 +132,7 @@ fn fake_app(dir: &Path, verdicts: Vec<&'static str>) -> Received {
             let path = head.split_whitespace().nth(1).unwrap().to_owned();
             let (status, answer) = if head.contains("Authorization: Bearer t0ken") {
                 match path.as_str() {
-                    "/v1/confirm" => (200, verdicts.next().unwrap().to_owned()),
+                    "/v1/confirm" | "/v1/context" => (200, verdicts.next().unwrap().to_owned()),
                     "/v1/sessions" => (
                         200,
                         r#"[{"connection":"Scratch","database":null,"purpose":"main","manual_commit":true,"transaction_open":false}]"#
@@ -236,6 +236,7 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "explain",
         "propose_sql",
         "list_open_sessions",
+        "get_user_context",
         "list_scripts",
         "read_script",
         "search_history",
@@ -510,6 +511,71 @@ fn serves_the_tools_over_stdio() {
         )
         .unwrap();
     assert_eq!(agents, 17);
+}
+
+/// `get_user_context` asks the app: closed it is an error, a refusal carries the user's
+/// reason, a share is returned within the limits, and a tab on a connection closed to
+/// agents is not returned at all.
+#[test]
+fn shares_what_the_user_works_on_only_with_consent() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let (closed, error) = client.call("get_user_context", &json!({}));
+    assert!(error && closed.contains("not open"), "{closed}");
+
+    let rows: Vec<String> = (0..150).map(|i| format!("[\"{i}\",null]")).collect();
+    let shared = Box::leak(
+        format!(
+            r#"{{"answer":"once","context":{{"connection":"App db","connection_id":"00000000-0000-4000-8000-000000000001","tab":"Orders","editor":"SELECT 1","selection":"1","result":{{"columns":["n","m"],"rows":[{}],"truncated":false}}}}}}"#,
+            rows.join(",")
+        )
+        .into_boxed_str(),
+    );
+    let app = fake_app(
+        dir.path(),
+        vec![
+            r#"{"answer":"deny","reason":"private"}"#,
+            shared,
+            r#"{"answer":"session","context":{"connection":"Hidden","connection_id":"00000000-0000-4000-8000-000000000003","editor":"SELECT secret"}}"#,
+        ],
+    );
+    let (denied, error) = client.call("get_user_context", &json!({}));
+    assert!(error && denied.contains("private"), "{denied}");
+
+    let (text, error) = client.call(
+        "get_user_context",
+        &json!({ "parts": ["editor", "result"] }),
+    );
+    assert!(!error, "{text}");
+    let context: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(context["tab"], "Orders");
+    assert_eq!(context["editor"], "SELECT 1");
+    assert_eq!(context["selection"], Value::Null, "not asked for");
+    assert_eq!(context["result"]["rows"].as_array().unwrap().len(), 100);
+    assert_eq!(context["result"]["truncated"], true);
+    assert_eq!(context["result"]["rows"][1], json!(["1", null]));
+    assert!(
+        context["notes"][0].as_str().unwrap().contains("150 rows"),
+        "{text}"
+    );
+
+    let (hidden, error) = client.call("get_user_context", &json!({}));
+    assert!(error && hidden.contains("not open to agents"), "{hidden}");
+    assert!(!hidden.contains("secret"), "{hidden}");
+
+    let asked: Vec<Value> = app
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(path, _)| path == "/v1/context")
+        .map(|(_, body)| serde_json::from_str(body).unwrap())
+        .collect();
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    assert_eq!(asked[0]["agent"], "test-agent");
+    assert_eq!(asked[0]["parts"], json!(["editor", "selection", "result"]));
+    assert_eq!(asked[1]["parts"], json!(["editor", "result"]));
+    assert_eq!(asked[0]["session"], asked[1]["session"]);
 }
 
 /// `sample_rows` reads the first rows of a table within the limits; `explain` shows the
