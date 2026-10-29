@@ -3,6 +3,7 @@
 //! `CREATE TABLE` for a new table. [`apply`] runs that script. A whole schema is read with
 //! [`read_tables`] for the ER diagram and [`lint`].
 
+mod changelog;
 mod compare;
 mod create;
 mod ddl;
@@ -17,6 +18,7 @@ use platypus_core::{
 use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
 
+pub use changelog::{ChangelogFormat, changelog, flyway_file_name};
 pub use compare::compare;
 pub use ddl::script;
 pub use lint::{Finding, LintKind, lint};

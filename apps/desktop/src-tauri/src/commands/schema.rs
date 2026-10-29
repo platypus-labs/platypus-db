@@ -2,7 +2,7 @@
 //! that script (see `platypus-schema`).
 
 use platypus_core::DriverKind;
-use platypus_schema::{Finding, SchemaTable, Script, TableDesign};
+use platypus_schema::{ChangelogFormat, Finding, SchemaTable, Script, TableDesign};
 use platypus_sql::Dialect;
 use serde::Serialize;
 use tauri::State;
@@ -46,6 +46,34 @@ pub fn table_script(
         sql: script.text(dialect),
         script,
     })
+}
+
+/// A script from [`compare_schemas`] as the text of a Flyway migration or a Liquibase changelog.
+#[tauri::command]
+#[must_use]
+pub fn schema_changelog(
+    driver: DriverKind,
+    script: Script,
+    format: ChangelogFormat,
+    description: String,
+    author: String,
+    id: String,
+) -> String {
+    platypus_schema::changelog(
+        format,
+        Dialect::from(driver),
+        &script,
+        &description,
+        &author,
+        &id,
+    )
+}
+
+/// The file name Flyway expects for a migration with this `version` and `description`.
+#[tauri::command]
+#[must_use]
+pub fn flyway_file_name(version: &str, description: &str) -> String {
+    platypus_schema::flyway_file_name(version, description)
 }
 
 /// Runs a script from [`table_script`] on the session and commits it (see [`one_off`]).

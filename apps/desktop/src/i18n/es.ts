@@ -2184,6 +2184,10 @@ const es: Record<string, string> = {
   "Done: {n} rows.": "Hecho: {n} filas.",
   "Open…": "Abrir…",
   "Schedule…": "Programar…",
+  // Group I: schema changelog
+  "Output": "Salida",
+  "Flyway migration…": "Migración de Flyway…",
+  "Liquibase changelog…": "Changelog de Liquibase…",
 };
 
 export default es;

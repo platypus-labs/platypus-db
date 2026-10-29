@@ -2184,6 +2184,10 @@ const zh: Record<string, string> = {
   "Done: {n} rows.": "完成：{n} 行。",
   "Open…": "打开…",
   "Schedule…": "计划…",
+  // Group I: schema changelog
+  "Output": "输出",
+  "Flyway migration…": "Flyway 迁移…",
+  "Liquibase changelog…": "Liquibase 变更日志…",
 };
 
 export default zh;

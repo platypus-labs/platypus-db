@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type SavedConnection, type SchemaMeta, toCommandError } from "../api";
+import { save } from "@tauri-apps/plugin-dialog";
+import { api, type ChangelogFormat, type SavedConnection, type SchemaMeta, type TableScript, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
 import { translateWarning } from "./warnings";
@@ -10,6 +11,12 @@ interface Props {
   schema: string;
   onClose: () => void;
 }
+
+/** Where the script goes: the SQL editor of the target, or a migration file for a tool. */
+type Output = "editor" | ChangelogFormat;
+
+/** `yyyyMMddHHmmss` in UTC: the version of a Flyway migration and the id of a Liquibase one. */
+const timestamp = () => new Date().toISOString().replace(/\.\d+Z$/, "").replace(/[-:T]/g, "");
 
 /** Compares a schema with another one of the same kind of database, here or on another
  *  connection, and opens on the target the script that makes it like this one: tables
@@ -24,6 +31,7 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [same, setSame] = useState(false);
+  const [output, setOutput] = useState<Output>("editor");
   const sameConnection = target.id === connection.id;
   const targetDatabase = sameConnection ? database : null;
 
@@ -52,6 +60,18 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
     };
   }, [target.id]);
 
+  /** Asks where to save the migration file and writes it; `false` when the dialog is cancelled. */
+  async function writeChangelog(script: TableScript, format: ChangelogFormat): Promise<boolean> {
+    const stamp = timestamp();
+    // The description is English whatever the language: it names a file other tools read.
+    const description = `make ${targetSchema} like ${schema}`;
+    const defaultPath = format === "flyway" ? await api.flywayFileName(stamp, description) : `changelog-${stamp}.sql`;
+    const path = await save({ defaultPath, filters: [{ name: "SQL", extensions: ["sql"] }] });
+    if (typeof path !== "string") return false;
+    await api.writeTextFile(path, await api.schemaChangelog(connection.driver, script, format, description, "platypusdb", stamp));
+    return true;
+  }
+
   async function compare() {
     setBusy(true);
     setError(null);
@@ -62,6 +82,10 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
       if (source === null || to === null) return;
       const { script, sql } = await api.compareSchemas(source, schema, to, targetSchema);
       if (script.statements.length === 0) return setSame(true);
+      if (output !== "editor") {
+        if (await writeChangelog(script, output)) onClose();
+        return;
+      }
       const notes = script.warnings.map((w) => `-- ${translateWarning(w)}\n`).join("");
       const head = `-- ${t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}`, source: `${connection.name} · ${schema}` })}\n`;
       workbench().openTab("query", target.id, { sql: `${head}${notes}${sql}`, database: targetDatabase });
@@ -112,6 +136,14 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
             </select>
           </label>
         </div>
+        <label className="field">
+          <span>{t("Output")}</span>
+          <select value={output} disabled={busy} onChange={(e) => setOutput(e.target.value as Output)}>
+            <option value="editor">{t("SQL editor")}</option>
+            <option value="flyway">{t("Flyway migration…")}</option>
+            <option value="liquibase">{t("Liquibase changelog…")}</option>
+          </select>
+        </label>
         {same && <div className="notice small">{t("The schemas have the same tables: there is nothing to change.")}</div>}
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">
