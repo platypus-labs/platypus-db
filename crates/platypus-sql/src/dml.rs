@@ -276,6 +276,49 @@ impl Column<'_> {
     }
 
     /// `text` as a literal of the column's type; `None` is NULL.
+    /// `text` as a bulk load reads it (PostgreSQL's `COPY`, MySQL's `LOAD DATA`): the value
+    /// of [`literal`](Self::literal) without its quotes, checked as it does; bytes as hex.
+    ///
+    /// # Errors
+    /// When `text` is not a value of the column's kind.
+    pub fn bulk_text(&self, dialect: Dialect, text: &str) -> Result<String> {
+        let trimmed = text.trim();
+        Ok(match self.kind {
+            ValueKind::Integer if is_integer(trimmed) => trimmed.to_owned(),
+            ValueKind::Integer => {
+                return Err(self.invalid(format!("'{text}' is not a whole number")));
+            }
+            ValueKind::Decimal | ValueKind::Float | ValueKind::Real if is_number(trimmed) => {
+                plain_number(trimmed)
+            }
+            // PostgreSQL reads NaN and the infinities of floats (and numerics since 14).
+            ValueKind::Decimal | ValueKind::Float | ValueKind::Real
+                if dialect == Dialect::Postgres && is_special_number(trimmed) =>
+            {
+                trimmed.to_owned()
+            }
+            ValueKind::Decimal | ValueKind::Float | ValueKind::Real => {
+                return Err(self.invalid(format!("'{text}' is not a number")));
+            }
+            ValueKind::Bool => match (parse_bool(trimmed), dialect) {
+                (Some(b), Dialect::MySql) => if b { "1" } else { "0" }.to_owned(),
+                (Some(b), _) => b.to_string(),
+                (None, _) => return Err(self.invalid(format!("'{text}' is not true or false"))),
+            },
+            ValueKind::Binary => parse_hex(trimmed).ok_or_else(|| {
+                self.invalid(format!("'{text}' is not hexadecimal bytes (e.g. 0a1b)"))
+            })?,
+            // MySQL sessions run in UTC and MariaDB rejects offsets in datetimes.
+            ValueKind::Timestamp { zoned: true } if dialect == Dialect::MySql => trimmed
+                .strip_suffix("+00:00")
+                .or_else(|| trimmed.strip_suffix('Z'))
+                .unwrap_or(trimmed)
+                .to_owned(),
+            ValueKind::Timestamp { .. } | ValueKind::Date | ValueKind::Time => trimmed.to_owned(),
+            ValueKind::Text => text.to_owned(),
+        })
+    }
+
     pub fn literal(&self, dialect: Dialect, text: Option<&str>) -> Result<String> {
         let Some(text) = text else {
             return Ok("NULL".to_owned());
@@ -1011,6 +1054,49 @@ pub async fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bulk_text_is_the_literal_without_quotes() {
+        let column = |kind| Column {
+            name: "c",
+            kind,
+            default: None,
+        };
+        let pg = Dialect::Postgres;
+        let my = Dialect::MySql;
+        assert_eq!(
+            column(ValueKind::Integer).bulk_text(pg, " 42 ").unwrap(),
+            "42"
+        );
+        assert!(column(ValueKind::Integer).bulk_text(pg, "4x").is_err());
+        assert_eq!(
+            column(ValueKind::Decimal).bulk_text(pg, "1e2").unwrap(),
+            "100"
+        );
+        assert_eq!(
+            column(ValueKind::Float).bulk_text(pg, "NaN").unwrap(),
+            "NaN"
+        );
+        assert!(column(ValueKind::Float).bulk_text(my, "NaN").is_err());
+        assert_eq!(
+            column(ValueKind::Bool).bulk_text(pg, "yes").unwrap(),
+            "true"
+        );
+        assert_eq!(column(ValueKind::Bool).bulk_text(my, "false").unwrap(), "0");
+        assert_eq!(
+            column(ValueKind::Binary).bulk_text(pg, "0xDEAD").unwrap(),
+            "dead"
+        );
+        let zoned = column(ValueKind::Timestamp { zoned: true });
+        assert_eq!(
+            zoned.bulk_text(my, "2026-01-02T03:04:05Z").unwrap(),
+            "2026-01-02T03:04:05"
+        );
+        assert_eq!(
+            column(ValueKind::Text).bulk_text(pg, " as is ").unwrap(),
+            " as is "
+        );
+    }
 
     const fn col(name: &str, kind: ValueKind) -> Column<'_> {
         Column {
