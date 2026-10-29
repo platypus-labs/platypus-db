@@ -1,6 +1,6 @@
 // Regression guard: Test connection from the form's URL mode reaches every Docker database
 // that has one (docker/compose.yml): MySQL and MariaDB (`mariadb://`), ClickHouse (its own
-// scheme and `http://`), MongoDB with authSource, libSQL over `http://` with its `authToken`,
+// scheme and `http://`), MongoDB with authSource, Redis with a password and a database, libSQL over `http://` with its `authToken`,
 // SQL Server through a JDBC URL with encrypt/trustServerCertificate, and the PostgreSQL wire
 // variants (TimescaleDB, CockroachDB, YugabyteDB tiles). Each printed URL, read back, gives
 // the same connection.
@@ -21,6 +21,7 @@ const CASES = [
   ["ClickHouse", "clickhouse://platypus:platypus@localhost:58123/platypus?sslmode=disable"],
   ["ClickHouse", "http://platypus:platypus@localhost:58123/platypus"],
   ["MongoDB", "mongodb://platypus:platypus@localhost:57017/admin?authSource=admin"],
+  ["Redis", "redis://:platypus@localhost:56379/3"],
   ["Turso / libSQL", `http://localhost:58080?authToken=${LIBSQL_TOKEN}`],
   ["SQL Server", "jdbc:sqlserver://localhost:51433;databaseName=master;user=sa;password=Platypus-2026;encrypt=true;trustServerCertificate=true"],
   ["TimescaleDB", "postgres://platypus:platypus@localhost:55433/platypus?sslmode=disable"],
