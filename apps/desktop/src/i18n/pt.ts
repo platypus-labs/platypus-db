@@ -1901,6 +1901,12 @@ const pt: Record<string, string> = {
   "Snapshots before changes…": "Snapshots antes de alterações…",
   "Open the statements that put back the rows it changed": "Abrir as instruções que restauram as linhas alteradas",
   "Restore…": "Restaurar…",
+  "Locking needs a master password: set one in Settings › Master password.": "Bloquear requer uma senha mestra: defina-a em Configurações › Senha mestra.",
+  "Lock PlatypusDB": "Bloquear PlatypusDB",
+  "Lock the app after this many idle minutes": "Bloquear o app após estes minutos inativo",
+  "0 never locks. It needs a master password; production connections are closed when it locks.": "0 nunca bloqueia. Requer uma senha mestra; ao bloquear, as conexões de produção são fechadas.",
+  "PlatypusDB is locked": "PlatypusDB está bloqueado",
+  "Enter the master password to go on. Production connections were closed: they reconnect when used.": "Digite a senha mestra para continuar. As conexões de produção foram fechadas: reconectam quando usadas.",
 };
 
 export default pt;

@@ -1510,3 +1510,27 @@ label.multi-run-row:hover {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* The app's lock: the window hidden behind the master password. */
+
+.modal-backdrop.lock-screen {
+  z-index: 1000;
+  background: var(--bg);
+}
+
+.lock-dialog {
+  align-items: center;
+  text-align: center;
+}
+
+.lock-dialog .field,
+.lock-dialog .notice,
+.lock-dialog .actions {
+  align-self: stretch;
+  text-align: left;
+}
+
+.lock-mark {
+  width: 48px;
+  height: 48px;
+}

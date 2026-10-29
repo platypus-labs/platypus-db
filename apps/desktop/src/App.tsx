@@ -15,7 +15,7 @@ import { onNavigatorRefresh, requestNavigatorRefresh, revealConnection } from ".
 import { ConnectionDialog } from "./components/ConnectionDialog";
 import { ImportDialog } from "./components/ImportDialog";
 import { UnlockDialog } from "./components/MasterPassword";
-import { asksPassword, connectionColor } from "./connections";
+import { asksPassword, connectionColor, isProduction } from "./connections";
 import { sessionSettingsChanged } from "./connectionEdit";
 import { Navigator } from "./components/Navigator";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -57,6 +57,7 @@ import { language, languageSetting, loadLanguage, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
+import { LockScreen, useIdleLock } from "./guards/AppLock";
 
 declare module "./actions" {
   interface ActionScopes {
@@ -125,6 +126,8 @@ export function App() {
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /** The app waits behind the master password. */
+  const [locked, setLocked] = useState(false);
   /** Closed tabs as they would be saved, newest last, for Ctrl+Shift+T. */
   const closedTabs = useRef<PersistedTab[]>([]);
   const tabBar = useRef<HTMLDivElement>(null);
@@ -791,6 +794,27 @@ export function App() {
     addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), pinned: saved.pinned === true }, closedAt.get(saved));
   };
   const openPalette = () => setPaletteOpen(true);
+  /** Locks the app behind the master password, closing the production sessions; without a
+   *  master password, says what it needs. */
+  async function lockApp(asked: boolean) {
+    const status = await api.vaultStatus().catch(() => null);
+    if (!status?.enabled) {
+      if (asked) setToast(t("Locking needs a master password: set one in Settings › Master password."));
+      return;
+    }
+    await api.lockVault().catch(() => {});
+    for (const c of connections ?? []) {
+      if (!isProduction(c)) continue;
+      disconnectNavigator(c);
+      for (const tab of tabs) {
+        if (tab.connectionId !== c.id || !sessions.current.has(tab.key)) continue;
+        dropSession(tab.key);
+        patchTab(tab.key, { txOpen: false });
+      }
+    }
+    setLocked(true);
+  }
+  useIdleLock(() => void lockApp(false), locked);
   // `tabs` here are the active project's: the tab actions work on what the bar shows.
   const shellState = {
     tabs: visibleTabs,
@@ -820,6 +844,7 @@ export function App() {
     split,
     openBeside,
     closeSplit: () => setSplit(null),
+    lockApp: () => void lockApp(true),
   };
   const shell = useRef(shellState);
   shell.current = shellState;
@@ -1160,6 +1185,8 @@ export function App() {
           }}
         />
       )}
+      {/* Over everything, dialogs included. */}
+      {locked && <LockScreen onUnlocked={() => setLocked(false)} />}
     </div>
   );
 }
@@ -1227,6 +1254,7 @@ interface ShellApi {
   newConnection: () => void;
   importConnections: () => void;
   openDataFile: () => void;
+  lockApp: () => void;
 }
 
 /** Closed tabs kept for reopening. */
@@ -1275,6 +1303,12 @@ function registerShellActions(shell: { current: ShellApi }) {
       title: "Previous tab",
       shortcut: ["Mod+Shift+Tab", "Mod+PageUp"],
       run: () => move(-1),
+    }),
+    registerAction({
+      id: "app.lock",
+      scope: "global",
+      title: "Lock PlatypusDB",
+      run: () => s().lockApp(),
     }),
     registerAction({
       id: "tab.reopen",

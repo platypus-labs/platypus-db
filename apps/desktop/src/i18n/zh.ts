@@ -1901,6 +1901,12 @@ const zh: Record<string, string> = {
   "Snapshots before changes…": "变更前快照…",
   "Open the statements that put back the rows it changed": "打开恢复被修改行的语句",
   "Restore…": "恢复…",
+  "Locking needs a master password: set one in Settings › Master password.": "锁定需要主密码：请在“设置 › 主密码”中设置。",
+  "Lock PlatypusDB": "锁定 PlatypusDB",
+  "Lock the app after this many idle minutes": "空闲多少分钟后锁定应用",
+  "0 never locks. It needs a master password; production connections are closed when it locks.": "0 表示从不锁定。需要主密码；锁定时会关闭生产连接。",
+  "PlatypusDB is locked": "PlatypusDB 已锁定",
+  "Enter the master password to go on. Production connections were closed: they reconnect when used.": "输入主密码以继续。生产连接已关闭：使用时会重新连接。",
 };
 
 export default zh;

@@ -1901,6 +1901,12 @@ const fr: Record<string, string> = {
   "Snapshots before changes…": "Instantanés avant modifications…",
   "Open the statements that put back the rows it changed": "Ouvrir les instructions qui remettent les lignes modifiées",
   "Restore…": "Restaurer…",
+  "Locking needs a master password: set one in Settings › Master password.": "Le verrouillage demande un mot de passe principal : définissez-le dans Paramètres › Mot de passe principal.",
+  "Lock PlatypusDB": "Verrouiller PlatypusDB",
+  "Lock the app after this many idle minutes": "Verrouiller l'app après ce nombre de minutes d'inactivité",
+  "0 never locks. It needs a master password; production connections are closed when it locks.": "0 ne verrouille jamais. Il faut un mot de passe principal ; le verrouillage ferme les connexions de production.",
+  "PlatypusDB is locked": "PlatypusDB est verrouillé",
+  "Enter the master password to go on. Production connections were closed: they reconnect when used.": "Saisissez le mot de passe principal pour continuer. Les connexions de production ont été fermées : elles se rouvrent à l'usage.",
 };
 
 export default fr;
