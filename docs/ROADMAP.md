@@ -480,8 +480,8 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 **Area:** `platypus-transfer`, `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
 
-**Stato: P1 e P2 completate, P3 in parte** (profili di trasferimento fatti; da fare: bulk
-copy di SQL Server e appender di DuckDB).
+**Stato: completato** (P1, P2 e P3, con i profili di trasferimento salvati, la bulk copy di
+SQL Server e l'appender di DuckDB).
 
 **P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
 connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
@@ -527,8 +527,21 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 righe di testo: PostgreSQL con `COPY … FROM STDIN` in CSV (non CockroachDB), MySQL e MariaDB
 con `LOAD DATA LOCAL INFILE` dove il server ha `local_infile` (letto alla connessione; un
 avviso fa fallire il caricamento). L'import e il trasferimento lo usano a blocchi di 50.000
-righe, tranne l'upsert; gli altri database restano con INSERT od `OPENJSON` a blocchi. In
-manual commit il caricamento sta sotto il savepoint dell'istruzione. Il `tokio-postgres`
+righe, tranne l'upsert; gli altri database restano con INSERT a blocchi. In
+manual commit il caricamento sta sotto il savepoint dell'istruzione. P3: SQL Server con la bulk copy di
+TDS (`INSERT BULK` con `KEEP_NULLS, CHECK_CONSTRAINTS, FIRE_TRIGGERS`, i valori dell'identity
+tenuti): il driver converte il testo nel tipo di ogni colonna, letto con `SELECT TOP 0`, prima
+di iniziare, e una tabella con `money`, `xml`, `text`, `image` o tipi CLR risponde
+`Unsupported`, così l'import ripiega su `OPENJSON` per il resto delle righe. Il `tiberius`
+vendorizzato ha `bulk_columns`/`bulk_insert_columns` e le correzioni ai metadati di `date`,
+`nvarchar`, `time`, `datetimeoffset` e `smalldatetime`. DuckDB con l'appender
+(`appender_with_columns`, nella transazione della sessione o in una propria, così una riga
+fallita non lascia niente); i `TIMESTAMPTZ` si convertono in UTC nel driver, perché il cast
+dell'appender perde l'offset. Conformance: `bulk_loads_rows` su tutti, e in `value_fidelity`
+ogni tipo di SQL Server confrontato con un `INSERT` dello stesso testo. Su un server locale (Docker,
+stesso host) la bulk copy va come `OPENJSON`: un milione di righe in circa 9 s in tutti e due i
+casi; il guadagno atteso è sul lavoro del server (niente JSON da leggere), da misurare su un
+server remoto. Il `tokio-postgres`
 vendorizzato ha una patch per un `COPY` rifiutato dal server. "Esegui file SQL…"
 (`platypus-transfer::script`) legge `.sql`, `.gz` e `.zst` a pezzi di 4 MB e divide le
 istruzioni col dialetto (`GO` in T-SQL, `DELIMITER` di MySQL anche tra un pezzo e l'altro);
@@ -569,7 +582,7 @@ cartella del task, se ce l ha. E2E `profiles-export-sqlite`, `profiles-transfer-
 | ✅ Export compresso (gzip, zstd) e su storage cloud (S3, GCS) | P3 | D+ |
 | ✅ Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
 | ✅ **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL; INSERT a blocchi come ripiego | P2 | D |
-| 🆕 Bulk copy (TDS) in SQL Server e appender in DuckDB al posto di `OPENJSON` e INSERT a blocchi | P3 | D |
+| ✅ 🆕 Bulk copy (TDS) in SQL Server e appender in DuckDB al posto di `OPENJSON` e INSERT a blocchi | P3 | D |
 | ✅ Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
 | ✅ **Esegui file SQL** dal navigator (`.sql` o `.sql.gz`), con avanzamento, annullamento e una sola transazione dove il database annulla il DDL; **dump SQL** di uno schema o di un database in un solo file (DDL e dati), che si riapre con lo stesso comando | P2 | D |
 
