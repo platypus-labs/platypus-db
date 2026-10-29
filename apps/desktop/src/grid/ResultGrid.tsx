@@ -11,6 +11,8 @@ import { RecordView } from "../panels/RecordView";
 import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
 import { defineSetting, setSetting, useSetting } from "../settings";
 import { MASK, useMask } from "../guards/mask";
+import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
+import { t } from "../i18n";
 import { workbench } from "../workbench";
 import { ColumnsDialog } from "./ColumnsDialog";
 import { FormattingDialog } from "./FormattingDialog";
@@ -206,6 +208,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     openFormatting: formatting.open,
   };
 
+  // The side panels' width, the same for all of them and kept for the next start.
+  const [panelWidth, setPanelWidth] = useStoredSize("layout.side_panel_width", 340);
+  const body = useRef<HTMLDivElement>(null);
+  const sideOpen = panelOpen || metadataOpen || calcOpen || mapOpen || grouping !== null || refs.panel != null;
+
   const column = focused ? columns[focused.col] : undefined;
   const valueTarget: ValueTarget | null =
     focused && dataRow != null && column
@@ -223,7 +230,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   return (
     <div className="result-grid">
       {editor.bar}
-      <div className="result-grid-body">
+      <div className="result-grid-body" ref={body} style={{ "--side-panel-width": `${panelWidth}px` } as React.CSSProperties}>
         <div className="result-grid-main" ref={box} onKeyDown={editor.onKeyDown}>
           <DataGrid
             ref={grid}
@@ -276,6 +283,20 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
             />
           )}
         </div>
+        {sideOpen && (
+          <PanelResizer
+            storeKey="layout.side_panel_width"
+            size={panelWidth}
+            fallback={340}
+            min={200}
+            max={() => (body.current?.clientWidth ?? window.innerWidth) - 240}
+            direction="column"
+            after
+            onDrag={(w) => body.current?.style.setProperty("--side-panel-width", `${w}px`)}
+            onResize={setPanelWidth}
+            label={t("Resize the side panels")}
+          />
+        )}
         {panelOpen &&
           (mongo ? (
             <DocumentPanel

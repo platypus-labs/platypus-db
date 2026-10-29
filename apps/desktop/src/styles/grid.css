@@ -172,7 +172,7 @@
 .value-panel {
   display: flex;
   flex-direction: column;
-  width: 340px;
+  width: var(--side-panel-width, 340px);
   min-width: 200px;
   border-left: 1px solid var(--border);
   background: var(--bg);
@@ -565,7 +565,7 @@
 }
 
 .map-panel {
-  width: 420px;
+  width: var(--side-panel-width, 420px);
 }
 
 .map-view {

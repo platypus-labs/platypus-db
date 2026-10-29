@@ -98,12 +98,12 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
-| F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
+| F — Connettività e credenziali | 🔒 Delfa · group-f-cloud · 2026-10-29 |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2) |
-| K — Shell ed ergonomia | 🔒 Delfa · group-k-shell · 2026-10-29 |
+| K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
 | N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-bridge · 2026-10-29 |
@@ -609,9 +609,9 @@ solo i lock coinvolti in un'attesa.
 
 ---
 
-### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ P1 e P2 fatti
+### Gruppo K — Shell dell'applicazione ed ergonomia — ✅ completato
 
-**Stato: P1 e P2 completati** (import ed export dei temi come file JSON in Impostazioni →
+**Stato: completato** (import ed export dei temi come file JSON in Impostazioni →
 Temi, con anteprima, elenco di ciò che il file salta e un tema importato chiaro, scuro o che
 segue il sistema) (rotella sui tab, command palette con ricerca fuzzy su azioni,
 connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostazioni con
@@ -660,6 +660,20 @@ dalla system tray e tab staccato in una finestra.
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
 
+
+**P3 finali.** Pannelli ridimensionabili (`shell/PanelResizer.tsx`): l'altezza dell'editor
+(`layout.editor_height`, la stessa per tutti i tab), la larghezza dei pannelli laterali di un
+risultato (`layout.side_panel_width`) e la divisione dell'editor diviso (`layout.split_share`,
+in millesimi), trascinando o con le frecce, doppio clic per il default. Finestre accanto a
+quella principale (`src-tauri/src/windows.rs`, `shell/WindowApp.tsx`): "Apri in una nuova
+finestra" sposta un tab in una finestra `tab-<n>` con le sue sessioni (non con una transazione
+aperta o modifiche della griglia); "Sposta nella finestra principale" lo riporta, chiudere la
+finestra lo lascia a `Ctrl+Shift+T`, e un'uscita senza chiuderla (dalla tray) lo ritrova
+all'avvio. La finestra `quick` è la query rapida, sempre in primo piano, dall'icona nella tray
+(`tray-icon`, menu tradotto dal frontend; su Linux solo con AppIndicator) o dalla palette. Le
+finestre si aprono da comandi asincroni (WebView2 si blocca altrimenti), il blocco dell'app le
+raggiunge e l'attività in una tiene aperte le altre. E2E `windows-sqlite` (lo scenario raggiunge
+le altre finestre con `connect(port, …, pick)`).
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ **Rotella del mouse sui tab = scroll orizzontale** | P1 | N |
@@ -671,14 +685,14 @@ dalla system tray e tab staccato in una finestra.
 | ✅ Pagina Impostazioni, scorciatoie personalizzabili, barra degli strumenti configurabile | P1 | D |
 | ✅ Lingua dell'interfaccia: italiano e inglese, con l'infrastruttura i18n | P2 | D |
 | ✅ Accessibilità: navigazione da tastiera completa, screen reader, contrasto | P2 | D |
-| Pannelli trascinabili e layout salvato | P3 | D |
+| ✅ Pannelli trascinabili e layout salvato | P3 | D |
 | ✅ Modalità portable, con impostazioni accanto all'eseguibile | P3 | N |
-| Mini-finestra di query rapida dalla system tray | P3 | N |
+| ✅ Mini-finestra di query rapida dalla system tray | P3 | N |
 | ✅ Modalità Vim nell'editor | P3 | N |
 | ✅ Log degli errori e attività in background visibili, per la diagnosi | P2 | D |
 | ✅ Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
 | ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
-| 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
+| ✅ 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
 | ✅ **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
 | ✅ 🆕 **Database di esempio** nella schermata di benvenuto: un clic apre un SQLite o DuckDB incluso, con dati realistici, tabelle collegate da FK e qualche script salvato, per provare l'app senza un server | P3 | N |
 | ✅ 🆕 Altre lingue dell'interfaccia (spagnolo, tedesco, francese, portoghese, cinese), con le stringhe di `i18n.ts` aperte ai contributi | P3 | D |

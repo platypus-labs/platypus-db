@@ -11,6 +11,7 @@ mod formats;
 mod jobs;
 mod querylog;
 mod scheduler;
+mod windows;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -118,25 +119,11 @@ fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
 /// end-to-end tests: WebView2 does not always honour `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
 /// when the app passes browser arguments of its own.
 fn open_main_window(app: &tauri::App, system_title_bar: bool) -> tauri::Result<()> {
-    let Some(mut config) = app.config().app.windows.first().cloned() else {
+    let Some(mut config) = windows::window_config(app.handle(), "main") else {
         return Ok(());
     };
     config.decorations = system_title_bar || cfg!(target_os = "macos");
-    if let Some(port) = std::env::var("PLATYPUS_DEVTOOLS_PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-    {
-        let args = config.additional_browser_args.unwrap_or_default();
-        config.additional_browser_args = Some(format!("{args} --remote-debugging-port={port}"));
-    }
-    let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
-    if std::env::var_os("PLATYPUS_DATA_DIR").is_none()
-        && let Some(dir) = platypus_mcp::profile::portable_dir()
-    {
-        window = window.data_directory(dir.join("webview"));
-    }
-    window.build()?;
-    Ok(())
+    windows::build(app.handle(), &config)
 }
 
 /// Opens the stores and the window.
@@ -159,6 +146,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     );
     state.prune_catalog();
     app.manage(state);
+    app.manage(windows::Detached::default());
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
         applog::init(&data);
@@ -336,6 +324,10 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::transfer::migrate_tables,
         commands::transfer::run_sql_file,
         commands::transfer::dump_sql,
+        windows::open_tab_window,
+        windows::take_window_tab,
+        windows::open_quick_window,
+        windows::set_tray,
         commands::snapshots::take_snapshot,
         commands::snapshots::list_snapshots,
         commands::snapshots::snapshot_restore,

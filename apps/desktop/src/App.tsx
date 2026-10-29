@@ -59,6 +59,9 @@ import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
 import { LockScreen, useIdleLock } from "./guards/AppLock";
+import { PanelResizer, useStoredSize } from "./shell/PanelResizer";
+import { takeLeftWindowTabs, useTray, useWindowEvents, WINDOW_EVENTS } from "./shell/windows";
+import { emit } from "@tauri-apps/api/event";
 
 declare module "./actions" {
   interface ActionScopes {
@@ -127,6 +130,9 @@ export function App() {
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /** The left half of a split editor's share of the room, per mille. */
+  const [splitShare, setSplitShare] = useStoredSize("layout.split_share", 500);
+  const panes = useRef<HTMLDivElement>(null);
   /** The app waits behind the master password. */
   const [locked, setLocked] = useState(false);
   /** Closed tabs as they would be saved, newest last, for Ctrl+Shift+T. */
@@ -216,7 +222,12 @@ export function App() {
       const tab = byIndex[index];
       if (tab) activeByProject.current.set(key, tab.key);
     }
-    const restoredTabs = byIndex.filter((t) => t !== null);
+    // Tabs of windows the last run did not close cleanly (quit from the tray) come back here.
+    const left = takeLeftWindowTabs().map((t) => {
+      const kind = tabKind(t.kind ?? "query");
+      return kind && known.has(t.connectionId) ? { ...createTab(kind.kind, t.connectionId, kind.restore(t)), project: null } : null;
+    });
+    const restoredTabs = [...byIndex, ...left].filter((t) => t !== null);
     setTabs(restoredTabs);
     setActiveTab(shownTab(restoredTabs, activeProject));
   }, [connections, projects]);
@@ -729,17 +740,24 @@ export function App() {
     }
   }
 
-  function closeTab(tab: TabModel, confirmed = false) {
+  /** Keeps `saved` for Ctrl+Shift+T, the oldest dropped past `CLOSED_TABS`. */
+  function keepClosed(saved: PersistedTab) {
+    closedTabs.current.push(saved);
+    if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
+  }
+
+  /** Closes `tab`, asking first unless `confirmed`; kept to reopen unless `moved` to another
+   *  window. */
+  function closeTab(tab: TabModel, confirmed = false, moved = false) {
     if (!confirmed) {
       void confirmClose(tab).then((yes) => yes && closeTab(tab, true));
       return;
     }
     // A temporary connection's tab cannot be reopened: its connection goes with its last tab.
-    const saved = temporary.current.has(tab.connectionId) ? null : persistTab(tab);
+    const saved = temporary.current.has(tab.connectionId) || moved ? null : persistTab(tab);
     if (saved) {
-      closedTabs.current.push(saved);
+      keepClosed(saved);
       closedAt.set(saved, tabs.findIndex((t) => t.key === tab.key));
-      if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
     }
     // The tab next to it in the bar is shown next, as browsers do.
     const bar = visibleTabs.findIndex((t) => t.key === tab.key);
@@ -795,6 +813,36 @@ export function App() {
     addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), pinned: saved.pinned === true }, closedAt.get(saved));
   };
   const openPalette = () => setPaletteOpen(true);
+  /** Moves `tab` to a window of its own; its session stays here, so an open transaction or
+   *  grid changes keep it here. */
+  async function detachTab(tab: TabModel) {
+    if (temporary.current.has(tab.connectionId)) return setToast(t("A tab of Query with SQL stays in the main window."));
+    if (tab.txOpen || tab.unsaved) return setToast(t("Commit or roll back, and save the grid's changes, before moving the tab: its session stays here."));
+    const saved = persistTab(tab);
+    const kind = tabKind(tab.kind);
+    if (!saved || !kind) return;
+    const name = connectionById(tab.connectionId)?.name ?? "";
+    try {
+      await api.openTabWindow(JSON.stringify(saved), `${kind.label(tab as never)} · ${name}`);
+      closeTab(tab, true, true);
+    } catch (e) {
+      setToast(toCommandError(e).message);
+    }
+  }
+  // What the other windows send: tabs to open here, a tab moved back, a closed window's tab.
+  useWindowEvents({
+    openTab: ({ kind, connectionId, init }) => connectionById(connectionId) && addTab({ ...createTab(kind, connectionId, init ?? {}), project: activeProject }),
+    // Back in its project, pinned if it was.
+    attach: (saved) => {
+      const kind = tabKind(saved.kind ?? "query");
+      if (!kind || !connectionById(saved.connectionId)) return;
+      const project = saved.project && projects?.some((p) => p.id === saved.project) ? saved.project : null;
+      addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), project, pinned: saved.pinned === true });
+    },
+    closed: keepClosed,
+    unlocked: () => setLocked(false),
+  });
+  useTray();
   /** Locks the app behind the master password, closing the production sessions; without a
    *  master password, says what it needs. */
   async function lockApp(asked: boolean) {
@@ -814,6 +862,8 @@ export function App() {
       }
     }
     setLocked(true);
+    // The other windows lock too.
+    void emit(WINDOW_EVENTS.locked).catch(() => {});
   }
   useIdleLock(() => void lockApp(false), locked);
   // `tabs` here are the active project's: the tab actions work on what the bar shows.
@@ -846,6 +896,7 @@ export function App() {
     openBeside,
     closeSplit: () => setSplit(null),
     lockApp: () => void lockApp(true),
+    detachTab: (tab: TabModel) => void detachTab(tab),
   };
   const shell = useRef(shellState);
   shell.current = shellState;
@@ -1047,7 +1098,21 @@ export function App() {
             {toast}
           </div>
         )}
-        <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0}>
+        <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0} ref={panes}>
+          {split && (
+            <PanelResizer
+              storeKey="layout.split_share"
+              size={splitShare}
+              fallback={500}
+              min={200}
+              max={() => 800}
+              direction="column"
+              scale={() => (panes.current?.clientWidth ?? 1000) / 1000}
+              onResize={setSplitShare}
+              label={t("Resize the split editor")}
+              className="split-resizer"
+            />
+          )}
           {tabs.map((t) => {
             const connection = connectionById(t.connectionId);
             const Component = tabKind(t.kind)?.component as ComponentType<TabProps<TabModel>> | undefined;
@@ -1061,7 +1126,8 @@ export function App() {
                   key={t.key}
                   className={`pane${split && t.key === activeTab ? " focused" : ""}${pane === 1 ? " right" : ""}`}
                   hidden={pane < 0}
-                  style={{ order: pane }}
+                  // The left half takes its share of the room (per mille), the right the rest.
+                  style={{ order: pane * 2, flexGrow: split ? (pane === 0 ? splitShare : 1000 - splitShare) : 1 }}
                   onMouseDownCapture={activate}
                   onFocusCapture={activate}
                 >
@@ -1188,7 +1254,14 @@ export function App() {
         />
       )}
       {/* Over everything, dialogs included. */}
-      {locked && <LockScreen onUnlocked={() => setLocked(false)} />}
+      {locked && (
+        <LockScreen
+          onUnlocked={() => {
+            setLocked(false);
+            void emit(WINDOW_EVENTS.unlocked).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1204,7 +1277,7 @@ function tabIcon(t: TabModel): IconName {
 }
 
 /** A tab as the workspace saves it, or `null` for a kind that is not kept. */
-function persistTab(tab: TabModel): PersistedTab | null {
+export function persistTab(tab: TabModel): PersistedTab | null {
   const state = tabKind(tab.kind)?.persist(tab);
   return state ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null, ...(tab.pinned && { pinned: true }) } : null;
 }
@@ -1257,6 +1330,7 @@ interface ShellApi {
   importConnections: () => void;
   openDataFile: () => void;
   lockApp: () => void;
+  detachTab: (tab: TabModel) => void;
 }
 
 /** Closed tabs kept for reopening. */
@@ -1379,6 +1453,13 @@ function tabMenuActions(s: () => ShellApi) {
       run: ({ tab }) => s().openBeside(tab),
     }),
     registerAction({
+      id: "tab.window",
+      scope: "tab",
+      title: "Open in a new window",
+      group: "view",
+      run: ({ tab }) => s().detachTab(tab),
+    }),
+    registerAction({
       id: "tab.pin",
       scope: "tab",
       title: "Pin tab",
@@ -1421,7 +1502,7 @@ function tabMenuActions(s: () => ShellApi) {
   ];
 }
 
-function PasswordPrompt({
+export function PasswordPrompt({
   connection,
   error,
   onDone,

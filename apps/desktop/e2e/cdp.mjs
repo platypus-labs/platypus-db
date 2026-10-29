@@ -7,14 +7,15 @@ export const CTRL = 2;
 export const SHIFT = 8;
 export const ALT = 1;
 
-/** Connects to the first page target on `port`, retrying until the app is up. */
-export async function connect(port, timeoutMs = 30_000) {
+/** Connects to the first page target on `port` (or the first `pick` accepts: another window
+ *  of the app), retrying until there is one. */
+export async function connect(port, timeoutMs = 30_000, pick = () => true) {
   const deadline = Date.now() + timeoutMs;
   let target;
   while (!target) {
     try {
       const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-      target = targets.find((t) => t.type === "page");
+      target = targets.find((t) => t.type === "page" && pick(t));
     } catch {
       // Not listening yet.
     }
@@ -44,7 +45,9 @@ export async function connect(port, timeoutMs = 30_000) {
       pending.set(id, { resolve, reject });
       ws.send(JSON.stringify({ id, method, params }));
     });
-  return new Page(send, () => ws.close());
+  const page = new Page(send, () => ws.close());
+  page.targetId = target.id;
+  return page;
 }
 
 export class Page {
