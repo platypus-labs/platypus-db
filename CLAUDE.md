@@ -41,6 +41,17 @@ rispettate anche quelle.
    Pushare il branch almeno una volta al giorno, altrimenti il lock risulta scaduto.
    Se il gruppo dipende da un altro gruppo non ancora unito in `main` (o tocca gli stessi file),
    crearlo dal branch di quel gruppo e unirlo in `main` solo dopo quello.
+6. **Scegliere i modelli prima di implementare.** La sessione principale (Opus) decide, per sé e
+   per ogni subagente, il modello adatto al compito e lo passa esplicitamente (parametro `model`
+   del tool Agent), per non sprecare token:
+   - **Haiku**: ricerche, lettura e riassunto di file, lancio di test o build con resoconto,
+     aggiornamenti meccanici di documentazione.
+   - **Sonnet**: implementazione che segue uno schema già presente (un driver come un altro, una
+     schermata come un'altra), test, scenari E2E, refactor.
+   - **Opus**: progettazione, modifiche trasversali a `platypus-core`/`platypus-sql`, debugging
+     difficile, code review.
+   Un compito grande si divide: Opus progetta e rivede, i subagenti Sonnet/Haiku eseguono.
+   Mai un subagente Opus per lavoro meccanico.
 
 ## Durante il lavoro
 
