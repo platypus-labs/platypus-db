@@ -80,6 +80,9 @@ fn walk(root: &Path, dir: &Path, links: &BTreeMap<String, Uuid>, out: &mut Vec<S
     };
     let mut items: Vec<(bool, PathBuf)> = read
         .flatten()
+        // Symbolic links are skipped: a loop would recurse, and a link may lead out of the
+        // folder. `read_script` still follows one that stays inside it.
+        .filter(|e| e.file_type().is_ok_and(|t| !t.is_symlink()))
         .map(|e| (e.path().is_dir(), e.path()))
         .filter(|(folder, p)| {
             let name = p
@@ -265,6 +268,21 @@ mod tests {
         assert!(
             matches!(missing, StoreError::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symbolic_links_are_not_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        write(outside.path(), "far.sql", "select 1");
+        let root = dir.path().join("p");
+        write(&root, "real/a.sql", "select 2");
+        std::os::unix::fs::symlink(".", root.join("loop")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join("out")).unwrap();
+        std::os::unix::fs::symlink(root.join("real/a.sql"), root.join("b.sql")).unwrap();
+        let got: Vec<_> = list_scripts(&root).into_iter().map(|e| e.path).collect();
+        assert_eq!(got, ["real", "real/a.sql"]);
     }
 
     #[cfg(unix)]
