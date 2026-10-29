@@ -104,7 +104,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | 🔒 Delfa · group-j-admin · 2026-10-29 |
 | K — Shell ed ergonomia | ✅ fatto (P1, P2; P3 in parte) |
-| L — Sicurezza operativa | ✅ fatto (P1, P2) |
+| L — Sicurezza operativa | 🔒 Delfa · group-l-safety · 2026-10-29 |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1; P2 in parte) |
 | O — Collaborazione e sync | libero |
