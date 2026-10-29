@@ -1911,6 +1911,20 @@ const zh: Record<string, string> = {
   "Resize the split editor": "调整拆分编辑器大小",
   "Resize the editor": "调整编辑器大小",
   "Resize the side panels": "调整侧边面板大小",
+  "A tab of Query with SQL stays in the main window.": "“Query with SQL”的标签页保留在主窗口中。",
+  "Commit or roll back, and save the grid's changes, before moving the tab: its session stays here.": "移动标签页前请先提交或回滚，并保存网格中的更改：它的会话保留在这里。",
+  "Open in a new window": "在新窗口中打开",
+  "Quick query": "快速查询",
+  "Open it from the main window.": "请从主窗口打开。",
+  "The settings are in the main window.": "设置在主窗口中。",
+  "Move to the main window": "移到主窗口",
+  "No connection is saved yet.": "尚未保存任何连接。",
+  "Show an icon in the system tray, for a quick query": "在系统托盘中显示图标，用于快速查询",
+  "A click on it opens a small query window over the others. On Linux it needs AppIndicator.": "单击它会在其他窗口上方打开一个小查询窗口。在 Linux 上需要 AppIndicator。",
+  "Quick query…": "快速查询…",
+  "Show PlatypusDB": "显示 PlatypusDB",
+  "Quit": "退出",
+  "The tray icon could not be shown: {message}": "无法显示托盘图标：{message}",
 };
 
 export default zh;

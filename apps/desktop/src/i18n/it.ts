@@ -1911,6 +1911,20 @@ const it: Record<string, string> = {
   "Resize the split editor": "Ridimensiona l'editor diviso",
   "Resize the editor": "Ridimensiona l'editor",
   "Resize the side panels": "Ridimensiona i pannelli laterali",
+  "A tab of Query with SQL stays in the main window.": "Un tab di Query with SQL resta nella finestra principale.",
+  "Commit or roll back, and save the grid's changes, before moving the tab: its session stays here.": "Conferma o annulla, e salva le modifiche della griglia, prima di spostare il tab: la sua sessione resta qui.",
+  "Open in a new window": "Apri in una nuova finestra",
+  "Quick query": "Query rapida",
+  "Open it from the main window.": "Aprilo dalla finestra principale.",
+  "The settings are in the main window.": "Le impostazioni sono nella finestra principale.",
+  "Move to the main window": "Sposta nella finestra principale",
+  "No connection is saved yet.": "Nessuna connessione salvata.",
+  "Show an icon in the system tray, for a quick query": "Mostra un'icona nell'area di notifica, per una query rapida",
+  "A click on it opens a small query window over the others. On Linux it needs AppIndicator.": "Un clic apre una piccola finestra di query sopra le altre. Su Linux serve AppIndicator.",
+  "Quick query…": "Query rapida…",
+  "Show PlatypusDB": "Mostra PlatypusDB",
+  "Quit": "Esci",
+  "The tray icon could not be shown: {message}": "Impossibile mostrare l'icona nell'area di notifica: {message}",
 };
 
 export default it;

@@ -660,3 +660,38 @@
 .crash-banner {
   background: var(--warn-bg);
 }
+
+/* Another window of the app: a tab moved there, or the quick query. A bar with its connection,
+   then the tab. */
+.window-app {
+  position: relative;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.window-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.window-connection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.window-connection select {
+  min-width: 220px;
+}
+
+.window-empty {
+  margin: auto;
+}
