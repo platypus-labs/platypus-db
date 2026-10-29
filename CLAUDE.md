@@ -100,7 +100,8 @@ sono molto più lenti che in locale: un test che passa in locale può fallire l�
    `docker/compose.yml`, `up -d` ricrea i container interessati.
 3. **Code review** con `/code-review` sul branch e correzione dei problemi trovati.
 4. **Aggiornare la documentazione**: la riga "Stato" del gruppo in ROADMAP.md, EXTENDING.md se
-   nasce un nuovo punto di estensione, README per le funzionalità utente.
+   nasce un nuovo punto di estensione, docs/FEATURES.md per le funzionalità utente (e il README,
+   in inglese e in italiano, solo se cambia il quadro generale).
 5. **Unire in `main`** (niente pull request):
    ```bash
    git fetch origin
