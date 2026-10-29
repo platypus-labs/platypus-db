@@ -49,7 +49,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxQkFCNUQwQUY4NEQzMkUKUldRdTA0U3YwTFc2MFZlK0lLenA3MnNYVCt3WFF5MjF4dUlmRWxGdTdUanZJZWFMSFBQSE1GZEsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDMjVCQkU3QTg3RDZCRUQKUldUdGEzMm81N3NsL0k5RElGTU1icmREQmlnSG5oU0lNRUxWajZUdW5jTmk2Z0Q1UDhzMXJuVWQK",
       "endpoints": [
         "https://github.com/PaoloCisly/platypus-db/releases/latest/download/latest.json"
       ],
