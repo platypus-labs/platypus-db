@@ -447,9 +447,8 @@ impl ConnectionConfig {
         match driver {
             DriverKind::Libsql => SslMode::VerifyFull,
             // Redis takes TLS on a port of its own: `redis://` is plaintext, `rediss://` TLS.
-            DriverKind::Redis => SslMode::Disable,
-            // Likewise: `elasticsearch://` is plaintext, `elasticsearchs://` TLS.
-            DriverKind::Elasticsearch => SslMode::Disable,
+            // Likewise `elasticsearch://` (plaintext) and `elasticsearchs://` (TLS).
+            DriverKind::Redis | DriverKind::Elasticsearch => SslMode::Disable,
             _ => SslMode::Prefer,
         }
     }

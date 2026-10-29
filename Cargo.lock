@@ -5957,6 +5957,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "platypus-driver-search"
+version = "0.2.1"
+dependencies = [
+ "arrow-array 60.0.0",
+ "arrow-schema 60.0.0",
+ "async-trait",
+ "futures",
+ "platypus-core",
+ "platypus-tls",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "platypus-driver-sqlite"
 version = "0.2.1"
 dependencies = [
