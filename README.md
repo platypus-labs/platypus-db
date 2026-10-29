@@ -456,6 +456,12 @@ then run the SELECT or open it in the editor.
   point at existing rows, distinct values for unique columns.
 - **Data files as databases**: drop a CSV, JSON, Parquet or Excel file on the window to query
   it with SQL; each Excel sheet is a table.
+- **Run SQL file…** on a connection or database runs a `.sql` file (or `.sql.gz`, `.sql.zst`)
+  of any size statement by statement, with progress and Stop, by default in one transaction
+  that a failure rolls back. **Dump to SQL file…** on a schema or on chosen objects writes their
+  DDL and, if wanted, their rows to one file that runs again elsewhere.
+- Imports and copies into PostgreSQL use `COPY`, and into MySQL `LOAD DATA LOCAL` where the
+  server allows it.
 
 ### MongoDB
 

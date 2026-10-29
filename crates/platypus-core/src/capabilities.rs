@@ -43,6 +43,9 @@ pub struct Capabilities {
     /// The operations [`Connection::maintain`](crate::Connection::maintain) runs; empty
     /// when it runs none.
     pub maintenance: &'static [crate::Maintenance],
+    /// [`Connection::bulk_load`](crate::Connection::bulk_load): rows go in with the
+    /// database's own bulk loading instead of INSERT statements.
+    pub bulk_load: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.

@@ -432,6 +432,8 @@ impl Connection for MssqlConnection {
             cancel_server_queries: false,
             server_statistics: true,
             maintenance: admin::MAINTENANCE,
+            // Imports send their rows through OPENJSON (`platypus-transfer`), not a bulk copy.
+            bulk_load: false,
         }
     }
 }

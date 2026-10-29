@@ -100,11 +100,11 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
-| H — Import, export e trasferimento | 🔒 Delfa · group-h-bulk · 2026-10-29 |
+| H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | 🔒 Delfa · group-j-admin · 2026-10-29 |
 | K — Shell ed ergonomia | ✅ fatto (P1, P2; P3 in parte) |
-| L — Sicurezza operativa | ✅ fatto (P1, P2) |
+| L — Sicurezza operativa | 🔒 Delfa · group-l-safety · 2026-10-29 |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1; P2 in parte) |
 | O — Collaborazione e sync | libero |
@@ -430,8 +430,8 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 **Area:** `platypus-transfer`, `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
 
-**Stato: P1 completate, P2 e P3 in parte** (da fare: caricamento bulk nativo, profili di
-trasferimento salvati).
+**Stato: P1 e P2 completate, P3 in parte** (da fare: profili di trasferimento salvati, bulk
+copy di SQL Server e appender di DuckDB).
 
 **P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
 connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
@@ -473,6 +473,23 @@ perdono il `WHERE`; un indice su TEXT in MySQL copre i primi 255 caratteri e in 
 colonna diventa `NVARCHAR(450)`; le chiavi esterne puntano alla tabella con lo stesso nome nello
 schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da un punto.
 
+**Caricamento bulk, file SQL e dump (P2).** `Connection::bulk_load` (flag `bulk_load`) carica
+righe di testo: PostgreSQL con `COPY … FROM STDIN` in CSV (non CockroachDB), MySQL e MariaDB
+con `LOAD DATA LOCAL INFILE` dove il server ha `local_infile` (letto alla connessione; un
+avviso fa fallire il caricamento). L'import e il trasferimento lo usano a blocchi di 50.000
+righe, tranne l'upsert; gli altri database restano con INSERT od `OPENJSON` a blocchi. In
+manual commit il caricamento sta sotto il savepoint dell'istruzione. Il `tokio-postgres`
+vendorizzato ha una patch per un `COPY` rifiutato dal server. "Esegui file SQL…"
+(`platypus-transfer::script`) legge `.sql`, `.gz` e `.zst` a pezzi di 4 MB e divide le
+istruzioni col dialetto (`GO` in T-SQL, `DELIMITER` di MySQL anche tra un pezzo e l'altro);
+nella transazione unica, dove il DDL committa da solo (MySQL, Oracle) il resto continua in una
+nuova e l'errore dice quali istruzioni restano. "Dump in un file SQL…" (`platypus-transfer::dump`)
+scrive tipi e domini, sequenze, tabelle in ordine di chiavi esterne (aggiunte dopo le righe
+dove il database lo permette), righe (in PostgreSQL di ogni tabella e partizione con `ONLY`),
+numerazione e posizione delle sequenze, viste, routine (tra `DELIMITER` in MySQL, con `/` in
+Oracle) e trigger; scrive su `<file>.part` e lo rinomina alla fine. Conformance su PostgreSQL,
+MySQL, MariaDB, SQL Server, SQLite e DuckDB; E2E `sql-file-dump-sqlite`.
+
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ Import CSV, TSV, JSON, NDJSON, Parquet e XLSX in una tabella, con mappatura e anteprima | P1 | D |
@@ -485,9 +502,10 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 | ✅ Generatore di dati finti per colonna (nomi, email, date, FK coerenti) | P3 | D+ |
 | ✅ Export compresso (gzip, zstd) e su storage cloud (S3, GCS) | P3 | D+ |
 | ✅ Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
-| 🆕 **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL, bulk copy in SQL Server, appender in DuckDB; INSERT a blocchi come ripiego | P2 | D |
+| ✅ **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL; INSERT a blocchi come ripiego | P2 | D |
+| 🆕 Bulk copy (TDS) in SQL Server e appender in DuckDB al posto di `OPENJSON` e INSERT a blocchi | P3 | D |
 | 🆕 Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
-| 🆕 **Esegui file SQL** dal navigator (`.sql` o `.sql.gz`), con avanzamento, annullamento e una sola transazione dove il database annulla il DDL; **dump SQL** di uno schema o di un database in un solo file (DDL e dati), che si riapre con lo stesso comando | P2 | D |
+| ✅ **Esegui file SQL** dal navigator (`.sql` o `.sql.gz`), con avanzamento, annullamento e una sola transazione dove il database annulla il DDL; **dump SQL** di uno schema o di un database in un solo file (DDL e dati), che si riapre con lo stesso comando | P2 | D |
 
 ---
 

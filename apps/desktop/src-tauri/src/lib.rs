@@ -321,6 +321,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::transfer::preview_transfer,
         commands::transfer::transfer_table,
         commands::transfer::migrate_tables,
+        commands::transfer::run_sql_file,
+        commands::transfer::dump_sql,
         commands::transfer::fake_rows,
         commands::transactions::transaction_state,
         commands::transactions::set_autocommit,

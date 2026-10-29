@@ -153,6 +153,15 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("server locks"))
     }
 
+    /// Writes `rows` into a table with the database's own bulk loading (PostgreSQL's `COPY`,
+    /// MySQL's `LOAD DATA LOCAL`), in the session's transaction; the rows written. Optional:
+    /// see [`Capabilities::bulk_load`]. A server that refuses it (MySQL without
+    /// `local_infile`) answers [`Error::Unsupported`], and nothing was written.
+    async fn bulk_load(&self, rows: &BulkRows<'_>) -> Result<u64> {
+        let _ = rows;
+        Err(unsupported("bulk loading"))
+    }
+
     /// Cancels the statement of session `id` of the server, or closes the session.
     /// Optional: see [`Capabilities::server_sessions`] and
     /// [`Capabilities::cancel_server_queries`].
@@ -231,6 +240,19 @@ pub async fn execute_each<C: Connection + ?Sized>(
         }
     }
     Executed { rows, error: None }
+}
+
+/// Rows for [`Connection::bulk_load`], as text: each value as the database reads it from
+/// text input, `None` for NULL.
+#[derive(Debug, Clone, Copy)]
+pub struct BulkRows<'a> {
+    /// The table, qualified and quoted as its database writes it.
+    pub table: &'a str,
+    /// Its columns the values go to, quoted.
+    pub columns: &'a [String],
+    /// The columns whose values are the hex text of bytes (`deadbeef`).
+    pub hex: &'a [bool],
+    pub rows: &'a [Vec<Option<String>>],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

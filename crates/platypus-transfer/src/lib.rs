@@ -5,11 +5,13 @@
 //! exporter dropped before that (cancelled or failed export) deletes the partial file.
 //! [`import`] goes the other way: rows of a data file into a table.
 
+pub mod dump;
 pub mod fake;
 pub mod import;
 mod json;
 pub mod migrate;
 pub mod s3;
+pub mod script;
 mod text;
 
 use std::fs::File;
@@ -87,6 +89,21 @@ impl Compression {
             Self::None => "",
             Self::Gzip => ".gz",
             Self::Zstd => ".zst",
+        }
+    }
+
+    /// The compression a file's extension names (`.gz`, `.zst`, in any case).
+    pub(crate) fn of_path(path: &Path) -> Self {
+        let is = |ext: &str| {
+            path.extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case(ext))
+        };
+        if is("gz") {
+            Self::Gzip
+        } else if is("zst") {
+            Self::Zstd
+        } else {
+            Self::None
         }
     }
 }

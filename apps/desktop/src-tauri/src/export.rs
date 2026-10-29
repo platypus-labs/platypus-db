@@ -22,13 +22,16 @@ use crate::error::CommandError;
 use crate::querylog::{Logged, QueryLog};
 
 const BATCH_SIZE: usize = 8192;
-const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
+pub(crate) const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ExportEvent {
     Progress {
         rows: u64,
+        /// Bytes of a file read, and its size: an SQL file's run counts statements as rows.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bytes: Option<[u64; 2]>,
     },
     Done {
         rows: u64,
@@ -168,7 +171,15 @@ impl Export {
 
     /// Reports `rows` moved so far.
     pub fn progress(&self, rows: u64) {
-        let _ = self.events.send(ExportEvent::Progress { rows });
+        let _ = self
+            .events
+            .send(ExportEvent::Progress { rows, bytes: None });
+    }
+
+    /// Reports `rows` (statements) done and `read` bytes of a file of `total`.
+    pub fn progress_bytes(&self, rows: u64, read: u64, total: u64) {
+        let bytes = Some([read, total]);
+        let _ = self.events.send(ExportEvent::Progress { rows, bytes });
     }
 
     fn finish(&self, event: ExportEvent) {

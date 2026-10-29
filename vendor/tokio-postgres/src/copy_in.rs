@@ -19,6 +19,9 @@ use std::task::{Context, Poll, ready};
 enum CopyInMessage {
     Message(FrontendMessage),
     Done,
+    // PlatypusDB: the server refused the copy before it started; the `Sync` sent with the
+    // statement ended it, and nothing more is sent.
+    Refused,
 }
 
 pub struct CopyInReceiver {
@@ -45,6 +48,10 @@ impl Stream for CopyInReceiver {
 
         match ready!(self.receiver.poll_next_unpin(cx)) {
             Some(CopyInMessage::Message(message)) => Poll::Ready(Some(message)),
+            Some(CopyInMessage::Refused) => {
+                self.done = true;
+                Poll::Ready(None)
+            }
             Some(CopyInMessage::Done) => {
                 self.done = true;
                 let mut buf = BytesMut::new();
@@ -205,14 +212,21 @@ where
         .await
         .map_err(|_| Error::closed())?;
 
-    match responses.next().await? {
-        Message::BindComplete => {}
-        _ => return Err(Error::unexpected_message()),
-    }
-
-    match responses.next().await? {
-        Message::CopyInResponse(_) => {}
-        _ => return Err(Error::unexpected_message()),
+    // PlatypusDB: an error here ends the request without the `CopyFail` and `Sync` that
+    // dropping the sender sends.
+    let started = async {
+        match responses.next().await? {
+            Message::BindComplete => {}
+            _ => return Err(Error::unexpected_message()),
+        }
+        match responses.next().await? {
+            Message::CopyInResponse(_) => Ok(()),
+            _ => Err(Error::unexpected_message()),
+        }
+    };
+    if let Err(e) = started.await {
+        let _ = sender.send(CopyInMessage::Refused).await;
+        return Err(e);
     }
 
     Ok(CopyInSink {

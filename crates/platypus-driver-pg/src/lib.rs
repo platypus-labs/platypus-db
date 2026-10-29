@@ -490,8 +490,99 @@ impl Connection for PgConnection {
             } else {
                 &[]
             },
+            // CockroachDB's COPY has limits of its own in a transaction: rows go as INSERTs.
+            bulk_load: !is_cockroach(self),
         }
     }
+
+    /// `COPY … FROM STDIN` in CSV, the rows sent in chunks, in the session's transaction (one
+    /// opened in manual-commit mode, as a statement would).
+    /// `COPY … FROM STDIN`, in the session's transaction; in manual-commit mode under a
+    /// savepoint, as a statement, so that a refused load leaves the transaction usable.
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        if !self.capabilities().bulk_load {
+            return Err(platypus_core::unsupported("bulk loading"));
+        }
+        let _guard = self.busy.lock().await;
+        let wrap = !self.tx.state().autocommit;
+        let begin = self.tx.needs_begin(TxEffect::None);
+        let mut prelude = Vec::new();
+        if begin {
+            prelude.push("BEGIN");
+        }
+        if wrap {
+            prelude.push(SAVEPOINT);
+        }
+        self.settle_savepoint(&prelude).await?;
+        if begin {
+            self.tx.set_open(true);
+        }
+        match self.copy_rows(rows).await {
+            Err(error) if wrap => Err(self.undo_statement(error).await),
+            Ok(loaded) => {
+                if wrap {
+                    self.savepoint.store(true, Ordering::Release);
+                }
+                Ok(loaded)
+            }
+            Err(error) => Err(error),
+        }
+    }
+}
+
+impl PgConnection {
+    /// Sends `rows` with `COPY`, a chunk at a time. Called with the session's lock held.
+    async fn copy_rows(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        use futures::SinkExt;
+
+        let sql = format!(
+            "COPY {} ({}) FROM STDIN WITH (FORMAT csv)",
+            rows.table,
+            rows.columns.join(", ")
+        );
+        let sink = self.client.copy_in(sql.as_str()).await.map_err(map_error)?;
+        futures::pin_mut!(sink);
+        let mut chunk = String::new();
+        for row in rows.rows {
+            copy_csv_row(&mut chunk, row, rows.hex);
+            if chunk.len() >= COPY_CHUNK_BYTES {
+                let data = bytes::Bytes::from(std::mem::take(&mut chunk));
+                sink.send(data).await.map_err(map_error)?;
+            }
+        }
+        if !chunk.is_empty() {
+            sink.send(bytes::Bytes::from(chunk))
+                .await
+                .map_err(map_error)?;
+        }
+        sink.finish().await.map_err(map_error)
+    }
+}
+
+/// How much CSV a `COPY` sends at a time.
+const COPY_CHUNK_BYTES: usize = 1 << 20;
+
+/// One CSV line of `COPY`: every value quoted, so that an empty text is `""` and NULL the
+/// empty field; bytes as `\x` hex.
+fn copy_csv_row(out: &mut String, row: &[Option<String>], hex: &[bool]) {
+    for (i, value) in row.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let Some(value) = value else { continue };
+        out.push('"');
+        if hex.get(i).copied().unwrap_or(false) {
+            out.push_str("\\x");
+        }
+        for c in value.chars() {
+            if c == '"' {
+                out.push('"');
+            }
+            out.push(c);
+        }
+        out.push('"');
+    }
+    out.push('\n');
 }
 
 impl PgConnection {
@@ -946,6 +1037,23 @@ fn error_chain(e: &dyn std::error::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copies_rows_as_csv() {
+        let mut out = String::new();
+        let rows = [
+            vec![Some("1".to_owned()), None, Some(String::new())],
+            vec![
+                Some("a \"b\",\nc".to_owned()),
+                Some("ff00".to_owned()),
+                Some("\\".to_owned()),
+            ],
+        ];
+        for row in &rows {
+            copy_csv_row(&mut out, row, &[false, true, false]);
+        }
+        assert_eq!(out, "\"1\",,\"\"\n\"a \"\"b\"\",\nc\",\"\\xff00\",\"\\\"\n");
+    }
 
     #[test]
     fn tells_statements_the_savepoints_must_leave_alone() {

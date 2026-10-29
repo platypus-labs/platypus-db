@@ -1,9 +1,12 @@
 # tokio-postgres 0.7.18 (https://github.com/sfackler/rust-postgres), MIT/Apache-2.0, with the
-# patch PlatypusDB's PostgreSQL driver needs behind a pooler in transaction mode.
+# patches PlatypusDB's PostgreSQL driver needs.
 #
 # Patches (search for `PlatypusDB:` in the sources):
 # - `Client::clear_type_cache` drops the cached `typeinfo` statements too: behind a pooler
 #   that resets server sessions, a statement prepared in an earlier transaction is gone.
+# - `copy_in` refused by the server before the copy starts (a missing column) sends no
+#   `CopyFail` and `Sync`: its first message has a `Sync` already, and a second one would
+#   answer the session's next request with a stray `ReadyForQuery`.
 
 [package]
 edition = "2024"

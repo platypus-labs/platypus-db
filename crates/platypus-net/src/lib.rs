@@ -600,4 +600,8 @@ impl Connection for Held {
     ) -> Result<Vec<String>> {
         self.inner.maintain(schema, table, operation).await
     }
+
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        self.inner.bulk_load(rows).await
+    }
 }
