@@ -56,6 +56,6 @@ export default async function (page, { dir }) {
   await page.waitFor(`${dialog} === null`, 10_000);
   const saved = readFileSync(join(dir, "connections.toml"), "utf8");
   assert.match(saved, /pooler = "transaction"/);
-  // The other connections keep their references as written.
-  assert.match(saved, /database = '\$\{env:QA_F_PROCESS_DB\}'/);
+  // The other connections keep their references, in the quotes the app writes.
+  assert.match(saved, /database = (["'])\$\{env:QA_F_PROCESS_DB\}\1/);
 }
