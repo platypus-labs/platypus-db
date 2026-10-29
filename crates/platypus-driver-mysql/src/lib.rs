@@ -5,6 +5,7 @@
 //! they are consumed. Queries are cancelled with `KILL QUERY` from a second connection.
 
 mod admin;
+mod bulk;
 #[doc(hidden)]
 pub mod columns;
 mod explain;
@@ -416,8 +417,13 @@ impl Connection for MySqlConnection {
             metadata_search: true,
             server_sessions: true,
             cancel_server_queries: true,
+            bulk_load: true,
             ..Default::default()
         }
+    }
+
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        bulk::load(self, rows).await
     }
 }
 
