@@ -38,7 +38,7 @@ milioni di righe.
   istruzioni rischiose chiedono conferma, la produzione si apre con il commit manuale e ogni
   salvataggio di righe modificate lascia uno script per annullarlo.
 - **Tanti database, una sola app.** PostgreSQL, MySQL, MariaDB, SQL Server, Oracle,
-  ClickHouse, SQLite, DuckDB, MongoDB, Redis, Snowflake, BigQuery e altri, con lo stesso editor e la
+  ClickHouse, SQLite, DuckDB, MongoDB, Redis, Elasticsearch, Snowflake, BigQuery e altri, con lo stesso editor e la
   stessa griglia.
 - **Pronto per gli agenti.** Claude Code, Codex, Cursor e gli altri client MCP usano le tue
   connessioni salvate con l'accesso che dai a ognuno, e le loro modifiche aspettano il tuo OK.
@@ -77,6 +77,7 @@ spostare su un altro computer o su una chiavetta USB ([dettagli](docs/FEATURES.m
 | libSQL / Turso | Hrana su HTTP | |
 | MongoDB 5+ | driver ufficiale | Sintassi di mongosh; niente transazioni, explain o modifica dei dati |
 | Redis 6+ | crate `redis` (RESP3, rustls) | Comandi nell'editor; tipi di chiave come tabelle, modificabili in griglia; JSON con RedisJSON |
+| Elasticsearch 8, OpenSearch 2 | API HTTP (`reqwest`, rustls) | Richieste come le scrive la console di Kibana, e SQL; indici come tabelle, modificabili in griglia |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | driver PostgreSQL | Profili con i loro valori predefiniti |
 | Snowflake, BigQuery, Databricks, Trino, qualsiasi driver ADBC | ADBC, scaricato al primo uso | Query, risultati, navigator e completamento; ancora niente modifica dei dati o explain |
 | IBM Db2, qualsiasi driver ODBC o DSN | ODBC (Windows) | |

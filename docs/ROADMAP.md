@@ -384,7 +384,7 @@ parallelizzabile: **una persona per driver**.
 **Stato: P1 e P2 completate, P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
 ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
 ODBC generico, Redis; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo
-uso. Da fare: aggiornamento automatico dei driver, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
+uso, Elasticsearch/OpenSearch. Da fare: aggiornamento automatico dei driver, Cassandra/ScyllaDB). Elasticsearch/OpenSearch (`platypus-driver-search`, un solo driver: il server dice quale è): richieste nella forma della console di Kibana e SQL (`_sql`, `_plugins/_sql`) con colonne tipizzate e cursore, ricerche lette a pagine (point in time e `search_after`, scroll su OpenSearch) con colonne fisse e `_other` per i campi non mappati, indici come tabelle e alias/data stream come viste, modifica in griglia con anteprima e script di annullamento, conferma per `_delete_by_query`/`_update_by_query` senza filtro e `DELETE /_all`, sola lettura, MCP, Cancel sul server, login Basic o chiave API. Provato su Elasticsearch 8.15 e OpenSearch 2.17 (profilo `search` di `docker/compose.yml`, conformance e scenari E2E `search-*`), non su Elasticsearch 7.x. SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -469,7 +469,7 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
 | ✅ **Redis** | P2 | Il NoSQL più richiesto: chiavi per tipo (string, hash, list, set, zset, JSON) come tabelle virtuali, comandi nell'editor, modifica dei valori; stesso schema di MongoDB (griglia + albero) |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
-| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
+| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero). **Elasticsearch/OpenSearch fatto** (provato su 8.15 e 2.17, non su 7.x); resta Cassandra/ScyllaDB (CQL), per cui la riga resta aperta |
 
 ---
 
