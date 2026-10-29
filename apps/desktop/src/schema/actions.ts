@@ -26,3 +26,13 @@ registerAction({
   run: ({ connection, database, schema }) =>
     workbench().openDialog((close) => createElement(CompareDialog, { connection, database, schema: schema.name, onClose: close })),
 });
+
+registerAction({
+  id: "schema.history",
+  scope: "navigator.schema",
+  title: "Schema history",
+  group: "open",
+  order: 38,
+  when: ({ connection }) => !isNoSql(connection.driver),
+  run: ({ connection, database, schema }) => workbench().openTab("schema-history", connection.id, { database, schema: schema.name }),
+});
