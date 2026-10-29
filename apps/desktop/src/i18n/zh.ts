@@ -2143,6 +2143,10 @@ const zh: Record<string, string> = {
   "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "按名称引用列，含空格时用 \"…\" 括起；+ - * / %，|| 连接文本，比较，AND、OR、NOT；函数：{list}。",
   "Update column": "更新列",
   "Computed columns…": "计算列…",
+  "Save a SQL connection to copy the table to.": "请先保存一个 SQL 连接，以便将表复制过去。",
+  "The database number, 0 when empty. TLS needs an SSL mode from require up, as rediss:// URLs do.": "数据库编号，留空为 0。TLS 需要 require 及以上的 SSL 模式，与 rediss:// URL 相同。",
+  "{n} command runs in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} 条命令在一个 MULTI/EXEC 中运行：服务器拒绝的命令不会撤销其他命令。",
+  "{n} commands run in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} 条命令在一个 MULTI/EXEC 中运行：服务器拒绝的命令不会撤销其他命令。",
 };
 
 export default zh;

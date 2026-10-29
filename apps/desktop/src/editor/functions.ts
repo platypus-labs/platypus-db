@@ -171,7 +171,7 @@ const FUNCTIONS: Entry[] = [
   ["formatReadableSize", "bytes", "A size such as '1.50 MiB'.", "c"],
 ];
 
-// MongoDB has no SQL functions: a letter no function lists.
+// MongoDB and Redis have no SQL functions: a letter no function lists.
 const LETTER: Record<DriverKind, string> = {
   postgres: "p",
   mysql: "m",
@@ -181,6 +181,7 @@ const LETTER: Record<DriverKind, string> = {
   clickhouse: "c",
   libsql: "s",
   mongo: "-",
+  redis: "-",
   // No function list yet for the databases reached through ADBC.
   snowflake: "-",
   bigquery: "-",

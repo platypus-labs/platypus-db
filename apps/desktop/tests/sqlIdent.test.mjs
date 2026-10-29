@@ -10,6 +10,7 @@ import {
   SQLITE_RESERVED,
   TSQL_RESERVED,
   quoteIdent,
+  redisArg,
 } from "../src/sqlIdent.ts";
 
 const dialect = readFileSync(new URL("../../../crates/platypus-sql/src/dialect.rs", import.meta.url), "utf8");
@@ -49,4 +50,15 @@ test("SQLite quotes the keywords that cannot be bare names", () => {
     assert.equal(quoteIdent(name, "libsql"), `"${name}"`);
   }
   assert.equal(quoteIdent("rank", "sqlite"), "rank");
+});
+
+test("Redis names stay as they are; arguments are quoted as redis-cli reads them", () => {
+  assert.equal(quoteIdent("db0", "redis"), "db0");
+  assert.equal(quoteIdent("hash", "redis"), "hash");
+  assert.equal(redisArg("user:*"), "user:*");
+  assert.equal(redisArg("a b"), '"a b"');
+  assert.equal(redisArg('say "hi"'), '"say \\"hi\\""');
+  assert.equal(redisArg("it's"), `"it's"`);
+  assert.equal(redisArg("a\\b c"), '"a\\\\b c"');
+  assert.equal(redisArg("a\nb"), '"a\\nb"');
 });

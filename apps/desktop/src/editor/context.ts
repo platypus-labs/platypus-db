@@ -3,8 +3,12 @@
 import type { DriverKind } from "../api";
 
 /** The database `sql` switches the session to: `USE x` on MySQL and SQL Server, `use x` in
- *  the MongoDB shell; `null` for any other statement. */
+ *  the MongoDB shell, `SELECT n` on Redis (`dbn`); `null` for any other statement. */
 export function usedDatabase(sql: string, driver: DriverKind): string | null {
+  if (driver === "redis") {
+    const n = /^\s*select\s+(?:db)?(\d+)\s*$/i.exec(sql)?.[1];
+    return n === undefined ? null : `db${Number(n)}`;
+  }
   if (driver !== "mysql" && driver !== "sqlserver" && driver !== "mongo") return null;
   const m = /^\s*use\s+(`([^`]+)`|\[([^\]]+)\]|"([^"]+)"|([^\s;]+))\s*;?\s*$/i.exec(sql);
   return m ? (m[2] ?? m[3] ?? m[4] ?? m[5] ?? null) : null;

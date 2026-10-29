@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { api, type CellInput, type ColumnInfo } from "../api";
+import { api, type CellInput, type ColumnInfo, isNoSql } from "../api";
 import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
@@ -147,11 +147,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const stats = useSelectionStats(jobId, grid);
   const profile = useColumnProfile(jobId, columns, rowCount);
   const valuePanelOpen = useSetting(valuePanelSetting);
-  // MongoDB results show the focused row's document in place of the value panel, open
-  // from the start: nested fields are only readable there.
-  const mongo = source?.connection.driver === "mongo";
+  // MongoDB and Redis results show the focused row as a document tree in place of the value
+  // panel, open from the start: nested fields and JSON values are only readable there.
+  const documents = !!source && isNoSql(source.connection.driver);
   const [documentOpen, setDocumentOpen] = useState(true);
-  const panelOpen = mongo ? documentOpen : valuePanelOpen;
+  const panelOpen = documents ? documentOpen : valuePanelOpen;
   const [focused, setFocused] = useState<Cell | null>(null);
   const [recordView, setRecordView] = useState(false);
   const [grouping, setGrouping] = useState<number[] | null>(null);
@@ -202,7 +202,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const features: GridFeatures = {
     find: search.open,
     valuePanelOpen: panelOpen,
-    toggleValuePanel: () => (mongo ? setDocumentOpen(!documentOpen) : void setSetting(valuePanelSetting, !panelOpen)),
+    toggleValuePanel: () => (documents ? setDocumentOpen(!documentOpen) : void setSetting(valuePanelSetting, !panelOpen)),
     openColumns: () => setColumnsOpen(true),
     openComputed: computed.open,
     recordView,
@@ -309,7 +309,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
           />
         )}
         {panelOpen &&
-          (mongo ? (
+          (documents ? (
             <DocumentPanel
               jobId={jobId}
               columns={columns}

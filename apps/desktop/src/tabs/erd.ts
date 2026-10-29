@@ -1,4 +1,5 @@
 import { registerAction } from "../actions";
+import { isNoSql } from "../api";
 import { ErdTab, type ErdNote } from "../erd/ErdTab";
 import type { Point } from "../erd/layout";
 import { workbench } from "../workbench";
@@ -46,7 +47,7 @@ registerAction({
   title: "ER diagram",
   group: "open",
   order: 35,
-  when: ({ connection }) => connection.driver !== "mongo",
+  when: ({ connection }) => !isNoSql(connection.driver),
   run: ({ connection, database, schema }) =>
     workbench().openTab("erd", connection.id, { database, schema: schema.name, currentSchema: schema.current }),
 });

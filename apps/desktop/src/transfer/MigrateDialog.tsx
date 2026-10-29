@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, isMongo, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows } from "../api";
+import { api, isNoSql, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows } from "../api";
 import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { requestNavigatorRefresh } from "../navigatorEvents";
@@ -22,7 +22,7 @@ interface Props {
 export function MigrateDialog({ connection, database, schema, tables: chosen, onClose }: Props) {
   const candidates = workbench()
     .connections()
-    .filter((c) => c.id !== connection.id && !opensDataFile(c) && !isMongo(c.driver));
+    .filter((c) => c.id !== connection.id && !opensDataFile(c) && !isNoSql(c.driver));
   // Read-only connections, and those whose rows change only by SQL, are listed but take
   // no tables.
   const targets = candidates.filter((c) => !takesNoRows(c));

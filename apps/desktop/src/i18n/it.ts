@@ -2143,6 +2143,10 @@ const it: Record<string, string> = {
   "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "Colonne per nome, tra \"…\" se hanno spazi; + - * / %, || per unire testo, confronti, AND, OR, NOT; funzioni: {list}.",
   "Update column": "Aggiorna la colonna",
   "Computed columns…": "Colonne calcolate…",
+  "Save a SQL connection to copy the table to.": "Salva una connessione SQL in cui copiare la tabella.",
+  "The database number, 0 when empty. TLS needs an SSL mode from require up, as rediss:// URLs do.": "Il numero del database, 0 se vuoto. Per il TLS serve una modalità SSL da require in su, come negli URL rediss://.",
+  "{n} command runs in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} comando gira in un solo MULTI/EXEC: un comando rifiutato dal server non annulla gli altri.",
+  "{n} commands run in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} comandi girano in un solo MULTI/EXEC: un comando rifiutato dal server non annulla gli altri.",
 };
 
 export default it;

@@ -10,6 +10,7 @@ export const DRIVER_NAMES: Record<DriverKind, string> = {
   clickhouse: "ClickHouse",
   libsql: "libSQL",
   mongo: "MongoDB",
+  redis: "Redis",
   snowflake: "Snowflake",
   bigquery: "BigQuery",
   databricks: "Databricks",

@@ -4,6 +4,7 @@ import {
   api,
   type Capabilities,
   isEmbedded,
+  isNoSql,
   toCommandError,
   type ObjectKind,
   type ObjectMeta,
@@ -1393,8 +1394,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Export documentation…",
       group: "open",
       order: 30,
-      // The documentation covers tables and views, which a Mongo database has none of.
-      when: ({ connection }) => connection.driver !== "mongo",
+      // The documentation covers tables and views, which MongoDB and Redis have none of.
+      when: ({ connection }) => !isNoSql(connection.driver),
       run: ({ connection }) => openDocs(connection, null, null),
     }),
     registerAction({
@@ -1478,7 +1479,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "open",
       order: 20,
       // The data search builds SQL conditions.
-      when: ({ connection }) => connection.driver !== "mongo",
+      when: ({ connection }) => !isNoSql(connection.driver),
       run: ({ connection, database, schema }) =>
         workbench().openTab("search", connection.id, { database, mode: "data", schema: schema.name }),
     }),
@@ -1488,7 +1489,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Export documentation…",
       group: "open",
       order: 34,
-      when: ({ connection }) => connection.driver !== "mongo",
+      when: ({ connection }) => !isNoSql(connection.driver),
       run: ({ connection, database, schema }) => openDocs(connection, database, schema.name),
     }),
     registerAction({
