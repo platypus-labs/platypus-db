@@ -429,7 +429,7 @@ mod tests {
         let (args, env) = invocation(&config, "db", None);
         assert!(args.iter().any(|a| a == "-E"));
         assert!(!args.iter().any(|a| a == "-U"));
-        assert!(env.is_empty());
+        assert_eq!(env, []);
 
         config
             .options
