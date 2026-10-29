@@ -92,6 +92,14 @@ pub fn edited_script(
             wanted.push(design.clone());
         }
     }
+    // A dropped table takes the keys that reference it with it, also those of tables left
+    // unedited: they are dropped before it is.
+    for t in &mut wanted {
+        t.foreign_keys.retain(|f| {
+            let here = f.ref_schema.is_empty() || f.ref_schema == schema;
+            !(here && dropped.contains(&f.ref_table))
+        });
+    }
     compare(dialect, schema, schema, &wanted, current)
 }
 
@@ -216,8 +224,13 @@ fn matched(
 ) -> TableDesign {
     let system = |name: &str| system_named(dialect, name);
     let mut t = wanted.clone();
+    // A part keeps the name it had in `old` (an edit on the ER diagram renames it in place);
+    // a design read from another schema has its own names there, matched by name.
     for c in &mut t.columns {
-        let before = old.and_then(|o| o.columns.iter().find(|o| o.name == c.name));
+        let before = old.and_then(|o| {
+            by_original(&o.columns, c.original.as_deref(), |p| &p.name)
+                .or_else(|| o.columns.iter().find(|o| o.name == c.name))
+        });
         c.original = before.and_then(|o| o.original.clone());
         if dialect == Dialect::Postgres {
             sequences.extend(pg_sequence_default(
@@ -230,7 +243,10 @@ fn matched(
         }
     }
     for i in &mut t.indexes {
-        let before = old.and_then(|o| o.indexes.iter().find(|o| o.name == i.name));
+        let before = old.and_then(|o| {
+            by_original(&o.indexes, i.original.as_deref(), |p| &p.name)
+                .or_else(|| o.indexes.iter().find(|o| o.name == i.name))
+        });
         i.original = before.and_then(|o| o.original.clone());
     }
     for f in &mut t.foreign_keys {
@@ -272,6 +288,16 @@ fn matched(
     }
     t.primary_key_name = old.and_then(|o| o.primary_key_name.clone());
     t
+}
+
+/// The part of `parts` named `original`, if any.
+fn by_original<'a, T>(
+    parts: &'a [T],
+    original: Option<&str>,
+    name: impl Fn(&T) -> &String,
+) -> Option<&'a T> {
+    let original = original?;
+    parts.iter().find(|p| name(p) == original)
 }
 
 /// PostgreSQL's `nextval('schema.sequence'::regclass)` default of `column` of `table`, made
@@ -1012,6 +1038,44 @@ mod tests {
         assert_eq!(s.statements.len(), 1, "{:?}", s.statements);
         assert!(s.statements[0].starts_with("ALTER TABLE public.a ADD CONSTRAINT a_b"));
         assert!(s.statements[0].contains("REFERENCES public.b"));
+    }
+
+    #[test]
+    fn a_column_renamed_on_the_diagram_is_renamed_not_dropped() {
+        let current = [table("a", vec![column("mail", "text")], &[], "public")];
+        let mut design = current[0].clone();
+        design.columns[0].name = "email".to_owned();
+        let s = edited_script(Dialect::Postgres, "public", &current, &[design], &[]).unwrap();
+        assert_eq!(
+            s.statements,
+            ["ALTER TABLE public.a RENAME COLUMN mail TO email"],
+            "{:?}",
+            s.statements
+        );
+    }
+
+    #[test]
+    fn a_dropped_table_takes_the_keys_of_unedited_tables_with_it() {
+        let current = [
+            table(
+                "orders",
+                vec![column("id", "integer"), column("customers_id", "integer")],
+                &["customers"],
+                "public",
+            ),
+            table("customers", vec![column("id", "integer")], &[], "public"),
+        ];
+        let s = edited_script(
+            Dialect::Postgres,
+            "public",
+            &current,
+            &[],
+            &["customers".to_owned()],
+        )
+        .unwrap();
+        assert_eq!(s.statements.len(), 2, "{:?}", s.statements);
+        assert!(s.statements[0].starts_with("ALTER TABLE public.orders DROP CONSTRAINT"));
+        assert_eq!(s.statements[1], "DROP TABLE public.customers");
     }
 
     #[test]

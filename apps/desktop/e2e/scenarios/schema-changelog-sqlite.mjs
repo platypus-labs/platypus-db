@@ -94,6 +94,8 @@ export default async function (page, { dir }) {
   assert.ok(/CREATE TABLE "?orders"?/i.test(f), `the new table is created: ${f}`);
   assert.ok(/customers/.test(f), f);
   assert.ok(!/^(BEGIN|COMMIT)\b/im.test(f), `no transaction wrapper in a Flyway migration: ${f}`);
+  // The PRAGMAs work only outside Flyway's transaction: its script configuration says so.
+  assert.equal(readFileSync(`${flyway}.conf`, "utf8"), "executeInTransaction=false\n");
 
   // Liquibase.
   const liquibase = join(out, "changelog.sql");

@@ -68,6 +68,11 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
     const path = await save({ defaultPath, filters: [{ name: "SQL", extensions: ["sql"] }] });
     if (typeof path !== "string") return false;
     await api.writeTextFile(path, await api.schemaChangelog(connection.driver, script, format, description, "platypusdb", stamp));
+    // SQLite's PRAGMA foreign_keys does nothing inside the transaction Flyway runs a migration
+    // in: its script configuration file runs this one outside of it.
+    if (format === "flyway" && script.before.length + script.after.length > 0) {
+      await api.writeTextFile(`${path}.conf`, "executeInTransaction=false\n");
+    }
     return true;
   }
 

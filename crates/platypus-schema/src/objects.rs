@@ -272,18 +272,6 @@ fn starts_with_word(text: &str, word: &str) -> bool {
             .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
 }
 
-/// Whether `text` contains the word `word`, ignoring case.
-fn contains_word(text: &str, word: &str) -> bool {
-    let upper = text.to_ascii_uppercase();
-    let word = word.to_ascii_uppercase();
-    upper.match_indices(&word).any(|(i, _)| {
-        let before = upper[..i].chars().next_back();
-        let after = upper[i + word.len()..].chars().next();
-        let is_word = |c: char| c.is_alphanumeric() || c == '_';
-        !before.is_some_and(is_word) && !after.is_some_and(is_word)
-    })
-}
-
 /// A procedural body as a block ending in `END` (no `;`): a body that already starts with
 /// `BEGIN` or `DECLARE` is kept, anything else is wrapped.
 fn block(body: &str) -> String {
@@ -607,7 +595,10 @@ fn postgres_trigger(schema: &str, trigger: &TriggerSpec) -> Vec<String> {
     let function = d.qualified(Some(schema), &format!("{}_fn", trigger.name));
     let events = trigger.sorted_events();
     let body = strip_semicolons(trigger.body);
-    let ret = if contains_word(&body, "RETURN") {
+    // An early RETURN inside an IF still needs a final one: only a body ending in RETURN
+    // goes without.
+    let last = body.rsplit(';').next().unwrap_or_default().trim();
+    let ret = if starts_with_word(last, "RETURN") {
         String::new()
     } else if !trigger.for_each_row {
         // A statement-level trigger has no row; its result is ignored.
@@ -618,10 +609,12 @@ fn postgres_trigger(schema: &str, trigger: &TriggerSpec) -> Vec<String> {
         "\nRETURN NEW;".to_string()
     };
     let tag = dollar_tag(&body);
-    let function_sql = format!(
-        "CREATE OR REPLACE FUNCTION {function}() RETURNS trigger LANGUAGE plpgsql AS {tag}\nBEGIN\n{body};{ret}\nEND\n{tag}"
-    );
+    // Without Replace, a function of that name already there fails the script rather than
+    // being overwritten.
     let or_replace = if trigger.replace { "OR REPLACE " } else { "" };
+    let function_sql = format!(
+        "CREATE {or_replace}FUNCTION {function}() RETURNS trigger LANGUAGE plpgsql AS {tag}\nBEGIN\n{body};{ret}\nEND\n{tag}"
+    );
     let each = if trigger.for_each_row {
         "ROW"
     } else {
@@ -1174,7 +1167,22 @@ mod tests {
             replace,
         };
         let sql = run(Dialect::Postgres, &own_return).unwrap();
-        assert!(!sql[0].contains("RETURN NEW"));
+        // An early RETURN still needs a final one.
+        assert!(sql[0].contains("END IF;\nRETURN NEW;"), "{}", sql[0]);
+        // Without Replace the function is not overwritten either.
+        assert!(sql[0].starts_with("CREATE FUNCTION"), "{}", sql[0]);
+        let ends_in_return = ObjectForm::Trigger {
+            name: "t".into(),
+            table: "tbl".into(),
+            timing: Timing::Before,
+            events: vec![Event::Insert],
+            for_each_row: true,
+            when: None,
+            body: "NEW.x := 1; RETURN NULL;".into(),
+            replace: false,
+        };
+        let sql = run(Dialect::Postgres, &ends_in_return).unwrap();
+        assert!(!sql[0].contains("RETURN NEW"), "{}", sql[0]);
         let statement = ObjectForm::Trigger {
             name: "t".into(),
             table: "tbl".into(),
@@ -1395,7 +1403,5 @@ mod tests {
     fn word_helpers() {
         assert!(starts_with_word("  Begin x", "BEGIN"));
         assert!(!starts_with_word("beginning", "BEGIN"));
-        assert!(contains_word("if x then return new;", "RETURN"));
-        assert!(!contains_word("returns_x", "RETURN"));
     }
 }

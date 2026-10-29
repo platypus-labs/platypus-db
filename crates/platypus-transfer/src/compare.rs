@@ -115,15 +115,17 @@ pub async fn compare_data(
     (from, to): (&TableRef, &TableRef),
     options: &CompareOptions,
 ) -> Result<DataDiff> {
-    let source_details = source.table_details(&from.schema, &from.name).await?;
-    let target_details = target.table_details(&to.schema, &to.name).await?;
+    let (source_details, target_details) = futures::try_join!(
+        source.table_details(&from.schema, &from.name),
+        target.table_details(&to.schema, &to.name)
+    )?;
     // A catalog the server does not have (an old version) leaves every column writable.
-    let source_generated = generated_columns(source, dialect, &from.schema, &from.name)
-        .await
-        .unwrap_or_default();
-    let target_generated = generated_columns(target, dialect, &to.schema, &to.name)
-        .await
-        .unwrap_or_default();
+    let (source_generated, target_generated) = futures::join!(
+        generated_columns(source, dialect, &from.schema, &from.name),
+        generated_columns(target, dialect, &to.schema, &to.name)
+    );
+    let source_generated = source_generated.unwrap_or_default();
+    let target_generated = target_generated.unwrap_or_default();
     let generated = |name: &str, kind: Generated| {
         source_generated
             .iter()
@@ -145,8 +147,18 @@ pub async fn compare_data(
         .map(|(i, _)| i)
         .collect();
     let layout = Layout { identity, ..layout };
-    let (source_rows, source_kinds) = read(source, dialect, from, &layout, options).await?;
-    let (target_rows, target_kinds) = read(target, dialect, to, &layout, options).await?;
+    let ((source_rows, source_kinds), (target_rows, target_kinds)) = futures::try_join!(
+        read(source, dialect, from, &layout, options),
+        read(target, dialect, to, &layout, options)
+    )?;
+    if let Some(key) = duplicate_key(&target_rows, layout.key) {
+        let shown: Vec<&str> = key.iter().map(|v| v.as_deref().unwrap_or("NULL")).collect();
+        return Err(Error::Other(format!(
+            "{} has several rows with the key ({}): the key does not tell its rows apart.",
+            to.name,
+            shown.join(", ")
+        )));
+    }
     let kinds = source_kinds.or(target_kinds).unwrap_or_default();
     let table = dialect.qualified(Some(&to.schema), &to.name);
     let mut diff = diff(
@@ -288,11 +300,6 @@ async fn read(
     } else {
         quoted.iter().map(ToString::to_string).collect()
     };
-    let only = if dialect == Dialect::Postgres {
-        "ONLY "
-    } else {
-        ""
-    };
     let filter = options
         .filter
         .as_deref()
@@ -301,7 +308,9 @@ async fn read(
         .map(|f| format!(" WHERE {f}"))
         .unwrap_or_default();
     let sql = format!(
-        "SELECT {} FROM {only}{}{filter} ORDER BY {}",
+        // A PostgreSQL table's rows with those of its partitions and children, as a query
+        // reads them: a partitioned table holds none of its own.
+        "SELECT {} FROM {}{filter} ORDER BY {}",
         select.join(", "),
         dialect.qualified(Some(&table.schema), &table.name),
         quoted[..layout.key].join(", ")
@@ -338,6 +347,16 @@ async fn read(
         }
     }
     Ok((rows, kinds))
+}
+
+/// The first key of the `key` first columns that two of `rows` share: the target is matched
+/// by the source's key, which it may not have as a key of its own.
+fn duplicate_key(rows: &[Row], key: usize) -> Option<Row> {
+    let mut seen = std::collections::HashSet::with_capacity(rows.len());
+    rows.iter()
+        .map(|r| &r[..key])
+        .find(|k| !seen.insert(*k))
+        .map(<[Option<String>]>::to_vec)
 }
 
 /// The differences between the `source` and `target` rows of `layout` and the statements
@@ -661,6 +680,17 @@ mod tests {
         assert_eq!(d.added, (MAX_SAMPLES + 5) as u64);
         assert_eq!(d.samples.len(), MAX_SAMPLES);
         assert_eq!(d.statements.len(), 1, "one batched INSERT");
+    }
+
+    #[test]
+    fn a_key_shared_by_two_target_rows_is_found() {
+        let rows = vec![
+            row(&[Some("A"), Some("1")]),
+            row(&[Some("B"), Some("1")]),
+            row(&[Some("A"), Some("2")]),
+        ];
+        assert_eq!(duplicate_key(&rows, 1), Some(row(&[Some("A")])));
+        assert_eq!(duplicate_key(&rows, 2), None);
     }
 
     #[test]

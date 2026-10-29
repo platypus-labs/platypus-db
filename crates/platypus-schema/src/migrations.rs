@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use platypus_core::{Connection, Error, ObjectKind, Result, TextRow, TextRowExt, query_text};
+use platypus_core::{Connection, ObjectKind, Result, TextRow, TextRowExt, query_text};
 use platypus_sql::Dialect;
 use regex::Regex;
 use serde::Serialize;
@@ -939,23 +939,20 @@ fn alembic_depth<'a>(
 // Reading the history tables
 // ---------------------------------------------------------------------------------------------
 
-/// For each tool found in `dir`, or whose history table exists in `schema`, the status of its
+/// For each tool `found` in a folder by [`detect`] (which reads files, so callers run it off
+/// the async threads), or whose history table exists in `schema`, the status of its
 /// migrations. A missing history table is not an error: nothing was applied. The table is
 /// looked for under its default name, whatever the case the database folds it to.
 ///
 /// # Errors
 ///
-/// When `dir` is not a folder, or the database cannot be read.
+/// When the database cannot be read.
 pub async fn status(
     conn: &dyn Connection,
     dialect: Dialect,
     schema: &str,
-    dir: &Path,
+    mut found: Vec<Found>,
 ) -> Result<Vec<ToolStatus>> {
-    if !dir.is_dir() {
-        return Err(Error::Other(format!("{} is not a folder", dir.display())));
-    }
-    let mut found = detect(dir);
     let tables: Vec<String> = conn
         .objects(schema)
         .await?
@@ -1690,7 +1687,7 @@ mod tests {
         for sql in seed.split(';') {
             conn.execute(sql, &ExecOptions::default()).await.unwrap();
         }
-        let found = status(&conn, Dialect::Sqlite, "main", dir.path())
+        let found = status(&conn, Dialect::Sqlite, "main", detect(dir.path()))
             .await
             .unwrap();
         let tools: Vec<_> = found.iter().map(|f| f.tool).collect();
@@ -1707,11 +1704,6 @@ mod tests {
         assert_eq!(
             statuses(&found[1].migrations),
             [("20260101000000", Status::Pending)]
-        );
-        assert!(
-            status(&conn, Dialect::Sqlite, "main", &dir.path().join("nope"))
-                .await
-                .is_err()
         );
     }
 

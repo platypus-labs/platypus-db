@@ -224,7 +224,7 @@ pub async fn migration_status(
     schema: String,
     folder: String,
 ) -> CommandResult<Vec<platypus_schema::ToolStatus>> {
-    let path = std::path::Path::new(&folder);
+    let path = std::path::PathBuf::from(&folder);
     if !path.is_dir() {
         return Err(CommandError::new(
             "folder_not_found",
@@ -233,7 +233,11 @@ pub async fn migration_status(
     }
     let dialect = Dialect::from(state.session(session_id)?.config.driver);
     let conn = state.live(session_id).await?;
-    Ok(platypus_schema::migration_status(conn.as_ref(), dialect, &schema, path).await?)
+    // A large project folder takes a while to walk: not on the async threads.
+    let found = tokio::task::spawn_blocking(move || platypus_schema::detect(&path))
+        .await
+        .map_err(|e| CommandError::new("migrations", e.to_string()))?;
+    Ok(platypus_schema::migration_status(conn.as_ref(), dialect, &schema, found).await?)
 }
 
 /// The rows that differ between `source` on the source session and `target` on the target

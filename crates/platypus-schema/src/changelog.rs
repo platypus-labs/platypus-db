@@ -51,6 +51,13 @@ fn comment(out: &mut String, text: &str) {
 fn flyway(script: &Script, description: &str) -> String {
     let mut out = String::new();
     comment(&mut out, description);
+    if !script.before.is_empty() || !script.after.is_empty() {
+        comment(
+            &mut out,
+            "Runs outside a transaction (executeInTransaction=false in the .conf file next to \
+             it): SQLite ignores PRAGMA foreign_keys inside one.",
+        );
+    }
     for w in &script.warnings {
         comment(&mut out, w);
     }
@@ -156,7 +163,8 @@ mod tests {
         );
         assert_eq!(
             text,
-            "-- make b like a\nPRAGMA foreign_keys = OFF;\nCREATE TABLE a (id INTEGER);\nDROP TABLE b;\nPRAGMA foreign_keys = ON;\n"
+            "-- make b like a\n-- Runs outside a transaction (executeInTransaction=false in the .conf \
+             file next to it): SQLite ignores PRAGMA foreign_keys inside one.\nPRAGMA foreign_keys = OFF;\nCREATE TABLE a (id INTEGER);\nDROP TABLE b;\nPRAGMA foreign_keys = ON;\n"
         );
         assert!(!text.contains("BEGIN") && !text.contains("COMMIT"));
     }
