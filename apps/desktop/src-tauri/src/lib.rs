@@ -414,6 +414,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema::schema_tables,
         commands::schema::lint_schema,
         commands::schema::compare_schemas,
+        commands::schema::erd_script,
         commands::schema::compare_table_data,
         commands::schema::schema_changelog,
         commands::schema::flyway_file_name,

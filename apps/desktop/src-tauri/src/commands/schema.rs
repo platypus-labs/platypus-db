@@ -178,6 +178,27 @@ pub async fn compare_schemas(
     })
 }
 
+/// The script for the edits made on an ER diagram of `schema`: the wanted design of each
+/// table created or changed, and the tables dropped, against the tables as they are now.
+#[tauri::command]
+pub async fn erd_script(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    designs: Vec<TableDesign>,
+    dropped: Vec<String>,
+) -> CommandResult<DesignScript> {
+    let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let live = state.live(session_id).await?;
+    let current = platypus_schema::load_designs(live.as_ref(), dialect, &schema).await?;
+    let script = platypus_schema::edited_script(dialect, &schema, &current, &designs, &dropped)
+        .map_err(|e| CommandError::new("invalid_design", e))?;
+    Ok(DesignScript {
+        sql: script.text(dialect),
+        script,
+    })
+}
+
 /// Which migrations of the project in `folder` (Flyway, Liquibase, Prisma, Alembic, Rails) are
 /// applied to the database, which are pending, and which differ from what was applied.
 #[tauri::command]
