@@ -321,8 +321,7 @@ async fn searches_give_documents_and_page_past_one_page() {
     )
     .await;
     // No `size`: all of them, a page at a time.
-    let search = r#"GET /pdb_docs/_search
-{"query":{"match_all":{}},"sort":[{"n":"asc"}]}"#;
+    let search = "GET /pdb_docs/_search\n{\"query\":{\"match_all\":{}},\"sort\":[{\"n\":\"asc\"}]}";
     let options = ExecOptions {
         batch_size: 1000,
         paged: true,
@@ -373,8 +372,9 @@ async fn searches_give_documents_and_page_past_one_page() {
     stream.try_next().await.unwrap().unwrap();
     drop(stream);
     // Aggregations come after the hits, one result each.
-    let aggs = r#"POST /pdb_docs/_search
-{"size":0,"aggs":{"top":{"max":{"field":"n"}},"by_name":{"terms":{"field":"name","size":2}}}}"#;
+    let aggs = "POST /pdb_docs/_search\n\
+                {\"size\":0,\"aggs\":{\"top\":{\"max\":{\"field\":\"n\"}},\
+                \"by_name\":{\"terms\":{\"field\":\"name\",\"size\":2}}}}";
     let ExecResult::Rows(mut first) = conn.execute(aggs, &ExecOptions::default()).await.unwrap()
     else {
         panic!("rows expected")
@@ -406,8 +406,7 @@ async fn later_pages_keep_the_columns(conn: &dyn Connection) {
         &docs,
     )
     .await;
-    let search = r#"GET /pdb_late/_search
-{"sort":[{"n":"desc"}]}"#;
+    let search = "GET /pdb_late/_search\n{\"sort\":[{\"n\":\"desc\"}]}";
     let batches = run_paged(conn, search, 10).await;
     assert_eq!(rows(&batches), 31);
     assert_eq!(columns(&batches), ["_id", "n", "_other"]);
@@ -419,13 +418,7 @@ async fn later_pages_keep_the_columns(conn: &dyn Connection) {
     assert_eq!(odd[2].as_deref(), Some(r#"{"late":{"a":1}}"#));
     assert_eq!(db_type(&batches[0], "n"), "long");
     // Without a usable mapping (all indices) the columns come from the first page.
-    let none = run_paged(
-        conn,
-        "GET /_search
-{\"size\":50}",
-        10,
-    )
-    .await;
+    let none = run_paged(conn, "GET /_search\n{\"size\":50}", 10).await;
     assert!(rows(&none) > 0);
 }
 
@@ -450,12 +443,8 @@ async fn documents_of_several_indices(conn: &dyn Connection) {
     )
     .await;
     assert_eq!(rows(&mget), 1);
-    let multi = r#"POST /_msearch
-{"index":"pdb_docs_b"}
-{"query":{"match_all":{}}}
-{"index":"pdb_docs"}
-{"size":1}
-"#;
+    let multi = "POST /_msearch\n{\"index\":\"pdb_docs_b\"}\n{\"query\":{\"match_all\":{}}}\n\
+                 {\"index\":\"pdb_docs\"}\n{\"size\":1}\n";
     let ExecResult::Rows(mut one) = conn.execute(multi, &ExecOptions::default()).await.unwrap()
     else {
         panic!("rows expected")
@@ -646,8 +635,7 @@ async fn analyses_statements_against_the_server() {
 async fn read_edit(conn: &dyn Connection) -> (Vec<String>, Vec<Vec<Option<String>>>) {
     let batches = run(
         conn,
-        "GET /pdb_edit/_search
-{\"sort\":[{\"qty\":\"asc\"}]}",
+        "GET /pdb_edit/_search\n{\"sort\":[{\"qty\":\"asc\"}]}",
     )
     .await;
     (columns(&batches), cells(&batches))

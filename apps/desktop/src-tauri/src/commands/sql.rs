@@ -659,14 +659,8 @@ mod tests {
 
     #[test]
     fn analyzes_search_requests() {
-        let src = "GET /orders/_search
-{\"size\":1}
-
-POST /orders/_delete_by_query
-
-SELECT * FROM orders
-
-DELETE /orders"
+        let src = "GET /orders/_search\n{\"size\":1}\n\nPOST /orders/_delete_by_query\n\n\
+                   SELECT * FROM orders\n\nDELETE /orders"
             .to_owned();
         let a = analyze_sql(src.clone(), DriverKind::Elasticsearch, 0);
         let kinds: Vec<_> = a.statements.iter().map(|s| (s.kind, s.read_only)).collect();
@@ -687,19 +681,20 @@ DELETE /orders"
         assert_eq!(every, [("DELETE BY QUERY", "orders")]);
         assert_eq!(a.at_cursor, Some(0));
         assert!(only_reads(
-            "GET /a/_search
-SELECT 1",
+            "GET /a/_search\nSELECT 1",
             DriverKind::Elasticsearch
         ));
         assert!(!only_reads(
-            "GET /a/_search
-DELETE /a",
+            "GET /a/_search\nDELETE /a",
+            DriverKind::Elasticsearch
+        ));
+        // A path that would resolve to a write is no read: it does not parse.
+        assert!(!only_reads(
+            "POST /a/_search/../_bulk\n{\"delete\":{\"_id\":\"1\"}}",
             DriverKind::Elasticsearch
         ));
         let source = query_source(
-            "GET /orders/_search
-{\"query\":{\"match_all\":{}}}"
-                .to_owned(),
+            "GET /orders/_search\n{\"query\":{\"match_all\":{}}}".to_owned(),
             DriverKind::Elasticsearch,
         )
         .unwrap();

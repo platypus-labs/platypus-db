@@ -641,42 +641,38 @@ mod tests {
         assert_eq!(ro(" GET /a/_search ").unwrap(), "GET /a/_search");
         assert_eq!(ro("SELECT 1").unwrap(), "SELECT 1");
         assert_eq!(
-            ro("POST /a/_search
-{\"query\":{\"match_all\":{}}}")
-            .unwrap(),
-            "POST /a/_search
-{\"query\":{\"match_all\":{}}}"
+            ro("POST /a/_search\n{\"query\":{\"match_all\":{}}}").unwrap(),
+            "POST /a/_search\n{\"query\":{\"match_all\":{}}}"
         );
-        assert!(
-            denied(ro("POST /a/_doc
-{}"))
-            .contains("changes documents")
-        );
+        assert!(denied(ro("POST /a/_doc\n{}")).contains("changes documents"));
         assert!(denied(ro("DELETE /a")).contains("changes indices"));
-        assert!(
-            denied(ro("PUT /_cluster/settings
-{}"))
-            .contains("changes the server")
-        );
+        assert!(denied(ro("PUT /_cluster/settings\n{}")).contains("changes the server"));
         assert!(matches!(
-            ro("GET /a/_search
-
-GET /b/_search"),
+            ro("GET /a/_search\n\nGET /b/_search"),
             Err(AgentError::Invalid(_))
         ));
         assert!(matches!(ro(""), Err(AgentError::Invalid(_))));
+        // A search path that resolves to a write, or a URL to another host, never runs.
+        for sneaky in [
+            "POST /a/_search/../_bulk\n{\"delete\":{\"_id\":\"1\"}}",
+            "POST /a/_search/%2e%2e/_bulk\n{\"delete\":{\"_id\":\"1\"}}",
+            "GET http://attacker.example/x",
+            "GET //attacker.example/x",
+        ] {
+            assert!(
+                matches!(ro(sneaky), Err(AgentError::Invalid(_))),
+                "{sneaky}"
+            );
+        }
         let rw = |sql| check_search(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "s");
-        assert!(
-            rw("POST /a/_doc
-{\"x\":1}")
-            .is_ok()
-        );
-        assert!(
-            rw("POST /a/_delete_by_query
-{\"query\":{\"term\":{\"x\":1}}}")
-            .is_ok()
-        );
+        assert!(rw("POST /a/_doc\n{\"x\":1}").is_ok());
+        assert!(rw("POST /a/_delete_by_query\n{\"query\":{\"term\":{\"x\":1}}}").is_ok());
         assert!(denied(rw("POST /a/_delete_by_query")).contains("cannot answer"));
+        assert!(denied(rw("POST /a/_delete_by_query?q=%2A")).contains("cannot answer"));
+        assert!(
+            denied(rw("POST /a/_delete_by_query\n{\"query\":{\"bool\":{}}}"))
+                .contains("cannot answer")
+        );
         assert!(denied(rw("DELETE /_all")).contains("every document or index"));
         let allow = |sql| check_search(sql, AgentAccess::ReadWrite, UnfilteredRule::Allow, "s");
         assert!(allow("POST /a/_delete_by_query").is_ok());

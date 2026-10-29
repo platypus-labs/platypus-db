@@ -568,11 +568,7 @@ async fn save_commands(
     }
     Ok(Saved {
         statements: commands.len(),
-        undo: undo.join(
-            "
-",
-        ) + "
-",
+        undo: undo.join("\n") + "\n",
     })
 }
 
