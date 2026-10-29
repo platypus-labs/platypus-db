@@ -260,7 +260,13 @@ fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
 
 /// [`analyze_sql`] for Redis commands, one per line, which have no parameters.
 fn analyze_redis(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
-    use platypus_driver_redis::command::{self, Kind};
+    use platypus_driver_redis::command::{self, Command, Kind};
+    let flush = |verb: &'static str| UnfilteredTable {
+        schema: None,
+        name: String::new(),
+        verb,
+        limited: false,
+    };
     let statements = command::split(src);
     let at = command::statement_at(src, map.to_byte(cursor));
     SqlAnalysis {
@@ -269,7 +275,15 @@ fn analyze_redis(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
         statements: statements
             .iter()
             .map(|range| {
-                let kind = command::parse(&src[range.clone()]).map_or(Kind::Other, |c| c.kind());
+                let parsed = command::parse(&src[range.clone()]);
+                let kind = parsed.as_ref().map_or(Kind::Other, Command::kind);
+                // `FLUSHDB` and `FLUSHALL` delete every key, as a DELETE without WHERE every
+                // row: the same Safety setting asks first.
+                let unfiltered = match parsed.as_ref().map(Command::name).as_deref() {
+                    Ok("FLUSHDB") => vec![flush("FLUSHDB")],
+                    Ok("FLUSHALL") => vec![flush("FLUSHALL")],
+                    _ => Vec::new(),
+                };
                 StatementSpan {
                     start: map.to_utf16(range.start),
                     end: map.to_utf16(range.end),
@@ -277,10 +291,10 @@ fn analyze_redis(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
                     kind: match kind {
                         Kind::Query => "query",
                         Kind::Dml => "dml",
-                        Kind::Ddl => "ddl",
-                        Kind::Other => "other",
+                        // Server changes (`CONFIG SET`, `SHUTDOWN`) ask on production as DDL.
+                        Kind::Ddl | Kind::Other => "ddl",
                     },
-                    unfiltered: Vec::new(),
+                    unfiltered,
                     parameters: Vec::new(),
                 }
             })
@@ -554,25 +568,16 @@ mod tests {
 
     #[test]
     fn analyzes_redis_commands() {
-        let src = "GET a
-# note
-SET b 1
-BROWSE db2.hash"
-            .to_owned();
-        let a = analyze_sql(src.clone(), DriverKind::Redis, 7);
+        let src = "GET a\n# note\nSET b 1\nBROWSE db2.hash".to_owned();
+        let a = analyze_sql(src, DriverKind::Redis, 7);
         let kinds: Vec<_> = a.statements.iter().map(|s| (s.kind, s.read_only)).collect();
         assert_eq!(kinds, [("query", true), ("dml", false), ("query", true)]);
         assert_eq!(a.at_cursor, Some(0));
-        assert!(only_reads(
-            "GET a
-HGETALL h",
-            DriverKind::Redis
-        ));
-        assert!(!only_reads(
-            "GET a
-DEL a",
-            DriverKind::Redis
-        ));
+        let flush = analyze_sql("FLUSHALL\nCONFIG SET a b".to_owned(), DriverKind::Redis, 0);
+        assert_eq!(flush.statements[0].unfiltered[0].verb, "FLUSHALL");
+        assert_eq!(flush.statements[1].kind, "ddl");
+        assert!(only_reads("GET a\nHGETALL h", DriverKind::Redis));
+        assert!(!only_reads("GET a\nDEL a", DriverKind::Redis));
         assert!(!only_reads("GET \"a", DriverKind::Redis));
         let source = query_source("BROWSE db2.hash".to_owned(), DriverKind::Redis).unwrap();
         assert_eq!(

@@ -976,6 +976,8 @@ const pt: Record<string, string> = {
   "Change every row?": "Alterar todas as linhas?",
   "without WHERE changes every row of": "sem WHERE altera todas as linhas de",
   "empties": "esvazia",
+  "deletes every key of the session's database": "apaga todas as chaves do banco de dados da sessão",
+  "deletes every key of every database": "apaga todas as chaves de todos os bancos de dados",
   "erases every past version of the rows of": "apaga todas as versões anteriores das linhas de",
   "with an empty filter changes every document of": "com um filtro vazio altera todos os documentos de",
   "without WHERE changes rows the database picks in": "sem WHERE altera linhas escolhidas pelo banco de dados em",

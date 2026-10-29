@@ -976,6 +976,8 @@ const zh: Record<string, string> = {
   "Change every row?": "修改每一行？",
   "without WHERE changes every row of": "不带 WHERE，会修改以下对象的每一行：",
   "empties": "会清空",
+  "deletes every key of the session's database": "会删除会话数据库中的所有键",
+  "deletes every key of every database": "会删除所有数据库中的所有键",
   "erases every past version of the rows of": "会删除以下对象中行的所有历史版本：",
   "with an empty filter changes every document of": "使用空过滤条件，会修改以下对象的每个文档：",
   "without WHERE changes rows the database picks in": "不带 WHERE，会修改由数据库选择的行，位于",
