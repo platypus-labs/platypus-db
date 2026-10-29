@@ -865,7 +865,7 @@ E2E `restrictions-sqlite`, `transaction-log-sqlite`, `mask-sqlite`, `snapshot-sq
 
 ### Gruppo M — Analisi dei dati
 
-**Stato: P2 completate** (grafici dai risultati con export PNG e SVG e configurazione salvata
+**Stato: completato** (grafici dai risultati con export PNG e SVG e configurazione salvata
 nel tab, statistiche della colonna al passaggio del mouse, SQL sui risultati con un DuckDB in
 memoria, diff con l'esecuzione precedente). Il calcolo è nel crate `platypus-local`, sulle
 righe Arrow del lavoro della query (`jobs.rs`); il grafico è un modulo SVG proprio
@@ -885,7 +885,37 @@ DuckDB in memoria di "Query with SQL" (`open_result_db` / `reload_result_db` con
 cambiano i job. Parametri condivisi (`analyze_sql` + `substitute`), controlli di Sicurezza e
 connessioni read-only come nell'editor; sessione del tab in autocommit. File `.pnb` (JSON,
 `format: "platypus-notebook"`), export HTML con al massimo 500 righe per risultato, il grafico
-SVG mostrato e il piano. Le P3 restano da fare.
+SVG mostrato e il piano.
+
+P3 del 30 ottobre 2026. **Pivot** (*Pivot…* nella barra di "SQL sui risultati", nel menu della
+griglia e nella palette): righe, colonna, valore e aggregato (count, count distinct, sum, avg,
+min, max), totali e ordinamento; `analysis/pivot.ts` scrive il `PIVOT` di DuckDB, eseguito e
+modificabile nel campo SQL. Limiti: al massimo 200 colonne; etichette di colonna (e chiavi di
+riga con i totali) come testo, quindi ordinate come testo; un solo totale di riga e di colonna.
+**Query tra database** (*Query across databases…* della tabella o della palette,
+`commands/analysis/across.rs`): tabelle di connessioni diverse, con filtro WHERE opzionale,
+copiate in un DuckDB in memoria (connessione temporanea come "SQL sui risultati") su cui gira un
+normale tab; *Reload sources* le rilegge. Limiti: copie, non federazione; 512 MB in tutto (una
+tabella oltre il limite è tagliata e segnata); niente MongoDB e Redis. **Risultati salvati**
+(*Save result…* della griglia, pannello *Saved results* sotto Scripts, `src-tauri/src/saved_results.rs`):
+il risultato intero (fino al limite di memoria, altrimenti segnato parziale) in
+`saved-results/<id>.parquet` con un indice JSON; si apre senza connessione in un DuckDB in
+memoria, con griglia, grafici e statistiche. Limiti: intervalli salvati come testo; non per
+progetto; serve il driver DuckDB. **Dashboard** (*New dashboard* / *Dashboards…* della
+connessione, tab `dashboard`, file in `dashboards/<progetto>/<nome>.json`): widget da script
+salvati (tabella, grafico o valore singolo, larghezza 1–3, altezza 1–2), eseguiti in parallelo
+ognuno sulla sua sessione, solo se lo script è in sola lettura e senza parametri; Refresh per
+widget e di tutti, aggiornamento automatico (1–60 min) mentre il tab è attivo. Limiti: una
+sessione per widget; si mostra il risultato dell'ultimo statement; niente trascinamento.
+**Profilo della tabella** (*Profile data…* di tabelle e viste, tab `table-profile`,
+`platypus-local` `table_profile.rs` e `patterns.rs`): le prime 10k/100k/1M righe o tutta la
+tabella (con il limite di memoria), per colonna NULL, stringhe vuote, distinti, min/max,
+media, deviazione e quartili, lunghezze, istogramma, valori frequenti, formati del testo
+(email, URL, UUID, date, numeri come testo, telefono, spazi, maiuscole) con gli esempi che non
+li rispettano e outlier con la regola IQR; un clic apre i dati filtrati. Limiti: niente
+campionamento casuale né annullamento; outlier solo per colonne numeriche. Gli scenari E2E di
+queste P3 (`analysis-pivot`, `-across`, `-saved-results`, `-dashboard`, `-table-profile`) sono
+scritti ma non ancora eseguiti (runner Windows).
 
 **Area:** `apps/desktop/src/analysis/`, crate `platypus-local` (DuckDB in-process)
 **Dipende da:** 0.4; DuckDB del gruppo G
@@ -895,13 +925,13 @@ SVG mostrato e il piano. Le P3 restano da fare.
 | ✅ Grafici dai risultati (barre, linee, dispersione, torta), salvabili | P2 | D |
 | ✅ Statistiche della colonna al passaggio del mouse: % NULL, distinti, min/max, mini istogramma | P2 | N |
 | ✅ **SQL sui risultati**: interrogare il result set corrente con DuckDB | P2 | N |
-| Join tra database diversi tramite DuckDB (tabella PG con tabella MySQL) | P3 | D+ |
+| ✅ Join tra database diversi tramite DuckDB (tabella PG con tabella MySQL) | P3 | D+ |
 | ✅ Diff tra due result set (stessa query prima e dopo) | P2 | N |
-| Snapshot dei risultati salvati e consultabili offline | P3 | N |
-| Pivot dei risultati | P3 | N |
+| ✅ Snapshot dei risultati salvati e consultabili offline | P3 | N |
+| ✅ Pivot dei risultati | P3 | N |
 | ✅ **Notebook**: celle SQL e Markdown, grafici e piano per cella, parametri comuni, export HTML. Una cella legge i risultati già caricati delle altre dal DuckDB dell'SQL sui risultati (`c1`, `c2`, …), senza rieseguirle sul server | P2 | N |
-| Dashboard personalizzate dalle query salvate | P3 | D+ |
-| 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
+| ✅ Dashboard personalizzate dalle query salvate | P3 | D+ |
+| ✅ 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
 
 ---
 

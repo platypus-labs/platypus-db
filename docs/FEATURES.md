@@ -263,6 +263,26 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   *Open notebook…* opens again on a connection; *Export HTML…* writes a standalone page with
   the text, the SQL, up to 500 rows of each result, the charts, the plans and the parameters'
   values. Notebooks stay with the workspace; their results run again.
+- **Pivot…**: on a result's *Query with SQL* bar (or the grid menu): rows, a column whose
+  values become columns, a value and its aggregate (count, distinct, sum, average, min, max),
+  totals and sorting. The DuckDB `PIVOT` it writes stays in the SQL field, to edit and run
+  again; up to 200 columns.
+- **Query across databases…**: right-click tables (of any SQL connections, each with an
+  optional `WHERE`) and query them together in one SQL editor: they are copied into an
+  in-memory DuckDB, so a PostgreSQL table joins a MySQL one. *Reload sources* reads them again.
+  Up to 512 MB of rows in all.
+- **Save result…**: keeps a whole result as a Parquet file in the app's data folder. The
+  *Saved results* panel under Scripts lists, renames and deletes them; *Open* shows one with
+  grid, charts, statistics and SQL, without connecting to its database.
+- **Dashboards**: right-click a connection, *New dashboard*: widgets from saved scripts shown
+  as a table, a chart or one big value, side by side in up to three columns, each refreshed on
+  its own, all at once, or every 1 to 60 minutes. Only scripts that just read are run.
+  Dashboards are saved per project and reopened from *Dashboards…*.
+- **Profile data…**: right-click a table or view for a card per column over the first 10,000
+  to 1,000,000 rows (or all of them): NULLs, empty strings, distinct values, range, mean,
+  quartiles, a histogram, the most frequent values, the formats of text values (emails, URLs,
+  UUIDs, dates, numbers stored as text, phone numbers, stray spaces) with the values that do
+  not fit, and outliers. Click a value to see its rows.
 
 ![A result as a bar chart](screenshots/chart.png)
 
