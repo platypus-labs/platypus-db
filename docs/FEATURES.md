@@ -433,8 +433,9 @@ then run the SELECT or open it in the editor.
   of any size statement by statement, with progress and Stop, by default in one transaction
   that a failure rolls back. **Dump to SQL file…** on a schema or on chosen objects writes their
   DDL and, if wanted, their rows to one file that runs again elsewhere.
-- Imports and copies into PostgreSQL use `COPY`, and into MySQL `LOAD DATA LOCAL` where the
-  server allows it.
+- Imports and copies into PostgreSQL use `COPY`, into MySQL `LOAD DATA LOCAL` where the
+  server allows it, into SQL Server its bulk copy (`OPENJSON` inserts for tables with `money`,
+  `xml` or legacy columns) and into DuckDB its appender.
 
 ## MongoDB
 

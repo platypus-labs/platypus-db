@@ -23,7 +23,9 @@ use crate::{
     },
     BulkLoadRequest, ColumnFlag, SqlReadBytes, ToSql,
 };
-use codec::{BatchRequest, ColumnData, PacketHeader, RpcParam, RpcProcId, TokenRpcRequest};
+use codec::{
+    BatchRequest, ColumnData, MetaDataColumn, PacketHeader, RpcParam, RpcProcId, TokenRpcRequest,
+};
 use enumflags2::BitFlags;
 use futures_util::io::{AsyncRead, AsyncWrite};
 use futures_util::stream::TryStreamExt;
@@ -300,11 +302,28 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
         &'a mut self,
         table: &'a str,
     ) -> crate::Result<BulkLoadRequest<'a, S>> {
+        let columns: Vec<_> = self
+            .bulk_columns(table, "*")
+            .await?
+            .into_iter()
+            .filter(|column| column.base.flags.contains(ColumnFlag::Updateable))
+            .collect();
+        self.bulk_insert_columns(table, columns, "").await
+    }
+
+    /// PlatypusDB: the metadata of `columns` (a select list, `*` for all) of `table`, for
+    /// [`bulk_insert_columns`](Self::bulk_insert_columns): the caller sees the column types
+    /// before the bulk load starts.
+    pub async fn bulk_columns(
+        &mut self,
+        table: &str,
+        columns: &str,
+    ) -> crate::Result<Vec<MetaDataColumn<'static>>> {
         // Start the bulk request
         self.connection.flush_stream().await?;
 
         // retrieve column metadata from server
-        let query = format!("SELECT TOP 0 * FROM {}", table);
+        let query = format!("SELECT TOP 0 {} FROM {}", columns, table);
 
         let req = BatchRequest::new(query, self.connection.context().transaction_descriptor());
 
@@ -323,18 +342,26 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Client<S> {
             })
             .await?;
 
-        // now start bulk upload
-        let columns: Vec<_> = columns
-            .ok_or_else(|| {
-                crate::Error::Protocol("expecting column metadata from query but not found".into())
-            })?
-            .into_iter()
-            .filter(|column| column.base.flags.contains(ColumnFlag::Updateable))
-            .collect();
+        columns.ok_or_else(|| {
+            crate::Error::Protocol("expecting column metadata from query but not found".into())
+        })
+    }
 
+    /// PlatypusDB: starts a bulk load into `columns` of `table`, from
+    /// [`bulk_columns`](Self::bulk_columns), with the `INSERT BULK` hints `hints`
+    /// (`KEEP_NULLS, CHECK_CONSTRAINTS`, ...; empty for none).
+    pub async fn bulk_insert_columns<'a>(
+        &'a mut self,
+        table: &str,
+        columns: Vec<MetaDataColumn<'a>>,
+        hints: &str,
+    ) -> crate::Result<BulkLoadRequest<'a, S>> {
         self.connection.flush_stream().await?;
         let col_data = columns.iter().map(|c| format!("{}", c)).join(", ");
-        let query = format!("INSERT BULK {} ({})", table, col_data);
+        let mut query = format!("INSERT BULK {} ({})", table, col_data);
+        if !hints.is_empty() {
+            query.push_str(&format!(" WITH ({})", hints));
+        }
 
         let req = BatchRequest::new(query, self.connection.context().transaction_descriptor());
         let id = self.connection.context_mut().next_packet_id();

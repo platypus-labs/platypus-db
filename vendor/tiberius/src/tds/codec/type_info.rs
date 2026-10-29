@@ -18,20 +18,32 @@ pub enum TypeLength {
 /// Describes a type of a column.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeInfo {
+    /// A type of a fixed length, never NULL.
     FixedLen(FixedLenType),
+    /// A type with a length: in bytes, or the scale of `time`, `datetime2` and
+    /// `datetimeoffset`.
     VarLenSized(VarLenContext),
+    /// `decimal` or `numeric`.
     VarLenSizedPrecision {
+        /// The type.
         ty: VarLenType,
+        /// Its length in bytes.
         size: usize,
+        /// Its digits.
         precision: u8,
+        /// Its digits after the point.
         scale: u8,
     },
+    /// `xml`.
     Xml {
+        /// The schema collection that types it, if any.
         schema: Option<Arc<XmlSchema>>,
+        /// Its length.
         size: usize,
     },
 }
 
+/// A type with a length, and the collation of a string type.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct VarLenContext {
     r#type: VarLenType,
@@ -40,6 +52,7 @@ pub struct VarLenContext {
 }
 
 impl VarLenContext {
+    /// A type with its length and collation.
     pub fn new(r#type: VarLenType, len: usize, collation: Option<Collation>) -> Self {
         Self {
             r#type,
@@ -70,11 +83,12 @@ impl Encode<BytesMut> for VarLenContext {
 
         // length
         match self.r#type {
+            // PlatypusDB: `date` has no length in TYPE_INFO ([MS-TDS] 2.2.5.4.3); one
+            // written here shifts the columns after it.
             #[cfg(feature = "tds73")]
-            VarLenType::Daten
-            | VarLenType::Timen
-            | VarLenType::DatetimeOffsetn
-            | VarLenType::Datetime2 => {
+            VarLenType::Daten => (),
+            #[cfg(feature = "tds73")]
+            VarLenType::Timen | VarLenType::DatetimeOffsetn | VarLenType::Datetime2 => {
                 dst.put_u8(self.len() as u8);
             }
             VarLenType::Bitn

@@ -2062,14 +2062,14 @@ async fn bulk_loads_rows() {
         let d = platypus_sql::Dialect::from(b.config.driver);
         let table = d.qualified(Some(&b.schema), "conf_bulk");
         let _ = run(conn, &format!("DROP TABLE {table}")).await;
-        let bytes = if d == platypus_sql::Dialect::Postgres {
-            "bytea"
-        } else {
-            "blob"
+        let (text, bytes) = match d {
+            platypus_sql::Dialect::Postgres => ("text", "bytea"),
+            platypus_sql::Dialect::SqlServer => ("nvarchar(max)", "varbinary(max)"),
+            _ => ("text", "blob"),
         };
         run(
             conn,
-            &format!("CREATE TABLE {table} (id int PRIMARY KEY, note text, raw {bytes})"),
+            &format!("CREATE TABLE {table} (id int PRIMARY KEY, note {text}, raw {bytes})"),
         )
         .await
         .unwrap_or_else(|e| panic!("{}: {e}", b.name));
@@ -2107,15 +2107,18 @@ async fn bulk_loads_rows() {
         }
         conn.commit().await.unwrap();
         let other = b.connect().await;
-        let hex = if d == platypus_sql::Dialect::Postgres {
-            "encode(raw, 'hex')"
-        } else {
-            "LOWER(HEX(raw))"
+        let hex = match d {
+            platypus_sql::Dialect::Postgres => "encode(raw, 'hex')",
+            platypus_sql::Dialect::SqlServer => "LOWER(CONVERT(varchar(max), raw, 2))",
+            _ => "LOWER(HEX(raw))",
         };
         let batches = collect(
             &b,
             &*other,
-            &format!("SELECT id, note, {hex}, note IS NULL FROM {table} ORDER BY id"),
+            &format!(
+                "SELECT id, note, {hex}, CASE WHEN note IS NULL THEN 1 ELSE 0 END \
+                 FROM {table} ORDER BY id"
+            ),
         )
         .await;
         let row = |r: usize| -> Vec<_> { (0..4).map(|c| cell(&batches[0], c, r)).collect() };
@@ -2128,12 +2131,7 @@ async fn bulk_loads_rows() {
             b.name
         );
         assert_eq!(row(1)[2], None, "{}", b.name);
-        assert_eq!(
-            row(2)[3].as_deref().map(|t| t == "true" || t == "1"),
-            Some(true),
-            "{}: NULL",
-            b.name
-        );
+        assert_eq!(row(2)[3].as_deref(), Some("1"), "{}: NULL", b.name);
         assert_eq!(row(2)[2].as_deref(), Some(""), "{}: no bytes", b.name);
 
         // A duplicate key fails the load, and the session goes on.
