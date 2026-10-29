@@ -148,9 +148,22 @@ and shows the ODBC drivers and data sources of the system.
 - **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;
   server keys are checked against `~/.ssh/known_hosts`. **Network profiles** share one tunnel
   and SSL setup between connections.
+- **Proxies**: a SOCKS5 or HTTP proxy (`socks5://user:password@host:1080`, `http://host:3128`)
+  in front of the database, or of the SSH server when there is a tunnel. SOCKS5 resolves the
+  server's name on the proxy.
+- **Commands around a connection**, e.g. to bring a VPN up and down: one before the first
+  session that needs it, which waits for it (a minute at most) and fails with it, and one
+  after the last of those sessions closes. They run in the system's shell, whose `${VAR}`
+  they keep.
 - **Passwords** from the system keychain, asked every time, read from `.pgpass` or printed by a
-  shell command (a password manager's CLI). A **master password** can keep the saved ones in an
-  encrypted file instead (Argon2id and AES-256-GCM).
+  shell command. **Password managers**: pick 1Password, Bitwarden, HashiCorp Vault or AWS
+  Secrets Manager and give the secret's reference; the app runs the manager's CLI, which must
+  be installed and signed in. A command that prints a JSON secret gives its `password` field.
+  A **master password** can keep the saved ones in an encrypted file instead (Argon2id and
+  AES-256-GCM).
+- **Test connections**: *Test connections* in a project's menu, in the navigator's menu or in
+  the command palette tries every connection of the project, four at a time, and lists how each
+  went.
 - **Connection types** Development, Test and Production, with colors and a read-only flag.
   Production shows a red PROD badge and opens in manual commit.
 - After connecting, a default schema, a time zone and bootstrap statements run on every
@@ -699,7 +712,7 @@ crates/
   platypus-tls/            rustls client configuration with libpq `sslmode` semantics
   platypus-sql/            dialect-aware lexer, statement splitting, read-only check, DML
   platypus-schema/         table designs, the DDL between them, schema linter and comparison
-  platypus-net/            SSH tunnels (russh)
+  platypus-net/            SSH tunnels (russh), proxies, commands around a connection
   platypus-store/          connections (TOML + OS keychain), imports, query history and catalog notes (SQLite)
   platypus-transfer/       streaming exports, imports, copies between databases, fake rows
   platypus-docs/           schema documentation: Markdown, HTML and Mermaid ER diagrams

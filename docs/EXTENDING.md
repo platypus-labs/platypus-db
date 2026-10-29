@@ -42,7 +42,7 @@ driver whose list is expensive overrides it with a direct query. To add one:
 3. Add a check to `capabilities_match_optional_methods` in
    `crates/platypus-conformance/tests/conformance.rs`.
 4. Forward it in the two connection wrappers, which otherwise return the default:
-   `Tunneled` in `crates/platypus-net/src/lib.rs` and `Logged` in
+   `Held` in `crates/platypus-net/src/lib.rs` and `Logged` in
    `apps/desktop/src-tauri/src/querylog.rs`.
 
 A driver that implements the method sets its flag in `fn capabilities`.
@@ -78,10 +78,16 @@ copying, searching and exports read the plain values of `display::format_options
 ### Network paths
 
 `platypus_net::connect` opens a driver's connection through the SSH tunnel of its
-`ConnectionConfig` (`ssh`), and keeps the tunnel open as long as the connection. Drivers
-only see `connect_addr`, the local end of the tunnel, while `host` still names the server
-for TLS. A new kind of path (a proxy, a port-forward) is a new module of `platypus-net`
-that sets `connect_addr` the same way.
+`ConnectionConfig` (`ssh`) and its proxy (option `proxy`, `platypus_net::proxy`), and keeps
+the path open as long as the connection. `Tunnel::of` picks the path: a local port forwarded
+through the SSH server, whose first hop may go through the proxy, or through the proxy
+alone. Drivers only see `connect_addr`, the local end of the path, while `host` still names
+the server for TLS. A new kind of path (a port-forward) is a new constructor of `Tunnel`
+that hands each local connection to `listen`, and a branch of `Tunnel::of`.
+
+The options `before_connect` and `after_disconnect` (`platypus_net::hooks`) are shell
+commands run around the connection; like `proxy`, they are taken out of the options before
+the driver sees them.
 
 TLS for a network driver comes from `platypus_tls::client_config`: a rustls `ClientConfig`
 (`ring` provider) with libpq `sslmode` semantics, root and client certificates from the

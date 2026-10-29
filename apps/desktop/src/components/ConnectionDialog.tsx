@@ -31,6 +31,7 @@ import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 import { t, tNodes, msg } from "../i18n";
+import { type ManagerId, MANAGERS, managerById, managerOf } from "../credentialManagers";
 import { suggestedPooler } from "./pooler";
 
 interface Props {
@@ -49,8 +50,9 @@ interface Props {
 
 type Page = "general" | "network" | "init";
 
-/** Where the password comes from; stored as `save_password`, `pgpass` and `password_command`. */
-type PasswordSource = "keychain" | "ask" | "pgpass" | "command";
+/** Where the password comes from; stored as `save_password`, `pgpass` and `password_command`,
+ *  which a password manager's source writes for its CLI. */
+type PasswordSource = "keychain" | "ask" | "pgpass" | "command" | ManagerId;
 
 const COLORS = ["", "#2f9e44", "#1c7ed6", "#f08c00", "#d6336c", "#c92a2a"];
 
@@ -86,20 +88,30 @@ const FILES: Record<"sqlite" | "duckdb", { name: string; extensions: string[]; e
   },
 };
 
+const WINDOWS = navigator.userAgent.includes("Windows");
+
 const EMPTY_INIT: SavedInit = { schema: null, time_zone: null, statements: "" };
 
 function passwordSource(c: SavedConnection): PasswordSource {
-  if (c.password_command != null) return "command";
+  if (c.password_command != null) return managerOf(c.password_command)?.manager.id ?? "command";
   if (c.pgpass) return "pgpass";
   return c.save_password ? "keychain" : "ask";
 }
 
+/** The reference of the secret in `c`'s password manager, empty without one. */
+const secretReference = (c: SavedConnection) => managerOf(c.password_command)?.reference ?? "";
+
 function withPasswordSource(c: SavedConnection, source: PasswordSource): SavedConnection {
+  const manager = managerById(source);
   return {
     ...c,
     save_password: source === "keychain",
     pgpass: source === "pgpass",
-    password_command: source === "command" ? (c.password_command ?? "") : null,
+    password_command: manager
+      ? manager.command(secretReference(c))
+      : source === "command"
+        ? (c.password_command ?? "")
+        : null,
   };
 }
 
@@ -107,6 +119,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [conn, setConn] = useState(initial);
   const [inProjects, setInProjects] = useState(() => new Set(memberOf));
   const [password, setPassword] = useState("");
+  /** "Shell command" was chosen in the password's list. */
+  const [handWritten, setHandWritten] = useState(false);
   /** SSH passwords and passphrases typed, by `secret_id`. */
   const [sshTyped, setSshTyped] = useState<Record<string, string>>({});
   const [page, setPage] = useState<Page>("general");
@@ -161,7 +175,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     else delete options[key];
     set("options", options);
   };
-  const source = passwordSource(conn);
+  // "Shell command" chosen over a manager keeps its command, to edit by hand: it would be
+  // recognized as the manager's again.
+  const source = handWritten && conn.password_command != null ? "command" : passwordSource(conn);
+  const manager = managerById(source);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
   const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
@@ -408,7 +425,13 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
       {label}
     </button>
   );
-  const networkSet = conn.network_profile || conn.ssh || conn.ssl_client_cert;
+  const networkSet =
+    conn.network_profile ||
+    conn.ssh ||
+    conn.ssl_client_cert ||
+    conn.options?.proxy ||
+    conn.options?.before_connect ||
+    conn.options?.after_disconnect;
   const initSet = !!(init.schema || init.time_zone || init.statements.trim());
 
   if (picking) {
@@ -724,16 +747,37 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <span>{t("{secret} from", { secret })}</span>
                     <select
                       value={source}
-                      onChange={(e) => setConn((c) => withPasswordSource(c, e.target.value as PasswordSource))}
+                      onChange={(e) => {
+                        const chosen = e.target.value as PasswordSource;
+                        setHandWritten(chosen === "command");
+                        setConn((c) => withPasswordSource(c, chosen));
+                      }}
                       data-field="password_source"
                     >
                       <option value="keychain">{t("Saved in the keychain")}</option>
                       <option value="ask">{t("Ask every time")}</option>
                       {conn.driver === "postgres" && <option value="pgpass">{t(".pgpass file")}</option>}
                       <option value="command">{t("Shell command")}</option>
+                      {MANAGERS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
                     </select>
                   </label>
-                  {source === "command" ? (
+                  {manager ? (
+                    <label className="field">
+                      <span>{t("Secret in {manager}", { manager: manager.name })}</span>
+                      <input
+                        required
+                        value={secretReference(conn)}
+                        onChange={(e) => set("password_command", manager.command(e.target.value))}
+                        placeholder={manager.example}
+                        title={t("Quotes, $, ` and % are left out: the command runs in the system's shell.")}
+                        data-field="secret_reference"
+                      />
+                    </label>
+                  ) : source === "command" ? (
                     <label className="field">
                       <span>{t("Command that prints the {secret}", { secret: secret.toLowerCase() })}</span>
                       <input
@@ -759,6 +803,13 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     )
                   )}
                 </div>
+                {manager && conn.password_command && (
+                  <p className="muted small manager-command">
+                    {tNodes("Runs {command}: its CLI must be installed and signed in.", {
+                      command: <code>{conn.password_command}</code>,
+                    })}
+                  </p>
+                )}
               </>
             )}
 
@@ -874,6 +925,48 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   saved={savedSsh}
                 />
               )}
+              <label className="field">
+                <span>{t("Proxy")}</span>
+                <input
+                  value={conn.options?.proxy ?? ""}
+                  onChange={(e) => setOption("proxy", e.target.value)}
+                  placeholder="socks5://proxy.example.com:1080"
+                  spellCheck={false}
+                  data-field="proxy"
+                />
+              </label>
+              <p className="muted small">
+                {tNodes("SOCKS5 or HTTP, before the SSH server when there is one: {socks} or {http}. A password can come from {env}.", {
+                  socks: <code>socks5://user:password@host:1080</code>,
+                  http: <code>http://host:3128</code>,
+                  env: <code>{"${env:PROXY_PASSWORD}"}</code>,
+                })}
+              </p>
+              <div className="field-grid">
+                <label className="field">
+                  <span>{t("Command before connecting")}</span>
+                  <input
+                    value={conn.options?.before_connect ?? ""}
+                    onChange={(e) => setOption("before_connect", e.target.value)}
+                    placeholder={WINDOWS ? 'rasdial "Office VPN"' : "nmcli connection up office-vpn"}
+                    spellCheck={false}
+                    data-field="before_connect"
+                  />
+                </label>
+                <label className="field">
+                  <span>{t("Command after disconnecting")}</span>
+                  <input
+                    value={conn.options?.after_disconnect ?? ""}
+                    onChange={(e) => setOption("after_disconnect", e.target.value)}
+                    placeholder={WINDOWS ? 'rasdial "Office VPN" /disconnect' : "nmcli connection down office-vpn"}
+                    spellCheck={false}
+                    data-field="after_disconnect"
+                  />
+                </label>
+              </div>
+              <p className="muted small">
+                {t("Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.")}
+              </p>
             </div>
           )}
 

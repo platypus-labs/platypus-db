@@ -29,6 +29,7 @@ import { connectionColor, typeBadge } from "../connections";
 import { hasUrl } from "../connectionUrl";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
+import { testConnections } from "./TestConnectionsDialog";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
@@ -1303,6 +1304,14 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "new",
       order: 10,
       run: () => workbench().newConnection(),
+    }),
+    registerAction({
+      id: "list.test_connections",
+      scope: "navigator.list",
+      title: "Test connections",
+      group: "test",
+      order: 30,
+      run: ({ project }) => testConnections(project),
     }),
     registerAction({
       id: "list.new_folder",

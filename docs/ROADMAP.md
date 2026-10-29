@@ -98,7 +98,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
-| F — Connettività e credenziali | 🔒 Delfa · group-f-p3 · 2026-10-29 |
+| F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | 🔒 Delfa · group-h-bulk · 2026-10-29 |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
@@ -108,7 +108,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1; P2 in parte) |
 | O — Collaborazione e sync | libero |
-| P — Piattaforma, qualità e release | libero |
+| P — Piattaforma, qualità e release | 🔒 Delfa · group-p-compare · 2026-10-29 |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
@@ -267,9 +267,26 @@ della griglia leggono le colonne per indice dal backend.
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti, P3 in parte
 
-**Stato: P1 e P2 completati** (restano i P3). Variabili d'ambiente: `platypus-core/src/env.rs`
+**Stato: P1 e P2 completati; dei P3 fatti proxy, comandi su eventi, gestori di credenziali e
+test di tutte le connessioni** (restano Kerberos/SSPI/Entra ID/IAM e Kubernetes/AWS SSM).
+Proxy: opzione `proxy` della connessione, un URL `socks5://` o `http://` con login facoltativo;
+`platypus-net/src/proxy.rs` fa l'handshake SOCKS5 (nome risolto dal proxy, login RFC 1929) o
+`CONNECT` HTTP con Basic. Senza tunnel la connessione passa da una porta locale inoltrata
+attraverso il proxy (`Tunnel::through_proxy`, provato una volta all'apertura); con il tunnel
+passa dal proxy il primo server SSH (`Tunnel::open_via`). `Tunnel::of` sceglie il percorso
+per l'app, il server MCP e i client CLI. Comandi su eventi: opzioni `before_connect` e
+`after_disconnect` (`platypus-net/src/hooks.rs`), eseguite da `cmd /S /C` o `sh -c` e
+contate per coppia di comandi: la prima parte con la prima connessione che la usa, si aspetta
+per un minuto al massimo e il suo errore cita stderr; la seconda parte quando si chiude
+l'ultima (o subito, se nessuna si è aperta). I loro `${VAR}` restano alla shell. Il driver non
+vede né il proxy né i comandi. Gestori di credenziali: `credentialManagers.ts` scrive il comando della CLI dal
+riferimento del segreto (1Password `op read`, Bitwarden `bw get password`, Vault
+`vault kv get -field=…`, AWS `secretsmanager get-secret-value`) e lo salva come comando della
+password, riconosciuto alla riapertura; un comando che stampa JSON dà il campo `password`
+(`platypus-store/src/auth.rs`). Test delle connessioni: `TestConnectionsDialog.tsx`, quattro
+alla volta. Variabili d'ambiente: `platypus-core/src/env.rs`
 sostituisce `${env:NOME}` (`$${` per scriverlo) in host, database, utente, password,
 opzioni, certificati e tunnel SSH, cercando prima nell'ambiente del processo e poi nel file
 `.env` dell'opzione `env_file`; si applica alla connessione (app, server MCP, CLI), mentre lo
@@ -302,10 +319,10 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 |---|---|---|
 | ✅ **Tunnel SSH** (`russh`): password, chiave, agent, jump host | P1 | D |
 | ✅ **Tipi di connessione** Dev/Test/Prod: colore, conferma prima di scrivere, autocommit off di default in Prod | P1 | D |
-| Proxy SOCKS5 e HTTP | P3 | D |
+| ✅ Proxy SOCKS5 e HTTP | P3 | D |
 | ✅ **Profili di rete** riutilizzabili tra connessioni | P2 | D |
 | ✅ Inizializzazione: schema e database di default, query di bootstrap, fuso orario | P2 | D |
-| Comandi shell su eventi (prima della connessione, dopo la disconnessione), ad esempio un VPN | P3 | D |
+| ✅ Comandi shell su eventi (prima della connessione, dopo la disconnessione), ad esempio un VPN | P3 | D |
 | ✅ Autenticazione: `.pgpass`, password da comando shell, chiedi ogni volta | P2 | D |
 | Kerberos, SSPI, Entra ID, IAM AWS e GCP | P3 | D+ |
 | ✅ **Master password** per le credenziali salvate (oltre al keychain) | P2 | D |
@@ -316,8 +333,8 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 | Kubernetes port-forward, AWS SSM | P3 | D+ |
 | ✅ Connessione da URL incollato (`postgres://…`, `mysql://…`, `Server=…;Database=…`): i campi si compilano da soli | P2 | D |
 | ✅ Variabili d'ambiente e file `.env` nei campi della connessione (`${env:DB_PASSWORD}`) | P2 | D |
-| 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
-| 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
+| ✅ 🆕 Credenziali da gestori esterni: 1Password CLI, Bitwarden, HashiCorp Vault, AWS Secrets Manager | P3 | D+ |
+| ✅ 🆕 Test di tutte le connessioni di un progetto in una volta, con l'esito per ognuna | P3 | N |
 | ✅ **Modalità pooler** per PostgreSQL (PgBouncer, Supavisor, pooler di Neon) in transaction o session mode: in transaction mode niente prepared statement con nome, che il pooler rompe; proposta di default nei profili Supabase e Neon | P2 | N |
 
 ---
