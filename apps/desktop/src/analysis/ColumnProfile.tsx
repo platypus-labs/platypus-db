@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, type ColumnInfo, type ColumnProfile } from "../api";
 import type { HeaderHover } from "../grid/DataGrid";
+import { shown as masked, useMask } from "../guards/mask";
 import { locale, t } from "../i18n";
 
 /** How long the mouse rests on a header before the box shows. */
@@ -62,6 +63,8 @@ export function useColumnProfile(
 function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: ColumnInfo; profile: ColumnProfile }) {
   const left = Math.max(0, Math.min(hover.left, hover.gridWidth - WIDTH - 8));
   const nulls = profile.rows > 0 ? profile.nulls / profile.rows : 0;
+  // A masked column's values show as dots here too; its counts tell nothing of them.
+  const hide = !!useMask()?.(column);
   return (
     <div className="column-profile" role="tooltip" style={{ left, top: hover.top + 4, width: WIDTH }}>
       <div className="column-profile-head">
@@ -76,20 +79,20 @@ function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: Co
         {profile.min !== null && (
           <>
             <dt>{t("Minimum")}</dt>
-            <dd>{profile.min}</dd>
+            <dd>{masked(profile.min, hide)}</dd>
             <dt>{t("Maximum")}</dt>
-            <dd>{profile.max}</dd>
+            <dd>{masked(profile.max, hide)}</dd>
           </>
         )}
       </dl>
-      {profile.histogram.length > 0 && <Histogram bins={profile.histogram} />}
+      {profile.histogram.length > 0 && <Histogram bins={profile.histogram} hide={hide} />}
       {profile.top.length > 0 && (
         <>
           <div className="column-profile-label muted">{t("Most frequent")}</div>
           <div className="column-profile-top">
             {profile.top.map((v) => (
               <Fragment key={v.value}>
-                <span>{v.value}</span>
+                <span>{masked(v.value, hide)}</span>
                 <span>{count(v.count)}</span>
               </Fragment>
             ))}
@@ -106,7 +109,7 @@ function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: Co
 }
 
 /** The ranges of a number or date column as bars, with the first and last bound under them. */
-function Histogram({ bins }: { bins: ColumnProfile["histogram"] }) {
+function Histogram({ bins, hide }: { bins: ColumnProfile["histogram"]; hide: boolean }) {
   const max = Math.max(1, ...bins.map((b) => b.count));
   const step = 200 / bins.length;
   return (
@@ -118,8 +121,8 @@ function Histogram({ bins }: { bins: ColumnProfile["histogram"] }) {
         })}
       </svg>
       <div className="column-profile-range muted">
-        <span>{bins[0]?.from}</span>
-        <span>{bins.at(-1)?.to}</span>
+        <span>{masked(bins[0]?.from, hide)}</span>
+        <span>{masked(bins.at(-1)?.to, hide)}</span>
       </div>
     </>
   );

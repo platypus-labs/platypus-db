@@ -17,6 +17,7 @@ import {
   type TableDetails,
   type TransactionState,
   isMongo,
+  keepsDataIn,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
 import type { NotesScope } from "../grid/ResultGrid";
@@ -50,6 +51,9 @@ import {
 } from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
 import { PendingDialog } from "../guards/PendingDialog";
+import { TransactionLogDialog } from "../guards/TransactionLogDialog";
+import { openRestore, snapshotBefore } from "../guards/SnapshotsDialog";
+import { emptyLog, noteEnd, noteStatement } from "../guards/txLog";
 import { ExportDialog, type ExportSource } from "./ExportDialog";
 import { HealthBadge, useSessionHealth } from "./health";
 import { HistoryPanel } from "./HistoryPanel";
@@ -286,6 +290,9 @@ export function QueryTab({
   /** The statements run in the open transaction that change data or schema. */
   const [uncommitted, setUncommitted] = useState<string[]>([]);
   const [pendingOpen, setPendingOpen] = useState(false);
+  /** What ran in the session, by transaction, for the transaction log. */
+  const [txLog, setTxLog] = useState(emptyLog);
+  const [logOpen, setLogOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const warnMinutes = useSetting(transactionWarning);
   const slowSeconds = useSetting(slowQuerySeconds);
@@ -908,6 +915,8 @@ export function QueryTab({
       let status: ResultStatus;
       let sql = p.sql;
       let values: Record<string, string> = variables;
+      /** The snapshot taken of the rows the statement changes. */
+      let snapshot: string | null = null;
       if (p.kind === "command") {
         status = await command(p, i);
       } else {
@@ -932,6 +941,8 @@ export function QueryTab({
           if (target) {
             status = await exportTo(sessionId, sql, target);
           } else {
+            // The rows an UPDATE or DELETE changes, kept before it runs so that they can be put back.
+            if (p.kind === "dml" && !isMongo(connection.driver)) snapshot = await snapshotBefore(sessionId, tab.database ?? null, sql);
             // `GO 3` runs the batch three times, until one fails, each to its end.
             const repeat = p.repeat ?? 1;
             const each = repeat > 1 && ran.limit === null ? { ...ran, limit: getSetting(scriptRowLimit) } : ran;
@@ -954,8 +965,19 @@ export function QueryTab({
       const last = seen.resultId ?? result.id;
       // runOne reports the statuses of a job; commands, exports and cancelled ones are set here.
       if (seen.jobId === null) update(result.id, { status });
+      // Whether a transaction is open after it, for the log; a query changes nothing.
+      let open: boolean | null = null;
       if (p.kind !== "query" && p.kind !== "command" && status.kind !== "error" && status.kind !== "skipped") {
-        await notePending(sessionId, p.kind, sql);
+        open = (await notePending(sessionId, p.kind, sql))?.open ?? null;
+      } else if (status.kind === "error" && p.kind !== "command") {
+        open = (await api.transactionState(sessionId).catch(() => null))?.open ?? null;
+      }
+      if (p.kind !== "command" && status.kind !== "skipped") {
+        const failed = status.kind === "error";
+        // A statement that failed changed nothing: its snapshot would restore rows twice.
+        if (failed && snapshot) void api.deleteSnapshot(snapshot).catch(() => {});
+        const entry = { at: Date.now(), sql, kind: p.kind, failed, snapshot: failed ? null : snapshot };
+        setTxLog((log) => noteStatement(log, entry, open));
       }
       if (tab.terminal) await logTerminal(last, sql, status, seen);
       if (status.kind === "rows") lastRows = last;
@@ -1147,11 +1169,12 @@ export function QueryTab({
    *  waits for Commit and is listed; one that leaves none open (a COMMIT) empties the list. */
   async function notePending(sessionId: number, kind: StatementSpan["kind"], sql: string) {
     const state = await api.transactionState(sessionId).catch(() => null);
-    if (!state) return;
+    if (!state) return null;
     // Unchanged states keep their objects: a script of many statements renders less.
     setTx((now) => (now && now.open === state.open && now.autocommit === state.autocommit ? now : state));
     const change = kind === "dml" || kind === "ddl";
     setUncommitted((list) => (!state.open ? (list.length ? [] : list) : change ? [...list, sql] : list));
+    return state;
   }
 
   /** Opens the differences between the shown result and the previous run of its statement,
@@ -1198,6 +1221,7 @@ export function QueryTab({
     try {
       const state = await api.endTransaction(sessionId, commit);
       setTx(state);
+      setTxLog((log) => noteEnd(log, commit, Date.now()));
       onChange({ txOpen: state.open });
     } catch (e) {
       onError(toCommandError(e).message);
@@ -1676,6 +1700,11 @@ export function QueryTab({
               </button>
             </>
           )}
+          {showTx && (
+            <button onClick={() => setLogOpen(true)} title={t("Transaction log")} aria-label={t("Transaction log")}>
+              {toolbar.label("tx-log", t("Log"))}
+            </button>
+          )}
           {tx?.open && (
             <button
               type="button"
@@ -1900,7 +1929,7 @@ export function QueryTab({
                   {t("Fetch all")}
                 </button>
               )}
-              {rowsResult && !exportBusy && (
+              {rowsResult && !exportBusy && !keepsDataIn(saved) && (
                 <button className="link" onClick={() => setExportOpen(true)}>
                   {t("Export…")}
                 </button>
@@ -1985,6 +2014,17 @@ export function QueryTab({
           initial={asking.initial}
           onRun={asking.resolve}
           onCancel={() => asking.resolve(null)}
+        />
+      )}
+      {logOpen && (
+        <TransactionLogDialog
+          log={txLog}
+          onRestore={(id) => {
+            setLogOpen(false);
+            void openRestore(connection.id, tab.database ?? null, id);
+          }}
+          onClear={() => setTxLog(emptyLog())}
+          onClose={() => setLogOpen(false)}
         />
       )}
       {pendingOpen && (

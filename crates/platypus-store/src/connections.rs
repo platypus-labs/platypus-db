@@ -79,6 +79,9 @@ pub struct SavedConnection {
     /// Default schema, time zone and bootstrap statements, run after every connect.
     #[serde(default, skip_serializing_if = "SavedInit::is_empty")]
     pub init: SavedInit,
+    /// What the app does not do with the connection's data, whatever the page offers.
+    #[serde(default, skip_serializing_if = "Restrictions::is_none")]
+    pub restrictions: Restrictions,
     /// What a driver needs beyond the common fields, e.g. Snowflake's `warehouse`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub options: BTreeMap<String, String>,
@@ -86,6 +89,25 @@ pub struct SavedConnection {
     /// identify their rows. Last: TOML writes arrays of tables after plain values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtual_keys: Vec<VirtualKey>,
+}
+
+/// Restrictions on a connection, enforced by the app (as `read_only` is).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Restrictions {
+    /// Its data leaves it neither to files (exports, dumps) nor to other databases, nor to
+    /// agents.
+    #[serde(default)]
+    pub no_export: bool,
+    /// Its rows change only by SQL: the data editor, imports and generated rows refuse.
+    #[serde(default)]
+    pub no_data_editing: bool,
+}
+
+impl Restrictions {
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// What the value panel does with JSON found in a text column.
@@ -429,6 +451,7 @@ impl SavedConnection {
             connect_by: ConnectBy::Host,
             ssh: None,
             init: SavedInit::default(),
+            restrictions: Restrictions::default(),
             options: BTreeMap::new(),
             virtual_keys: Vec::new(),
         }
@@ -454,9 +477,13 @@ impl SavedConnection {
     }
 
     /// What agents may do in fact: production and read-only connections never let them
-    /// write, whatever was chosen.
+    /// write, whatever was chosen, and one whose data is not exported keeps them out.
     #[must_use]
     pub fn effective_agent_access(&self) -> AgentAccess {
+        // Rows an agent reads leave the app.
+        if self.restrictions.no_export {
+            return AgentAccess::Off;
+        }
         let capped = self.read_only || self.connection_type == Some(ConnectionType::Prod);
         if capped {
             self.agent_access.min(AgentAccess::ReadOnly)
@@ -1366,6 +1393,37 @@ SET b = 2;"
         c.agent_access = AgentAccess::ReadWrite;
         c.read_only = true;
         assert_eq!(c.effective_agent_access(), AgentAccess::ReadOnly);
+    }
+
+    #[test]
+    fn restrictions_round_trip_and_keep_agents_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, secrets) = store(dir.path());
+        let mut conn = sample();
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(
+            !text.contains("restrictions"),
+            "none is not written: {text}"
+        );
+        conn.restrictions = Restrictions {
+            no_export: true,
+            no_data_editing: true,
+        };
+        conn.ssh = Some(SavedSsh {
+            host: "bastion".into(),
+            port: 22,
+            user: "ops".into(),
+            auth: SshAuthKind::Agent,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        });
+        s.save(conn.clone(), PasswordUpdate::Keep).unwrap();
+        let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
+        assert_eq!(reopened.get(conn.id), Some(&conn));
+        conn.agent_access = AgentAccess::ReadWrite;
+        assert_eq!(conn.effective_agent_access(), AgentAccess::Off);
     }
 
     #[test]

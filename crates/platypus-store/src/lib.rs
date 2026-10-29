@@ -32,7 +32,8 @@ pub use catalog::{
 pub use connections::{
     AgentAccess, ConnectBy, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto,
     ImportRequest, ImportTarget, NetworkProfile, PasswordUpdate, Project, ProjectFolder,
-    SavedConnection, SavedInit, SavedSsh, SshAuthKind, TextJson, VirtualKey, initials_of,
+    Restrictions, SavedConnection, SavedInit, SavedSsh, SshAuthKind, TextJson, VirtualKey,
+    initials_of,
 };
 pub use history::{
     HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,

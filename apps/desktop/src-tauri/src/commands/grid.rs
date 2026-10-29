@@ -173,7 +173,9 @@ pub async fn save_cell(
     column: usize,
     path: String,
 ) -> CommandResult<()> {
-    let bytes = cell_bytes_of(&*state.job(job_id)?, row, column)?.unwrap_or_default();
+    let job = state.job(job_id)?;
+    state.exportable(job.session_id)?;
+    let bytes = cell_bytes_of(&job, row, column)?.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         std::fs::write(&path, bytes).map_err(|e| CommandError::new("io", format!("{path}: {e}")))
     })

@@ -391,7 +391,7 @@ pub async fn save_changes(
     changes: Changes,
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
-    state.writable(job.session_id)?;
+    state.editable(job.session_id)?;
     let script = script(&state, &job, &changes)?;
     // The driver's dialect brackets the statements: the generic ODBC driver translates no
     // SAVEPOINT for SQL Server, as the native one does.

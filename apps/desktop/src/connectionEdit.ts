@@ -5,7 +5,7 @@ import type { DriverKind, SavedConnection } from "./api";
  *  read-only guard and the agents' access are checked by the app, virtual keys by the data
  *  editor, all from the saved connection as it is now; how the form enters the address is
  *  the form's. */
-const UNUSED_BY_SESSIONS = new Set<string>(["name", "color", "read_only", "agent_access", "virtual_keys", "connect_by"]);
+const UNUSED_BY_SESSIONS = new Set<string>(["name", "color", "read_only", "restrictions", "agent_access", "virtual_keys", "connect_by"]);
 
 /** JSON with the keys of every object sorted, so that two values compare by content. */
 function canonical(value: unknown): string {

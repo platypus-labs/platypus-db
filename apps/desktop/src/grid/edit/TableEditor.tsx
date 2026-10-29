@@ -219,10 +219,12 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     ? msg("not a table")
     : target.connection.read_only
       ? msg("the connection is read-only")
-      : // Saving checks each change's row count in a transaction: ClickHouse has neither.
-        target.connection.driver === "clickhouse"
-        ? msg("ClickHouse tables are not edited in place")
-        : target.readOnly;
+      : target.connection.restrictions?.no_data_editing
+        ? msg("the connection changes its rows only by SQL")
+        : // Saving checks each change's row count in a transaction: ClickHouse has neither.
+          target.connection.driver === "clickhouse"
+          ? msg("ClickHouse tables are not edited in place")
+          : target.readOnly;
   const virtualKeys = target?.connection.virtual_keys ?? [];
   const virtualSignature = JSON.stringify(virtualKeys);
   useEffect(() => {

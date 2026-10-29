@@ -4,7 +4,8 @@ import { runAction, shortcutLabel, titleWithKeys, useActions } from "../actions"
 import type { Project, SavedConnection } from "../api";
 import mark from "../assets/brand/platypus-mark.png";
 import { CONNECTION_TYPES } from "../connections";
-import { useSetting } from "../settings";
+import { setSetting, useSetting } from "../settings";
+import { maskSetting } from "../guards/mask";
 import { cycleTheme, themeLabel, themeSetting, titleBarSetting } from "../theme";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
@@ -80,6 +81,7 @@ export function TopBar({ project, connection }: Props) {
         <span>{t("Search tables, queries, commands")}</span>
         {keys && <kbd>{keys}</kbd>}
       </button>
+      <MaskedButton />
       <ActivityButton />
       <ThemeButton />
       <button type="button" className="icon" title={titleWithKeys(t("Settings"), "app.settings")} aria-label={t("Settings")} onClick={() => workbench().openSettings()}>
@@ -121,6 +123,23 @@ function WindowControls() {
         <Icon name="close" size={16} />
       </button>
     </div>
+  );
+}
+
+/** While sensitive data is masked, says so; a click shows it again. */
+function MaskedButton() {
+  const on = useSetting(maskSetting);
+  if (!on) return null;
+  return (
+    <button
+      type="button"
+      className="topbar-masked"
+      title={titleWithKeys(t("Sensitive data is masked: click to show it"), "safety.mask")}
+      onClick={() => void setSetting(maskSetting, false)}
+    >
+      <Icon name="masked" />
+      {t("Masked")}
+    </button>
   );
 }
 

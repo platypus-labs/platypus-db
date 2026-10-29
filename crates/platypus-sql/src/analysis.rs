@@ -75,7 +75,7 @@ const OTHER: &[&str] = &[
     "PREPARE",
 ];
 /// Words between `UPDATE`/`DELETE` and the table.
-const MODIFIERS: &[&str] = &[
+pub(crate) const MODIFIERS: &[&str] = &[
     "LOW_PRIORITY",
     "QUICK",
     "IGNORE",
@@ -182,7 +182,7 @@ impl<'a> Words<'a> {
     }
 
     /// The indexes from `from` to `to` that are outside parentheses.
-    fn top(&self, from: usize, to: usize) -> impl Iterator<Item = usize> + '_ {
+    pub(crate) fn top(&self, from: usize, to: usize) -> impl Iterator<Item = usize> + '_ {
         let mut depth = 0usize;
         (from..to.min(self.tokens.len())).filter(move |&i| {
             if self.symbol(i, "(") {
@@ -195,12 +195,12 @@ impl<'a> Words<'a> {
     }
 
     /// The first word from `from` to `to`, outside parentheses, that is one of `words`.
-    fn find_top(&self, from: usize, to: usize, words: &[&str]) -> Option<usize> {
+    pub(crate) fn find_top(&self, from: usize, to: usize, words: &[&str]) -> Option<usize> {
         self.top(from, to).find(|&i| self.is(i, words))
     }
 
     /// The source text of the tokens from `from` to `to`.
-    fn text(&self, from: usize, to: usize) -> &'a str {
+    pub(crate) fn text(&self, from: usize, to: usize) -> &'a str {
         &self.src[self.tokens[from].start..self.tokens[to - 1].end]
     }
 }

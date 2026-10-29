@@ -103,8 +103,8 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | 🔒 Delfa · group-j-admin · 2026-10-29 |
-| K — Shell ed ergonomia | ✅ fatto (P1, P2; P3 in parte) |
-| L — Sicurezza operativa | 🔒 Delfa · group-l-safety · 2026-10-29 |
+| K — Shell ed ergonomia | 🔒 Delfa · group-k-shell · 2026-10-29 |
+| L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ fatto (P2 in parte) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1; P2 in parte) |
 | O — Collaborazione e sync | libero |
@@ -685,9 +685,9 @@ dalla system tray e tab staccato in una finestra.
 
 ---
 
-### Gruppo L — Sicurezza operativa — ✅ P1 e P2 fatti
+### Gruppo L — Sicurezza operativa — ✅ completato
 
-**Stato: P1 e P2 completati** (conferma o blocco di UPDATE/DELETE senza WHERE e TRUNCATE con le
+**Stato: completato** (conferma o blocco di UPDATE/DELETE senza WHERE e TRUNCATE con le
 righe stimate, conferma delle modifiche sulle connessioni Prod anche dal data editor, timer
 della transazione aperta con avviso). P2: l'indicatore della transazione aperta conta le
 modifiche e, cliccato, le elenca con Commit e Rollback (`guards/PendingDialog.tsx`; dopo ogni
@@ -697,7 +697,26 @@ modello, non salvato): il tab vede la connessione come `read_only` e ne applica 
 controlli. `safety.auto_limit` (0, spento, di default) aggiunge un limite alle query
 dell'editor senza `LIMIT`/`TOP`/`OFFSET`/`FETCH` propri (`platypus_sql::add_limit`: `TOP (n)`
 in SQL Server, che rinuncia alle UNION; niente con le clausole di lock); il risultato tiene lo
-statement com'è scritto e la barra di stato dice "LIMIT automatico". Restano i P3.
+statement com'è scritto e la barra di stato dice "LIMIT automatico".
+
+**P3.** Restrizioni per connessione (`SavedConnection.restrictions`): `no_export` (niente export,
+dump, copie in altri database, "Query with SQL", salvataggio di una cella, snapshot, e agenti
+spenti) e `no_data_editing` (righe solo da SQL: niente data editor, import, dati generati); il
+backend le controlla in `AppState::exportable`/`editable`, la UI nasconde le azioni. Registro
+delle transazioni del tab (`guards/txLog.ts`): gli statement per transazione, con come è finita
+(un fallimento o un rollback del database è "terminata", non "confermata"). Mascheramento per
+la condivisione dello schermo (`guards/mask.ts`, Ctrl+Alt+M): colonne per nome e tipo in
+Impostazioni › Safety, a puntini nella griglia (con le decorazioni, non in `DataGrid`), nei
+pannelli, nel profilo della colonna e nei documenti MongoDB; copie, export e grafici restano
+in chiaro. Snapshot prima di UPDATE/DELETE dall'editor (`platypus_sql::snapshot::touched_rows`,
+`platypus_transfer::snapshot`): le righe toccate, lette paginate sulla sessione, fino a 10.000,
+diventano gli statement che le rimettono (INSERT per un DELETE, UPDATE per chiave primaria), in
+`snapshots/` nella cartella dei dati (gli ultimi 200); niente snapshot per join, LIMIT, tabelle
+senza chiave o UPDATE della chiave. Blocco dopo N minuti di inattività (`safety.lock_minutes`,
+spento di default) con la master password: chiude le sessioni Prod e rende inerte il resto della
+finestra. Conformance degli snapshot su PostgreSQL, MySQL, MariaDB, SQL Server, SQLite e DuckDB;
+E2E `restrictions-sqlite`, `transaction-log-sqlite`, `mask-sqlite`, `snapshot-sqlite`,
+`app-lock-sqlite`.
 
 **Area:** `platypus-sql/src/analysis.rs` (analisi dello statement prima dell'esecuzione), `apps/desktop/src/guards/`
 **Dipende da:** 0.5; il gruppo F per i tipi di connessione
@@ -708,13 +727,13 @@ statement com'è scritto e la barra di stato dice "LIMIT automatico". Restano i 
 | ✅ Conferma per DDL e DML sulle connessioni Prod, con il riepilogo degli statement | P1 | D |
 | ✅ Timer della transazione aperta: avviso dopo N minuti, indicatore sempre visibile | P1 | N |
 | ✅ **Pending transactions**: elenco degli statement non ancora committati, per tab | P2 | D |
-| **Transaction log** della sessione | P3 | D |
+| ✅ **Transaction log** della sessione | P3 | D |
 | ✅ `LIMIT` automatico sulle SELECT senza limite, configurabile | P2 | N |
-| Mascheramento dei dati sensibili per screen share (regole su nome e tipo di colonna) | P3 | N |
-| Restrizioni di sicurezza per connessione: niente export, niente modifica | P3 | D+ |
+| ✅ Mascheramento dei dati sensibili per screen share (regole su nome e tipo di colonna) | P3 | N |
+| ✅ Restrizioni di sicurezza per connessione: niente export, niente modifica | P3 | D+ |
 | ✅ 🆕 Sola lettura temporanea per un tab o una sessione, senza cambiare la connessione salvata | P2 | N |
-| 🆕 **Snapshot prima di UPDATE/DELETE manuali**: le righe toccate salvate in locale prima dello statement, con ripristino in un clic | P3 | N |
-| 🆕 Blocco dell'app dopo N minuti di inattività (con la master password), disconnessione delle sessioni Prod | P3 | N |
+| ✅ 🆕 **Snapshot prima di UPDATE/DELETE manuali**: le righe toccate salvate in locale prima dello statement, con ripristino in un clic | P3 | N |
+| ✅ 🆕 Blocco dell'app dopo N minuti di inattività (con la master password), disconnessione delle sessioni Prod | P3 | N |
 
 ---
 

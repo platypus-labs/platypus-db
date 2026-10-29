@@ -49,6 +49,8 @@ export interface SavedConnection {
   /** Default schema, time zone and bootstrap statements, run after every connect. */
   init?: SavedInit;
   read_only: boolean;
+  /** What the app does not do with the connection's data; see `platypus_store::Restrictions`. */
+  restrictions?: Restrictions;
   color: string | null;
   /** Production asks before changes and starts in manual commit. */
   connection_type?: ConnectionType | null;
@@ -68,6 +70,39 @@ export interface SavedConnection {
 }
 
 export type ConnectionType = "dev" | "test" | "prod";
+
+/** A snapshot of the rows an UPDATE or DELETE was about to change. */
+export interface SnapshotMeta {
+  id: string;
+  connection_id: string;
+  connection: string;
+  database: string | null;
+  verb: "UPDATE" | "DELETE";
+  table: string;
+  statement: string;
+  rows: number;
+  /** Milliseconds since the epoch. */
+  taken_at: number;
+}
+
+export type SnapshotOutcome =
+  | { kind: "taken"; snapshot: SnapshotMeta }
+  | { kind: "unsupported" }
+  | { kind: "too_many"; limit: number }
+  | { kind: "no_key" };
+
+export interface Restrictions {
+  /** Its data goes neither to files nor to other databases, nor to agents. */
+  no_export?: boolean;
+  /** Its rows change only by SQL: no data editor, imports or generated rows. */
+  no_data_editing?: boolean;
+}
+
+/** Whether the connection's data stays in it: no exports, dumps or copies elsewhere. */
+export const keepsDataIn = (c: SavedConnection) => !!c.restrictions?.no_export;
+
+/** Whether the app's editor and dialogs write no rows to the connection (SQL may). */
+export const takesNoRows = (c: SavedConnection) => c.read_only || !!c.restrictions?.no_data_editing;
 
 export type AgentAccess = "off" | "read_only" | "read_write";
 
@@ -1634,6 +1669,14 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<number>("dump_sql", { sessionId, schema, path, data, tables, onEvent: channel });
   },
+  /** Reads the rows `sql` (an UPDATE or DELETE) is about to change on the session, and keeps
+   *  them as the statements that put them back. */
+  takeSnapshot: (sessionId: number, database: string | null, sql: string) =>
+    invoke<SnapshotOutcome>("take_snapshot", { sessionId, database, sql }),
+  /** The snapshots kept, newest first. */
+  listSnapshots: () => invoke<SnapshotMeta[]>("list_snapshots"),
+  snapshotRestore: (id: string) => invoke<string[]>("snapshot_restore", { id }),
+  deleteSnapshot: (id: string) => invoke<void>("delete_snapshot", { id }),
   /** The tables of a data file and the first rows of `table`, with the column types they
    *  would take in the session's database. */
   previewImport: (sessionId: number, path: string, table: string | null, options: FileOptions | null = null) =>
