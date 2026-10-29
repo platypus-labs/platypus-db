@@ -1908,6 +1908,9 @@ const pt: Record<string, string> = {
   "PlatypusDB is locked": "PlatypusDB está bloqueado",
   "Enter the master password to go on. Production connections were closed: they reconnect when used.": "Digite a senha mestra para continuar. As conexões de produção foram fechadas: reconectam quando usadas.",
   "Ended at {time}": "Encerrada às {time}",
+  "Resize the split editor": "Redimensionar o editor dividido",
+  "Resize the editor": "Redimensionar o editor",
+  "Resize the side panels": "Redimensionar os painéis laterais",
 };
 
 export default pt;

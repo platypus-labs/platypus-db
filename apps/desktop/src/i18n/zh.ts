@@ -1908,6 +1908,9 @@ const zh: Record<string, string> = {
   "PlatypusDB is locked": "PlatypusDB 已锁定",
   "Enter the master password to go on. Production connections were closed: they reconnect when used.": "输入主密码以继续。生产连接已关闭：使用时会重新连接。",
   "Ended at {time}": "{time} 已结束",
+  "Resize the split editor": "调整拆分编辑器大小",
+  "Resize the editor": "调整编辑器大小",
+  "Resize the side panels": "调整侧边面板大小",
 };
 
 export default zh;

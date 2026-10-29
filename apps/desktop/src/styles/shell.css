@@ -71,6 +71,54 @@
   transition: opacity 0.15s ease-out 0.1s;
 }
 
+/* The handles of the other panels: the editor above its results, the side panels of a
+   result, the two halves of a split editor. A line in the accent shows where they are. */
+.panel-resizer {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  touch-action: none;
+}
+
+.panel-resizer.column {
+  width: 7px;
+  margin: 0 -3px;
+  cursor: col-resize;
+}
+
+.panel-resizer.row {
+  cursor: row-resize;
+}
+
+.panel-resizer::after {
+  content: "";
+  position: absolute;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s ease-out 0.1s;
+}
+
+.panel-resizer.column::after {
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 3px;
+}
+
+.panel-resizer.row::after {
+  left: 0;
+  right: 0;
+  top: 1px;
+  height: 3px;
+}
+
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after,
+.panel-resizer.dragging::after {
+  opacity: 0.6;
+}
+
 .sidebar-resizer:hover::after,
 .sidebar-resizer:focus-visible::after,
 .sidebar-resizer.dragging::after {
@@ -548,6 +596,10 @@
 
 .panes.split .pane.right {
   border-left: 1px solid var(--border);
+}
+
+.split-resizer {
+  order: 1;
 }
 
 .panes.split .pane.focused {
