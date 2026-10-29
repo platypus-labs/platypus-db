@@ -8,6 +8,7 @@
 //! through a one-slot channel, so the worker only fetches as fast as they are consumed.
 //! Cancellation uses `duckdb_interrupt`.
 
+mod bulk;
 mod csvfile;
 mod database;
 mod error;
@@ -85,7 +86,7 @@ pub fn memory_database(name: &str) -> Result<(MemoryDatabase, duckdb::Connection
 
 #[derive(Debug)]
 pub struct DuckDbConnection {
-    commands: std_mpsc::Sender<Command>,
+    commands: std_mpsc::Sender<Job>,
     canceller: DuckDbCanceller,
     server: ServerInfo,
     next_job: AtomicU64,
@@ -93,6 +94,18 @@ pub struct DuckDbConnection {
     /// Held from the implicit `BEGIN` of manual-commit mode until the statement is queued,
     /// so that two statements sent at once do not both begin.
     submit: tokio::sync::Mutex<()>,
+}
+
+/// What the worker runs, one at a time: a statement, or rows to append.
+enum Job {
+    Statement(Command),
+    Load {
+        job: u64,
+        load: bulk::Load,
+        /// No transaction is open: the load runs in one of its own.
+        own_transaction: bool,
+        reply: oneshot::Sender<Result<u64>>,
+    },
 }
 
 struct Command {
@@ -167,12 +180,12 @@ impl DuckDbConnection {
         let job = self.next_job.fetch_add(1, Ordering::Relaxed);
         let (reply, started) = oneshot::channel();
         self.commands
-            .send(Command {
+            .send(Job::Statement(Command {
                 job,
                 sql: sql.to_owned(),
                 batch_size,
                 reply,
-            })
+            }))
             .map_err(|_| Error::Closed)?;
         Ok((job, started.await.map_err(|_| Error::Closed)??))
     }
@@ -302,8 +315,32 @@ impl Connection for DuckDbConnection {
             explain: true,
             object_ddl: true,
             metadata_search: true,
+            bulk_load: true,
             ..Default::default()
         }
+    }
+
+    /// The rows go in with the appender, in the session's transaction (one opened in
+    /// manual-commit mode, as a statement would), else in one of their own.
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        let load = bulk::Load::new(rows)?;
+        let _guard = self.submit.lock().await;
+        if self.tx.needs_begin(platypus_core::TxEffect::None) {
+            self.send("BEGIN", 1).await?;
+            self.tx.set_open(true);
+        }
+        let job = self.next_job.fetch_add(1, Ordering::Relaxed);
+        let (reply, written) = oneshot::channel();
+        let own_transaction = !self.tx.state().open;
+        self.commands
+            .send(Job::Load {
+                job,
+                load,
+                own_transaction,
+                reply,
+            })
+            .map_err(|_| Error::Closed)?;
+        written.await.map_err(|_| Error::Closed)?
     }
 }
 
@@ -368,13 +405,26 @@ impl Canceller for DuckDbCanceller {
 
 fn worker(
     conn: &duckdb::Connection,
-    inbox: &std_mpsc::Receiver<Command>,
+    inbox: &std_mpsc::Receiver<Job>,
     running: &Mutex<Option<u64>>,
 ) {
     // Ends when the connection, and with it the sender, is dropped.
-    for command in inbox {
-        *lock(running) = Some(command.job);
-        run(conn, command);
+    for job in inbox {
+        match job {
+            Job::Statement(command) => {
+                *lock(running) = Some(command.job);
+                run(conn, command);
+            }
+            Job::Load {
+                job,
+                load,
+                own_transaction,
+                reply,
+            } => {
+                *lock(running) = Some(job);
+                let _ = reply.send(bulk::append(conn, load, own_transaction));
+            }
+        }
         *lock(running) = None;
     }
 }

@@ -14,6 +14,11 @@
 #   panic when client and server cannot agree;
 # - `max` values (`varchar(max)`, `varbinary(max)`) are read a chunk at a time, and packets
 #   copied whole, not a byte at a time.
+# - `Client::bulk_columns` and `Client::bulk_insert_columns` split `bulk_insert` so that a
+#   bulk load names its columns and hints, and the caller sees the column types first;
+#   `INSERT BULK` quotes the names and declares national lengths, `time`,
+#   `datetimeoffset` and `smalldatetime` as the server described them, and the bulk copy's
+#   column metadata writes no length for `date`.
 [package]
 edition = "2021"
 name = "tiberius"

@@ -108,7 +108,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | 🔒 Delfa · group-g-search · 2026-10-29 |
-| H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
+| H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | 🔒 Delfa · group-i-schema-p3 · 2026-10-29 |
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
@@ -116,7 +116,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | M — Analisi dei dati | ✅ fatto (P2) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1, P2) |
 | O — Collaborazione e sync | libero |
-| P — Piattaforma, qualità e release | 🔒 Delfa · claude/loving-thompson-2n3e88 · 2026-10-29 |
+| P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ fatto (P2) |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
@@ -478,8 +478,8 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 **Area:** `platypus-transfer`, `apps/desktop/src/transfer/`, `commands/transfer.rs`
 **Dipende da:** 0.5
 
-**Stato: P1 e P2 completate, P3 in parte** (profili di trasferimento fatti; da fare: bulk
-copy di SQL Server e appender di DuckDB).
+**Stato: completato** (P1, P2 e P3, con i profili di trasferimento salvati, la bulk copy di
+SQL Server e l'appender di DuckDB).
 
 **P1 completate.** I file (CSV, TSV, JSON, NDJSON, Parquet, XLSX) si leggono con una
 connessione DuckDB sul file, la stessa del "file come database" del gruppo G; l'import in una
@@ -525,8 +525,23 @@ schema copiato; nelle viste si riscrive ogni nome uguale allo schema seguito da 
 righe di testo: PostgreSQL con `COPY … FROM STDIN` in CSV (non CockroachDB), MySQL e MariaDB
 con `LOAD DATA LOCAL INFILE` dove il server ha `local_infile` (letto alla connessione; un
 avviso fa fallire il caricamento). L'import e il trasferimento lo usano a blocchi di 50.000
-righe, tranne l'upsert; gli altri database restano con INSERT od `OPENJSON` a blocchi. In
-manual commit il caricamento sta sotto il savepoint dell'istruzione. Il `tokio-postgres`
+righe, tranne l'upsert; gli altri database restano con INSERT a blocchi. In
+manual commit il caricamento sta sotto il savepoint dell'istruzione. P3: SQL Server con la bulk copy di
+TDS (`INSERT BULK` con `KEEP_NULLS, CHECK_CONSTRAINTS, FIRE_TRIGGERS`, i valori dell'identity
+tenuti): il driver converte il testo nel tipo di ogni colonna, letto con `SELECT TOP 0`, prima
+di iniziare. Una tabella con `money`, `xml`, `text`, `image` o tipi CLR risponde `Unsupported`:
+l'import lo sa da un caricamento vuoto prima delle righe e scrive con `OPENJSON` (o INSERT sotto
+il livello di compatibilità 130). Un valore che la conversione non legge (`01/02/2024`) rimanda
+il blocco a `OPENJSON`, dove decide SQL Server. Il `tiberius`
+vendorizzato ha `bulk_columns`/`bulk_insert_columns` e le correzioni ai metadati di `date`,
+`nvarchar`, `time`, `datetimeoffset` e `smalldatetime`. DuckDB con l'appender
+(`appender_with_columns`, nella transazione della sessione o in una propria, così una riga
+fallita non lascia niente, e un nome senza schema segue il `search_path`); i `TIMESTAMPTZ` si
+convertono in UTC nel driver, perché il cast dell'appender perde l'offset. Conformance: `bulk_loads_rows` su tutti, e in `value_fidelity`
+ogni tipo di SQL Server confrontato con un `INSERT` dello stesso testo. Su un server locale (Docker,
+stesso host) la bulk copy va come `OPENJSON`: un milione di righe in circa 9 s in tutti e due i
+casi; il guadagno atteso è sul lavoro del server (niente JSON da leggere), da misurare su un
+server remoto. Il `tokio-postgres`
 vendorizzato ha una patch per un `COPY` rifiutato dal server. "Esegui file SQL…"
 (`platypus-transfer::script`) legge `.sql`, `.gz` e `.zst` a pezzi di 4 MB e divide le
 istruzioni col dialetto (`GO` in T-SQL, `DELIMITER` di MySQL anche tra un pezzo e l'altro);
@@ -567,7 +582,7 @@ cartella del task, se ce l ha. E2E `profiles-export-sqlite`, `profiles-transfer-
 | ✅ Export compresso (gzip, zstd) e su storage cloud (S3, GCS) | P3 | D+ |
 | ✅ Incolla CSV dagli appunti per creare subito una tabella | P2 | N |
 | ✅ **Caricamento bulk nativo** per import e trasferimento: `COPY` in PostgreSQL, `LOAD DATA LOCAL` in MySQL; INSERT a blocchi come ripiego | P2 | D |
-| 🆕 Bulk copy (TDS) in SQL Server e appender in DuckDB al posto di `OPENJSON` e INSERT a blocchi | P3 | D |
+| ✅ 🆕 Bulk copy (TDS) in SQL Server e appender in DuckDB al posto di `OPENJSON` e INSERT a blocchi | P3 | D |
 | ✅ Profili di import, export e trasferimento salvati e riutilizzabili (anche dal task scheduler del gruppo J) | P3 | D |
 | ✅ **Esegui file SQL** dal navigator (`.sql` o `.sql.gz`), con avanzamento, annullamento e una sola transazione dove il database annulla il DDL; **dump SQL** di uno schema o di un database in un solo file (DDL e dati), che si riapre con lo stesso comando | P2 | D |
 
@@ -981,16 +996,20 @@ TablePlus 2.2.0 nel confronto delle dimensioni (BENCHMARKS.md, README e una tabe
 sezione Performance del sito); il piano di pubblicazione è in RELEASING.md. Il sito (`site/`) è stato ridisegnato: solo scuro,
 l'ornitorinco con i database intorno, una finestra dell'app disegnata in HTML dove una query si
 scrive da sola, il tour con le GIF, una griglia di funzionalità, i loghi dei database, le
-prestazioni e il confronto. Restano la verifica su macOS e su un desktop Linux con GPU, il test reale
-dell'auto-update, la firma, avvio e memoria di DBeaver accanto ai nostri e la distribuzione.
+prestazioni e il confronto. Restano la verifica su un desktop Linux con GPU, il test reale
+dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri (li misura
+`scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
+distribuzione;
+la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
 
 | Attività | Prio |
 |---|---|
-| Verifica su macOS e Linux: build, avvio, memoria, scroll; correzioni di piattaforma (Linux fatto senza GPU, vedi BENCHMARKS.md) | P1 |
+| Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
+| Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma (serve un Mac) | P3 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0; v0.2.1 solo Windows, compilata in locale perché i minuti di Actions erano finiti) | P1 |
 | Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
-| Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P2 |
+| Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |

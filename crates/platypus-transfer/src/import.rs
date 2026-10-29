@@ -930,18 +930,47 @@ pub async fn import(
     import_rows(rows, target, plan, progress).await
 }
 
-/// Writes `pending` rows with the database's own loading, else in an `OPENJSON` insert.
+/// Whether the rows of `plan` go in with the database's own bulk loading: where it has it,
+/// and where an empty load, which checks the table, is not refused (SQL Server's bulk copy
+/// into a `money` column).
+async fn loads_natively(
+    plan: &ImportPlan,
+    (target, dialect): (&dyn Connection, Dialect),
+    schema: &Schema,
+) -> Result<bool, ImportError> {
+    if plan.mode() == ImportMode::Upsert || !target.capabilities().bulk_load {
+        return Ok(false);
+    }
+    match plan.load((target, dialect), schema, &[]).await {
+        Err(ImportError::Database(platypus_core::Error::Unsupported(_))) => Ok(false),
+        checked => checked.map(|_| true),
+    }
+}
+
+/// Writes `pending` rows with the database's own loading while `native`, else in `OPENJSON`
+/// inserts. A load the database refuses for these rows (a value SQL Server's bulk copy does
+/// not read) writes nothing: with `json`, these rows and the next go in `OPENJSON` inserts,
+/// where the server converts the values, and `native` turns off.
 async fn flush(
     plan: &ImportPlan,
     (target, dialect): (&dyn Connection, Dialect),
-    native: bool,
+    (native, json): (&mut bool, bool),
     schema: &Schema,
     pending: &[Vec<Option<String>>],
 ) -> Result<(), ImportError> {
-    if native {
-        plan.load((target, dialect), schema, pending).await?;
-    } else {
-        exec(target, &plan.bulk_insert(dialect, schema, pending)?).await?;
+    if *native {
+        match plan.load((target, dialect), schema, pending).await {
+            Err(ImportError::Database(platypus_core::Error::Unsupported(_))) if json => {
+                *native = false;
+            }
+            loaded => {
+                loaded?;
+                return Ok(());
+            }
+        }
+    }
+    for rows in pending.chunks(BULK_ROWS) {
+        exec(target, &plan.bulk_insert(dialect, schema, rows)?).await?;
     }
     Ok(())
 }
@@ -989,12 +1018,10 @@ pub async fn import_rows(
             exec(target, &sql).await?;
         }
         let mut schema = rows.schema();
-        // The database's own bulk loading where it has it and allows it.
-        let batched = plan.mode() != ImportMode::Upsert;
-        let native = batched && target.capabilities().bulk_load;
+        let mut native = loads_natively(plan, (target, dialect), &schema).await?;
+        let json = plan.mode() != ImportMode::Upsert && bulk(target, dialect).await;
         // Rows go in chunks: natively, or each chunk in one `OPENJSON` insert.
-        let chunked = native || (batched && bulk(target, dialect).await);
-        let chunk = if native { NATIVE_ROWS } else { BULK_ROWS };
+        let chunked = native || json;
         let mut pending: Vec<Vec<Option<String>>> = Vec::new();
         let mut written = 0;
         while let Some(batch) = rows.next().await {
@@ -1002,8 +1029,16 @@ pub async fn import_rows(
             if chunked {
                 schema = batch.schema();
                 pending.extend(rows_text(&batch)?);
+                let chunk = if native { NATIVE_ROWS } else { BULK_ROWS };
                 if pending.len() >= chunk {
-                    flush(plan, (target, dialect), native, &schema, &pending).await?;
+                    flush(
+                        plan,
+                        (target, dialect),
+                        (&mut native, json),
+                        &schema,
+                        &pending,
+                    )
+                    .await?;
                     pending.clear();
                 }
             } else {
@@ -1017,7 +1052,14 @@ pub async fn import_rows(
             }
         }
         if !pending.is_empty() {
-            flush(plan, (target, dialect), native, &schema, &pending).await?;
+            flush(
+                plan,
+                (target, dialect),
+                (&mut native, json),
+                &schema,
+                &pending,
+            )
+            .await?;
         }
         if let Some(staging) = plan.staging(dialect) {
             exec(target, &format!("DROP TEMPORARY TABLE {staging}")).await?;

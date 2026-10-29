@@ -277,10 +277,16 @@ pub use result::*;
 pub use row::{Column, ColumnType, Row};
 pub use sql_browser::SqlBrowser;
 pub use tds::{
-    codec::{BulkLoadRequest, ColumnData, ColumnFlag, IntoRow, TokenRow, TypeLength},
+    // PlatypusDB: the column metadata of `Client::bulk_columns`.
+    codec::{
+        BaseMetaDataColumn, BulkLoadRequest, ColumnData, ColumnFlag, FixedLenType, IntoRow,
+        MetaDataColumn, TokenRow, TypeInfo, TypeLength, VarLenContext, VarLenType,
+    },
     numeric,
     stream::QueryStream,
-    time, xml, EncryptionLevel,
+    time,
+    xml,
+    EncryptionLevel,
 };
 pub use to_sql::{IntoSql, ToSql};
 pub use uuid::Uuid;

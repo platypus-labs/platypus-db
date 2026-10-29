@@ -88,6 +88,8 @@ cargo test -p platypus-conformance --test scale -- --nocapture
 # benchmarks with thresholds (scripts/bench-thresholds.json); `app` needs an X display on Linux
 cargo bench -p platypus-driver-pg --bench decode && python3 scripts/bench.py decode
 xvfb-run -a -s "-screen 0 1600x1000x24" python3 scripts/bench.py app target/release/platypus-db
+# the same start and memory of another client, for docs/BENCHMARKS.md "Side by side" (no limits)
+xvfb-run -a -s "-screen 0 1600x1000x24" python3 scripts/bench.py other dbeaver ~/dbeaver/dbeaver
 
 # frees the space `target` gathers: incremental caches, builds unused for 7 days (--days N)
 node scripts/clean-target.mjs
