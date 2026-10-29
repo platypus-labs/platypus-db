@@ -27,8 +27,8 @@ pub use config::{
     SshAuth, SshConfig, SslMode,
 };
 pub use connection::{
-    CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed, NextResult,
-    RecordBatchStream, ServerInfo, execute_each,
+    BulkRows, CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed,
+    NextResult, RecordBatchStream, ServerInfo, execute_each,
 };
 pub use env::{ENV_FILE, EnvVars, expand as expand_env, parse_dotenv, without_references};
 pub use error::{DbError, Error, Result, without_repeats};
