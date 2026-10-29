@@ -59,7 +59,8 @@ import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
 import { LockScreen, useIdleLock } from "./guards/AppLock";
 import { PanelResizer, useStoredSize } from "./shell/PanelResizer";
-import { useTray, useWindowEvents } from "./shell/windows";
+import { takeLeftWindowTabs, useTray, useWindowEvents, WINDOW_EVENTS } from "./shell/windows";
+import { emit } from "@tauri-apps/api/event";
 
 declare module "./actions" {
   interface ActionScopes {
@@ -220,7 +221,12 @@ export function App() {
       const tab = byIndex[index];
       if (tab) activeByProject.current.set(key, tab.key);
     }
-    const restoredTabs = byIndex.filter((t) => t !== null);
+    // Tabs of windows the last run did not close cleanly (quit from the tray) come back here.
+    const left = takeLeftWindowTabs().map((t) => {
+      const kind = tabKind(t.kind ?? "query");
+      return kind && known.has(t.connectionId) ? { ...createTab(kind.kind, t.connectionId, kind.restore(t)), project: null } : null;
+    });
+    const restoredTabs = [...byIndex, ...left].filter((t) => t !== null);
     setTabs(restoredTabs);
     setActiveTab(shownTab(restoredTabs, activeProject));
   }, [connections, projects]);
@@ -825,12 +831,15 @@ export function App() {
   // What the other windows send: tabs to open here, a tab moved back, a closed window's tab.
   useWindowEvents({
     openTab: ({ kind, connectionId, init }) => connectionById(connectionId) && addTab({ ...createTab(kind, connectionId, init ?? {}), project: activeProject }),
+    // Back in its project, pinned if it was.
     attach: (saved) => {
       const kind = tabKind(saved.kind ?? "query");
       if (!kind || !connectionById(saved.connectionId)) return;
-      addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), project: activeProject });
+      const project = saved.project && projects?.some((p) => p.id === saved.project) ? saved.project : null;
+      addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), project, pinned: saved.pinned === true });
     },
     closed: keepClosed,
+    unlocked: () => setLocked(false),
   });
   useTray();
   /** Locks the app behind the master password, closing the production sessions; without a
@@ -852,6 +861,8 @@ export function App() {
       }
     }
     setLocked(true);
+    // The other windows lock too.
+    void emit(WINDOW_EVENTS.locked).catch(() => {});
   }
   useIdleLock(() => void lockApp(false), locked);
   // `tabs` here are the active project's: the tab actions work on what the bar shows.
@@ -1241,7 +1252,14 @@ export function App() {
         />
       )}
       {/* Over everything, dialogs included. */}
-      {locked && <LockScreen onUnlocked={() => setLocked(false)} />}
+      {locked && (
+        <LockScreen
+          onUnlocked={() => {
+            setLocked(false);
+            void emit(WINDOW_EVENTS.unlocked).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }
