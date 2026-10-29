@@ -464,8 +464,72 @@ impl Connection for PgConnection {
             multiple_databases: true,
             server_sessions: self.has_server_admin(),
             cancel_server_queries: self.has_server_admin(),
+            bulk_load: true,
         }
     }
+
+    /// `COPY … FROM STDIN` in CSV, the rows sent in chunks, in the session's transaction (one
+    /// opened in manual-commit mode, as a statement would).
+    async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
+        use futures::SinkExt;
+
+        let _guard = self.busy.lock().await;
+        self.settle_savepoint(&[]).await?;
+        if self.tx.needs_begin(TxEffect::None) {
+            self.client
+                .batch_execute("BEGIN")
+                .await
+                .map_err(map_error)?;
+            self.tx.set_open(true);
+        }
+        let sql = format!(
+            "COPY {} ({}) FROM STDIN WITH (FORMAT csv)",
+            rows.table,
+            rows.columns.join(", ")
+        );
+        let sink = self.client.copy_in(sql.as_str()).await.map_err(map_error)?;
+        futures::pin_mut!(sink);
+        let mut chunk = String::new();
+        for row in rows.rows {
+            copy_csv_row(&mut chunk, row, rows.hex);
+            if chunk.len() >= COPY_CHUNK_BYTES {
+                let data = bytes::Bytes::from(std::mem::take(&mut chunk));
+                sink.send(data).await.map_err(map_error)?;
+            }
+        }
+        if !chunk.is_empty() {
+            sink.send(bytes::Bytes::from(chunk))
+                .await
+                .map_err(map_error)?;
+        }
+        sink.finish().await.map_err(map_error)
+    }
+}
+
+/// How much CSV a `COPY` sends at a time.
+const COPY_CHUNK_BYTES: usize = 1 << 20;
+
+/// One CSV line of `COPY`: every value quoted, so that an empty text is `""` and NULL the
+/// empty field; bytes as `\x` hex.
+fn copy_csv_row(out: &mut String, row: &[Option<String>], hex: &[bool]) {
+    for (i, value) in row.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let Some(value) = value else { continue };
+        out.push('"');
+        if hex.get(i).copied().unwrap_or(false) {
+            out.push_str("\\x");
+        }
+        for c in value.chars() {
+            if c == '"' {
+                out.push('"');
+            }
+            out.push(c);
+        }
+        out.push('"');
+    }
+    out.push('\n');
 }
 
 impl PgConnection {
@@ -920,6 +984,23 @@ fn error_chain(e: &dyn std::error::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copies_rows_as_csv() {
+        let mut out = String::new();
+        let rows = [
+            vec![Some("1".to_owned()), None, Some(String::new())],
+            vec![
+                Some("a \"b\",\nc".to_owned()),
+                Some("ff00".to_owned()),
+                Some("\\".to_owned()),
+            ],
+        ];
+        for row in &rows {
+            copy_csv_row(&mut out, row, &[false, true, false]);
+        }
+        assert_eq!(out, "\"1\",,\"\"\n\"a \"\"b\"\",\nc\",\"\\xff00\",\"\\\"\n");
+    }
 
     #[test]
     fn tells_statements_the_savepoints_must_leave_alone() {
