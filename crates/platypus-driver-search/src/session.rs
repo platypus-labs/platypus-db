@@ -9,6 +9,7 @@ use platypus_core::{Error, Result, ServerVersion};
 use tokio::sync::watch;
 
 use crate::http::{Http, Payload, Reply};
+use crate::target::Target;
 
 /// Which of the two products the server is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,7 +68,7 @@ impl Shared {
     pub async fn call(
         &self,
         method: &str,
-        target: &str,
+        target: &Target,
         payload: Payload<'_>,
         sql: Option<&str>,
     ) -> Result<Reply> {
@@ -76,16 +77,21 @@ impl Shared {
     }
 
     /// Sends a request; any status is a reply.
-    pub async fn send(&self, method: &str, target: &str, payload: Payload<'_>) -> Result<Reply> {
+    pub async fn send(&self, method: &str, target: &Target, payload: Payload<'_>) -> Result<Reply> {
         self.guarded(self.http.send(method, target, payload)).await
     }
 
     /// Sends a request nobody waits for: closing a cursor, a point in time or a scroll.
     pub fn later(self: &Arc<Self>, method: &'static str, target: &'static str, body: String) {
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        if let (Ok(runtime), Ok(target)) =
+            (tokio::runtime::Handle::try_current(), Target::parse(target))
+        {
             let shared = Arc::clone(self);
             runtime.spawn(async move {
-                let _ = shared.http.send(method, target, Payload::Json(&body)).await;
+                let _ = shared
+                    .http
+                    .send(method, &target, Payload::Json(&body))
+                    .await;
             });
         }
     }

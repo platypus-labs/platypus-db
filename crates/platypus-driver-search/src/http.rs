@@ -7,6 +7,7 @@ use platypus_core::{ConnectionConfig, Error, Result, Secret};
 use reqwest::{Client, Method, Url};
 
 use crate::error::{from_reply, transport};
+use crate::target::Target;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -89,14 +90,29 @@ impl Http {
         self.base.scheme() == "https"
     }
 
-    /// Sends a request: `target` is the path with its query string. Any status is a reply.
-    pub async fn send(&self, method: &str, target: &str, payload: Payload<'_>) -> Result<Reply> {
+    /// The URL of a request to `target`: the cluster's, with the target's path and query
+    /// string set as they are (never resolved against it, as a relative reference would be),
+    /// so that it is the path the checks read, on the cluster's host.
+    fn url(&self, target: &Target) -> Result<Url> {
+        let mut url = self.base.clone();
+        url.set_path(target.path());
+        url.set_query(Some(target.query()).filter(|q| !q.is_empty()));
+        let same = url.path() == target.path()
+            && url.query().unwrap_or_default() == target.query()
+            && url.origin() == self.base.origin();
+        debug_assert!(same, "{url} is not {target} on {}", self.base);
+        if same {
+            Ok(url)
+        } else {
+            Err(Error::Other(format!("invalid request path `{target}`")))
+        }
+    }
+
+    /// Sends a request to `target`. Any status is a reply.
+    pub async fn send(&self, method: &str, target: &Target, payload: Payload<'_>) -> Result<Reply> {
         let method = Method::from_bytes(method.as_bytes())
             .map_err(|_| Error::Other(format!("invalid HTTP method `{method}`")))?;
-        let url = self
-            .base
-            .join(target.trim_start_matches('/'))
-            .map_err(|e| Error::Other(format!("invalid request path `{target}`: {e}")))?;
+        let url = self.url(target)?;
         let mut request = self
             .client
             .request(method, url)
@@ -136,7 +152,7 @@ impl Http {
     pub async fn call(
         &self,
         method: &str,
-        target: &str,
+        target: &Target,
         payload: Payload<'_>,
         sql: Option<&str>,
     ) -> Result<Reply> {
@@ -179,5 +195,42 @@ mod tests {
         let http = Http::new(&config).unwrap();
         assert_eq!(http.base.as_str(), "https://es.example/");
         assert!(http.encrypted());
+    }
+
+    #[test]
+    fn a_request_never_leaves_the_cluster() {
+        let mut config = ConnectionConfig::new(DriverKind::Elasticsearch);
+        config.host = "es.example".to_owned();
+        config.user = "elastic".to_owned();
+        config.password = Some(Secret::new("pw"));
+        let http = Http::new(&config).unwrap();
+        for raw in [
+            "/",
+            "_cat/indices?format=json",
+            "/idx/_search?q=a%3A1&size=2",
+            "/a%2Fb/_doc/x%20y",
+            "/caf\u{e9}/_search?q=\u{e9}\"#x",
+            "/remote:idx/_search",
+            "/%3Clogs-%7Bnow%2Fd%7D%3E/_search",
+            "/.../_doc/..x",
+            "/http:/x",
+        ] {
+            let target = Target::parse(raw).unwrap();
+            let url = http.url(&target).unwrap();
+            assert_eq!(url.host_str(), Some("es.example"), "{raw}");
+            assert_eq!(url.port_or_known_default(), Some(9200), "{raw}");
+            assert_eq!(url.path(), target.path(), "{raw}");
+            assert_eq!(url.query().unwrap_or_default(), target.query(), "{raw}");
+        }
+        // A URL, or a path that would resolve to another one, is no target at all.
+        for raw in [
+            "http://attacker.example/x",
+            "//attacker.example/x",
+            "/\\\\attacker.example/x",
+            "/idx/_search/../_bulk",
+            "/idx/_search/%2e%2E/_bulk",
+        ] {
+            assert!(Target::parse(raw).is_err(), "{raw}");
+        }
     }
 }

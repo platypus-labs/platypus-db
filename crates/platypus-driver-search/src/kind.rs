@@ -163,19 +163,22 @@ impl Command {
 }
 
 impl Request {
-    /// A `_delete_by_query` or `_update_by_query` with no query (or a `match_all` one), or a
-    /// `DELETE` of every index (`_all`, `*`): the counterparts of a `DELETE` without `WHERE`.
+    /// A `_delete_by_query` or `_update_by_query` whose query reaches every document (none,
+    /// `match_all`, an empty `bool`…: see [`reaches_everything`]), or a `DELETE` of every
+    /// index (`_all`, `*`): the counterparts of a `DELETE` without `WHERE`.
     #[must_use]
     pub fn unfiltered(&self) -> Option<Unfiltered> {
-        let parts: Vec<&str> = self.path.split('/').filter(|s| !s.is_empty()).collect();
-        let (verb, index) = match (self.method.as_str(), parts.as_slice()) {
+        let segments = self.target.segments();
+        let (verb, index) = match (self.method.as_str(), segments.as_slice()) {
             ("POST", [index, api]) if api.eq_ignore_ascii_case("_delete_by_query") => {
                 ("DELETE BY QUERY", index)
             }
             ("POST", [index, api]) if api.eq_ignore_ascii_case("_update_by_query") => {
                 ("UPDATE BY QUERY", index)
             }
-            ("DELETE", [index]) if matches!(*index, "_all" | "*") => ("DELETE INDEX", index),
+            ("DELETE", [index]) if matches!(index.as_str(), "_all" | "*") => {
+                ("DELETE INDEX", index)
+            }
             _ => return None,
         };
         if verb != "DELETE INDEX" && self.filters() {
@@ -183,17 +186,21 @@ impl Request {
         }
         Some(Unfiltered {
             verb,
-            index: (*index).to_owned(),
+            index: index.clone(),
         })
     }
 
-    /// Whether the request narrows the documents it reaches, by `q` or by a query that is
-    /// not `match_all`.
+    /// Whether the request is known to narrow the documents it reaches: by `q` (every `q`
+    /// it has, decoded, when it repeats it), or by a query that does not reach them all. A
+    /// body that does not parse narrows nothing, so that the confirmation asks.
     fn filters(&self) -> bool {
-        if self
-            .param("q")
-            .is_some_and(|q| !matches!(q, "" | "*" | "*:*"))
-        {
+        let mut q = self
+            .target
+            .params()
+            .filter(|(key, _)| key == "q")
+            .map(|(_, value)| value)
+            .peekable();
+        if q.peek().is_some() && q.all(|q| !matches!(q.trim(), "" | "*" | "*:*")) {
             return true;
         }
         let Body::Json(text) = &self.body else {
@@ -202,11 +209,74 @@ impl Request {
         let Ok(body) = serde_json::from_str::<Value>(text) else {
             return false;
         };
-        body.get("query").is_some_and(|query| {
-            !query
-                .as_object()
-                .is_some_and(|q| q.is_empty() || (q.len() == 1 && q.contains_key("match_all")))
-        })
+        body.get("query")
+            .is_some_and(|query| !reaches_everything(query))
+    }
+}
+
+/// Whether a query matches every document, as far as can be told without the data: when
+/// unsure (a query the server would refuse, say), it does, so that the confirmation asks.
+/// `match_all`; `{}`; a `bool` whose required clauses all reach everything, that excludes
+/// nothing and whose `should` does not narrow; `query_string` or `simple_query_string` of
+/// `*` or `*:*`; and the wrappers of such a query (`constant_score`, `function_score` with no
+/// `min_score`, `dis_max`, `boosting`).
+fn reaches_everything(query: &Value) -> bool {
+    let Some(map) = query.as_object() else {
+        return true;
+    };
+    let mut entries = map.iter();
+    let (Some((name, inner)), None) = (entries.next(), entries.next()) else {
+        return true;
+    };
+    match name.as_str() {
+        "match_all" => true,
+        "bool" => bool_reaches_everything(inner),
+        "query_string" | "simple_query_string" => inner
+            .get("query")
+            .and_then(Value::as_str)
+            .is_some_and(|q| matches!(q.trim(), "*" | "*:*")),
+        "constant_score" => inner.get("filter").is_none_or(reaches_everything),
+        "function_score" => {
+            inner.get("min_score").is_none() && inner.get("query").is_none_or(reaches_everything)
+        }
+        "dis_max" => clauses(inner, "queries")
+            .into_iter()
+            .any(reaches_everything),
+        "boosting" => inner.get("positive").is_none_or(reaches_everything),
+        _ => false,
+    }
+}
+
+fn bool_reaches_everything(inner: &Value) -> bool {
+    if !inner.is_object() {
+        return true;
+    }
+    let mut required = clauses(inner, "must");
+    required.extend(clauses(inner, "filter"));
+    if !required.iter().all(|q| reaches_everything(q)) {
+        return false;
+    }
+    let excludes_none = clauses(inner, "must_not").into_iter().all(|q| {
+        q.as_object()
+            .is_some_and(|m| m.len() == 1 && m.contains_key("match_none"))
+    });
+    if !excludes_none {
+        return false;
+    }
+    // With required clauses, `should` only scores unless `minimum_should_match` says it must
+    // match; without, one of them must.
+    let should = clauses(inner, "should");
+    should.is_empty()
+        || should.iter().any(|q| reaches_everything(q))
+        || (!required.is_empty() && inner.get("minimum_should_match").is_none())
+}
+
+/// The clauses under `key`: one query, or an array of them.
+fn clauses<'a>(inner: &'a Value, key: &str) -> Vec<&'a Value> {
+    match inner.get(key) {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(queries)) => queries.iter().collect(),
+        Some(query) => vec![query],
     }
 }
 
@@ -287,33 +357,84 @@ mod tests {
             every("DELETE BY QUERY", "orders")
         );
         assert_eq!(
-            unfiltered(
-                "POST /orders/_delete_by_query
-{\"query\":{\"match_all\":{}}}"
-            ),
+            unfiltered("POST /orders/_delete_by_query\n{\"query\":{\"match_all\":{}}}"),
             every("DELETE BY QUERY", "orders")
         );
         assert_eq!(
-            unfiltered(
-                "POST /o*/_update_by_query?q=*
-{\"script\":\"x\"}"
-            ),
+            unfiltered("POST /o*/_update_by_query?q=*\n{\"script\":\"x\"}"),
             every("UPDATE BY QUERY", "o*")
         );
         assert_eq!(unfiltered("DELETE /_all"), every("DELETE INDEX", "_all"));
         assert_eq!(unfiltered("DELETE /*"), every("DELETE INDEX", "*"));
         for filtered in [
-            "POST /o/_delete_by_query
-{\"query\":{\"term\":{\"a\":1}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"term\":{\"a\":1}}}",
             "POST /o/_delete_by_query?q=a:1",
-            "POST /o/_update_by_query
-{\"query\":{\"match_none\":{}}}",
+            "POST /o/_delete_by_query?q=a%3A1",
+            "POST /o/_update_by_query\n{\"query\":{\"match_none\":{}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"bool\":{\"filter\":{\"term\":{\"a\":1}}}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"bool\":{\"must_not\":{\"term\":{\"a\":1}}}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"bool\":{\"should\":[{\"term\":{\"a\":1}}]}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"bool\":{\"must\":{\"match_all\":{}},\"should\":{\"term\":{\"a\":1}},\"minimum_should_match\":1}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"query_string\":{\"query\":\"a:1\"}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"exists\":{\"field\":\"a\"}}}",
+            "POST /o/_delete_by_query\n{\"query\":{\"function_score\":{\"min_score\":2}}}",
             "DELETE /orders",
             "DELETE /orders/_doc/1",
             "POST /orders/_search",
             "SELECT 1",
         ] {
             assert_eq!(unfiltered(filtered), None, "{filtered}");
+        }
+    }
+
+    #[test]
+    fn encoded_parameters_and_paths_are_read_decoded() {
+        let every = |verb, index: &str| Some((verb, index.to_owned()));
+        for text in [
+            "POST /o/_delete_by_query?q=%2A",
+            "POST /o/_delete_by_query?q=*%3A*",
+            "POST /o/_delete_by_query?%71=%2A%3A%2A",
+            "POST /o/_delete_by_query?q=+*+",
+            "POST /o/_delete_by_query?q=a:1&q=*",
+            "POST /o/%5Fdelete_by_query",
+        ] {
+            assert_eq!(unfiltered(text), every("DELETE BY QUERY", "o"), "{text}");
+        }
+        assert_eq!(unfiltered("DELETE /%2A"), every("DELETE INDEX", "*"));
+        assert_eq!(unfiltered("DELETE /%5Fall"), every("DELETE INDEX", "_all"));
+        assert_eq!(kind("POST /idx/%5Fbulk\n{}"), Kind::Dml);
+        assert_eq!(kind("POST /idx/%5fsearch"), Kind::Query);
+    }
+
+    #[test]
+    fn queries_that_reach_every_document_are_unfiltered() {
+        for query in [
+            "{}",
+            "{\"match_all\":{\"boost\":2}}",
+            "{\"bool\":{}}",
+            "{\"bool\":{\"must\":[],\"filter\":[]}}",
+            "{\"bool\":{\"must\":{\"match_all\":{}}}}",
+            "{\"bool\":{\"filter\":[{\"match_all\":{}},{\"bool\":{}}]}}",
+            "{\"bool\":{\"must\":{\"match_all\":{}},\"should\":{\"term\":{\"a\":1}}}}",
+            "{\"bool\":{\"should\":[{\"term\":{\"a\":1}},{\"match_all\":{}}]}}",
+            "{\"bool\":{\"must_not\":{\"match_none\":{}}}}",
+            "{\"query_string\":{\"query\":\"*\"}}",
+            "{\"query_string\":{\"query\":\" *:* \"}}",
+            "{\"simple_query_string\":{\"query\":\"*\"}}",
+            "{\"constant_score\":{\"filter\":{\"match_all\":{}}}}",
+            "{\"function_score\":{\"functions\":[]}}",
+            "{\"dis_max\":{\"queries\":[{\"term\":{\"a\":1}},{\"match_all\":{}}]}}",
+            "{\"boosting\":{\"positive\":{\"match_all\":{}},\"negative\":{\"term\":{\"a\":1}}}}",
+            // What the server would refuse asks too.
+            "null",
+            "{\"match_all\":{},\"term\":{\"a\":1}}",
+        ] {
+            let text = format!("POST /o/_delete_by_query\n{{\"query\":{query}}}");
+            assert_eq!(
+                unfiltered(&text),
+                Some(("DELETE BY QUERY", "o".to_owned())),
+                "{query}"
+            );
         }
     }
 

@@ -21,6 +21,7 @@ mod paging;
 mod reply;
 mod session;
 mod sqlrows;
+mod target;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,6 +38,7 @@ use tokio::sync::watch;
 use crate::command::Command;
 use crate::http::{Http, Payload};
 use crate::session::{Flavor, Shared};
+use crate::target::Target;
 
 /// Options of a connection that belong to the driver: `database` is an index pattern
 /// (`logs-*`) that narrows what the navigator lists.
@@ -105,7 +107,7 @@ impl SearchConnection {
         }
         let http = Http::new(config)?;
         let reply = http
-            .call("GET", "/", Payload::None, None)
+            .call("GET", &Target::new("/")?, Payload::None, None)
             .await
             .map_err(connect_error)?;
         let root: Value = serde_json::from_str(&reply.body).map_err(|_| {
@@ -186,8 +188,11 @@ impl Connection for SearchConnection {
     }
 
     async fn check_alive(&self) -> bool {
+        let Ok(root) = Target::new("/") else {
+            return false;
+        };
         self.shared
-            .call("GET", "/", Payload::None, None)
+            .call("GET", &root, Payload::None, None)
             .await
             .is_ok()
     }

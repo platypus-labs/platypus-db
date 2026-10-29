@@ -25,6 +25,7 @@ use crate::http::Payload;
 use crate::meta::{get, top_level_fields};
 use crate::reply::{Hit, Hits, hit_docs, lead, several_indices};
 use crate::session::{Flavor, Shared};
+use crate::target::Target;
 
 /// How long the server keeps a point in time or a scroll between two pages.
 const KEEP_ALIVE: &str = "2m";
@@ -60,14 +61,19 @@ pub fn plan(request: &Request, batch_size: usize) -> Option<Plan> {
         return None;
     }
     if request
-        .query
+        .target
+        .query()
         .split('&')
         .filter(|p| !p.is_empty())
         .any(|p| !HARMLESS.contains(&p.split('=').next().unwrap_or_default()))
     {
         return None;
     }
-    let parts: Vec<&str> = request.path.split('/').filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> = request
+        .path()
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
     let index = match parts.as_slice() {
         ["_search"] => "",
         [index, "_search"] if !index.starts_with('_') || *index == "_all" => index,
@@ -198,7 +204,12 @@ impl Pager {
         };
         let reply = self
             .shared
-            .call("POST", &target, Payload::Json(&body.to_string()), None)
+            .call(
+                "POST",
+                &Target::new(&target)?,
+                Payload::Json(&body.to_string()),
+                None,
+            )
             .await?;
         let page: Page = serde_json::from_str(&reply.body)
             .map_err(|e| Error::Other(format!("unexpected search reply: {e}")))?;
@@ -242,7 +253,10 @@ async fn open(shared: &Arc<Shared>, plan: &Plan) -> Result<Mode> {
         &plan.index
     };
     let target = format!("/{index}/_pit?keep_alive={KEEP_ALIVE}");
-    match shared.call("POST", &target, Payload::None, None).await {
+    match shared
+        .call("POST", &Target::new(&target)?, Payload::None, None)
+        .await
+    {
         Ok(reply) => {
             let opened: Opened = serde_json::from_str(&reply.body)
                 .map_err(|e| Error::Other(format!("unexpected reply opening a search: {e}")))?;

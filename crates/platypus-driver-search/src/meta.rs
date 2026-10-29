@@ -11,6 +11,7 @@ use serde_json::{Map, Value};
 
 use crate::http::Payload;
 use crate::session::Shared;
+use crate::target::Target;
 
 /// Columns an index shows in the catalog, as `(name, type, comment)`.
 pub type Field = (String, String, Option<String>);
@@ -42,7 +43,9 @@ pub fn schemas(cluster: &str) -> Vec<SchemaMeta> {
 }
 
 pub async fn get(shared: &Shared, target: &str) -> Result<Value> {
-    let reply = shared.call("GET", target, Payload::None, None).await?;
+    let reply = shared
+        .call("GET", &Target::new(target)?, Payload::None, None)
+        .await?;
     serde_json::from_str(&reply.body).map_err(|e| Error::Other(format!("unexpected reply: {e}")))
 }
 

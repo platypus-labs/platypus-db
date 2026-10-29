@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 use crate::doc::collect_cells;
 use crate::http::Payload;
 use crate::session::{Flavor, Shared};
+use crate::target::Target;
 
 const TIME_ZONE: &str = "+00:00";
 /// Rows a cursor page holds at most.
@@ -310,14 +311,14 @@ pub async fn run(shared: &Arc<Shared>, sql: &str, options: &ExecOptions) -> Resu
     let size = options.batch_size.max(1);
     // A reader that takes a page at a time gets that page per request.
     let fetch = if options.paged { size } else { size.max(1000) }.min(MAX_FETCH);
-    let target = endpoint(shared.flavor).run;
+    let target = Target::new(endpoint(shared.flavor).run)?;
     let mut body = json!({ "query": sql, "fetch_size": fetch });
     if shared.flavor == Flavor::Elasticsearch {
         // An array in a column shows its first value instead of failing the statement.
         body["field_multi_value_leniency"] = json!(true);
     }
     let reply = shared
-        .call("POST", target, Payload::Json(&body.to_string()), Some(sql))
+        .call("POST", &target, Payload::Json(&body.to_string()), Some(sql))
         .await?;
     let mut reply = SqlReply::parse(&reply.body)?;
     let Some(defs) = reply.columns.take().or_else(|| reply.schema.take()) else {
@@ -350,10 +351,10 @@ async fn next_batch(mut state: State) -> Result<Option<(RecordBatch, State)>> {
             return Ok(None);
         };
         let shared = Arc::clone(&state.cursor.shared);
-        let target = endpoint(shared.flavor).run;
+        let target = Target::new(endpoint(shared.flavor).run)?;
         let body = json!({ "cursor": cursor }).to_string();
         let reply = shared
-            .call("POST", target, Payload::Json(&body), None)
+            .call("POST", &target, Payload::Json(&body), None)
             .await?;
         let mut reply = SqlReply::parse(&reply.body)?;
         state.rows = reply.rows();

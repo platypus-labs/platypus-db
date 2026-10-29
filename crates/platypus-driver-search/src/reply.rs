@@ -121,14 +121,13 @@ fn hit_table(hits: Vec<Hit>, size: usize) -> Result<Table> {
 
 /// Runs a request that is not paged, and shapes its reply.
 pub async fn run(shared: &Arc<Shared>, request: &Request, size: usize) -> Result<ExecResult> {
-    let mut target = request.target();
+    let mut target = request.target.clone();
     // `_cat` replies are text tables unless asked otherwise.
     if request.method == "GET"
         && request.segments().first().is_some_and(|s| s == "_cat")
         && request.param("format").is_none()
     {
-        target.push(if request.query.is_empty() { '?' } else { '&' });
-        target.push_str("format=json");
+        target.push_param("format", "json");
     }
     let payload = request.body.payload();
     if request.method == "HEAD" {

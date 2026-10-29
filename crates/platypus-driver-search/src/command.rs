@@ -23,6 +23,7 @@ use serde::de::IgnoredAny;
 
 use crate::http::Payload;
 pub use crate::kind::{Kind, Unfiltered, sql_kind};
+pub use crate::target::Target;
 
 /// The body of a request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,37 +52,28 @@ impl Body {
 pub struct Request {
     /// `GET`, `POST`, `PUT`, `DELETE` or `HEAD`.
     pub method: String,
-    /// The path, with a leading slash and without the query string.
-    pub path: String,
-    /// The query string, without the `?`.
-    pub query: String,
+    /// The path and query string: what the checks read is what the request is sent to.
+    pub target: Target,
     pub body: Body,
 }
 
 impl Request {
-    /// The path and query string, as the request line writes them.
+    /// The path, percent-encoded, with a leading slash and without the query string.
     #[must_use]
-    pub fn target(&self) -> String {
-        if self.query.is_empty() {
-            self.path.clone()
-        } else {
-            format!("{}?{}", self.path, self.query)
-        }
+    pub fn path(&self) -> &str {
+        self.target.path()
     }
 
-    /// The path's segments, in lower case.
+    /// The path's segments, decoded, in lower case.
     #[must_use]
     pub fn segments(&self) -> Vec<String> {
-        segments(&self.path)
+        lower(self.target.segments())
     }
 
-    /// The value of the query parameter `name`, if the request has it.
+    /// The value of the query parameter `name`, decoded, if the request has it.
     #[must_use]
-    pub fn param(&self, name: &str) -> Option<&str> {
-        self.query.split('&').find_map(|pair| {
-            let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-            (key == name).then_some(value)
-        })
+    pub fn param(&self, name: &str) -> Option<String> {
+        self.target.param(name)
     }
 }
 
@@ -98,7 +90,7 @@ impl Command {
     #[must_use]
     pub fn name(&self) -> String {
         match self {
-            Self::Request(r) => format!("{} {}", r.method, r.path),
+            Self::Request(r) => format!("{} {}", r.method, r.path()),
             Self::Sql(_) => "SQL".to_owned(),
         }
     }
@@ -106,10 +98,13 @@ impl Command {
 
 const METHODS: [&str; 5] = ["GET", "POST", "PUT", "DELETE", "HEAD"];
 
-fn segments(path: &str) -> Vec<String> {
-    path.split('/')
-        .filter(|s| !s.is_empty())
-        .map(str::to_ascii_lowercase)
+fn lower(segments: Vec<String>) -> Vec<String> {
+    segments
+        .into_iter()
+        .map(|mut s| {
+            s.make_ascii_lowercase();
+            s
+        })
         .collect()
 }
 
@@ -131,9 +126,8 @@ fn is_comment(line: &str) -> bool {
 }
 
 /// Whether the body of a request to `target` is NDJSON.
-fn ndjson_target(target: &str) -> bool {
-    let path = target.split('?').next().unwrap_or(target);
-    segments(path)
+fn ndjson_target(target: &Target) -> bool {
+    lower(target.segments())
         .iter()
         .any(|s| matches!(s.as_str(), "_bulk" | "_msearch" | "_bulk_stream"))
 }
@@ -191,7 +185,7 @@ impl Depth {
 fn request_end(src: &str, first: usize) -> usize {
     let (line, mut next) = line_at(src, first);
     let (_, target, after) = method_line(line).unwrap_or(("GET", "", ""));
-    let ndjson = ndjson_target(target);
+    let ndjson = Target::parse(target).is_ok_and(|t| ndjson_target(&t));
     let mut depth = Depth::default();
     depth.feed(after);
     let mut end = first + line.trim_end().len();
@@ -320,8 +314,7 @@ pub fn browse(index: &str) -> String {
 pub fn browse_limited(index: &str, limit: Option<u64>) -> String {
     let size = limit.map(|n| format!("\"size\":{n},")).unwrap_or_default();
     format!(
-        "GET /{}/_search
-{{{size}\"query\":{{\"match_all\":{{}}}}}}",
+        "GET /{}/_search\n{{{size}\"query\":{{\"match_all\":{{}}}}}}",
         crate::meta::segment(index)
     )
 }
@@ -333,10 +326,11 @@ pub fn source_index(text: &str) -> Option<String> {
     let Ok(Command::Request(request)) = parse(text) else {
         return None;
     };
-    let parts: Vec<&str> = request.path.split('/').filter(|s| !s.is_empty()).collect();
-    match parts.as_slice() {
-        [index, "_search"] if !index.starts_with('_') && !index.contains([',', '*']) => {
-            Some((*index).to_owned())
+    match request.target.segments().as_slice() {
+        [index, api]
+            if api == "_search" && !index.starts_with('_') && !index.contains([',', '*']) =>
+        {
+            Some(index.clone())
         }
         _ => None,
     }
@@ -375,12 +369,7 @@ pub fn parse(text: &str) -> Result<Command, String> {
 }
 
 fn request(method: &str, target: &str, after: &str, rest: &[&str]) -> Result<Command, String> {
-    let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    let path = if path.starts_with('/') {
-        path.to_owned()
-    } else {
-        format!("/{path}")
-    };
+    let target = Target::parse(target)?;
     let body_lines: Vec<&str> = std::iter::once(after)
         .chain(rest.iter().copied())
         .map(str::trim)
@@ -388,7 +377,7 @@ fn request(method: &str, target: &str, after: &str, rest: &[&str]) -> Result<Com
         .collect();
     let body = if body_lines.is_empty() {
         Body::None
-    } else if ndjson_target(&path) {
+    } else if ndjson_target(&target) {
         for (n, line) in body_lines.iter().enumerate() {
             valid_json(line).map_err(|e| format!("invalid JSON in body line {}: {e}", n + 1))?;
         }
@@ -400,8 +389,7 @@ fn request(method: &str, target: &str, after: &str, rest: &[&str]) -> Result<Com
     };
     Ok(Command::Request(Request {
         method: method.to_owned(),
-        path,
-        query: query.to_owned(),
+        target,
         body,
     }))
 }
@@ -483,14 +471,14 @@ mod tests {
         let r =
             request_of("get orders/_search?size=2&pretty\n{ \"query\":\n {\"match_all\": {}} }");
         assert_eq!(r.method, "GET");
-        assert_eq!(r.path, "/orders/_search");
-        assert_eq!(r.query, "size=2&pretty");
-        assert_eq!(r.param("size"), Some("2"));
+        assert_eq!(r.path(), "/orders/_search");
+        assert_eq!(r.target.query(), "size=2&pretty");
+        assert_eq!(r.param("size").as_deref(), Some("2"));
         assert_eq!(r.param("from"), None);
-        assert_eq!(r.target(), "/orders/_search?size=2&pretty");
+        assert_eq!(r.target.to_string(), "/orders/_search?size=2&pretty");
         assert!(matches!(r.body, Body::Json(b) if b.starts_with("{ \"query\":")));
         let r = request_of("PUT /idx");
-        assert_eq!((r.path.as_str(), &r.body), ("/idx", &Body::None));
+        assert_eq!((r.path(), &r.body), ("/idx", &Body::None));
         let r = request_of("POST /_bulk\n{\"index\":{}}\n# note\n{\"a\":1}");
         assert_eq!(
             r.body,
@@ -505,12 +493,10 @@ mod tests {
     #[test]
     fn writes_and_reads_the_browse_statement() {
         let text = browse("orders");
-        assert_eq!(
-            text,
-            "GET /orders/_search
-{\"query\":{\"match_all\":{}}}"
-        );
+        assert_eq!(text, "GET /orders/_search\n{\"query\":{\"match_all\":{}}}");
         assert_eq!(source_index(&text).as_deref(), Some("orders"));
+        // The index, decoded, as the grid's edits name it.
+        assert_eq!(source_index(&browse("my idx")).as_deref(), Some("my idx"));
         assert_eq!(source_index("GET /a,b/_search"), None);
         assert_eq!(source_index("GET /_search"), None);
         assert_eq!(source_index("SELECT 1"), None);
@@ -537,5 +523,34 @@ mod tests {
         let e = parse("POST /_bulk\n{\"index\":{}}\n{oops}").unwrap_err();
         assert!(e.contains("body line 2"), "{e}");
         assert!(parse("GET /i/_search\n{\"a\":1}\n{\"b\":2}").is_err());
+    }
+
+    #[test]
+    fn refuses_targets_the_http_layer_would_resolve_elsewhere() {
+        for text in [
+            "POST /idx/_search/../_bulk\n{\"delete\":{\"_id\":\"1\"}}",
+            "POST /idx/_search/%2e%2e/_bulk\n{\"delete\":{\"_id\":\"1\"}}",
+            "POST /idx/_search/.%2E/_delete_by_query",
+            "DELETE /idx/_doc/..",
+            "DELETE /idx/_doc/%2E",
+            "GET /idx//_search",
+            "GET http://attacker.example/x",
+            "GET //attacker.example/x",
+            "GET \\\\attacker.example\\x",
+        ] {
+            let e = parse(text).unwrap_err();
+            assert!(e.starts_with("invalid request path"), "{text}: {e}");
+            assert!(!only_reads(text), "{text}");
+        }
+        assert!(
+            parse("GET http://attacker.example/x")
+                .unwrap_err()
+                .contains("not a URL")
+        );
+        // The same request, however it is encoded, is read the one way.
+        let r = request_of("POST /%69dx/%5Fsearch/?q=%2A");
+        assert_eq!(r.path(), "/idx/_search");
+        assert_eq!(r.segments(), ["idx", "_search"]);
+        assert_eq!(r.param("q").as_deref(), Some("*"));
     }
 }
