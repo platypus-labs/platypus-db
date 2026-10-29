@@ -38,10 +38,12 @@ export class Recorder {
   async loop() {
     const { width, height } = await this.page.eval(`({ width: innerWidth, height: innerHeight })`);
     const clip = { x: 0, y: 0, width, height, scale: this.scale };
-    while (!this.stopped) {
+    // At most two minutes of frames; a page gone (the scenario failed) ends it too.
+    while (!this.stopped && this.frames.length < 1440) {
       const at = Date.now();
-      const { data } = await this.page.send("Page.captureScreenshot", { format: "png", clip });
-      this.frames.push({ at, png: Buffer.from(data, "base64") });
+      const shot = await this.page.send("Page.captureScreenshot", { format: "png", clip }).catch(() => null);
+      if (!shot) break;
+      this.frames.push({ at, png: Buffer.from(shot.data, "base64") });
       const left = this.interval - (Date.now() - at);
       if (left > 0) await this.page.sleep(left);
     }
@@ -95,19 +97,23 @@ async function center(page, selector) {
 /** Types `text` one character at a time, as a person would; a newline is Enter. */
 export async function typeSlowly(page, text, msPerKey = 45) {
   for (const ch of text) {
-    if (ch === "\n") await page.key("Enter", "Enter", 13);
-    else await page.type(ch);
+    if (ch === "\n") {
+      // Escape first: Enter would accept an open completion instead of breaking the line.
+      await page.key("Escape", "Escape", 27);
+      await page.key("Enter", "Enter", 13);
+    } else await page.type(ch);
     await page.sleep(msPerKey);
   }
 }
 
 /** The frames as a GIF with one palette, each frame only where it differs from the last. */
 function encode(frames, endMs) {
-  const images = frames.map((f) => PNG.sync.read(f.png));
-  const { width, height } = images[0];
+  // Decoded one at a time: a long recording would not fit in memory all at once.
+  const read = (i) => PNG.sync.read(frames[i].png);
+  const { width, height } = read(0);
   // One palette from a sample of the frames, with the last slot left for "unchanged".
-  const step = Math.max(1, Math.floor(images.length / 8));
-  const sample = Buffer.concat(images.filter((_, i) => i % step === 0).map((img) => img.data));
+  const step = Math.max(1, Math.floor(frames.length / 8));
+  const sample = Buffer.concat(frames.flatMap((_, i) => (i % step === 0 ? [read(i).data] : [])));
   const palette = quantize(new Uint8Array(sample.buffer, sample.byteOffset, sample.length), 255);
   const clear = palette.length;
   const fullPalette = [...palette, [255, 0, 255]];
@@ -123,8 +129,9 @@ function encode(frames, endMs) {
       dispose: 1,
     });
   };
-  for (let i = 0; i < images.length; i++) {
-    const index = applyPalette(new Uint8Array(images[i].data.buffer, images[i].data.byteOffset, images[i].data.length), palette);
+  for (let i = 0; i < frames.length; i++) {
+    const { data } = read(i);
+    const index = applyPalette(new Uint8Array(data.buffer, data.byteOffset, data.length), palette);
     let changed = previous === null;
     const out = previous === null ? index : new Uint8Array(index.length);
     if (previous !== null) {
