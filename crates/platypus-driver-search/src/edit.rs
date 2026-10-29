@@ -58,6 +58,18 @@ const REFRESH: &str = "refresh=wait_for";
 const REPLACE_FIELDS: &str =
     "for (e in params.set.entrySet()) { ctx._source[e.getKey()] = e.getValue(); }";
 
+/// An `_id` a request path can name: not `.` or `..`, which a path cannot have as a segment
+/// however it is encoded ([`crate::command::Target`]).
+fn path_id(id: &str) -> Result<&str, String> {
+    if matches!(id, "." | "..") {
+        Err(format!(
+            "the _id `{id}` cannot be written in a request path: change that document with a POST /_bulk request"
+        ))
+    } else {
+        Ok(id)
+    }
+}
+
 /// A document id in a path.
 fn encode_id(id: &str) -> String {
     let mut out = String::new();
@@ -140,9 +152,11 @@ impl<'a> Row<'a> {
         if !self.edits.columns.iter().any(|c| c == "_id") {
             return Err("the result has no _id column: edit the documents of an index".to_owned());
         }
-        self.text("_id")
+        let id = self
+            .text("_id")
             .filter(|id| !id.is_empty())
-            .ok_or_else(|| "the document has no _id".to_owned())
+            .ok_or_else(|| "the document has no _id".to_owned())?;
+        path_id(id)
     }
 
     /// The index the row's document is in.
@@ -250,6 +264,7 @@ pub fn script(edits: &Edits<'_>) -> Result<Script, String> {
         let index = row.index();
         let fields = Value::Object(row.fields(false)?);
         if let Some(id) = row.text("_id").filter(|id| !id.is_empty()) {
+            let id = path_id(id)?;
             commands.push(request(
                 "PUT",
                 &target(index, "_create", Some(id)),
@@ -309,13 +324,15 @@ mod tests {
         let s = script(&e).unwrap();
         assert_eq!(
             s.commands,
-            [r#"POST /orders/_update/a%2F1?refresh=wait_for
-{"doc":{"note":null,"paid":true,"total":7}}"#]
+            [
+                "POST /orders/_update/a%2F1?refresh=wait_for\n{\"doc\":{\"note\":null,\"paid\":true,\"total\":7}}"
+            ]
         );
         assert_eq!(
             s.undo,
-            [r#"POST /orders/_update/a%2F1?refresh=wait_for
-{"doc":{"note":"hi","paid":false,"total":5}}"#]
+            [
+                "POST /orders/_update/a%2F1?refresh=wait_for\n{\"doc\":{\"note\":\"hi\",\"paid\":false,\"total\":5}}"
+            ]
         );
         // The statements parse as the editor reads them.
         for text in s.commands.iter().chain(&s.undo) {
@@ -391,5 +408,46 @@ mod tests {
         let mut e = edits(&columns, &types);
         e.deletes.push(vec![some("1")]);
         assert!(script(&e).unwrap_err().contains("no _id column"));
+    }
+
+    #[test]
+    fn refuses_ids_a_path_cannot_name() {
+        let columns = names(&["_id", "total"]);
+        let types = names(&["string", "long"]);
+        for id in [".", ".."] {
+            let mut e = edits(&columns, &types);
+            e.deletes.push(vec![some(id), some("1")]);
+            assert!(script(&e).unwrap_err().contains("POST /_bulk"), "{id}");
+            let mut e = edits(&columns, &types);
+            e.updates.push(Update {
+                loaded: vec![some(id), some("1")],
+                set: vec![(1, some("2"))],
+            });
+            assert!(
+                script(&e).unwrap_err().contains("cannot be written"),
+                "{id}"
+            );
+            let mut e = edits(&columns, &types);
+            e.inserts.push(vec![(0, some(id)), (1, some("2"))]);
+            assert!(
+                script(&e).unwrap_err().contains("cannot be written"),
+                "{id}"
+            );
+        }
+        // Dots elsewhere in an id are fine, and the request names that document.
+        let mut e = edits(&columns, &types);
+        e.deletes.push(vec![some("..."), some("1")]);
+        e.deletes.push(vec![some("a.b"), some("1")]);
+        let s = script(&e).unwrap();
+        for (text, path) in s
+            .commands
+            .iter()
+            .zip(["/orders/_doc/...", "/orders/_doc/a.b"])
+        {
+            let Command::Request(r) = parse(text).unwrap() else {
+                panic!()
+            };
+            assert_eq!(r.path(), path);
+        }
     }
 }
