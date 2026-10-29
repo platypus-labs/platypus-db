@@ -43,11 +43,12 @@ export function AgentContextDialog() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [summary, setSummary] = useState<ContextSummary | null>(null);
+  const open = first !== undefined;
   useEffect(() => {
-    if (!first) return;
+    if (!open) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [first]);
+  }, [open]);
   // Each request starts without the reason typed for the one before, and reads the tab anew.
   const id = first?.request.id;
   const parts = first?.request.parts;

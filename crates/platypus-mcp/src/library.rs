@@ -250,12 +250,7 @@ impl Agent {
         let store = self.profile().connections()?;
         let ids = match &args.connection {
             Some(name) => vec![self.find(name)?.1.id],
-            None => store
-                .list()
-                .iter()
-                .filter(|c| c.effective_agent_access() != AgentAccess::Off)
-                .map(|c| c.id)
-                .collect(),
+            None => self.visible()?.0.into_keys().collect(),
         };
         let limit = args
             .limit

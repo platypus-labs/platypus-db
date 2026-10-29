@@ -40,7 +40,7 @@ pub struct SharedContext {
 }
 
 /// `text` cut to at most `max` bytes at a character boundary; `true` when it was cut.
-fn cut(text: String, max: usize) -> (String, bool) {
+fn cut(mut text: String, max: usize) -> (String, bool) {
     if text.len() <= max {
         return (text, false);
     }
@@ -48,7 +48,8 @@ fn cut(text: String, max: usize) -> (String, bool) {
     while !text.is_char_boundary(end) {
         end -= 1;
     }
-    (text[..end].to_owned(), true)
+    text.truncate(end);
+    (text, true)
 }
 
 /// `context` limited to the `parts` asked for and to the sizes above.
