@@ -369,3 +369,86 @@
   margin-top: 6px;
   max-height: 220px;
 }
+
+/* Scheduled tasks: the list with each task's runs below it, and the form of one. */
+.schedules-dialog {
+  width: min(980px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.schedules-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.schedules-list td {
+  vertical-align: top;
+  white-space: normal;
+}
+
+.schedule-row.disabled strong {
+  color: var(--fg-muted);
+}
+
+.schedule-name {
+  gap: 6px;
+}
+
+.schedule-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.schedule-runs ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 8px 22px;
+  display: grid;
+  gap: 4px;
+}
+
+.schedule-runs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.schedule-file {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+
+.schedule-form textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.schedule-form .schedule-when {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.schedule-form .schedule-days {
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.schedule-day input {
+  width: 90px;
+}

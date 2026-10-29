@@ -259,6 +259,51 @@ export interface BackupRequest {
   structure_only: boolean;
 }
 
+/** What a scheduled task does; see `scheduler::plan::Task`. */
+export type ScheduleTask =
+  | { kind: "script"; path: string }
+  | { kind: "export"; sql: string; format: "csv" | "json" | "parquet" | "xlsx" }
+  | { kind: "backup"; format: "custom" | "plain"; schema?: string | null };
+
+/** How often a task runs; days of the week are 1 (Monday) to 7. */
+export type ScheduleRepeat = { every: "hour" } | { every: "day" } | { every: "week"; days: number[] } | { every: "month"; day: number };
+
+/** A scheduled task; see `scheduler::plan::Schedule`. */
+export interface Schedule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  connection_id: string;
+  database: string | null;
+  task: ScheduleTask;
+  repeat: ScheduleRepeat;
+  /** `HH:MM`, in `timezone` (empty: the system's). */
+  time: string;
+  timezone: string;
+  folder: string | null;
+  /** Files kept in the folder, the newest; 0 keeps all. */
+  keep: number;
+  retries: number;
+  retry_minutes: number;
+}
+
+export interface ScheduleRun {
+  started: string;
+  finished: string;
+  ok: boolean;
+  message: string;
+  file: string | null;
+  attempt: number;
+  manual: boolean;
+}
+
+/** A task with when it runs next and its last runs, the newest first. */
+export interface ScheduleView extends Schedule {
+  next: string | null;
+  runs: ScheduleRun[];
+  running: boolean;
+}
+
 /** The upkeep of a table; see `platypus_core::Maintenance`. */
 export type Maintenance = "vacuum" | "analyze" | "reindex" | "optimize" | "check";
 
@@ -1698,6 +1743,13 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<void>("backup_database", { sessionId, runId, request, onEvent: channel });
   },
+  listSchedules: () => invoke<ScheduleView[]>("list_schedules"),
+  /** Saves a task, new or changed; returns them all. */
+  saveSchedule: (schedule: Schedule) => invoke<ScheduleView[]>("save_schedule", { schedule }),
+  deleteSchedule: (id: string) => invoke<ScheduleView[]>("delete_schedule", { id }),
+  /** Runs a task now; the list hears when it starts and ends (`schedules-changed`). */
+  runScheduleNow: (id: string) => invoke<void>("run_schedule_now", { id }),
+  timeZones: () => invoke<string[]>("time_zones"),
   /** Restores a backup into the session's database; `cancelCli(runId)` stops it. */
   restoreDatabase: (sessionId: number, runId: number, request: { path: string; clean: boolean }, onEvent: (e: BackupEvent) => void) => {
     const channel = new Channel<BackupEvent>();

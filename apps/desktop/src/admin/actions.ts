@@ -1,6 +1,6 @@
 // The navigator's administration actions: "Maintenance" in the menu of a table (the
 // operations of its database, each asked first in a dialog that then shows what the server
-// said), and "Back up…" and "Restore…" of a database or schema.
+// said), "Back up…" and "Restore…" of a database or schema, and the scheduled tasks.
 import { createElement } from "react";
 import { registerAction } from "../actions";
 import type { DriverKind, Maintenance, SavedConnection } from "../api";
@@ -8,6 +8,7 @@ import { msg } from "../i18n";
 import { workbench } from "../workbench";
 import { BackupDialog, type BackupMode } from "./BackupDialog";
 import { MaintenanceDialog } from "./MaintenanceDialog";
+import { SchedulesDialog } from "./SchedulesDialog";
 
 /** The operations of each database's driver (`Capabilities::maintenance`), known before a
  *  session is open. */
@@ -88,4 +89,23 @@ registerAction({
   // MySQL's schemas are databases: the connection's own is backed up from its menu.
   when: ({ connection, schema }) => connection.driver === "postgres" && !schema.system,
   run: ({ connection, database, schema }) => openBackup("backup", connection, database, schema.name),
+});
+
+const openSchedules = (connectionId?: string) =>
+  workbench().openDialog((close) => createElement(SchedulesDialog, { connectionId, onClose: close }));
+
+registerAction({
+  id: "app.schedules",
+  scope: "global",
+  title: "Scheduled tasks…",
+  run: () => openSchedules(),
+});
+
+registerAction({
+  id: "connection.schedule",
+  scope: "navigator.connection",
+  title: "Schedule a task…",
+  group: "open",
+  order: 28,
+  run: ({ connection }) => openSchedules(connection.id),
 });
