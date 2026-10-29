@@ -19,12 +19,19 @@ export interface WriteRequest {
   plan: string | null;
 }
 
-/** The user's answer (`platypus_mcp::Verdict`). */
-export type Verdict = { answer: "once" } | { answer: "session" } | { answer: "deny"; reason: string | null };
+/** A refusal, with the reason when the user typed one. */
+export interface Denial {
+  answer: "deny";
+  reason: string | null;
+}
 
-/** A request in the queue, with when the app got it. */
-export interface Waiting {
-  request: WriteRequest;
+/** The user's answer (`platypus_mcp::Verdict`). */
+export type Verdict = { answer: "once" } | { answer: "session" } | Denial;
+
+/** A request in the queue, with when the app got it: a change, or (`context.ts`) a look at
+ *  the user's work. */
+export interface Waiting<R extends { id: string } = WriteRequest> {
+  request: R;
   /** `Date.now()` when it arrived. */
   since: number;
 }
@@ -33,12 +40,12 @@ export interface Waiting {
 export const ANSWER_MS = 300_000;
 
 /** `queue` with `request` at its end, unless it is there already. */
-export function enqueue(queue: readonly Waiting[], request: WriteRequest, now: number): Waiting[] {
+export function enqueue<R extends { id: string }>(queue: readonly Waiting<R>[], request: R, now: number): Waiting<R>[] {
   return queue.some((w) => w.request.id === request.id) ? [...queue] : [...queue, { request, since: now }];
 }
 
 /** `queue` without the request `id`. */
-export function settle(queue: readonly Waiting[], id: string): Waiting[] {
+export function settle<R extends { id: string }>(queue: readonly Waiting<R>[], id: string): Waiting<R>[] {
   return queue.filter((w) => w.request.id !== id);
 }
 
@@ -56,7 +63,7 @@ export function estimatedRows(rows: number | null): number | null {
 }
 
 /** The verdict of a refusal, with its reason when one was typed. */
-export function denial(reason: string): Verdict {
+export function denial(reason: string): Denial {
   const trimmed = reason.trim();
   return { answer: "deny", reason: trimmed ? trimmed : null };
 }

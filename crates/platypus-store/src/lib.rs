@@ -16,6 +16,7 @@ mod connections;
 mod history;
 mod import;
 mod schema_history;
+mod scripts;
 mod secrets;
 mod settings;
 mod sqlite;
@@ -23,7 +24,7 @@ mod vault;
 
 pub use agent_calls::{
     AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
-    NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv,
+    NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv, rfc3339,
 };
 pub use auth::{
     command_password, external_password, external_password_quiet, pgpass_password, pgpass_path,
@@ -46,6 +47,10 @@ pub use import::{
 };
 pub use schema_history::{
     NewSnapshot, SchemaHistoryStore, Snapshot, SnapshotHow, SnapshotMeta, SnapshotOutcome,
+};
+pub use scripts::{
+    LINKS_FILE, ScriptEntry, ScriptText, list_scripts, read_links as read_script_links,
+    read_script, relative as script_relative, resolve as resolve_script,
 };
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;

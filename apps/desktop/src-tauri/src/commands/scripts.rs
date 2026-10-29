@@ -7,25 +7,18 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
+use platypus_store::{
+    LINKS_FILE, ScriptEntry, list_scripts as walk_scripts, read_script_links as read_links,
+    resolve_script, script_relative as relative,
+};
 use serde::Serialize;
 use tauri::State;
 use uuid::Uuid;
 
 use super::AppState;
 use crate::error::{CommandError, CommandResult};
-
-const LINKS: &str = ".links.json";
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct ScriptEntry {
-    /// Relative path, e.g. `reports/monthly.sql`.
-    path: String,
-    folder: bool,
-    /// The connection the script opens on.
-    connection: Option<Uuid>,
-}
 
 #[derive(Debug, Serialize)]
 pub struct ScriptList {
@@ -52,81 +45,21 @@ pub(super) fn root(state: &AppState, project: Option<Uuid>) -> CommandResult<Pat
 
 /// `rel` under `root`; only plain names, so the web view cannot reach outside the folder.
 fn resolve(root: &Path, rel: &str) -> CommandResult<PathBuf> {
-    let path = Path::new(rel);
-    let plain = path.components().all(|c| matches!(c, Component::Normal(_)));
-    if !plain || rel.is_empty() || rel == LINKS {
-        return Err(CommandError::new(
-            "invalid",
-            format!("not a script path: {rel}"),
-        ));
-    }
-    Ok(root.join(path))
-}
-
-fn relative(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn read_links(root: &Path) -> BTreeMap<String, Uuid> {
-    fs::read_to_string(root.join(LINKS))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+    resolve_script(root, rel)
+        .ok_or_else(|| CommandError::new("invalid", format!("not a script path: {rel}")))
 }
 
 fn write_links(root: &Path, links: &BTreeMap<String, Uuid>) -> CommandResult<()> {
-    let path = root.join(LINKS);
+    let path = root.join(LINKS_FILE);
     let text =
         serde_json::to_string_pretty(links).map_err(|e| CommandError::new("io", e.to_string()))?;
     fs::write(&path, text).map_err(|e| io(&path, &e))
 }
 
-fn walk(root: &Path, dir: &Path, links: &BTreeMap<String, Uuid>, out: &mut Vec<ScriptEntry>) {
-    let Ok(read) = fs::read_dir(dir) else {
-        return;
-    };
-    let mut items: Vec<(bool, PathBuf)> = read
-        .flatten()
-        .map(|e| (e.path().is_dir(), e.path()))
-        .filter(|(folder, p)| {
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            !name.starts_with('.')
-                && (*folder || p.extension().is_some_and(|e| e.eq_ignore_ascii_case("sql")))
-        })
-        .collect();
-    items.sort_by_key(|(folder, p)| {
-        (
-            !folder,
-            p.file_name().map(|n| n.to_string_lossy().to_lowercase()),
-        )
-    });
-    for (folder, path) in items {
-        let rel = relative(root, &path);
-        out.push(ScriptEntry {
-            connection: links.get(&rel).copied(),
-            path: rel,
-            folder,
-        });
-        if folder {
-            walk(root, &path, links, out);
-        }
-    }
-}
-
 fn list(root: &Path) -> ScriptList {
-    let mut entries = Vec::new();
-    walk(root, root, &read_links(root), &mut entries);
     ScriptList {
         root: root.to_owned(),
-        entries,
+        entries: walk_scripts(root),
     }
 }
 
@@ -359,7 +292,7 @@ mod tests {
     #[test]
     fn stays_inside_the_folder() {
         let dir = tempfile::tempdir().unwrap();
-        for bad in ["../x.sql", "/etc/passwd", "a/../../b", LINKS, ""] {
+        for bad in ["../x.sql", "/etc/passwd", "a/../../b", LINKS_FILE, ""] {
             assert!(resolve(dir.path(), bad).is_err(), "{bad}");
         }
         assert!(create(dir.path(), "..", "x", None).is_err());

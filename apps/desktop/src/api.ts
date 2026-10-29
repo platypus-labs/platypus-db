@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
+import type { ContextRequest, ContextVerdict } from "./agents/context";
 import type { Verdict, WriteRequest } from "./agents/writes";
 
 export type DriverKind =
@@ -1695,6 +1696,10 @@ export const api = {
   answerAgentWrite: (id: string, verdict: Verdict) => invoke<boolean>("answer_agent_write", { id, verdict }),
   /** The changes waiting for an answer, the oldest first, with how long each has waited. */
   agentWritesWaiting: () => invoke<{ request: WriteRequest; waited_ms: number }[]>("agent_writes_waiting"),
+  /** Answers an agent's request to see the user's work; `false` when it no longer waits. */
+  answerAgentContext: (id: string, verdict: ContextVerdict) => invoke<boolean>("agent_answer_context", { id, verdict }),
+  /** The requests to see the user's work waiting for an answer, the oldest first. */
+  agentContextsWaiting: () => invoke<{ request: ContextRequest; waited_ms: number }[]>("agent_contexts_waiting"),
   connectedAgents: () => invoke<ConnectedAgent[]>("connected_agents"),
   staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
   agentClients: () => invoke<AgentClient[]>("agent_clients"),

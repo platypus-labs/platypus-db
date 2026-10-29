@@ -1586,6 +1586,14 @@ label.multi-run-row:hover {
   width: 90px;
 }
 
+.agent-context-items {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.agent-context-items li {
+  margin: 4px 0;
+}
+
 /* The create dialog for views, sequences, functions and triggers: tall forms scroll. */
 .modal.object-form {
   max-height: calc(100vh - 48px);

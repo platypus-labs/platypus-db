@@ -132,7 +132,7 @@ fn fake_app(dir: &Path, verdicts: Vec<&'static str>) -> Received {
             let path = head.split_whitespace().nth(1).unwrap().to_owned();
             let (status, answer) = if head.contains("Authorization: Bearer t0ken") {
                 match path.as_str() {
-                    "/v1/confirm" => (200, verdicts.next().unwrap().to_owned()),
+                    "/v1/confirm" | "/v1/context" => (200, verdicts.next().unwrap().to_owned()),
                     "/v1/sessions" => (
                         200,
                         r#"[{"connection":"Scratch","database":null,"purpose":"main","manual_commit":true,"transaction_open":false}]"#
@@ -236,6 +236,10 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "explain",
         "propose_sql",
         "list_open_sessions",
+        "get_user_context",
+        "list_scripts",
+        "read_script",
+        "search_history",
     ] {
         assert!(names.contains(&tool), "{tool} missing from {names:?}");
     }
@@ -509,6 +513,75 @@ fn serves_the_tools_over_stdio() {
     assert_eq!(agents, 17);
 }
 
+/// `get_user_context` asks the app: closed it is an error, a refusal carries the user's
+/// reason, a share is returned within the limits, and a tab on a connection closed to
+/// agents is not returned at all.
+#[test]
+fn shares_what_the_user_works_on_only_with_consent() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let (closed, error) = client.call("get_user_context", &json!({}));
+    assert!(error && closed.contains("not open"), "{closed}");
+
+    // As the page sends it: the first 100 rows of a result of 150.
+    let rows: Vec<String> = (0..100).map(|i| format!("[\"{i}\",null]")).collect();
+    let shared = Box::leak(
+        format!(
+            r#"{{"answer":"once","context":{{"connection":"App db","connection_id":"00000000-0000-4000-8000-000000000001","tab":"Orders","editor":"SELECT 1","selection":"1","result":{{"columns":["n","m"],"rows":[{}],"truncated":true,"total_rows":150}}}}}}"#,
+            rows.join(",")
+        )
+        .into_boxed_str(),
+    );
+    let app = fake_app(
+        dir.path(),
+        vec![
+            r#"{"answer":"deny","reason":"private"}"#,
+            shared,
+            r#"{"answer":"session","context":{"connection":"Hidden","connection_id":"00000000-0000-4000-8000-000000000003","editor":"SELECT secret"}}"#,
+        ],
+    );
+    let (denied, error) = client.call("get_user_context", &json!({}));
+    assert!(error && denied.contains("private"), "{denied}");
+
+    let (text, error) = client.call(
+        "get_user_context",
+        &json!({ "parts": ["editor", "result"] }),
+    );
+    assert!(!error, "{text}");
+    let context: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(context["tab"], "Orders");
+    assert_eq!(context["editor"], "SELECT 1");
+    assert_eq!(context["selection"], Value::Null, "not asked for");
+    assert_eq!(context["result"]["rows"].as_array().unwrap().len(), 100);
+    assert_eq!(context["result"]["truncated"], true);
+    assert_eq!(context["result"]["rows"][1], json!(["1", null]));
+    assert!(
+        context["notes"][0]
+            .as_str()
+            .unwrap()
+            .contains("cut to 100 of its 150 rows"),
+        "{text}"
+    );
+
+    let (hidden, error) = client.call("get_user_context", &json!({}));
+    assert!(error && hidden.contains("not open to agents"), "{hidden}");
+    assert!(!hidden.contains("secret"), "{hidden}");
+
+    let asked: Vec<Value> = app
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(path, _)| path == "/v1/context")
+        .map(|(_, body)| serde_json::from_str(body).unwrap())
+        .collect();
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    assert_eq!(asked[0]["agent"], "test-agent");
+    assert_eq!(asked[0]["parts"], json!(["editor", "selection", "result"]));
+    assert_eq!(asked[1]["parts"], json!(["editor", "result"]));
+    assert_eq!(asked[0]["session"], asked[1]["session"]);
+}
+
 /// `sample_rows` reads the first rows of a table within the limits; `explain` shows the
 /// plan of a statement allowed by the access, running it only with analyze.
 #[test]
@@ -722,4 +795,511 @@ fn an_unknown_argument_prints_the_usage_and_fails() {
         "{stderr}"
     );
     assert_eq!(output.stdout, b"");
+}
+
+/// Connections, schemas and tables are MCP resources: listed without opening a database,
+/// read as the JSON the tools return, and logged like a tool call.
+#[test]
+fn serves_schemas_and_tables_as_resources() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        r#"CREATE TABLE "my table/x" (k INTEGER PRIMARY KEY, "odd col" TEXT);"#,
+    );
+    let mut client = initialized(dir.path());
+
+    let list = client.request("resources/list", &json!({}));
+    let resources = list["result"]["resources"].as_array().unwrap();
+    let listed: Vec<(&str, &str)> = resources
+        .iter()
+        .map(|r| (r["name"].as_str().unwrap(), r["uri"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("App db", "platypus://App%20db"),
+            ("Scratch", "platypus://Scratch"),
+            ("Remote PG", "platypus://Remote%20PG"),
+        ],
+        "the hidden connection is left out: {list}"
+    );
+    assert_eq!(resources[0]["mimeType"], "application/json");
+    assert!(
+        resources[0]["description"]
+            .as_str()
+            .unwrap()
+            .contains("sqlite"),
+        "{list}"
+    );
+
+    let templates = client.request("resources/templates/list", &json!({}));
+    let templates: Vec<&str> = templates["result"]["resourceTemplates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["uriTemplate"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        templates,
+        [
+            "platypus://{connection}/{schema}",
+            "platypus://{connection}/{schema}/{table}"
+        ]
+    );
+
+    let mut read = |uri: &str| {
+        let response = client.request("resources/read", &json!({ "uri": uri }));
+        match response["result"]["contents"][0].clone() {
+            Value::Null => Err(response["error"]["message"].as_str().unwrap().to_owned()),
+            content => {
+                assert_eq!(content["mimeType"], "application/json", "{response}");
+                assert_eq!(content["uri"], uri, "{response}");
+                Ok(content["text"].as_str().unwrap().to_owned())
+            }
+        }
+    };
+    let schemas = read("platypus://App%20db").unwrap();
+    assert!(schemas.contains(r#""name":"main""#), "{schemas}");
+    let objects = read("platypus://App%20db/main").unwrap();
+    assert!(objects.contains(r#""name":"t""#), "{objects}");
+    assert!(objects.contains("my table/x"), "{objects}");
+    let table: Value = serde_json::from_str(&read("platypus://App%20db/main/t").unwrap()).unwrap();
+    assert_eq!(table["columns"][0]["name"], "id");
+    assert_eq!(table["columns"][1]["name"], "name");
+    // A name that needs escapes round-trips.
+    let odd: Value =
+        serde_json::from_str(&read("platypus://App%20db/main/my%20table%2Fx").unwrap()).unwrap();
+    assert_eq!(odd["columns"][1]["name"], "odd col");
+
+    // A bad uri names the forms; an agent error is passed on as its text.
+    for bad in [
+        "file:///etc/passwd",
+        "platypus://App%20db/main/t/extra",
+        "platypus://",
+    ] {
+        let error = read(bad).unwrap_err();
+        assert!(error.contains("platypus://<connection>"), "{bad}: {error}");
+    }
+    let hidden = read("platypus://Hidden").unwrap_err();
+    assert!(hidden.contains("Hidden"), "{hidden}");
+    let missing = read("platypus://App%20db/main/nope").unwrap_err();
+    assert!(
+        missing.contains("no table or view `main.nope`"),
+        "{missing}"
+    );
+
+    drop(client);
+    resource_reads_are_logged(dir.path());
+}
+
+/// Each read of a resource is in the call log, as `read_resource` with its connection.
+fn resource_reads_are_logged(dir: &Path) {
+    let log = rusqlite::Connection::open(dir.join("agent-calls.db")).unwrap();
+    let calls: Vec<(String, Option<String>, String, String)> = log
+        .prepare("SELECT tool, connection, arguments, status FROM calls ORDER BY id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    // Unparsable uris are refused before they count as a call.
+    assert_eq!(calls.len(), 6, "{calls:?}");
+    assert!(calls.iter().all(|c| c.0 == "read_resource"));
+    assert_eq!(calls[0].1.as_deref(), Some("App db"));
+    assert_eq!(
+        calls[0].2,
+        r#"{"uri":"platypus://App%20db","connection":"App db"}"#
+    );
+    assert_eq!(calls[0].3, "ok");
+    assert_eq!(calls[4].1.as_deref(), Some("Hidden"));
+    assert_eq!(calls[4].3, "error");
+    assert_eq!(calls[5].3, "error");
+}
+
+/// Connections that share a name get their id in the resource uri; one name stays a name.
+#[test]
+fn resources_of_connections_with_the_same_name_use_the_id() {
+    use std::fmt::Write as _;
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("dup.db"),
+        "CREATE TABLE only_in_dup (id INTEGER PRIMARY KEY);",
+    );
+    let toml = dir.path().join("connections.toml");
+    let mut text = std::fs::read_to_string(&toml).unwrap();
+    write!(
+        text,
+        "\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000005\"\nname = \"Scratch\"\n\
+         driver = \"sqlite\"\ndatabase = '{}'\n",
+        dir.path().join("dup.db").display()
+    )
+    .unwrap();
+    std::fs::write(&toml, text).unwrap();
+    let mut client = initialized(dir.path());
+
+    let list = client.request("resources/list", &json!({}));
+    let uris: Vec<&str> = list["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["uri"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        uris,
+        [
+            "platypus://App%20db",
+            "platypus://00000000-0000-4000-8000-000000000002",
+            "platypus://Remote%20PG",
+            "platypus://00000000-0000-4000-8000-000000000005",
+        ],
+        "{list}"
+    );
+    let mut read = |uri: &str| {
+        let response = client.request("resources/read", &json!({ "uri": uri }));
+        response["result"]["contents"][0]["text"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| response["error"]["message"].as_str().unwrap().to_owned())
+    };
+    let first = read(uris[1]).unwrap();
+    let second = read(uris[3]).unwrap();
+    assert!(first.contains("main") && second.contains("main"));
+    let tables = read(&format!("{}/main", uris[3])).unwrap();
+    assert!(tables.contains("only_in_dup"), "{tables}");
+    let tables = read(&format!("{}/main", uris[1])).unwrap();
+    assert!(!tables.contains("only_in_dup"), "{tables}");
+    let by_name = read("platypus://Scratch").unwrap_err();
+    assert!(by_name.contains("several"), "{by_name}");
+}
+
+/// A linked script is as hidden under any alias of its file as under its own path.
+#[cfg(unix)]
+#[test]
+fn a_symlink_to_a_hidden_script_does_not_read() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    scripts(dir.path());
+    let all = dir.path().join("scripts/all");
+    let link =
+        |target: &str, name: &str| std::os::unix::fs::symlink(target, all.join(name)).unwrap();
+    link("hidden.sql", "alias.sql");
+    link("private", "dirlink");
+    link(".", "self");
+    link("top.sql", "visible-alias.sql");
+    let mut client = initialized(dir.path());
+    for path in [
+        "alias.sql",
+        "dirlink/secret.sql",
+        "self/hidden.sql",
+        "self/self/hidden.sql",
+    ] {
+        let (refused, error) = client.call("read_script", &json!({ "path": path }));
+        assert!(error, "{path}: {refused}");
+        assert!(
+            !refused.contains("SELECT 'hidden'") && !refused.contains("SELECT 'secret'"),
+            "{path}"
+        );
+    }
+    // The alias of a script agents may read still reads, with its connection.
+    let (read, error) = client.call("read_script", &json!({ "path": "visible-alias.sql" }));
+    assert!(!error, "{read}");
+    let read: Value = serde_json::from_str(&read).unwrap();
+    assert_eq!(read["text"], "SELECT * FROM t");
+    assert_eq!(read["connection"], "App db");
+}
+
+/// The statements are redacted like the errors are.
+#[test]
+fn history_sql_is_redacted() {
+    use platypus_store::{HistoryStatus, HistoryStore, NewHistoryEntry};
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let history = HistoryStore::open(&dir.path().join("history.db")).unwrap();
+    for sql in ["SELECT 'echo hunter2'", "SELECT 2"] {
+        history
+            .record(&NewHistoryEntry {
+                connection_id: uuid::Uuid::parse_str("00000000-0000-4000-8000-000000000004")
+                    .unwrap(),
+                sql: sql.to_owned(),
+                started_at: std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+                duration: Duration::from_millis(1),
+                rows: Some(1),
+                status: HistoryStatus::Ok,
+                error: None,
+                origin: None,
+            })
+            .unwrap();
+    }
+    drop(history);
+    let mut client = initialized(dir.path());
+    let (text, error) = client.call("search_history", &json!({}));
+    assert!(!error, "{text}");
+    assert!(!text.contains("echo hunter2"), "{text}");
+    assert!(
+        text.contains("SELECT '***'") && text.contains("SELECT 2"),
+        "{text}"
+    );
+}
+
+const SALES: &str = "00000000-0000-4000-8000-0000000000a1";
+
+/// The saved scripts of the profile: All connections has scripts on every kind of
+/// connection, and the project Sales one on the production connection.
+fn scripts(dir: &Path) {
+    use std::fmt::Write as _;
+    let toml = dir.join("connections.toml");
+    let mut text = std::fs::read_to_string(&toml).unwrap();
+    write!(
+        text,
+        "\n[[projects]]\nid = \"{SALES}\"\nname = \"Sales\"\ncolor = \"#d08f20\"\n"
+    )
+    .unwrap();
+    std::fs::write(&toml, text).unwrap();
+    let id = |n: u32| format!("00000000-0000-4000-8000-00000000000{n}");
+    let all = dir.join("scripts/all");
+    for (rel, text) in [
+        ("top.sql", "SELECT * FROM t"),
+        ("plain.sql", "SELECT 1"),
+        ("hidden.sql", "SELECT 'hidden'"),
+        ("gone.sql", "SELECT 'deleted connection'"),
+        ("reports/monthly.sql", "SELECT count(*) FROM t"),
+        ("private/secret.sql", "SELECT 'secret'"),
+        ("notes.txt", "not a script"),
+        (".draft.sql", "SELECT 'draft'"),
+    ] {
+        let path = all.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    // Past the cap of 256 KiB, with a two-byte letter on the boundary.
+    std::fs::write(all.join("big.sql"), "é".repeat(140_000)).unwrap();
+    let links = json!({
+        "top.sql": id(1),
+        "hidden.sql": id(3),
+        "gone.sql": "00000000-0000-4000-8000-0000000000ff",
+        "reports/monthly.sql": id(2),
+        "private/secret.sql": id(3),
+    });
+    std::fs::write(all.join(".links.json"), links.to_string()).unwrap();
+    let sales = dir.join("scripts").join(SALES);
+    std::fs::create_dir_all(&sales).unwrap();
+    std::fs::write(sales.join("pipeline.sql"), "SELECT 'pipeline'").unwrap();
+    std::fs::write(
+        sales.join(".links.json"),
+        json!({ "pipeline.sql": id(4) }).to_string(),
+    )
+    .unwrap();
+}
+
+fn entries(list: &str) -> Vec<(String, bool, Option<String>)> {
+    let list: Value = serde_json::from_str(list).unwrap();
+    list.as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["path"].as_str().unwrap().to_owned(),
+                e["folder"].as_bool().unwrap(),
+                e["connection"].as_str().map(str::to_owned),
+            )
+        })
+        .collect()
+}
+
+fn lists_and_reads_saved_scripts(client: &mut Client) {
+    let some = |name: &str| Some(name.to_owned());
+    let (list, error) = client.call("list_scripts", &json!({}));
+    assert!(!error, "{list}");
+    // Scripts of an access-off or deleted connection are gone, with the folder they emptied.
+    assert_eq!(
+        entries(&list),
+        [
+            ("reports".to_owned(), true, None),
+            ("reports/monthly.sql".to_owned(), false, some("Scratch")),
+            ("big.sql".to_owned(), false, None),
+            ("plain.sql".to_owned(), false, None),
+            ("top.sql".to_owned(), false, some("App db")),
+        ]
+    );
+    for hidden in ["hidden", "gone", "private", "secret", "notes", "draft"] {
+        assert!(!list.contains(hidden), "{hidden} in {list}");
+    }
+
+    let (list, error) = client.call("list_scripts", &json!({ "project": "sales" }));
+    assert!(!error, "{list}");
+    assert_eq!(
+        entries(&list),
+        [("pipeline.sql".to_owned(), false, some("Remote PG"))]
+    );
+    let (unknown, error) = client.call("list_scripts", &json!({ "project": "Nope" }));
+    assert!(error && unknown.contains("`Sales`"), "{unknown}");
+
+    let (read, error) = client.call("read_script", &json!({ "path": "reports/monthly.sql" }));
+    assert!(!error, "{read}");
+    let read: Value = serde_json::from_str(&read).unwrap();
+    assert_eq!(read["text"], "SELECT count(*) FROM t");
+    assert_eq!(read["connection"], "Scratch");
+    assert_eq!(read["truncated"], false);
+    let (read, _) = client.call(
+        "read_script",
+        &json!({ "path": "pipeline.sql", "project": "Sales" }),
+    );
+    assert!(read.contains("SELECT 'pipeline'"), "{read}");
+
+    let (big, error) = client.call("read_script", &json!({ "path": "big.sql" }));
+    assert!(!error);
+    let big: Value = serde_json::from_str(&big).unwrap();
+    assert_eq!(big["truncated"], true);
+    assert_eq!(big["text"].as_str().unwrap().len(), 262_144);
+    assert!(big["note"].as_str().unwrap().contains("cut"), "{big}");
+
+    // Refused: the hidden and the deleted connections' scripts, paths that leave the
+    // folder, the links file, a file that is no script and one that is not there.
+    for path in [
+        "hidden.sql",
+        "gone.sql",
+        "private/secret.sql",
+        "../all/top.sql",
+        "reports/../top.sql",
+        "/etc/passwd",
+        ".links.json",
+        ".draft.sql",
+        "notes.txt",
+        "missing.sql",
+    ] {
+        let (refused, error) = client.call("read_script", &json!({ "path": path }));
+        assert!(error, "{path}: {refused}");
+        assert!(!refused.contains("hidden'"), "{path}: {refused}");
+    }
+    let (other, error) = client.call(
+        "read_script",
+        &json!({ "path": "top.sql", "project": "Sales" }),
+    );
+    assert!(
+        error,
+        "a script of All connections is not in Sales: {other}"
+    );
+}
+
+fn searches_the_history(dir: &Path, client: &mut Client) {
+    use platypus_store::{HistoryStatus, HistoryStore, NewHistoryEntry};
+    let history = HistoryStore::open(&dir.join("history.db")).unwrap();
+    let id =
+        |n: u32| uuid::Uuid::parse_str(&format!("00000000-0000-4000-8000-00000000000{n}")).unwrap();
+    let mut when = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let mut add = |connection: u32, sql: &str, origin: Option<&str>, error: Option<&str>| {
+        when += Duration::from_secs(60);
+        history
+            .record(&NewHistoryEntry {
+                connection_id: id(connection),
+                sql: sql.to_owned(),
+                started_at: when,
+                duration: Duration::from_millis(12),
+                rows: error.is_none().then_some(2),
+                status: if error.is_none() {
+                    HistoryStatus::Ok
+                } else {
+                    HistoryStatus::Error
+                },
+                error: error.map(str::to_owned),
+                origin: origin.map(str::to_owned),
+            })
+            .unwrap();
+    };
+    add(1, "SELECT * FROM t", None, None);
+    add(3, "SELECT 'from the hidden one'", None, None);
+    add(1, "SELECT name FROM t", Some("claude-code"), None);
+    add(2, "UPDATE t SET name = 'x'", None, None);
+    add(
+        4,
+        "SELECT 1 FROM sales",
+        None,
+        Some("cannot open postgres://ada:s3cr@t@db/x"),
+    );
+    drop(history);
+
+    let search = |client: &mut Client, args: Value| -> Vec<Value> {
+        let (text, error) = client.call("search_history", &args);
+        assert!(!error, "{text}");
+        serde_json::from_str(&text).unwrap()
+    };
+    let sqls = |list: &[Value]| -> Vec<String> {
+        list.iter()
+            .map(|e| e["sql"].as_str().unwrap().to_owned())
+            .collect()
+    };
+
+    // Newest first, and nothing of the connection that is off.
+    let all = search(client, json!({}));
+    assert_eq!(
+        sqls(&all),
+        [
+            "SELECT 1 FROM sales",
+            "UPDATE t SET name = 'x'",
+            "SELECT name FROM t",
+            "SELECT * FROM t"
+        ]
+    );
+    let first = &all[0];
+    assert_eq!(first["connection"], "Remote PG");
+    assert_eq!(first["status"], "error");
+    assert_eq!(first["origin"], "app");
+    assert_eq!(first["duration_ms"], 12);
+    assert_eq!(first["started_at"], "2023-11-14T22:18:20.000Z");
+    assert_eq!(
+        first["error"], "cannot open postgres://ada:***@db/x",
+        "redacted"
+    );
+    assert_eq!(all[2]["origin"], "claude-code");
+    assert_eq!(all[2]["rows"], 2);
+
+    let app_db = search(client, json!({ "connection": "App db" }));
+    assert_eq!(sqls(&app_db), ["SELECT name FROM t", "SELECT * FROM t"]);
+    let by_agent = search(client, json!({ "origin": "agent" }));
+    assert_eq!(sqls(&by_agent), ["SELECT name FROM t"]);
+    let by_app = search(client, json!({ "origin": "app", "connection": "App db" }));
+    assert_eq!(sqls(&by_app), ["SELECT * FROM t"]);
+    let text = search(client, json!({ "text": "UPDATE" }));
+    assert_eq!(sqls(&text), ["UPDATE t SET name = 'x'"]);
+    assert_eq!(search(client, json!({ "limit": 2 })).len(), 2);
+
+    let (refused, error) = client.call("search_history", &json!({ "connection": "Hidden" }));
+    assert!(error, "{refused}");
+    assert!(!refused.contains("from the hidden one"));
+}
+
+#[test]
+fn reads_saved_scripts_and_the_history() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    scripts(dir.path());
+    let mut client = initialized(dir.path());
+    lists_and_reads_saved_scripts(&mut client);
+    searches_the_history(dir.path(), &mut client);
+    drop(client);
+
+    // Each call is in the call log with its arguments and outcome.
+    let log = rusqlite::Connection::open(dir.path().join("agent-calls.db")).unwrap();
+    let calls: Vec<(String, Option<String>, String, String)> = log
+        .prepare("SELECT tool, connection, arguments, status FROM calls ORDER BY id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let count = |tool: &str| calls.iter().filter(|c| c.0 == tool).count();
+    assert_eq!(count("list_scripts"), 3);
+    assert_eq!(count("read_script"), 14);
+    assert_eq!(count("search_history"), 7);
+    assert_eq!(
+        (calls[0].0.as_str(), calls[0].2.as_str()),
+        ("list_scripts", "{}")
+    );
+    assert_eq!(calls[2].3, "error", "unknown project");
+    assert_eq!(calls[3].2, r#"{"path":"reports/monthly.sql"}"#);
+    let last = calls.last().unwrap();
+    assert_eq!(last.1.as_deref(), Some("Hidden"));
+    assert_eq!(last.3, "error");
 }

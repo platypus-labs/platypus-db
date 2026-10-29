@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use uuid::Uuid;
 
 /// The file of the bridge, in the profile's data folder.
 pub const BRIDGE_FILE: &str = "agent-bridge.json";
@@ -82,6 +83,74 @@ pub enum Verdict {
     },
 }
 
+/// What of the user's work an agent asks to see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextPart {
+    /// The text of the active tab's editor.
+    Editor,
+    /// The part of it the user selected.
+    Selection,
+    /// The result the active tab's grid shows.
+    Result,
+}
+
+impl ContextPart {
+    pub const ALL: [Self; 3] = [Self::Editor, Self::Selection, Self::Result];
+}
+
+/// A look at what the user is working on, for the user to allow or refuse.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextRequest {
+    pub id: String,
+    /// The agent, as it names itself.
+    pub agent: String,
+    /// The run of the agent's server: "share for this session" holds for it.
+    pub session: String,
+    pub parts: Vec<ContextPart>,
+}
+
+/// The rows of the result the active tab shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextResult {
+    pub columns: Vec<String>,
+    /// Text as the database gave it; `None` is SQL NULL.
+    pub rows: Vec<Vec<Option<String>>>,
+    /// The result has more rows than these, or they were cut to fit.
+    pub truncated: bool,
+    /// How many rows the whole result has, when the app knows (it does not while the rows
+    /// are still being fetched).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_rows: Option<usize>,
+}
+
+/// What the user shared. Each part the user did not share, or the tab lacks, is `None`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserContext {
+    /// The active tab's connection, by name.
+    pub connection: Option<String>,
+    pub connection_id: Option<Uuid>,
+    /// The active tab's title.
+    pub tab: Option<String>,
+    pub editor: Option<String>,
+    pub selection: Option<String>,
+    pub result: Option<ContextResult>,
+}
+
+/// The user's answer to a [`ContextRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "answer", rename_all = "snake_case")]
+pub enum ContextVerdict {
+    /// Shared this once.
+    Once { context: UserContext },
+    /// Shared, and the next requests of the session are answered without asking.
+    Session { context: UserContext },
+    Deny {
+        #[serde(default)]
+        reason: Option<String>,
+    },
+}
+
 /// What an agent reaches the open app for.
 #[async_trait::async_trait]
 pub trait AppLink: Send + Sync + std::fmt::Debug {
@@ -90,6 +159,12 @@ pub trait AppLink: Send + Sync + std::fmt::Debug {
 
     /// The user's answer to `request`; an error when nobody can be asked.
     async fn confirm(&self, request: WriteRequest) -> Result<Verdict, String>;
+
+    /// What the user shares of their work, or why not; an error when nobody can be asked.
+    /// An app that cannot share it keeps this answer.
+    async fn context(&self, _request: ContextRequest) -> Result<ContextVerdict, String> {
+        Err("this app cannot share what the user is working on".to_owned())
+    }
 
     /// Tells the app that the agent `agent` is connected, as session `session`.
     async fn hello(&self, session: &str, agent: &str) -> Result<(), String>;
@@ -222,6 +297,19 @@ impl AppLink for HttpLink {
         serde_json::from_str(&answer).map_err(|e| e.to_string())
     }
 
+    async fn context(&self, request: ContextRequest) -> Result<ContextVerdict, String> {
+        let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
+        // As for a change: the user answers in the app.
+        let answer = self
+            .call(
+                "/v1/context",
+                Some(body),
+                ANSWER_TIMEOUT + Duration::from_secs(10),
+            )
+            .await?;
+        serde_json::from_str(&answer).map_err(|e| e.to_string())
+    }
+
     fn reachable(&self) -> bool {
         BridgeFile::read(&self.data_dir).is_some()
     }
@@ -310,6 +398,34 @@ mod tests {
             parse_response("HTTP/1.1 403 X\r\n\r\nno").unwrap_err(),
             "no"
         );
+    }
+
+    #[tokio::test]
+    async fn asks_what_the_user_works_on_with_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut got = fake_bridge(
+            dir.path(),
+            200,
+            r#"{"answer":"once","context":{"tab":"Orders","editor":"SELECT 1","result":{"columns":["n"],"rows":[["1"],[null]],"truncated":false}}}"#,
+        )
+        .await;
+        let link = HttpLink::new(dir.path());
+        let request = ContextRequest {
+            id: "1".to_owned(),
+            agent: "claude-code".to_owned(),
+            session: "s".to_owned(),
+            parts: vec![ContextPart::Editor, ContextPart::Result],
+        };
+        let ContextVerdict::Once { context } = link.context(request).await.unwrap() else {
+            panic!("not shared once");
+        };
+        assert_eq!(context.editor.as_deref(), Some("SELECT 1"));
+        assert_eq!(context.selection, None);
+        assert_eq!(context.result.unwrap().rows[1], [None]);
+        let sent = got.recv().await.unwrap();
+        assert!(sent.starts_with("POST /v1/context HTTP/1.1"), "{sent}");
+        assert!(sent.contains("Authorization: Bearer s3cret"), "{sent}");
+        assert!(sent.contains(r#""parts":["editor","result"]"#), "{sent}");
     }
 
     #[test]

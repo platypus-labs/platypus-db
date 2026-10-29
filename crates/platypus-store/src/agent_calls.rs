@@ -380,7 +380,8 @@ pub fn agent_calls_csv(calls: &[AgentCall]) -> String {
 }
 
 /// Unix epoch milliseconds as `YYYY-MM-DDTHH:MM:SS.mmmZ`.
-fn rfc3339(millis: i64) -> String {
+#[must_use]
+pub fn rfc3339(millis: i64) -> String {
     let secs = millis.div_euclid(1000);
     let ms = millis.rem_euclid(1000);
     let days = secs.div_euclid(86_400);

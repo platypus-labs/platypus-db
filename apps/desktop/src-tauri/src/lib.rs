@@ -211,6 +211,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         agent::regenerate_agent_token,
         agent::answer_agent_write,
         agent::agent_writes_waiting,
+        agent::agent_answer_context,
+        agent::agent_contexts_waiting,
         agent::connected_agents,
         commands::agents::agent_blockers,
         commands::agents::stale_agent_registrations,
