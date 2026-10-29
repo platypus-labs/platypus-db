@@ -1651,6 +1651,32 @@ export interface OpenedResultDb {
   partial: ResultPartial | null;
 }
 
+/** A table to copy into the DuckDB of "Query across databases". */
+export interface AcrossSource {
+  session_id: number;
+  schema: string | null;
+  table: string;
+  /** The condition of a `WHERE`, without the keyword. */
+  filter: string | null;
+  /** The table's name in the DuckDB. */
+  name: string;
+  /** How an error names this source. */
+  label: string;
+}
+
+/** A table of the DuckDB, as loaded; `cut` when the memory limit stopped the reading. */
+export interface AcrossTable {
+  name: string;
+  columns: string[];
+  rows: number;
+  cut: boolean;
+}
+
+export interface OpenedAcross {
+  connection: SavedConnection;
+  tables: AcrossTable[];
+}
+
 // Analysis (group M): compare with the previous run
 /** A row of a diff: as it is now (a removed row as it was); a changed row has the columns that
  *  differ with their previous value. */
@@ -2301,6 +2327,14 @@ export const api = {
   reloadResultDb: (connectionId: string, tables: ResultTable[]) =>
     invoke<ResultPartial | null>("reload_result_db", { connectionId, tables }),
   closeResultDb: (connectionId: string) => invoke<void>("close_result_db", { connectionId }),
+
+  // Analysis (group M): query across databases
+  /** Copies tables of live connections into a new in-memory DuckDB; returns its temporary
+   *  connection and the tables loaded. A failing source fails the call, naming it. */
+  openAcrossDb: (name: string, sources: AcrossSource[]) => invoke<OpenedAcross>("open_across_db", { name, sources }),
+  /** Reads the sources again into the temporary connection's tables. */
+  reloadAcrossDb: (connectionId: string, sources: AcrossSource[]) =>
+    invoke<AcrossTable[]>("reload_across_db", { connectionId, sources }),
 
   // Analysis (group M): compare with the previous run
   /** Keeps the loaded rows of the result a run of the same statement replaces. */

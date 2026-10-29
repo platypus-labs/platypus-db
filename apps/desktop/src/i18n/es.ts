@@ -2357,6 +2357,19 @@ const es: Record<string, string> = {
   "Pivot the rows: fields down, a field across, an aggregate in the cells": "Pivotar las filas: campos en vertical, un campo en horizontal, una agregación en las celdas",
   "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Agrupa las filas cargadas por los campos de fila, con los valores del campo de columna en horizontal, y escribe la consulta en el campo SQL, donde se puede editar.",
   "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "La columna {column} tiene {n} valores distintos, más de las {max} columnas que puede tener un pivote: elige otra columna o filtra antes las filas.",
+  // Group M: query across databases
+  "The connection {name} no longer exists.": "La conexión {name} ya no existe.",
+  "Query across databases": "Consultar varias bases de datos",
+  "Across databases": "Varias bases de datos",
+  "Copies the tables into an in-memory DuckDB, up to the memory limit, and opens a SQL editor on it: a query there can join tables of different databases. The tables are copies; the databases are not changed.": "Copia las tablas en un DuckDB en memoria, hasta el límite de memoria, y abre sobre él un editor SQL: una consulta puede unir tablas de bases de datos distintas. Las tablas son copias; las bases de datos no cambian.",
+  "every row": "todas las filas",
+  "Name in DuckDB": "Nombre en DuckDB",
+  "Another table has this name.": "Otra tabla tiene este nombre.",
+  "Copies of tables of other databases: {tables}": "Copias de tablas de otras bases de datos: {tables}",
+  "Partial: the memory limit stopped the reading of {tables}.": "Parcial: el límite de memoria detuvo la lectura de {tables}.",
+  "Reload sources": "Recargar orígenes",
+  "Query across databases…": "Consultar varias bases de datos…",
+  "No SQL connection to read tables from": "Ninguna conexión SQL de la que leer tablas",
 };
 
 export default es;

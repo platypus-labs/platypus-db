@@ -2357,6 +2357,19 @@ const it: Record<string, string> = {
   "Pivot the rows: fields down, a field across, an aggregate in the cells": "Pivot delle righe: campi in verticale, un campo in orizzontale, un'aggregazione nelle celle",
   "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Raggruppa le righe caricate per i campi riga, con i valori del campo colonna in orizzontale, e scrive la query nel campo SQL, dove si può modificare.",
   "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "La colonna {column} ha {n} valori distinti, oltre le {max} colonne che un pivot può avere: scegli un'altra colonna o filtra prima le righe.",
+  // Group M: query across databases
+  "The connection {name} no longer exists.": "La connessione {name} non esiste più.",
+  "Query across databases": "Interroga più database",
+  "Across databases": "Più database",
+  "Copies the tables into an in-memory DuckDB, up to the memory limit, and opens a SQL editor on it: a query there can join tables of different databases. The tables are copies; the databases are not changed.": "Copia le tabelle in un DuckDB in memoria, fino al limite di memoria, e apre su di esso un editor SQL: una query può unire tabelle di database diversi. Le tabelle sono copie; i database non cambiano.",
+  "every row": "tutte le righe",
+  "Name in DuckDB": "Nome in DuckDB",
+  "Another table has this name.": "Un'altra tabella ha questo nome.",
+  "Copies of tables of other databases: {tables}": "Copie di tabelle di altri database: {tables}",
+  "Partial: the memory limit stopped the reading of {tables}.": "Parziale: il limite di memoria ha fermato la lettura di {tables}.",
+  "Reload sources": "Ricarica le sorgenti",
+  "Query across databases…": "Interroga più database…",
+  "No SQL connection to read tables from": "Nessuna connessione SQL da cui leggere tabelle",
 };
 
 export default it;

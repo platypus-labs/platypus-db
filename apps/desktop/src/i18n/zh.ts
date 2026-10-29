@@ -2357,6 +2357,19 @@ const zh: Record<string, string> = {
   "Pivot the rows: fields down, a field across, an aggregate in the cells": "透视行:字段纵向排列,一个字段横向排列,单元格中为聚合值",
   "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "按行字段对已加载的行分组,以列字段的各个值横向展开,并把查询写入 SQL 字段,可在其中编辑。",
   "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "列 {column} 有 {n} 个不同的值,超过了透视表允许的 {max} 列:请选择其他列,或先筛选行。",
+  // Group M: query across databases
+  "The connection {name} no longer exists.": "连接 {name} 已不存在。",
+  "Query across databases": "跨数据库查询",
+  "Across databases": "跨数据库",
+  "Copies the tables into an in-memory DuckDB, up to the memory limit, and opens a SQL editor on it: a query there can join tables of different databases. The tables are copies; the databases are not changed.": "将这些表复制到内存中的 DuckDB（不超过内存上限），并在其上打开 SQL 编辑器：一条查询即可连接不同数据库的表。这些表是副本，不会改动原数据库。",
+  "every row": "所有行",
+  "Name in DuckDB": "DuckDB 中的名称",
+  "Another table has this name.": "已有另一个表使用此名称。",
+  "Copies of tables of other databases: {tables}": "其他数据库表的副本：{tables}",
+  "Partial: the memory limit stopped the reading of {tables}.": "部分数据：内存上限中止了对 {tables} 的读取。",
+  "Reload sources": "重新加载数据源",
+  "Query across databases…": "跨数据库查询…",
+  "No SQL connection to read tables from": "没有可读取表的 SQL 连接",
 };
 
 export default zh;

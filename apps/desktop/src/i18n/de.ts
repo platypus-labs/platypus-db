@@ -2357,6 +2357,19 @@ const de: Record<string, string> = {
   "Pivot the rows: fields down, a field across, an aggregate in the cells": "Zeilen pivotieren: Felder untereinander, ein Feld nebeneinander, eine Aggregation in den Zellen",
   "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Gruppiert die geladenen Zeilen nach den Zeilenfeldern, mit den Werten des Spaltenfelds nebeneinander, und schreibt die Abfrage ins SQL-Feld, wo sie bearbeitet werden kann.",
   "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "Die Spalte {column} hat {n} verschiedene Werte, mehr als die {max} Spalten, die ein Pivot haben kann: Wähle eine andere Spalte oder filtere zuerst die Zeilen.",
+  // Group M: query across databases
+  "The connection {name} no longer exists.": "Die Verbindung {name} existiert nicht mehr.",
+  "Query across databases": "Datenbankübergreifend abfragen",
+  "Across databases": "Mehrere Datenbanken",
+  "Copies the tables into an in-memory DuckDB, up to the memory limit, and opens a SQL editor on it: a query there can join tables of different databases. The tables are copies; the databases are not changed.": "Kopiert die Tabellen bis zum Speicherlimit in eine DuckDB im Arbeitsspeicher und öffnet darauf einen SQL-Editor: Eine Abfrage kann dort Tabellen verschiedener Datenbanken verbinden. Die Tabellen sind Kopien; die Datenbanken bleiben unverändert.",
+  "every row": "alle Zeilen",
+  "Name in DuckDB": "Name in DuckDB",
+  "Another table has this name.": "Eine andere Tabelle hat diesen Namen.",
+  "Copies of tables of other databases: {tables}": "Kopien von Tabellen anderer Datenbanken: {tables}",
+  "Partial: the memory limit stopped the reading of {tables}.": "Teilweise: Das Speicherlimit hat das Lesen von {tables} gestoppt.",
+  "Reload sources": "Quellen neu laden",
+  "Query across databases…": "Datenbankübergreifend abfragen…",
+  "No SQL connection to read tables from": "Keine SQL-Verbindung, aus der Tabellen gelesen werden können",
 };
 
 export default de;

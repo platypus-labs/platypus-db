@@ -2357,6 +2357,19 @@ const fr: Record<string, string> = {
   "Pivot the rows: fields down, a field across, an aggregate in the cells": "Pivoter les lignes : champs en vertical, un champ en horizontal, une agrégation dans les cellules",
   "Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.": "Regroupe les lignes chargées par les champs de ligne, avec les valeurs du champ de colonne en horizontal, et écrit la requête dans le champ SQL, où elle peut être modifiée.",
   "The column {column} has {n} distinct values, over the {max} columns a pivot can have: choose another column or filter the rows first.": "La colonne {column} a {n} valeurs distinctes, au-delà des {max} colonnes qu'un pivot peut avoir : choisissez une autre colonne ou filtrez d'abord les lignes.",
+  // Group M: query across databases
+  "The connection {name} no longer exists.": "La connexion {name} n'existe plus.",
+  "Query across databases": "Interroger plusieurs bases de données",
+  "Across databases": "Plusieurs bases de données",
+  "Copies the tables into an in-memory DuckDB, up to the memory limit, and opens a SQL editor on it: a query there can join tables of different databases. The tables are copies; the databases are not changed.": "Copie les tables dans un DuckDB en mémoire, jusqu'à la limite de mémoire, et ouvre dessus un éditeur SQL : une requête peut y joindre des tables de bases de données différentes. Les tables sont des copies ; les bases de données ne changent pas.",
+  "every row": "toutes les lignes",
+  "Name in DuckDB": "Nom dans DuckDB",
+  "Another table has this name.": "Une autre table porte ce nom.",
+  "Copies of tables of other databases: {tables}": "Copies de tables d'autres bases de données : {tables}",
+  "Partial: the memory limit stopped the reading of {tables}.": "Partiel : la limite de mémoire a arrêté la lecture de {tables}.",
+  "Reload sources": "Recharger les sources",
+  "Query across databases…": "Interroger plusieurs bases de données…",
+  "No SQL connection to read tables from": "Aucune connexion SQL d'où lire des tables",
 };
 
 export default fr;
