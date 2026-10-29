@@ -420,6 +420,39 @@ impl Connection for Logged {
         self.track(LogKind::Query, text, self.inner.end_server_session(id, how))
             .await
     }
+
+    async fn top_queries(&self) -> Result<Vec<platypus_core::ServerQuery>> {
+        self.track(
+            LogKind::Metadata,
+            "costliest statements",
+            self.inner.top_queries(),
+        )
+        .await
+    }
+
+    async fn object_statistics(&self) -> Result<Vec<platypus_core::ObjectStatistics>> {
+        self.track(
+            LogKind::Metadata,
+            "table and index statistics",
+            self.inner.object_statistics(),
+        )
+        .await
+    }
+
+    async fn maintain(
+        &self,
+        schema: &str,
+        table: &str,
+        operation: platypus_core::Maintenance,
+    ) -> Result<Vec<String>> {
+        let text = format!("{operation:?} {schema}.{table}").to_lowercase();
+        self.track(
+            LogKind::Query,
+            text,
+            self.inner.maintain(schema, table, operation),
+        )
+        .await
+    }
 }
 
 /// The results after the first of a statement, their errors naming the server as the first
