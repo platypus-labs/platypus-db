@@ -6,11 +6,13 @@
 //! table that exists (`ALTER TABLE … ADD`), the keys leave the `CREATE TABLE` and come after
 //! the rows, so that a table that refers to itself or a cycle of tables loads too.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 use futures::StreamExt;
-use platypus_core::{Connection, ExecOptions, ExecResult, ObjectKind, ObjectRef, TableDetails};
+use platypus_core::{
+    Connection, ExecOptions, ExecResult, ObjectKind, ObjectMeta, ObjectRef, TableDetails,
+};
 use platypus_sql::Dialect;
 use platypus_sql::dml::{Column, Value, ValueKind, restore_inserts};
 use platypus_sql::generated::{Generated, generated_columns};
@@ -64,26 +66,23 @@ pub async fn dump(
         _ => {}
     }
 
-    let chosen = |name: &str| only.is_none_or(|names| names.iter().any(|n| n == name));
-    let objects: Vec<_> = conn
-        .objects(schema)
-        .await?
-        .into_iter()
-        .filter(|o| o.kind == ObjectKind::Trigger || chosen(&o.name))
-        .collect();
+    let Chosen {
+        objects,
+        tables,
+        owned_by,
+    } = chosen_objects(conn, dialect, schema, only).await?;
     let mut dumped = Dumped::default();
-    for o in objects.iter().filter(|o| o.kind == ObjectKind::Sequence) {
-        w.object(conn, schema, o.kind, &o.name, None, &mut dumped.skipped)
-            .await?;
+    // Enum and composite types, then the domains on them, then sequences: what columns use.
+    for kind in [ObjectKind::Type, ObjectKind::Domain, ObjectKind::Sequence] {
+        for o in objects.iter().filter(|o| o.kind == kind) {
+            w.object(conn, schema, o.kind, &o.name, None, &mut dumped.skipped)
+                .await?;
+        }
     }
-
-    let mut tables = Vec::new();
-    for o in objects.iter().filter(|o| o.kind == ObjectKind::Table) {
-        let details = conn.table_details(schema, &o.name).await?;
-        tables.push((o.name.clone(), details));
-    }
-    let tables = ordered(tables);
     let keys = create_tables(conn, &mut w, schema, &tables).await?;
+    for sql in &owned_by {
+        w.statement(sql)?;
+    }
     dumped.tables = tables.len();
 
     if data {
@@ -140,6 +139,157 @@ pub async fn dump(
     }
     w.out.flush().map_err(|e| write_error(&e))?;
     Ok(dumped)
+}
+
+/// What a dump writes.
+struct Chosen {
+    objects: Vec<ObjectMeta>,
+    /// With their details, in the order to create them.
+    tables: Vec<(String, TableDetails)>,
+    /// The statements that give `serial` sequences back to their columns.
+    owned_by: Vec<String>,
+}
+
+/// The objects of `schema` to dump, with `only` those of these names and what they need:
+/// the triggers of their tables, the types their columns use and the sequences of their
+/// `serial` columns.
+async fn chosen_objects(
+    conn: &dyn Connection,
+    dialect: Dialect,
+    schema: &str,
+    only: Option<&[String]>,
+) -> Result<Chosen, ImportError> {
+    let chosen = |name: &str| only.is_none_or(|names| names.iter().any(|n| n == name));
+    let all = conn.objects(schema).await?;
+    let mut tables = Vec::new();
+    for o in all
+        .iter()
+        .filter(|o| o.kind == ObjectKind::Table && chosen(&o.name))
+    {
+        let details = conn.table_details(schema, &o.name).await?;
+        tables.push((o.name.clone(), details));
+    }
+    let parents: HashMap<&str, &str> = all
+        .iter()
+        .filter(|o| o.kind == ObjectKind::Table)
+        .filter_map(|o| Some((o.name.as_str(), o.parent.as_deref()?)))
+        .filter(|(_, p)| tables.iter().any(|(t, _)| t == p))
+        .collect();
+    let tables = after_parents(ordered(tables), &parents);
+    let used = |name: &str| {
+        let name = name.to_ascii_lowercase();
+        tables.iter().any(|(_, d)| {
+            d.columns.iter().any(|c| {
+                c.data_type
+                    .to_ascii_lowercase()
+                    .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
+                    .any(|word| word == name)
+            })
+        })
+    };
+    let owners = owned_sequences(conn, dialect, schema).await;
+    let objects: Vec<ObjectMeta> = all
+        .iter()
+        .filter(|o| match o.kind {
+            ObjectKind::Trigger => true,
+            ObjectKind::Type | ObjectKind::Domain => only.is_none() || used(&o.name),
+            // An identity column's sequence comes with its table.
+            ObjectKind::Sequence => match owners.get(&o.name) {
+                Some(owner) if owner.identity => false,
+                Some(owner) => chosen(&owner.table) || chosen(&o.name),
+                None => chosen(&o.name),
+            },
+            _ => chosen(&o.name),
+        })
+        .cloned()
+        .collect();
+    let owned_by = objects
+        .iter()
+        .filter_map(|o| {
+            let owner = owners.get(&o.name)?;
+            tables.iter().any(|(t, _)| *t == owner.table).then(|| {
+                format!(
+                    "ALTER SEQUENCE {} OWNED BY {}.{}",
+                    dialect.qualified(Some(schema), &o.name),
+                    dialect.qualified(Some(schema), &owner.table),
+                    dialect.quote_ident(&owner.column)
+                )
+            })
+        })
+        .collect();
+    Ok(Chosen {
+        objects,
+        tables,
+        owned_by,
+    })
+}
+
+/// A sequence that belongs to a column.
+struct Owner {
+    table: String,
+    column: String,
+    /// An identity column's, which the table's DDL makes, rather than a `serial` one's.
+    identity: bool,
+}
+
+/// PostgreSQL's sequences that belong to a column, by name.
+async fn owned_sequences(
+    conn: &dyn Connection,
+    dialect: Dialect,
+    schema: &str,
+) -> HashMap<String, Owner> {
+    if dialect != Dialect::Postgres {
+        return HashMap::new();
+    }
+    let sql = format!(
+        "SELECT s.relname, t.relname, a.attname, d.deptype::text FROM pg_class s \
+         JOIN pg_namespace n ON n.oid = s.relnamespace \
+         JOIN pg_depend d ON d.classid = 'pg_class'::regclass AND d.objid = s.oid \
+           AND d.refclassid = 'pg_class'::regclass AND d.deptype IN ('a', 'i') \
+         JOIN pg_class t ON t.oid = d.refobjid \
+         JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid \
+         WHERE s.relkind = 'S' AND n.nspname = {}",
+        dialect.quote_literal(schema)
+    );
+    query_rows(conn, &sql)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|row| {
+            let mut row = row.into_iter();
+            let (name, table, column) = (row.next()??, row.next()??, row.next()??);
+            let identity = row.next()?? == "i";
+            Some((
+                name,
+                Owner {
+                    table,
+                    column,
+                    identity,
+                },
+            ))
+        })
+        .collect()
+}
+
+/// Partitions after the table they are a partition of, which creates them.
+fn after_parents(
+    tables: Vec<(String, TableDetails)>,
+    parents: &HashMap<&str, &str>,
+) -> Vec<(String, TableDetails)> {
+    let depth = |name: &str| {
+        let (mut at, mut depth): (&str, usize) = (name, 0);
+        while let Some(parent) = parents.get(at) {
+            at = parent;
+            depth += 1;
+            if depth > parents.len() {
+                break;
+            }
+        }
+        depth
+    };
+    let mut tables = tables;
+    tables.sort_by_key(|(name, _)| depth(name));
+    tables
 }
 
 /// The DDL of `tables`; the foreign keys taken out of it, as the `ALTER TABLE`s that add them
@@ -225,7 +375,13 @@ async fn rows(
         quoted.iter().map(ToString::to_string).collect()
     };
     let qualified = dialect.qualified(Some(schema), table);
-    let sql = format!("SELECT {} FROM {qualified}", select.join(", "));
+    // A PostgreSQL table's own rows: those of its partitions and children are theirs.
+    let only = if dialect == Dialect::Postgres {
+        "ONLY "
+    } else {
+        ""
+    };
+    let sql = format!("SELECT {} FROM {only}{qualified}", select.join(", "));
     let ExecResult::Rows(mut stream) = conn.execute(&sql, &ExecOptions::default()).await? else {
         return Ok(numbered);
     };
@@ -286,32 +442,38 @@ fn renumber(dialect: Dialect, schema: &str, table: &str, column: &str) -> Option
     }
 }
 
-/// A sequence's position, so that it goes on where it was; PostgreSQL only, the others'
-/// DDL carries it.
+/// A sequence's position, so that it goes on where it was, where its DDL tells only where it
+/// started (PostgreSQL, SQL Server, MariaDB).
 async fn sequence_value(
     conn: &dyn Connection,
     dialect: Dialect,
     schema: &str,
     name: &str,
 ) -> Option<String> {
-    if dialect != Dialect::Postgres {
-        return None;
-    }
     let sequence = dialect.qualified(Some(schema), name);
-    let row = query_rows(
-        conn,
-        &format!("SELECT last_value, is_called FROM {sequence}"),
-    )
-    .await
-    .ok()?
-    .into_iter()
-    .next()?;
+    let sql = match dialect {
+        Dialect::Postgres => format!("SELECT last_value, is_called FROM {sequence}"),
+        // NULL before its first value, which the DDL's start gives.
+        Dialect::SqlServer => format!(
+            "SELECT CAST(CAST(last_used_value AS bigint) + CAST(increment AS bigint) AS varchar(40)) \
+             FROM sys.sequences WHERE object_id = OBJECT_ID({})",
+            dialect.quote_literal(&sequence)
+        ),
+        Dialect::MySql => format!("SELECT next_not_cached_value FROM {sequence}"),
+        _ => return None,
+    };
+    let row = query_rows(conn, &sql).await.ok()?.into_iter().next()?;
     let value = row.first().cloned().flatten()?;
-    let called = row.get(1).cloned().flatten().is_some_and(|c| c == "true");
-    Some(format!(
-        "SELECT setval({}, {value}, {called})",
-        dialect.quote_literal(&sequence)
-    ))
+    match dialect {
+        Dialect::Postgres => {
+            let called = row.get(1).cloned().flatten().is_some_and(|c| c == "true");
+            Some(format!(
+                "SELECT setval({}, {value}, {called})",
+                dialect.quote_literal(&sequence)
+            ))
+        }
+        _ => Some(format!("ALTER SEQUENCE {sequence} RESTART WITH {value}")),
+    }
 }
 
 /// Tables after those their foreign keys refer to; in a cycle, the first goes anyway.
@@ -365,6 +527,14 @@ fn without_foreign_keys(ddl: &str) -> (String, Vec<String>) {
     (lines.join("\n"), keys)
 }
 
+/// Whether an object's DDL is a block whose body holds statements of its own.
+fn is_block(kind: ObjectKind) -> bool {
+    matches!(
+        kind,
+        ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger | ObjectKind::Package
+    )
+}
+
 /// Where the statements go: one a line, ended as the dialect's scripts end them.
 struct Writer<'a> {
     out: &'a mut (dyn Write + Send),
@@ -394,6 +564,23 @@ impl Writer<'_> {
         self.line("")
     }
 
+    /// A routine or trigger, whose body holds `;`: MySQL's between `DELIMITER` lines, Oracle's
+    /// PL/SQL up to a `/` line; the others' scripts keep such a body whole.
+    fn block(&mut self, ddl: &str) -> Result<(), ImportError> {
+        let ddl = ddl.trim_end();
+        match self.dialect {
+            Dialect::MySql => {
+                let body = ddl.trim_end_matches(';').trim_end();
+                writeln!(self.out, "DELIMITER $$\n{body}$$\nDELIMITER ;\n")
+                    .map_err(|e| write_error(&e))
+            }
+            // DBMS_METADATA's SQLTERMINATOR may have ended it already.
+            Dialect::Oracle if ddl.ends_with("\n/") => self.line(&format!("{ddl}\n")),
+            Dialect::Oracle => writeln!(self.out, "{ddl}\n/\n").map_err(|e| write_error(&e)),
+            _ => self.ddl(ddl),
+        }
+    }
+
     /// An object's DDL; one the database cannot describe goes to `skipped`.
     async fn object(
         &mut self,
@@ -411,6 +598,7 @@ impl Writer<'_> {
             parent,
         };
         match conn.object_ddl(&object).await {
+            Ok(ddl) if is_block(kind) => self.block(&ddl),
             Ok(ddl) => self.ddl(&ddl),
             Err(e) => {
                 skipped.push(format!("{name}: {e}"));

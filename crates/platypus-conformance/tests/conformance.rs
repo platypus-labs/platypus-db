@@ -1618,6 +1618,192 @@ fn dump_fixture(
     ]
 }
 
+/// What a dumped table needs and a routine's body come back: a PostgreSQL enum, `serial`
+/// sequence and partitioned table (whose rows are written once), a MySQL procedure and
+/// trigger with `;` in their body, a SQL Server or MariaDB sequence's position.
+#[tokio::test]
+async fn dumps_types_routines_and_sequences() {
+    use platypus_sql::Dialect;
+
+    let _serial = SERIAL.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    for b in backends().await {
+        let d = Dialect::from(b.config.driver);
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let q = |name: &str| d.qualified(Some(&b.schema), name);
+        let mariadb = d == Dialect::MySql && conn.server_info().product == "MariaDB";
+        let (setup, drop, checks): DumpCase = match d {
+            Dialect::Postgres if b.name == "postgres" => (
+                vec![
+                    format!("CREATE TYPE {} AS ENUM ('a', 'b')", q("conf_dump2_mood")),
+                    format!(
+                        "CREATE TABLE {} (id serial PRIMARY KEY, m {})",
+                        q("conf_dump2_t"),
+                        q("conf_dump2_mood")
+                    ),
+                    format!("INSERT INTO {} (m) VALUES ('a'), ('b')", q("conf_dump2_t")),
+                    format!(
+                        "CREATE TABLE {} (at int) PARTITION BY RANGE (at)",
+                        q("conf_dump2_p")
+                    ),
+                    format!(
+                        "CREATE TABLE {} PARTITION OF {} FOR VALUES FROM (0) TO (100)",
+                        q("conf_dump2_p1"),
+                        q("conf_dump2_p")
+                    ),
+                    format!("INSERT INTO {} VALUES (1), (2)", q("conf_dump2_p")),
+                    format!(
+                        "CREATE FUNCTION {}() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END $$",
+                        q("conf_dump2_f")
+                    ),
+                ],
+                vec![
+                    format!("DROP FUNCTION {}()", q("conf_dump2_f")),
+                    format!("DROP TABLE {}", q("conf_dump2_p")),
+                    format!("DROP TABLE {}", q("conf_dump2_t")),
+                    format!("DROP TYPE {}", q("conf_dump2_mood")),
+                    format!("DROP SEQUENCE IF EXISTS {}", q("conf_dump2_t_id_seq")),
+                    format!("DROP SEQUENCE IF EXISTS {}", q("conf_dump2_t_id_seq1")),
+                ],
+                vec![
+                    (format!("SELECT COUNT(*) FROM {}", q("conf_dump2_p")), "2"),
+                    (format!("SELECT {}()", q("conf_dump2_f")), "1"),
+                    (
+                        format!(
+                            "INSERT INTO {} (m) VALUES ('b') RETURNING id",
+                            q("conf_dump2_t")
+                        ),
+                        "3",
+                    ),
+                ],
+            ),
+            Dialect::MySql => mysql_dump_case(&q, mariadb),
+            Dialect::SqlServer => (
+                vec![
+                    format!("CREATE SEQUENCE {} AS int START WITH 1", q("conf_dump2_s")),
+                    format!("SELECT NEXT VALUE FOR {}", q("conf_dump2_s")),
+                    format!("SELECT NEXT VALUE FOR {}", q("conf_dump2_s")),
+                ],
+                vec![format!("DROP SEQUENCE {}", q("conf_dump2_s"))],
+                vec![(format!("SELECT NEXT VALUE FOR {}", q("conf_dump2_s")), "3")],
+            ),
+            _ => continue,
+        };
+        dump_round_trip(&b, conn, d, dir.path(), (&setup, &drop, &checks)).await;
+    }
+}
+
+/// MySQL's case of [`dumps_types_routines_and_sequences`]: a procedure and a trigger with
+/// `;` in their body, and on MariaDB a sequence.
+fn mysql_dump_case(q: &dyn Fn(&str) -> String, mariadb: bool) -> DumpCase {
+    let mut setup = vec![
+        format!(
+            "CREATE TABLE {} (id int PRIMARY KEY, n int)",
+            q("conf_dump2_t")
+        ),
+        format!(
+            "CREATE PROCEDURE {}() BEGIN DECLARE x int; SET x = 1; SELECT x; END",
+            q("conf_dump2_f")
+        ),
+        format!(
+            "CREATE TRIGGER {} BEFORE INSERT ON {} FOR EACH ROW BEGIN SET NEW.n = 7; SET NEW.n = NEW.n + 1; END",
+            q("conf_dump2_tr"),
+            q("conf_dump2_t")
+        ),
+    ];
+    let mut drop = vec![
+        format!("DROP PROCEDURE {}", q("conf_dump2_f")),
+        format!("DROP TABLE {}", q("conf_dump2_t")),
+    ];
+    let mut checks = vec![
+        (format!("CALL {}()", q("conf_dump2_f")), "1"),
+        (
+            format!("INSERT INTO {} (id) VALUES (1)", q("conf_dump2_t")),
+            "",
+        ),
+        (format!("SELECT n FROM {}", q("conf_dump2_t")), "8"),
+    ];
+    if mariadb {
+        setup.push(format!("CREATE SEQUENCE {}", q("conf_dump2_s")));
+        setup.push(format!(
+            "SELECT NEXTVAL({0}), NEXTVAL({0})",
+            q("conf_dump2_s")
+        ));
+        drop.push(format!("DROP SEQUENCE {}", q("conf_dump2_s")));
+        checks.push((format!("SELECT NEXTVAL({}) > 2", q("conf_dump2_s")), "1"));
+    }
+    (setup, drop, checks)
+}
+
+/// What a dump round trip runs first, drops, and checks after.
+type DumpCase = (Vec<String>, Vec<String>, Vec<(String, &'static str)>);
+
+/// Runs `setup`, dumps the `conf_dump2_` objects, runs `drop` and the dump, then each check
+/// gives its first value (any value for an empty one).
+async fn dump_round_trip(
+    b: &Backend,
+    conn: &dyn platypus_core::Connection,
+    d: platypus_sql::Dialect,
+    dir: &std::path::Path,
+    (setup, drop, checks): (&[String], &[String], &[(String, &str)]),
+) {
+    use platypus_transfer::{dump::dump, script::run_file};
+
+    for sql in drop {
+        let _ = run(conn, sql).await;
+    }
+    for sql in setup {
+        run(conn, sql)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+    }
+    let only: Vec<String> = conn
+        .objects(&b.schema)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|o| o.name.starts_with("conf_dump2_"))
+        .map(|o| o.name)
+        .collect();
+    let file = dir.join(format!("{}-2.sql", b.name));
+    let mut out = std::fs::File::create(&file).unwrap();
+    let dumped = dump((conn, d, &b.schema), &mut out, (true, Some(&only)), |_| {
+        true
+    })
+    .await
+    .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+    drop_all(conn, drop).await;
+    let script = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        dumped.skipped.is_empty(),
+        "{}: {:?}",
+        b.name,
+        dumped.skipped
+    );
+    run_file(conn, d, &file, false, |_| true)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}\n{script}", b.name));
+    for (sql, want) in checks {
+        if want.is_empty() {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}\n{script}", b.name));
+            continue;
+        }
+        let rows = collect(b, conn, sql).await;
+        let got = rows.first().and_then(|r| cell(r, 0, 0));
+        assert_eq!(got.as_deref(), Some(*want), "{}: {sql}\n{script}", b.name);
+    }
+    drop_all(conn, drop).await;
+}
+
+async fn drop_all(conn: &dyn platypus_core::Connection, drop: &[String]) {
+    for sql in drop {
+        let _ = run(conn, sql).await;
+    }
+}
+
 /// A file whose statement fails: its number and line are told; in one transaction what ran
 /// before is rolled back, without one it stays.
 async fn failing_file(
