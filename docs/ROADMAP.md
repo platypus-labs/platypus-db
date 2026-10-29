@@ -109,7 +109,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | 🔒 Delfa · group-g-search · 2026-10-29 |
 | H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
-| I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
+| I — Strumenti di schema | 🔒 Delfa · group-i-schema-p3 · 2026-10-29 |
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
