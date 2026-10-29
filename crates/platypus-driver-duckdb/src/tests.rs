@@ -547,3 +547,25 @@ async fn bulk_load_is_all_or_nothing() {
     conn.commit().await.unwrap();
     assert_eq!(count(&conn).await, "5000");
 }
+
+/// A bare table name is the one the session's search path finds, as for its statements.
+#[tokio::test]
+async fn bulk_load_follows_the_search_path() {
+    crate::testing::load();
+    let conn = own_memory("bulk_search_path").await;
+    run(&conn, "CREATE SCHEMA sales").await;
+    run(&conn, "SET search_path = 'sales'").await;
+    run(&conn, "CREATE TABLE t (id INTEGER)").await;
+    let columns = ["id".to_owned()];
+    let loaded = conn
+        .bulk_load(&platypus_core::BulkRows {
+            table: "t",
+            columns: &columns,
+            hex: &[false],
+            rows: &[vec![Some("7".to_owned())]],
+        })
+        .await
+        .unwrap();
+    assert_eq!(loaded, 1);
+    assert_eq!(decoded(&conn, "SELECT id FROM sales.t").await[0].2, "7");
+}

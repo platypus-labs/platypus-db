@@ -107,7 +107,14 @@ fn append_rows(conn: &duckdb::Connection, load: Load) -> Result<u64> {
     let zoned = zoned_columns(conn, &load)?;
     let columns: Vec<&str> = load.columns.iter().map(String::as_str).collect();
     let mut appender = match &load.table[..] {
-        [name] => conn.appender_with_columns(name, &columns),
+        // The appender takes `main` for a bare name; the session's search path may say
+        // otherwise, as the statements that created the table followed it.
+        [name] => {
+            let schema: String = conn
+                .query_row("SELECT current_schema()", [], |row| row.get(0))
+                .map_err(|e| fail(&e))?;
+            conn.appender_with_columns_to_db(name, &schema, &columns)
+        }
         [schema, name] => conn.appender_with_columns_to_db(name, schema, &columns),
         [catalog, schema, name] => {
             conn.appender_with_columns_to_catalog_and_db(name, catalog, schema, &columns)
@@ -154,7 +161,24 @@ fn utc_micros(text: &str) -> Option<i64> {
         ymd.next()?.parse().ok()?,
         ymd.next()?.parse().ok()?,
     );
-    if !(1..=12).contains(&month) || !(1..=31).contains(&date) {
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    // A date that does not exist (`2024-02-30`) is left to DuckDB's cast, which refuses it.
+    let last = month_days.get(usize::try_from(month - 1).ok()?)?;
+    if date < 1 || date > *last {
         return None;
     }
     let end = rest
@@ -243,6 +267,8 @@ mod tests {
             Some(1_709_287_200_123_456)
         );
         assert_eq!(at("infinity"), None);
+        assert_eq!(at("2024-02-30 10:00:00+01:00"), None);
+        assert_eq!(at("2023-02-29"), None);
         assert_eq!(at("2024-03-01 10:00:00 Europe/Rome"), None);
     }
 
