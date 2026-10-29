@@ -1995,6 +1995,19 @@ async fn snapshots_restore_changed_rows() {
             "{}",
             b.name
         );
+        assert_eq!(
+            take(
+                conn,
+                d,
+                &format!("UPDATE {t} SET id = id + 10 WHERE id = 1"),
+                10
+            )
+            .await
+            .unwrap(),
+            Taken::NoKey,
+            "{}: the key changes",
+            b.name
+        );
         for table in [&t, &k] {
             let _ = run(conn, &format!("DROP TABLE {table}")).await;
         }

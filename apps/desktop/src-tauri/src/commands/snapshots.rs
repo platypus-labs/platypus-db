@@ -5,6 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use platypus_sql::snapshot::touched_rows;
 use platypus_transfer::snapshot::{Taken, take};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -48,7 +49,8 @@ pub enum SnapshotOutcome {
     Taken {
         snapshot: SnapshotMeta,
     },
-    /// Not one table's rows a `SELECT` tells (a join, a `LIMIT`), or no change at all.
+    /// Not one table's rows a `SELECT` tells (a join, a `LIMIT`), no change at all, or rows
+    /// that may not be exported.
     Unsupported,
     TooMany {
         limit: usize,
@@ -91,16 +93,24 @@ pub async fn take_snapshot(
     database: Option<String>,
     sql: String,
 ) -> CommandResult<SnapshotOutcome> {
-    let conn = state.live(session_id).await?;
     let dialect = state.dialect(session_id)?;
-    let snapshot = match take(&*conn, dialect, &sql, ROW_LIMIT).await {
+    // Rows that may not leave the connection are not written to a file either.
+    if touched_rows(&sql, dialect).is_none() || state.exportable(session_id).is_err() {
+        return Ok(SnapshotOutcome::Unsupported);
+    }
+    // The session as it is: a dropped connection is reopened, and reported, by the statement
+    // that follows, not here.
+    let session = state.session(session_id)?;
+    if session.conn.is_closed() {
+        return Ok(SnapshotOutcome::Unsupported);
+    }
+    let snapshot = match take(&*session.conn, dialect, &sql, ROW_LIMIT).await {
         Ok(Taken::Snapshot(snapshot)) => snapshot,
         Ok(Taken::Unsupported) => return Ok(SnapshotOutcome::Unsupported),
         Ok(Taken::TooMany) => return Ok(SnapshotOutcome::TooMany { limit: ROW_LIMIT }),
         Ok(Taken::NoKey) => return Ok(SnapshotOutcome::NoKey),
         Err(e) => return Err(CommandError::new("snapshot", e.to_string())),
     };
-    let session = state.session(session_id)?;
     let taken_at = chrono::Utc::now().timestamp_millis();
     let meta = SnapshotMeta {
         id: format!("{taken_at}-{}", &Uuid::new_v4().simple().to_string()[..8]),

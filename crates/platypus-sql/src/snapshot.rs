@@ -14,6 +14,8 @@ pub struct Touched {
     pub from: String,
     /// Its condition, after `WHERE`; `None` for every row.
     pub filter: Option<String>,
+    /// The columns an `UPDATE` sets, as written (without a table or alias before them).
+    pub assigned: Vec<String>,
 }
 
 impl Touched {
@@ -77,6 +79,10 @@ pub fn touched_rows(sql: &str, dialect: Dialect) -> Option<Touched> {
         return None;
     }
     let filter = w.find_top(set.unwrap_or(i), clauses_end, &["WHERE"]);
+    let assigned = match set {
+        Some(set) => assigned(&w, set + 1, filter.unwrap_or(clauses_end), dialect)?,
+        None => Vec::new(),
+    };
     let source_end = set.or(filter).unwrap_or(clauses_end);
     // `UPDATE a, b SET …` changes two tables.
     if w.top(source_start, source_end).any(|k| w.symbol(k, ",")) || source_end <= source_start {
@@ -92,7 +98,30 @@ pub fn touched_rows(sql: &str, dialect: Dialect) -> Option<Touched> {
         table,
         from: w.text(source_start, source_end).to_owned(),
         filter,
+        assigned,
     })
+}
+
+/// The columns of a `SET` list from `start` to `end`: `a = 1, t.b = 2`; `None` for a list it
+/// cannot read, such as `(a, b) = (1, 2)`.
+fn assigned(w: &Words<'_>, start: usize, end: usize, dialect: Dialect) -> Option<Vec<String>> {
+    let mut columns = Vec::new();
+    let mut item = start;
+    loop {
+        let name = if w.symbol(item + 1, ".") {
+            item + 2
+        } else {
+            item
+        };
+        columns.push(w.ident(name, dialect)?);
+        if !w.symbol(name + 1, "=") {
+            return None;
+        }
+        match w.top(name + 1, end).find(|&k| w.symbol(k, ",")) {
+            Some(comma) => item = comma + 1,
+            None => return Some(columns),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -124,6 +153,9 @@ mod tests {
             "SELECT * FROM ONLY \"Big\" WHERE x IN (SELECT y FROM z)"
         );
         assert_eq!((t.verb, t.table.name.as_str()), ("DELETE", "Big"));
+        let t = touched_rows("UPDATE t o SET o.a = f(1, 2), \"B\" = 3 WHERE id = 1", pg).unwrap();
+        assert_eq!(t.assigned, ["a", "B"]);
+        assert_eq!(select("UPDATE t SET (a, b) = (1, 2)", pg), None);
         assert_eq!(
             select("UPDATE t SET a = 1", pg).as_deref(),
             Some("SELECT * FROM t"),

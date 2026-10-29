@@ -30,7 +30,8 @@ pub enum Taken {
     Unsupported,
     /// It changes more rows than a snapshot keeps.
     TooMany,
-    /// An `UPDATE` of a table without a primary key, whose rows could not be found again.
+    /// An `UPDATE` of a table without a primary key, or one that changes the key: its rows
+    /// could not be found again.
     NoKey,
 }
 
@@ -74,7 +75,14 @@ pub async fn take(
     let key: Vec<usize> = (0..columns.len())
         .filter(|&i| columns[i].primary_key)
         .collect();
-    if touched.verb == "UPDATE" && key.is_empty() {
+    let sets_key = key.iter().any(|&i| {
+        let name = &columns[i].name;
+        touched
+            .assigned
+            .iter()
+            .any(|a| a.eq_ignore_ascii_case(name))
+    });
+    if touched.verb == "UPDATE" && (key.is_empty() || sets_key) {
         return Ok(Taken::NoKey);
     }
     let quoted: Vec<String> = columns
@@ -144,7 +152,12 @@ async fn read(
     dialect: Dialect,
     limit: usize,
 ) -> Result<Option<(Vec<ValueKind>, Vec<Vec<Option<String>>>)>, ImportError> {
-    let ExecResult::Rows(mut stream) = conn.execute(select, &ExecOptions::default()).await? else {
+    // Paged, so that a change of more rows than kept stops the read at once.
+    let options = ExecOptions {
+        batch_size: 1000,
+        paged: true,
+    };
+    let ExecResult::Rows(mut stream) = conn.execute(select, &options).await? else {
         return Ok(Some((Vec::new(), Vec::new())));
     };
     let mut kinds = Vec::new();
