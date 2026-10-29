@@ -98,7 +98,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
-| F — Connettività e credenziali | 🔒 Delfa · group-f-p3 · 2026-10-29 |
+| F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | 🔒 Delfa · group-h-bulk · 2026-10-29 |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
