@@ -591,7 +591,15 @@ gruppo Q: navigator nascondibile (`Ctrl+B` e pulsante della barra superiore, `sh
 `layout.sidebar_collapsed`), Impostazioni con una scheda per sezione (la ricerca mostra le
 corrispondenze di tutte le sezioni, raggruppate), un solo stile per i dialog (parti spaziate dal
 gap della colonna, avvisi, azioni a destra con la principale per ultima) e i token del vetro
-(`--glass-*`) usati anche dai tooltip dell'editor. Restano i P3.
+(`--glass-*`) usati anche dai tooltip dell'editor. Dal 28 ottobre 2026, P3: **database di esempio**
+nella schermata di benvenuto (`samples/wildlife.sql` creato nella cartella dei dati al primo
+clic, con la connessione e quattro script salvati in `samples/scripts/`), **modalità portable**
+(una cartella `data` accanto all'eseguibile, come in VS Code: tutto lì dentro, anche i dati del
+web view; l'aggiornamento chiede di sostituire l'eseguibile), **modalità Vim** nell'editor
+(`@replit/codemirror-vim`, `:w` salva) e **altre cinque lingue** (spagnolo, tedesco, francese,
+portoghese del Brasile, cinese; dizionari caricati quando servono, numeri e plurali secondo la
+lingua, nomi dei tasti come le tastiere locali). Restano pannelli trascinabili, mini-finestra
+dalla system tray e tab staccato in una finestra.
 
 **Area:** `App.tsx`, `apps/desktop/src/shell/` (tab bar, palette, impostazioni), `styles.css`, `theme.ts`
 **Dipende da:** 0.2, 0.3, 0.7
@@ -608,16 +616,16 @@ gap della colonna, avvisi, azioni a destra con la principale per ultima) e i tok
 | ✅ Lingua dell'interfaccia: italiano e inglese, con l'infrastruttura i18n | P2 | D |
 | ✅ Accessibilità: navigazione da tastiera completa, screen reader, contrasto | P2 | D |
 | Pannelli trascinabili e layout salvato | P3 | D |
-| Modalità portable, con impostazioni accanto all'eseguibile | P3 | N |
+| ✅ Modalità portable, con impostazioni accanto all'eseguibile | P3 | N |
 | Mini-finestra di query rapida dalla system tray | P3 | N |
-| Modalità Vim nell'editor | P3 | N |
+| ✅ Modalità Vim nell'editor | P3 | N |
 | ✅ Log degli errori e attività in background visibili, per la diagnosi | P2 | D |
 | ✅ Notifica di sistema alla fine di una query lunga, quando la finestra non è in primo piano | P2 | D |
 | ✅ Zoom dell'interfaccia e dimensione del font di editor e griglia (Ctrl+= / Ctrl+-) | P2 | D |
 | 🆕 Tab staccato in una finestra separata (secondo monitor) | P3 | D |
 | ✅ **Import ed export dei temi** come file JSON (colori dell'app e dell'editor, chiaro e scuro), con anteprima prima di applicarli; primo passo verso i mod | P2 | N |
-| 🆕 **Database di esempio** nella schermata di benvenuto: un clic apre un SQLite o DuckDB incluso, con dati realistici, tabelle collegate da FK e qualche script salvato, per provare l'app senza un server | P3 | N |
-| 🆕 Altre lingue dell'interfaccia (spagnolo, tedesco, francese, portoghese, cinese), con le stringhe di `i18n.ts` aperte ai contributi | P3 | D |
+| ✅ 🆕 **Database di esempio** nella schermata di benvenuto: un clic apre un SQLite o DuckDB incluso, con dati realistici, tabelle collegate da FK e qualche script salvato, per provare l'app senza un server | P3 | N |
+| ✅ 🆕 Altre lingue dell'interfaccia (spagnolo, tedesco, francese, portoghese, cinese), con le stringhe di `i18n.ts` aperte ai contributi | P3 | D |
 
 ---
 

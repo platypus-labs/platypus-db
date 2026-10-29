@@ -5685,6 +5685,7 @@ dependencies = [
  "platypus-sql",
  "platypus-store",
  "platypus-transfer",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",

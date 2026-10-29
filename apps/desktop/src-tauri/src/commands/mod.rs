@@ -25,6 +25,7 @@ pub mod objects;
 pub mod projects;
 pub mod query;
 pub mod querylog;
+pub mod sample;
 pub mod schema;
 pub mod scripts;
 pub mod search;
@@ -406,6 +407,9 @@ pub struct AppInfo {
     /// The developer tools port is open (`PLATYPUS_DEVTOOLS_PORT`), as for the end-to-end
     /// tests, which then get test hooks in the page.
     devtools: bool,
+    /// A portable copy: everything it keeps is in the `data` folder next to it, and it
+    /// updates by replacing its executable, not with the installer.
+    portable: bool,
 }
 
 #[tauri::command]
@@ -417,6 +421,7 @@ pub fn app_info() -> AppInfo {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),
+        portable: platypus_mcp::profile::portable_dir().is_some(),
     }
 }
 

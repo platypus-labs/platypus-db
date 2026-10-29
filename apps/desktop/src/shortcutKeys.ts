@@ -35,7 +35,7 @@ export function typesText(shortcut: string): boolean {
  *  lose their prefix, named characters show as themselves. `name` translates key names. */
 export function labelParts(shortcut: string, name: (key: string) => string = (k) => k): string[] {
   return shortcut.split("+").map((p) => {
-    if (p === "Mod") return "Ctrl";
+    if (p === "Mod") return name("Ctrl");
     if (p === "Comma") return ",";
     if (p === "Plus") return "+";
     return name(p.replace(/^Arrow/, ""));

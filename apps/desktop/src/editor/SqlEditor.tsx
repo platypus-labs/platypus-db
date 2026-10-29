@@ -43,6 +43,7 @@ import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from
 import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
+import { onVimWrite, vimMode, vimSetting, vimTakes } from "./vim";
 import { workbench } from "../workbench";
 import { SQL_DRAG, type SqlDrag } from "../sqlNames";
 import "./actions";
@@ -177,6 +178,23 @@ export const theme = EditorView.theme({
     color: "var(--accent-fg)",
   },
   ".cm-panels": { backgroundColor: "var(--bg-sidebar)", color: "var(--fg)" },
+  // CodeMirror's own lines are light gray, also in the dark themes.
+  ".cm-panels-top": { borderBottom: "1px solid var(--border)" },
+  ".cm-panels-bottom": { borderTop: "1px solid var(--border)" },
+  // Vim mode (vim.ts): the mode or the `:` command line under the text, and the block
+  // cursor of normal mode, in the theme's colors.
+  ".cm-vim-panel": { fontFamily: "var(--font-mono)", alignItems: "center", padding: "2px 10px" },
+  "&.cm-editor .cm-panels .cm-vim-panel input": {
+    flex: "1",
+    height: "auto",
+    padding: "0",
+    border: "none",
+    background: "transparent",
+    boxShadow: "none",
+    fontFamily: "inherit",
+  },
+  "&.cm-focused .cm-fat-cursor": { background: "color-mix(in srgb, var(--accent) 55%, transparent)", color: "var(--fg-strong)" },
+  "&:not(.cm-focused) .cm-cursorLayer .cm-fat-cursor": { outline: "1px solid var(--accent)" },
   ".cm-searchMatch": { backgroundColor: "rgba(250, 176, 5, 0.3)" },
 });
 
@@ -255,6 +273,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
   const languageConf = useRef(new Compartment());
   const spellConf = useRef(new Compartment());
   const spellMode = useSetting(spellcheckSetting);
+  const vimConf = useRef(new Compartment());
+  const vimOn = useSetting(vimSetting);
   // Keymaps read the latest callbacks without rebuilding the editor.
   const callbacks = useRef(props);
   callbacks.current = props;
@@ -285,6 +305,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
     const state = EditorState.create({
       doc: props.initialValue,
       extensions: [
+        vimConf.current.of(vimMode(vimOn)),
         lineNumbers(),
         highlightActiveLineGutter(),
         highlightSpecialChars(),
@@ -334,7 +355,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         // Registered editor actions take their shortcuts before the keymaps below.
         Prec.highest(
           EditorView.domEventHandlers({
-            keydown: (e, view) => dispatchKey("editor", target(view), e, reportError),
+            keydown: (e, view) => !vimTakes(e) && dispatchKey("editor", target(view), e, reportError),
             // Ctrl+click on a name opens its object; elsewhere it adds a cursor as usual.
             mousedown: (e, view) => {
               const open = callbacks.current.host?.openObject;
@@ -405,6 +426,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
     });
     const v = new EditorView({ state, parent: host.current! });
     view.current = v;
+    onVimWrite(v, () => callbacks.current.onSave?.());
     return () => {
       v.destroy();
       view.current = null;
@@ -423,6 +445,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
   useEffect(() => {
     view.current?.dispatch({ effects: spellConf.current.reconfigure(spellcheck(spellMode)) });
   }, [spellMode]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: vimConf.current.reconfigure(vimMode(vimOn)) });
+  }, [vimOn]);
 
   useImperativeHandle(ref, () => ({
     getText: () => view.current?.state.doc.toString() ?? "",

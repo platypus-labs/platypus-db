@@ -2,7 +2,7 @@
  *  the right, recomputed as rows arrive; and the switch between grid and chart. */
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { api, type ChartData, type ColumnInfo, toCommandError } from "../api";
-import { language, msg, t } from "../i18n";
+import { locale, msg, t } from "../i18n";
 import { workbench } from "../workbench";
 import { Chart, useChartColors } from "./Chart";
 import { type Aggregate, type ChartConfig, type ChartKind, autoConfig, toRequest, validConfig } from "./chartConfig";
@@ -189,7 +189,7 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
             <Chart ref={svg} data={data} kind={shown.kind} width={size.width} height={size.height} colors={colors}
               otherLabel={t("Other")}
               label={t("Chart of {series}", { series: data.series.map((s) => s.name).join(", ") })}
-              locale={language()}
+              locale={locale()}
             />
           )}
           {data && request && empty && (
@@ -202,7 +202,7 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
           <div className="chart-note muted small">
             {!complete &&
               t(data.rows === 1 ? "Drawn from the {n} row loaded" : "Drawn from the {n} rows loaded", {
-                n: data.rows.toLocaleString(language()),
+                n: data.rows.toLocaleString(locale()),
               })}
             {!complete && data.reduced && " · "}
             {data.reduced && t("Some points or categories are grouped to fit.")}

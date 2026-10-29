@@ -40,7 +40,7 @@ fn io(path: &Path, e: &std::io::Error) -> CommandError {
 }
 
 /// The project's folder, created on first use.
-fn root(state: &AppState, project: Option<Uuid>) -> CommandResult<PathBuf> {
+pub(super) fn root(state: &AppState, project: Option<Uuid>) -> CommandResult<PathBuf> {
     let base = state
         .scripts
         .as_ref()
@@ -175,6 +175,36 @@ fn create(
         write_links(root, &links)?;
     }
     Ok(rel)
+}
+
+/// Writes the scripts `files` (name, text) into `folder`, linked to `connection`, except
+/// those already there, which keep the user's changes; returns their relative paths. One
+/// already there is linked again when its link is gone or names no connection that `saved`
+/// knows (one deleted since), so it does not open on another.
+pub(super) fn add_linked(
+    root: &Path,
+    folder: &str,
+    files: &[(&str, &str)],
+    connection: Uuid,
+    saved: impl Fn(Uuid) -> bool,
+) -> CommandResult<Vec<String>> {
+    let dir = resolve(root, folder)?;
+    fs::create_dir_all(&dir).map_err(|e| io(&dir, &e))?;
+    let mut links = read_links(root);
+    let mut paths = Vec::with_capacity(files.len());
+    for (name, text) in files {
+        let path = dir.join(name);
+        let rel = relative(root, &path);
+        if !path.exists() {
+            fs::write(&path, text).map_err(|e| io(&path, &e))?;
+            links.insert(rel.clone(), connection);
+        } else if !links.get(&rel).is_some_and(|c| saved(*c)) {
+            links.insert(rel.clone(), connection);
+        }
+        paths.push(rel);
+    }
+    write_links(root, &links)?;
+    Ok(paths)
 }
 
 #[tauri::command]

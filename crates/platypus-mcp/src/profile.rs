@@ -20,6 +20,22 @@ pub const AGENT_CALLS_FILE: &str = "agent-calls.db";
 /// The environment variable that puts the whole profile in one folder, as for the app.
 pub const DATA_DIR_ENV: &str = "PLATYPUS_DATA_DIR";
 
+/// The folder of a portable copy of the app: a `data` folder next to its executable, as VS
+/// Code has. Everything the app keeps goes there, the web view's storage too, so the copy
+/// moves with its folder (saved passwords stay in the system keychain, unless a master
+/// password keeps them in the folder's vault). The app and its MCP server (`--mcp`, the
+/// same executable) both use it.
+#[must_use]
+pub fn portable_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    portable_dir_of(&exe)
+}
+
+fn portable_dir_of(exe: &Path) -> Option<PathBuf> {
+    let data = exe.parent()?.join("data");
+    data.is_dir().then_some(data)
+}
+
 /// Where the connections, settings and history live.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
@@ -30,10 +46,14 @@ pub struct Profile {
 }
 
 impl Profile {
-    /// The app's profile: `PLATYPUS_DATA_DIR` when set, else the OS folders the app uses
-    /// (`%APPDATA%\dev.platypusdb.desktop` on Windows).
+    /// The app's profile: `PLATYPUS_DATA_DIR` when set, else the `data` folder of a
+    /// portable copy, else the OS folders the app uses (`%APPDATA%\dev.platypusdb.desktop`
+    /// on Windows).
     pub fn from_env() -> Result<Self> {
         if let Some(dir) = std::env::var_os(DATA_DIR_ENV) {
+            return Ok(Self::at(dir));
+        }
+        if let Some(dir) = portable_dir() {
             return Ok(Self::at(dir));
         }
         let missing =
@@ -96,6 +116,20 @@ impl Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_data_folder_next_to_the_executable_makes_a_portable_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("platypus-db.exe");
+        std::fs::write(&exe, "").unwrap();
+        assert_eq!(portable_dir_of(&exe), None);
+        // A file named `data` is not the folder.
+        std::fs::write(dir.path().join("data"), "").unwrap();
+        assert_eq!(portable_dir_of(&exe), None);
+        std::fs::remove_file(dir.path().join("data")).unwrap();
+        std::fs::create_dir(dir.path().join("data")).unwrap();
+        assert_eq!(portable_dir_of(&exe), Some(dir.path().join("data")));
+    }
 
     #[test]
     fn a_data_dir_holds_the_whole_profile() {

@@ -1179,6 +1179,13 @@ export interface Workspace {
   project_folders: ProjectFolder[];
 }
 
+/** The sample database, opened: its connection and the first of its scripts. */
+export interface SampleDatabase {
+  workspace: Workspace;
+  connection: string;
+  script: string;
+}
+
 export interface AppInfo {
   name: string;
   version: string;
@@ -1186,6 +1193,9 @@ export interface AppInfo {
   build: string | null;
   /** Developer tools are open, as for the end-to-end tests: the page gets test hooks. */
   devtools: boolean;
+  /** A portable copy: its data is in the `data` folder next to it, and it updates by
+   *  replacing its executable. */
+  portable: boolean;
   os: string;
   arch: string;
 }
@@ -1314,6 +1324,9 @@ export const api = {
   clearAgentCalls: () => invoke<void>("clear_agent_calls"),
   takeAgentProposals: () => invoke<AgentProposal[]>("take_agent_proposals"),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
+  /** Builds the sample SQLite database if needed, with its connection (in `project` too)
+   *  and its scripts. */
+  openSampleDatabase: (project: string | null) => invoke<SampleDatabase>("open_sample_database", { project }),
   defaultConnection: (driver: DriverKind) =>
     invoke<SavedConnection>("default_connection", { driver }),
   /** Reads a URL (`postgres://…`), a JDBC URL or a `Server=…;Database=…` string; `driver`

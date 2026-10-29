@@ -4,7 +4,7 @@ import { api, type Explain, type PlanNode, type PlanSource, type SavedConnection
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { choose } from "../ui/ask";
-import { language, t, msg } from "../i18n";
+import { locale, t, msg } from "../i18n";
 import { ComparePlans } from "./ComparePlans";
 import { stepName } from "./compare";
 import { PlanDialog } from "./PlanDialog";
@@ -89,7 +89,6 @@ function steps(node: PlanNode, collapsed?: Set<string>, depth = 0, path = "0", o
 
 /** Numbers in the interface's language, not the system's: the plan's own text (`0.0`) sits
  *  beside them. */
-const locale = () => (language() === "it" ? "it-IT" : "en-US");
 const num = (v: number | null) => (v === null ? "" : new Intl.NumberFormat(locale(), { maximumFractionDigits: 2 }).format(v));
 const percent = { format: (v: number) => new Intl.NumberFormat(locale(), { style: "percent", maximumFractionDigits: 1 }).format(v) };
 

@@ -50,10 +50,14 @@ fn migrate_legacy_dirs() {
 
 /// Where connections and settings (`config: true`) or history live. `PLATYPUS_DATA_DIR`
 /// puts everything in that one folder instead of the OS locations; the end-to-end tests
-/// use it to run against a throwaway profile.
+/// use it to run against a throwaway profile. A portable copy keeps everything in its
+/// `data` folder.
 fn dir(app: &tauri::App, config: bool) -> Result<PathBuf, String> {
     if let Some(dir) = std::env::var_os("PLATYPUS_DATA_DIR") {
         return Ok(PathBuf::from(dir));
+    }
+    if let Some(dir) = platypus_mcp::profile::portable_dir() {
+        return Ok(dir);
     }
     let path = app.path();
     if config {
@@ -123,7 +127,13 @@ fn open_main_window(app: &tauri::App, system_title_bar: bool) -> tauri::Result<(
         let args = config.additional_browser_args.unwrap_or_default();
         config.additional_browser_args = Some(format!("{args} --remote-debugging-port={port}"));
     }
-    tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?.build()?;
+    let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    if std::env::var_os("PLATYPUS_DATA_DIR").is_none()
+        && let Some(dir) = platypus_mcp::profile::portable_dir()
+    {
+        window = window.data_directory(dir.join("webview"));
+    }
+    window.build()?;
     Ok(())
 }
 
@@ -196,6 +206,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::diagnostics::log_error,
         commands::diagnostics::save_diagnostics,
         commands::connections::list_connections,
+        commands::sample::open_sample_database,
         commands::connections::default_connection,
         commands::connections::parse_connection_url,
         commands::connections::connection_url,

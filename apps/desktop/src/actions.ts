@@ -234,6 +234,39 @@ const KEY_LABELS: Record<string, Record<string, string>> = {
     PageUp: "PagSu",
     PageDown: "PagGiù",
   },
+  es: {
+    Shift: "Mayús",
+    Enter: "Intro",
+    Delete: "Supr",
+    End: "Fin",
+    Space: "Espacio",
+    PageUp: "RePág",
+    PageDown: "AvPág",
+  },
+  de: {
+    Ctrl: "Strg",
+    Shift: "Umschalt",
+    Enter: "Eingabe",
+    Delete: "Entf",
+    Insert: "Einfg",
+    End: "Ende",
+    Space: "Leertaste",
+    PageUp: "Bild↑",
+    PageDown: "Bild↓",
+  },
+  fr: {
+    Shift: "Maj",
+    Enter: "Entrée",
+    Delete: "Suppr",
+    Insert: "Inser",
+    End: "Fin",
+    Space: "Espace",
+    PageUp: "PgPréc",
+    PageDown: "PgSuiv",
+  },
+  pt: {
+    Space: "Espaço",
+  },
 };
 
 /** One shortcut as shown: `Ctrl+Shift+T`, or `⌘⇧T` on macOS. */

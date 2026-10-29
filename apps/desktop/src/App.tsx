@@ -42,6 +42,8 @@ import { registerAddToProject } from "./projects/actions";
 import { registerMoveToFolder } from "./projects/folders";
 import { withDriver } from "./drivers/DriverPopup";
 import { ScriptsPanel } from "./scripts/ScriptsPanel";
+import { openScriptFile, scriptsChanged } from "./scripts/scripts";
+import { vimTakes } from "./editor/vim";
 import { ContextMenu, type MenuState } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -51,7 +53,7 @@ import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { settingsLoadError, useSetting } from "./settings";
 import { useSidebarCollapsed } from "./shell/sidebar";
-import { language, languageSetting, t, plural } from "./i18n";
+import { language, languageSetting, loadLanguage, t, plural } from "./i18n";
 import { stepZoom } from "./theme";
 import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
@@ -108,8 +110,12 @@ export function App() {
   /** Connections whose group of tabs is folded. */
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const grouped = useSetting(groupTabsSetting);
-  // A new language shows at once: everything below renders again.
-  useSetting(languageSetting);
+  // A new language shows at once, once its dictionary is loaded: everything below renders again.
+  const chosenLanguage = useSetting(languageSetting);
+  const [, setLanguageLoaded] = useState(0);
+  useEffect(() => {
+    loadLanguage().then(() => setLanguageLoaded((n) => n + 1), console.error);
+  }, [chosenLanguage]);
   const [toast, showToast] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   /** Shows an error, and keeps it in the Activity log. */
@@ -128,6 +134,7 @@ export function App() {
   /** What each open session's driver supports. */
   const capabilities = useRef(new Map<number, Capabilities>());
   const [version, setVersion] = useState("");
+  const [portable, setPortable] = useState(false);
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
   /** Connections that are not saved (the DuckDB of "Query with SQL"), by id, with what to do
@@ -167,6 +174,7 @@ export function App() {
     api.listProjectFolders().then(setProjectFolders, () => setProjectFolders([]));
     api.appInfo().then((i) => {
       setVersion(i.build ? `${i.version} · ${i.build}` : i.version);
+      setPortable(i.portable);
       // The end-to-end tests drive what has no button yet through these.
       if (i.devtools) {
         (window as unknown as { __platypus: object }).__platypus = {
@@ -368,6 +376,15 @@ export function App() {
     const name = path.split(/[\\/]/).pop() ?? path;
     const active = shell.current.activeProject;
     setDialog({ kind: "connection", connection: { ...connection, name, database: path }, existing: false, memberOf: active ? [active] : [], driverChosen: true });
+  }
+
+  /** The sample database: its connection saved (in the active project too), its scripts
+   *  listed, and the first one opened. */
+  async function openSample() {
+    const sample = await api.openSampleDatabase(shell.current.activeProject);
+    setWorkspace(sample.workspace);
+    scriptsChanged();
+    await openScriptFile(sample.script, sample.connection);
   }
 
   /** A script dropped on the window opens in a new SQL editor of the shown tab's connection. */
@@ -879,7 +896,8 @@ export function App() {
   useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // A dialog or the palette takes the keyboard: nothing acts behind it.
-      if (isAsking() || layerOpen()) return;
+      // A Vim editor's own Ctrl keys (Ctrl+W deletes a word there).
+      if (isAsking() || layerOpen() || vimTakes(e)) return;
       dispatchKey("global", undefined, e, (err) => setToast(toCommandError(err).message));
     };
     window.addEventListener("keydown", onKey, true);
@@ -958,7 +976,7 @@ export function App() {
       </div>
       <main className="workspace">
         <CrashBanner />
-        <UpdateBanner />
+        <UpdateBanner portable={portable} />
         {visibleTabs.length > 0 && (
           <TabBar
             ref={tabBar}
@@ -1027,10 +1045,12 @@ export function App() {
         {visibleTabs.length === 0 && (
           <Welcome
             empty={connections?.length === 0}
-            version={version}
+            // Translated at each render, so it follows a change of language.
+            version={portable ? `${version} · ${t("portable")}` : version}
             onNew={() => void newConnection()}
             onImport={() => setDialog({ kind: "import" })}
             onOpenFile={(path) => void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message))}
+            onSample={openSample}
             onError={setToast}
           />
         )}
