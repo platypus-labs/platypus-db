@@ -187,7 +187,8 @@ async fn run_profile(
     {
         prune(schedule, output, &extension);
     }
-    let verb = if profile.task.own_output().is_some() {
+    let own_output = profile.task.own_output();
+    let verb = if own_output.is_some() {
         "written"
     } else {
         "moved"
@@ -197,7 +198,7 @@ async fn run_profile(
     } else {
         format!("; left out: {}", warnings.join("; "))
     };
-    let file = output.or_else(|| profile.task.own_output().map(Path::to_owned));
+    let file = output.or_else(|| own_output.map(Path::to_owned));
     Ok((format!("{rows} rows {verb}{left}"), file))
 }
 

@@ -76,8 +76,3 @@ export function splitTables<T extends { name: string }>(tables: T[], existing: s
     gone: tables.filter((x) => !existing.includes(x.name)),
   };
 }
-
-/** The profile as the dialog saves it: new with `id`, or `current` changed. */
-export function profileOf(name: string, task: ProfileTask, id: string): TransferProfile {
-  return { id, name: name.trim(), task };
-}

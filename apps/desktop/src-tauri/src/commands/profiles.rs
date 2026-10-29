@@ -71,6 +71,11 @@ async fn target(
     Ok(saved)
 }
 
+/// The name a run of `profile` on `saved` bears in the query log.
+fn log_label(saved: &SavedConfig, profile: &TransferProfile) -> String {
+    format!("{} · {}", saved.label, profile.name)
+}
+
 /// Starts `profile` with its connections' checks; returns the id `cancel_export` takes.
 /// `redirect` replaces the file (or folder) an export writes, for a scheduled run.
 pub(crate) async fn start(
@@ -79,7 +84,7 @@ pub(crate) async fn start(
     redirect: Option<PathBuf>,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
-    let label = |saved: &SavedConfig| format!("{} · {}", saved.label, profile.name);
+    let label = |saved: &SavedConfig| log_label(saved, profile);
     match &profile.task {
         ProfileTask::ExportQuery {
             connection_id,
@@ -130,7 +135,7 @@ async fn start_into(
     profile: &TransferProfile,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
-    let label = |saved: &SavedConfig| format!("{} · {}", saved.label, profile.name);
+    let label = |saved: &SavedConfig| log_label(saved, profile);
     let invalid = |e: String| CommandError::new("invalid", e);
     match &profile.task {
         ProfileTask::ImportFile {

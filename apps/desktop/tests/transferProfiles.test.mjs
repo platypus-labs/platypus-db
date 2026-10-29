@@ -9,7 +9,6 @@ import {
   missingConnections,
   newColumnsFor,
   profileConnections,
-  profileOf,
   profilesOf,
   splitTables,
   usesConnection,
@@ -40,8 +39,8 @@ test("only exports write a file or a folder", () => {
 });
 
 test("a connection's list holds the profiles that use it, by name", () => {
-  const all = [profileOf(" Zeta ", migrate, "1"), profileOf("Alpha", exportQuery, "2"), profileOf("Beta", importFile, "3")];
-  assert.equal(all[0].name, "Zeta", "the name is trimmed");
+  const profileOf = (name, task, id) => ({ id, name, task });
+  const all = [profileOf("Zeta", migrate, "1"), profileOf("Alpha", exportQuery, "2"), profileOf("Beta", importFile, "3")];
   assert.deepEqual(profilesOf(all).map((p) => p.name), ["Alpha", "Beta", "Zeta"]);
   assert.deepEqual(profilesOf(all, "d").map((p) => p.name), ["Zeta"]);
   assert.ok(usesConnection(all[1], "a"));
