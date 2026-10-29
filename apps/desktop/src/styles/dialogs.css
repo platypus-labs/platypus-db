@@ -1585,3 +1585,11 @@ label.multi-run-row:hover {
 .agent-bridge-port input {
   width: 90px;
 }
+
+.agent-context-items {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.agent-context-items li {
+  margin: 4px 0;
+}
