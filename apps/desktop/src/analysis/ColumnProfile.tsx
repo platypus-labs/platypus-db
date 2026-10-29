@@ -11,8 +11,8 @@ const DELAY_MS = 500;
 /** The box's width, to keep it inside the grid. */
 const WIDTH = 300;
 /** Counts and shares as the interface language writes them, not the system. */
-const count = (n: number) => n.toLocaleString(locale());
-const percent = (n: number) => n.toLocaleString(locale(), { style: "percent", maximumFractionDigits: 1 });
+export const count = (n: number) => n.toLocaleString(locale());
+export const percent = (n: number) => n.toLocaleString(locale(), { style: "percent", maximumFractionDigits: 1 });
 
 /** The profile of the column whose header the mouse rests on, cached by result, column and
  *  rows loaded: more rows compute it again. */
@@ -109,7 +109,7 @@ function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: Co
 }
 
 /** The ranges of a number or date column as bars, with the first and last bound under them. */
-function Histogram({ bins, hide }: { bins: ColumnProfile["histogram"]; hide: boolean }) {
+export function Histogram({ bins, hide }: { bins: ColumnProfile["histogram"]; hide: boolean }) {
   const max = Math.max(1, ...bins.map((b) => b.count));
   const step = 200 / bins.length;
   return (

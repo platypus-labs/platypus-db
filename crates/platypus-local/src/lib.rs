@@ -5,7 +5,9 @@
 pub mod chart;
 pub mod diff;
 pub mod duck;
+pub mod patterns;
 pub mod stats;
+pub mod table_profile;
 pub mod values;
 
 #[derive(Debug, thiserror::Error)]

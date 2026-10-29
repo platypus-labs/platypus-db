@@ -11,3 +11,4 @@ import "./schemaHistory";
 import "./admin";
 import "./notebook";
 import "./dashboard";
+import "./tableProfile";
