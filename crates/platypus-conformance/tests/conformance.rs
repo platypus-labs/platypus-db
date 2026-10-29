@@ -1461,6 +1461,149 @@ async fn suggests_indexes_for_large_scans() {
         assert_eq!(tables, expected, "{}: {:#?}", b.name, plan.root);
     }
 }
+/// A schema dumped to an SQL file runs again where it came from: tables in the order of
+/// their keys (a key to a row further down too), rows with their own numbers and numbering
+/// going on after them, text exactly, and the views.
+#[tokio::test]
+async fn dumps_and_runs_sql_files() {
+    use platypus_sql::Dialect;
+    use platypus_transfer::{dump::dump, script::run_file};
+
+    let _serial = SERIAL.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    for b in backends().await {
+        let d = Dialect::from(b.config.driver);
+        let (identity, text) = match d {
+            Dialect::Postgres if b.name == "postgres" => {
+                ("int GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "text")
+            }
+            Dialect::MySql => ("int AUTO_INCREMENT PRIMARY KEY", "text"),
+            Dialect::SqlServer => ("int IDENTITY PRIMARY KEY", "nvarchar(200)"),
+            Dialect::Sqlite if b.name == "sqlite" => ("INTEGER PRIMARY KEY", "text"),
+            Dialect::DuckDb => ("INTEGER PRIMARY KEY", "varchar"),
+            _ => continue,
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let q = |name: &str| d.qualified(Some(&b.schema), name);
+        let (parent, child, view) = (
+            q("conf_dump_parent"),
+            q("conf_dump_child"),
+            q("conf_dump_view"),
+        );
+        let clean = || async {
+            let _ = run(conn, &format!("DROP VIEW {view}")).await;
+            let _ = run(conn, &format!("DROP TABLE {child}")).await;
+            let _ = run(conn, &format!("DROP TABLE {parent}")).await;
+        };
+        clean().await;
+        let name = "it's \"q\"\nline 2";
+        // SQLite names no schema in a key's REFERENCES.
+        let (to_parent, to_child) = if d == Dialect::Sqlite {
+            ("conf_dump_parent".to_owned(), "conf_dump_child".to_owned())
+        } else {
+            (parent.clone(), child.clone())
+        };
+        let statements = [
+            format!("CREATE TABLE {parent} (id {identity}, name {text})"),
+            format!(
+                "CREATE TABLE {child} (id int PRIMARY KEY, parent_id int REFERENCES {to_parent} (id), \
+                 boss int REFERENCES {to_child} (id), amount decimal(10, 2))"
+            ),
+            // DuckDB numbers no key by itself.
+            if d == Dialect::DuckDb {
+                format!(
+                    "INSERT INTO {parent} VALUES (1, {}), (2, NULL)",
+                    d.quote_literal(name)
+                )
+            } else {
+                format!(
+                    "INSERT INTO {parent} (name) VALUES ({})",
+                    d.quote_literal(name)
+                )
+            },
+            if d == Dialect::DuckDb {
+                "SELECT 1".to_owned()
+            } else {
+                format!("INSERT INTO {parent} (name) VALUES (NULL)")
+            },
+            format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (1, 1, NULL, 1.5)"),
+            format!("INSERT INTO {child} (id, parent_id, boss, amount) VALUES (2, 2, 1, -3.25)"),
+            format!("CREATE VIEW {view} AS SELECT id, name FROM {parent}"),
+        ];
+        for sql in &statements {
+            run(conn, sql)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+        }
+        // A key to a row that comes after it; DuckDB checks keys as rows go in, in order.
+        let forward = d != Dialect::DuckDb;
+        if forward {
+            run(conn, &format!("UPDATE {child} SET boss = 2 WHERE id = 1"))
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        }
+
+        let file = dir.path().join(format!("{}.sql", b.name));
+        let only = ["conf_dump_parent", "conf_dump_child", "conf_dump_view"].map(str::to_owned);
+        let mut out = std::fs::File::create(&file).unwrap();
+        let dumped = dump((conn, d, &b.schema), &mut out, (true, Some(&only)), |_| {
+            true
+        })
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        drop(out);
+        assert_eq!(
+            (dumped.tables, dumped.rows),
+            (2, 4),
+            "{}: {:?}",
+            b.name,
+            dumped.skipped
+        );
+        let script = std::fs::read_to_string(&file).unwrap();
+
+        clean().await;
+        let ran = run_file(conn, d, &file, true, |_| true)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}\n{script}", b.name));
+        assert!(ran >= 5, "{}: {ran} statements", b.name);
+
+        let names = collect(
+            &b,
+            conn,
+            &format!("SELECT id, name FROM {view} ORDER BY id"),
+        )
+        .await;
+        assert_eq!(cell(&names[0], 1, 0).as_deref(), Some(name), "{}", b.name);
+        assert_eq!(cell(&names[0], 1, 1), None, "{}", b.name);
+        let rows = collect(
+            &b,
+            conn,
+            &format!("SELECT boss, amount FROM {child} ORDER BY id"),
+        )
+        .await;
+        let boss = forward.then(|| "2".to_owned());
+        assert_eq!(cell(&rows[0], 0, 0), boss, "{}", b.name);
+        let amount: f64 = cell(&rows[0], 1, 1).unwrap().parse().unwrap();
+        assert!((amount + 3.25).abs() < 1e-9, "{}: {amount}", b.name);
+        // The numbering goes on after the rows put back; DuckDB's key numbers nothing.
+        if d != Dialect::DuckDb {
+            run(conn, &format!("INSERT INTO {parent} (name) VALUES ('new')"))
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}\n{script}", b.name));
+            let id = collect(&b, conn, &format!("SELECT MAX(id) FROM {parent}")).await;
+            assert_eq!(
+                cell(&id[0], 0, 0).as_deref(),
+                Some("3"),
+                "{}\n{script}",
+                b.name
+            );
+        }
+        clean().await;
+    }
+}
+
 /// A bulk load writes text exactly (quotes, tabs, line breaks, backslashes, empty text apart
 /// from NULL, bytes), in the session's transaction; refused rows fail it and leave the session
 /// usable. MySQL without `local_infile` refuses the load itself, as `Unsupported`.
