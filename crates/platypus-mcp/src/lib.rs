@@ -21,6 +21,7 @@ pub mod plan;
 pub mod profile;
 pub mod query;
 mod redact;
+pub mod resource;
 mod server;
 #[cfg(feature = "http")]
 pub use server::http_service;

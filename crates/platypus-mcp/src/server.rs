@@ -6,11 +6,17 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::agent::locked;
 use crate::link::CLOSED;
+use crate::resource::{self, Target};
 use crate::{Agent, AgentError, ExplainArgs, ProposeArgs, QueryArgs, SampleArgs, origin_name};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
+use rmcp::model::{
+    CallToolResult, ContentBlock, Implementation, ListResourceTemplatesResult, ListResourcesResult,
+    PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult,
+    Resource, ResourceContents, ResourceTemplate, ServerCapabilities, ServerConfig,
+};
+use rmcp::service::RequestContext;
 use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, tool, tool_handler, tool_router};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -27,7 +33,10 @@ agent access set by the user: read_only connections run only statements that cha
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you. While the \
 PlatypusDB app is open, list_open_sessions shows what the user has open there, and changes may \
-wait for the user to allow them in the app.";
+wait for the user to allow them in the app. Connections, schemas and tables are also MCP \
+resources (platypus://<connection>/<schema>/<table>), for clients that attach them as context.";
+
+const JSON: &str = "application/json";
 
 /// How often the server tells the open app it is still connected; the app forgets an agent
 /// after three times as long.
@@ -195,15 +204,11 @@ impl PlatypusServer {
         })
     }
 
-    /// The answer to `call`, recorded in the agents' call log.
+    /// Records `call` in the agents' call log, with the outcome of `result`.
     /// The write goes to a blocking thread: the app may hold the file for a moment.
-    async fn answer(
-        &self,
-        call: Call,
-        result: Result<String, AgentError>,
-    ) -> Result<CallToolResult, ErrorData> {
+    async fn record<T>(&self, call: Call, result: &Result<T, AgentError>) {
         // A timeout is the call failing; only the client's own cancellation is not.
-        let (status, error) = match &result {
+        let (status, error) = match result {
             Ok(_) => (HistoryStatus::Ok, None),
             Err(e @ AgentError::Cancelled) => (HistoryStatus::Cancelled, Some(e.to_string())),
             Err(e) => (HistoryStatus::Error, Some(e.to_string())),
@@ -222,7 +227,27 @@ impl PlatypusServer {
         self.greet(&entry.agent);
         let agent = Arc::clone(&self.agent);
         let _ = tokio::task::spawn_blocking(move || agent.record_call(&entry)).await;
+    }
+
+    /// The answer to `call`, recorded in the agents' call log.
+    async fn answer(
+        &self,
+        call: Call,
+        result: Result<String, AgentError>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.record(call, &result).await;
         reply(result)
+    }
+
+    /// The JSON of the resource `target` points at.
+    async fn resource_json(&self, target: &Target) -> Result<String, AgentError> {
+        match target {
+            Target::Connection(c) => json_text(self.agent.list_schemas(c).await),
+            Target::Schema(c, s) => {
+                json_text(self.agent.list_objects(c, s, None, Some(2000)).await)
+            }
+            Target::Table(c, s, t) => json_text(self.agent.describe_table(c, s, t).await),
+        }
     }
 
     #[tool(
@@ -487,8 +512,91 @@ pub fn http_service(
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for PlatypusServer {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("platypus-mcp", platypus_core::VERSION))
-            .with_instructions(INSTRUCTIONS)
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
+        )
+        .with_server_info(Implementation::new("platypus-mcp", platypus_core::VERSION))
+        .with_instructions(INSTRUCTIONS)
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        // Connections only: listing schemas would open every database.
+        let connections = self
+            .agent
+            .list_connections()
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let resources = connections
+            .into_iter()
+            .map(|c| {
+                let driver = serde_json::to_value(c.driver)
+                    .ok()
+                    .and_then(|v| v.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                Resource::new(resource::connection_uri(&c.name), c.name)
+                    .with_description(format!(
+                        "The schemas of this {driver} connection, as list_schemas returns them."
+                    ))
+                    .with_mime_type(JSON)
+            })
+            .collect();
+        Ok(ListResourcesResult::with_all_items(resources))
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, ErrorData> {
+        Ok(ListResourceTemplatesResult::with_all_items(vec![
+            ResourceTemplate::new("platypus://{connection}/{schema}", "schema")
+                .with_description(
+                    "The objects of a schema (tables, views, functions, ...), as list_objects \
+                     returns them, up to 2000.",
+                )
+                .with_mime_type(JSON),
+            ResourceTemplate::new("platypus://{connection}/{schema}/{table}", "table")
+                .with_description(
+                    "A table or view described: columns, keys, indexes and foreign keys, as \
+                     describe_table returns them.",
+                )
+                .with_mime_type(JSON),
+        ]))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, ErrorData> {
+        let Some(target) = resource::parse(&request.uri) else {
+            return Err(ErrorData::resource_not_found(
+                format!(
+                    "unknown resource `{}`: use {}",
+                    request.uri,
+                    resource::FORMS
+                ),
+                None,
+            ));
+        };
+        let connection = match &target {
+            Target::Connection(c) | Target::Schema(c, _) | Target::Table(c, _, _) => c,
+        };
+        let args = serde_json::json!({ "uri": request.uri, "connection": connection });
+        let call = Call::new("read_resource", &context.peer, &args);
+        let result = self.resource_json(&target).await;
+        self.record(call, &result).await;
+        match result {
+            Ok(text) => Ok(ReadResourceResponse::Complete(ReadResourceResult::new(
+                vec![ResourceContents::text(text, request.uri).with_mime_type(JSON)],
+            ))),
+            Err(e) => Err(ErrorData::invalid_params(e.to_string(), None)),
+        }
     }
 }
