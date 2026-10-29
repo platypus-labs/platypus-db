@@ -18,9 +18,10 @@ export interface LogEntry {
 export interface TxRecord {
   id: number;
   started: number;
-  /** When it ended, and how; `null` while it is open. */
+  /** When it ended, and how (`ended` when the app cannot tell: a failure, a reconnection,
+   *  the database's own rollback); `null` while it is open. */
   ended: number | null;
-  end: "commit" | "rollback" | null;
+  end: End | null;
 }
 
 export interface TxLog {
@@ -36,11 +37,19 @@ export const LOG_LIMIT = 500;
 
 export const emptyLog = (): TxLog => ({ entries: [], txs: [], open: null, next: 1 });
 
-/** How a statement that ended its transaction ended it: a rollback by name, else a commit
- *  (`COMMIT`, `END`, or DDL that commits by itself). */
-const ending = (sql: string): "commit" | "rollback" => (/^\s*(rollback|abort)\b/i.test(sql) && !/\bto\b/i.test(sql) ? "rollback" : "commit");
+type End = "commit" | "rollback" | "ended";
 
-function close(log: TxLog, end: "commit" | "rollback", at: number): TxLog {
+/** How a statement that ended its transaction ended it, as far as its text tells: `COMMIT`
+ *  and `END`, DDL that commits by itself, a rollback by name; else the app cannot tell (a
+ *  failed statement the database rolled back with its transaction, a reconnection). */
+function ending(entry: Omit<LogEntry, "tx">): End {
+  if (entry.failed) return "ended";
+  if (/^\s*(rollback|abort)\b/i.test(entry.sql) && !/\bto\b/i.test(entry.sql)) return "rollback";
+  if (/^\s*(commit|end)\b/i.test(entry.sql) || entry.kind === "ddl") return "commit";
+  return "ended";
+}
+
+function close(log: TxLog, end: End, at: number): TxLog {
   if (log.open === null) return log;
   const txs = log.txs.map((t) => (t.id === log.open ? { ...t, ended: at, end } : t));
   return { ...log, txs, open: null };
@@ -58,7 +67,7 @@ export function noteStatement(log: TxLog, entry: Omit<LogEntry, "tx">, openAfter
     next = { ...log, next: log.next + 1, open: tx, txs };
   }
   next = { ...next, entries: [...next.entries, { ...entry, tx }].slice(-LOG_LIMIT) };
-  if (openAfter === false && next.open !== null) next = close(next, ending(entry.sql), entry.at);
+  if (openAfter === false && next.open !== null) next = close(next, ending(entry), entry.at);
   return next;
 }
 

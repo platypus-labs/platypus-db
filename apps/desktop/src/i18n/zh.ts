@@ -1907,6 +1907,7 @@ const zh: Record<string, string> = {
   "0 never locks. It needs a master password; production connections are closed when it locks.": "0 表示从不锁定。需要主密码；锁定时会关闭生产连接。",
   "PlatypusDB is locked": "PlatypusDB 已锁定",
   "Enter the master password to go on. Production connections were closed: they reconnect when used.": "输入主密码以继续。生产连接已关闭：使用时会重新连接。",
+  "Ended at {time}": "{time} 已结束",
 };
 
 export default zh;

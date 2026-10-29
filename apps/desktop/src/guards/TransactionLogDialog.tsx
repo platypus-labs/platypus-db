@@ -6,6 +6,7 @@ const time = (at: number) => new Date(at).toLocaleTimeString();
 
 function ended(tx: TxRecord) {
   if (tx.ended === null) return { label: t("Open"), tone: "open" };
+  if (tx.end === "ended") return { label: t("Ended at {time}", { time: time(tx.ended) }), tone: "ended" };
   return tx.end === "rollback"
     ? { label: t("Rolled back at {time}", { time: time(tx.ended) }), tone: "rollback" }
     : { label: t("Committed at {time}", { time: time(tx.ended) }), tone: "commit" };
@@ -57,7 +58,8 @@ export function TransactionLogDialog({
                         <span className="tx-log-time">{time(e.at)}</span>
                         <code>{preview(e.sql)}</code>
                         {e.failed && <span className="tx-log-failed">{t("Failed")}</span>}
-                        {e.snapshot && (
+                        {/* A change rolled back has nothing to restore. */}
+                        {e.snapshot && tx?.end !== "rollback" && (
                           <button type="button" className="link tx-log-restore" onClick={() => onRestore(e.snapshot!)} title={t("Open the statements that put back the rows it changed")}>
                             {t("Restore…")}
                           </button>

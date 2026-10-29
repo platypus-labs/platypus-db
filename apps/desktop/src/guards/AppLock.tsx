@@ -47,6 +47,19 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const backdrop = useRef<HTMLDivElement>(null);
+
+  // Everything else in the window is inert while it is locked: no focus, click or key
+  // reaches it, the editor's own shortcuts included.
+  useEffect(() => {
+    const parent = backdrop.current?.parentElement;
+    if (!parent) return;
+    const others = [...parent.children].filter((el): el is HTMLElement => el !== backdrop.current && el instanceof HTMLElement && !el.inert);
+    for (const el of others) el.inert = true;
+    return () => {
+      for (const el of others) el.inert = false;
+    };
+  }, []);
 
   async function unlock(e: React.FormEvent) {
     e.preventDefault();
@@ -63,8 +76,7 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
   }
 
   return (
-    <div className="modal-backdrop lock-screen">
-      {/* Escape and Tab stay here: nothing behind it is reached. */}
+    <div className="modal-backdrop lock-screen" ref={backdrop}>
       <form className="modal small lock-dialog" onSubmit={unlock} onKeyDown={(e) => e.key === "Escape" && e.preventDefault()}>
         <img className="lock-mark" src={mark} alt="" />
         <h2>{t("PlatypusDB is locked")}</h2>

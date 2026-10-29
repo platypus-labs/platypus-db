@@ -1907,6 +1907,7 @@ const fr: Record<string, string> = {
   "0 never locks. It needs a master password; production connections are closed when it locks.": "0 ne verrouille jamais. Il faut un mot de passe principal ; le verrouillage ferme les connexions de production.",
   "PlatypusDB is locked": "PlatypusDB est verrouillé",
   "Enter the master password to go on. Production connections were closed: they reconnect when used.": "Saisissez le mot de passe principal pour continuer. Les connexions de production ont été fermées : elles se rouvrent à l'usage.",
+  "Ended at {time}": "Terminée à {time}",
 };
 
 export default fr;

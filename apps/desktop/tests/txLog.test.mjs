@@ -50,3 +50,15 @@ test("the log keeps the newest statements", () => {
   assert.equal(log.entries.length, LOG_LIMIT);
   assert.equal(log.entries[0].sql, "SELECT 5");
 });
+
+test("a transaction ended by a failure or an unknown statement is not called committed", () => {
+  let log = run(emptyLog(), "BEGIN", "other", true);
+  log = run(log, "UPDATE t SET a = 1", "dml", false, 2, true);
+  assert.equal(log.txs[0].end, "ended", "a deadlock rolled it back");
+  log = run(log, "BEGIN", "other", true);
+  log = run(log, "SELECT 1", "query", false);
+  assert.equal(log.txs[1].end, "ended");
+  log = run(log, "BEGIN", "other", true);
+  log = run(log, "COMMIT", "other", false);
+  assert.equal(log.txs[2].end, "commit");
+});

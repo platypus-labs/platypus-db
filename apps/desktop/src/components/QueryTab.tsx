@@ -973,7 +973,10 @@ export function QueryTab({
         open = (await api.transactionState(sessionId).catch(() => null))?.open ?? null;
       }
       if (p.kind !== "command" && status.kind !== "skipped") {
-        const entry = { at: Date.now(), sql, kind: p.kind, failed: status.kind === "error", snapshot };
+        const failed = status.kind === "error";
+        // A statement that failed changed nothing: its snapshot would restore rows twice.
+        if (failed && snapshot) void api.deleteSnapshot(snapshot).catch(() => {});
+        const entry = { at: Date.now(), sql, kind: p.kind, failed, snapshot: failed ? null : snapshot };
         setTxLog((log) => noteStatement(log, entry, open));
       }
       if (tab.terminal) await logTerminal(last, sql, status, seen);
