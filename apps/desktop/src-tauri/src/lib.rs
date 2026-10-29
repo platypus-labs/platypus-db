@@ -294,6 +294,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::analysis::sql::open_result_db,
         commands::analysis::sql::reload_result_db,
         commands::analysis::sql::close_result_db,
+        commands::analysis::across::open_across_db,
+        commands::analysis::across::reload_across_db,
         commands::meta::completion_catalog,
         commands::meta::query_value,
         commands::meta::estimate_rows,

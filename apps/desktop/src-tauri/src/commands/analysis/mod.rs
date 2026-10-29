@@ -2,6 +2,7 @@
 //! the previous run. `platypus_local` computes; these commands take the rows from the result's
 //! job and do the work off the async runtime.
 
+pub mod across;
 pub mod chart;
 pub mod diff;
 pub mod sql;
