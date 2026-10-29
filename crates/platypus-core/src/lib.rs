@@ -19,7 +19,9 @@ mod transaction;
 mod version;
 
 pub use admin::{
-    EndSession, ServerLock, ServerSession, query_locks, refuse_own_session, session_number,
+    EndSession, Maintenance, ObjectStatistics, ServerLock, ServerQuery, ServerSession,
+    StatisticsKind, TOP_QUERIES, query_locks, query_statements, refuse_own_session,
+    run_maintenance, session_number, sort_statistics,
 };
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{

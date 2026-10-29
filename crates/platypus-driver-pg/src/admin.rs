@@ -1,9 +1,13 @@
-//! The sessions of the server and their locks, from `pg_stat_activity` and `pg_locks`.
+//! The sessions of the server and their locks, from `pg_stat_activity` and `pg_locks`; the
+//! costliest statements, from the `pg_stat_statements` extension; the use of tables and
+//! indexes, from `pg_stat_user_tables` and `pg_stat_user_indexes`; and their upkeep.
 
 use platypus_core::{
-    Connection, EndSession, Error, Result, ServerLock, ServerSession, TextRowExt, query_locks,
-    query_text, refuse_own_session, session_number,
+    Connection, EndSession, Error, Maintenance, ObjectStatistics, Result, ServerLock, ServerQuery,
+    ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks, query_statements,
+    query_text, refuse_own_session, run_maintenance, session_number, sort_statistics,
 };
+use platypus_sql::Dialect;
 
 /// The client sessions, the one asking first; background workers left out.
 const SESSIONS: &str = "SELECT pid::text, usename, datname, \
@@ -68,6 +72,115 @@ pub(crate) async fn end(conn: &dyn Connection, id: &str, how: EndSession) -> Res
     } else {
         Err(Error::Other(format!("there is no session {pid}")))
     }
+}
+
+/// What [`maintain`] runs: no `OPTIMIZE` or `CHECK` in PostgreSQL.
+pub(crate) const MAINTENANCE: &[Maintenance] = &[
+    Maintenance::Vacuum,
+    Maintenance::Analyze,
+    Maintenance::Reindex,
+];
+
+/// The schema of `pg_stat_statements` and whether its times are `*_exec_time` (version 1.8 of
+/// the extension, not of the server: one upgraded without `ALTER EXTENSION` keeps `*_time`).
+const STATEMENTS_EXTENSION: &str = "SELECT n.nspname, \
+     string_to_array(e.extversion, '.')::int[] >= '{1,8}' \
+     FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace \
+     WHERE e.extname = 'pg_stat_statements'";
+
+pub(crate) async fn top_queries(conn: &dyn Connection) -> Result<Vec<ServerQuery>> {
+    let found = query_text(conn, STATEMENTS_EXTENSION).await?;
+    let Some(extension) = found.first() else {
+        return Err(Error::Other(
+            "the pg_stat_statements extension is not installed: add it to \
+             shared_preload_libraries in postgresql.conf, restart the server, then run \
+             CREATE EXTENSION pg_stat_statements"
+                .to_owned(),
+        ));
+    };
+    let schema = Dialect::Postgres
+        .quote_ident(&extension.text(0))
+        .into_owned();
+    let time = if extension.flag(1) {
+        "exec_time"
+    } else {
+        "time"
+    };
+    // Statements of other users without the rights read `<insufficient privilege>`.
+    let sql = format!(
+        "SELECT s.query, NULL::text, d.datname, r.rolname, s.calls::text, \
+         (s.total_{time} / 1000)::float8, (s.mean_{time} / 1000)::float8, \
+         (s.max_{time} / 1000)::float8, s.rows::text \
+         FROM {schema}.pg_stat_statements s \
+         LEFT JOIN pg_database d ON d.oid = s.dbid \
+         LEFT JOIN pg_roles r ON r.oid = s.userid \
+         WHERE s.query <> '<insufficient privilege>' \
+         ORDER BY s.total_{time} DESC LIMIT {TOP_QUERIES}"
+    );
+    query_statements(conn, &sql).await
+}
+
+/// The tables, then the indexes of each, of the user schemas. Vacuums and analyzes count by
+/// hand or by the autovacuum, whichever came last.
+const OBJECT_STATISTICS: &str = "SELECT schemaname::text, relname::text, NULL::text, \
+     pg_total_relation_size(relid)::text, n_live_tup::text, n_dead_tup::text, seq_scan::text, \
+     idx_scan::text, \
+     to_char(greatest(last_vacuum, last_autovacuum), 'YYYY-MM-DD HH24:MI:SS'), \
+     to_char(greatest(last_analyze, last_autoanalyze), 'YYYY-MM-DD HH24:MI:SS'), false \
+     FROM pg_stat_user_tables \
+     UNION ALL \
+     SELECT s.schemaname::text, s.indexrelname::text, s.relname::text, \
+     pg_relation_size(s.indexrelid)::text, \
+     NULL, NULL, NULL, s.idx_scan::text, NULL, NULL, i.indisunique OR i.indisprimary \
+     FROM pg_stat_user_indexes s JOIN pg_index i ON i.indexrelid = s.indexrelid";
+
+pub(crate) async fn object_statistics(conn: &dyn Connection) -> Result<Vec<ObjectStatistics>> {
+    let mut out: Vec<ObjectStatistics> = query_text(conn, OBJECT_STATISTICS)
+        .await?
+        .into_iter()
+        .map(|r| {
+            let table = r.opt(2);
+            ObjectStatistics {
+                schema: r.text(0),
+                name: r.text(1),
+                kind: if table.is_some() {
+                    StatisticsKind::Index
+                } else {
+                    StatisticsKind::Table
+                },
+                table,
+                size_bytes: r.number(3),
+                rows: r.number(4),
+                dead_rows: r.number(5),
+                free_bytes: None,
+                full_scans: r.number(6),
+                index_scans: r.number(7),
+                last_vacuum: r.opt(8),
+                last_analyze: r.opt(9),
+                unique: r.flag(10),
+            }
+        })
+        .collect();
+    sort_statistics(&mut out);
+    Ok(out)
+}
+
+pub(crate) async fn maintain(
+    conn: &dyn Connection,
+    schema: &str,
+    table: &str,
+    operation: Maintenance,
+) -> Result<Vec<String>> {
+    let name = Dialect::Postgres.qualified(Some(schema), table);
+    let sql = match operation {
+        Maintenance::Vacuum => format!("VACUUM (VERBOSE) {name}"),
+        Maintenance::Analyze => format!("ANALYZE VERBOSE {name}"),
+        Maintenance::Reindex => format!("REINDEX TABLE {name}"),
+        Maintenance::Optimize | Maintenance::Check => {
+            return Err(platypus_core::unsupported("this maintenance in PostgreSQL"));
+        }
+    };
+    run_maintenance(conn, &sql).await
 }
 
 /// `1,2` as its ids.

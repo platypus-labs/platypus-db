@@ -73,3 +73,11 @@ export function seconds(value: number | null): string {
   if (whole < 3600) return `${Math.floor(whole / 60)} min ${String(whole % 60).padStart(2, "0")} s`;
   return `${Math.floor(whole / 3600)} h ${String(Math.floor((whole % 3600) / 60)).padStart(2, "0")} min`;
 }
+
+/** A time in seconds as a short text: `0.42 ms`, `12.5 ms`, `3.2 s`, `4 min 05 s`. */
+export function duration(value: number | null): string {
+  if (value === null) return "";
+  if (value >= 1) return seconds(value);
+  const ms = value * 1000;
+  return `${ms.toFixed(ms < 10 ? 2 : 1)} ms`;
+}

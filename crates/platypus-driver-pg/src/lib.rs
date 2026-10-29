@@ -435,6 +435,26 @@ impl Connection for PgConnection {
         admin::end(self, id, how).await
     }
 
+    async fn top_queries(&self) -> Result<Vec<platypus_core::ServerQuery>> {
+        self.server_admin()?;
+        admin::top_queries(self).await
+    }
+
+    async fn object_statistics(&self) -> Result<Vec<platypus_core::ObjectStatistics>> {
+        self.server_admin()?;
+        admin::object_statistics(self).await
+    }
+
+    async fn maintain(
+        &self,
+        schema: &str,
+        table: &str,
+        operation: platypus_core::Maintenance,
+    ) -> Result<Vec<String>> {
+        self.server_admin()?;
+        admin::maintain(self, schema, table, operation).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -464,6 +484,12 @@ impl Connection for PgConnection {
             multiple_databases: true,
             server_sessions: self.has_server_admin(),
             cancel_server_queries: self.has_server_admin(),
+            server_statistics: self.has_server_admin(),
+            maintenance: if self.has_server_admin() {
+                admin::MAINTENANCE
+            } else {
+                &[]
+            },
             // CockroachDB's COPY has limits of its own in a transaction: rows go as INSERTs.
             bulk_load: !is_cockroach(self),
         }

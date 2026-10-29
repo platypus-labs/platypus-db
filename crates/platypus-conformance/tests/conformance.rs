@@ -18,8 +18,8 @@ use futures::{StreamExt, TryStreamExt};
 use platypus_core::geometry;
 use platypus_core::{
     BulkRows, Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, EndSession, Error,
-    ExecOptions, ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, ServerSession,
-    ServerVersion, SessionInit,
+    ExecOptions, ExecResult, Maintenance, MatchKind, ObjectKind, ObjectRef, PlanNode,
+    ServerSession, ServerVersion, SessionInit, StatisticsKind,
 };
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
@@ -2204,20 +2204,6 @@ async fn capabilities_match_optional_methods() {
             b.name
         );
 
-        let sessions = conn.server_sessions().await;
-        assert_eq!(
-            matches!(sessions, Err(Error::Unsupported(_))),
-            !caps.server_sessions,
-            "{}: server_sessions vs capabilities.server_sessions: {sessions:?}",
-            b.name
-        );
-        let locks = conn.server_locks().await;
-        assert_eq!(
-            matches!(locks, Err(Error::Unsupported(_))),
-            !caps.server_sessions,
-            "{}: server_locks vs capabilities.server_sessions: {locks:?}",
-            b.name
-        );
         // No such table: a supported load fails, but not as unsupported.
         let missing = platypus_sql::Dialect::from(b.config.driver)
             .qualified(Some(&b.schema), "conf_no_such_bulk");
@@ -2237,17 +2223,73 @@ async fn capabilities_match_optional_methods() {
             b.name
         );
 
-        // No session has id 0: a supported cancel fails, but not as unsupported.
-        let cancel = conn.end_server_session("0", EndSession::Cancel).await;
+        server_capabilities_match(&b, &*conn, caps).await;
+    }
+}
+
+/// The server's sessions, statistics and maintenance agree with their capability flags.
+async fn server_capabilities_match(
+    b: &Backend,
+    conn: &dyn Connection,
+    caps: platypus_core::Capabilities,
+) {
+    let sessions = conn.server_sessions().await;
+    assert_eq!(
+        matches!(sessions, Err(Error::Unsupported(_))),
+        !caps.server_sessions,
+        "{}: server_sessions vs capabilities.server_sessions: {sessions:?}",
+        b.name
+    );
+    let locks = conn.server_locks().await;
+    assert_eq!(
+        matches!(locks, Err(Error::Unsupported(_))),
+        !caps.server_sessions,
+        "{}: server_locks vs capabilities.server_sessions: {locks:?}",
+        b.name
+    );
+    // No session has id 0: a supported cancel fails, but not as unsupported.
+    let cancel = conn.end_server_session("0", EndSession::Cancel).await;
+    assert_eq!(
+        matches!(cancel, Err(Error::Unsupported(_))),
+        !caps.cancel_server_queries,
+        "{}: cancelling vs capabilities.cancel_server_queries: {cancel:?}",
+        b.name
+    );
+    assert!(
+        !caps.cancel_server_queries || caps.server_sessions,
+        "{}",
+        b.name
+    );
+
+    let queries = conn.top_queries().await;
+    assert_eq!(
+        matches!(queries, Err(Error::Unsupported(_))),
+        !caps.server_statistics,
+        "{}: top_queries vs capabilities.server_statistics: {queries:?}",
+        b.name
+    );
+    let statistics = conn.object_statistics().await;
+    assert_eq!(
+        matches!(statistics, Err(Error::Unsupported(_))),
+        !caps.server_statistics,
+        "{}: object_statistics vs capabilities.server_statistics: {statistics:?}",
+        b.name
+    );
+    // No such table: a supported operation fails, but not as unsupported.
+    for operation in [
+        Maintenance::Vacuum,
+        Maintenance::Analyze,
+        Maintenance::Reindex,
+        Maintenance::Optimize,
+        Maintenance::Check,
+    ] {
+        let done = conn
+            .maintain(&b.schema, "conf_no_such_table", operation)
+            .await;
         assert_eq!(
-            matches!(cancel, Err(Error::Unsupported(_))),
-            !caps.cancel_server_queries,
-            "{}: cancelling vs capabilities.cancel_server_queries: {cancel:?}",
-            b.name
-        );
-        assert!(
-            !caps.cancel_server_queries || caps.server_sessions,
-            "{}",
+            matches!(done, Err(Error::Unsupported(_))),
+            !caps.maintenance.contains(&operation),
+            "{}: maintain {operation:?} vs capabilities.maintenance: {done:?}",
             b.name
         );
     }
@@ -2375,6 +2417,115 @@ async fn lists_and_ends_server_sessions() {
         );
         let rows = collect(&b, &*admin, "SELECT 1").await;
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+    }
+}
+
+/// The statistics list a new table and its indexes, each maintenance operation of the
+/// database runs on it, and the costliest statements are read where the server keeps them
+/// (`pg_stat_statements`, `performance_schema`, the plan cache).
+#[tokio::test]
+async fn reads_server_statistics_and_maintains_tables() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let caps = conn.capabilities();
+        if !caps.server_statistics {
+            continue;
+        }
+        let table = format!("{}.conf_stats", b.schema);
+        run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(
+            &*conn,
+            &format!("CREATE TABLE {table} (id INT PRIMARY KEY, v INT)"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        run(&*conn, &format!("CREATE INDEX conf_stats_v ON {table} (v)"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        run(
+            &*conn,
+            &format!("INSERT INTO {table} (id, v) VALUES (1, 10), (2, 20), (3, 30)"),
+        )
+        .await
+        .unwrap();
+        for _ in 0..3 {
+            collect(&b, &*conn, &format!("SELECT v FROM {table} WHERE id = 2")).await;
+        }
+
+        let objects = conn
+            .object_statistics()
+            .await
+            .unwrap_or_else(|e| panic!("{}: object_statistics: {e}", b.name));
+        let ours = |o: &&platypus_core::ObjectStatistics| {
+            o.schema.eq_ignore_ascii_case(&b.schema)
+                && (o.name == "conf_stats" || o.table.as_deref() == Some("conf_stats"))
+        };
+        let found: Vec<_> = objects.iter().filter(ours).collect();
+        assert_eq!(
+            found[0].kind,
+            StatisticsKind::Table,
+            "{}: {found:?}",
+            b.name
+        );
+        assert_eq!(found[0].name, "conf_stats", "{}", b.name);
+        let indexes = &found[1..];
+        assert!(
+            indexes
+                .iter()
+                .any(|i| i.name == "conf_stats_v" && !i.unique),
+            "{}: {indexes:?}",
+            b.name
+        );
+        assert!(
+            indexes.iter().any(|i| i.unique),
+            "{}: the primary key: {indexes:?}",
+            b.name
+        );
+        assert!(
+            indexes.iter().all(|i| i.kind == StatisticsKind::Index),
+            "{}",
+            b.name
+        );
+
+        for &operation in caps.maintenance {
+            conn.maintain(&b.schema, "conf_stats", operation)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {operation:?}: {e}", b.name));
+        }
+        // The table is still there and whole.
+        let rows = collect(&b, &*conn, &format!("SELECT count(*) FROM {table}")).await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+
+        if b.config.driver == DriverKind::Postgres {
+            // Needs the library preloaded (docker/compose.yml does).
+            let _ = run(&*conn, "CREATE EXTENSION IF NOT EXISTS pg_stat_statements").await;
+        }
+        match conn.top_queries().await {
+            Ok(queries) => {
+                assert!(!queries.is_empty(), "{}: no statements", b.name);
+                assert!(queries.len() <= platypus_core::TOP_QUERIES, "{}", b.name);
+                assert!(
+                    queries
+                        .windows(2)
+                        .all(|w| w[0].total_seconds >= w[1].total_seconds),
+                    "{}: the costliest first",
+                    b.name
+                );
+                assert!(queries.iter().all(|q| q.calls > 0 && !q.query.is_empty()));
+            }
+            // A server without the statistics says how to have them.
+            Err(e) => assert!(
+                e.to_string().contains("pg_stat_statements")
+                    || e.to_string().contains("performance_schema"),
+                "{}: top_queries: {e}",
+                b.name
+            ),
+        }
+        run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
     }
 }
 

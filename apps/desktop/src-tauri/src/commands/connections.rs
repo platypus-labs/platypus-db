@@ -406,12 +406,56 @@ pub async fn open_session(
     if let Some((config, label)) = state.result_db_config(connection_id) {
         return start_session(&state, connection_id, config, label, false).await;
     }
+    let typed = password.is_some();
+    let SavedConfig {
+        config,
+        label,
+        none_saved,
+        production,
+        ..
+    } = saved_config(&state, connection_id, password, database).await?;
+    let production = production && side != Some(true);
+    // `auth`: the UI asks for the password (again), with the server's answer.
+    start_session(&state, connection_id, config, label, production)
+        .await
+        .map_err(|e| {
+            if (typed || none_saved) && login_refused(&e) {
+                e.with_kind("auth")
+            } else {
+                e
+            }
+        })
+}
+
+/// A saved connection ready to connect: its settings with the password, and its name.
+pub(crate) struct SavedConfig {
+    pub config: ConnectionConfig,
+    pub label: String,
+    /// The password should be in the keychain, and is not (never typed, deleted, another
+    /// machine).
+    pub none_saved: bool,
+    /// A production connection.
+    pub production: bool,
+    /// Nothing that may change data runs on it.
+    pub read_only: bool,
+    /// What it does not let happen, e.g. its data leave it.
+    pub restrictions: platypus_store::Restrictions,
+}
+
+/// The settings of saved connection `connection_id`, on `database` when given, with
+/// `password`, or the one its password command prints, or the saved one; environment
+/// variables replaced.
+pub(crate) async fn saved_config(
+    state: &AppState,
+    connection_id: Uuid,
+    password: Option<String>,
+    database: Option<String>,
+) -> CommandResult<SavedConfig> {
     let saved = state.with_store(|s| {
         s.get(connection_id)
             .cloned()
             .ok_or(platypus_store::StoreError::NotFound(connection_id))
     })?;
-    let typed = password.is_some();
     // A password command may take a while: it runs without holding the store.
     let secret = match password {
         Some(p) => Some(Secret::new(p)),
@@ -420,13 +464,11 @@ pub async fn open_session(
             None => state.with_store(|s| s.password(connection_id))?,
         },
     };
-    // Saved in the keychain, but none is there (never typed, deleted, another machine).
     let none_saved = secret.is_none()
         && !saved.driver.is_embedded()
         && saved.save_password
         && saved.password_command.is_none()
         && !saved.pgpass;
-    let production = saved.connection_type == Some(ConnectionType::Prod) && side != Some(true);
     let mut config = state
         .with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?
         .with_env()?;
@@ -440,16 +482,14 @@ pub async fn open_session(
     if let Some(database) = database {
         config.database = database;
     }
-    // `auth`: the UI asks for the password (again), with the server's answer.
-    start_session(&state, connection_id, config, label, production)
-        .await
-        .map_err(|e| {
-            if (typed || none_saved) && login_refused(&e) {
-                e.with_kind("auth")
-            } else {
-                e
-            }
-        })
+    Ok(SavedConfig {
+        config,
+        label,
+        none_saved,
+        production: saved.connection_type == Some(ConnectionType::Prod),
+        read_only: saved.read_only,
+        restrictions: saved.restrictions,
+    })
 }
 
 /// Connects with `config` and keeps the session. Production starts in manual commit, so that

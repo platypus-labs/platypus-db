@@ -170,6 +170,31 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("ending server sessions"))
     }
 
+    /// The statements that took the server most time, at most
+    /// [`TOP_QUERIES`](crate::TOP_QUERIES), the costliest first. Optional: see
+    /// [`Capabilities::server_statistics`].
+    async fn top_queries(&self) -> Result<Vec<crate::ServerQuery>> {
+        Err(unsupported("query statistics"))
+    }
+
+    /// The tables and indexes of the user schemas of the database, with how they have been
+    /// used. Optional: see [`Capabilities::server_statistics`].
+    async fn object_statistics(&self) -> Result<Vec<crate::ObjectStatistics>> {
+        Err(unsupported("table statistics"))
+    }
+
+    /// Runs `operation` on table `schema.table`; returns what the server said of it, a line
+    /// each. Optional: see [`Capabilities::maintenance`].
+    async fn maintain(
+        &self,
+        schema: &str,
+        table: &str,
+        operation: crate::Maintenance,
+    ) -> Result<Vec<String>> {
+        let _ = (schema, table, operation);
+        Err(unsupported("table maintenance"))
+    }
+
     /// Objects of the user schemas whose name, column names or source contain `needle`,
     /// ignoring case; at most [`SEARCH_LIMIT`](crate::SEARCH_LIMIT) of them.
     /// Optional: see [`Capabilities::metadata_search`].

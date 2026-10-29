@@ -389,6 +389,23 @@ impl Connection for MySqlConnection {
         admin::end(self, id, how).await
     }
 
+    async fn top_queries(&self) -> Result<Vec<platypus_core::ServerQuery>> {
+        admin::top_queries(self).await
+    }
+
+    async fn object_statistics(&self) -> Result<Vec<platypus_core::ObjectStatistics>> {
+        admin::object_statistics(self).await
+    }
+
+    async fn maintain(
+        &self,
+        schema: &str,
+        table: &str,
+        operation: platypus_core::Maintenance,
+    ) -> Result<Vec<String>> {
+        admin::maintain(self, schema, table, operation).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -427,6 +444,8 @@ impl Connection for MySqlConnection {
             metadata_search: true,
             server_sessions: true,
             cancel_server_queries: true,
+            server_statistics: true,
+            maintenance: admin::MAINTENANCE,
             bulk_load: self.local_infile,
             ..Default::default()
         }

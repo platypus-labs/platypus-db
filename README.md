@@ -410,6 +410,33 @@ then run the SELECT or open it in the editor.
   sessions and locks needs the server's rights: `pg_read_all_stats` or superuser,
   MySQL's `PROCESS` and `SELECT` on `performance_schema`, SQL Server's
   `VIEW SERVER STATE`.
+- **Costliest statements**: the statements that took the server most time, summed over
+  their runs (PostgreSQL's `pg_stat_statements`, MySQL's and MariaDB's `performance_schema`,
+  SQL Server's plan cache), ordered by total time, mean time or calls, with their rows; one
+  opens in the editor or in a query plan. Without the statistics the tab says how to turn
+  them on.
+- **Tables and indexes**: size, rows, dead rows or unused space, full scans and index reads,
+  last vacuum and analyze, each index under its table. "Only those worth a look" keeps the
+  unused indexes, the big tables read whole more than through an index, those with many
+  dead rows or unused space, and those never analyzed.
+- **Maintenance** of a table, from its details there or from its menu in the navigator:
+  `VACUUM`, `ANALYZE` and `REINDEX` on PostgreSQL; `ANALYZE`, `OPTIMIZE` and `CHECK TABLE` on
+  MySQL and MariaDB; `UPDATE STATISTICS`, an index rebuild and `DBCC CHECKTABLE` on SQL
+  Server. Each asks first and shows what the server said.
+- **Back up… and Restore…** of a PostgreSQL or MySQL database (or a PostgreSQL schema) with
+  its own tools on the PATH (`pg_dump`, `pg_restore`, `psql`, `mysqldump`, `mysql`), through
+  the connection's tunnel or proxy, table by table with a progress bar. A `pg_dump` archive
+  restores with `pg_restore`, optionally dropping its objects first; a SQL file runs through
+  `psql` in one transaction, or through `mysql`, where views, triggers and routines are made
+  by the connection's user instead of their original definer.
+- **Scheduled tasks** (command palette, or *Schedule a task…* in a connection's menu): run a
+  SQL script, export a query to CSV, JSON, Parquet or Excel, or back up the database (with
+  its tools for PostgreSQL and MySQL, as the SQL dump of a schema for the others) every
+  hour, day, week or month at a time in a time zone. Exports and backups go to a folder that
+  keeps the newest files; a failed run is tried again a few minutes later if asked. The list
+  shows each task's next run and its last runs, with *Run now*. Tasks run while the app is
+  open, a time missed while it was closed at the next start, with the connection's saved
+  password.
 
 ### Import, export and transfer
 
