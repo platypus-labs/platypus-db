@@ -1865,6 +1865,13 @@ const zh: Record<string, string> = {
   "Dump": "转储",
   "Run SQL file…": "运行 SQL 文件…",
   "Dump to SQL file…": "转储到 SQL 文件…",
+  "Agents do not see a connection whose data is not exported.": "数据不允许导出的连接对代理不可见。",
+  "No exports: its data goes to no file, other database or agent": "禁止导出：其数据不会写入文件、其他数据库或代理",
+  "No data editing: rows change only by SQL, not in the grid, imports or generated data": "禁止编辑数据：行只能通过 SQL 修改，不能在网格、导入或生成数据中修改",
+  "the connection changes its rows only by SQL": "该连接只能通过 SQL 修改行",
+  "{name} changes its rows only by SQL: nothing is written there.": "{name} 只能通过 SQL 修改行：不会写入任何内容。",
+  "{name} changes its rows only by SQL: nothing is imported there.": "{name} 只能通过 SQL 修改行：不会导入任何内容。",
+  "{name} (rows by SQL only)": "{name}（仅限 SQL 修改行）",
 };
 
 export default zh;

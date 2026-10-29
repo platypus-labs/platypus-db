@@ -1865,6 +1865,13 @@ const es: Record<string, string> = {
   "Dump": "Volcar",
   "Run SQL file…": "Ejecutar archivo SQL…",
   "Dump to SQL file…": "Volcar a un archivo SQL…",
+  "Agents do not see a connection whose data is not exported.": "Los agentes no ven una conexión cuyos datos no se exportan.",
+  "No exports: its data goes to no file, other database or agent": "Sin exportaciones: sus datos no van a archivos, otras bases de datos ni agentes",
+  "No data editing: rows change only by SQL, not in the grid, imports or generated data": "Sin edición de datos: las filas cambian solo con SQL, no en la cuadrícula, importaciones ni datos generados",
+  "the connection changes its rows only by SQL": "la conexión cambia sus filas solo con SQL",
+  "{name} changes its rows only by SQL: nothing is written there.": "{name} cambia sus filas solo con SQL: no se escribe nada allí.",
+  "{name} changes its rows only by SQL: nothing is imported there.": "{name} cambia sus filas solo con SQL: no se importa nada allí.",
+  "{name} (rows by SQL only)": "{name} (filas solo con SQL)",
 };
 
 export default es;

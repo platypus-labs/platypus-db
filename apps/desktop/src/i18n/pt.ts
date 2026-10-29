@@ -1865,6 +1865,13 @@ const pt: Record<string, string> = {
   "Dump": "Despejar",
   "Run SQL file…": "Executar arquivo SQL…",
   "Dump to SQL file…": "Despejar em arquivo SQL…",
+  "Agents do not see a connection whose data is not exported.": "Os agentes não veem uma conexão cujos dados não são exportados.",
+  "No exports: its data goes to no file, other database or agent": "Sem exportações: seus dados não vão para arquivos, outros bancos ou agentes",
+  "No data editing: rows change only by SQL, not in the grid, imports or generated data": "Sem edição de dados: as linhas mudam só por SQL, não na grade, em importações ou dados gerados",
+  "the connection changes its rows only by SQL": "a conexão muda suas linhas só por SQL",
+  "{name} changes its rows only by SQL: nothing is written there.": "{name} muda suas linhas só por SQL: nada é escrito lá.",
+  "{name} changes its rows only by SQL: nothing is imported there.": "{name} muda suas linhas só por SQL: nada é importado lá.",
+  "{name} (rows by SQL only)": "{name} (linhas só por SQL)",
 };
 
 export default pt;

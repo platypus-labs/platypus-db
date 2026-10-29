@@ -17,6 +17,7 @@ import {
   type TableDetails,
   type TransactionState,
   isMongo,
+  keepsDataIn,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
 import type { NotesScope } from "../grid/ResultGrid";
@@ -1900,7 +1901,7 @@ export function QueryTab({
                   {t("Fetch all")}
                 </button>
               )}
-              {rowsResult && !exportBusy && (
+              {rowsResult && !exportBusy && !keepsDataIn(saved) && (
                 <button className="link" onClick={() => setExportOpen(true)}>
                   {t("Export…")}
                 </button>

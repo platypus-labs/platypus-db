@@ -1865,6 +1865,13 @@ const fr: Record<string, string> = {
   "Dump": "Exporter",
   "Run SQL file…": "Exécuter un fichier SQL…",
   "Dump to SQL file…": "Exporter dans un fichier SQL…",
+  "Agents do not see a connection whose data is not exported.": "Les agents ne voient pas une connexion dont les données ne s'exportent pas.",
+  "No exports: its data goes to no file, other database or agent": "Pas d'export : ses données ne vont ni dans un fichier, ni dans une autre base, ni à un agent",
+  "No data editing: rows change only by SQL, not in the grid, imports or generated data": "Pas de modification des données : les lignes changent seulement en SQL, pas dans la grille, les imports ou les données générées",
+  "the connection changes its rows only by SQL": "la connexion ne change ses lignes qu'en SQL",
+  "{name} changes its rows only by SQL: nothing is written there.": "{name} ne change ses lignes qu'en SQL : rien n'y est écrit.",
+  "{name} changes its rows only by SQL: nothing is imported there.": "{name} ne change ses lignes qu'en SQL : rien n'y est importé.",
+  "{name} (rows by SQL only)": "{name} (lignes en SQL seulement)",
 };
 
 export default fr;
