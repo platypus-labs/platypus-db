@@ -10,7 +10,7 @@ export const backsUp = (driver: DriverKind) => driver === "postgres" || driver =
  *  else as the SQL dump of a schema, which MongoDB and Redis have not. A saved transfer
  *  profile runs on any of them: it opens the connections it names. */
 export function taskKinds(driver: DriverKind): ScheduleTask["kind"][] {
-  return driver === "mongo" || driver === "redis" ? ["script", "export", "profile"] : ["script", "export", "backup", "profile"];
+  return driver === "mongo" || driver === "redis" ? ["script", "export", "profile"] : ["script", "export", "backup", "snapshot", "profile"];
 }
 
 /** A task's own fields for `kind`, as a new one starts. */
@@ -18,6 +18,7 @@ export function taskOf(kind: ScheduleTask["kind"], driver: DriverKind): Schedule
   if (kind === "script") return { kind, path: "" };
   if (kind === "export") return { kind, sql: "", format: "csv" };
   if (kind === "profile") return { kind, profile_id: "" };
+  if (kind === "snapshot") return { kind, schema: "" };
   return { kind, format: driver === "postgres" ? "custom" : "plain", schema: null };
 }
 
@@ -26,7 +27,8 @@ export function taskOf(kind: ScheduleTask["kind"], driver: DriverKind): Schedule
 export function taskOnConnection(task: ScheduleTask, from: DriverKind | undefined, to: DriverKind): ScheduleTask {
   if (from === to) return task;
   if (!taskKinds(to).includes(task.kind)) return taskOf("script", to);
-  return task.kind === "backup" ? taskOf("backup", to) : task;
+  // The schema of a snapshot belongs to the old connection.
+  return task.kind === "backup" || task.kind === "snapshot" ? taskOf(task.kind, to) : task;
 }
 
 /** A new task on `connectionId`: a script every day at 7, in the system's time zone. */
@@ -55,6 +57,12 @@ export function newProfileSchedule(profile: TransferProfile, connectionId: strin
   return { ...schedule, name: profile.name, task: { kind: "profile", profile_id: profile.id } };
 }
 
+/** A new task that takes a snapshot of `schema` (of `database`, when it is not the connection's own)
+ *  every day, named after it. */
+export function newSnapshotSchedule(connectionId: string, database: string | null, schema: string, name: string, id: string): Schedule {
+  return { ...newSchedule(connectionId, id), name, database, task: { kind: "snapshot", schema } };
+}
+
 /** `repeat` for a new choice of `every`, keeping what it had. */
 export function repeatOf(every: ScheduleRepeat["every"], from: ScheduleRepeat): ScheduleRepeat {
   if (every === "week") return { every, days: from.every === "week" ? from.days : [1, 2, 3, 4, 5] };
@@ -63,7 +71,7 @@ export function repeatOf(every: ScheduleRepeat["every"], from: ScheduleRepeat): 
 }
 
 /** Whether a task writes files into a folder. */
-export const writesFiles = (task: ScheduleTask) => task.kind !== "script";
+export const writesFiles = (task: ScheduleTask) => task.kind !== "script" && task.kind !== "snapshot";
 
 /** The list's order: those running, then by when they run next, those that do not last. */
 export function sortSchedules(all: ScheduleView[]): ScheduleView[] {

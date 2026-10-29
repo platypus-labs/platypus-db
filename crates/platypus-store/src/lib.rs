@@ -6,7 +6,8 @@
 //! are logged to a local SQLite database by [`HistoryStore`], the calls of external agents
 //! by [`AgentCallStore`]. Notes and tags on tables and
 //! columns live in a local SQLite database, [`CatalogStore`]. Preferences live in
-//! `settings.toml` through [`SettingsStore`].
+//! `settings.toml` through [`SettingsStore`]. Snapshots of a schema's structure, for the
+//! schema history, live in [`SchemaHistoryStore`].
 
 mod agent_calls;
 mod auth;
@@ -14,6 +15,7 @@ mod catalog;
 mod connections;
 mod history;
 mod import;
+mod schema_history;
 mod secrets;
 mod settings;
 mod sqlite;
@@ -41,6 +43,9 @@ pub use history::{
 pub use import::{
     ImportFile, ImportNote, ImportSource, ImportedProject, ImportedSecrets, ProjectNote,
     SkippedConnection, detect as detect_imports, import as import_connections,
+};
+pub use schema_history::{
+    NewSnapshot, SchemaHistoryStore, Snapshot, SnapshotHow, SnapshotMeta, SnapshotOutcome,
 };
 pub use secrets::{KeyringSecrets, MemorySecrets, SecretStore};
 pub use settings::SettingsStore;

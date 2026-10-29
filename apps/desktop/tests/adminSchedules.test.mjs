@@ -1,17 +1,30 @@
 // Unit tests of the scheduled tasks dialog's defaults, choices and order (src/admin/schedules.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleaned, newProfileSchedule, newSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "../src/admin/schedules.ts";
+import { cleaned, newProfileSchedule, newSchedule, newSnapshotSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "../src/admin/schedules.ts";
 
 test("backups with the database's tools, or as a SQL dump", () => {
-  assert.deepEqual(taskKinds("postgres"), ["script", "export", "backup", "profile"]);
-  assert.deepEqual(taskKinds("mysql"), ["script", "export", "backup", "profile"]);
-  assert.deepEqual(taskKinds("sqlite"), ["script", "export", "backup", "profile"]);
+  assert.deepEqual(taskKinds("postgres"), ["script", "export", "backup", "snapshot", "profile"]);
+  assert.deepEqual(taskKinds("mysql"), ["script", "export", "backup", "snapshot", "profile"]);
+  assert.deepEqual(taskKinds("sqlite"), ["script", "export", "backup", "snapshot", "profile"]);
   assert.deepEqual(taskKinds("mongo"), ["script", "export", "profile"]);
   assert.deepEqual(taskOf("backup", "postgres"), { kind: "backup", format: "custom", schema: null });
   assert.deepEqual(taskOf("backup", "mysql").format, "plain");
   assert.ok(writesFiles(taskOf("export", "sqlite")));
   assert.ok(!writesFiles(taskOf("script", "sqlite")));
+});
+
+test("a snapshot task needs a schema and writes no files", () => {
+  assert.deepEqual(taskOf("snapshot", "postgres"), { kind: "snapshot", schema: "" });
+  assert.ok(!writesFiles(taskOf("snapshot", "postgres")));
+  const s = newSnapshotSchedule("c1", "shop", "public", "Snapshots of public", "id1");
+  assert.deepEqual(s.task, { kind: "snapshot", schema: "public" });
+  assert.equal(s.database, "shop");
+  assert.equal(s.name, "Snapshots of public");
+  assert.equal(cleaned({ ...s, folder: "/out" }).folder, null);
+  const moved = taskOnConnection(s.task, "postgres", "mysql");
+  assert.deepEqual(moved, { kind: "snapshot", schema: "" }, "the schema belongs to the old connection");
+  assert.deepEqual(taskOnConnection(s.task, "postgres", "mongo"), { kind: "script", path: "" });
 });
 
 test("a new task runs a script every day at 7", () => {

@@ -161,5 +161,66 @@
 .mig-status.failed,
 .mig-status.missing {
   background: var(--error-bg);
+/* The schema history tab: the snapshots, and what changed between two of them. */
+.schema-history .history-label {
+  width: 180px;
+}
+
+.schema-history .history-notice {
+  margin: 8px 12px 0;
+}
+
+.history-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-list {
+  width: 100%;
+}
+
+.history-now td {
+  border-bottom: 1px solid var(--border);
+}
+
+.history-changes-head {
+  align-items: center;
+  gap: 10px;
+}
+
+.history-table h3 {
+  margin: 10px 0 4px;
+  font-size: 13px;
+}
+
+.history-table ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+}
+
+.history-change {
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.history-change.table_added,
+.history-change.column_added,
+.history-change.index_added,
+.history-change.foreign_key_added,
+.history-change.constraint_added {
+  color: var(--ok, inherit);
+}
+
+.history-change.table_dropped,
+.history-change.column_dropped,
+.history-change.index_dropped,
+.history-change.foreign_key_dropped,
+.history-change.constraint_dropped {
   color: var(--error);
 }

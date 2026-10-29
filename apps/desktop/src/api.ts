@@ -338,10 +338,68 @@ export type ScheduleTask =
   | { kind: "script"; path: string }
   | { kind: "export"; sql: string; format: ScheduleExportFormat }
   | { kind: "backup"; format: BackupFormat; schema?: string | null }
-  | { kind: "profile"; profile_id: string };
+  | { kind: "profile"; profile_id: string }
+  | { kind: "snapshot"; schema: string };
 
 /** How often a task runs; days of the week are 1 (Monday) to 7. */
 export type ScheduleRepeat = { every: "hour" } | { every: "day" } | { every: "week"; days: number[] } | { every: "month"; day: number };
+
+/** A snapshot of a schema's structure in the schema history, without its tables; see `SnapshotMeta`. */
+export interface SchemaSnapshot {
+  id: number;
+  connection_id: string;
+  database: string | null;
+  schema: string;
+  driver: string;
+  /** UTC, RFC 3339. */
+  taken_at: string;
+  label: string | null;
+  how: "manual" | "scheduled";
+  tables: number;
+  hash: string;
+}
+
+/** What `takeSchemaSnapshot` did: `unchanged` when the schema is as in the latest snapshot, which is returned. */
+export interface SnapshotTaken {
+  unchanged: boolean;
+  snapshot: SchemaSnapshot;
+}
+
+export type SchemaChangeKind =
+  | "table_added"
+  | "table_dropped"
+  | "column_added"
+  | "column_dropped"
+  | "column_type_changed"
+  | "column_nullability_changed"
+  | "column_default_changed"
+  | "column_changed"
+  | "index_added"
+  | "index_dropped"
+  | "foreign_key_added"
+  | "foreign_key_dropped"
+  | "constraint_added"
+  | "constraint_dropped"
+  | "comment_changed";
+
+/** One change to a table; `item` is the column, index, key or constraint it is about. */
+export interface SchemaChange {
+  table: string;
+  kind: SchemaChangeKind;
+  item: string | null;
+  from: string | null;
+  to: string | null;
+}
+
+/** What a snapshot is compared with: another snapshot, or the schema now through a session. */
+export type SnapshotDiffTarget = { kind: "snapshot"; id: number } | { kind: "live"; session_id: number };
+
+/** The changes from one state of a schema to another and the script that makes them. */
+export interface SchemaDiff {
+  changes: SchemaChange[];
+  sql: string;
+  warnings: string[];
+}
 
 /** A scheduled task; see `scheduler::plan::Schedule`. */
 export interface Schedule {
@@ -2105,6 +2163,15 @@ export const api = {
   /** The rows that differ between two tables with the same key, and the statements that make the target like the source. */
   compareTableData: (sourceSession: number, source: TableRef, targetSession: number, target: TableRef, options: CompareOptions) =>
     invoke<DataDiff>("compare_table_data", { sourceSession, source, targetSession, target, options }),
+  /** Takes a snapshot of the schema's structure; nothing is stored if it is the same as the latest. */
+  takeSchemaSnapshot: (sessionId: number, connectionId: string, database: string | null, schema: string, label: string | null) =>
+    invoke<SnapshotTaken>("take_schema_snapshot", { sessionId, connectionId, database, schema, label }),
+  /** The snapshots of a schema, newest first. */
+  listSchemaSnapshots: (connectionId: string, database: string | null, schema: string) =>
+    invoke<SchemaSnapshot[]>("list_schema_snapshots", { connectionId, database, schema }),
+  deleteSchemaSnapshot: (id: number) => invoke<void>("delete_schema_snapshot", { id }),
+  /** The changes from snapshot `fromId` to another snapshot or to the schema now, with the script for them. */
+  diffSchemaSnapshots: (fromId: number, to: SnapshotDiffTarget) => invoke<SchemaDiff>("diff_schema_snapshots", { fromId, to }),
   /** A comparison script as the text of a Flyway migration or a Liquibase changelog. */
   schemaChangelog: (driver: DriverKind, script: TableScript, format: ChangelogFormat, description: string, author: string, id: string) =>
     invoke<string>("schema_changelog", { driver, script, format, description, author, id }),

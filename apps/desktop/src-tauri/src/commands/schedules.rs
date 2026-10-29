@@ -2,7 +2,8 @@
 //! tasks whose time has come, and runs each on a connection of its own, with the saved
 //! password (a task cannot ask for one). A script runs its statements one at a time; an
 //! export and a backup write a file named by the time of the run into the task's folder,
-//! where the newest `keep` stay; a profile runs as `commands::profiles` runs it.
+//! where the newest `keep` stay; a profile runs as `commands::profiles` runs it; a snapshot
+//! stores the structure of a schema in the schema history.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,6 +11,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use platypus_core::{Connection, DriverKind, ExecOptions, ExecResult};
+use platypus_store::{SnapshotHow, SnapshotOutcome};
 use platypus_transfer::dump::{DumpFile, dump};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -19,6 +21,7 @@ use uuid::Uuid;
 use super::backup::{BackupEvent, BackupFormat, BackupRequest, backup};
 use super::connections::{SavedConfig, saved_config};
 use super::profiles::start as start_profile;
+use super::schema_history::{SchemaRef, take};
 use super::{AppState, connect, lock, read_only_error, sql};
 use crate::error::{CommandError, CommandResult};
 use crate::export::ExportEvent;
@@ -95,7 +98,10 @@ async fn execute(
         .await
         .map_err(|e| e.message().to_owned())?;
     let label = format!("{} · {}", saved.label, schedule.name);
-    if saved.restrictions.no_export && !matches!(schedule.task, Task::Script { .. }) {
+    // A snapshot keeps the structure, not the data, so a connection that bars exports allows it.
+    if saved.restrictions.no_export
+        && !matches!(schedule.task, Task::Script { .. } | Task::Snapshot { .. })
+    {
         return Err(format!("{} does not let its data be exported", saved.label));
     }
     match &schedule.task {
@@ -134,6 +140,9 @@ async fn execute(
             prune(schedule, &file, extension);
             Ok((message, Some(file)))
         }
+        Task::Snapshot { schema } => run_snapshot(state, &saved, schedule, schema)
+            .await
+            .map(|m| (m, None)),
         Task::Profile { .. } => unreachable!("run before"),
     }
 }
@@ -173,6 +182,35 @@ fn password_missing(label: &str, scheduled: bool) -> CommandError {
         )
     };
     CommandError::new("auth", message)
+}
+
+/// Takes a snapshot of `schema` for its history; says whether it stored one.
+async fn run_snapshot(
+    state: &AppState,
+    saved: &SavedConfig,
+    schedule: &Schedule,
+    schema: &str,
+) -> Result<String, String> {
+    let conn = connect(&saved.config).await.map_err(|e| e.to_string())?;
+    let at = SchemaRef {
+        connection: schedule.connection_id,
+        database: schedule.database.as_deref(),
+        schema,
+    };
+    let outcome = take(
+        state,
+        conn.as_ref(),
+        saved.config.driver,
+        at,
+        None,
+        SnapshotHow::Scheduled,
+    )
+    .await
+    .map_err(|e| e.message().to_owned())?;
+    Ok(match outcome {
+        SnapshotOutcome::Taken(_) => "Snapshot taken".to_owned(),
+        SnapshotOutcome::Unchanged(_) => "No changes since the last snapshot".to_owned(),
+    })
 }
 
 /// Runs the profile `profile_id` for `schedule`: an export goes to the task's folder when it
@@ -614,6 +652,7 @@ mod tests {
             Err("no vault".to_owned()),
             Err("no history".to_owned()),
             Err("no catalog".to_owned()),
+            Ok(platypus_store::SchemaHistoryStore::open_in_memory().unwrap()),
             Err("no settings".to_owned()),
             Err("no scripts".to_owned()),
         );
@@ -793,5 +832,44 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.contains("gone"), "{error}");
+    }
+
+    /// A snapshot task stores the schema once, says so when nothing changed, and needs no
+    /// folder.
+    #[tokio::test]
+    async fn snapshot_tasks_store_a_schema_when_it_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("snap.db");
+        let (state, connection) = sqlite_state(dir.path(), &db);
+        let profiles = Profiles::open(None);
+        let saved = saved_config(&state, connection, None, None).await.unwrap();
+        let conn = connect(&saved.config).await.unwrap();
+        conn.execute(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY)",
+            &ExecOptions::default(),
+        )
+        .await
+        .unwrap();
+        let mut s = schedule(
+            Task::Snapshot {
+                schema: "main".to_owned(),
+            },
+            None,
+        );
+        s.connection_id = connection;
+        assert_eq!(s.problem(), None);
+        let run = || execute(&state, &profiles, &s, Utc::now());
+        assert_eq!(run().await.unwrap(), ("Snapshot taken".to_owned(), None));
+        assert_eq!(run().await.unwrap().0, "No changes since the last snapshot");
+        conn.execute("ALTER TABLE t ADD COLUMN v TEXT", &ExecOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(run().await.unwrap().0, "Snapshot taken");
+        let list = state
+            .with_schema_history(|h| h.list(connection, None, "main"))
+            .unwrap();
+        assert_eq!(list.len(), 2);
+        assert!(list.iter().all(|m| m.how == SnapshotHow::Scheduled));
+        assert_eq!(list[0].tables, 1);
     }
 }

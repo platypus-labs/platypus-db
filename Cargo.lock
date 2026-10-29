@@ -6104,6 +6104,7 @@ dependencies = [
  "aes",
  "argon2",
  "cbc",
+ "chrono",
  "keyring",
  "platypus-core",
  "ring",
