@@ -909,6 +909,9 @@ export interface ConstraintDesign {
   check: string;
 }
 
+/** The migration tool whose file `schemaChangelog` writes. */
+export type ChangelogFormat = "flyway" | "liquibase";
+
 /** The statements that change a table, sent back as is to run them. */
 export interface TableScript {
   before: string[];
@@ -1997,6 +2000,11 @@ export const api = {
   /** The script that makes the target schema like the source one. */
   compareSchemas: (sourceSession: number, sourceSchema: string, targetSession: number, targetSchema: string) =>
     invoke<{ script: TableScript; sql: string }>("compare_schemas", { sourceSession, sourceSchema, targetSession, targetSchema }),
+  /** A comparison script as the text of a Flyway migration or a Liquibase changelog. */
+  schemaChangelog: (driver: DriverKind, script: TableScript, format: ChangelogFormat, description: string, author: string, id: string) =>
+    invoke<string>("schema_changelog", { driver, script, format, description, author, id }),
+  /** The name of a Flyway versioned migration. */
+  flywayFileName: (version: string, description: string) => invoke<string>("flyway_file_name", { version, description }),
   /** The UPDATE, INSERT and DELETE statements that saving `changes` would run. */
   previewChanges: (jobId: number, changes: TableChanges) =>
     invoke<string[]>("preview_changes", { jobId, changes }),

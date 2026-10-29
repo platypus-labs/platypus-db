@@ -5,6 +5,20 @@
   gap: 6px 10px;
 }
 
+/* Over the whole window, not the system's full screen. Below the dialogs (z-index 10), which
+ * the diagram opens inside itself, so they stay above it. */
+.erd.erd-full {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  background: var(--bg);
+}
+
+/* The window's own buttons stay above the overlay: keep the header's out from under them. */
+.erd.erd-full .object-header {
+  padding-right: 170px;
+}
+
 .erd-canvas {
   position: relative;
   flex: 1;

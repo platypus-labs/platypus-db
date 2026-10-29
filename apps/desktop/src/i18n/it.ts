@@ -2184,6 +2184,13 @@ const it: Record<string, string> = {
   "Done: {n} rows.": "Fatto: {n} righe.",
   "Open…": "Apri…",
   "Schedule…": "Pianifica…",
+  // Group I: schema changelog
+  "Output": "Destinazione",
+  "Flyway migration…": "Migrazione Flyway…",
+  "Liquibase changelog…": "Changelog Liquibase…",
+  // Group I: ER diagram full screen
+  "Full screen": "Schermo intero",
+  "Exit full screen": "Esci da schermo intero",
 };
 
 export default it;
