@@ -1,0 +1,208 @@
+/* Notebook: a column of cells, each with its tools, its SQL or text, and its result. */
+
+.notebook-tab {
+  background: var(--bg);
+}
+
+.notebook-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notebook-param {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notebook-param input {
+  width: 140px;
+}
+
+.notebook-param code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.notebook-cells {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notebook-cell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  /* The result's grid scrolls inside the cell. */
+  min-width: 0;
+}
+
+.notebook-cell.running {
+  border-color: var(--accent);
+}
+
+.notebook-cell-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.notebook-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 28px;
+}
+
+.notebook-editor .editor {
+  height: auto;
+  min-height: 60px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.notebook-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.notebook-result {
+  display: flex;
+  flex-direction: column;
+  height: 260px;
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.notebook-result.chart {
+  height: 380px;
+}
+
+.notebook-result.short {
+  height: auto;
+}
+
+.notebook-cell > .notice {
+  margin: 6px 10px;
+}
+
+.notebook-plan {
+  list-style: none;
+  margin: 0;
+  padding: 6px 10px 8px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.notebook-plan li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notebook-text {
+  margin: 8px;
+  padding: 6px 8px;
+  min-height: 70px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--fg);
+}
+
+.notebook-rendered {
+  padding: 4px 14px;
+  min-height: 32px;
+  cursor: text;
+}
+
+.notebook-markdown h1,
+.notebook-markdown h2,
+.notebook-markdown h3 {
+  margin: 10px 0 6px;
+  color: var(--fg-strong);
+}
+
+.notebook-markdown h1 {
+  font-size: 20px;
+}
+
+.notebook-markdown h2 {
+  font-size: 16px;
+}
+
+.notebook-markdown h3 {
+  font-size: 14px;
+}
+
+.notebook-markdown p,
+.notebook-markdown ul,
+.notebook-markdown ol {
+  margin: 6px 0;
+}
+
+.notebook-markdown code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: var(--radius);
+  background: var(--bg-sidebar);
+}
+
+.notebook-markdown pre {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+  overflow: auto;
+}
+
+.notebook-markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.notebook-markdown blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--fg-muted);
+}
+
+.notebook-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.notebook-link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.notebook-empty {
+  text-align: center;
+  padding: 24px;
+}

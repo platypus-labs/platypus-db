@@ -8,3 +8,4 @@ import "./tableEditor";
 import "./diff";
 import "./erd";
 import "./admin";
+import "./notebook";
