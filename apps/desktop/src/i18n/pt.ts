@@ -2411,6 +2411,20 @@ const pt: Record<string, string> = {
   "The script returned no rows to show.": "O script não retornou linhas para exibir.",
   "New dashboard": "Novo painel",
   "Dashboards…": "Painéis…",
+  // Group M: saved results
+  "Save result": "Salvar resultado",
+  "Saved, but only the rows loaded: reading stopped before the end of the result.": "Salvo, mas só as linhas carregadas: a leitura parou antes do fim do resultado.",
+  "Saved result: {name}": "Resultado salvo: {name}",
+  "Save result…": "Salvar resultado…",
+  "Rename saved result": "Renomear resultado salvo",
+  "Delete the saved result “{name}”? Its file is deleted too.": "Excluir o resultado salvo “{name}”? O arquivo dele também é excluído.",
+  "Saved results": "Resultados salvos",
+  "Hide saved results": "Ocultar os resultados salvos",
+  "Show saved results": "Mostrar os resultados salvos",
+  "Search saved results": "Pesquisar nos resultados salvos",
+  "No saved results": "Nenhum resultado salvo",
+  "No saved result matches": "Nenhum resultado salvo corresponde",
+  "Saved result of {connection} from {time}: {rows} rows. No connection is needed to read it.": "Resultado salvo de {connection} de {time}: {rows} linhas. Não é preciso nenhuma conexão para lê-lo.",
 };
 
 export default pt;

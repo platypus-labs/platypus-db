@@ -129,15 +129,41 @@ pub async fn open_result_db(
 ) -> CommandResult<OpenedResultDb> {
     let sources = sources(&state, &tables)?;
     let partial = partial(&sources);
-    let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
-    let memory = format!("platypus-result-{}", Uuid::new_v4());
-    let filled = memory.clone();
-    let database = blocking(move || fill(&filled, &[], &sources)).await?;
-    let connection = register(&state, &name, memory, names, database);
+    let connection = fill_new(&state, &name, sources).await?;
     Ok(OpenedResultDb {
         connection,
         partial,
     })
+}
+
+/// Opens rows that are not a job's, as the table `result` of a new in-memory DuckDB, and
+/// returns the temporary connection to it, called `name`: a saved result read from its file.
+pub(in crate::commands) async fn open_rows(
+    state: &AppState,
+    name: &str,
+    schema: SchemaRef,
+    batches: Vec<RecordBatch>,
+) -> CommandResult<SavedConnection> {
+    let source = Source {
+        table: "result".to_owned(),
+        schema,
+        batches,
+        ending: Ending::Complete,
+    };
+    fill_new(state, name, vec![source]).await
+}
+
+/// Fills a new in-memory database with `sources` and keeps it for a temporary connection.
+async fn fill_new(
+    state: &AppState,
+    name: &str,
+    sources: Vec<Source>,
+) -> CommandResult<SavedConnection> {
+    let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
+    let memory = format!("platypus-result-{}", Uuid::new_v4());
+    let filled = memory.clone();
+    let database = blocking(move || fill(&filled, &[], &sources)).await?;
+    Ok(register(state, name, memory, names, database))
 }
 
 /// Registers the temporary connection `name` to the in-memory database `memory`, which holds
@@ -359,6 +385,24 @@ mod tests {
         assert_eq!(one(&memory, "SELECT count(*) FROM result"), 1);
         let gone = "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('r1', 'r2')";
         assert_eq!(one(&memory, gone), 0);
+    }
+
+    #[test]
+    fn rows_without_a_job_open_as_the_table_result() {
+        platypus_driver_duckdb::testing::load();
+        let state = AppState::for_tests();
+        let rows = source("result", &[4, 5, 6]);
+        let connection =
+            tauri::async_runtime::block_on(open_rows(&state, "Saved", rows.schema, rows.batches))
+                .unwrap();
+        let (_, label) = state.result_db_config(connection.id).unwrap();
+        assert_eq!(label, "Saved");
+        let memory = {
+            let dbs = lock(&state.result_dbs);
+            assert_eq!(dbs[&connection.id].tables, ["result"]);
+            dbs[&connection.id].name.clone()
+        };
+        assert_eq!(one(&memory, "SELECT sum(n)::BIGINT FROM result"), 15);
     }
 
     #[test]

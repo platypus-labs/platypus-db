@@ -29,6 +29,7 @@ pub mod projects;
 pub mod query;
 pub mod querylog;
 pub mod sample;
+pub mod saved_results;
 pub mod schedules;
 pub mod schema;
 pub mod schema_history;

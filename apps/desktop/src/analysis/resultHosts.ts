@@ -33,6 +33,8 @@ export interface ResultHost {
   querySql(): void;
   /** Opens the pivot form for the result shown. */
   pivot(): void;
+  /** The database the tab is on, when it is not the connection's own. */
+  database(): string | null;
 }
 
 const hosts = new Set<ResultHost>();

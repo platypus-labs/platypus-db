@@ -2411,6 +2411,20 @@ const es: Record<string, string> = {
   "The script returned no rows to show.": "El script no devolvió filas que mostrar.",
   "New dashboard": "Nuevo panel",
   "Dashboards…": "Paneles…",
+  // Group M: saved results
+  "Save result": "Guardar resultado",
+  "Saved, but only the rows loaded: reading stopped before the end of the result.": "Guardado, pero solo las filas cargadas: la lectura se detuvo antes del final del resultado.",
+  "Saved result: {name}": "Resultado guardado: {name}",
+  "Save result…": "Guardar resultado…",
+  "Rename saved result": "Renombrar resultado guardado",
+  "Delete the saved result “{name}”? Its file is deleted too.": "¿Eliminar el resultado guardado «{name}»? También se elimina su archivo.",
+  "Saved results": "Resultados guardados",
+  "Hide saved results": "Ocultar los resultados guardados",
+  "Show saved results": "Mostrar los resultados guardados",
+  "Search saved results": "Buscar en los resultados guardados",
+  "No saved results": "No hay resultados guardados",
+  "No saved result matches": "Ningún resultado guardado coincide",
+  "Saved result of {connection} from {time}: {rows} rows. No connection is needed to read it.": "Resultado guardado de {connection} del {time}: {rows} filas. No se necesita ninguna conexión para leerlo.",
 };
 
 export default es;

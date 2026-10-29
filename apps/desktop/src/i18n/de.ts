@@ -2411,6 +2411,20 @@ const de: Record<string, string> = {
   "The script returned no rows to show.": "Das Skript lieferte keine anzuzeigenden Zeilen.",
   "New dashboard": "Neues Dashboard",
   "Dashboards…": "Dashboards…",
+  // Group M: saved results
+  "Save result": "Ergebnis speichern",
+  "Saved, but only the rows loaded: reading stopped before the end of the result.": "Gespeichert, aber nur die geladenen Zeilen: Das Lesen wurde vor dem Ende des Ergebnisses beendet.",
+  "Saved result: {name}": "Gespeichertes Ergebnis: {name}",
+  "Save result…": "Ergebnis speichern…",
+  "Rename saved result": "Gespeichertes Ergebnis umbenennen",
+  "Delete the saved result “{name}”? Its file is deleted too.": "Das gespeicherte Ergebnis „{name}“ löschen? Seine Datei wird ebenfalls gelöscht.",
+  "Saved results": "Gespeicherte Ergebnisse",
+  "Hide saved results": "Gespeicherte Ergebnisse ausblenden",
+  "Show saved results": "Gespeicherte Ergebnisse anzeigen",
+  "Search saved results": "Gespeicherte Ergebnisse durchsuchen",
+  "No saved results": "Keine gespeicherten Ergebnisse",
+  "No saved result matches": "Kein gespeichertes Ergebnis passt",
+  "Saved result of {connection} from {time}: {rows} rows. No connection is needed to read it.": "Gespeichertes Ergebnis von {connection} vom {time}: {rows} Zeilen. Zum Lesen ist keine Verbindung nötig.",
 };
 
 export default de;

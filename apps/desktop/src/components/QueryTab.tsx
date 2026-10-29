@@ -14,6 +14,7 @@ import {
   type SqlAnalysis,
   type QueryEvent,
   type SavedConnection,
+  type SavedResult,
   type TableDetails,
   type TransactionState,
   isMongo,
@@ -42,6 +43,7 @@ import { workbench } from "../workbench";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
 import { AcrossBar } from "../analysis/CrossQueryDialog";
 import type { AcrossOrigin } from "../analysis/acrossModel";
+import { SavedResultBar } from "../analysis/SavedResults";
 import { useResultSql } from "../analysis/ResultSql";
 import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
@@ -140,6 +142,9 @@ export interface QueryTabModel extends TabBase {
   /** "Query across databases": the tables copied into this tab's temporary connection.
    *  Not persisted, like `resultSource`. */
   across?: AcrossOrigin;
+  /** A saved result opened offline: its tables are the file's rows, not a result's. Not
+   *  persisted, like the temporary connection. */
+  savedResult?: SavedResult;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
   /** Charts of the statements, each shown in place of the grid when chosen. */
@@ -324,8 +329,8 @@ export function QueryTab({
   /** The rows on screen: the shown result, or the output of its SQL field. */
   const view = resultSql.output ?? shown;
   // "Query with SQL" reads this tab's results with rows and which one is shown.
-  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot });
-  resultsNow.current = { results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot };
+  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database });
+  resultsNow.current = { results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database };
   useEffect(
     () =>
       provideResults({
@@ -336,6 +341,7 @@ export function QueryTab({
         activeJob: () => resultsNow.current.shown?.jobId ?? null,
         querySql: () => resultsNow.current.focusSql(),
         pivot: () => resultsNow.current.pivot(),
+        database: () => resultsNow.current.database ?? null,
       }),
     [],
   );
@@ -1835,6 +1841,7 @@ export function QueryTab({
               }}
             />
           )}
+          {tab.savedResult && <SavedResultBar saved={tab.savedResult} />}
           {tab.resultSource && (
             <ResultSourceBar
               source={tab.resultSource}

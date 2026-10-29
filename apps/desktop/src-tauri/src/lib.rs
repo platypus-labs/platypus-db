@@ -11,6 +11,7 @@ mod formats;
 mod jobs;
 mod profiles;
 mod querylog;
+mod saved_results;
 mod scheduler;
 mod windows;
 
@@ -173,6 +174,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             .ok()
             .map(|d| d.join("transfer-profiles.json")),
     ));
+    app.manage(saved_results::SavedResults::open(
+        dir(app, false).ok().map(|d| d.join("saved-results")),
+    ));
     commands::schedules::start(app.handle().clone());
     agent::start(app.handle(), dir(app, false).ok());
     open_main_window(app, system_title_bar)?;
@@ -299,6 +303,11 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::analysis::sql::close_result_db,
         commands::analysis::across::open_across_db,
         commands::analysis::across::reload_across_db,
+        commands::saved_results::save_result,
+        commands::saved_results::list_saved_results,
+        commands::saved_results::rename_saved_result,
+        commands::saved_results::delete_saved_result,
+        commands::saved_results::open_saved_result,
         commands::meta::completion_catalog,
         commands::meta::query_value,
         commands::meta::estimate_rows,
