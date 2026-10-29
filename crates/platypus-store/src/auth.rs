@@ -176,11 +176,25 @@ fn run_command(command: &str, output: bool) -> Result<Secret> {
             _ => failed(status.to_string()),
         });
     }
+    password_of(&stdout).map(Secret::new).map_err(failed)
+}
+
+/// The password a command printed: its first line, or the `password` field of a JSON object,
+/// as AWS Secrets Manager keeps a database's secret.
+fn password_of(stdout: &str) -> Result<String, String> {
+    if stdout.trim_start().starts_with('{') {
+        let value: serde_json::Value = serde_json::from_str(stdout.trim())
+            .map_err(|_| "printed a JSON object that does not parse".to_owned())?;
+        return match value.get("password") {
+            Some(serde_json::Value::String(p)) if !p.is_empty() => Ok(p.clone()),
+            _ => Err("printed a JSON object without a `password` text field".to_owned()),
+        };
+    }
     let password = stdout.lines().next().unwrap_or("").trim_end_matches('\r');
     if password.is_empty() {
-        return Err(failed("printed nothing".to_owned()));
+        return Err("printed nothing".to_owned());
     }
-    Ok(Secret::new(password))
+    Ok(password.to_owned())
 }
 
 #[cfg(test)]
@@ -242,6 +256,24 @@ mod tests {
         assert!(command_password("exit 3").is_err());
         let empty = if cfg!(windows) { "echo." } else { "echo" };
         assert!(command_password(empty).is_err());
+    }
+
+    #[test]
+    fn a_json_secret_gives_its_password_field() {
+        // AWS Secrets Manager's database secret, on one line or several.
+        let secret = r#"{"username":"ada","password":"p@ss {x}","engine":"postgres"}"#;
+        assert_eq!(password_of(secret).unwrap(), "p@ss {x}");
+        assert_eq!(
+            password_of("{\n  \"password\": \"multi\"\n}\n").unwrap(),
+            "multi"
+        );
+        assert!(password_of(r#"{"username":"ada"}"#).unwrap_err().contains("password"));
+        assert!(password_of(r#"{"password":""}"#).is_err());
+        assert!(password_of(r#"{"password":3}"#).is_err());
+        assert!(password_of("{not json").unwrap_err().contains("parse"));
+        // Anything else: the first line, as before.
+        assert_eq!(password_of("plain\nsecond\n").unwrap(), "plain");
+        assert_eq!(password_of("[1, 2]\n").unwrap(), "[1, 2]");
     }
 
     #[test]
