@@ -125,14 +125,23 @@ pub fn command_password(command: &str) -> Result<Secret> {
 /// [`command_password`]; with `output`, a failure quotes the first line of stderr.
 fn run_command(command: &str, output: bool) -> Result<Secret> {
     let failed = |message: String| StoreError::Invalid(format!("password command: {message}"));
-    let (shell, flags): (_, &[&str]) = if cfg!(windows) {
-        ("cmd", &["/D", "/C"])
+    let mut shell = if cfg!(windows) {
+        Command::new("cmd")
     } else {
-        ("sh", &["-c"])
+        Command::new("sh")
     };
-    let mut child = Command::new(shell)
-        .args(flags)
-        .arg(command)
+    #[cfg(windows)]
+    {
+        // As written, in quotes `cmd /S` takes off: `arg` would escape its quotes as `\"`,
+        // which `cmd` does not read, and `op read "op://…"` would break.
+        use std::os::windows::process::CommandExt as _;
+        shell
+            .args(["/D", "/S", "/C"])
+            .raw_arg(format!("\"{command}\""));
+    }
+    #[cfg(not(windows))]
+    shell.arg("-c").arg(command);
+    let mut child = shell
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -180,11 +189,10 @@ fn run_command(command: &str, output: bool) -> Result<Secret> {
 }
 
 /// The password a command printed: its first line, or the `password` field of a JSON object,
-/// as AWS Secrets Manager keeps a database's secret.
+/// as AWS Secrets Manager keeps a database's secret. A password that only starts with `{` is
+/// not JSON, and stays a password.
 fn password_of(stdout: &str) -> Result<String, String> {
-    if stdout.trim_start().starts_with('{') {
-        let value: serde_json::Value = serde_json::from_str(stdout.trim())
-            .map_err(|_| "printed a JSON object that does not parse".to_owned())?;
+    if let Ok(value @ serde_json::Value::Object(_)) = serde_json::from_str(stdout.trim()) {
         return match value.get("password") {
             Some(serde_json::Value::String(p)) if !p.is_empty() => Ok(p.clone()),
             _ => Err("printed a JSON object without a `password` text field".to_owned()),
@@ -274,7 +282,7 @@ mod tests {
         );
         assert!(password_of(r#"{"password":""}"#).is_err());
         assert!(password_of(r#"{"password":3}"#).is_err());
-        assert!(password_of("{not json").unwrap_err().contains("parse"));
+        assert_eq!(password_of("{not json\n").unwrap(), "{not json");
         // Anything else: the first line, as before.
         assert_eq!(password_of("plain\nsecond\n").unwrap(), "plain");
         assert_eq!(password_of("[1, 2]\n").unwrap(), "[1, 2]");
