@@ -59,6 +59,7 @@ import { logError, track } from "./shell/activity";
 import { openActivity } from "./shell/ActivityDialog";
 import { LockScreen, useIdleLock } from "./guards/AppLock";
 import { PanelResizer, useStoredSize } from "./shell/PanelResizer";
+import { useTray, useWindowEvents } from "./shell/windows";
 
 declare module "./actions" {
   interface ActionScopes {
@@ -732,13 +733,15 @@ export function App() {
     }
   }
 
-  function closeTab(tab: TabModel, confirmed = false) {
+  /** Closes `tab`, asking first unless `confirmed`; kept to reopen unless `moved` to another
+   *  window. */
+  function closeTab(tab: TabModel, confirmed = false, moved = false) {
     if (!confirmed) {
       void confirmClose(tab).then((yes) => yes && closeTab(tab, true));
       return;
     }
     // A temporary connection's tab cannot be reopened: its connection goes with its last tab.
-    const saved = temporary.current.has(tab.connectionId) ? null : persistTab(tab);
+    const saved = temporary.current.has(tab.connectionId) || moved ? null : persistTab(tab);
     if (saved) {
       closedTabs.current.push(saved);
       closedAt.set(saved, tabs.findIndex((t) => t.key === tab.key));
@@ -798,6 +801,40 @@ export function App() {
     addTab({ ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), pinned: saved.pinned === true }, closedAt.get(saved));
   };
   const openPalette = () => setPaletteOpen(true);
+  /** Moves `tab` to a window of its own; its session stays here, so an open transaction or
+   *  grid changes keep it here. */
+  async function detachTab(tab: TabModel) {
+    if (temporary.current.has(tab.connectionId)) return setToast(t("A tab of Query with SQL stays in the main window."));
+    if (tab.txOpen || tab.unsaved) return setToast(t("Commit or roll back, and save the grid's changes, before moving the tab: its session stays here."));
+    const saved = persistTab(tab);
+    const kind = tabKind(tab.kind);
+    if (!saved || !kind) return;
+    const name = connectionById(tab.connectionId)?.name ?? "";
+    try {
+      await api.openTabWindow(JSON.stringify(saved), `${kind.label(tab as never)} · ${name}`);
+      closeTab(tab, true, true);
+    } catch (e) {
+      setToast(toCommandError(e).message);
+    }
+  }
+  // What the other windows send: tabs to open here, a tab moved back, a closed window's tab.
+  const restoreTab = (saved: PersistedTab) => {
+    const kind = tabKind(saved.kind ?? "query");
+    if (!kind || !connectionById(saved.connectionId)) return null;
+    return { ...createTab(kind.kind, saved.connectionId, kind.restore(saved)), project: activeProject };
+  };
+  useWindowEvents({
+    openTab: ({ kind, connectionId, init }) => connectionById(connectionId) && addTab({ ...createTab(kind, connectionId, init ?? {}), project: activeProject }),
+    attach: (saved) => {
+      const tab = restoreTab(saved);
+      if (tab) addTab(tab);
+    },
+    closed: (saved) => {
+      closedTabs.current.push(saved);
+      if (closedTabs.current.length > CLOSED_TABS) closedTabs.current.shift();
+    },
+  });
+  useTray();
   /** Locks the app behind the master password, closing the production sessions; without a
    *  master password, says what it needs. */
   async function lockApp(asked: boolean) {
@@ -849,6 +886,7 @@ export function App() {
     openBeside,
     closeSplit: () => setSplit(null),
     lockApp: () => void lockApp(true),
+    detachTab: (tab: TabModel) => void detachTab(tab),
   };
   const shell = useRef(shellState);
   shell.current = shellState;
@@ -1221,7 +1259,7 @@ function tabIcon(t: TabModel): IconName {
 }
 
 /** A tab as the workspace saves it, or `null` for a kind that is not kept. */
-function persistTab(tab: TabModel): PersistedTab | null {
+export function persistTab(tab: TabModel): PersistedTab | null {
   const state = tabKind(tab.kind)?.persist(tab);
   return state ? { ...state, kind: tab.kind, connectionId: tab.connectionId, project: tab.project ?? null, ...(tab.pinned && { pinned: true }) } : null;
 }
@@ -1274,6 +1312,7 @@ interface ShellApi {
   importConnections: () => void;
   openDataFile: () => void;
   lockApp: () => void;
+  detachTab: (tab: TabModel) => void;
 }
 
 /** Closed tabs kept for reopening. */
@@ -1396,6 +1435,13 @@ function tabMenuActions(s: () => ShellApi) {
       run: ({ tab }) => s().openBeside(tab),
     }),
     registerAction({
+      id: "tab.window",
+      scope: "tab",
+      title: "Open in a new window",
+      group: "view",
+      run: ({ tab }) => s().detachTab(tab),
+    }),
+    registerAction({
       id: "tab.pin",
       scope: "tab",
       title: "Pin tab",
@@ -1438,7 +1484,7 @@ function tabMenuActions(s: () => ShellApi) {
   ];
 }
 
-function PasswordPrompt({
+export function PasswordPrompt({
   connection,
   error,
   onDone,
