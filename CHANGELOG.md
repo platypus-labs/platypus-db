@@ -9,7 +9,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 ### Added
 
 - **Databases**: SQL Server and Azure SQL, DuckDB (also opening CSV, JSON, Parquet and XLSX
-  files as a database), ClickHouse, libSQL and Turso, MongoDB with a mongosh editor, Oracle;
+  files as a database), ClickHouse, libSQL and Turso, MongoDB with a mongosh editor, Redis (commands in the editor, key types
+  as tables edited in the grid), Oracle;
   CockroachDB, YugabyteDB and the other PostgreSQL-compatible servers; Snowflake, BigQuery,
   Databricks and Trino through ADBC drivers downloaded on first use; Db2 and any ODBC source on
   Windows. A picker with the database logos for new connections.

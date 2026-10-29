@@ -23,6 +23,7 @@ crates/
   platypus-driver-clickhouse/ ClickHouse over HTTP (reqwest; ArrowStream results decoded as they arrive)
   platypus-driver-libsql/  libSQL servers and Turso (Hrana over HTTP; SQLite's catalog code)
   platypus-driver-mongo/   MongoDB (official driver, rustls); mongosh parser, documents to Arrow
+  platypus-driver-redis/   Redis (`redis` crate, RESP3, rustls); commands, key types as tables, edits
   platypus-driver-oracle/  Oracle (oracle crate on Oracle Instant Client)
   platypus-driver-adbc/    Snowflake, BigQuery, Databricks, Trino and any ADBC driver, loaded at run time
   platypus-driver-odbc/    Db2 and any ODBC driver or DSN, through the system's driver manager (Windows)
@@ -66,7 +67,7 @@ npm run tauri dev
 # core crates; the conformance suite (crates/platypus-conformance) runs the same scenarios on
 # every driver. Server databases that are down are skipped; set PLATYPUS_TEST_PG_URL,
 # PLATYPUS_TEST_MYSQL_URL, PLATYPUS_TEST_MARIADB_URL, PLATYPUS_TEST_MSSQL_URL,
-# PLATYPUS_TEST_CLICKHOUSE_URL, PLATYPUS_TEST_LIBSQL_URL or PLATYPUS_TEST_MONGO to make them
+# PLATYPUS_TEST_CLICKHOUSE_URL, PLATYPUS_TEST_LIBSQL_URL, PLATYPUS_TEST_MONGO or PLATYPUS_TEST_REDIS to make them
 # mandatory
 cargo test --workspace --exclude platypus-desktop
 
@@ -123,7 +124,8 @@ welcome screen, which builds it with the scripts in `samples/scripts/`.
 ## Dev databases
 
 ```bash
-# PostgreSQL 17, MySQL 8.4, MariaDB 11.4 and ClickHouse 26.3; the others with their profile
+# PostgreSQL 17, MySQL 8.4, MariaDB 11.4, ClickHouse 26.3 and Redis Stack 7.4; the others with
+# their profile
 docker compose -f docker/compose.yml up -d --wait
 docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 docker compose -f docker/compose.yml --profile libsql up -d --wait
@@ -143,6 +145,7 @@ node scripts/conformance-versions.mjs
 | ClickHouse | 58123     | `platypus` / `platypus` / `platypus` (HTTP; the conformance tests create the demo tables) |
 | libSQL     | 58080     | HTTP, no TLS; the auth token is `LIBSQL_TOKEN` in `crates/platypus-conformance/tests/conformance.rs` (the tests create the demo tables) |
 | MongoDB    | 57017     | `platypus` / `platypus` (auth database `admin`) / `platypus` (collections only, no `type_zoo` or `big_table`) |
+| Redis      | 56379     | default user, password `platypus` (Redis Stack, with RedisJSON; the tests fill their own databases) |
 
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.
