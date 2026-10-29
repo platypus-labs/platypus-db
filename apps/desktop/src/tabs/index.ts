@@ -10,3 +10,4 @@ import "./erd";
 import "./schemaHistory";
 import "./admin";
 import "./notebook";
+import "./dashboard";
