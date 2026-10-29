@@ -277,6 +277,11 @@ pub async fn query_text(conn: &dyn Connection, sql: &str) -> Result<Vec<TextRow>
     let ExecResult::Rows(stream) = conn.execute(sql, &ExecOptions::default()).await? else {
         return Err(Error::Other("catalog query returned no rows".to_owned()));
     };
+    text_rows(stream).await
+}
+
+/// Every row of `stream`, its values rendered as text.
+pub(crate) async fn text_rows(stream: crate::RecordBatchStream) -> Result<Vec<TextRow>> {
     let batches: Vec<_> = stream.try_collect().await?;
     let mut rows = Vec::new();
     for batch in &batches {

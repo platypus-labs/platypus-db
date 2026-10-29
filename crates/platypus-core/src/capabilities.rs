@@ -37,6 +37,12 @@ pub struct Capabilities {
     /// [`EndSession::Cancel`](crate::EndSession::Cancel): the statement of another
     /// session can be cancelled without closing it (not on SQL Server).
     pub cancel_server_queries: bool,
+    /// [`Connection::top_queries`](crate::Connection::top_queries) and
+    /// [`object_statistics`](crate::Connection::object_statistics).
+    pub server_statistics: bool,
+    /// The operations [`Connection::maintain`](crate::Connection::maintain) runs; empty
+    /// when it runs none.
+    pub maintenance: &'static [crate::Maintenance],
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.
