@@ -86,6 +86,8 @@ export const SQLITE_RESERVED = new Set(
 export function quoteIdent(name: string, driver: DriverKind): string {
   // A field name as a mongosh document key, quoted like `shellString` (editor/mongo.ts).
   if (driver === "mongo") return /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
+  // Redis names databases `db0` and key types `hash`: nothing to quote.
+  if (driver === "redis") return name;
   const upper = name.toUpperCase();
   const reserved = RESERVED.has(upper);
   if (driver === "sqlserver") {
@@ -121,4 +123,9 @@ export function quoteIdent(name: string, driver: DriverKind): string {
   const bare = driver === "postgres" ? /^[a-z_][a-z0-9_$]*$/ : ansi ? /^[A-Z_][A-Z0-9_]*$/ : /^[A-Za-z_][A-Za-z0-9_]*$/;
   const sqlite = (driver === "sqlite" || driver === "libsql") && SQLITE_RESERVED.has(upper);
   return bare.test(name) && !reserved && !sqlite ? name : `"${name.replaceAll('"', '""')}"`;
+}
+
+/** An argument of a Redis command, quoted as `redis-cli` reads it when it needs to be. */
+export function redisArg(text: string): string {
+  return /^[^\s"']+$/.test(text) ? text : `"${text.replace(/[\\"]/g, "\\$&").replace(/\n/g, "\\n")}"`;
 }

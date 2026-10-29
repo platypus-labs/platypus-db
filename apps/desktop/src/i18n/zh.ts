@@ -976,6 +976,8 @@ const zh: Record<string, string> = {
   "Change every row?": "修改每一行？",
   "without WHERE changes every row of": "不带 WHERE，会修改以下对象的每一行：",
   "empties": "会清空",
+  "deletes every key of the session's database": "会删除会话数据库中的所有键",
+  "deletes every key of every database": "会删除所有数据库中的所有键",
   "erases every past version of the rows of": "会删除以下对象中行的所有历史版本：",
   "with an empty filter changes every document of": "使用空过滤条件，会修改以下对象的每个文档：",
   "without WHERE changes rows the database picks in": "不带 WHERE，会修改由数据库选择的行，位于",
@@ -2143,6 +2145,10 @@ const zh: Record<string, string> = {
   "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "按名称引用列，含空格时用 \"…\" 括起；+ - * / %，|| 连接文本，比较，AND、OR、NOT；函数：{list}。",
   "Update column": "更新列",
   "Computed columns…": "计算列…",
+  "Save a SQL connection to copy the table to.": "请先保存一个 SQL 连接，以便将表复制过去。",
+  "The database number, 0 when empty. TLS needs an SSL mode from require up, as rediss:// URLs do.": "数据库编号，留空为 0。TLS 需要 require 及以上的 SSL 模式，与 rediss:// URL 相同。",
+  "{n} command runs in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} 条命令在一个 MULTI/EXEC 中运行：服务器拒绝的命令不会撤销其他命令。",
+  "{n} commands run in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} 条命令在一个 MULTI/EXEC 中运行：服务器拒绝的命令不会撤销其他命令。",
 };
 
 export default zh;

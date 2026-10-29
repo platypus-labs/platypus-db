@@ -835,6 +835,12 @@ pub fn select_all(
     if driver == DriverKind::Mongo {
         return mongo_find(schema, table, limit);
     }
+    // A Redis key type's virtual table.
+    if driver == DriverKind::Redis {
+        let db = schema.map(|s| format!("{s}.")).unwrap_or_default();
+        let limit = limit.map(|n| format!(" LIMIT {n}")).unwrap_or_default();
+        return format!("BROWSE {db}{table}{limit}");
+    }
     let dialect = Dialect::from(driver);
     let sql = format!("SELECT * FROM {}", dialect.qualified(schema, table));
     match limit {

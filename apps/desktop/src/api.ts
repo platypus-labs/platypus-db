@@ -11,6 +11,7 @@ export type DriverKind =
   | "clickhouse"
   | "libsql"
   | "mongo"
+  | "redis"
   | "snowflake"
   | "bigquery"
   | "databricks"
@@ -22,6 +23,13 @@ export type DriverKind =
 
 /** Speaks mongosh instead of SQL (MongoDB): no SQL completion, formatter, linter or data editor. */
 export const isMongo = (driver: DriverKind) => driver === "mongo";
+
+/** Speaks Redis commands instead of SQL, one per line; its key types are virtual tables. */
+export const isRedis = (driver: DriverKind) => driver === "redis";
+
+/** Speaks no SQL (MongoDB, Redis): no SQL completion, formatter, linter, query builder,
+ *  ER diagram, table editor, schema tools or SQL import. */
+export const isNoSql = (driver: DriverKind) => isMongo(driver) || isRedis(driver);
 
 /** Runs in-process on a local file (SQLite, DuckDB): no server, host, user or password. */
 export const isEmbedded = (driver: DriverKind) => driver === "sqlite" || driver === "duckdb";

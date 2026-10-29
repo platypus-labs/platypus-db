@@ -16,6 +16,7 @@ Everything PlatypusDB does, area by area. The [README](../README.md) has the sho
 | DuckDB | embedded, Arrow results; DuckDB's library downloaded on first use | Also opens CSV, JSON, Parquet and Excel files as databases |
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
 | MongoDB 5+ | official driver | mongosh syntax; no transactions, explain or data editing |
+| Redis 6+ | `redis` crate (RESP3, rustls) | Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
 | Snowflake, BigQuery, Databricks, Trino | ADBC driver, downloaded on first use | Queries, results, navigator and autocompletion; no data editing, explain or manual commit yet |
 | Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them |
@@ -49,7 +50,7 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
 - A new connection starts from a grid of database logos, with a search on top (`Enter` takes
   the first match); the `+` of the navigator opens it, and so does a right-click on a connection
   or below the list. Or paste a connection under the logos: a URL (`postgres://`,
-  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`), a JDBC URL or an
+  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`, `redis://`, `rediss://`), a JDBC URL or an
   ADO.NET / ODBC string (`Server=tcp:db,1433;Database=shop;User Id=sa;…`), and the form opens
   filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
   URL pasted in the form for another database offers to go back. Windows logins and SQL Server
@@ -143,7 +144,7 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   app.
 - **Database comments** show beside the notes. Those of tables and their columns edit in the
   object tab, with the statement shown first; those of views are read-only. SQLite, libSQL and
-  MongoDB have none.
+  MongoDB and Redis have none.
 - **Row label**: the column that names a table's rows where foreign keys point to it, picked in
   the object tab or from a header's menu in the grid.
 - **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
@@ -439,6 +440,36 @@ methods and fields. Generate data fills a collection with fake documents: new Ob
 numbers after the largest `_id`, lists of words for arrays, small documents for nested fields.
 `mongodb+srv://` and connection string options go in the Database field
 (`shop?authSource=admin&replicaSet=rs0`).
+
+## Redis
+
+The editor runs Redis commands, one per line, quoted as `redis-cli` quotes them (`SET k "a b"`,
+`"\xff"` for bytes); `#` and `--` lines are comments. Replies are rows: a value, a map's
+fields, a list's items, nested replies as JSON in the document tree beside the grid (`F7`).
+`SELECT n` moves the session to another database; `MULTI` queues commands until `EXEC`, which
+sends them as one transaction and shows each reply. Subscriptions and `MONITOR` are refused:
+they would take over the connection. Cancel stops a blocking command (`BLPOP`, `XREAD BLOCK`).
+
+The navigator lists the databases with keys (`db0`, `db1`…, and the session's), each with a
+table per key type: `string`, `hash`, `list`, `set`, `zset`, `json` (with RedisJSON) and
+`stream`, with how many keys each has when the database has up to 10,000. Opening one runs
+`BROWSE db0.hash`, which finds the keys with `SCAN … TYPE` (never `KEYS`) and reads big keys a
+chunk at a time as the grid scrolls: a row per value, `key, value, ttl` for strings and JSON,
+`key, field, value` for hashes, `key, index, value` for lists, `key, member` for sets,
+`key, member, score` for sorted sets, `key, id, fields` for streams. `MATCH user:*` filters
+the keys, `LIMIT n` caps the rows. Values that are not UTF-8 show quoted with escapes.
+
+The grid edits the rows: a value (`SET … KEEPTTL`, `HSET`, `LSET`, `JSON.SET`), a TTL
+(`EXPIRE`, `PERSIST` for NULL), a string key's name (`RENAMENX`), a hash field or a set or
+sorted set member (moved), a score; new rows add keys and items (`SET … NX`, `HSETNX`, `RPUSH`,
+`SADD`, `ZADD NX`, `XADD`), deleted rows remove them (list items by their index). A new or
+renamed key, field or member that already exists stops the save before anything runs, unless
+the same save deletes it. The preview shows the commands, which run as one `MULTI`/`EXEC` (a
+command the server refuses does not undo the others), and Undo script puts the values back.
+`FLUSHDB` and `FLUSHALL` ask first as an `UPDATE` without `WHERE` does, and on production
+connections commands that change the server (`CONFIG SET`, `SHUTDOWN`) ask like DDL. Read-only connections run only the
+commands that read. `rediss://` URLs and SSL modes from `require` up use TLS; the user and
+password are the ACL's. Terminal mode runs `redis-cli` with the password in its environment.
 
 ## Transactions and safety
 

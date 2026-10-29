@@ -167,6 +167,11 @@ fn config_of(
             .into_iter()
             .map(|r| script[r].to_owned())
             .collect()
+    } else if saved.driver == DriverKind::Redis {
+        platypus_driver_redis::command::split(script)
+            .into_iter()
+            .map(|r| script[r].to_owned())
+            .collect()
     } else {
         platypus_sql::split(script, Dialect::from(saved.driver))
             .iter()

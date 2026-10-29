@@ -383,8 +383,8 @@ parallelizzabile: **una persona per driver**.
 
 **Stato: P1 completate, P2 e P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
 ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
-ODBC generico; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo uso.
-Da fare: Redis (P2), aggiornamento automatico dei driver, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
+ODBC generico, Redis; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo
+uso. Da fare: aggiornamento automatico dei driver, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -423,6 +423,18 @@ non implementato: la sua API HTTP (`/accounts/<id>/d1/database/<id>/query`) chie
 token Cloudflare, non ha un server locale per i test (wrangler simula D1 solo nei Worker) e non ha
 transazioni tra richieste.
 
+Redis (`platypus-driver-redis`, crate `redis` su uno stream TCP/rustls proprio, RESP3 con ripiego
+su RESP2): una connessione per database (niente `SELECT` su una connessione condivisa); l'editor
+scrive comandi, uno per riga, con le virgolette di `redis-cli`; `BROWSE [db<n>.]tipo [MATCH p]
+[LIMIT n]`, comando del client, legge le chiavi di un tipo con `SCAN … TYPE` e le chiavi grandi a
+pezzi (`HSCAN`, `LRANGE`…) man mano che la griglia scorre. Tabelle virtuali per tipo (anche
+`stream`, e `json` con RedisJSON), con il numero di chiavi fino a 10.000. Le modifiche in griglia
+diventano comandi (`edit::script`) eseguiti in un solo `MULTI`/`EXEC`, con anteprima e script di
+annullamento; una chiave, un campo o un membro nuovo o rinominato che esiste già ferma il
+salvataggio prima che parta (`guard`). `MULTI` nell'editor accoda sul client. Valori non UTF-8 mostrati con escape e
+riletti nelle modifiche. Conformance in `tests/redis.rs` (servizio `redis`, Redis Stack, tra quelli
+di default di `docker/compose.yml`). Niente explain né `SUBSCRIBE`/`MONITOR`.
+
 MongoDB (`platypus-driver-mongo`, driver ufficiale con rustls): l'editor scrive mongosh, che un
 parser proprio traduce in comandi; i risultati sono una griglia dei campi di primo livello con
 l'albero del documento selezionato accanto. Niente transazioni, explain né modifica dei dati;
@@ -455,7 +467,7 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
 | ✅ Oracle nativo | P3 | Crate `oracle` con Instant Client scaricato al primo uso (Oracle Free Use Terms) |
 | ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
-| **Redis** | P2 | Il NoSQL più richiesto: chiavi per tipo (string, hash, list, set, zset, JSON) come tabelle virtuali, comandi nell'editor, modifica dei valori; stesso schema di MongoDB (griglia + albero) |
+| ✅ **Redis** | P2 | Il NoSQL più richiesto: chiavi per tipo (string, hash, list, set, zset, JSON) come tabelle virtuali, comandi nell'editor, modifica dei valori; stesso schema di MongoDB (griglia + albero) |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
 | 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
 

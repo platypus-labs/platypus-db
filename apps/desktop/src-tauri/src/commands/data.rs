@@ -362,6 +362,59 @@ fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Scrip
     Ok(Script { statements, undo })
 }
 
+/// The Redis commands for `changes` to a key type's virtual table (see
+/// [`platypus_driver_redis::edit`]), which the session runs as one `MULTI`/`EXEC`.
+fn redis_script(
+    job: &Job,
+    changes: &Changes,
+) -> CommandResult<platypus_driver_redis::edit::Script> {
+    use platypus_driver_redis::{command::KeyType, edit, meta};
+    let invalid = |m: String| CommandError::new("invalid_value", m);
+    let kind = KeyType::from_table(&changes.table.name)
+        .ok_or_else(|| CommandError::not_found("table", &changes.table.name))?;
+    let db = meta::database(&changes.table.schema).map_err(|e| invalid(e.to_string()))?;
+    let (schema, _) = job
+        .window(0, 0)
+        .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
+    let columns: Vec<String> = schema.fields().iter().map(|f| f.name().clone()).collect();
+    let values = |values: &[ColumnValue]| -> Vec<(usize, Option<String>)> {
+        values
+            .iter()
+            .map(|v| match &v.value {
+                CellInput::Value { text } => (v.column, Some(text.clone())),
+                CellInput::Null | CellInput::Default => (v.column, None),
+            })
+            .collect()
+    };
+    let edits = edit::Edits {
+        db,
+        kind,
+        columns: &columns,
+        updates: changes
+            .updates
+            .iter()
+            .map(|u| {
+                Ok(edit::Update {
+                    loaded: row_text(job, u.row)?,
+                    set: values(&u.values),
+                })
+            })
+            .collect::<CommandResult<_>>()?,
+        inserts: changes.inserts.iter().map(|v| values(v)).collect(),
+        deletes: changes
+            .deletes
+            .iter()
+            .map(|&row| row_text(job, row))
+            .collect::<CommandResult<_>>()?,
+    };
+    edit::script(&edits).map_err(invalid)
+}
+
+/// Whether the result's session is a Redis one, whose edits are commands, not SQL.
+fn is_redis(state: &AppState, job: &Job) -> CommandResult<bool> {
+    Ok(state.session(job.session_id)?.config.driver == platypus_core::DriverKind::Redis)
+}
+
 /// The SQL that saving `changes` would run.
 #[tauri::command]
 pub fn preview_changes(
@@ -370,6 +423,9 @@ pub fn preview_changes(
     changes: Changes,
 ) -> CommandResult<Vec<String>> {
     let job = state.job(job_id)?;
+    if is_redis(&state, &job)? {
+        return Ok(redis_script(&job, &changes)?.commands);
+    }
     let script = script(&state, &job, &changes)?;
     Ok(script.statements.into_iter().map(|s| s.sql).collect())
 }
@@ -392,6 +448,9 @@ pub async fn save_changes(
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
     state.editable(job.session_id)?;
+    if is_redis(&state, &job)? {
+        return save_redis(&state, &job, &changes).await;
+    }
     let script = script(&state, &job, &changes)?;
     // The driver's dialect brackets the statements: the generic ODBC driver translates no
     // SAVEPOINT for SQL Server, as the native one does.
@@ -410,6 +469,22 @@ pub async fn save_changes(
     Ok(Saved {
         statements: script.statements.len(),
         undo: script.undo_text(),
+    })
+}
+
+/// [`save_changes`] on Redis: the commands in one `MULTI`/`EXEC` on the result's session.
+async fn save_redis(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Saved> {
+    let script = redis_script(job, changes)?;
+    let conn = state.live(job.session_id).await?;
+    stop_jobs(state, job.session_id);
+    let commands: Vec<&str> = script.commands.iter().map(String::as_str).collect();
+    let ran = conn.execute_all(&commands, &[]).await;
+    if let Some(error) = ran.error {
+        return Err(CommandError::from(&error).context(format!("Command {}", ran.rows.len() + 1)));
+    }
+    Ok(Saved {
+        statements: commands.len(),
+        undo: script.undo.join("\n") + "\n",
     })
 }
 

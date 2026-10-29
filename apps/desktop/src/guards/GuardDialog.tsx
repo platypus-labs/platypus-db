@@ -14,6 +14,9 @@ export function preview(sql: string) {
  *  filters and documents, SQL Server's TOP picks some rows. */
 function changeText(u: UnfilteredChange) {
   if (u.verb === "TRUNCATE") return t("empties");
+  // Redis's FLUSHDB and FLUSHALL name no table: they empty whole databases.
+  if (u.verb === "FLUSHDB") return t("deletes every key of the session's database");
+  if (u.verb === "FLUSHALL") return t("deletes every key of every database");
   // MariaDB's DELETE HISTORY leaves the current rows as they are.
   if (u.verb === "DELETE HISTORY") return t("erases every past version of the rows of");
   if (u.documents) return t("with an empty filter changes every document of");
@@ -39,10 +42,16 @@ export function GuardDialog({ request, onAnswer, named = false }: { request: Gua
           <div className="notice warn small">
             {unfiltered.map((u, i) => (
               <div key={i}>
-                <strong>{u.limited ? `${u.verb} TOP` : u.verb}</strong> {changeText(u)} <code>{u.table}</code>
-                {u.rows === null
-                  ? ` ${t("(row count unknown)")}`
-                  : `: ${u.documents ? plural(u.rows, "about {n} document", "about {n} documents") : plural(u.rows, "about {n} row", "about {n} rows")}`}
+                <strong>{u.limited ? `${u.verb} TOP` : u.verb}</strong> {changeText(u)}
+                {u.table && (
+                  <>
+                    {" "}
+                    <code>{u.table}</code>
+                    {u.rows === null
+                      ? ` ${t("(row count unknown)")}`
+                      : `: ${u.documents ? plural(u.rows, "about {n} document", "about {n} documents") : plural(u.rows, "about {n} row", "about {n} rows")}`}
+                  </>
+                )}
                 .
               </div>
             ))}

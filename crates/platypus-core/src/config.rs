@@ -39,6 +39,9 @@ pub enum DriverKind {
     /// connection string (`shop?authSource=admin&replicaSet=rs0`; `srv=true` for
     /// `mongodb+srv`).
     Mongo,
+    /// Redis: commands instead of SQL, one per line. `database` is the database number
+    /// (`0` when empty); TLS (`rediss://`) is any mode from `require` up.
+    Redis,
     /// Snowflake through its ADBC driver: `host` is the account, `options` hold
     /// `warehouse`, `role` and `schema`.
     Snowflake,
@@ -81,6 +84,7 @@ impl DriverKind {
             Self::SqlServer => Some(1433),
             Self::ClickHouse => Some(8123),
             Self::Mongo => Some(27017),
+            Self::Redis => Some(6379),
             Self::Trino => Some(8080),
             Self::Oracle => Some(1521),
             Self::Db2 => Some(50000),
@@ -119,6 +123,7 @@ impl DriverKind {
             Self::ClickHouse => "ClickHouse",
             Self::Libsql => "libSQL",
             Self::Mongo => "MongoDB",
+            Self::Redis => "Redis",
             Self::Snowflake => "Snowflake",
             Self::BigQuery => "BigQuery",
             Self::Databricks => "Databricks",
@@ -429,6 +434,8 @@ impl ConnectionConfig {
     pub const fn url_ssl_mode(driver: DriverKind) -> SslMode {
         match driver {
             DriverKind::Libsql => SslMode::VerifyFull,
+            // Redis takes TLS on a port of its own: `redis://` is plaintext, `rediss://` TLS.
+            DriverKind::Redis => SslMode::Disable,
             _ => SslMode::Prefer,
         }
     }
@@ -460,6 +467,7 @@ impl ConnectionConfig {
             "duckdb" => DriverKind::DuckDb,
             "sqlserver" | "mssql" => DriverKind::SqlServer,
             "clickhouse" => DriverKind::ClickHouse,
+            "redis" | "rediss" => DriverKind::Redis,
             // libSQL clients take Hrana over WebSocket too; the app speaks HTTP to the same
             // server.
             "libsql" | "ws" | "wss" => DriverKind::Libsql,
@@ -473,7 +481,7 @@ impl ConnectionConfig {
         let mut config = Self::new(driver);
         config.ssl_mode = match url.scheme() {
             "ws" | "http" => SslMode::Disable,
-            "wss" | "https" => SslMode::VerifyFull,
+            "wss" | "https" | "rediss" => SslMode::VerifyFull,
             _ => Self::url_ssl_mode(driver),
         };
 
@@ -1088,6 +1096,23 @@ mod tests {
         let c = ConnectionConfig::from_url("libsql://:tok@localhost:8080?sslmode=disable").unwrap();
         assert_eq!((c.port, c.ssl_mode), (Some(8080), SslMode::Disable));
         assert_eq!(c.password, Some(Secret::new("tok")));
+    }
+
+    #[test]
+    fn parses_redis_urls() {
+        let c = ConnectionConfig::from_url("redis://:s%40cret@cache:6380/3").unwrap();
+        assert_eq!(c.driver, DriverKind::Redis);
+        assert_eq!(
+            (c.host.as_str(), c.port, c.database.as_str()),
+            ("cache", Some(6380), "3")
+        );
+        assert_eq!(c.user, "");
+        assert_eq!(c.password.as_ref().map(Secret::expose), Some("s@cret"));
+        assert_eq!(c.ssl_mode, SslMode::Disable);
+        let c = ConnectionConfig::from_url("rediss://app:pw@cache").unwrap();
+        assert_eq!((c.user.as_str(), c.ssl_mode), ("app", SslMode::VerifyFull));
+        assert!(c.redis_tls());
+        assert_eq!(DriverKind::Redis.default_port(), Some(6379));
     }
 
     #[test]

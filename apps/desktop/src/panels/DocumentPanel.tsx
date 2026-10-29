@@ -1,6 +1,6 @@
-// The document of the focused row of a MongoDB result, as a tree: the grid shows the
-// top-level fields, nested documents and arrays arrive as JSON text (db_type `document`
-// and `array`) and unfold here.
+// The document of the focused row of a MongoDB or Redis result, as a tree: the grid shows the
+// top-level fields, nested documents and arrays arrive as JSON text (db_type `document`,
+// `array`, `mixed`, Redis's `json`) and unfold here.
 import { useEffect, useMemo, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
 import { t } from "../i18n";
@@ -31,6 +31,7 @@ function cellValue(column: ColumnInfo, text: string | null): Json {
     case "document":
     case "array":
     case "mixed":
+    case "json":
       try {
         return parseJson(text);
       } catch {
@@ -41,6 +42,8 @@ function cellValue(column: ColumnInfo, text: string | null): Json {
     case "int":
     case "long":
     case "double":
+    case "integer":
+    case "ttl":
       return jsonNumber(text) ?? text;
     default:
       return text;

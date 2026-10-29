@@ -976,6 +976,8 @@ const fr: Record<string, string> = {
   "Change every row?": "Modifier toutes les lignes ?",
   "without WHERE changes every row of": "sans WHERE modifie toutes les lignes de",
   "empties": "vide",
+  "deletes every key of the session's database": "supprime toutes les clés de la base de la session",
+  "deletes every key of every database": "supprime toutes les clés de toutes les bases",
   "erases every past version of the rows of": "efface toutes les versions passées des lignes de",
   "with an empty filter changes every document of": "avec un filtre vide modifie tous les documents de",
   "without WHERE changes rows the database picks in": "sans WHERE modifie des lignes choisies par la base de données dans",
@@ -2143,6 +2145,10 @@ const fr: Record<string, string> = {
   "Columns by name, quoted with \"…\" when they have spaces; + - * / %, || to join text, comparisons, AND, OR, NOT; functions: {list}.": "Colonnes par nom, entre \"…\" si elles contiennent des espaces ; + - * / %, || pour joindre du texte, comparaisons, AND, OR, NOT ; fonctions : {list}.",
   "Update column": "Mettre à jour la colonne",
   "Computed columns…": "Colonnes calculées…",
+  "Save a SQL connection to copy the table to.": "Enregistrez une connexion SQL vers laquelle copier la table.",
+  "The database number, 0 when empty. TLS needs an SSL mode from require up, as rediss:// URLs do.": "Le numéro de la base, 0 si vide. TLS demande un mode SSL à partir de require, comme les URL rediss://.",
+  "{n} command runs in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} commande s'exécute dans un seul MULTI/EXEC : une commande refusée par le serveur n'annule pas les autres.",
+  "{n} commands run in one MULTI/EXEC: a command the server refuses does not undo the others.": "{n} commandes s'exécutent dans un seul MULTI/EXEC : une commande refusée par le serveur n'annule pas les autres.",
 };
 
 export default fr;

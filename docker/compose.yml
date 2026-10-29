@@ -105,6 +105,20 @@ services:
       timeout: 5s
       retries: 60
 
+  # Redis Stack: Redis with RedisJSON, for the JSON keys. The default user's password is
+  # `platypus`; the tests fill and empty their own databases.
+  redis:
+    image: redis/redis-stack-server:7.4.0-v3
+    environment:
+      REDIS_ARGS: "--requirepass platypus"
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "platypus", "--no-auth-warning", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
   # Not started by default (a large image): `docker compose --profile sqlserver up -d --wait`.
   # The image runs no seed scripts: the healthcheck creates the `platypus` database and the
   # conformance tests create their demo schema. Test-only login: `sa`, `Platypus-2026`.

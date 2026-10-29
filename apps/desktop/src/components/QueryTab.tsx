@@ -17,6 +17,8 @@ import {
   type TableDetails,
   type TransactionState,
   isMongo,
+  isNoSql,
+  isRedis,
   keepsDataIn,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
@@ -311,7 +313,7 @@ export function QueryTab({
     connection,
     results,
     shown,
-    enabled: !isMongo(connection.driver) && !tab.terminal,
+    enabled: !isNoSql(connection.driver) && !tab.terminal,
     canLeave: () => discardEdits(),
   });
   /** The rows on screen: the shown result, or the output of its SQL field. */
@@ -944,7 +946,7 @@ export function QueryTab({
             status = await exportTo(sessionId, sql, target);
           } else {
             // The rows an UPDATE or DELETE changes, kept before it runs so that they can be put back.
-            if (p.kind === "dml" && !isMongo(connection.driver)) snapshot = await snapshotBefore(sessionId, tab.database ?? null, sql);
+            if (p.kind === "dml" && !isNoSql(connection.driver)) snapshot = await snapshotBefore(sessionId, tab.database ?? null, sql);
             // `GO 3` runs the batch three times, until one fails, each to its end.
             const repeat = p.repeat ?? 1;
             const each = repeat > 1 && ran.limit === null ? { ...ran, limit: getSetting(scriptRowLimit) } : ran;
@@ -1134,9 +1136,9 @@ export function QueryTab({
     openObject: (schema, name) => void openObject(schema, name),
     runCli: cliName(connection.driver) ? () => void runCli() : undefined,
     runAppend: () => void run("append"),
-    // Not on a temporary connection ("Query with SQL"), nor MongoDB's scripts.
+    // Not on a temporary connection ("Query with SQL"), nor MongoDB's and Redis's scripts.
     runOnConnections:
-      tab.resultSource || isMongo(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
+      tab.resultSource || isNoSql(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
         ? undefined
         : () => {
             const { from, to } = editor.current!.getSelection();
@@ -1144,7 +1146,7 @@ export function QueryTab({
             const script = from === to ? text : text.slice(from, to);
             workbench().openDialog((close) => <MultiRunDialog script={script} origin={connection} onClose={close} />);
           },
-    explain: isMongo(connection.driver) ? undefined : (analyze) => void explain(analyze),
+    explain: isNoSql(connection.driver) ? undefined : (analyze) => void explain(analyze),
   };
 
   /** Closes a result tab and frees its rows; the shown one asks first if it has edits. */
@@ -1475,7 +1477,7 @@ export function QueryTab({
    * editor that reads one table. Results of scripts stay read-only.
    */
   function editTarget(result: Result): TableEditTarget | null {
-    // The data editor writes SQL: MongoDB results stay read-only.
+    // The data editor writes SQL, or Redis commands: MongoDB results stay read-only.
     if (isMongo(connection.driver)) return null;
     const ref = tab.tableRef;
     const viewer = !!tab.table && !!ref && viewerOwn.has(result.sql);
@@ -1591,9 +1593,11 @@ export function QueryTab({
 
   const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();
-  // ClickHouse and MongoDB have no transactions (`capabilities.transactions` is false): no
-  // commit mode.
-  const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isMongo(connection.driver);
+  // ClickHouse, MongoDB and Redis have no transactions (`capabilities.transactions` is false):
+  // no commit mode.
+  // The data viewer's bar, with its row count: not on Redis, whose rows are read as shown.
+  const viewerBar = !!tab.table && !isRedis(connection.driver);
+  const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isNoSql(connection.driver);
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = view?.status.kind === "rows" && view.columns ? view : null;
   const manual = tx !== null && !tx.autocommit;
@@ -1606,7 +1610,7 @@ export function QueryTab({
       <div
         className="query-main"
         // The editor gives up height before the toolbar does in a small window.
-        style={{ gridTemplateRows: `auto ${tab.table ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }}
+        style={{ gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }}
       >
         <div className="toolbar">
           <button
@@ -1771,7 +1775,7 @@ export function QueryTab({
             </button>
           )}
         </div>
-        {tab.table && (
+        {viewerBar && (
           <div className="viewer-bar">
             <span className="spacer" />
             {shownCount && <span className="muted small">{shownCount}</span>}

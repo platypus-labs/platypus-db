@@ -1,4 +1,5 @@
 import { registerAction } from "../actions";
+import { isNoSql } from "../api";
 import { TableEditor, type TableEditorSection } from "../table-editor/TableEditor";
 import { workbench } from "../workbench";
 import { registerTabKind } from "./registry";
@@ -27,8 +28,8 @@ registerAction({
   title: "Create table…",
   group: "manage",
   order: 10,
-  // The editor writes SQL DDL: MongoDB has no table to design.
-  when: ({ connection }) => connection.driver !== "mongo",
+  // The editor writes SQL DDL: MongoDB and Redis have no table to design.
+  when: ({ connection }) => !isNoSql(connection.driver),
   run: ({ connection, database, schema }) =>
     workbench().openTab("table-editor", connection.id, { database, schema: schema.name, table: null }),
 });
@@ -40,7 +41,7 @@ registerAction({
   shortcut: "F4",
   group: "manage",
   order: 70,
-  when: ({ connection, object }) => object.kind === "table" && connection.driver !== "mongo",
+  when: ({ connection, object }) => object.kind === "table" && !isNoSql(connection.driver),
   run: ({ connection, database, schema, object }) =>
     workbench().openTab("table-editor", connection.id, {
       database,

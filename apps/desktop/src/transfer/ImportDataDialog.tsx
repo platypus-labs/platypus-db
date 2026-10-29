@@ -4,7 +4,7 @@ import {
   api,
   type ColumnMeta,
   DATA_FILE_EXTENSIONS,
-  isMongo,
+  isNoSql,
   type ExportEvent,
   type FileOptions,
   type ImportMode,
@@ -367,7 +367,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
                   .connections()
                   // MongoDB takes no SQL tables, and read-only connections (or those whose rows
                   // change only by SQL) take no data.
-                  .filter((c) => c.id === target.connection.id || (!opensDataFile(c) && !isMongo(c.driver) && !takesNoRows(c)))
+                  .filter((c) => c.id === target.connection.id || (!opensDataFile(c) && !isNoSql(c.driver) && !takesNoRows(c)))
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}

@@ -328,6 +328,10 @@ pub fn changes(statement: &str, driver: DriverKind) -> bool {
         use platypus_driver_mongo::shell::{self, StatementKind};
         return shell::parse(statement).is_ok_and(|c| shell::kind(&c) != StatementKind::Query);
     }
+    if driver == DriverKind::Redis {
+        use platypus_driver_redis::command::{self, Kind};
+        return command::parse(statement).map_or(true, |c| c.kind() != Kind::Query);
+    }
     platypus_sql::analyze(statement, Dialect::from(driver)).kind != StatementKind::Query
 }
 
@@ -467,6 +471,64 @@ pub fn check_mongo<'a>(
     }
 }
 
+/// [`check`] for Redis, whose statements are commands, one per line: checked with the
+/// editor's analysis of them ([`platypus_driver_redis::command`]). There is no transaction to
+/// run them in, so read-only access lets only the commands that read run.
+pub fn check_redis<'a>(
+    sql: &'a str,
+    access: AgentAccess,
+    unfiltered: UnfilteredRule,
+    connection: &str,
+) -> Result<&'a str> {
+    use platypus_driver_redis::command::{self, Command, Kind};
+
+    let statement = match command::split(sql).as_slice() {
+        [] => return Err(AgentError::Invalid("there is no command to run".to_owned())),
+        [one] => &sql[one.clone()],
+        many => {
+            return Err(AgentError::Invalid(format!(
+                "each call runs one command at a time and this script has {}: send them in separate calls",
+                many.len()
+            )));
+        }
+    };
+    if access == AgentAccess::Off {
+        return Err(AgentError::NotFound(format!(
+            "`{connection}` is not available to agents"
+        )));
+    }
+    let parsed = command::parse(statement).map_err(AgentError::Invalid)?;
+    // `SELECT` and `MULTI` would change what later calls on the shared session do.
+    let session = matches!(
+        parsed,
+        Command::Select(_) | Command::Multi | Command::Exec | Command::Discard
+    );
+    match (access, parsed.kind()) {
+        (AgentAccess::ReadOnly, Kind::Query) if !session => Ok(statement),
+        (AgentAccess::ReadOnly, kind) => Err(AgentError::Denied(format!(
+            "`{connection}` is read-only for agents: only commands that change nothing may run, \
+             and this one {}. The user can allow agents to write in PlatypusDB's connection \
+             settings (Agent access), except on production and read-only connections",
+            match kind {
+                Kind::Dml => "changes keys",
+                Kind::Ddl => "empties databases",
+                Kind::Other => "changes the server",
+                Kind::Query => "changes the session's database or transaction",
+            }
+        ))),
+        _ if session => Err(AgentError::Invalid(format!(
+            "{} changes the shared session: name the database in BROWSE (`BROWSE db1.hash`) instead",
+            parsed.name()
+        ))),
+        (_, Kind::Ddl) if unfiltered == UnfilteredRule::Refuse => Err(AgentError::Denied(format!(
+            "{} deletes every key: PlatypusDB's Safety settings ask before such changes, and \
+             agents cannot answer",
+            parsed.name()
+        ))),
+        _ => Ok(statement),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,6 +559,23 @@ mod tests {
             Err(AgentError::Denied(m)) => m,
             other => panic!("expected a refusal, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn checks_redis_commands() {
+        let ro = |sql| check_redis(sql, AgentAccess::ReadOnly, UnfilteredRule::Refuse, "r");
+        assert_eq!(ro(" GET a ").unwrap(), "GET a");
+        assert_eq!(ro("BROWSE db1.hash").unwrap(), "BROWSE db1.hash");
+        assert!(denied(ro("SET a 1")).contains("may run, and this one changes keys. The"));
+        assert!(denied(ro("FLUSHDB")).contains("empties"));
+        assert!(denied(ro("SELECT 2")).contains("session"));
+        assert!(matches!(ro("GET a\nGET b"), Err(AgentError::Invalid(_))));
+        let rw = |sql| check_redis(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "r");
+        assert!(rw("SET a 1").is_ok());
+        assert!(denied(rw("FLUSHALL")).contains("changes, and agents cannot"));
+        assert!(matches!(rw("SELECT 1"), Err(AgentError::Invalid(_))));
+        assert!(changes("DEL a", DriverKind::Redis));
+        assert!(!changes("HGETALL h", DriverKind::Redis));
     }
 
     #[test]

@@ -15,6 +15,7 @@ use platypus_driver_mysql::MySqlDriver;
 use platypus_driver_odbc::OdbcDriver;
 use platypus_driver_oracle::OracleDriver;
 use platypus_driver_pg::PgDriver;
+use platypus_driver_redis::RedisDriver;
 use platypus_driver_sqlite::SqliteDriver;
 use platypus_sql::Dialect;
 use platypus_store::{ConnectionStore, SavedConnection, SavedSsh, SshAuthKind, StoreError};
@@ -38,6 +39,7 @@ pub async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, E
             DriverKind::Libsql => LibsqlDriver.connect(&config).await,
             DriverKind::ClickHouse => ClickHouseDriver.connect(&config).await,
             DriverKind::Mongo => MongoDriver.connect(&config).await,
+            DriverKind::Redis => RedisDriver.connect(&config).await,
             DriverKind::Snowflake
             | DriverKind::BigQuery
             | DriverKind::Databricks

@@ -17,7 +17,7 @@ import { openSearchPanel, selectNextOccurrence, selectSelectionMatches } from "@
 import type { EditorView } from "@codemirror/view";
 import { createElement } from "react";
 import { isMac, registerAction } from "../actions";
-import { api, type DriverKind, type FormatSettings } from "../api";
+import { api, type DriverKind, type FormatSettings, isNoSql } from "../api";
 import { defineSetting, getSetting } from "../settings";
 import { workbench } from "../workbench";
 import type { EditorHost, RunMode } from "./SqlEditor";
@@ -88,7 +88,7 @@ registerAction({
   group: "sql",
   order: 10,
   // The formatter knows SQL only.
-  when: (t) => writable(t) && t.driver !== "mongo",
+  when: (t) => writable(t) && !isNoSql(t.driver),
   run: async ({ view, driver }) => {
     const sel = view.state.selection.main;
     const [from, to] = sel.empty ? [0, view.state.doc.length] : [sel.from, sel.to];

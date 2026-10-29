@@ -44,9 +44,10 @@ pub enum Dialect {
 impl From<DriverKind> for Dialect {
     fn from(kind: DriverKind) -> Self {
         match kind {
-            // MongoDB speaks no SQL: the app never builds SQL for it (the editor, data
-            // viewer and navigator write mongosh instead), so any dialect would do here.
-            DriverKind::Postgres | DriverKind::Mongo => Self::Postgres,
+            // MongoDB and Redis speak no SQL: the app never builds SQL for them (the editor,
+            // data viewer and navigator write mongosh or Redis commands instead), so any
+            // dialect would do here.
+            DriverKind::Postgres | DriverKind::Mongo | DriverKind::Redis => Self::Postgres,
             DriverKind::Snowflake => Self::Snowflake,
             DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc => Self::Ansi,
             DriverKind::Oracle => Self::Oracle,

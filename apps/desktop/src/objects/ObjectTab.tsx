@@ -30,7 +30,7 @@ export type ObjectSection =
   | "references"
   | "ddl";
 
-const NO_COMMENTS: DriverKind[] = ["sqlite", "libsql", "mongo"];
+const NO_COMMENTS: DriverKind[] = ["sqlite", "libsql", "mongo", "redis"];
 
 /** Details of one database object: properties, structure and DDL. */
 export interface ObjectTabModel extends TabBase {

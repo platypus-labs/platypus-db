@@ -25,6 +25,7 @@ const URL_DRIVERS: ReadonlySet<DriverKind> = new Set([
   "clickhouse",
   "libsql",
   "mongo",
+  "redis",
   "sqlite",
   "duckdb",
 ]);

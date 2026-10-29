@@ -76,6 +76,7 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   db2: 50000,
   odbc: null,
   mongo: 27017,
+  redis: 6379,
 };
 
 /** The database files of the embedded drivers: file picker filter and example path. */
@@ -596,6 +597,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <option value="clickhouse">ClickHouse</option>
                     <option value="libsql">libSQL / Turso</option>
                     <option value="mongo">MongoDB</option>
+                    <option value="redis">Redis</option>
                     <option value="snowflake">Snowflake</option>
                     <option value="bigquery">BigQuery</option>
                     <option value="databricks">Databricks</option>
@@ -757,7 +759,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <label className="field">
                       <span>
                         {t(
-                          conn.driver === "mysql" || conn.driver === "sqlserver" || conn.driver === "clickhouse" || conn.driver === "mongo"
+                          conn.driver === "mysql" ||
+                            conn.driver === "sqlserver" ||
+                            conn.driver === "clickhouse" ||
+                            conn.driver === "mongo" ||
+                            conn.driver === "redis"
                             ? "Database (optional)"
                             : conn.driver === "oracle"
                               ? "Service name"
@@ -772,14 +778,18 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                             ? "test?authSource=admin&replicaSet=rs0"
                             : conn.driver === "oracle"
                               ? "FREEPDB1"
-                              : undefined
+                              : conn.driver === "redis"
+                                ? "0"
+                                : undefined
                         }
                         title={
                           conn.driver === "mongo"
                             ? t("The default database, then connection string options after ?; srv=true for mongodb+srv. Users authenticate against admin unless authSource says otherwise.")
                             : conn.driver === "oracle"
                               ? t("The service name; with an empty host, a net service name (tnsnames.ora) or a whole connect descriptor.")
-                              : undefined
+                              : conn.driver === "redis"
+                                ? t("The database number, 0 when empty. TLS needs an SSL mode from require up, as rediss:// URLs do.")
+                                : undefined
                         }
                       />
                     </label>

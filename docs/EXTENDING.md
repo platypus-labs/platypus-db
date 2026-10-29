@@ -153,7 +153,7 @@ through it. A new dialect adds its branch to `Ddl::table_comment` and `Ddl::comm
 `table_comment` and goes in `NO_COMMENTS` in `apps/desktop/src/objects/ObjectTab.tsx`, which
 keeps its comment fields read-only.
 
-### Drivers without SQL (MongoDB)
+### Drivers without SQL (MongoDB, Redis)
 
 A driver whose language is not SQL still implements `Connection`: `execute` takes the
 statement in its own language and returns Arrow batches. `platypus-driver-mongo` is the
@@ -174,6 +174,20 @@ example:
 
 Conformance scenarios that are not SQL-specific have a MongoDB version in
 `crates/platypus-conformance/tests/mongo.rs`.
+
+`platypus-driver-redis` follows the same pattern for Redis commands (`command` parses and
+classifies a line; `analyze_sql`, `only_reads` and `query_source` route there), with two
+additions:
+- its tables are virtual: each key type, read by the client-side `BROWSE` command
+  (`browse`); `query_source` maps a `BROWSE` to its table, so the data editor loads the
+  table's key columns from `table_details` as for SQL tables;
+- grid edits are not SQL: `edit::script` turns the changes into commands, which the desktop
+  `preview_changes` and `save_changes` use instead of `platypus_sql::dml` for Redis, and the
+  session's `execute_all` runs them as one `MULTI`/`EXEC` on the database a leading
+  `SELECT n` names.
+
+The UI hides SQL-only features with `isNoSql` (MongoDB and Redis), and keeps MongoDB results
+out of the data editor with `isMongo`; `editor/redis.ts` is the Redis editor language.
 
 ### Drivers loaded at run time (ADBC)
 

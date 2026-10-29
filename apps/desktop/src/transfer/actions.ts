@@ -2,7 +2,7 @@
 // database, tables to files.
 import { createElement } from "react";
 import { registerAction } from "../actions";
-import { api, isMongo, keepsDataIn, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows, toCommandError } from "../api";
+import { api, isMongo, isNoSql, isRedis, keepsDataIn, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
 import { omitsSchema, schemaRef } from "../sqlNames";
 import { answerFor } from "../testAnswers";
@@ -37,11 +37,13 @@ registerAction({
   when: ({ connection, object }) => isRelation(object.kind) && !keepsDataIn(connection),
   run: ({ connection, database, schema, object }) => {
     // Another connection by default, in its current schema; else a copy next to the table.
-    // MongoDB takes no SQL tables, and a collection is copied to a SQL database.
+    // MongoDB and Redis take no SQL tables: their collections and key types go to a SQL database.
     const other = workbench()
       .connections()
-      .find((c) => c.id !== connection.id && !opensDataFile(c) && !isMongo(c.driver) && !takesNoRows(c));
-    if (!other && isMongo(connection.driver)) return workbench().showError(t("Save a SQL connection to copy the collection to."));
+      .find((c) => c.id !== connection.id && !opensDataFile(c) && !isNoSql(c.driver) && !takesNoRows(c));
+    if (!other && isNoSql(connection.driver)) {
+      return workbench().showError(t(isMongo(connection.driver) ? "Save a SQL connection to copy the collection to." : "Save a SQL connection to copy the table to."));
+    }
     const target: TableAt = other
       ? { connection: other, database: null, schema: "", currentSchema: true, table: null }
       : at(connection, database, schema, null);
@@ -63,7 +65,7 @@ registerAction({
   group: "manage",
   order: 70,
   // MongoDB's collections take documents, not the rows of an import.
-  when: ({ connection, object }) => object.kind === "table" && !isMongo(connection.driver) && !takesNoRows(connection),
+  when: ({ connection, object }) => object.kind === "table" && !isNoSql(connection.driver) && !takesNoRows(connection),
   run: ({ connection, database, schema, object }) => openImport(connection, database, schema, object.name),
 });
 
@@ -73,7 +75,7 @@ registerAction({
   title: "Import data into a new table…",
   group: "open",
   order: 30,
-  when: ({ connection }) => !isMongo(connection.driver) && !takesNoRows(connection),
+  when: ({ connection }) => !isNoSql(connection.driver) && !takesNoRows(connection),
   run: ({ connection, database, schema }) => openImport(connection, database, schema, null),
 });
 
@@ -124,7 +126,7 @@ registerAction({
   title: "Paste CSV as a new table…",
   group: "open",
   order: 32,
-  when: ({ connection }) => !isMongo(connection.driver) && !takesNoRows(connection),
+  when: ({ connection }) => !isNoSql(connection.driver) && !takesNoRows(connection),
   run: async ({ connection, database, schema }) => {
     let path: string;
     try {
@@ -158,7 +160,7 @@ registerAction({
   multiple: true,
   // One table has "Copy to a database…", with its columns to map.
   when: ({ connection, schema, selection }) =>
-    !isMongo(connection.driver) &&
+    !isNoSql(connection.driver) &&
     !keepsDataIn(connection) &&
     (selection?.length ?? 0) > 1 &&
     selection!.every((s) => s.object.kind === "table" && s.schema.name === schema.name),
@@ -173,7 +175,7 @@ registerAction({
   group: "open",
   order: 33,
   // A schema copy reads the tables' definitions, which a collection has not.
-  when: ({ connection }) => !isMongo(connection.driver) && !keepsDataIn(connection),
+  when: ({ connection }) => !isNoSql(connection.driver) && !keepsDataIn(connection),
   run: ({ connection, database, schema }) => openMigrate(connection, database, schema.name, null),
 });
 
@@ -183,7 +185,8 @@ registerAction({
   title: "Generate data…",
   group: "manage",
   order: 74,
-  when: ({ connection, object }) => object.kind === "table" && !takesNoRows(connection),
+  // Fake keys are not made: a Redis table is a key type.
+  when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver) && !takesNoRows(connection),
   run: ({ connection, database, schema, object }) =>
     workbench().openDialog((close) =>
       createElement(GenerateDataDialog, {
@@ -207,7 +210,7 @@ registerAction({
   title: "Run SQL file…",
   group: "open",
   order: 12,
-  when: ({ connection }) => !isMongo(connection.driver) && !connection.read_only,
+  when: ({ connection }) => !isNoSql(connection.driver) && !connection.read_only,
   run: ({ connection }) => openRunFile(connection, null),
 });
 
@@ -217,7 +220,7 @@ registerAction({
   title: "Run SQL file…",
   group: "open",
   order: 12,
-  when: ({ connection }) => !isMongo(connection.driver) && !connection.read_only,
+  when: ({ connection }) => !isNoSql(connection.driver) && !connection.read_only,
   run: ({ connection, database }) => openRunFile(connection, database),
 });
 
@@ -234,7 +237,7 @@ registerAction({
   title: "Dump to SQL file…",
   group: "open",
   order: 34,
-  when: ({ connection }) => !isMongo(connection.driver) && !keepsDataIn(connection),
+  when: ({ connection }) => !isNoSql(connection.driver) && !keepsDataIn(connection),
   run: ({ connection, database, schema }) => openDump(connection, database, schema.name, null),
 });
 
@@ -247,7 +250,7 @@ registerAction({
   multiple: true,
   // The objects of one schema, which the dump orders by their references.
   when: ({ connection, schema, object, selection }) =>
-    !isMongo(connection.driver) &&
+    !isNoSql(connection.driver) &&
     !keepsDataIn(connection) &&
     (selection ?? [{ schema, object }]).every((s) => s.schema.name === schema.name && DUMPED.has(s.object.kind)),
   run: ({ connection, database, schema, object, selection }) =>

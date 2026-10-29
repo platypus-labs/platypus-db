@@ -8,6 +8,7 @@ import {
   siGooglecloud,
   siMariadb,
   siMongodb,
+  siRedis,
   siMysql,
   siNeon,
   siPostgresql,
@@ -67,6 +68,7 @@ const CHOICES: Choice[] = [
     preset: { ssl_mode: "verify-full" },
   },
   { driver: "mongo", label: "MongoDB", path: siMongodb.path, bg: DARK, fg: `#${siMongodb.hex}` },
+  { driver: "redis", label: "Redis", path: siRedis.path, bg: `#${siRedis.hex}`, fg: "#fff" },
   // Through ADBC drivers, downloaded when a connection first needs one.
   // A cloud service: the account (or workspace) to type in place of `localhost`.
   { driver: "snowflake", label: "Snowflake", path: siSnowflake.path, bg: `#${siSnowflake.hex}`, fg: "#fff", preset: { host: "" } },

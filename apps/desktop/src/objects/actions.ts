@@ -7,6 +7,7 @@ import {
   type DialectSupport,
   type DriverKind,
   type GenerateRequest,
+  isRedis,
   type GenerateTarget,
   type ObjectKind,
 } from "../api";
@@ -24,7 +25,7 @@ import { t, msg } from "../i18n";
 type ObjectArg = ActionScopes["navigator.object"];
 
 const support = new Map<DriverKind, DialectSupport>();
-for (const driver of ["postgres", "mysql", "sqlite", "duckdb", "sqlserver", "clickhouse", "libsql", "mongo"] as const) {
+for (const driver of ["postgres", "mysql", "sqlite", "duckdb", "sqlserver", "clickhouse", "libsql", "mongo", "redis"] as const) {
   api.dialectSupport(driver).then((s) => support.set(driver, s), console.warn);
 }
 
@@ -85,8 +86,10 @@ for (const { id, title, statement, order } of DML) {
     title,
     group: "generate",
     order,
-    // Writes go to tables; views get SELECT only.
-    when: ({ object }) => (statement === "select" ? isRelation(object.kind) : isTable(object.kind)),
+    // Writes go to tables; views get SELECT only, as Redis's key types (their keys change in
+    // the grid or with commands).
+    when: ({ connection, object }) =>
+      statement === "select" ? isRelation(object.kind) : isTable(object.kind) && !isRedis(connection.driver),
     run: (arg) =>
       generate(
         arg,
@@ -105,6 +108,7 @@ registerAction({
   group: "generate",
   order: 29,
   multiple: true,
+  when: ({ connection }) => !isRedis(connection.driver),
   run: async (arg) => {
     const sid = await workbench().sideSession(arg.connection, arg.database);
     if (sid === null) return;
@@ -209,7 +213,7 @@ registerAction({
   title: "Truncate…",
   group: "manage",
   order: 85,
-  when: ({ object }) => object.kind === "table",
+  when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver),
   run: (arg) =>
     confirmStatement(
       arg,

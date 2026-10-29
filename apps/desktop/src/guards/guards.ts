@@ -100,7 +100,8 @@ export async function check(
   const unfiltered = await Promise.all(
     risky.map(async ({ sql, t }) => {
       // The rows a DELETE HISTORY erases are past versions, which the estimate does not count.
-      const counted = id !== null && t.verb !== "DELETE HISTORY";
+      // Redis's FLUSHDB and FLUSHALL name no table to count.
+      const counted = id !== null && t.verb !== "DELETE HISTORY" && t.name !== "";
       const rows = counted ? await api.estimateRows(id, t.schema, t.name).catch(() => null) : null;
       const table = t.schema ? `${t.schema}.${t.name}` : t.name;
       return { sql, verb: t.verb, table, limited: t.limited, documents: connection.driver === "mongo", rows };

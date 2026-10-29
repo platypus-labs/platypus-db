@@ -1,4 +1,5 @@
 import { registerAction } from "../actions";
+import { isNoSql } from "../api";
 import { type BuilderTable, QueryBuilder } from "../builder/QueryBuilder";
 import { workbench } from "../workbench";
 import { registerTabKind } from "./registry";
@@ -42,7 +43,7 @@ registerAction({
   group: "open",
   order: 15,
   // The builder writes SQL.
-  when: ({ connection }) => connection.driver !== "mongo",
+  when: ({ connection }) => !isNoSql(connection.driver),
   run: ({ connection, database, schema }) => workbench().openTab("builder", connection.id, { database, schema: schema.name }),
 });
 
@@ -53,7 +54,7 @@ registerAction({
   group: "open",
   order: 30,
   when: ({ connection, object }) =>
-    connection.driver !== "mongo" && (object.kind === "table" || object.kind === "view"),
+    !isNoSql(connection.driver) && (object.kind === "table" || object.kind === "view"),
   run: ({ connection, database, schema, object }) =>
     workbench().openTab("builder", connection.id, {
       database,

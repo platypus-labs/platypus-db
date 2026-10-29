@@ -39,7 +39,7 @@ import {
 import { tags as t } from "@lezer/highlight";
 import { allActions, dispatchKey, isMac } from "../actions";
 import { bindingKey, withoutKeys } from "../shortcutKeys";
-import { type CompletionCatalog, type DriverKind, isMongo, toCommandError } from "../api";
+import { type CompletionCatalog, type DriverKind, isMongo, isNoSql, isRedis, toCommandError } from "../api";
 import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
@@ -52,6 +52,7 @@ import { functionCompletion } from "./functions";
 import { joinCompletion } from "./joinCompletion";
 import { lintSql } from "./lint";
 import { mongoLanguage } from "./mongo";
+import { redisLanguage } from "./redis";
 import { expandSnippet, snippetSource } from "./snippets";
 import { spellcheck, spellcheckSetting } from "./spellcheck";
 
@@ -236,6 +237,7 @@ export function language(
   database?: string | null,
 ) {
   if (isMongo(driver)) return mongoLanguage(catalog);
+  if (isRedis(driver)) return redisLanguage(catalog);
   const dialect = dialects[driver];
   const data = dialect.language.data;
   return new LanguageSupport(dialect.language, [
@@ -338,7 +340,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
         lintGutter(),
         linter(
           (view) =>
-            isMongo(callbacks.current.driver)
+            isNoSql(callbacks.current.driver)
               ? []
               : lintSql(view, {
               driver: callbacks.current.driver,

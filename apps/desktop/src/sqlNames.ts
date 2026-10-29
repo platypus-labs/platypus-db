@@ -1,6 +1,6 @@
 import type { DriverKind } from "./api";
 import { collectionRef } from "./editor/mongo";
-import { quoteIdent } from "./sqlIdent";
+import { quoteIdent, redisArg } from "./sqlIdent";
 import { defineSetting } from "./settings";
 
 export { quoteIdent } from "./sqlIdent";
@@ -8,9 +8,10 @@ export { quoteIdent } from "./sqlIdent";
 /** Whether SQL generated for a table of the session's `current` schema may name it without
  *  its schema. Never on Trino: a session there resolves names in the schema of its
  *  connection or of a `USE`, which the navigator cannot follow, and a name it resolves
- *  elsewhere reads the rows of another table of that name. */
+ *  elsewhere reads the rows of another table of that name. Nor on Redis, whose `SELECT` in
+ *  the editor moves the session to another database. */
 export function omitsSchema(driver: DriverKind, current: boolean): boolean {
-  return current && driver !== "trino";
+  return current && driver !== "trino" && driver !== "redis";
 }
 
 /** The schema generated SQL names a table of `schema` with: `null` where it is left out. */
@@ -44,6 +45,7 @@ export function selectSql(
   columns: string[] | null,
   limit: number | null,
 ): string {
+  if (driver === "redis") return `BROWSE ${target}${limit === null ? "" : ` LIMIT ${limit}`}`;
   if (driver === "mongo") {
     const projection = columns?.length ? `, { ${columns.map((c) => `${quoteIdent(c, driver)}: 1`).join(", ")} }` : "";
     return `${target}.find({}${projection})${limit === null ? "" : `.limit(${limit})`};`;
@@ -60,10 +62,12 @@ export interface Sort {
 }
 
 /** The data viewer's first query for a table (already quoted) and an optional `WHERE`
- *  condition. On MongoDB the table is a collection reference and the filter a query document.
+ *  condition. On MongoDB the table is a collection reference and the filter a query document;
+ *  on Redis the table is a key type and the filter a pattern of the keys (`user:*`).
  *  Once open, the editor's text is the query: `api.sqlOrderBy` sorts it. */
 export function viewerSql(driver: DriverKind, table: string, filter = ""): string {
   if (driver === "mongo") return `${table}.find(${filter.trim() || "{}"})`;
+  if (driver === "redis") return `BROWSE ${table}${filter.trim() ? ` MATCH ${redisArg(filter.trim())}` : ""}`;
   return `SELECT *\nFROM ${table}${filter.trim() ? `\nWHERE ${filter.trim()}` : ""}`;
 }
 

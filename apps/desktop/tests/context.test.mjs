@@ -11,6 +11,15 @@ test("USE names the database the session switches to", () => {
   assert.equal(usedDatabase("USE other ;", "mysql"), "other");
 });
 
+test("SELECT moves a Redis session to a numbered database", () => {
+  assert.equal(usedDatabase("SELECT 3", "redis"), "db3");
+  assert.equal(usedDatabase("  select db12 ", "redis"), "db12");
+  assert.equal(usedDatabase("SELECT 007", "redis"), "db7");
+  assert.equal(usedDatabase("SELECT x", "redis"), null);
+  assert.equal(usedDatabase("GET k", "redis"), null);
+  assert.equal(usedDatabase("SELECT 1", "postgres"), null);
+});
+
 test("other statements and other databases switch nothing", () => {
   assert.equal(usedDatabase("use admin", "postgres"), null);
   assert.equal(usedDatabase("SELECT 'use x'", "mysql"), null);
