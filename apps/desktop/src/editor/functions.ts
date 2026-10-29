@@ -182,6 +182,7 @@ const LETTER: Record<DriverKind, string> = {
   libsql: "s",
   mongo: "-",
   redis: "-",
+  elasticsearch: "-",
   // No function list yet for the databases reached through ADBC.
   snowflake: "-",
   bigquery: "-",

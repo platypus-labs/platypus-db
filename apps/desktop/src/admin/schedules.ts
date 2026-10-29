@@ -10,7 +10,7 @@ export const backsUp = (driver: DriverKind) => driver === "postgres" || driver =
  *  else as the SQL dump of a schema, which MongoDB and Redis have not. A saved transfer
  *  profile runs on any of them: it opens the connections it names. */
 export function taskKinds(driver: DriverKind): ScheduleTask["kind"][] {
-  return driver === "mongo" || driver === "redis" ? ["script", "export", "profile"] : ["script", "export", "backup", "profile"];
+  return driver === "mongo" || driver === "redis" || driver === "elasticsearch" ? ["script", "export", "profile"] : ["script", "export", "backup", "profile"];
 }
 
 /** A task's own fields for `kind`, as a new one starts. */

@@ -1,5 +1,6 @@
 import type { DriverKind } from "./api";
 import { collectionRef } from "./editor/mongo";
+import { searchRequest } from "./searchSql";
 import { quoteIdent, redisArg } from "./sqlIdent";
 import { defineSetting } from "./settings";
 
@@ -16,6 +17,8 @@ export function omitsSchema(driver: DriverKind, current: boolean): boolean {
 
 /** The schema generated SQL names a table of `schema` with: `null` where it is left out. */
 export function schemaRef(driver: DriverKind, schema: { name: string; current: boolean }): string | null {
+  // The one schema of a cluster is its name, which no request names.
+  if (driver === "elasticsearch") return null;
   return omitsSchema(driver, schema.current) ? null : schema.name;
 }
 
@@ -46,6 +49,7 @@ export function selectSql(
   limit: number | null,
 ): string {
   if (driver === "redis") return `BROWSE ${target}${limit === null ? "" : ` LIMIT ${limit}`}`;
+  if (driver === "elasticsearch") return searchRequest(target, limit);
   if (driver === "mongo") {
     const projection = columns?.length ? `, { ${columns.map((c) => `${quoteIdent(c, driver)}: 1`).join(", ")} }` : "";
     return `${target}.find({}${projection})${limit === null ? "" : `.limit(${limit})`};`;
@@ -63,11 +67,14 @@ export interface Sort {
 
 /** The data viewer's first query for a table (already quoted) and an optional `WHERE`
  *  condition. On MongoDB the table is a collection reference and the filter a query document;
- *  on Redis the table is a key type and the filter a pattern of the keys (`user:*`).
+ *  on Redis the table is a key type and the filter a pattern of the keys (`user:*`); on
+ *  Elasticsearch the table is an index and the filter a query string.
  *  Once open, the editor's text is the query: `api.sqlOrderBy` sorts it. */
 export function viewerSql(driver: DriverKind, table: string, filter = ""): string {
   if (driver === "mongo") return `${table}.find(${filter.trim() || "{}"})`;
   if (driver === "redis") return `BROWSE ${table}${filter.trim() ? ` MATCH ${redisArg(filter.trim())}` : ""}`;
+  // The filter is a query string, `status:active AND price:[10 TO 20]`.
+  if (driver === "elasticsearch") return searchRequest(table, null, filter);
   return `SELECT *\nFROM ${table}${filter.trim() ? `\nWHERE ${filter.trim()}` : ""}`;
 }
 

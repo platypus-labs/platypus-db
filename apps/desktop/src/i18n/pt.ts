@@ -2184,6 +2184,14 @@ const pt: Record<string, string> = {
   "Done: {n} rows.": "Concluído: {n} linhas.",
   "Open…": "Abrir…",
   "Schedule…": "Agendar…",
+  "Index pattern (optional)": "Padrão de índices (opcional)",
+  "The indices the navigator lists, as a pattern (logs-*, or several separated by commas); all of them when empty. TLS needs an SSL mode from require up, as elasticsearchs:// URLs do.": "Os índices que o navegador lista, como padrão (logs-*, ou vários separados por vírgulas); todos se vazio. O TLS precisa de um modo SSL de require em diante, como os URLs elasticsearchs://.",
+  "Leave empty to send the password as an API key.": "Deixe vazio para enviar a senha como chave de API.",
+  "Password or API key": "Senha ou chave de API",
+  "{n} request runs on the server: a request the server refuses stops the rest, and the ones before it stay.": "{n} pedido é executado no servidor: um pedido recusado pelo servidor interrompe os restantes, e os anteriores ficam.",
+  "{n} requests run one after the other: a request the server refuses stops the rest, and the ones before it stay.": "{n} pedidos são executados um após o outro: um pedido recusado pelo servidor interrompe os restantes, e os anteriores ficam.",
+  "deletes every index of the cluster, as the pattern matches:": "exclui todos os índices do cluster que correspondem ao padrão:",
+  "Auth token": "Token de autenticação",
 };
 
 export default pt;

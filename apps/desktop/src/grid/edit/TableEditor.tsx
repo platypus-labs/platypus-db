@@ -7,6 +7,7 @@ import {
   type Generated,
   type GeneratedColumn,
   isRedis,
+  isSearch,
   type SavedConnection,
   toCommandError,
 } from "../../api";
@@ -768,7 +769,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
             statements={preview}
             busy={busy}
             production={!!target && needsProductionConfirm(target.connection)}
-            commands={!!target && isRedis(target.connection.driver)}
+            commands={target && isRedis(target.connection.driver) ? "multi" : target && isSearch(target.connection.driver) ? "requests" : undefined}
             onSave={() => void edit.save(true)}
             onClose={() => setPreview(null)}
           />
