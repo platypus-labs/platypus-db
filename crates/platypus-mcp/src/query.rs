@@ -150,12 +150,12 @@ async fn run_plain(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
 
 /// The statements that open and close the read-only transaction of `driver`: its
 /// dialect's ([`Dialect::read_only_begin`]), except on libSQL servers, which refuse
-/// `PRAGMA query_only`: there a write is only rolled back. MongoDB has none: only the
-/// statement check stops writes.
+/// `PRAGMA query_only`: there a write is only rolled back. MongoDB and Redis have none:
+/// only the statement check stops writes.
 fn read_only_statements(driver: DriverKind) -> (&'static [&'static str], &'static [&'static str]) {
     match driver {
         DriverKind::Libsql => (&["BEGIN"], &["ROLLBACK"]),
-        DriverKind::Mongo => (&[], &[]),
+        DriverKind::Mongo | DriverKind::Redis => (&[], &[]),
         _ => {
             let dialect = Dialect::from(driver);
             (dialect.read_only_begin(), dialect.read_only_end())
@@ -167,8 +167,10 @@ fn read_only_statements(driver: DriverKind) -> (&'static [&'static str], &'stati
 /// them back afterwards.
 #[must_use]
 pub fn refuses_writes_when_read_only(driver: DriverKind) -> bool {
-    !matches!(driver, DriverKind::Libsql | DriverKind::Mongo)
-        && Dialect::from(driver).refuses_writes_when_read_only()
+    !matches!(
+        driver,
+        DriverKind::Libsql | DriverKind::Mongo | DriverKind::Redis
+    ) && Dialect::from(driver).refuses_writes_when_read_only()
 }
 
 /// Runs `statement`, already checked. With `read_only`, it runs in that driver's
