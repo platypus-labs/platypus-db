@@ -300,18 +300,49 @@ impl AppState {
             .ok_or_else(|| CommandError::not_found("query", id))
     }
 
-    /// The name of the session's saved connection when it is marked read-only. Read at each
-    /// call, so a change to the setting applies to open sessions too.
-    fn read_only_name(&self, session_id: u64) -> CommandResult<Option<String>> {
+    /// The name of the session's saved connection when `marked` says so of it. Read at
+    /// each call, so a change to the settings applies to open sessions too.
+    fn name_if(
+        &self,
+        session_id: u64,
+        marked: impl Fn(&platypus_store::SavedConnection) -> bool,
+    ) -> CommandResult<Option<String>> {
         let id = self.session(session_id)?.connection_id;
         Ok(match &*lock(&self.store) {
-            Ok(store) => store
-                .get(id)
-                .filter(|c| c.read_only)
-                .map(|c| c.name.clone()),
+            Ok(store) => store.get(id).filter(|c| marked(c)).map(|c| c.name.clone()),
             // "Query with SQL" databases are not saved, and nothing else opens without it.
             Err(_) => None,
         })
+    }
+
+    /// The name of the session's saved connection when it is marked read-only.
+    fn read_only_name(&self, session_id: u64) -> CommandResult<Option<String>> {
+        self.name_if(session_id, |c| c.read_only)
+    }
+
+    /// Fails when the session's connection keeps its data in: every command that writes
+    /// it to a file or another database checks it here.
+    fn exportable(&self, session_id: u64) -> CommandResult<()> {
+        match self.name_if(session_id, |c| c.restrictions.no_export)? {
+            Some(name) => Err(CommandError::new(
+                "restricted",
+                format!("{name} does not let its data be exported"),
+            )),
+            None => Ok(()),
+        }
+    }
+
+    /// Fails when the session's connection changes its rows only by SQL: the data editor,
+    /// imports and generated rows check it here, with `writable`.
+    fn editable(&self, session_id: u64) -> CommandResult<()> {
+        self.writable(session_id)?;
+        match self.name_if(session_id, |c| c.restrictions.no_data_editing)? {
+            Some(name) => Err(CommandError::new(
+                "restricted",
+                format!("{name} changes its rows only by SQL"),
+            )),
+            None => Ok(()),
+        }
     }
 
     /// Fails when the session's connection is read-only: every command that writes checks
@@ -439,5 +470,74 @@ impl AppState {
             Err(none.to_owned()),
             Err(none.to_owned()),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use platypus_store::{MemorySecrets, PasswordUpdate, Restrictions, SavedConnection};
+
+    use crate::commands::analysis::error_kind as kind;
+
+    /// A state whose one saved SQLite connection, with `restrictions` and `read_only`, has
+    /// a session open: its id.
+    async fn session_of(restrictions: Restrictions, read_only: bool) -> (AppState, u64) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut connections = ConnectionStore::open(
+            dir.path().join("connections.toml"),
+            Arc::new(MemorySecrets::default()),
+        )
+        .unwrap();
+        let mut saved = SavedConnection::new("Ledger", DriverKind::Sqlite);
+        saved.database = ":memory:".to_owned();
+        saved.restrictions = restrictions;
+        saved.read_only = read_only;
+        let id = saved.id;
+        let config = saved.config(None);
+        connections.save(saved, PasswordUpdate::Keep).unwrap();
+        let state = AppState::new(
+            (Ok(connections), None),
+            Err("no vault".to_owned()),
+            Err("no history".to_owned()),
+            Err("no catalog".to_owned()),
+            Err("no settings".to_owned()),
+            Err("no scripts".to_owned()),
+        );
+        let conn: Arc<dyn Connection> = Arc::from(connect(&config).await.unwrap());
+        let session_id = state.next_id();
+        lock(&state.sessions).insert(
+            session_id,
+            Session::new(id, Arc::clone(&conn), conn, config, "Ledger".to_owned()),
+        );
+        (state, session_id)
+    }
+
+    #[tokio::test]
+    async fn restrictions_refuse_exports_and_edits() {
+        let (state, sid) = session_of(Restrictions::default(), false).await;
+        assert!(state.exportable(sid).is_ok() && state.editable(sid).is_ok());
+
+        let no_export = Restrictions {
+            no_export: true,
+            ..Restrictions::default()
+        };
+        let (state, sid) = session_of(no_export, false).await;
+        let e = serde_json::to_value(state.exportable(sid).unwrap_err()).unwrap();
+        assert_eq!(e["kind"], "restricted");
+        assert_eq!(e["message"], "Ledger does not let its data be exported");
+        assert!(state.editable(sid).is_ok() && state.writable(sid).is_ok());
+
+        let no_editing = Restrictions {
+            no_data_editing: true,
+            ..Restrictions::default()
+        };
+        let (state, sid) = session_of(no_editing, false).await;
+        assert_eq!(kind(&state.editable(sid).unwrap_err()), "restricted");
+        assert!(state.exportable(sid).is_ok() && state.writable(sid).is_ok());
+
+        // Read-only refuses edits as it did, before the restriction.
+        let (state, sid) = session_of(no_editing, true).await;
+        assert_eq!(kind(&state.editable(sid).unwrap_err()), "read_only");
     }
 }

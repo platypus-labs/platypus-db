@@ -26,6 +26,7 @@ pub fn export_query(
     options: ExportOptions,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    state.exportable(session_id)?;
     let session = state.session(session_id)?;
     let connection = (session.config, session.label, Arc::clone(&state.query_log));
     let export = Export::start(connection, sql, path, options, on_event);
@@ -49,8 +50,9 @@ pub async fn export_rows(
     path: PathBuf,
     options: ExportOptions,
 ) -> CommandResult<u64> {
-    let (schema, batches) = state
-        .job(job_id)?
+    let job = state.job(job_id)?;
+    state.exportable(job.session_id)?;
+    let (schema, batches) = job
         .snapshot()
         .ok_or_else(|| CommandError::new("not_ready", "the result has no rows"))?;
     tokio::task::spawn_blocking(move || {
@@ -107,6 +109,7 @@ pub fn export_tables(
     options: ExportOptions,
     on_event: Channel<ExportEvent>,
 ) -> CommandResult<u64> {
+    state.exportable(session_id)?;
     let session = state.session(session_id)?;
     let driver = session.config.driver;
     let mut taken = HashSet::new();
