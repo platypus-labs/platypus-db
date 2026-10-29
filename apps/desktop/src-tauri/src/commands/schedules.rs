@@ -130,12 +130,32 @@ async fn execute(
             match event {
                 BackupEvent::Finished { bytes, .. } => {
                     prune(schedule, &file, extension);
-                    Ok((format!("{bytes} bytes written"), Some(file)))
+                    Ok((format!("{} written", size(bytes)), Some(file)))
                 }
                 BackupEvent::Failed { message, .. } => Err(message),
                 BackupEvent::Progress { .. } => Err("the backup did not end".to_owned()),
             }
         }
+    }
+}
+
+/// `bytes` in the largest unit under 1024 of them, as the app writes sizes.
+fn size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a size to read, not to compute with"
+    )]
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    match unit {
+        0 => format!("{bytes} B"),
+        _ if value < 10.0 => format!("{value:.1} {}", UNITS[unit]),
+        _ => format!("{value:.0} {}", UNITS[unit]),
     }
 }
 
@@ -324,6 +344,13 @@ mod tests {
             retries: 0,
             retry_minutes: 5,
         }
+    }
+
+    #[test]
+    fn sizes_as_the_app_writes_them() {
+        assert_eq!(size(512), "512 B");
+        assert_eq!(size(1536), "1.5 KB");
+        assert_eq!(size(48_734_208), "46 MB");
     }
 
     #[test]
