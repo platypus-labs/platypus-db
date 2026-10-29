@@ -98,14 +98,14 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
-| F — Connettività e credenziali | 🔒 Delfa · group-f-cloud · 2026-10-29 |
+| F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
 | G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
-| M — Analisi dei dati | 🔒 Delfa · group-m-notebook · 2026-10-29 |
+| M — Analisi dei dati | ✅ fatto (P2) |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1, P2) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
