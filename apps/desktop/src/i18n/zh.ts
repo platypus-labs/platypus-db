@@ -2191,6 +2191,10 @@ const zh: Record<string, string> = {
   // Group I: ER diagram full screen
   "Full screen": "全屏",
   "Exit full screen": "退出全屏",
+  // Group I: schema history
+  "Schema snapshot": "架构快照",
+  "Snapshots of {schema}": "{schema} 的快照",
+  "Stores the structure of the schema for its history; nothing is stored when it has not changed since the last snapshot.": "将架构的结构保存到其历史记录中；自上次快照以来没有变化时不会保存任何内容。",
 };
 
 export default zh;

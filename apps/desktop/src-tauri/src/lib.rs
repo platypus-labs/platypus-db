@@ -18,7 +18,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use platypus_store::{
-    CatalogStore, ConnectionStore, HistoryStore, KeyringSecrets, SettingsStore, VaultSecrets,
+    CatalogStore, ConnectionStore, HistoryStore, KeyringSecrets, SchemaHistoryStore, SettingsStore,
+    VaultSecrets,
 };
 use tauri::Manager;
 
@@ -106,6 +107,11 @@ fn open_catalog(app: &tauri::App) -> Result<CatalogStore, String> {
     CatalogStore::open(&dir.join("catalog.db")).map_err(|e| e.to_string())
 }
 
+fn open_schema_history(app: &tauri::App) -> Result<SchemaHistoryStore, String> {
+    let dir = dir(app, false)?;
+    SchemaHistoryStore::open(&dir.join("schema-history.db")).map_err(|e| e.to_string())
+}
+
 fn open_history(app: &tauri::App) -> Result<HistoryStore, String> {
     let dir = dir(app, false)?;
     let history = HistoryStore::open(&dir.join("history.db")).map_err(|e| e.to_string())?;
@@ -142,6 +148,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         vault_path,
         open_history(app),
         open_catalog(app),
+        open_schema_history(app),
         settings,
         dir(app, false).map(|d| d.join("scripts")),
     );
@@ -415,5 +422,9 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema::compare_schemas,
         commands::schema::schema_changelog,
         commands::schema::flyway_file_name,
+        commands::schema_history::take_schema_snapshot,
+        commands::schema_history::list_schema_snapshots,
+        commands::schema_history::delete_schema_snapshot,
+        commands::schema_history::diff_schema_snapshots,
     ]
 }

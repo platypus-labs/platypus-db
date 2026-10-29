@@ -2191,6 +2191,10 @@ const es: Record<string, string> = {
   // Group I: ER diagram full screen
   "Full screen": "Pantalla completa",
   "Exit full screen": "Salir de pantalla completa",
+  // Group I: schema history
+  "Schema snapshot": "Instantánea del esquema",
+  "Snapshots of {schema}": "Instantáneas de {schema}",
+  "Stores the structure of the schema for its history; nothing is stored when it has not changed since the last snapshot.": "Guarda la estructura del esquema en su historial; si no ha cambiado desde la última instantánea, no guarda nada.",
 };
 
 export default es;

@@ -1,4 +1,4 @@
-//! Scheduled tasks: what runs (a script, an export, a backup, a saved profile), on which
+//! Scheduled tasks: what runs (a script, an export, a backup, a saved profile, a schema snapshot), on which
 //! connection, when, and where its files go. Pure: the times are computed here, the runs in
 //! `super`.
 
@@ -31,6 +31,9 @@ pub enum Task {
     /// database: `save_schedule` sets them, so that what reads a task's connection keeps
     /// working; the run itself opens the connections the profile names.
     Profile { profile_id: Uuid },
+    /// Takes a snapshot of the structure of a schema for its history, if it changed since the
+    /// last one. Needs no folder.
+    Snapshot { schema: String },
 }
 
 /// The formats of a scheduled export.
@@ -153,6 +156,9 @@ impl Schedule {
             }
             Task::Export { sql, .. } if sql.trim().is_empty() => {
                 Some("write the query to export".to_owned())
+            }
+            Task::Snapshot { schema } if schema.trim().is_empty() => {
+                Some("choose the schema to take snapshots of".to_owned())
             }
             Task::Export { .. } | Task::Backup { .. } if self.folder.is_none() => {
                 Some("choose the folder its files go to".to_owned())
@@ -440,6 +446,20 @@ mod tests {
         s.folder = None;
         assert!(s.problem().unwrap().contains("folder"));
         assert!(s.next_after(utc("2026-11-10T00:00:00Z")).is_some());
+    }
+
+    #[test]
+    fn a_snapshot_needs_a_schema_and_no_folder() {
+        let mut s = schedule(Repeat::Day, "07:00", "");
+        s.folder = None;
+        s.task = Task::Snapshot {
+            schema: "public".to_owned(),
+        };
+        assert_eq!(s.problem(), None);
+        s.task = Task::Snapshot {
+            schema: " ".to_owned(),
+        };
+        assert!(s.problem().unwrap().contains("schema"));
     }
 
     #[test]
