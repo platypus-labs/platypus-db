@@ -2191,6 +2191,23 @@ const de: Record<string, string> = {
   // Group I: ER diagram full screen
   "Full screen": "Vollbild",
   "Exit full screen": "Vollbild beenden",
+  // Group I: data comparison
+  "Compare data with…": "Daten vergleichen mit…",
+  "Compare the data of {table} with…": "Daten von {table} vergleichen mit…",
+  "Rows are matched by the key of {table}. The script makes the target table like it: rows inserted, updated and, if asked, deleted. It opens in the SQL editor of the target, to review before running.": "Die Zeilen werden über den Schlüssel von {table} zugeordnet. Das Skript gleicht die Zieltabelle an: Zeilen werden eingefügt, aktualisiert und auf Wunsch gelöscht. Es öffnet sich im SQL-Editor des Ziels, zur Prüfung vor der Ausführung.",
+  "Choose a table": "Tabelle wählen",
+  "Filter (WHERE)": "Filter (WHERE)",
+  "Delete rows missing from the source": "Zeilen löschen, die in der Quelle fehlen",
+  "Same": "Gleich",
+  "Only in source → inserted": "Nur in der Quelle → eingefügt",
+  "Changed → updated": "Geändert → aktualisiert",
+  "Only in target → deleted": "Nur im Ziel → gelöscht",
+  "Only in target → kept": "Nur im Ziel → behalten",
+  "Only in source": "Nur in der Quelle",
+  "Changed": "Geändert",
+  "Only in target": "Nur im Ziel",
+  "The tables have the same rows": "Die Tabellen haben dieselben Zeilen",
+  "First {shown} of {total} differences": "Die ersten {shown} von {total} Unterschieden",
 };
 
 export default de;

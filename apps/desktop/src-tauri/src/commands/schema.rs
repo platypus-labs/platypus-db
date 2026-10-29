@@ -4,6 +4,7 @@
 use platypus_core::DriverKind;
 use platypus_schema::{ChangelogFormat, Finding, SchemaTable, Script, TableDesign};
 use platypus_sql::Dialect;
+use platypus_transfer::compare::{CompareOptions, DataDiff, TableRef, compare_data};
 use serde::Serialize;
 use tauri::State;
 
@@ -163,4 +164,35 @@ pub async fn compare_schemas(
         sql: script.text(dialect),
         script,
     })
+}
+
+/// The rows that differ between `source` on the source session and `target` on the target
+/// session, and the statements that make the target's rows like the source's.
+#[tauri::command]
+pub async fn compare_table_data(
+    state: State<'_, AppState>,
+    source_session: u64,
+    source: TableRef,
+    target_session: u64,
+    target: TableRef,
+    options: CompareOptions,
+) -> CommandResult<DataDiff> {
+    let source_dialect = Dialect::from(state.session(source_session)?.config.driver);
+    let dialect = Dialect::from(state.session(target_session)?.config.driver);
+    if source_dialect != dialect {
+        return Err(CommandError::new(
+            "different_databases",
+            "Tables can be compared only between databases of the same kind.",
+        ));
+    }
+    let from = state.live(source_session).await?;
+    let to = state.live(target_session).await?;
+    Ok(compare_data(
+        from.as_ref(),
+        to.as_ref(),
+        dialect,
+        (&source, &target),
+        &options,
+    )
+    .await?)
 }

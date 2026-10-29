@@ -2191,6 +2191,23 @@ const pt: Record<string, string> = {
   // Group I: ER diagram full screen
   "Full screen": "Tela cheia",
   "Exit full screen": "Sair da tela cheia",
+  // Group I: data comparison
+  "Compare data with…": "Comparar dados com…",
+  "Compare the data of {table} with…": "Comparar os dados de {table} com…",
+  "Rows are matched by the key of {table}. The script makes the target table like it: rows inserted, updated and, if asked, deleted. It opens in the SQL editor of the target, to review before running.": "As linhas são emparelhadas pela chave de {table}. O script deixa a tabela de destino igual: linhas inseridas, atualizadas e, se pedido, eliminadas. Abre-se no editor SQL do destino, para rever antes de executar.",
+  "Choose a table": "Escolha uma tabela",
+  "Filter (WHERE)": "Filtro (WHERE)",
+  "Delete rows missing from the source": "Eliminar as linhas que faltam na origem",
+  "Same": "Iguais",
+  "Only in source → inserted": "Só na origem → inseridas",
+  "Changed → updated": "Diferentes → atualizadas",
+  "Only in target → deleted": "Só no destino → eliminadas",
+  "Only in target → kept": "Só no destino → mantidas",
+  "Only in source": "Só na origem",
+  "Changed": "Diferente",
+  "Only in target": "Só no destino",
+  "The tables have the same rows": "As tabelas têm as mesmas linhas",
+  "First {shown} of {total} differences": "As primeiras {shown} de {total} diferenças",
 };
 
 export default pt;
