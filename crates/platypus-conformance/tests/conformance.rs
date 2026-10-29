@@ -17,7 +17,7 @@ use arrow_cast::display::array_value_to_string;
 use futures::{StreamExt, TryStreamExt};
 use platypus_core::geometry;
 use platypus_core::{
-    Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, EndSession, Error,
+    BulkRows, Connection, ConnectionConfig, ConstraintKind, Driver, DriverKind, EndSession, Error,
     ExecOptions, ExecResult, MatchKind, ObjectKind, ObjectRef, PlanNode, ServerSession,
     ServerVersion, SessionInit,
 };
@@ -1461,6 +1461,114 @@ async fn suggests_indexes_for_large_scans() {
         assert_eq!(tables, expected, "{}: {:#?}", b.name, plan.root);
     }
 }
+/// A bulk load writes text exactly (quotes, tabs, line breaks, backslashes, empty text apart
+/// from NULL, bytes), in the session's transaction; refused rows fail it and leave the session
+/// usable. MySQL without `local_infile` refuses the load itself, as `Unsupported`.
+#[tokio::test]
+async fn bulk_loads_rows() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        let conn = &*conn;
+        if !conn.capabilities().bulk_load {
+            continue;
+        }
+        let d = platypus_sql::Dialect::from(b.config.driver);
+        let table = d.qualified(Some(&b.schema), "conf_bulk");
+        let _ = run(conn, &format!("DROP TABLE {table}")).await;
+        let bytes = if d == platypus_sql::Dialect::Postgres {
+            "bytea"
+        } else {
+            "blob"
+        };
+        run(
+            conn,
+            &format!("CREATE TABLE {table} (id int PRIMARY KEY, note text, raw {bytes})"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let columns = ["id", "note", "raw"].map(|c| d.quote_ident(c).into_owned());
+        let tricky = "a \"q\", 'x'\tb\nc\\d\r";
+        let rows = vec![
+            vec![
+                Some("1".to_owned()),
+                Some(tricky.to_owned()),
+                Some("00ff".to_owned()),
+            ],
+            vec![Some("2".to_owned()), Some(String::new()), None],
+            vec![Some("3".to_owned()), None, Some(String::new())],
+        ];
+        let bulk = BulkRows {
+            table: &table,
+            columns: &columns,
+            hex: &[false, false, true],
+            rows: &rows,
+        };
+        run(conn, "BEGIN").await.unwrap();
+        match conn.bulk_load(&bulk).await {
+            Err(Error::Unsupported(why)) if b.name == "mysql" => {
+                eprintln!("{}: {why}", b.name);
+                run(conn, "ROLLBACK").await.unwrap();
+                run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+                continue;
+            }
+            loaded => assert_eq!(
+                loaded.unwrap_or_else(|e| panic!("{}: {e}", b.name)),
+                3,
+                "{}",
+                b.name
+            ),
+        }
+        conn.commit().await.unwrap();
+        let other = b.connect().await;
+        let hex = if d == platypus_sql::Dialect::Postgres {
+            "encode(raw, 'hex')"
+        } else {
+            "LOWER(HEX(raw))"
+        };
+        let batches = collect(
+            &b,
+            &*other,
+            &format!("SELECT id, note, {hex}, note IS NULL FROM {table} ORDER BY id"),
+        )
+        .await;
+        let row = |r: usize| -> Vec<_> { (0..4).map(|c| cell(&batches[0], c, r)).collect() };
+        assert_eq!(row(0)[1].as_deref(), Some(tricky), "{}", b.name);
+        assert_eq!(row(0)[2].as_deref(), Some("00ff"), "{}", b.name);
+        assert_eq!(
+            row(1)[1].as_deref(),
+            Some(""),
+            "{}: empty, not NULL",
+            b.name
+        );
+        assert_eq!(row(1)[2], None, "{}", b.name);
+        assert_eq!(
+            row(2)[3].as_deref().map(|t| t == "true" || t == "1"),
+            Some(true),
+            "{}: NULL",
+            b.name
+        );
+        assert_eq!(row(2)[2].as_deref(), Some(""), "{}: no bytes", b.name);
+
+        // A duplicate key fails the load, and the session goes on.
+        let again = BulkRows {
+            rows: &rows[..1],
+            ..bulk
+        };
+        run(conn, "BEGIN").await.unwrap();
+        assert!(
+            conn.bulk_load(&again).await.is_err(),
+            "{}: duplicate key",
+            b.name
+        );
+        conn.rollback().await.unwrap();
+        let count = collect(&b, conn, &format!("SELECT COUNT(*) FROM {table}")).await;
+        assert_eq!(cell(&count[0], 0, 0).as_deref(), Some("3"), "{}", b.name);
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
 /// Every optional method agrees with its capability flag: unsupported ones fail with
 /// `Error::Unsupported`, supported ones never do.
 #[tokio::test]
