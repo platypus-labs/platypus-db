@@ -160,8 +160,16 @@ impl<'a> Row<'a> {
             }
             out.insert(name.clone(), json_value(value, &self.edits.types[i])?);
         }
-        Ok(out)
+        Ok(sorted(out))
     }
+}
+
+/// `map` with its keys in alphabetical order, whichever way `serde_json` is built, so that
+/// the requests shown in a preview do not depend on the order of the columns.
+fn sorted(map: Map<String, Value>) -> Map<String, Value> {
+    let mut entries: Vec<_> = map.into_iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.into_iter().collect()
 }
 
 fn target(index: &str, api: &str, id: Option<&str>) -> String {
@@ -232,6 +240,7 @@ pub fn script(edits: &Edits<'_>) -> Result<Script, String> {
         if fields.is_empty() {
             continue;
         }
+        let (fields, old) = (sorted(fields), sorted(old));
         let target = target(index, "_update", Some(id));
         commands.push(update_request(&target, &fields));
         undo.push(update_request(&target, &old));

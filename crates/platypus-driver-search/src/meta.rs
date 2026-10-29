@@ -191,12 +191,17 @@ pub fn flatten(properties: &Map<String, Value>, prefix: &str, out: &mut Vec<Fiel
 #[must_use]
 pub fn mapped_fields(reply: &Value) -> Vec<Field> {
     let mut fields: Vec<Field> = Vec::new();
-    for mapping in reply.as_object().into_iter().flat_map(Map::values) {
+    // Indices in name order and the fields of each sorted by name, whichever way
+    // `serde_json` is built.
+    let mut indices: Vec<(&String, &Value)> = reply.as_object().into_iter().flatten().collect();
+    indices.sort_by(|a, b| a.0.cmp(b.0));
+    for (_, mapping) in indices {
         let Some(Value::Object(properties)) = mapping.pointer("/mappings/properties") else {
             continue;
         };
         let mut found = Vec::new();
         flatten(properties, "", &mut found);
+        found.sort_by(|a, b| a.0.cmp(&b.0));
         for field in found {
             if !fields.iter().any(|(n, _, _)| *n == field.0) {
                 fields.push(field);
