@@ -2358,7 +2358,9 @@ async fn lists_and_ends_server_sessions() {
         let mut worker = worker;
         if caps.cancel_server_queries {
             let task = start(worker);
-            let running = server_session(&b, &*admin, &id, ServerSession::is_running).await;
+            // MySQL shows the statement a moment after the session starts it.
+            let running =
+                server_session(&b, &*admin, &id, |s| s.is_running() && s.query.is_some()).await;
             assert!(!running.current, "{}: {running:?}", b.name);
             assert!(running.query.is_some(), "{}: {running:?}", b.name);
             admin
