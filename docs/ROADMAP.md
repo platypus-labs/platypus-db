@@ -107,7 +107,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
-| G — Nuovi driver | 🔒 Delfa · group-g-redis · 2026-10-29 |
+| G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ fatto (P1, P2; P3 in parte) |
 | I — Strumenti di schema | ✅ fatto (P1, P2; P3 in parte) |
 | J — Amministrazione del server | ✅ fatto (P2) |
@@ -381,7 +381,7 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 parallelizzabile: **una persona per driver**.
 **Dipende da:** 0.5, 0.6
 
-**Stato: P1 completate, P2 e P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
+**Stato: P1 e P2 completate, P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
 ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
 ODBC generico, Redis; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo
 uso. Da fare: aggiornamento automatico dei driver, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
