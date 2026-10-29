@@ -30,6 +30,7 @@ pub mod schema;
 pub mod scripts;
 pub mod search;
 pub mod settings;
+pub mod snapshots;
 pub mod sql;
 pub mod summary;
 pub mod transactions;
