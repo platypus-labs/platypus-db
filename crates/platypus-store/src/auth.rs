@@ -267,7 +267,11 @@ mod tests {
             password_of("{\n  \"password\": \"multi\"\n}\n").unwrap(),
             "multi"
         );
-        assert!(password_of(r#"{"username":"ada"}"#).unwrap_err().contains("password"));
+        assert!(
+            password_of(r#"{"username":"ada"}"#)
+                .unwrap_err()
+                .contains("password")
+        );
         assert!(password_of(r#"{"password":""}"#).is_err());
         assert!(password_of(r#"{"password":3}"#).is_err());
         assert!(password_of("{not json").unwrap_err().contains("parse"));
