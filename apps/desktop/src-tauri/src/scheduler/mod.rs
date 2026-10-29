@@ -97,13 +97,12 @@ impl Scheduler {
             .map(|s| {
                 let due = saved.due.get(&s.id).copied();
                 let retry = saved.retry.get(&s.id).map(|(at, _)| *at);
-                let next = s.enabled.then(|| match (due, retry) {
-                    (Some(d), Some(r)) => Some(d.min(r)),
-                    (d, r) => d.or(r),
-                });
                 ScheduleView {
                     schedule: s.clone(),
-                    next: next.flatten(),
+                    next: s
+                        .enabled
+                        .then(|| due.into_iter().chain(retry).min())
+                        .flatten(),
                     runs: saved.runs.get(&s.id).cloned().unwrap_or_default(),
                     running: running.contains(&s.id),
                 }

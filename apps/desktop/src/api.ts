@@ -251,19 +251,30 @@ export type BackupEvent =
   | { kind: "finished"; bytes: number; elapsed_ms: number; output: string }
   | { kind: "failed"; message: string; output: string };
 
+/** PostgreSQL's custom archive or SQL; MySQL writes SQL either way. */
+export type BackupFormat = "custom" | "plain";
+
 export interface BackupRequest {
   path: string;
-  /** PostgreSQL's custom archive or SQL; MySQL writes SQL either way. */
-  format: "custom" | "plain";
+  format: BackupFormat;
   schema?: string | null;
   structure_only: boolean;
 }
 
+export interface RestoreRequest {
+  path: string;
+  /** Drops the archive's objects before creating them again (`pg_restore --clean`). */
+  clean: boolean;
+}
+
+/** The formats of a scheduled export. */
+export type ScheduleExportFormat = "csv" | "json" | "parquet" | "xlsx";
+
 /** What a scheduled task does; see `scheduler::plan::Task`. */
 export type ScheduleTask =
   | { kind: "script"; path: string }
-  | { kind: "export"; sql: string; format: "csv" | "json" | "parquet" | "xlsx" }
-  | { kind: "backup"; format: "custom" | "plain"; schema?: string | null };
+  | { kind: "export"; sql: string; format: ScheduleExportFormat }
+  | { kind: "backup"; format: BackupFormat; schema?: string | null };
 
 /** How often a task runs; days of the week are 1 (Monday) to 7. */
 export type ScheduleRepeat = { every: "hour" } | { every: "day" } | { every: "week"; days: number[] } | { every: "month"; day: number };
@@ -1743,6 +1754,12 @@ export const api = {
     channel.onmessage = onEvent;
     return invoke<void>("backup_database", { sessionId, runId, request, onEvent: channel });
   },
+  /** Restores a backup into the session's database; `cancelCli(runId)` stops it. */
+  restoreDatabase: (sessionId: number, runId: number, request: RestoreRequest, onEvent: (e: BackupEvent) => void) => {
+    const channel = new Channel<BackupEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("restore_database", { sessionId, runId, request, onEvent: channel });
+  },
   listSchedules: () => invoke<ScheduleView[]>("list_schedules"),
   /** Saves a task, new or changed; returns them all. */
   saveSchedule: (schedule: Schedule) => invoke<ScheduleView[]>("save_schedule", { schedule }),
@@ -1750,12 +1767,6 @@ export const api = {
   /** Runs a task now; the list hears when it starts and ends (`schedules-changed`). */
   runScheduleNow: (id: string) => invoke<void>("run_schedule_now", { id }),
   timeZones: () => invoke<string[]>("time_zones"),
-  /** Restores a backup into the session's database; `cancelCli(runId)` stops it. */
-  restoreDatabase: (sessionId: number, runId: number, request: { path: string; clean: boolean }, onEvent: (e: BackupEvent) => void) => {
-    const channel = new Channel<BackupEvent>();
-    channel.onmessage = onEvent;
-    return invoke<void>("restore_database", { sessionId, runId, request, onEvent: channel });
-  },
   /** `connectionIds` limits the entries to those connections, e.g. a project's. */
   searchHistory: (query: {
     connectionIds?: string[];

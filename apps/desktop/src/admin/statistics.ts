@@ -12,7 +12,7 @@ export function sortQueries(queries: ServerQuery[], order: QueryOrder): ServerQu
   return [...queries].sort((a, b) => key(b) - key(a));
 }
 
-/** Whether `filter` is in the statement or the database of `query`, ignoring case. */
+/** Whether `filter` is in the statement, the database or the user of `query`, ignoring case. */
 export function queryMatches(query: ServerQuery, filter: string): boolean {
   const needle = filter.trim().toLowerCase();
   return !needle || [query.query, query.database, query.user].some((f) => f?.toLowerCase().includes(needle));

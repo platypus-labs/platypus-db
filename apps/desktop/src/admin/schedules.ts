@@ -3,9 +3,12 @@
 // module without it.
 import type { DriverKind, Schedule, ScheduleRepeat, ScheduleTask, ScheduleView } from "../api";
 
+/** Whether the database's own tools back it up and restore it (`commands::backup`). */
+export const backsUp = (driver: DriverKind) => driver === "postgres" || driver === "mysql";
+
 /** The tasks a connection's database can run: backups need its own tools. */
 export function taskKinds(driver: DriverKind): ScheduleTask["kind"][] {
-  return driver === "postgres" || driver === "mysql" ? ["script", "export", "backup"] : ["script", "export"];
+  return backsUp(driver) ? ["script", "export", "backup"] : ["script", "export"];
 }
 
 /** A task's own fields for `kind`, as a new one starts. */

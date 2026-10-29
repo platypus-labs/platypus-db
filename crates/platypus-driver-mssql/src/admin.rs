@@ -4,8 +4,9 @@
 
 use platypus_core::{
     Connection, EndSession, Error, ExecOptions, Maintenance, ObjectStatistics, Result, ServerLock,
-    ServerQuery, ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks, query_text,
-    refuse_own_session, run_maintenance, seconds_of, session_number, sort_statistics,
+    ServerQuery, ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks,
+    query_statements, query_text, refuse_own_session, run_maintenance, session_number,
+    sort_statistics,
 };
 use platypus_sql::Dialect;
 
@@ -95,7 +96,7 @@ fn top_queries_sql() -> String {
         "SELECT TOP {TOP_QUERIES} SUBSTRING(t.text, s.statement_start_offset / 2 + 1, \
          (CASE WHEN s.statement_end_offset = -1 THEN DATALENGTH(t.text) \
                ELSE s.statement_end_offset END - s.statement_start_offset) / 2 + 1), \
-         DB_NAME(t.dbid), CAST(s.execution_count AS varchar(20)), \
+         NULL, DB_NAME(t.dbid), NULL, CAST(s.execution_count AS varchar(20)), \
          s.total_elapsed_time / 1e6, s.total_elapsed_time / 1e6 / s.execution_count, \
          s.max_elapsed_time / 1e6, CAST(s.total_rows AS varchar(20)) \
          FROM sys.dm_exec_query_stats s CROSS APPLY sys.dm_exec_sql_text(s.sql_handle) t \
@@ -104,21 +105,12 @@ fn top_queries_sql() -> String {
 }
 
 pub(crate) async fn top_queries(conn: &dyn Connection) -> Result<Vec<ServerQuery>> {
-    Ok(query_text(conn, &top_queries_sql())
-        .await?
-        .into_iter()
-        .map(|r| ServerQuery {
-            query: r.text(0).trim().to_owned(),
-            sample: None,
-            database: r.opt(1),
-            user: None,
-            calls: r.number(2).unwrap_or(0),
-            total_seconds: seconds_of(r.opt(3)).unwrap_or(0.0),
-            mean_seconds: seconds_of(r.opt(4)).unwrap_or(0.0),
-            max_seconds: seconds_of(r.opt(5)),
-            rows: r.number(6),
-        })
-        .collect())
+    let mut queries = query_statements(conn, &top_queries_sql()).await?;
+    // Cut out of its batch, a statement keeps the batch's spaces and line breaks around it.
+    for q in &mut queries {
+        q.query = q.query.trim().to_owned();
+    }
+    Ok(queries)
 }
 
 /// The tables of the database: space with their indexes, rows, scans of the whole table
@@ -192,11 +184,7 @@ pub(crate) async fn maintain(
     table: &str,
     operation: Maintenance,
 ) -> Result<Vec<String>> {
-    let name = format!(
-        "{}.{}",
-        Dialect::SqlServer.quote_ident(schema),
-        Dialect::SqlServer.quote_ident(table)
-    );
+    let name = Dialect::SqlServer.qualified(Some(schema), table);
     let sql = match operation {
         Maintenance::Analyze => format!("UPDATE STATISTICS {name}"),
         Maintenance::Reindex => format!("ALTER INDEX ALL ON {name} REBUILD"),

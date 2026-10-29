@@ -7,8 +7,9 @@ use std::collections::HashMap;
 
 use platypus_core::{
     Connection, EndSession, Error, ExecOptions, Maintenance, ObjectStatistics, Result, ServerLock,
-    ServerQuery, ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks, query_text,
-    refuse_own_session, run_maintenance, seconds_of, session_number, sort_statistics,
+    ServerQuery, ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks,
+    query_statements, query_text, refuse_own_session, run_maintenance, session_number,
+    sort_statistics,
 };
 use platypus_sql::Dialect;
 
@@ -159,24 +160,12 @@ pub(crate) async fn top_queries(conn: &dyn Connection) -> Result<Vec<ServerQuery
         ));
     }
     // MySQL 5.7 and MariaDB keep no sample of a statement's runs.
-    let rows = match query_text(conn, &digests("QUERY_SAMPLE_TEXT")).await {
-        Ok(rows) => rows,
-        Err(e) => query_text(conn, &digests("NULL")).await.map_err(|_| e)?,
-    };
-    Ok(rows
-        .into_iter()
-        .map(|r| ServerQuery {
-            query: r.text(0),
-            sample: r.opt(1).filter(|s| !s.is_empty()),
-            database: r.opt(2),
-            user: r.opt(3),
-            calls: r.number(4).unwrap_or(0),
-            total_seconds: seconds_of(r.opt(5)).unwrap_or(0.0),
-            mean_seconds: seconds_of(r.opt(6)).unwrap_or(0.0),
-            max_seconds: seconds_of(r.opt(7)),
-            rows: r.number(8),
-        })
-        .collect())
+    match query_statements(conn, &digests("QUERY_SAMPLE_TEXT")).await {
+        Ok(queries) => Ok(queries),
+        Err(e) => query_statements(conn, &digests("NULL"))
+            .await
+            .map_err(|_| e),
+    }
 }
 
 /// The tables of the user schemas: size with the indexes, estimated rows, unused space.
@@ -271,11 +260,7 @@ pub(crate) async fn maintain(
     table: &str,
     operation: Maintenance,
 ) -> Result<Vec<String>> {
-    let name = format!(
-        "{}.{}",
-        Dialect::MySql.quote_ident(schema),
-        Dialect::MySql.quote_ident(table)
-    );
+    let name = Dialect::MySql.qualified(Some(schema), table);
     let sql = match operation {
         Maintenance::Analyze => format!("ANALYZE TABLE {name}"),
         Maintenance::Optimize => format!("OPTIMIZE TABLE {name}"),

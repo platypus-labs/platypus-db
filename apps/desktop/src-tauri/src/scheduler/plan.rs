@@ -161,12 +161,8 @@ impl Schedule {
         if self.timezone.is_empty() {
             next_in(&chrono::Local, &self.repeat, time, after)
         } else {
-            next_in(
-                &self.timezone.parse::<chrono_tz::Tz>().ok()?,
-                &self.repeat,
-                time,
-                after,
-            )
+            let tz: chrono_tz::Tz = self.timezone.parse().ok()?;
+            next_in(&tz, &self.repeat, time, after)
         }
     }
 
@@ -186,7 +182,7 @@ impl Schedule {
         format!("{}-", name.trim_matches('_'))
     }
 
-    /// The file of a run started at `at`, in the task's folder: `name-20261029-0700.ext`.
+    /// The file of a run started at `at`, in the task's folder: `name-20261029-070000.ext`.
     pub fn file_at(&self, at: DateTime<Utc>, extension: &str) -> Option<PathBuf> {
         let stamp = at.with_timezone(&chrono::Local).format("%Y%m%d-%H%M%S");
         Some(

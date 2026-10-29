@@ -20,8 +20,8 @@ mod version;
 
 pub use admin::{
     EndSession, Maintenance, ObjectStatistics, ServerLock, ServerQuery, ServerSession,
-    StatisticsKind, TOP_QUERIES, query_locks, refuse_own_session, run_maintenance, seconds_of,
-    session_number, sort_statistics,
+    StatisticsKind, TOP_QUERIES, query_locks, query_statements, refuse_own_session,
+    run_maintenance, session_number, sort_statistics,
 };
 pub use capabilities::{Capabilities, ObjectRef, unsupported};
 pub use config::{

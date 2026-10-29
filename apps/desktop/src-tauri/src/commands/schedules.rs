@@ -116,26 +116,30 @@ async fn execute(
                 schema: schema.clone(),
                 structure_only: false,
             };
-            // Nothing cancels a scheduled backup, nor listens to its progress.
-            let (_never, cancel) = oneshot::channel();
-            let event = backup(
-                &saved.config,
-                &request,
-                None,
-                &Channel::new(|_| Ok(())),
-                cancel,
-            )
-            .await
-            .map_err(|e| e.message().to_owned())?;
-            match event {
-                BackupEvent::Finished { bytes, .. } => {
-                    prune(schedule, &file, extension);
-                    Ok((format!("{} written", size(bytes)), Some(file)))
-                }
-                BackupEvent::Failed { message, .. } => Err(message),
-                BackupEvent::Progress { .. } => Err("the backup did not end".to_owned()),
-            }
+            let bytes = run_backup(&saved, &request).await?;
+            prune(schedule, &file, extension);
+            Ok((format!("{} written", size(bytes)), Some(file)))
         }
+    }
+}
+
+/// Backs up the database as `request` asks; returns the size of the file.
+async fn run_backup(saved: &SavedConfig, request: &BackupRequest) -> Result<u64, String> {
+    // Nothing cancels a scheduled backup, nor listens to its progress.
+    let (_never, cancel) = oneshot::channel();
+    let event = backup(
+        &saved.config,
+        request,
+        None,
+        &Channel::new(|_| Ok(())),
+        cancel,
+    )
+    .await
+    .map_err(|e| e.message().to_owned())?;
+    match event {
+        BackupEvent::Finished { bytes, .. } => Ok(bytes),
+        BackupEvent::Failed { message, .. } => Err(message),
+        BackupEvent::Progress { .. } => Err("the backup did not end".to_owned()),
     }
 }
 

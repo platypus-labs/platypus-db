@@ -4,7 +4,7 @@
  *  tool said. */
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useRef, useState } from "react";
-import { api, type BackupEvent, type BackupRequest, type SavedConnection, toCommandError } from "../api";
+import { api, type BackupEvent, type BackupFormat, type SavedConnection, toCommandError } from "../api";
 import { datedFileName, formatBytes } from "../format";
 import { formatCount, t } from "../i18n";
 import { answerFor } from "../testAnswers";
@@ -35,7 +35,7 @@ let runs = Date.now();
 export function BackupDialog({ mode, connection, database, schema, onClose }: Props) {
   const postgres = connection.driver === "postgres";
   const target = schema ?? database ?? connection.database ?? connection.name;
-  const [format, setFormat] = useState<BackupRequest["format"]>(postgres ? "custom" : "plain");
+  const [format, setFormat] = useState<BackupFormat>(postgres ? "custom" : "plain");
   const [structureOnly, setStructureOnly] = useState(false);
   const [clean, setClean] = useState(false);
   const [path, setPath] = useState("");
@@ -46,17 +46,14 @@ export function BackupDialog({ mode, connection, database, schema, onClose }: Pr
   const ext = format === "custom" ? "dump" : "sql";
 
   async function choose() {
-    const chosen =
+    const chosen = await answerFor("file", () =>
       mode === "backup"
-        ? await answerFor("file", () =>
-            save({
-              defaultPath: datedFileName(target, ext),
-              filters: [{ name: format === "custom" ? t("Archive") : "SQL", extensions: [ext] }],
-            }),
-          )
-        : await answerFor("file", () =>
-            open({ multiple: false, filters: [{ name: t("Backups"), extensions: ["dump", "backup", "sql"] }] }),
-          );
+        ? save({
+            defaultPath: datedFileName(target, ext),
+            filters: [{ name: format === "custom" ? t("Archive") : "SQL", extensions: [ext] }],
+          })
+        : open({ multiple: false, filters: [{ name: t("Backups"), extensions: ["dump", "backup", "sql"] }] }),
+    );
     if (typeof chosen === "string") setPath(chosen);
   }
 
@@ -131,7 +128,7 @@ export function BackupDialog({ mode, connection, database, schema, onClose }: Pr
               disabled={running}
               data-field="format"
               onChange={(e) => {
-                const next = e.target.value as BackupRequest["format"];
+                const next = e.target.value as BackupFormat;
                 setFormat(next);
                 // The file keeps its name with the format's extension.
                 setPath((p) => p.replace(/\.(dump|sql)$/i, next === "custom" ? ".dump" : ".sql"));

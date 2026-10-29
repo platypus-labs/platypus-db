@@ -4,8 +4,9 @@
 //! its tunnel or proxy, and report their progress: table by table from the tools' verbose
 //! output, or by the bytes of a SQL file sent to the client.
 
+use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt as _;
@@ -17,7 +18,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::oneshot;
 
-use super::cli::{Invocation, mysql_connection, not_started, pg_connection, reach, stopped};
+use super::cli::{Invocation, mysql_connection, pg_connection, reach, spawn, stopped};
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
 
@@ -192,19 +193,15 @@ async fn is_archive(path: &Path) -> std::io::Result<bool> {
 }
 
 /// A line of a file sent as it is.
-fn as_it_is(line: &[u8]) -> std::borrow::Cow<'_, [u8]> {
-    std::borrow::Cow::Borrowed(line)
+fn as_it_is(line: &[u8]) -> Cow<'_, [u8]> {
+    Cow::Borrowed(line)
 }
 
 /// How a file is restored: a tool that reads it, or a client whose input it is, each line
 /// through a filter.
 enum Restore {
     Reads(&'static str, Invocation),
-    Input(
-        &'static str,
-        Invocation,
-        fn(&[u8]) -> std::borrow::Cow<'_, [u8]>,
-    ),
+    Input(&'static str, Invocation, fn(&[u8]) -> Cow<'_, [u8]>),
 }
 
 async fn restore_invocation(
@@ -259,20 +256,6 @@ async fn restore_invocation(
     }
 }
 
-fn spawn(program: &'static str, (args, env): Invocation, input: bool) -> CommandResult<Child> {
-    let mut command = Command::new(program);
-    command
-        .args(&args)
-        .envs(env)
-        .stdin(if input { Stdio::piped() } else { Stdio::null() })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
-    command.spawn().map_err(|e| not_started(program, &e))
-}
-
 /// Reads the tool's output line by line, counting the tables it starts on; returns the last
 /// lines it wrote.
 async fn follow(child: &mut Child, total: Option<u64>, events: &Channel<BackupEvent>) -> String {
@@ -280,11 +263,8 @@ async fn follow(child: &mut Child, total: Option<u64>, events: &Channel<BackupEv
         return String::new();
     };
     // The tools write their progress on stderr; `psql` and `mysql` their results on stdout.
-    let mut lines = futures::stream::select(
-        Box::pin(tokio_stream_lines(stdout)),
-        Box::pin(tokio_stream_lines(stderr)),
-    );
-    let mut kept: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    let mut lines = futures::stream::select(Box::pin(lines_of(stdout)), Box::pin(lines_of(stderr)));
+    let mut kept = VecDeque::new();
     let mut done = 0;
     while let Some(line) = lines.next().await {
         if let Some(table) = table_of(&line) {
@@ -306,7 +286,7 @@ async fn follow(child: &mut Child, total: Option<u64>, events: &Channel<BackupEv
 
 /// The lines `reader` gives, to its end; read as bytes, so that text in another encoding
 /// (a table's data echoed by a client) does not stop the reading and block the tool.
-fn tokio_stream_lines(
+fn lines_of(
     reader: impl tokio::io::AsyncRead + Unpin + Send + 'static,
 ) -> impl futures::Stream<Item = String> + Send {
     futures::stream::unfold(BufReader::new(reader), |mut reader| async move {
@@ -325,10 +305,10 @@ fn tokio_stream_lines(
 /// routines are then owned by the user restoring, as `pg_restore --no-owner` does, instead
 /// of needing the right to create them for another (`SYSTEM_USER`, `SET_USER_ID`). Rows are
 /// left as they are.
-fn without_definer(line: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+fn without_definer(line: &[u8]) -> Cow<'_, [u8]> {
     const DEFINER: &[u8] = b"DEFINER=";
     if line.starts_with(b"INSERT INTO") || !line.windows(DEFINER.len()).any(|w| w == DEFINER) {
-        return std::borrow::Cow::Borrowed(line);
+        return Cow::Borrowed(line);
     }
     // A quoted name: `x` or 'x', its quote doubled inside.
     let quoted = |at: usize| -> Option<usize> {
@@ -365,7 +345,7 @@ fn without_definer(line: &[u8]) -> std::borrow::Cow<'_, [u8]> {
         out.push(line[i]);
         i += 1;
     }
-    std::borrow::Cow::Owned(out)
+    Cow::Owned(out)
 }
 
 /// Sends `path` to the client's input, a line at a time through `filter`, reporting the
@@ -373,7 +353,7 @@ fn without_definer(line: &[u8]) -> std::borrow::Cow<'_, [u8]> {
 async fn send_file(
     child: &mut Child,
     path: PathBuf,
-    filter: fn(&[u8]) -> std::borrow::Cow<'_, [u8]>,
+    filter: fn(&[u8]) -> Cow<'_, [u8]>,
     events: Channel<BackupEvent>,
 ) -> CommandResult<tauri::async_runtime::JoinHandle<()>> {
     let file = tokio::fs::File::open(&path)

@@ -2,6 +2,7 @@
 // details, and sessions of the dev databases run in the background from a shell in their
 // container.
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { DBS, assert, expand, treeMenu } from "./qa-grid.mjs";
 
 export const adminTab = `[...document.querySelectorAll('.admin-tab')].find(t => t.style.display !== 'none')`;
@@ -38,11 +39,7 @@ export function background(db, sql) {
 }
 
 /** Answers the open confirmation with its red button. */
-export async function confirmDanger(page) {
-  await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
-  await page.eval(`document.querySelector('.modal.confirm button.danger').click()`);
-  await page.waitFor(`document.querySelector('.modal.confirm') === null`);
-}
+export const confirmDanger = (page) => confirm(page, "danger");
 
 /** The id of the session row whose statement contains `text`. */
 export const idOf = (page, text) => page.eval(`${rowWith(text)}.dataset.id`);
@@ -97,10 +94,10 @@ const secondsOf = (text) => {
   return long ? Number(long[1]) * 60 + Number(long[2]) : NaN;
 };
 
-/** Answers the open question with its main button. */
-async function confirm(page) {
+/** Answers the open question with its main button, or its `button` (`danger`). */
+async function confirm(page, button = "primary") {
   await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
-  await page.eval(`document.querySelector('.modal.confirm button.primary').click()`);
+  await page.eval(`document.querySelector('.modal.confirm button.${button}').click()`);
   await page.waitFor(`document.querySelector('.modal.confirm') === null`);
 }
 
@@ -197,7 +194,6 @@ export async function statisticsFlow(page, { db, name, table, slow, path, operat
  */
 export async function backupFlow(page, { db, name, file, table, count, dropTable }) {
   const { answerSave } = await import("./qa-xfer.mjs");
-  const { existsSync, readFileSync } = await import("node:fs");
   const dialog = `document.querySelector('.backup-dialog')`;
   const result = `${dialog}?.querySelector('[data-field="result"]')`;
   await expand(page, name, db);

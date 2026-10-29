@@ -172,6 +172,29 @@ pub async fn query_locks(conn: &dyn Connection, sql: &str) -> Result<Vec<ServerL
         .collect())
 }
 
+/// The statements `sql` reads, one a row: statement, a run of it with its values, database,
+/// user, calls, then total, mean and longest time in seconds, and rows.
+///
+/// # Errors
+/// When the query fails.
+pub async fn query_statements(conn: &dyn Connection, sql: &str) -> Result<Vec<ServerQuery>> {
+    Ok(query_text(conn, sql)
+        .await?
+        .into_iter()
+        .map(|r| ServerQuery {
+            query: r.text(0),
+            sample: r.opt(1).filter(|s| !s.is_empty()),
+            database: r.opt(2),
+            user: r.opt(3),
+            calls: r.number(4).unwrap_or(0),
+            total_seconds: seconds_of(r.opt(5)).unwrap_or(0.0),
+            mean_seconds: seconds_of(r.opt(6)).unwrap_or(0.0),
+            max_seconds: seconds_of(r.opt(7)),
+            rows: r.number(8),
+        })
+        .collect())
+}
+
 /// Refuses session `id` when it is the one asking, whose id `own` reads: ending it would
 /// close the connection that asks, or cancel the very statement.
 ///
@@ -234,8 +257,7 @@ pub fn sort_statistics(objects: &mut [ObjectStatistics]) {
 }
 
 /// A time in seconds, as the server wrote it.
-#[must_use]
-pub fn seconds_of(text: Option<String>) -> Option<f64> {
+fn seconds_of(text: Option<String>) -> Option<f64> {
     text?.trim().parse().ok().filter(|s: &f64| s.is_finite())
 }
 

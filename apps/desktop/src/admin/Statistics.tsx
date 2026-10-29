@@ -44,6 +44,9 @@ const ISSUES: Record<Issue, { label: string; why: string }> = {
   never_analyzed: { label: msg("never analyzed"), why: msg("The planner has no statistics of this table: Analyze makes them.") },
 };
 
+/** Runs a maintenance operation on a table; resolves to what the server said, a line each. */
+type OnMaintain = (schema: string, table: string, operation: Maintenance) => Promise<string[]>;
+
 const count = (n: number | null) => (n === null ? "" : formatCount(n));
 const size = (n: number | null) => (n === null ? "" : formatBytes(n));
 
@@ -206,7 +209,7 @@ export function ObjectsView({
   objects: ObjectStatistics[];
   maintenance: Maintenance[];
   readOnly: boolean;
-  onMaintain: (schema: string, table: string, operation: Maintenance) => Promise<string[]>;
+  onMaintain: OnMaintain;
 }) {
   const [filter, setFilter] = useState("");
   const [onlyIssues, setOnlyIssues] = useState(false);
@@ -320,7 +323,7 @@ function ObjectDetails({
   known: boolean;
   maintenance: Maintenance[];
   readOnly: boolean;
-  onMaintain: (schema: string, table: string, operation: Maintenance) => Promise<string[]>;
+  onMaintain: OnMaintain;
 }) {
   const [running, setRunning] = useState<Maintenance | null>(null);
   const [result, setResult] = useState<{ operation: Maintenance; lines: string[]; error: boolean } | null>(null);
@@ -331,12 +334,13 @@ function ObjectDetails({
       </aside>
     );
   }
+  const { schema } = object;
   const table = tableOf(object);
   async function run(operation: Maintenance) {
     const confirmed = await ask(
       t("{operation} {table}? {what}", {
         operation: t(MAINTENANCE[operation].label),
-        table: `${object!.schema}.${table}`,
+        table: `${schema}.${table}`,
         what: t(MAINTENANCE[operation].what),
       }),
       { confirm: t(MAINTENANCE[operation].label) },
@@ -345,7 +349,7 @@ function ObjectDetails({
     setRunning(operation);
     setResult(null);
     try {
-      setResult({ operation, lines: await onMaintain(object!.schema, table, operation), error: false });
+      setResult({ operation, lines: await onMaintain(schema, table, operation), error: false });
     } catch (e) {
       setResult({ operation, lines: [toCommandError(e).message], error: true });
     } finally {
@@ -354,7 +358,7 @@ function ObjectDetails({
   }
   const found = issues(object, known);
   const fields: [string, string, ReactNode][] = [
-    ["table", t("Table"), object.kind === "index" ? `${object.schema}.${table}` : null],
+    ["table", t("Table"), object.kind === "index" ? `${schema}.${table}` : null],
     ...COLUMNS.map(([key, name, render]): [string, string, ReactNode] => [key, t(name), render(object)]),
   ];
   return (

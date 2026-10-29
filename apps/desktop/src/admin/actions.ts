@@ -9,6 +9,7 @@ import { workbench } from "../workbench";
 import { BackupDialog, type BackupMode } from "./BackupDialog";
 import { MaintenanceDialog } from "./MaintenanceDialog";
 import { SchedulesDialog } from "./SchedulesDialog";
+import { backsUp } from "./schedules";
 
 /** The operations of each database's driver (`Capabilities::maintenance`), known before a
  *  session is open. */
@@ -50,9 +51,6 @@ const TITLES: Record<Maintenance, string> = {
   }),
 );
 
-/** The databases whose tools back up and restore (`commands::backup`). */
-const backs = (connection: SavedConnection) => connection.driver === "postgres" || connection.driver === "mysql";
-
 const openBackup = (mode: BackupMode, connection: SavedConnection, database: string | null, schema: string | null = null) =>
   workbench().openDialog((close) => createElement(BackupDialog, { mode, connection, database, schema, onClose: close }));
 
@@ -66,7 +64,7 @@ for (const [mode, title, order] of [
     title,
     group: "open",
     order,
-    when: ({ connection }) => backs(connection),
+    when: ({ connection }) => backsUp(connection.driver),
     run: ({ connection }) => openBackup(mode, connection, null),
   });
   registerAction({
@@ -75,7 +73,7 @@ for (const [mode, title, order] of [
     title,
     group: "open",
     order,
-    when: ({ connection }) => backs(connection),
+    when: ({ connection }) => backsUp(connection.driver),
     run: ({ connection, database }) => openBackup(mode, connection, database),
   });
 }

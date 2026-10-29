@@ -232,7 +232,7 @@ pub(super) async fn reach(
 }
 
 /// The error of a client that could not start.
-pub(super) fn not_started(program: &str, e: &std::io::Error) -> CommandError {
+fn not_started(program: &str, e: &std::io::Error) -> CommandError {
     CommandError::new(
         "cli",
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -243,9 +243,25 @@ pub(super) fn not_started(program: &str, e: &std::io::Error) -> CommandError {
     )
 }
 
+/// Starts `program` with `invocation`, its output read through pipes, and its input too when
+/// `input`; it is killed when dropped.
+pub(super) fn spawn(program: &str, (args, env): Invocation, input: bool) -> CommandResult<Child> {
+    let mut command = Command::new(program);
+    command
+        .args(&args)
+        .envs(env)
+        .stdin(if input { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
+    command.spawn().map_err(|e| not_started(program, &e))
+}
+
 /// Waits for the client to end, or (`None`) for `cancel`: the client is then killed, as
 /// dropping its wait drops the child, spawned with `kill_on_drop`.
-pub(super) async fn wait_or_cancel(
+async fn wait_or_cancel(
     child: Child,
     cancel: oneshot::Receiver<()>,
 ) -> Option<std::io::Result<Output>> {
@@ -291,18 +307,8 @@ async fn run(
         return Err(stopped(program));
     }
     let (args, env) = invocation(&config, &host, port);
-    let mut command = Command::new(program);
-    command
-        .args(&args)
-        .envs(env)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
     let started = Instant::now();
-    let mut child = command.spawn().map_err(|e| not_started(program, &e))?;
+    let mut child = spawn(program, (args.clone(), env), true)?;
     if let Some(mut stdin) = child.stdin.take() {
         // Written alongside the reads, so a client that prints a lot cannot block the script;
         // one that exits early closes its input, and its output says why.

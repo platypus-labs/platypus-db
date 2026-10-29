@@ -4,8 +4,8 @@
 
 use platypus_core::{
     Connection, EndSession, Error, Maintenance, ObjectStatistics, Result, ServerLock, ServerQuery,
-    ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks, query_text,
-    refuse_own_session, run_maintenance, seconds_of, session_number, sort_statistics,
+    ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks, query_statements,
+    query_text, refuse_own_session, run_maintenance, session_number, sort_statistics,
 };
 use platypus_sql::Dialect;
 
@@ -108,7 +108,7 @@ pub(crate) async fn top_queries(conn: &dyn Connection) -> Result<Vec<ServerQuery
     };
     // Statements of other users without the rights read `<insufficient privilege>`.
     let sql = format!(
-        "SELECT s.query, d.datname, r.rolname, s.calls::text, \
+        "SELECT s.query, NULL::text, d.datname, r.rolname, s.calls::text, \
          (s.total_{time} / 1000)::float8, (s.mean_{time} / 1000)::float8, \
          (s.max_{time} / 1000)::float8, s.rows::text \
          FROM {schema}.pg_stat_statements s \
@@ -117,21 +117,7 @@ pub(crate) async fn top_queries(conn: &dyn Connection) -> Result<Vec<ServerQuery
          WHERE s.query <> '<insufficient privilege>' \
          ORDER BY s.total_{time} DESC LIMIT {TOP_QUERIES}"
     );
-    Ok(query_text(conn, &sql)
-        .await?
-        .into_iter()
-        .map(|r| ServerQuery {
-            query: r.text(0),
-            sample: None,
-            database: r.opt(1),
-            user: r.opt(2),
-            calls: r.number(3).unwrap_or(0),
-            total_seconds: seconds_of(r.opt(4)).unwrap_or(0.0),
-            mean_seconds: seconds_of(r.opt(5)).unwrap_or(0.0),
-            max_seconds: seconds_of(r.opt(6)),
-            rows: r.number(7),
-        })
-        .collect())
+    query_statements(conn, &sql).await
 }
 
 /// The tables, then the indexes of each, of the user schemas. Vacuums and analyzes count by
@@ -185,11 +171,7 @@ pub(crate) async fn maintain(
     table: &str,
     operation: Maintenance,
 ) -> Result<Vec<String>> {
-    let name = format!(
-        "{}.{}",
-        Dialect::Postgres.quote_ident(schema),
-        Dialect::Postgres.quote_ident(table)
-    );
+    let name = Dialect::Postgres.qualified(Some(schema), table);
     let sql = match operation {
         Maintenance::Vacuum => format!("VACUUM (VERBOSE) {name}"),
         Maintenance::Analyze => format!("ANALYZE VERBOSE {name}"),

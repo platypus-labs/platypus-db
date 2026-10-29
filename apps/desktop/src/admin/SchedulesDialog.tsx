@@ -2,8 +2,17 @@
  *  open, each with its next run and its last runs; and the form of one, new or edited. */
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useMemo, useState } from "react";
-import { api, type Schedule, type ScheduleRepeat, type ScheduleTask, type ScheduleView, toCommandError } from "../api";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  api,
+  type BackupFormat,
+  type Schedule,
+  type ScheduleExportFormat,
+  type ScheduleRepeat,
+  type ScheduleTask,
+  type ScheduleView,
+  toCommandError,
+} from "../api";
 import { locale, msg, t } from "../i18n";
 import { answerFor } from "../testAnswers";
 import { ask } from "../ui/ask";
@@ -30,6 +39,12 @@ function weekdays(): string[] {
   return Array.from({ length: 7 }, (_, i) => format.format(new Date(Date.UTC(2026, 10, 9 + i))));
 }
 
+/** The short names of `days`, 1 for Monday. */
+function dayNames(days: number[]): string {
+  const names = weekdays();
+  return days.map((d) => names[d - 1]).join(", ");
+}
+
 /** When a task runs, in words: "Every day at 07:00 (Europe/Rome)". */
 function describeWhen(s: Schedule): string {
   const r = s.repeat;
@@ -39,9 +54,20 @@ function describeWhen(s: Schedule): string {
       : r.every === "day"
         ? t("Every day at {time}", { time: s.time })
         : r.every === "week"
-          ? t("Every {days} at {time}", { days: r.days.map((d) => weekdays()[d - 1]).join(", "), time: s.time })
+          ? t("Every {days} at {time}", { days: dayNames(r.days), time: s.time })
           : t("On day {day} of every month at {time}", { day: r.day, time: s.time });
   return s.timezone ? `${text} (${s.timezone})` : text;
+}
+
+/** A run's outcome: done or failed, then `children`. */
+function RunBadge({ ok, title, children }: { ok: boolean; title?: string; children?: ReactNode }) {
+  return (
+    <span className={`admin-badge ${ok ? "running" : "waiting"}`} title={title}>
+      <span className="admin-dot" />
+      {ok ? t("done") : t("failed")}
+      {children}
+    </span>
+  );
 }
 
 const when = (iso: string) => new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" });
@@ -200,10 +226,10 @@ function ScheduleRow({
         </td>
         <td className="small" data-field="last">
           {last ? (
-            <span className={`admin-badge ${last.ok ? "running" : "waiting"}`} title={last.message}>
-              <span className="admin-dot" />
-              {last.ok ? t("done") : t("failed")} · {when(last.started)}
-            </span>
+            <RunBadge ok={last.ok} title={last.message}>
+              {" · "}
+              {when(last.started)}
+            </RunBadge>
           ) : (
             <span className="muted">{t("never")}</span>
           )}
@@ -229,10 +255,7 @@ function ScheduleRow({
               <ul>
                 {s.runs.map((r, i) => (
                   <li key={i} className={r.ok ? "ok" : "failed"}>
-                    <span className={`admin-badge ${r.ok ? "running" : "waiting"}`}>
-                      <span className="admin-dot" />
-                      {r.ok ? t("done") : t("failed")}
-                    </span>
+                    <RunBadge ok={r.ok} />
                     <span className="muted">{when(r.started)}</span>
                     {r.manual && <span className="muted">{t("by hand")}</span>}
                     {r.attempt > 1 && <span className="muted">{t("try {n}", { n: r.attempt })}</span>}
@@ -381,7 +404,7 @@ function ScheduleForm({
               data-field="format"
               onChange={(e) =>
                 s.task.kind === "export" &&
-                setTask({ ...s.task, format: e.target.value as Extract<ScheduleTask, { kind: "export" }>["format"] })
+                setTask({ ...s.task, format: e.target.value as ScheduleExportFormat })
               }
             >
               <option value="csv">CSV</option>
@@ -399,7 +422,7 @@ function ScheduleForm({
             <select
               value={s.task.format}
               data-field="format"
-              onChange={(e) => s.task.kind === "backup" && setTask({ ...s.task, format: e.target.value as "custom" | "plain" })}
+              onChange={(e) => s.task.kind === "backup" && setTask({ ...s.task, format: e.target.value as BackupFormat })}
             >
               <option value="custom">{t("Archive for pg_restore (.dump)")}</option>
               <option value="plain">{t("SQL statements (.sql)")}</option>
