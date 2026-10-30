@@ -473,15 +473,64 @@ fn search_script(
     edit::script(&edits).map_err(|m| CommandError::new("invalid_value", m))
 }
 
-/// The commands that saving `changes` runs when the result's session is a Redis or an
-/// Elasticsearch one, whose edits are commands, not SQL, with the commands that undo them;
-/// `None` for the SQL drivers.
-fn command_script(
+/// The CQL statements for `changes` to the rows of a Cassandra table (see
+/// [`platypus_driver_cassandra::edit`]), which the session runs one by one. The user-defined
+/// types the columns use are read first, as a value of such a type is written by its fields.
+async fn cassandra_script(
+    state: &AppState,
+    job: &Job,
+    changes: &Changes,
+) -> CommandResult<platypus_driver_cassandra::edit::Script> {
+    use platypus_driver_cassandra::{edit, meta};
+    let rows = RowEdits::of(job, changes)?;
+    let types: Vec<String> = rows
+        .schema
+        .fields()
+        .iter()
+        .map(|f| {
+            f.metadata()
+                .get(platypus_core::META_DB_TYPE)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .collect();
+    let udts = if edit::uses_udts(&types) {
+        let conn = state.live(job.session_id).await?;
+        meta::udts(conn.as_ref(), &changes.table.schema).await?
+    } else {
+        edit::Udts::new()
+    };
+    let edits = edit::Edits {
+        keyspace: &changes.table.schema,
+        table: &changes.table.name,
+        columns: &rows.columns(),
+        types: &types,
+        key: &changes.key,
+        udts: &udts,
+        updates: rows
+            .updates
+            .into_iter()
+            .map(|(loaded, set)| edit::Update { loaded, set })
+            .collect(),
+        inserts: rows.inserts,
+        deletes: rows.deletes,
+    };
+    edit::script(&edits).map_err(|m| CommandError::new("invalid_value", m))
+}
+
+/// The commands that saving `changes` runs when the result's session is a Redis, an
+/// Elasticsearch or a Cassandra one, whose edits are commands, not SQL, with the commands
+/// that undo them; `None` for the SQL drivers.
+async fn command_script(
     state: &AppState,
     job: &Job,
     changes: &Changes,
 ) -> CommandResult<Option<(Vec<String>, Vec<String>)>> {
     Ok(match state.session(job.session_id)?.config.driver {
+        platypus_core::DriverKind::Cassandra => {
+            let script = cassandra_script(state, job, changes).await?;
+            Some((script.commands, script.undo))
+        }
         platypus_core::DriverKind::Redis => {
             let script = redis_script(job, changes)?;
             Some((script.commands, script.undo))
@@ -496,13 +545,13 @@ fn command_script(
 
 /// The SQL that saving `changes` would run.
 #[tauri::command]
-pub fn preview_changes(
+pub async fn preview_changes(
     state: State<'_, AppState>,
     job_id: u64,
     changes: Changes,
 ) -> CommandResult<Vec<String>> {
     let job = state.job(job_id)?;
-    if let Some((commands, _)) = command_script(&state, &job, &changes)? {
+    if let Some((commands, _)) = command_script(&state, &job, &changes).await? {
         return Ok(commands);
     }
     let script = script(&state, &job, &changes)?;
@@ -527,7 +576,7 @@ pub async fn save_changes(
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
     state.editable(job.session_id)?;
-    if let Some((commands, undo)) = command_script(&state, &job, &changes)? {
+    if let Some((commands, undo)) = command_script(&state, &job, &changes).await? {
         return save_commands(&state, &job, &commands, &undo).await;
     }
     let script = script(&state, &job, &changes)?;
@@ -551,8 +600,9 @@ pub async fn save_changes(
     })
 }
 
-/// [`save_changes`] on Redis (one `MULTI`/`EXEC`) and Elasticsearch (one request after the
-/// other, up to the first the server refuses): the commands on the result's session.
+/// [`save_changes`] on Redis (one `MULTI`/`EXEC`), Elasticsearch and Cassandra (one request
+/// or statement after the other, up to the first the server refuses): the commands on the
+/// result's session.
 async fn save_commands(
     state: &AppState,
     job: &Job,

@@ -74,6 +74,17 @@ export const MYSQL_RESERVED = new Set(
   ).split(" "),
 );
 
+/** The reserved words of CQL (`cql::quote_ident` in `crates/platypus-driver-cassandra`), in lower
+ *  case: they cannot name a column or a table bare. */
+export const CQL_RESERVED = new Set(
+  (
+    "add allow alter and apply asc authorize batch begin by columnfamily create delete desc describe " +
+    "drop entries execute from full grant if in index infinity insert into is keyspace limit " +
+    "materialized modify nan norecursive not null of on or order primary rename replace revoke " +
+    "schema select set table to token truncate unlogged update use using view where with"
+  ).split(" "),
+);
+
 /** Further SQLite keywords that cannot be bare names. */
 export const SQLITE_RESERVED = new Set(
   (
@@ -91,6 +102,10 @@ export function quoteIdent(name: string, driver: DriverKind): string {
   // An index name is a path segment of the request: Elasticsearch allows no characters that
   // need quoting there.
   if (driver === "elasticsearch") return name;
+  // CQL folds bare names to lower case: only those that read the same stay bare.
+  if (driver === "cassandra") {
+    return /^[a-z][a-z0-9_]*$/.test(name) && !CQL_RESERVED.has(name) ? name : `"${name.replaceAll('"', '""')}"`;
+  }
   const upper = name.toUpperCase();
   const reserved = RESERVED.has(upper);
   if (driver === "sqlserver") {

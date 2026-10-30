@@ -18,6 +18,7 @@ Everything PlatypusDB does, area by area. The [README](../README.md) has the sho
 | MongoDB 5+ | official driver | mongosh syntax; no transactions, explain or data editing |
 | Redis 6+ | `redis` crate (RESP3, rustls) | Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON |
 | Elasticsearch 8 and OpenSearch 2 | HTTP API (`reqwest`, rustls) | Requests as Kibana's console writes them, and SQL; indices as tables, edited in the grid |
+| Apache Cassandra 4+ and ScyllaDB 5.4+ | `scylla` crate (rustls) | CQL; keyspaces as schemas, tables, materialized views, types and functions in the navigator; edited in the grid by full primary key; no row count, sort or filter in the data viewer |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
 | Snowflake, BigQuery, Databricks, Trino | ADBC driver, downloaded on first use | Queries, results, navigator and autocompletion; no data editing, explain or manual commit yet |
 | Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them |
@@ -34,7 +35,12 @@ The ADBC drivers come from the [dbc driver registry](https://docs.columnar.tech/
 the first connection that needs one asks to download it, checks its SHA-256 and keeps it with
 the app's data. Oracle Instant Client and IBM's ODBC driver come from Oracle's and IBM's sites
 in the same way, with their license shown first. *Settings › Drivers* lists and removes them,
-and shows the ODBC drivers and data sources of the system.
+and shows the ODBC drivers and data sources of the system. A downloaded ADBC driver can be
+updated from there (the app looks for new versions once a day, or on *Check for updates*;
+*Driver updates* in Settings can install them by itself), and *Versions…* installs or goes
+back to another version, keeping the others. After a change the saved connections that use
+the driver are tried (connect, version, schemas, `SELECT 1`), with *Go back* if one fails. The
+built-in drivers update with the app.
 
 ## Portable copy
 

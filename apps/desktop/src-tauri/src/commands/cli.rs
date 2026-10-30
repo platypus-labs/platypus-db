@@ -59,6 +59,11 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
             "cli",
             "terminal mode is not available for Elasticsearch",
         )),
+        // cqlsh takes the password only on its command line, where other users see it.
+        DriverKind::Cassandra => Err(CommandError::new(
+            "cli",
+            "terminal mode is not available for Cassandra",
+        )),
         DriverKind::Snowflake
         | DriverKind::BigQuery
         | DriverKind::Databricks
@@ -231,6 +236,7 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
         DriverKind::ClickHouse
         | DriverKind::Mongo
         | DriverKind::Elasticsearch
+        | DriverKind::Cassandra
         | DriverKind::Snowflake
         | DriverKind::BigQuery
         | DriverKind::Databricks

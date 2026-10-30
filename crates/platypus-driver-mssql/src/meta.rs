@@ -539,13 +539,20 @@ pub async fn object_ddl(conn: &MssqlConnection, o: &ObjectRef<'_>) -> Result<Str
     let qualified = D.qualified(Some(o.schema), o.name);
     let id = object_id(o.schema, o.name);
     match o.kind {
-        ObjectKind::Table => Ok(ddl::table(
-            &qualified,
-            &columns(conn, &id).await?,
-            &indexes(conn, &id).await?,
-            &checks(conn, &id).await?,
-            &own_foreign_keys(conn, &id).await?,
-        )),
+        ObjectKind::Table => {
+            let columns = columns(conn, &id).await?;
+            // A table has at least one column: none means there is no such table.
+            if columns.is_empty() {
+                return Err(Error::Other(format!("no such object: {qualified}")));
+            }
+            Ok(ddl::table(
+                &qualified,
+                &columns,
+                &indexes(conn, &id).await?,
+                &checks(conn, &id).await?,
+                &own_foreign_keys(conn, &id).await?,
+            ))
+        }
         ObjectKind::View | ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger => {
             first_row(conn, &format!("SELECT OBJECT_DEFINITION({id})"), &qualified)
                 .await?

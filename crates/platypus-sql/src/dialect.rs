@@ -52,7 +52,10 @@ impl From<DriverKind> for Dialect {
             | DriverKind::Redis
             | DriverKind::Elasticsearch => Self::Postgres,
             DriverKind::Snowflake => Self::Snowflake,
-            DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc => Self::Ansi,
+            // CQL quotes names with `"…"` and strings with `'…'`, as standard SQL does.
+            DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc | DriverKind::Cassandra => {
+                Self::Ansi
+            }
             DriverKind::Oracle => Self::Oracle,
             DriverKind::Db2 => Self::Db2,
             DriverKind::BigQuery => Self::BigQuery,

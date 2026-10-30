@@ -78,6 +78,7 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   mongo: 27017,
   redis: 6379,
   elasticsearch: 9200,
+  cassandra: 9042,
 };
 
 /** The database files of the embedded drivers: file picker filter and example path. */
@@ -603,6 +604,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <option value="mongo">MongoDB</option>
                     <option value="redis">Redis</option>
                     <option value="elasticsearch">Elasticsearch / OpenSearch</option>
+                    <option value="cassandra">Cassandra / ScyllaDB</option>
                     <option value="snowflake">Snowflake</option>
                     <option value="bigquery">BigQuery</option>
                     <option value="databricks">Databricks</option>
@@ -770,7 +772,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                             conn.driver === "mongo" ||
                             conn.driver === "redis"
                             ? "Database (optional)"
-                            : conn.driver === "elasticsearch"
+                            : conn.driver === "cassandra"
+                              ? "Keyspace (optional)"
+                              : conn.driver === "elasticsearch"
                               ? "Index pattern (optional)"
                               : conn.driver === "oracle"
                                 ? "Service name"
@@ -800,7 +804,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                                 ? t("The database number, 0 when empty. TLS needs an SSL mode from require up, as rediss:// URLs do.")
                                 : conn.driver === "elasticsearch"
                                   ? t("The indices the navigator lists, as a pattern (logs-*, or several separated by commas); all of them when empty. TLS needs an SSL mode from require up, as elasticsearchs:// URLs do.")
-                                  : undefined
+                                  : conn.driver === "cassandra"
+                                    ? t("The keyspace to start in; the navigator lists all of them. The host may list several host:port pairs separated by commas. TLS needs an SSL mode from require up, as cassandras:// URLs do.")
+                                    : undefined
                         }
                       />
                     </label>

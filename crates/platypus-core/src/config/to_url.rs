@@ -47,6 +47,8 @@ impl ConnectionConfig {
                 (false, true) => "opensearch",
                 (true, true) => "opensearchs",
             },
+            DriverKind::Cassandra if self.cql_tls() => "cassandras",
+            DriverKind::Cassandra => "cassandra",
             _ => return None,
         };
         if self.driver.is_embedded() {
@@ -62,7 +64,7 @@ impl ConnectionConfig {
         let mut params = Vec::new();
         // `rediss://` says TLS, verified unless told otherwise.
         let implied = match scheme {
-            "rediss" | "elasticsearchs" | "opensearchs" => SslMode::VerifyFull,
+            "rediss" | "elasticsearchs" | "opensearchs" | "cassandras" => SslMode::VerifyFull,
             _ => Self::url_ssl_mode(self.driver),
         };
         if self.ssl_mode != implied {
@@ -102,6 +104,13 @@ impl ConnectionConfig {
     /// negotiate it, so `prefer` is plaintext.
     #[must_use]
     pub const fn es_tls(&self) -> bool {
+        !matches!(self.ssl_mode, SslMode::Disable | SslMode::Prefer)
+    }
+
+    /// Whether a Cassandra or `ScyllaDB` connection goes over TLS: CQL does not negotiate it
+    /// (the server's TLS port speaks nothing else), so `prefer` is plaintext.
+    #[must_use]
+    pub const fn cql_tls(&self) -> bool {
         !matches!(self.ssl_mode, SslMode::Disable | SslMode::Prefer)
     }
 
@@ -182,6 +191,19 @@ mod tests {
         let out = config.to_url().unwrap();
         assert_eq!(ConnectionConfig::from_url(&out).unwrap(), config, "{out}");
         out
+    }
+
+    #[test]
+    fn cassandra_urls_round_trip() {
+        assert_eq!(
+            round_trip("cassandra://cassandra@node1/shop"),
+            "cassandra://cassandra@node1:9042/shop"
+        );
+        assert_eq!(
+            round_trip("cassandras://node1:9142/shop?sslmode=require"),
+            "cassandras://node1:9142/shop?sslmode=require"
+        );
+        assert_eq!(round_trip("scylla://h"), "cassandra://h:9042/");
     }
 
     #[test]

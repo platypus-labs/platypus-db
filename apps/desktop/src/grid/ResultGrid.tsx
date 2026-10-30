@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { api, type CellInput, type ColumnInfo, isNoSql } from "../api";
+import { api, type CellInput, type ColumnInfo, isCassandra, isNoSql } from "../api";
 import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
@@ -149,7 +149,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const valuePanelOpen = useSetting(valuePanelSetting);
   // MongoDB and Redis results show the focused row as a document tree in place of the value
   // panel, open from the start: nested fields and JSON values are only readable there.
-  const documents = !!source && isNoSql(source.connection.driver);
+  const documents = !!source && isNoSql(source.connection.driver) && !isCassandra(source.connection.driver);
   const [documentOpen, setDocumentOpen] = useState(true);
   const panelOpen = documents ? documentOpen : valuePanelOpen;
   const [focused, setFocused] = useState<Cell | null>(null);

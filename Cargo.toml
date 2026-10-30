@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/desktop/src-tauri"]
-exclude = ["vendor/tiberius", "vendor/tokio-postgres"]
+exclude = ["vendor/scylla", "vendor/tiberius", "vendor/tokio-postgres"]
 
 [workspace.package]
 version = "0.2.1"
@@ -25,6 +25,7 @@ platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
 platypus-driver-mongo = { path = "crates/platypus-driver-mongo" }
 platypus-driver-redis = { path = "crates/platypus-driver-redis" }
 platypus-driver-search = { path = "crates/platypus-driver-search" }
+platypus-driver-cassandra = { path = "crates/platypus-driver-cassandra" }
 platypus-driver-mssql = { path = "crates/platypus-driver-mssql" }
 platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-transfer = { path = "crates/platypus-transfer" }
@@ -115,4 +116,5 @@ strip = true
 
 # tokio-postgres-rustls and the PostgreSQL driver share the patched copy (see its Cargo.toml).
 [patch.crates-io]
+scylla = { path = "vendor/scylla" }
 tokio-postgres = { path = "vendor/tokio-postgres" }

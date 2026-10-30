@@ -8,10 +8,13 @@ use std::time::Duration;
 use platypus_core::{ConnectionConfig, DriverKind, SslMode};
 use serde::{Deserialize, Serialize};
 
-use crate::{DriverError, PUBLIC_REGISTRY, drivers_dir, io_error, network_error, platform};
+use crate::{
+    DriverError, Installed, PUBLIC_REGISTRY, Update, drivers_dir, io_error, network_error,
+    newer_than, platform,
+};
 
 /// A package of a driver, ready to download.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
     /// Its name in the registry, e.g. `snowflake`.
     pub name: String,
@@ -191,35 +194,72 @@ impl Registry {
     /// The newest package of driver `name` for this platform.
     pub async fn package(&self, name: &str) -> Result<Package, DriverError> {
         let index = self.index().await?;
-        let no_package = || DriverError::NoPackage {
-            name: name.to_owned(),
-            platform: platform().to_owned(),
-        };
+        self.packages_in(&index, name)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| no_package(name))
+    }
+
+    /// Every version of driver `name` the registry has for this platform, newest first.
+    pub async fn packages(&self, name: &str) -> Result<Vec<Package>, DriverError> {
+        let index = self.index().await?;
+        self.packages_in(&index, name)
+    }
+
+    /// The drivers among `installed` (their active versions) that the registry has a newer
+    /// version of. A driver the registry no longer offers, or only under terms to accept
+    /// elsewhere, is left out: there is nothing to update to.
+    pub async fn updates(&self, installed: &[Installed]) -> Result<Vec<Update>, DriverError> {
+        let index = self.index().await?;
+        let mut out = Vec::new();
+        for current in installed {
+            let Ok(packages) = self.packages_in(&index, &current.name) else {
+                continue;
+            };
+            if let Some(package) = newer_than(&current.version, &packages) {
+                out.push(Update {
+                    name: current.name.clone(),
+                    installed: current.version.clone(),
+                    package: package.clone(),
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    fn packages_in(&self, index: &Index, name: &str) -> Result<Vec<Package>, DriverError> {
         let driver = index
             .drivers
-            .into_iter()
+            .iter()
             .find(|d| d.path == name)
-            .ok_or_else(no_package)?;
+            .ok_or_else(|| no_package(name))?;
         // Licenses that are not free (`LicenseRef-…`) come with terms to accept elsewhere.
         if driver.license.starts_with("LicenseRef-") {
-            return Err(DriverError::License(driver.license));
+            return Err(DriverError::License(driver.license.clone()));
         }
-        let (version, package) = driver
+        let mut packages: Vec<Package> = driver
             .pkginfo
-            .into_iter()
+            .iter()
             .filter_map(|v| {
-                let p = v.packages.into_iter().find(|p| p.platform == platform())?;
-                Some((v.version, p))
+                let p = v.packages.iter().find(|p| p.platform == platform())?;
+                Some(Package {
+                    name: name.to_owned(),
+                    title: driver.name.clone(),
+                    version: v.version.clone(),
+                    license: driver.license.clone(),
+                    url: format!("{}/{}", self.url, p.url.trim_start_matches('/')),
+                    sha256: p.hash.as_deref().and_then(sha256_hex),
+                })
             })
-            .max_by(|(a, _), (b, _)| compare_versions(a, b))
-            .ok_or_else(no_package)?;
-        Ok(Package {
-            name: name.to_owned(),
-            title: driver.name,
-            version,
-            license: driver.license,
-            url: format!("{}/{}", self.url, package.url.trim_start_matches('/')),
-            sha256: package.hash.as_deref().and_then(sha256_hex),
-        })
+            .collect();
+        packages.sort_by(|a, b| compare_versions(&b.version, &a.version));
+        Ok(packages)
+    }
+}
+
+fn no_package(name: &str) -> DriverError {
+    DriverError::NoPackage {
+        name: name.to_owned(),
+        platform: platform().to_owned(),
     }
 }

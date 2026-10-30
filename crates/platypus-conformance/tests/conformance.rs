@@ -21,6 +21,7 @@ use platypus_core::{
     ExecOptions, ExecResult, Maintenance, MatchKind, ObjectKind, ObjectRef, PlanNode,
     ServerSession, ServerVersion, SessionInit, StatisticsKind,
 };
+use platypus_driver_cassandra::CassandraDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_libsql::LibsqlDriver;
@@ -139,6 +140,7 @@ fn driver(kind: DriverKind) -> &'static dyn Driver {
         DriverKind::Mongo => &MongoDriver,
         DriverKind::Redis => &RedisDriver,
         DriverKind::Elasticsearch => &SearchDriver,
+        DriverKind::Cassandra => &CassandraDriver,
         bridged!() => unreachable!("{BRIDGED}"),
     }
 }
@@ -2634,9 +2636,12 @@ async fn describes_objects_and_their_ddl() {
 fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<String>, Vec<String>) {
     let s = &b.schema;
     let columns = match b.config.driver {
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
+        DriverKind::Mongo
+        | DriverKind::Redis
+        | DriverKind::Elasticsearch
+        | DriverKind::Cassandra => {
             unreachable!(
-                "document and search databases have their own tests (mongo.rs, redis.rs, search.rs)"
+                "document and search databases have their own tests (mongo.rs, redis.rs, search.rs, cassandra.rs)"
             )
         }
         bridged!() => unreachable!("{BRIDGED}"),
@@ -2663,9 +2668,12 @@ fn probe_sql(b: &Backend, table: &str, trigger: &str, suffix: u32) -> (Vec<Strin
     );
     let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
     match b.config.driver {
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
+        DriverKind::Mongo
+        | DriverKind::Redis
+        | DriverKind::Elasticsearch
+        | DriverKind::Cassandra => {
             unreachable!(
-                "document and search databases have their own tests (mongo.rs, redis.rs, search.rs)"
+                "document and search databases have their own tests (mongo.rs, redis.rs, search.rs, cassandra.rs)"
             )
         }
         bridged!() => unreachable!("{BRIDGED}"),
@@ -2857,9 +2865,12 @@ async fn edit_fixture(
     conn: &dyn Connection,
 ) -> platypus_core::arrow_schema::SchemaRef {
     let ddl = match b.config.driver {
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
+        DriverKind::Mongo
+        | DriverKind::Redis
+        | DriverKind::Elasticsearch
+        | DriverKind::Cassandra => {
             unreachable!(
-                "document and search databases have their own tests (mongo.rs, redis.rs, search.rs)"
+                "document and search databases have their own tests (mongo.rs, redis.rs, search.rs, cassandra.rs)"
             )
         }
         bridged!() => unreachable!("{BRIDGED}"),
@@ -4003,9 +4014,12 @@ async fn reads_geometries() {
         }
         let conn = b.connect().await;
         let (sql, expected) = match b.config.driver {
-            DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
+            DriverKind::Mongo
+            | DriverKind::Redis
+            | DriverKind::Elasticsearch
+            | DriverKind::Cassandra => {
                 unreachable!(
-                    "document and search databases have their own tests (mongo.rs, redis.rs, search.rs)"
+                    "document and search databases have their own tests (mongo.rs, redis.rs, search.rs, cassandra.rs)"
                 )
             }
             bridged!() => unreachable!("{BRIDGED}"),
@@ -4065,9 +4079,12 @@ async fn sets_the_session_up_after_connecting() {
     for b in backends().await {
         let mut config = b.config.clone();
         let (check, expected) = match config.driver {
-            DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
+            DriverKind::Mongo
+            | DriverKind::Redis
+            | DriverKind::Elasticsearch
+            | DriverKind::Cassandra => {
                 unreachable!(
-                    "document and search databases have their own tests (mongo.rs, redis.rs, search.rs)"
+                    "document and search databases have their own tests (mongo.rs, redis.rs, search.rs, cassandra.rs)"
                 )
             }
             bridged!() => unreachable!("{BRIDGED}"),
@@ -4101,9 +4118,12 @@ async fn sets_the_session_up_after_connecting() {
             ))
             .then(|| b.schema.clone()),
             time_zone: match config.driver {
-                DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
+                DriverKind::Mongo
+                | DriverKind::Redis
+                | DriverKind::Elasticsearch
+                | DriverKind::Cassandra => {
                     unreachable!(
-                        "document and search databases have their own tests (mongo.rs, redis.rs, search.rs)"
+                        "document and search databases have their own tests (mongo.rs, redis.rs, search.rs, cassandra.rs)"
                     )
                 }
                 bridged!() => unreachable!("{BRIDGED}"),

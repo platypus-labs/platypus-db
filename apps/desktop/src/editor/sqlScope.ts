@@ -82,7 +82,7 @@ export function scopeOptions(driver: DriverKind): ScopeOptions {
     stringBackslashes: backslashes || driver === "snowflake",
     doubleQuotedStrings: ["mysql", "bigquery", "databricks"].includes(driver),
     escapeStrings: driver === "postgres" || driver === "duckdb",
-    dollarQuotes: ["postgres", "duckdb", "clickhouse"].includes(driver),
+    dollarQuotes: ["postgres", "duckdb", "clickhouse", "cassandra"].includes(driver),
     hashComments: driver === "mysql" || driver === "bigquery" ? "always" : driver === "clickhouse" ? "spaced" : undefined,
     spacedDashes: driver === "mysql",
     qQuotes: driver === "oracle",

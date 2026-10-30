@@ -14,6 +14,7 @@ export type DriverKind =
   | "mongo"
   | "redis"
   | "elasticsearch"
+  | "cassandra"
   | "snowflake"
   | "bigquery"
   | "databricks"
@@ -33,10 +34,15 @@ export const isRedis = (driver: DriverKind) => driver === "redis";
  *  body), and SQL among them; its indices are tables and their documents the rows. */
 export const isSearch = (driver: DriverKind) => driver === "elasticsearch";
 
-/** Speaks no SQL of the kind the SQL tools read (MongoDB, Redis, Elasticsearch): no SQL
- *  completion, formatter, linter, query builder, ER diagram, table editor, schema tools or SQL
- *  import. */
-export const isNoSql = (driver: DriverKind) => isMongo(driver) || isRedis(driver) || isSearch(driver);
+/** Speaks CQL (Cassandra, ScyllaDB): SQL-like, but with no joins, no `OFFSET`, no transactions
+ *  and a primary key that is the way to every row; its keyspaces are the schemas. */
+export const isCassandra = (driver: DriverKind) => driver === "cassandra";
+
+/** Speaks no SQL of the kind the SQL tools read (MongoDB, Redis, Elasticsearch, Cassandra): no
+ *  SQL completion, formatter, linter, query builder, ER diagram, table editor, schema tools or
+ *  SQL import. */
+export const isNoSql = (driver: DriverKind) =>
+  isMongo(driver) || isRedis(driver) || isSearch(driver) || isCassandra(driver);
 
 /** Runs in-process on a local file (SQLite, DuckDB): no server, host, user or password. */
 export const isEmbedded = (driver: DriverKind) => driver === "sqlite" || driver === "duckdb";
@@ -546,6 +552,42 @@ export interface DriverStatus {
   /** `null` when the registry cannot be reached, with `error` saying why. */
   package: DriverPackage | null;
   error: string | null;
+}
+
+/** An installed version of a downloaded driver; one per driver is the one connections use. */
+export interface InstalledDriverVersion extends InstalledDriver {
+  active: boolean;
+}
+
+/** The versions of a downloaded driver: on disk, and in the registry for this platform. */
+export interface DriverVersions {
+  /** Newest first. */
+  installed: InstalledDriverVersion[];
+  /** Newest first; empty when the registry cannot be reached, with `error` saying why. */
+  available: DriverPackage[];
+  error: string | null;
+}
+
+/** A newer version in the registry than the active one installed. */
+export interface DriverUpdate {
+  name: string;
+  /** The version in use now. */
+  installed: string;
+  package: DriverPackage;
+}
+
+export interface DriverUpdateCheck {
+  /** `false` when the check was not forced and ran less than a day ago. */
+  checked: boolean;
+  updates: DriverUpdate[];
+  error: string | null;
+}
+
+/** What a connection answered to the compatibility probe after a driver changed version. */
+export interface ConnectionProbe {
+  product: string;
+  version: string;
+  schemas: number;
 }
 
 export type DriverInstallEvent = { kind: "progress"; done: number; total: number | null };
@@ -2127,6 +2169,25 @@ export const api = {
   listDrivers: () => invoke<InstalledDriver[]>("list_drivers"),
   /** Removes a downloaded driver; returns the ones left. */
   removeDriver: (name: string) => invoke<InstalledDriver[]>("remove_driver", { name }),
+  /** The installed and the available versions of the downloaded driver of `driver`. */
+  driverVersions: (driver: DriverKind) => invoke<DriverVersions>("driver_versions", { driver }),
+  /** Downloads one version of the driver and makes it the active one; the others stay. */
+  installDriverVersion: (driver: DriverKind, version: string, onEvent: (e: DriverInstallEvent) => void) => {
+    const channel = new Channel<DriverInstallEvent>();
+    channel.onmessage = onEvent;
+    return invoke<InstalledDriver>("install_driver_version", { driver, version, onEvent: channel });
+  },
+  /** Makes an installed version the one connections use. */
+  activateDriverVersion: (driver: DriverKind, version: string) =>
+    invoke<InstalledDriver>("activate_driver_version", { driver, version }),
+  /** Deletes one installed version; returns the ones left. Refused for the active version
+   *  while a connection of that database is open. */
+  removeDriverVersion: (driver: DriverKind, version: string) =>
+    invoke<InstalledDriverVersion[]>("remove_driver_version", { driver, version }),
+  /** Looks for newer versions of the installed drivers; unless `force`, at most once a day. */
+  checkDriverUpdates: (force: boolean) => invoke<DriverUpdateCheck>("check_driver_updates", { force }),
+  /** Connects with the password the connection keeps, lists its schemas and runs `SELECT 1`. */
+  probeConnection: (connection: SavedConnection) => invoke<ConnectionProbe>("probe_connection", { connection }),
   vendorDriverStatus: (driver: DriverKind) => invoke<VendorStatus>("vendor_driver_status", { driver }),
   /** Downloads the vendor's client of `driver` and registers it where needed (UAC on Windows). */
   installVendorDriver: (driver: DriverKind, onEvent: (e: VendorInstallEvent) => void) => {

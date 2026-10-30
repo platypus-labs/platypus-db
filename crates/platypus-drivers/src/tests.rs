@@ -9,7 +9,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
-use crate::{DriverError, Registry, installed, list, platform, remove};
+use crate::{
+    DriverError, Registry, activate, installed, list, platform, remove, remove_version, versions,
+};
 
 /// A `.tar.gz` like the registry's: the library, `MANIFEST`, `LICENSE`.
 fn package(library: &str, body: &[u8]) -> Vec<u8> {
@@ -274,4 +276,281 @@ fn refuses_driver_names_outside_the_folder() {
     }
     assert!(adbc.join("kept").is_dir());
     assert!(remove(dir.path(), "missing").is_ok());
+}
+
+/// Two versions of `test` for this platform, each with its own package, and `other`. Returns
+/// the registry and the two packages' bytes.
+async fn registry_with_two_versions(dir: &Path) -> (Registry, Vec<u8>, Vec<u8>) {
+    let new = package("libadbc_driver_test.dll", b"the newer library");
+    let old = package("libadbc_driver_test.dll", b"the older library");
+    let p = platform();
+    let index = format!(
+        "drivers:\n\
+         - name: Test Driver\n  license: Apache-2.0\n  path: test\n  pkginfo:\n\
+         \x20 - packages:\n    - platform: {p}\n      url: test/v1.9.0/pkg.tar.gz\n      hash: sha256:{}\n    version: v1.9.0\n\
+         \x20 - packages:\n    - platform: {p}\n      url: test/v1.10.0/pkg.tar.gz\n      hash: sha256:{}\n    version: v1.10.0\n\
+         - name: Other\n  license: MIT\n  path: other\n  pkginfo:\n\
+         \x20 - packages:\n    - platform: {p}\n      url: other/v1/pkg.tar.gz\n      hash: sha256:{}\n    version: v1.0.0\n",
+        sha256(&old),
+        sha256(&new),
+        sha256(&old),
+    );
+    let url = serve(vec![
+        ("/index.yaml", index.into_bytes()),
+        ("/test/v1.10.0/pkg.tar.gz", new.clone()),
+        ("/test/v1.9.0/pkg.tar.gz", old.clone()),
+        ("/other/v1/pkg.tar.gz", old.clone()),
+    ])
+    .await;
+    (Registry::with_url(&url, dir), new, old)
+}
+
+/// Installs `version` of `test` from the registry.
+async fn install_version(registry: &Registry, version: &str) -> crate::Installed {
+    let packages = registry.packages("test").await.unwrap();
+    let package = packages.iter().find(|p| p.version == version).unwrap();
+    registry
+        .install(package, |_, _| {}, &CancellationToken::new())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn lists_every_version_newest_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let (registry, _, _) = registry_with_two_versions(dir.path()).await;
+    let all = registry.packages("test").await.unwrap();
+    let versions: Vec<_> = all.iter().map(|p| p.version.as_str()).collect();
+    assert_eq!(versions, ["v1.10.0", "v1.9.0"]);
+    assert!(all.iter().all(|p| p.sha256.is_some()));
+    assert!(matches!(
+        registry.packages("missing").await,
+        Err(DriverError::NoPackage { .. })
+    ));
+}
+
+#[tokio::test]
+async fn versions_live_side_by_side_and_one_is_active() {
+    let dir = tempfile::tempdir().unwrap();
+    let (registry, _, _) = registry_with_two_versions(dir.path()).await;
+    let old = install_version(&registry, "v1.9.0").await;
+    assert_eq!(installed(dir.path(), "test"), Some(old.clone()));
+    let new = install_version(&registry, "v1.10.0").await;
+    assert_ne!(old.library, new.library);
+    assert_eq!(installed(dir.path(), "test"), Some(new.clone()));
+    let all = versions(dir.path(), "test");
+    let seen: Vec<_> = all
+        .iter()
+        .map(|v| (v.installed.version.as_str(), v.active))
+        .collect();
+    assert_eq!(seen, [("v1.10.0", true), ("v1.9.0", false)]);
+    // Going back keeps both on disk.
+    activate(dir.path(), "test", "v1.9.0").unwrap();
+    assert_eq!(installed(dir.path(), "test"), Some(old.clone()));
+    assert_eq!(std::fs::read(&old.library).unwrap(), b"the older library");
+    assert_eq!(std::fs::read(&new.library).unwrap(), b"the newer library");
+    assert_eq!(list(dir.path()), [old]);
+    // A version installed again is the one in use.
+    install_version(&registry, "v1.10.0").await;
+    assert_eq!(installed(dir.path(), "test"), Some(new));
+}
+
+#[tokio::test]
+async fn activating_an_unknown_version_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let (registry, _, _) = registry_with_two_versions(dir.path()).await;
+    let new = install_version(&registry, "v1.10.0").await;
+    assert!(activate(dir.path(), "test", "v1.9.0").is_err());
+    assert!(matches!(
+        activate(dir.path(), "test", ".."),
+        Err(DriverError::InvalidName(_))
+    ));
+    assert_eq!(installed(dir.path(), "test"), Some(new));
+}
+
+#[tokio::test]
+async fn removing_a_version_keeps_the_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let (registry, _, _) = registry_with_two_versions(dir.path()).await;
+    let old = install_version(&registry, "v1.9.0").await;
+    let new = install_version(&registry, "v1.10.0").await;
+    remove_version(dir.path(), "test", "v1.9.0").unwrap();
+    assert!(!old.library.exists());
+    assert_eq!(installed(dir.path(), "test"), Some(new.clone()));
+    // The active one removed: the one left takes over; with none left the driver is gone.
+    let again = install_version(&registry, "v1.9.0").await;
+    remove_version(dir.path(), "test", "v1.9.0").unwrap();
+    assert_eq!(installed(dir.path(), "test"), Some(new.clone()));
+    drop(again);
+    remove_version(dir.path(), "test", "v1.10.0").unwrap();
+    assert_eq!(installed(dir.path(), "test"), None);
+    assert!(!new.library.exists());
+    // A version that is not there, or a name outside the folder.
+    remove_version(dir.path(), "test", "v9").unwrap();
+    assert!(matches!(
+        remove_version(dir.path(), "test", "../x"),
+        Err(DriverError::InvalidName(_))
+    ));
+}
+
+#[tokio::test]
+async fn finds_updates_for_the_active_versions() {
+    let dir = tempfile::tempdir().unwrap();
+    let (registry, _, _) = registry_with_two_versions(dir.path()).await;
+    let old = install_version(&registry, "v1.9.0").await;
+    let found = registry.updates(&[old]).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].name, "test");
+    assert_eq!(found[0].installed, "v1.9.0");
+    assert_eq!(found[0].package.version, "v1.10.0");
+    // Installing it leaves the old one for rollback and ends the update.
+    let new = install_version(&registry, &found[0].package.version).await;
+    assert_eq!(registry.updates(&[new]).await.unwrap().len(), 0);
+    assert_eq!(versions(dir.path(), "test").len(), 2);
+    // A driver the registry does not know has nothing to update to.
+    let unknown = crate::Installed {
+        name: "gone".to_owned(),
+        title: "Gone".to_owned(),
+        version: "v1.0.0".to_owned(),
+        license: "MIT".to_owned(),
+        library: "x".into(),
+    };
+    assert_eq!(registry.updates(&[unknown]).await.unwrap().len(), 0);
+}
+
+#[test]
+fn chooses_the_newest_package_only_when_it_is_newer() {
+    let package = |version: &str| crate::Package {
+        name: "test".to_owned(),
+        title: "Test".to_owned(),
+        version: version.to_owned(),
+        license: "MIT".to_owned(),
+        url: String::new(),
+        sha256: None,
+    };
+    let all = [package("v1.9.0"), package("v1.10.0"), package("v1.2.0")];
+    assert_eq!(
+        crate::newer_than("v1.9.0", &all).unwrap().version,
+        "v1.10.0"
+    );
+    assert_eq!(
+        crate::newer_than("v1.2.0", &all).unwrap().version,
+        "v1.10.0"
+    );
+    assert!(crate::newer_than("v1.10.0", &all).is_none());
+    assert!(crate::newer_than("v2.0.0", &all).is_none());
+    // A prerelease is older than its release.
+    assert!(crate::newer_than("1.0.0", &[package("1.0.0-rc.1")]).is_none());
+    assert!(crate::newer_than("1.0.0", &[]).is_none());
+}
+
+#[test]
+fn asks_for_updates_at_most_once_a_day() {
+    use crate::update_check_due;
+    let day = 24 * 60 * 60;
+    assert!(update_check_due(None, 1_000));
+    assert!(!update_check_due(Some(1_000), 1_000 + day - 1));
+    assert!(update_check_due(Some(1_000), 1_000 + day));
+    // The clock went back: ask again rather than wait for it to catch up.
+    assert!(update_check_due(Some(5_000), 1_000));
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(crate::last_update_check(dir.path()), None);
+    crate::record_update_check(dir.path(), 1_234).unwrap();
+    assert_eq!(crate::last_update_check(dir.path()), Some(1_234));
+}
+
+/// Writes a driver folder the way an install does, with its `driver.toml`.
+fn write_driver(dir: &Path, version: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join("lib.dll"), version).unwrap();
+    std::fs::write(
+        dir.join("driver.toml"),
+        format!(
+            "name = \"test\"\ntitle = \"Test\"\nversion = \"{version}\"\nlicense = \"MIT\"\nlibrary = \"lib.dll\"\n"
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn moves_a_driver_without_version_folders_without_downloading_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let flat = dir.path().join("drivers").join("adbc").join("test");
+    write_driver(&flat, "v1.0.0");
+    assert_eq!(installed(dir.path(), "test"), None);
+    crate::migrate_layout(dir.path());
+    let got = installed(dir.path(), "test").unwrap();
+    assert_eq!(got.version, "v1.0.0");
+    assert_eq!(got.library, flat.join("v1.0.0").join("lib.dll"));
+    assert_eq!(std::fs::read(&got.library).unwrap(), b"v1.0.0");
+    assert!(!flat.join("driver.toml").exists());
+    // Running it again changes nothing.
+    crate::migrate_layout(dir.path());
+    assert_eq!(installed(dir.path(), "test"), Some(got));
+}
+
+#[test]
+fn a_chosen_version_that_vanished_falls_back_to_the_newest() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("drivers").join("adbc").join("test");
+    for version in ["v1.9.0", "v1.10.0"] {
+        write_driver(&root.join(version), version);
+    }
+    // No ACTIVE file, as before versions could be chosen: the newest.
+    assert_eq!(installed(dir.path(), "test").unwrap().version, "v1.10.0");
+    std::fs::write(root.join("ACTIVE"), "v1.9.0\n").unwrap();
+    assert_eq!(installed(dir.path(), "test").unwrap().version, "v1.9.0");
+    std::fs::write(root.join("ACTIVE"), "v0.1.0").unwrap();
+    assert_eq!(installed(dir.path(), "test").unwrap().version, "v1.10.0");
+}
+
+#[test]
+fn a_version_marked_removed_is_not_listed_active_or_counted() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("drivers").join("adbc").join("test");
+    for version in ["v1.9.0", "v1.10.0"] {
+        write_driver(&root.join(version), version);
+    }
+    std::fs::write(root.join("ACTIVE"), "v1.10.0").unwrap();
+    // The library of the newest was locked when it was removed.
+    std::fs::write(root.join("v1.10.0").join(".removed"), b"").unwrap();
+    let listed = versions(dir.path(), "test");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].installed.version, "v1.9.0");
+    assert!(listed[0].active);
+    assert_eq!(installed(dir.path(), "test").unwrap().version, "v1.9.0");
+    // Only one version is left, so removing it removes the whole driver.
+    remove_version(dir.path(), "test", "v1.9.0").unwrap();
+    assert_eq!(installed(dir.path(), "test"), None);
+}
+
+#[test]
+fn the_updates_of_the_last_check_survive_until_they_are_installed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("drivers").join("adbc").join("test");
+    write_driver(&root.join("v1.0.0"), "v1.0.0");
+    assert_eq!(crate::stored_updates(dir.path()).len(), 0);
+    let update = crate::Update {
+        name: "test".into(),
+        installed: "v1.0.0".into(),
+        package: crate::Package {
+            name: "test".into(),
+            title: "Test".into(),
+            version: "v1.1.0".into(),
+            license: "MIT".into(),
+            url: "http://example.invalid/test".into(),
+            sha256: None,
+        },
+    };
+    crate::store_updates(dir.path(), std::slice::from_ref(&update)).unwrap();
+    assert_eq!(
+        crate::stored_updates(dir.path()),
+        std::slice::from_ref(&update)
+    );
+    // A newer version became the active one since: the update no longer applies.
+    write_driver(&root.join("v1.1.0"), "v1.1.0");
+    assert_eq!(crate::stored_updates(dir.path()).len(), 0);
+    // A new result replaces the old one.
+    crate::store_updates(dir.path(), &[]).unwrap();
+    assert_eq!(crate::stored_updates(dir.path()).len(), 0);
 }

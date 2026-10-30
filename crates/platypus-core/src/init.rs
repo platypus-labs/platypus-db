@@ -32,6 +32,8 @@ impl SessionInit {
                     out.push(format!("SET search_path TO {}", quote(schema, '"')));
                 }
                 DriverKind::MySql => out.push(format!("USE {}", quote(schema, '`'))),
+                // The keyspace; a quoted name keeps its case.
+                DriverKind::Cassandra => out.push(format!("USE {}", quote(schema, '"'))),
                 // `USE` holds for the HTTP session the driver keeps.
                 DriverKind::ClickHouse => out.push(format!("USE {}", quote_clickhouse(schema))),
                 // DuckDB takes the search path as a string of identifiers.
@@ -81,48 +83,7 @@ impl SessionInit {
             }
         }
         if let Some(zone) = self.time_zone.as_deref().filter(|z| !z.is_empty()) {
-            // MySQL reads backslashes in strings as escapes; no zone name has one.
-            if zone.contains(['\\', '\'']) {
-                return Err(Error::Config(format!("invalid time zone `{zone}`")));
-            }
-            match driver {
-                DriverKind::Postgres => out.push(format!("SET TIME ZONE '{zone}'")),
-                DriverKind::MySql => out.push(format!("SET time_zone = '{zone}'")),
-                DriverKind::ClickHouse => out.push(format!("SET session_timezone = '{zone}'")),
-                // Time zones come with DuckDB's ICU extension, which the app does not bundle.
-                DriverKind::DuckDb => {
-                    return Err(Error::Config(
-                        "DuckDB has no session time zone here".to_owned(),
-                    ));
-                }
-                DriverKind::Sqlite | DriverKind::Libsql => {
-                    return Err(Error::Config("SQLite has no session time zone".to_owned()));
-                }
-                DriverKind::SqlServer => {
-                    return Err(Error::Config(
-                        "SQL Server has no session time zone".to_owned(),
-                    ));
-                }
-                DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
-                    return Err(Error::Config(format!(
-                        "{} has no session time zone",
-                        driver.name()
-                    )));
-                }
-                DriverKind::Trino | DriverKind::Databricks => {
-                    out.push(format!("SET TIME ZONE '{zone}'"));
-                }
-                DriverKind::Snowflake => {
-                    out.push(format!("ALTER SESSION SET TIMEZONE = '{zone}'"));
-                }
-                DriverKind::Oracle => out.push(format!("ALTER SESSION SET TIME_ZONE = '{zone}'")),
-                DriverKind::BigQuery | DriverKind::Adbc | DriverKind::Db2 | DriverKind::Odbc => {
-                    return Err(Error::Config(format!(
-                        "{} has no session time zone here",
-                        driver.name()
-                    )));
-                }
-            }
+            out.push(time_zone_sql(driver, zone)?);
         }
         out.extend(
             self.statements
@@ -133,6 +94,39 @@ impl SessionInit {
         );
         Ok(out)
     }
+}
+
+/// The statement that sets the session's time zone on `driver`.
+fn time_zone_sql(driver: DriverKind, zone: &str) -> Result<String> {
+    // MySQL reads backslashes in strings as escapes; no zone name has one.
+    if zone.contains(['\\', '\'']) {
+        return Err(Error::Config(format!("invalid time zone `{zone}`")));
+    }
+    let refuse = |why: &str| Err(Error::Config(why.to_owned()));
+    Ok(match driver {
+        DriverKind::Postgres | DriverKind::Trino | DriverKind::Databricks => {
+            format!("SET TIME ZONE '{zone}'")
+        }
+        DriverKind::MySql => format!("SET time_zone = '{zone}'"),
+        DriverKind::ClickHouse => format!("SET session_timezone = '{zone}'"),
+        DriverKind::Snowflake => format!("ALTER SESSION SET TIMEZONE = '{zone}'"),
+        DriverKind::Oracle => format!("ALTER SESSION SET TIME_ZONE = '{zone}'"),
+        // Time zones come with DuckDB's ICU extension, which the app does not bundle.
+        DriverKind::DuckDb => return refuse("DuckDB has no session time zone here"),
+        DriverKind::Sqlite | DriverKind::Libsql => {
+            return refuse("SQLite has no session time zone");
+        }
+        DriverKind::SqlServer => return refuse("SQL Server has no session time zone"),
+        DriverKind::Mongo
+        | DriverKind::Redis
+        | DriverKind::Elasticsearch
+        | DriverKind::Cassandra => {
+            return refuse(&format!("{} has no session time zone", driver.name()));
+        }
+        DriverKind::BigQuery | DriverKind::Adbc | DriverKind::Db2 | DriverKind::Odbc => {
+            return refuse(&format!("{} has no session time zone here", driver.name()));
+        }
+    })
 }
 
 /// `name` as a quoted identifier, the quote character doubled inside.
@@ -237,5 +231,26 @@ mod tests {
             ..SessionInit::default()
         };
         assert!(bad.sql(DriverKind::Postgres).is_err());
+    }
+
+    #[test]
+    fn sets_up_a_cassandra_keyspace() {
+        let init = SessionInit {
+            schema: Some("My Keyspace".to_owned()),
+            ..SessionInit::default()
+        };
+        assert_eq!(
+            init.sql(DriverKind::Cassandra).unwrap(),
+            ["USE \"My Keyspace\""]
+        );
+        let zone = SessionInit {
+            time_zone: Some("Europe/Rome".to_owned()),
+            ..SessionInit::default()
+        };
+        assert!(zone.sql(DriverKind::Cassandra).is_err());
+        assert_eq!(
+            zone.sql(DriverKind::Postgres).unwrap(),
+            ["SET TIME ZONE 'Europe/Rome'"]
+        );
     }
 }

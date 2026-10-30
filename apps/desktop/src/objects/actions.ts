@@ -26,7 +26,7 @@ import { t, msg } from "../i18n";
 type ObjectArg = ActionScopes["navigator.object"];
 
 const support = new Map<DriverKind, DialectSupport>();
-for (const driver of ["postgres", "mysql", "sqlite", "duckdb", "sqlserver", "clickhouse", "libsql", "mongo", "redis", "elasticsearch"] as const) {
+for (const driver of ["postgres", "mysql", "sqlite", "duckdb", "sqlserver", "clickhouse", "libsql", "mongo", "redis", "elasticsearch", "cassandra"] as const) {
   api.dialectSupport(driver).then((s) => support.set(driver, s), console.warn);
 }
 

@@ -23,6 +23,7 @@ import { AgentContextDialog } from "./agents/AgentContextDialog";
 import { followActiveTab } from "./agents/context";
 import { AgentWriteDialog } from "./agents/AgentWriteDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { startupDriverCheck } from "./drivers/updates";
 import { CrashBanner } from "./diagnostics/Diagnostics";
 import { CommandPalette } from "./shell/CommandPalette";
 import "./tabs";
@@ -124,6 +125,10 @@ export function App() {
   useEffect(() => {
     loadLanguage().then(() => setLanguageLoaded((n) => n + 1), console.error);
   }, [chosenLanguage]);
+  // Downloaded drivers: once a day at most, and only when the setting is on.
+  useEffect(() => {
+    void startupDriverCheck();
+  }, []);
   const [toast, showToast] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   /** Shows an error, and keeps it in the Activity log. */

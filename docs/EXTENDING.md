@@ -206,8 +206,29 @@ additions:
 - `edit::script` turns the grid's changes into `_update`, `_create`, `_doc` and `DELETE` requests, run by
   `execute_all` one by one, with the requests that undo them.
 
-The UI hides SQL-only features with `isNoSql` (MongoDB and Redis), and keeps MongoDB results
-out of the data editor with `isMongo`; `editor/redis.ts` is the Redis editor language.
+`platypus-driver-cassandra` (Apache Cassandra and ScyllaDB, `DriverKind::Cassandra`, on the `scylla`
+crate) is the fourth, and the only one whose language is SQL-like:
+- the editor language is CQL: `cql::split` cuts a script (`$$` strings, `//` comments, a
+  `BEGIN BATCH … APPLY BATCH` is one statement) and the desktop `analyze_sql`, `only_reads` and the
+  MCP `check_cql` read each statement with the standard SQL analysis (`Dialect::Ansi`, which `Dialect::from`
+  gives the driver), so `TRUNCATE` and the writes without `WHERE` are flagged as for SQL; the
+  data viewer's rewrites (`rewritable`) are off, as CQL has no `OFFSET` and puts `LIMIT` before
+  `ALLOW FILTERING`;
+- keyspaces are the schemas; `meta` reads `system_schema` (Cassandra 3+ and ScyllaDB share it) for tables,
+  materialized views, types, functions and aggregates, the partition and clustering keys (the
+  primary key, with the role of each column in its comment) and the secondary indexes, and rebuilds
+  the DDL from it;
+- results are typed Arrow columns (`columns`; `varint`, `decimal`, uuids and durations as text,
+  collections, tuples and user-defined types as JSON text), read page by page with the server's paging state;
+- the connection reaches every node at the address it was given (`session`): clusters advertise
+  addresses a container, a NAT or an SSH tunnel hides;
+- `edit::script` turns the grid's changes into `UPDATE`, `INSERT` and `DELETE` statements by the full
+  primary key, with the statements that undo them; the desktop `preview_changes` and `save_changes` run
+  them one by one through `execute_all`, as for Elasticsearch.
+
+The UI hides SQL-only features with `isNoSql` (MongoDB, Redis, Elasticsearch and Cassandra), and keeps
+MongoDB results out of the data editor with `isMongo`; `editor/redis.ts` is the Redis editor language
+and `editor/cql.ts` the CQL dialect of CodeMirror.
 
 ### Drivers loaded at run time (ADBC)
 
