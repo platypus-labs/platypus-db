@@ -528,7 +528,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   }
 
   const tab = (id: Page, label: string) => (
-    <button type="button" role="tab" aria-selected={page === id} onClick={() => setPage(id)}>
+    <button type="button" role="tab" title={label} aria-selected={page === id} onClick={() => setPage(id)}>
       {label}
     </button>
   );

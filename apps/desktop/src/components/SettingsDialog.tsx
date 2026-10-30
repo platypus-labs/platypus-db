@@ -308,7 +308,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                         onKeyDown={onTabKey}
                       >
                         <Icon name={PAGE_HEAD[name]?.icon ?? "settings"} size={14} />
-                        {t(name)}
+                        <span className="settings-nav-text" title={t(name)}>
+                          {t(name)}
+                        </span>
                       </button>
                     );
                   })}
@@ -335,7 +337,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                         type="button"
                         role="tab"
                         id={`settings-sub-${i}`}
-                        data-subtab={g.label}
+                        data-subtab={g.label} title={t(g.label)}
                         aria-selected={g.label === sub}
                         aria-controls={`settings-subpage-${i}`}
                         tabIndex={g.label === sub ? 0 : -1}

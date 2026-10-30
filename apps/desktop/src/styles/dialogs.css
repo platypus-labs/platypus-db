@@ -1124,6 +1124,21 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg-muted);
 }
 
+/* A long label in a narrow window ends in an ellipsis; the tooltip gives it whole. */
+.dialog-tabs button {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dialog-tabs button[aria-selected="true"] {
   border-bottom-color: var(--accent);
   color: var(--fg);
