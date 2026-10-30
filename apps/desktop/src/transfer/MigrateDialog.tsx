@@ -7,6 +7,7 @@ import { workbench } from "../workbench";
 import { JobFooter, useJob } from "./job";
 import { existingTables, ProfileButtons } from "./ProfileSave";
 import { t, plural, msg } from "../i18n";
+import { DialogHeader } from "../ui/DialogHeader";
 
 interface Props {
   connection: SavedConnection;
@@ -130,7 +131,11 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, ob
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal migrate" onKeyDown={(e) => e.key === "Escape" && close()}>
-        <h2>{!whole ? plural(count, "Copy {n} table to a database", "Copy {n} tables to a database") : t("Copy {schema} to a database", { schema })}</h2>
+        <DialogHeader
+          title={!whole ? plural(count, "Copy {n} table to a database", "Copy {n} tables to a database") : t("Copy {schema} to a database", { schema })}
+          onClose={close}
+          disabled={running}
+        />
         <p className="muted small">
           {tables === null
             ? t("Reading the tables…")

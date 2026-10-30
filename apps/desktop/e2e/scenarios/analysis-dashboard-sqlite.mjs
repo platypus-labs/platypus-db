@@ -50,6 +50,21 @@ export function setup({ dir }) {
 const tab = `[...document.querySelectorAll('.dashboard-tab')].find(t => t.style.display !== 'none')`;
 const widget = (title) => `${tab}?.querySelector('[data-title=${JSON.stringify(title)}]')`;
 const click = (scope, action) => `${scope}.querySelector('[data-action=${JSON.stringify(action)}]').click()`;
+/** A widget's action: opens its "⋯" menu and picks the item (the menu closes by itself). */
+async function act(page, title, action) {
+  await page.eval(click(widget(title), "menu"));
+  await page.waitFor(`document.querySelector('.context-menu [data-action="dashboard.${action}"]') != null`);
+  await page.eval(`document.querySelector('.context-menu [data-action="dashboard.${action}"]').click()`);
+}
+/** Whether an item of the widget's menu is greyed out; the menu is closed again after. */
+async function itemDisabled(page, title, action) {
+  await page.eval(click(widget(title), "menu"));
+  await page.waitFor(`document.querySelector('.context-menu [data-action="dashboard.${action}"]') != null`);
+  const off = await page.eval(`document.querySelector('.context-menu [data-action="dashboard.${action}"]').getAttribute('aria-disabled') === 'true'`);
+  await page.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+  await page.waitFor(`document.querySelector('.context-menu') == null`);
+  return off;
+}
 /** When the widget's last run ended: it changes at every run, an error's included. */
 const atOf = (title) => `(${widget(title)}?.querySelector('[data-field=status]')?.dataset.at ?? '')`;
 const statusOf = (title) => `(${widget(title)}?.querySelector('[data-field=status]')?.textContent ?? '')`;
@@ -136,7 +151,7 @@ async function widgetsOfEachView(page) {
   await page.waitFor(`${widget("Revenue by region")}.querySelector('.chart-side') != null`);
   await setField(page, `[data-title="Revenue by region"] select[aria-label="Chart type"]`, "pie");
   await page.waitFor(`${chart("Revenue by region")}?.querySelectorAll('path.chart-slice').length === 3`);
-  await page.eval(click(widget("Revenue by region"), "chart_settings"));
+  await act(page, "Revenue by region", "chart_settings");
   await page.waitFor(`${widget("Revenue by region")}.querySelector('.chart-side') == null`);
   assert.equal(await page.eval(`${chart("Revenue by region")}.querySelectorAll('path.chart-slice').length`), 3, "the pie stays");
 
@@ -150,7 +165,7 @@ async function refreshing(page, dir) {
   sql(dir, "INSERT INTO sales VALUES (5, 'west', 100)");
   // Nothing changes by itself.
   assert.equal(await page.eval(valueOf("Total")), "25");
-  await refreshed(page, "Total", () => page.eval(click(widget("Total"), "refresh")));
+  await refreshed(page, "Total", () => act(page, "Total", "refresh"));
   await page.waitFor(`${valueOf("Total")} === '125'`);
   assert.match(await page.eval(statusOf("Regions")), /3 rows$/, "the other widgets keep their rows");
 
@@ -193,7 +208,7 @@ async function failures(page, dir) {
   await addWidget(page, { script: "ghost.sql", title: "Ghost", view: "value" });
   await page.waitFor(`${valueOf("Ghost")} === '5'`);
   renameSync(join(dir, "scripts", "all", "ghost.sql"), join(dir, "scripts", "all", "ghost-2.sql"));
-  await refreshed(page, "Ghost", () => page.eval(click(widget("Ghost"), "refresh")));
+  await refreshed(page, "Ghost", () => act(page, "Ghost", "refresh"));
   assert.match(await page.eval(errorOf("Ghost")), /ghost\.sql no longer exists/);
   assert.equal(await page.eval(valueOf("Ghost")), "", "no old value beside the error");
   assert.equal(await page.eval(valueOf("Total")), "125");
@@ -203,7 +218,7 @@ async function failures(page, dir) {
 async function arranging(page) {
   // Edit: another script, a new title and width; the widget runs again on the new script.
   const before = await page.eval(atOf("Broken"));
-  await page.eval(click(widget("Broken"), "edit"));
+  await act(page, "Broken", "edit");
   await page.waitFor(`document.querySelector('.dashboard-form') !== null`);
   // The saved scripts arrive after the form opens: until then the choice reads "Loading…".
   await page.waitFor(`document.querySelector('.dashboard-form [data-field=script]').value === "broken.sql"`, 10_000);
@@ -215,7 +230,7 @@ async function arranging(page) {
   assert.equal(await page.eval(`[${widget("Fixed total")}.style.gridColumn, ${widget("Fixed total")}.style.gridRow].join('|')`), "span 2|span 2");
 
   // The form lists a missing script, so that editing the widget does not change it.
-  await page.eval(click(widget("Ghost"), "edit"));
+  await act(page, "Ghost", "edit");
   await page.waitFor(`document.querySelector('.dashboard-form [data-field=script]') != null`);
   await page.waitFor(`document.querySelector('.dashboard-form [data-field=script] option[value="ghost.sql"]') != null`);
   assert.equal(await page.eval(`document.querySelector('.dashboard-form [data-field=script]').value`), "ghost.sql");
@@ -227,15 +242,15 @@ async function arranging(page) {
   // Move: the first cannot go up, the last cannot go down; a move swaps neighbours.
   const order = await page.eval(titles);
   assert.deepEqual(order.slice(0, 3), ["Regions", "Top 2", "Revenue by region"]);
-  assert.equal(await page.eval(`${widget("Regions")}.querySelector('[data-action=up]').disabled`), true);
-  assert.equal(await page.eval(`${widget("Ghost")}.querySelector('[data-action=down]').disabled`), true);
-  await page.eval(click(widget("Regions"), "down"));
+  assert.equal(await itemDisabled(page, "Regions", "up"), true);
+  assert.equal(await itemDisabled(page, "Ghost", "down"), true);
+  await act(page, "Regions", "down");
   await page.waitFor(`${titles}.slice(0, 2).join() === 'Top 2,Regions'`);
-  await page.eval(click(widget("Regions"), "up"));
+  await act(page, "Regions", "up");
   await page.waitFor(`${titles}.slice(0, 2).join() === 'Regions,Top 2'`);
 
   // Remove.
-  await page.eval(click(widget("Wipe"), "remove"));
+  await act(page, "Wipe", "remove");
   await page.waitFor(`${widget("Wipe")} == null`);
   assert.equal((await page.eval(titles)).includes("Mixed"), true);
 }
@@ -261,7 +276,7 @@ async function saving(page, dir) {
   await page.waitFor(`[...document.querySelectorAll('[role=tab]')].some(t => t.textContent.includes('Sales board'))`);
 
   // A change after saving keeps the tab from closing without asking.
-  await page.eval(click(widget("Mixed"), "remove"));
+  await act(page, "Mixed", "remove");
   await page.waitFor(`${widget("Mixed")} == null`);
   await page.eval(`document.querySelector('.tab.active button[aria-label="Close tab"]').click()`);
   await page.waitFor(`${modal(".confirm")} != null`);

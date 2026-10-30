@@ -9,6 +9,7 @@ import { ComparePlans } from "./ComparePlans";
 import { stepName } from "./compare";
 import { PlanDialog } from "./PlanDialog";
 import { PlanGraph } from "./PlanGraph";
+import { createIndexSql, filterColumns } from "./indexSql";
 
 export type ExplainView = "tree" | "graph" | "text" | "table" | "compare";
 
@@ -157,13 +158,15 @@ function rawPlan(explain: Explain) {
   }
 }
 
-export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<ExplainTabModel>) {
+export function ExplainTab({ tab, connection, active, ensureSession, onChange }: TabProps<ExplainTabModel>) {
   const [explain, setExplain] = useState<Explain | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [version, setVersion] = useState(0);
   const [selected, setSelected] = useState("0");
   const [collapsed, setCollapsed] = useState(new Set<string>());
+  /** The index suggestions hidden for this plan, by table and filter. */
+  const [dismissed, setDismissed] = useState(new Set<string>());
   /** The plan before the last refresh, to compare with. */
   const [previous, setPrevious] = useState<Explain | null>(null);
   const latest = useRef<Explain | null>(null);
@@ -296,18 +299,36 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
         {tab.analyze && explain && !explain.analyzed && (
           <div className="notice small">{t("This database cannot run a statement for its plan: estimates only.")}</div>
         )}
-        {explain?.suggestions.map((s, i) => (
-          <div key={i} className="notice warn small explain-suggestion">
-            <strong>{s.table}</strong>{" "}
-            {s.rows_read === null
-              ? t("is read in full to keep the rows where")
-              : t(explain.analyzed ? "is read in full ({n} rows) to keep the rows where" : "is read in full (about {n} rows) to keep the rows where", {
-                  n: num(s.rows_read),
-                })}{" "}
-            <code>{s.filter}</code>
-            {t(": an index on the columns of that condition may help.")}
-          </div>
-        ))}
+        {explain?.suggestions.map((s) => {
+          const key = `${s.table}
+${s.filter}`;
+          if (dismissed.has(key)) return null;
+          const columns = filterColumns(s.filter);
+          return (
+            <div key={key} className="notice warn small explain-suggestion">
+              <span className="explain-suggestion-text">
+                <strong>{s.table}</strong>{" "}
+                {s.rows_read === null
+                  ? t("is read in full to keep the rows where")
+                  : t(explain.analyzed ? "is read in full ({n} rows) to keep the rows where" : "is read in full (about {n} rows) to keep the rows where", {
+                      n: num(s.rows_read),
+                    })}{" "}
+                <code>{s.filter}</code>
+                {t(": an index on the columns of that condition may help.")}
+              </span>
+              {/* A plan read from a document has no connection to create the index on. MySQL and MariaDB
+                  report the alias, not the table, so only PostgreSQL gets the button for now. */}
+              {!tab.plan && connection.driver === "postgres" && columns.length > 0 && (
+                <button type="button" onClick={() => workbench().openTab("query", connection.id, { sql: createIndexSql(connection.driver, s.table, columns) })}>
+                  {t("Create index…")}
+                </button>
+              )}
+              <button type="button" onClick={() => setDismissed(new Set(dismissed).add(key))}>
+                {t("Ignore")}
+              </button>
+            </div>
+          );
+        })}
         {explain && view === "tree" && (
           <div className="explain-split">
             <div className="explain-tree" role="tree">
@@ -330,7 +351,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                       toggle(path);
                     }}
                   >
-                    {collapsed.has(path) ? "▸" : "▾"}
+                    <Icon name={collapsed.has(path) ? "chevron-right" : "chevron-down"} />
                   </button>
                   <span className="explain-op">{n.operation}</span>
                   {n.detail && <span className="explain-detail">{n.detail}</span>}

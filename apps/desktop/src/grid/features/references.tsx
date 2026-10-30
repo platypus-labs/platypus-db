@@ -18,6 +18,7 @@ import { type EditSource, resultColumns } from "../edit/meta";
 import type { TableEditTarget } from "../edit/TableEditor";
 import { t, plural } from "../../i18n";
 import { EmptyState } from "../../ui/State";
+import { Icon } from "../../ui/Icon";
 
 /** Foreign keys of a result's table, for grid actions in `source.references`. */
 export interface GridReferences {
@@ -130,16 +131,18 @@ export function useReferences({ edit, jobId, columns, row, onError }: Options) {
         }
       : undefined;
 
-  const panel = panelOpen && edit && source && mapped && (
-    <ReferencesPanel
-      edit={edit}
-      source={source}
-      mapped={mapped}
-      jobId={jobId}
-      row={row}
-      onClose={() => setPanelOpen(false)}
-    />
-  );
+  // `null` when closed (not `false`): the grid shows the side panels' handle only for a panel.
+  const panel =
+    panelOpen && edit && source && mapped ? (
+      <ReferencesPanel
+        edit={edit}
+        source={source}
+        mapped={mapped}
+        jobId={jobId}
+        row={row}
+        onClose={() => setPanelOpen(false)}
+      />
+    ) : null;
   return { references, panel };
 }
 
@@ -232,7 +235,7 @@ function ReferencesPanel({
         <strong className="small value-name">{t("References to {name}", { name })}</strong>
         <span className="spacer" />
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}

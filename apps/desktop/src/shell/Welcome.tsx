@@ -8,6 +8,8 @@ import bannerOnDark from "../assets/brand/platypus-db-on-dark.png";
 import bannerOnLight from "../assets/brand/platypus-db-on-light.png";
 import { Icon } from "../ui/Icon";
 import { language, t } from "../i18n";
+import { openScriptFile } from "../scripts/scripts";
+import { recentScripts, RECENT_SCRIPTS } from "../scripts/recent";
 import { SHARE_EXTENSION } from "../share/shareQuery";
 
 interface Props {
@@ -71,6 +73,17 @@ function useRecent(connections: SavedConnection[]): { connection: SavedConnectio
   return recent;
 }
 
+/** The scripts opened or saved last on a connection that still exists, newest first. */
+function useRecentScripts(connections: SavedConnection[]) {
+  const [scripts] = useState(recentScripts);
+  const ids = new Set(connections.map((c) => c.id));
+  // A script of a deleted connection opens on the first one left.
+  return scripts.slice(0, RECENT_SCRIPTS).flatMap((s) => {
+    const connectionId = ids.has(s.connectionId) ? s.connectionId : connections[0]?.id;
+    return connectionId ? [{ ...s, connectionId }] : [];
+  });
+}
+
 /** The shell's actions worth knowing first, with their shortcuts as the user set them. */
 const SHORTCUTS = ["app.palette", "tab.new", "tab.reopen", "app.settings"];
 
@@ -90,6 +103,7 @@ export async function pickDataFile(): Promise<string | null> {
 export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample, onError, connections, onOpenConnection }: Props) {
   const [sampleBusy, setSampleBusy] = useState(false);
   const recent = useRecent(connections);
+  const scripts = useRecentScripts(connections);
   async function pickFile() {
     const path = await pickDataFile();
     if (path !== null) onOpenFile(path);
@@ -154,7 +168,7 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample,
         </button>
       </div>
       <div className="welcome-more">
-        {recent.length > 0 && (
+        {(recent.length > 0 || scripts.length > 0) && (
           <section>
             <h2 className="welcome-heading">{t("Recent")}</h2>
             <ul className="welcome-list welcome-recent">
@@ -167,6 +181,20 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample,
                       <span className={`type-badge ${typeBadge(connection)!.toLowerCase()}`}>{typeBadge(connection)}</span>
                     )}
                     <span className="welcome-when">{ago(at)}</span>
+                  </button>
+                </li>
+              ))}
+              {scripts.map((script) => (
+                <li key={script.path}>
+                  <button
+                    type="button"
+                    title={script.path}
+                    data-script={script.path}
+                    onClick={() => openScriptFile(script.path, script.connectionId).catch((e: unknown) => onError(toCommandError(e).message))}
+                  >
+                    <Icon name="file" />
+                    <span className="welcome-name">{script.path.split(/[/\\]/).pop()}</span>
+                    <span className="welcome-when">{ago(script.at)}</span>
                   </button>
                 </li>
               ))}

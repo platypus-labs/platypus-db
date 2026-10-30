@@ -42,7 +42,7 @@
   margin-top: var(--space-8);
 }
 .column-profile-bars rect {
-  fill: var(--accent);
+  fill: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .column-profile-range {
   display: flex;

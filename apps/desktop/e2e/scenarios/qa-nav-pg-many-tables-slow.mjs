@@ -44,7 +44,9 @@ export default async function (page) {
     await page.waitFor(`${row(SCHEMA)} !== undefined`, 20_000);
     const started = Date.now();
     await page.eval(`${row(SCHEMA)}.querySelector('.twisty').click()`);
-    await page.waitFor(`${row("qa_nav_t2000")} !== undefined`, 60_000);
+    // The tables come in one list; the tree renders only the rows around the view, so the
+    // first one tells they are there.
+    await page.waitFor(`${row("qa_nav_t0001")} !== undefined`, 60_000);
     const ms = Date.now() - started;
     assert.ok(ms < 2000, `2000 tables listed in ${ms} ms`);
   } finally {

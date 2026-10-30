@@ -17,7 +17,7 @@ const treeRow = (label) =>
 const menuButton = (label) =>
   `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span')?.textContent === ${JSON.stringify(label)})`;
 const button = (scope, label) =>
-  `[...${scope}.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`;
+  `[...${scope}.querySelectorAll('button')].find(b => (b.textContent.trim() || b.getAttribute('aria-label')) === ${JSON.stringify(label)})`;
 
 export function setup({ dir }) {
   const path = join(dir, "more.db");
@@ -108,7 +108,7 @@ async function panels(page, shot) {
   for (const part of ["TypeREAL", "Columntotal", "Nullableyes", "Primary keyno", "Row keyno"]) {
     assert.ok(metadata.includes(part), `${part} in ${metadata}`);
   }
-  await page.eval(`${button("document.querySelector('.metadata-panel')", "×")}.click()`);
+  await page.eval(`${button("document.querySelector('.metadata-panel')", "Close")}.click()`);
 
   // The calc panel follows the selection: all of `total`.
   await openMenu(page);
@@ -122,7 +122,7 @@ async function panels(page, shot) {
   assert.match(calc, /Count3NULL0Distinct3Sum1[.,]?239[.,]75/);
   assert.match(calc, /Median3[.,]25/);
   await shot("calc");
-  await page.eval(`${button("document.querySelector('.calc-panel')", "×")}.click()`);
+  await page.eval(`${button("document.querySelector('.calc-panel')", "Close")}.click()`);
 
   // Two rows selected: compared column by column.
   await focusCell(page, 0, 0);
@@ -177,7 +177,7 @@ async function map(page, shot) {
   const line = await page.rect("#e2e-line");
   await page.click(line.x + line.w / 2, line.y + line.h / 2);
   await page.waitFor(`document.querySelector('.map-shape.focused')?.dataset.row === '2'`);
-  await page.eval(`${button("document.querySelector('.map-panel')", "×")}.click()`);
+  await page.eval(`${button("document.querySelector('.map-panel')", "Close")}.click()`);
 }
 
 export default async function (page, { shots, dir }) {
@@ -242,7 +242,7 @@ export default async function (page, { shots, dir }) {
     ["Rome2", "Oslo1"],
   );
   await shot("grouping");
-  await page.eval(`${button("document.querySelector('.grouping-panel')", "×")}.click()`);
+  await page.eval(`${button("document.querySelector('.grouping-panel')", "Close")}.click()`);
 
   // The record view shows one row and moves with the arrows.
   await page.eval(`document.getElementById('e2e-grid').focus()`);

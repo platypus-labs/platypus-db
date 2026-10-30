@@ -40,7 +40,7 @@ async function choose(page, lang, title) {
     await page.key(",", "Comma", 188, CTRL);
     await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   }
-  await page.settingsTab("Appearance");
+  await page.settingsTab("Appearance", "Language and text");
   await page.eval(pick(lang));
   await page.waitFor(`${heading} === ${JSON.stringify(title)}`, 10_000);
 }

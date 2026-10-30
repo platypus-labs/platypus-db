@@ -69,6 +69,10 @@ export interface Action<S extends ActionScope = ActionScope> {
   /** Listed but not run when it returns a reason (a `msg` text): menus and the palette show it
    *  greyed out with the reason, and its shortcut is swallowed. */
   disabled?: (arg: ActionScopes[S]) => string | null;
+  /** Whether the item is on, for an action that switches something: shown as a check box in menus. */
+  checked?: (arg: ActionScopes[S]) => boolean;
+  /** Only an item of its menu: no shortcut can be set, so Settings › Keyboard shortcuts leaves it out. */
+  menuOnly?: boolean;
   /** Shortcut only, never listed in menus. */
   hidden?: boolean;
   /** Also offered when several rows are selected; it gets them all in `arg.selection`. */
@@ -123,6 +127,11 @@ export function actionsFor<S extends ActionScope>(scope: S, arg: ActionScopes[S]
 /** Every registered action, for listings such as the command palette. */
 export function allActions(): Action[] {
   return [...registry.values()];
+}
+
+/** The actions a shortcut can be set on. */
+export function bindableActions(): Action[] {
+  return allActions().filter((a) => !a.menuOnly);
 }
 
 export const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);

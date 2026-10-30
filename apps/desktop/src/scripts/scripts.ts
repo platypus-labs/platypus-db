@@ -5,6 +5,7 @@
  */
 import { api, type SavedConnection, type ScriptEntry } from "../api";
 import { workbench } from "../workbench";
+import { rememberScript } from "./recent";
 
 const listeners = new Set<() => void>();
 
@@ -41,6 +42,7 @@ export function openScript(root: string, entry: ScriptEntry, connection: SavedCo
 export async function openScriptFile(filePath: string, connectionId: string) {
   const sql = await api.readTextFile(filePath);
   workbench().openTab("query", connectionId, { sql, filePath });
+  rememberScript(filePath, connectionId);
 }
 
 /** The connection a script opens on: its link if that connection is listed, else the first. */

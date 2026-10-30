@@ -723,6 +723,13 @@ through the MCP server.
   Dracula, Solarized Light and high contrast; your own accent, background, sidebar and text
   colors, interface size, row density, corner radius and editor font size. Inter and
   JetBrains Mono are bundled, so the app looks the same everywhere and works offline.
+- **Layout** (Settings › Appearance › Layout), each choice drawn as a small window and applied
+  at once: the navigator on the left or the right, the results below the SQL editor or beside
+  it, the tab bar at the top or the bottom, the side panels (history, variables, the value and
+  metadata of a cell) on the right or the left. The handles keep following the pointer.
+- **Icons and animations**: the icon family of the whole app, Lucide, Tabler or Phosphor (the
+  databases' logos stay); short animations as panels, dialogs, menus and tabs open, never on
+  the data: like the system (its "reduce motion"), on, reduced to short fades, or off.
 - **Theme files** (Settings → Themes): Export saves the theme in use, with your custom colors,
   as JSON (`{"platypus_theme": 1, "name", "light": {…}, "dark": {…}}`, both variants for
   System); Import previews a file's theme, lists the keys and colors it skips, and applies it

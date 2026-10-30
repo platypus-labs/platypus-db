@@ -62,9 +62,9 @@
 
 .notes-panel textarea {
   resize: vertical;
-  min-height: var(--control-sm);
-  border-color: transparent;
-  background: transparent;
+  min-height: var(--control-lg);
+  padding: var(--space-6) var(--space-10);
+  line-height: 1.4;
 }
 
 .cell-input {

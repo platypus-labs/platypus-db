@@ -312,7 +312,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={() => setTables(tab.tables.filter((x) => x.id !== box.id))}
                   >
-                    ×
+                    <Icon name="close" />
                   </button>
                 </div>
                 <ul className="builder-columns">

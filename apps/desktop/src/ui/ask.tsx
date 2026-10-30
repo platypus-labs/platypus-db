@@ -42,7 +42,7 @@ export function choose<T>(message: string, choices: Choice<T>[]): Promise<T | nu
       return (
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && answer(null)}>
           <div
-            className="modal small confirm"
+            className="modal confirm"
             role="alertdialog"
             aria-modal="true"
             aria-describedby="confirm-message"

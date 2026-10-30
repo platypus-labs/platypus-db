@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type DriverKind, type StatementSpan } from "../api";
 import { t } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   text: string;
@@ -38,7 +39,7 @@ export function OutlinePanel({ text, driver, onSelect, onClose }: Props) {
         <strong>{t("Outline")}</strong>
         <span className="spacer" />
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       <ul className="history-list">

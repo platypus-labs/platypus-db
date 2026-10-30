@@ -45,6 +45,10 @@
   line-height: 1.5;
 }
 
+.state-line {
+  display: block;
+}
+
 .state-actions {
   display: flex;
   flex-wrap: wrap;

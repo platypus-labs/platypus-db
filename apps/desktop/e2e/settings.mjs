@@ -32,3 +32,14 @@ export async function settingsLack(dir, pattern) {
   assert.notEqual(text, null, "settings.toml was never written");
   assert.doesNotMatch(text, pattern);
 }
+
+/** Page expressions for the Settings dialog, to evaluate in the app. */
+
+/** The row of the setting with this full key (`layout.navigator_side`). */
+export const settingRow = (key) => `document.querySelector('.modal.settings .setting[data-key="${key}"]')`;
+
+/** The Reset button of that setting's row. */
+export const settingReset = (key) => `[...${settingRow(key)}.querySelectorAll('button')].find(b => b.textContent === 'Reset')`;
+
+/** The sub-tab of a settings page with this label. */
+export const settingsSubTab = (label) => `document.querySelector('.modal.settings [role=tab][data-subtab=${JSON.stringify(label)}]')`;

@@ -5,17 +5,29 @@
 }
 
 /* The page header: the name of the dashboard large, its connection, then the actions. */
-.dashboard-toolbar {
-  flex-wrap: wrap;
-  gap: var(--space-8);
-  padding: var(--space-12) var(--space-16) var(--space-8);
-  border-bottom: 0;
+.dashboard-toolbar .object-title {
+  flex: 0 1 320px;
 }
 
+/* The name is the page's title: written in place, drawn as a title until it is focused. */
 .dashboard-title {
-  width: 260px;
+  width: 100%;
+  height: auto;
+  padding: 0 var(--space-4);
+  margin-left: calc(var(--space-4) * -1);
+  border-color: transparent;
+  background: transparent;
   font-size: var(--text-xl);
   font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.dashboard-title:hover {
+  border-color: var(--border);
+}
+
+.dashboard-title:focus {
+  background: var(--bg-input);
 }
 
 .dashboard-grid {

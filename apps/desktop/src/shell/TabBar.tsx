@@ -140,7 +140,7 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
                       props.onClose(tab);
                     }}
                   >
-                    ×
+                    <Icon name="close" />
                   </button>
                 )}
               </div>

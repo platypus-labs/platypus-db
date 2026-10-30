@@ -66,6 +66,7 @@ import {
 import { GuardDialog } from "../guards/GuardDialog";
 import { PendingDialog } from "../guards/PendingDialog";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
+import { useResultsBeside } from "../shell/layout";
 import { TransactionLogDialog } from "../guards/TransactionLogDialog";
 import { openRestore, snapshotBefore } from "../guards/SnapshotsDialog";
 import { emptyLog, noteEnd, noteStatement } from "../guards/txLog";
@@ -97,6 +98,7 @@ import {
 import { useCompare } from "../analysis/compare";
 import { editMeta } from "../grid/edit/meta";
 import { t, plural, msg } from "../i18n";
+import { rememberScript } from "../scripts/recent";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
 const REFRESH_CHOICES: [number, string][] = [
@@ -437,8 +439,12 @@ export function QueryTab({
   } | null>(null);
   const [terminalLog, setTerminalLog] = useState<TerminalBlock[]>([]);
   const [historyVersion, setHistoryVersion] = useState(0);
-  // The editor's height, the same in every tab and kept for the next start.
+  // The editor's height, the same in every tab and kept for the next start; its width when the
+  // results are beside it (Settings › Appearance › Layout).
   const [editorHeight, setEditorHeight] = useStoredSize("layout.editor_height", 200);
+  const [editorWidth, setEditorWidth] = useStoredSize("layout.editor_width", 520);
+  const beside = useResultsBeside();
+  const main = useRef<HTMLDivElement>(null);
   /** The session's schema after the tab changed it (`SET search_path`); `null` for the
    *  catalog's. */
   const [schemaShown, setSchemaShown] = useState<string | null>(null);
@@ -1468,6 +1474,7 @@ export function QueryTab({
     try {
       await api.writeTextFile(path, sql);
       onChange({ filePath: path, savedSql: sql });
+      rememberScript(path, connection.id);
     } catch (e) {
       onError(toCommandError(e).message);
     }
@@ -1669,8 +1676,17 @@ export function QueryTab({
     <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
       <div
         className="query-main"
-        // The editor gives up height before the toolbar does in a small window.
-        style={{ gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }}
+        ref={main}
+        // The editor gives up height before the toolbar does in a small window; beside the
+        // results, it gives up width before they go under 240 px.
+        style={
+          beside
+            ? {
+                gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(0, 1fr) auto`,
+                gridTemplateColumns: `minmax(120px, ${editorWidth}px) 6px minmax(240px, 1fr)`,
+              }
+            : { gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }
+        }
       >
         <div className="toolbar">
           <button
@@ -1697,6 +1713,7 @@ export function QueryTab({
               {toolbar.label("cancel", t("Cancel"))}
             </button>
           )}
+          <span className="divider" />
           <ConnectionChip connection={connection} database={tab.database ?? null} schema={schemaShown ?? catalog?.default_schema ?? null} />
           <button
             className={connection.read_only ? "toggled" : ""}
@@ -1811,6 +1828,7 @@ export function QueryTab({
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
           {toolbar.visible.panels && (
             <>
+              <span className="divider" />
               <button
                 className={tab.terminal ? "toggled" : ""}
                 onClick={() => (tab.terminal ? onChange({ terminal: false }) : leavingEdits(() => onChange({ terminal: true })))}
@@ -1838,9 +1856,12 @@ export function QueryTab({
             </>
           )}
           {toolbar.visible.history && (
+            <>
+            <span className="divider" />
             <button className={panel === "history" ? "toggled" : ""} onClick={() => togglePanel("history")} title={t("History")} aria-label={t("History")}>
               {toolbar.label("history", t("History"))}
             </button>
+            </>
           )}
         </div>
         {viewerBar && (
@@ -1897,17 +1918,31 @@ export function QueryTab({
           onSave={() => void saveFile()}
           onOpen={() => void openFile()}
         />
-        <PanelResizer
-          storeKey="layout.editor_height"
-          size={editorHeight}
-          fallback={200}
-          min={60}
-          max={() => window.innerHeight - 200}
-          direction="row"
-          onResize={setEditorHeight}
-          label={t("Resize the editor")}
-          className="splitter"
-        />
+        {beside ? (
+          <PanelResizer
+            storeKey="layout.editor_width"
+            size={editorWidth}
+            fallback={520}
+            min={120}
+            max={() => (main.current?.clientWidth ?? window.innerWidth) - 246}
+            direction="column"
+            onResize={setEditorWidth}
+            label={t("Resize the editor")}
+            className="splitter"
+          />
+        ) : (
+          <PanelResizer
+            storeKey="layout.editor_height"
+            size={editorHeight}
+            fallback={200}
+            min={60}
+            max={() => window.innerHeight - 200}
+            direction="row"
+            onResize={setEditorHeight}
+            label={t("Resize the editor")}
+            className="splitter"
+          />
+        )}
         <div className="results">
           {tab.across && (
             <AcrossBar
@@ -1971,7 +2006,7 @@ export function QueryTab({
                       closeResult(r.id);
                     }}
                   >
-                    ×
+                    <Icon name="close" />
                   </span>
                 </button>
               ))}
@@ -2071,7 +2106,7 @@ export function QueryTab({
               )}
               {!exportBusy && (
                 <button className="link" onClick={() => setExporting(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
-                  ×
+                  <Icon name="close" />
                 </button>
               )}
             </span>
@@ -2087,7 +2122,7 @@ export function QueryTab({
                 {t("Undo script")}
               </button>
               <button className="link" onClick={() => setUndoScript(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
-                ×
+                <Icon name="close" />
               </button>
             </span>
           )}

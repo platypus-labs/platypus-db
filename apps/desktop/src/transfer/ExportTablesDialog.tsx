@@ -7,6 +7,7 @@ import { answerFor } from "../testAnswers";
 import { JobFooter, useJob } from "./job";
 import { existingTables, ProfileButtons } from "./ProfileSave";
 import { t, plural, msg } from "../i18n";
+import { DialogHeader } from "../ui/DialogHeader";
 
 type TableRef = { schema: string | null; name: string };
 
@@ -81,8 +82,12 @@ export function ExportTablesDialog({ connection, database, schema, currentSchema
   const count = tables?.length ?? 0;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="modal small export-tables" onKeyDown={(e) => e.key === "Escape" && close()}>
-        <h2>{chosen ? plural(count, "Export {n} table", "Export {n} tables") : t("Export the tables of {schema}", { schema })}</h2>
+      <div className="modal export-tables" onKeyDown={(e) => e.key === "Escape" && close()}>
+        <DialogHeader
+          title={chosen ? plural(count, "Export {n} table", "Export {n} tables") : t("Export the tables of {schema}", { schema })}
+          onClose={close}
+          disabled={running}
+        />
         <p className="muted small">
           {tables === null
             ? t("Reading the tables…")

@@ -171,10 +171,10 @@ export function NotebookCellView(props: Props) {
           </button>
         )}
         <button type="button" className="icon" disabled={first} onClick={() => onMove(-1)} aria-label={t("Move up")} title={t("Move up")} data-action="up">
-          ↑
+          <Icon name="arrow-up" />
         </button>
         <button type="button" className="icon" disabled={last} onClick={() => onMove(1)} aria-label={t("Move down")} title={t("Move down")} data-action="down">
-          ↓
+          <Icon name="arrow-down" />
         </button>
         <button type="button" className="icon" onClick={onDelete} aria-label={t("Delete cell")} title={t("Delete cell")} data-action="delete">
           <Icon name="delete" />

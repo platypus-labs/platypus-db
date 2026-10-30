@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { MASK, useMask } from "../guards/mask";
 import { JsonNumber, type JsonValue as Json, jsonNumber, parseJson, stringifyJson } from "../jsonText";
 import { EmptyState, LoadingState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 /** An object of the document: not a leaf, not an array. */
 const isObject = (value: Json): value is { [key: string]: Json } =>
@@ -169,11 +170,11 @@ export function DocumentPanel({ jobId, columns, row, field, version, onClose }: 
         <span className="spacer" />
         {doc && (
           <button className="icon" title={t("Copy as JSON")} aria-label={t("Copy as JSON")} onClick={() => void navigator.clipboard.writeText(stringifyJson(doc))}>
-            ⧉
+            <Icon name="copy" />
           </button>
         )}
         <button className="icon" title={t("Close (F7)")} aria-label={t("Close (F7)")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {error ? (

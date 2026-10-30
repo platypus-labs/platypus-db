@@ -3,6 +3,7 @@ import { api, type ColumnInfo, type Geometries, type Shape, toCommandError } fro
 import type { GridApi } from "../grid/DataGrid";
 import { formatCount, t, plural } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   jobId: number;
@@ -147,10 +148,10 @@ export function MapPanel({ jobId, columns, grid, selection, rows, version, focus
         </strong>
         <span className="spacer" />
         <button className="icon" title={t("Show all")} aria-label={t("Show all")} disabled={!view} onClick={() => setView(null)}>
-          ⤢
+          <Icon name="expand" />
         </button>
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}

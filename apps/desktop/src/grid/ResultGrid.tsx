@@ -12,6 +12,7 @@ import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
 import { defineSetting, setSetting, useSetting } from "../settings";
 import { MASK, SensitiveScope, useMask, useSensitive } from "../guards/mask";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
+import { useSidePanelsLeft } from "../shell/layout";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
 import { ColumnsDialog } from "./ColumnsDialog";
@@ -28,6 +29,7 @@ import "./features/copy";
 import "./features/filters";
 import { useReferences } from "./features/references";
 import { useGridSearch } from "./features/search";
+import { EmptyState } from "../ui/State";
 import { useSelectionStats } from "./features/stats";
 import { useColumnProfile } from "../analysis/ColumnProfile";
 import { type ColumnLayout, EMPTY_LAYOUT, loadLayout, saveLayout } from "./layout";
@@ -131,10 +133,12 @@ interface Props {
   notes?: NotesScope | null;
   /** At the end of the bar above the grid: the result's SQL field. */
   toolbar?: ReactNode;
+  /** The statement finished and returned no rows: the grid says so over its empty body. */
+  empty?: boolean;
 }
 
 /** A result's grid with its features: editing, search, column layout, totals and panels. */
-export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes, toolbar }: Props) {
+export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes, toolbar, empty }: Props) {
   const notesVersion = useCatalogVersion();
   const noteOf = (col: number) =>
     notes && columns[col]
@@ -223,6 +227,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const [panelWidth, setPanelWidth] = useStoredSize("layout.side_panel_width", 340);
   const body = useRef<HTMLDivElement>(null);
   const sideOpen = panelOpen || metadataOpen || calcOpen || mapOpen || grouping !== null || refs.panel != null;
+  const panelsLeft = useSidePanelsLeft();
 
   const column = focused ? columns[focused.col] : undefined;
   const valueTarget: ValueTarget | null =
@@ -290,6 +295,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               onLayoutChange={changeLayout}
             />
             {search.box}
+            {empty && total === 0 && (
+              <EmptyState className="result-empty" title={t("No rows")}>
+                {t("The statement ran and returned no rows.")}
+              </EmptyState>
+            )}
             {recordView && total > 0 && (
               <RecordView
                 jobId={jobId}
@@ -313,7 +323,8 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               min={200}
               max={() => (body.current?.clientWidth ?? window.innerWidth) - 240}
               direction="column"
-              after
+              // The panels are after the handle, or before it on the left.
+              after={!panelsLeft}
               onDrag={(w) => body.current?.style.setProperty("--side-panel-width", `${w}px`)}
               onResize={setPanelWidth}
               label={t("Resize the side panels")}

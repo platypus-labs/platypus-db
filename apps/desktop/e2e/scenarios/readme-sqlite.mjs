@@ -14,7 +14,8 @@ import { CTRL } from "../cdp.mjs";
 export const NAME = "Shop dev";
 export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 export const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
-export const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
+// The script's lines, not those of the SQL line over the results.
+export const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].filter(l => !l.closest('.sql-line')).map(l => l.textContent).join('\\n')`;
 export const grid = `${visibleTab}.querySelector('.grid-scroll')`;
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
 export const treeRow = (label) =>
@@ -261,10 +262,12 @@ export default async function (page) {
   await page.eval(`[...document.querySelectorAll('.builder-source')].find(r => r.textContent === 'orders').id = 'e2e-orders'`);
   await page.clickSel("#e2e-orders", { clickCount: 2 });
   await page.waitFor(`${builderSql}.includes('JOIN orders o ON o.customer_id = c.id')`, 10_000);
-  const tick = (table, column) =>
-    `[...document.querySelectorAll('.builder-box[data-table="${table}"] label')].find(l => l.textContent === '${column}').querySelector('input').click()`;
+  const label = (table, column) =>
+    `[...document.querySelectorAll('.builder-box[data-table="${table}"] label')].find(l => l.textContent === '${column}')`;
   for (const [table, column] of [["customers", "name"], ["customers", "city"], ["orders", "placed_at"], ["orders", "total"]]) {
-    await page.eval(tick(table, column));
+    // A box's columns arrive after the box itself.
+    await page.waitFor(`${label(table, column)} !== undefined`, 10_000);
+    await page.eval(`${label(table, column)}.querySelector('input').click()`);
   }
   await page.waitFor(`${builderSql}.includes('o.total')`);
   await page.sleep(300);

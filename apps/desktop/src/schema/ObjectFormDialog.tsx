@@ -3,6 +3,7 @@ import { api, type DriverKind, type ObjectForm, type SavedConnection, toCommandE
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { workbench } from "../workbench";
 import { msg, t } from "../i18n";
+import { Icon } from "../ui/Icon";
 
 export type ObjectFormKind = ObjectForm["kind"];
 
@@ -344,7 +345,7 @@ export function ObjectFormDialog({ connection, database, schema, kind, table, on
                       )
                     }
                   >
-                    ✕
+                    <Icon name="close" />
                   </button>
                 </div>
               ))}

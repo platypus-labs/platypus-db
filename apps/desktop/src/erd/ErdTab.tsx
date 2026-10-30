@@ -28,6 +28,7 @@ import {
 } from "./edits";
 import { type Box, type Point, placeTables } from "./layout";
 import { pathThrough, quickWire, routeWires } from "./route";
+import { Minimap } from "./Minimap";
 import { TablesDialog } from "./TablesDialog";
 import { LoadingState } from "../ui/State";
 
@@ -161,6 +162,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const routed = useRef(new Map<string, Point[]>());
   const lastPress = useRef<{ what: string; at: number } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
   // The tab as the last render saw it, for the actions that wait for the database.
   const latest = useRef(tab);
   latest.current = tab;
@@ -509,25 +511,29 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         <span className="object-icon" data-kind="schema">
           <Icon name="schema" size={16} />
         </span>
-        <span>
-          <strong>{t("ER diagram of {schema}", { schema: tab.schema })}</strong>{" "}
+        <div className="object-title">
+          <strong>{t("ER diagram of {schema}", { schema: tab.schema })}</strong>
           <span className="muted small">
             {tab.tables === null ? t("all tables") : plural(tab.tables.length, "{n} table", "{n} tables")}
           </span>
-        </span>
+        </div>
         <span className="spacer" />
         {!connection.read_only && (
           <button type="button" aria-pressed={edits !== null} className={edits ? "primary" : ""} onClick={() => void toggleEdit()} title={t("Draw the schema and generate the script")}>
+            <Icon name="edit" />
             {t("Edit")}
           </button>
         )}
         <button type="button" disabled={!all} onClick={() => setChoosing(true)}>
+          <Icon name="table" />
           {t("Tables…")}
         </button>
         <button type="button" onClick={addNote}>
+          <Icon name="plus" />
           {t("Add note")}
         </button>
         <button type="button" onClick={() => setFull(!full)} aria-pressed={full}>
+          <Icon name={full ? "minimize" : "maximize"} />
           {full ? t("Exit full screen") : t("Full screen")}
         </button>
         <button className="square" type="button" onClick={refresh} aria-label={t("Refresh")} title={t("Refresh")}>
@@ -560,25 +566,28 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
       <div className="erd-stage">
         <div className="erd-float">
           <button className="square" type="button" onClick={() => zoom(-0.25)} aria-label={t("Zoom out")} title={t("Zoom out")}>
-            −
+            <Icon name="minus" />
           </button>
           <span className="small muted erd-zoom">{Math.round(tab.zoom * 100)}%</span>
           <button className="square" type="button" onClick={() => zoom(0.25)} aria-label={t("Zoom in")} title={t("Zoom in")}>
-            +
+            <Icon name="plus" />
           </button>
           <span className="erd-sep" />
           <button type="button" onClick={() => onChange({ positions: {} })} title={t("Place every table again from the foreign keys")}>
+            <Icon name="schema" />
             {t("Auto layout")}
           </button>
           <span className="erd-sep" />
-          <button type="button" onClick={() => save("svg")}>
+          <button type="button" onClick={() => save("svg")} title={t("Save the diagram as an SVG image")}>
+            <Icon name="download" />
             SVG…
           </button>
-          <button type="button" onClick={() => save("png")}>
+          <button type="button" onClick={() => save("png")} title={t("Save the diagram as a PNG image")}>
+            <Icon name="download" />
             PNG…
           </button>
         </div>
-      <div className="erd-canvas">
+      <div className="erd-canvas" ref={canvas}>
         {tables === null && !error && <LoadingState className="erd-loading" title={t("Reading the tables…")} />}
         <svg
           ref={svg}
@@ -638,6 +647,12 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
           ))}
         </svg>
       </div>
+      <Minimap
+        canvas={canvas}
+        rects={boxes.map((b) => ({ name: b.name, ...pos(b.name), width: b.width, height: b.height }))}
+        zoom={tab.zoom}
+        version={size}
+      />
       </div>
       {note && (
         <NoteDialog

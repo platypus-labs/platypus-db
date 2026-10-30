@@ -15,6 +15,40 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* The results beside the editor (Settings › Appearance › Layout): the toolbars and the status
+   bar span both, the handle between them is a vertical bar (the columns are set by QueryTab). */
+:root[data-results="beside"] .query-main > .toolbar,
+:root[data-results="beside"] .query-main > .viewer-bar,
+:root[data-results="beside"] .query-main > .statusbar {
+  grid-column: 1 / -1;
+}
+
+:root[data-results="beside"] .query-main > .results {
+  min-width: 0;
+}
+
+.query-main > .splitter.column {
+  width: auto;
+  margin: 0;
+  cursor: col-resize;
+  border: none;
+  border-left: 2px solid var(--bg);
+  border-right: 2px solid var(--bg);
+}
+
+/* The side panels on the left of the work: history, variables and outline beside the editor,
+   the value, metadata and other panels beside a grid. */
+:root[data-panels="left"] .query-tab,
+:root[data-panels="left"] .result-grid-body {
+  flex-direction: row-reverse;
+}
+
+:root[data-panels="left"] .query-tab > aside,
+:root[data-panels="left"] .result-grid-body > .value-panel {
+  border-left: none;
+  border-right: 1px solid var(--border);
+}
+
 .divider {
   width: 1px;
   align-self: stretch;
@@ -23,7 +57,7 @@
 }
 
 button.toggled {
-  background: var(--grid-selection);
+  background: var(--selection-bg);
   border-color: var(--accent);
 }
 
@@ -212,7 +246,7 @@ button.toggled {
   max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--warn, #e8590c);
+  color: var(--modified-fg);
   font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
@@ -319,8 +353,15 @@ button.toggled {
 
 .object-sections .count {
   margin-left: 0;
-  color: var(--fg-muted);
+  min-width: 18px;
+  padding: 0 var(--space-6);
+  border-radius: 9px;
+  background: var(--active);
+  color: var(--fg);
   font-size: var(--text-xs);
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .object-body {
@@ -344,8 +385,8 @@ button.toggled {
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--text-sm);
-  align-self: flex-start;
-  min-width: 50%;
+  align-self: stretch;
+  width: 100%;
   background: var(--grid-bg);
   border: 1px solid var(--border);
 }
@@ -353,9 +394,14 @@ button.toggled {
 .meta-table th,
 .meta-table td {
   text-align: left;
-  height: var(--control-sm);
+  height: var(--control-lg);
   padding: 0 var(--space-12);
   border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+/* The controls inside a cell sit on the same line as the text of the others. */
+.meta-table td > :is(button, select, .tag-input, .cell-input) {
   vertical-align: middle;
 }
 
@@ -390,7 +436,7 @@ button.toggled {
 .key-badge {
   display: inline-flex;
   align-items: center;
-  height: 16px;
+  height: var(--icon-md);
   padding: 0 var(--space-4);
   border-radius: var(--radius);
   font-size: var(--text-xs);
@@ -415,7 +461,7 @@ button.toggled {
   max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--warn, #e8590c);
+  color: var(--modified-fg);
   font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
@@ -522,8 +568,15 @@ button.toggled {
 
 .object-sections .count {
   margin-left: 0;
-  color: var(--fg-muted);
+  min-width: 18px;
+  padding: 0 var(--space-6);
+  border-radius: 9px;
+  background: var(--active);
+  color: var(--fg);
   font-size: var(--text-xs);
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .object-body {
@@ -541,30 +594,6 @@ button.toggled {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-}
-
-.meta-table {
-  border-collapse: collapse;
-  font-size: var(--text-sm);
-  align-self: flex-start;
-  min-width: 50%;
-}
-
-.meta-table th,
-.meta-table td {
-  text-align: left;
-  padding: var(--space-4) var(--space-12) var(--space-4) 0;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-}
-
-.meta-table th {
-  color: var(--fg-muted);
-  font-weight: 600;
-}
-
-.meta-table td:last-child {
-  word-break: break-word;
 }
 
 .tx-open {
@@ -673,7 +702,7 @@ button.toggled {
 
 .outline-kind.dml,
 .outline-kind.ddl {
-  color: var(--warn, #e8590c);
+  color: var(--modified-fg);
 }
 
 .outline-text {
@@ -950,4 +979,24 @@ button.toggled {
 /* A table of the list dragged over the canvas. */
 .builder-canvas.drop-into {
   box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* The toolbar's buttons are tight enough for the history panel beside the editor: an icon
+   alone is a square, the gaps are small, and the groups are told apart by a divider. */
+.toolbar {
+  gap: var(--space-2);
+}
+
+/* `:only-child` does not see text nodes, so a button with an icon and a word matches too: a
+   minimum width keeps the icon alone square and lets the word widen its button. */
+.toolbar button:has(> svg:only-child) {
+  justify-content: center;
+  min-width: var(--control-md);
+  padding: 0 var(--space-6);
+}
+
+.toolbar .divider {
+  align-self: center;
+  height: var(--icon-lg);
+  margin: 0 var(--space-6);
 }

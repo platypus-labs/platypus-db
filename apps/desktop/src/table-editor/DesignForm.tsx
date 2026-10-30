@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ColumnDesign, ConstraintDesign, DriverKind, TableDesign } from "../api";
 import { t, msg } from "../i18n";
+import { Icon } from "../ui/Icon";
 
 export type TableEditorSection = "columns" | "indexes" | "foreign_keys" | "constraints" | "sql";
 
@@ -327,7 +328,7 @@ function ActionSelect({ value, onChange }: { value: string | null; onChange: (ac
 function RemoveButton({ onClick }: { onClick: () => void }) {
   return (
     <button className="icon" title={t("Remove")} aria-label={t("Remove")} onClick={onClick}>
-      ×
+      <Icon name="close" />
     </button>
   );
 }

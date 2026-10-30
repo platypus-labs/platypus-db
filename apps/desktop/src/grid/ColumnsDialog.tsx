@@ -1,6 +1,7 @@
 import type { ColumnInfo } from "../api";
 import { type ColumnLayout, hideColumn, moveColumn, pinColumn, resolveLayout } from "./layout";
 import { t } from "../i18n";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   columns: ColumnInfo[];
@@ -49,7 +50,7 @@ export function ColumnsDialog({ columns, layout, onChange, onClose }: Props) {
                   title={t("Move left")}
                   aria-label={t("Move left")}
                 >
-                  ↑
+                  <Icon name="arrow-up" />
                 </button>
                 <button
                   onClick={() => onChange(moveColumn(layout, columns, resolved, d, d + 1))}
@@ -57,7 +58,7 @@ export function ColumnsDialog({ columns, layout, onChange, onClose }: Props) {
                   title={t("Move right")}
                   aria-label={t("Move right")}
                 >
-                  ↓
+                  <Icon name="arrow-down" />
                 </button>
               </div>
             );

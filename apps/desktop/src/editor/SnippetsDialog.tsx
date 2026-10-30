@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toCommandError } from "../api";
 import { DEFAULT_SNIPPETS, type Snippet, saveSnippets, snippets } from "./snippets";
 import { t, tNodes } from "../i18n";
+import { Icon } from "../ui/Icon";
 
 /** Edits the snippet list: a name typed then Tab writes the template. */
 export function SnippetsDialog({ onClose }: { onClose: () => void }) {
@@ -49,7 +50,7 @@ export function SnippetsDialog({ onClose }: { onClose: () => void }) {
                 onChange={(e) => patch(i, { template: e.target.value })}
               />
               <button type="button" className="icon" title={t("Delete")} aria-label={t("Delete")} onClick={() => setList((l) => l.filter((_, j) => j !== i))}>
-                ×
+                <Icon name="close" />
               </button>
             </div>
           ))}

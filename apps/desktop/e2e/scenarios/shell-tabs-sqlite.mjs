@@ -185,7 +185,7 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`document.querySelector('.tab-group')?.textContent === ${JSON.stringify(NAME)}`);
 
   // Italian: the interface changes at once, and back.
-  await page.settingsTab("Appearance");
+  await page.settingsTab("Appearance", "Language and text");
   await page.eval(pick("Language", "it"));
   await page.waitFor(`document.querySelector('.modal.settings h2')?.textContent === 'Impostazioni'`);
   assert.equal(await page.eval(`document.querySelector('.topbar-search span').textContent`), "Cerca tabelle, query, comandi");

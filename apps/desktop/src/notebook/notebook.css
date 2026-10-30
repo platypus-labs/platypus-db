@@ -67,7 +67,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   font-weight: 600;
-  min-width: 28px;
+  min-width: var(--control-md);
 }
 
 .notebook-editor .editor {
@@ -135,7 +135,7 @@
 
 .notebook-rendered {
   padding: var(--space-4) var(--space-12);
-  min-height: 32px;
+  min-height: var(--control-lg);
   cursor: text;
 }
 

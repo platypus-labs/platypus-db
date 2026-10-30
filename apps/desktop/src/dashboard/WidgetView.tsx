@@ -1,7 +1,12 @@
+import { useCallback, useState } from "react";
 import type { ChartConfig } from "../analysis/chartConfig";
+import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { describe, ResultPanel } from "../components/ResultPanel";
 import { locale, t } from "../i18n";
+import { toCommandError } from "../api";
+import { workbench } from "../workbench";
 import { Icon } from "../ui/Icon";
+import "./actions";
 import { widgetTitle, type Widget } from "./model";
 import type { WidgetRun } from "./run";
 
@@ -54,7 +59,18 @@ function Body({ widget, run, configuring, onChart }: Pick<Props, "widget" | "run
 
 /** One widget of a dashboard: its title and tools, then its body and the state of its run. */
 export function WidgetView(props: Props) {
-  const { widget, run, first, last } = props;
+  const { widget, run } = props;
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  /** Opens the menu under the button. */
+  function openMenu(e: React.MouseEvent<HTMLButtonElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenu({
+      x: r.left,
+      y: r.bottom,
+      target: { scope: "dashboard.widget", arg: { ...props } },
+    });
+  }
   const status = run.error ? t("Error") : run.running ? t("Executing…") : run.at !== null ? t("Updated {time}", { time: new Date(run.at).toLocaleTimeString(locale()) }) : "";
   return (
     <section
@@ -71,31 +87,17 @@ export function WidgetView(props: Props) {
           {widget.script.split(/[/\\]/).pop()}
         </span>
         <span className="spacer" />
-        {widget.view === "chart" && (
-          <button
-            type="button"
-            className={props.configuring ? "toggled" : ""}
-            aria-pressed={props.configuring}
-            onClick={props.onConfigure}
-            data-action="chart_settings"
-          >
-            {t("Chart settings")}
-          </button>
-        )}
-        <button type="button" className="icon" disabled={run.running} onClick={props.onRefresh} aria-label={t("Refresh")} title={t("Refresh")} data-action="refresh">
-          <Icon name="refresh" />
-        </button>
-        <button type="button" onClick={props.onEdit} data-action="edit">
-          {t("Edit")}
-        </button>
-        <button type="button" className="icon" disabled={first} onClick={() => props.onMove(-1)} aria-label={t("Move up")} title={t("Move up")} data-action="up">
-          ↑
-        </button>
-        <button type="button" className="icon" disabled={last} onClick={() => props.onMove(1)} aria-label={t("Move down")} title={t("Move down")} data-action="down">
-          ↓
-        </button>
-        <button type="button" className="icon" onClick={props.onRemove} aria-label={t("Remove")} title={t("Remove")} data-action="remove">
-          <Icon name="delete" />
+        <button
+          type="button"
+          className="icon"
+          aria-haspopup="menu"
+          aria-expanded={menu !== null}
+          aria-label={t("Widget actions")}
+          title={t("Widget actions")}
+          onClick={openMenu}
+          data-action="menu"
+        >
+          <Icon name="more" />
         </button>
       </div>
       <div className="dashboard-body">
@@ -105,6 +107,7 @@ export function WidgetView(props: Props) {
         <span>{status}</span>
         {run.result?.status.kind === "rows" && widget.view !== "value" && <span>{describe(run.result)}</span>}
       </div>
+      {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={(e) => workbench().showError(toCommandError(e).message)} />}
     </section>
   );
 }

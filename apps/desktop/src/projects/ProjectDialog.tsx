@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Project, type SavedConnection, toCommandError } from "../api";
 import { ConnectionPicker } from "./ConnectionPicker";
 import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
+import { workbench } from "../workbench";
 import { openSharedProject } from "./shared";
 
 /** The colors offered for a project; any other can be picked too. */
@@ -15,7 +16,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** Name, color and initials of a project. The initials follow the name until changed. */
+/** Name, color, initials and folder of a project. The initials follow the name until changed. */
 export function ProjectDialog({ project, onSaved, onClose }: Props) {
   const [name, setName] = useState(project?.name ?? "");
   const [color, setColor] = useState(project?.color ?? PROJECT_COLORS[0]!);
@@ -23,6 +24,11 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   const [ownInitials, setOwnInitials] = useState(project !== null);
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState<SavedConnection[]>([]);
+  const folders = workbench().projectFolders();
+  const currentFolder = folders.find((f) => project && f.projects.includes(project.id))?.id ?? "";
+  const [folder, setFolder] = useState(currentFolder);
+  // A new project gets its id once, so saving again after an error does not make a second one.
+  const newId = useRef(crypto.randomUUID());
   const [picked, setPicked] = useState(new Set(project?.connections ?? []));
 
   useEffect(() => {
@@ -42,19 +48,32 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const saved: Project = {
-      id: project?.id ?? crypto.randomUUID(),
+      id: project?.id ?? newId.current,
       name,
       color,
       initials,
       // The ones kept keep their order; the newly picked follow.
       connections: [...(project?.connections ?? []).filter((id) => picked.has(id)), ...[...picked].filter((id) => !project?.connections.includes(id))],
     };
+    let all: Project[];
     try {
-      const all = await api.saveProject(saved);
-      onSaved(all, all.find((p) => p.id === saved.id) ?? saved);
+      all = await api.saveProject(saved);
     } catch (err) {
       setError(storeMessage(toCommandError(err).message));
+      return;
     }
+    // The rail's folders are read in the same call as the drag to a folder. A folder that cannot
+    // be set does not lose the project, which is saved by now.
+    if (folder !== currentFolder) {
+      try {
+        const w = await api.setProjectFolder(saved.id, folder || null);
+        workbench().setWorkspace(w);
+        all = w.projects;
+      } catch (err) {
+        workbench().showError(storeMessage(toCommandError(err).message));
+      }
+    }
+    onSaved(all, all.find((p) => p.id === saved.id) ?? saved);
   }
 
   return (
@@ -91,7 +110,7 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
           </div>
         </label>
         <label className="field">
-          <span>{t("Initials — on the project's square")}</span>
+          <span>{t("Initials")}</span>
           <div className="project-dialog-icon">
             <div className="project-dialog-preview" style={{ background: color }} aria-hidden>
               {initials}
@@ -99,6 +118,7 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
             <input
               className="project-initials"
               value={initials}
+              placeholder="AB"
               maxLength={2}
               onChange={(e) => {
                 setInitials(e.target.value);
@@ -107,6 +127,19 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
             />
           </div>
         </label>
+        {folders.length > 0 && (
+          <label className="field">
+            <span>{t("Folder")}</span>
+            <select value={folder} onChange={(e) => setFolder(e.target.value)} data-field="folder">
+              <option value="">{t("None (top level)")}</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {all.length > 0 && (
           <div className="field">
             <span>{t("Connections")}</span>

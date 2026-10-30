@@ -41,7 +41,7 @@ export default async function (page) {
 
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
-  await page.settingsTab("Appearance");
+  await page.settingsTab("Appearance", "Language and text");
   await page.eval(pick("Language", "it"));
   await page.waitFor(`document.querySelector('.modal.settings h2')?.textContent === 'Impostazioni'`);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Fatto').click()`);

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { t, tNodes } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   variables: Record<string, string>;
@@ -25,7 +26,7 @@ export function VariablesPanel({ variables, onChange, onClose }: Props) {
         <strong>{t("Variables")}</strong>
         <span className="spacer" />
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       <p className="muted small side-panel-hint">
@@ -43,7 +44,7 @@ export function VariablesPanel({ variables, onChange, onClose }: Props) {
             </span>
             <input aria-label={t("Value of {name}", { name: key })} value={value} onChange={(e) => set(key, e.target.value)} />
             <button className="icon" title={t("Delete")} aria-label={t("Delete")} onClick={() => set(key, null)}>
-              ×
+              <Icon name="close" />
             </button>
           </li>
         ))}

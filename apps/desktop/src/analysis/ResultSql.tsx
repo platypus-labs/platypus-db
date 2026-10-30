@@ -409,7 +409,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
           />
           {(state.text !== "" || output) && (
             <button type="button" className="link result-sql-clear" onClick={clear} title={t("Back to the result (Escape)")} aria-label={t("Back to the result")}>
-              ×
+              <Icon name="close" />
             </button>
           )}
         </div>

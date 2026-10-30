@@ -151,7 +151,7 @@ export const PRESETS = {
       "grid-bg": "#16191b",
       "grid-bg-alt": "#181c1e",
       "grid-header": "#1b1f22",
-      "grid-selection": "rgba(255, 141, 40, 0.22)",
+      "grid-selection": "rgba(255, 141, 40, 0.14)",
       "syn-keyword": "#7fc8db",
       "syn-string": "#7ed3a0",
       "syn-number": "#f2b16d",
@@ -630,7 +630,7 @@ function variables(dark?: boolean): { dark: boolean; vars: Record<string, string
   if (accent) {
     vars.accent = accent;
     vars["accent-fg"] = readableOn(accent);
-    vars["grid-selection"] = `color-mix(in srgb, ${accent} 24%, transparent)`;
+    vars["grid-selection"] = `color-mix(in srgb, ${accent} 18%, transparent)`;
   }
   const bg = custom(backgroundSetting);
   if (bg) {

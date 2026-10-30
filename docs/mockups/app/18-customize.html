@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personalizzazione</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .editor-pane { height: 34%; border-bottom: 1px solid var(--border); }
+  .dialog.settings-dlg { width: 1000px; height: calc(100vh - 64px); max-height: calc(100vh - 64px); }
+  .settings-dlg > header { align-items: center; }
+  .settings-dlg > header .input.search { margin-left: auto; width: 280px; }
+  .sbody { flex: 1; display: flex; min-height: 0; padding: 0 var(--sp-6); gap: var(--sp-4); }
+  .sbody .subnav { width: 200px; padding-bottom: var(--sp-4); overflow: auto; }
+  .spane { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; }
+  .spane .phead { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  .spane .subtabs { padding: 0 var(--sp-2); }
+  .spane .pbody { flex: none; overflow: visible; padding: var(--sp-5) var(--sp-2); }
+  .desc { padding: var(--sp-3) var(--sp-2) 0; color: var(--fg-muted); font-size: var(--fs-sm); max-width: 640px; }
+  .setting .ctl { display: flex; align-items: center; gap: var(--sp-3); }
+  .setting .ctl .btn { visibility: hidden; }
+  .setting.changed .ctl .btn { visibility: visible; }
+  .setting.changed .t::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: var(--sp-2); border-radius: 50%; background: var(--accent); vertical-align: middle; }
+
+  /* Layout choices: a small drawing of the window for each option. */
+  .layouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4) var(--sp-6); margin-bottom: var(--sp-6); }
+  .layout .lt { font-weight: var(--fw-semi); color: var(--fg-strong); margin-bottom: var(--sp-1); }
+  .layout .ld { color: var(--fg-muted); font-size: var(--fs-sm); margin-bottom: var(--sp-2); }
+  .layout .opts { display: flex; gap: var(--sp-2); }
+  .opt { display: flex; flex-direction: column; gap: var(--sp-1); align-items: center; cursor: pointer; font-size: var(--fs-sm); color: var(--fg-muted); }
+  .opt.on { color: var(--fg-strong); }
+  .win { width: 104px; height: 64px; border: 1px solid var(--border-strong); border-radius: var(--r-1); background: var(--bg); display: grid; gap: 2px; padding: 3px; }
+  .opt.on .win { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .win i { display: block; border-radius: 2px; background: var(--active); }
+  .win i.nav { background: var(--bg-side); border: 1px solid var(--border); }
+  .win i.tabs { background: var(--border-strong); }
+  .win i.ed { background: color-mix(in srgb, var(--accent) 22%, var(--bg-raised)); }
+  .win i.res { background: var(--bg-raised); border: 1px solid var(--border); }
+  .win i.pan { background: color-mix(in srgb, var(--ok) 20%, var(--bg-raised)); }
+
+  .iconsets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-6); }
+  .iset { border: 1px solid var(--border); border-radius: var(--r-2); padding: var(--sp-3); background: var(--bg-side); display: flex; flex-direction: column; gap: var(--sp-2); cursor: pointer; }
+  .iset.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .iset .row { display: flex; gap: var(--sp-3); color: var(--fg-strong); }
+  .iset .nm { display: flex; align-items: center; gap: var(--sp-2); }
+  .iset .nm .ck { margin-left: auto; color: var(--accent); }
+  .iset .d { color: var(--fg-muted); font-size: var(--fs-xs); }
+  /* Stand-ins for the other families: a thinner stroke, a duotone fill. */
+  .iset.thin svg { stroke-width: 1.25; }
+  .iset.duo svg { stroke-width: 1.75; fill: color-mix(in srgb, currentColor 22%, transparent); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+  </div>
+  <div class="editor-pane"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+    <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+  </div></div>
+  <div class="status"><span>3 righe</span><span>27 ms</span></div>
+</div>
+
+<div class="scrim">
+  <div class="dialog settings-dlg">
+    <header>
+      <h2>Impostazioni</h2>
+      <div class="input search"><i data-i="search" class="sm"></i>Cerca nelle impostazioni…</div>
+      <button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button>
+    </header>
+    <div class="sbody">
+      <nav class="subnav" aria-label="Pagine delle impostazioni">
+        <span class="on"><i data-i="palette" class="sm"></i>Aspetto</span>
+        <span><i data-i="panel" class="sm"></i>Navigator</span>
+        <span><i data-i="code" class="sm"></i>Editor SQL</span>
+        <span><i data-i="table" class="sm"></i>Risultati</span>
+        <span><i data-i="shield" class="sm"></i>Sicurezza</span>
+        <span><i data-i="plug" class="sm"></i>Connessioni</span>
+        <span><i data-i="sliders" class="sm"></i>Barra degli strumenti</span>
+        <span><i data-i="cpu" class="sm"></i>Prestazioni</span>
+        <span><i data-i="layers" class="sm"></i>Schede</span>
+        <span><i data-i="key" class="sm"></i>Password principale</span>
+        <span><i data-i="bot" class="sm"></i>Agenti</span>
+        <span><i data-i="database" class="sm"></i>Driver</span>
+        <span><i data-i="keyboard" class="sm"></i>Scorciatoie</span>
+      </nav>
+
+      <div class="spane">
+        <div class="phead">
+          <div class="pic" style="color:var(--accent)"><i data-i="palette"></i></div>
+          <div>
+            <h1>Aspetto</h1>
+            <div class="sub">Tema, lingua, disposizione e icone</div>
+          </div>
+          <div class="acts"><button class="btn"><i data-i="refresh" class="sm"></i>Ripristina la pagina</button></div>
+        </div>
+        <div class="desc">Cambia l'aspetto di tutta l'app. Le modifiche valgono subito e si salvano da sole.</div>
+        <div class="subtabs">
+          <span>Tema</span><span>Lingua e testo</span><span>Densità</span><span class="on">Disposizione</span><span>Icone e animazioni</span>
+        </div>
+
+        <div class="pbody">
+          <div class="h2">Dove stanno le parti della finestra</div>
+          <div class="layouts">
+            <div class="layout">
+              <div class="lt">Navigator</div>
+              <div class="ld">L'albero delle connessioni, a sinistra o a destra.</div>
+              <div class="opts">
+                <span class="opt on"><span class="win" style="grid-template-columns:28px 1fr;grid-template-rows:8px 1fr"><i class="nav" style="grid-row:1/3"></i><i class="tabs"></i><i class="ed"></i></span>Sinistra</span>
+                <span class="opt"><span class="win" style="grid-template-columns:1fr 28px;grid-template-rows:8px 1fr"><i class="tabs"></i><i class="nav" style="grid-row:1/3"></i><i class="ed"></i></span>Destra</span>
+              </div>
+            </div>
+            <div class="layout">
+              <div class="lt">Risultati</div>
+              <div class="ld">Sotto l'editor, o accanto per gli schermi larghi.</div>
+              <div class="opts">
+                <span class="opt on"><span class="win" style="grid-template-columns:20px 1fr;grid-template-rows:8px 1fr 1fr"><i class="nav" style="grid-row:1/4"></i><i class="tabs"></i><i class="ed"></i><i class="res"></i></span>Sotto</span>
+                <span class="opt"><span class="win" style="grid-template-columns:20px 1fr 1fr;grid-template-rows:8px 1fr"><i class="nav" style="grid-row:1/3"></i><i class="tabs" style="grid-column:2/4"></i><i class="ed"></i><i class="res"></i></span>Accanto</span>
+              </div>
+            </div>
+            <div class="layout">
+              <div class="lt">Barra delle schede</div>
+              <div class="ld">Le schede aperte, in alto o in fondo alla finestra.</div>
+              <div class="opts">
+                <span class="opt on"><span class="win" style="grid-template-columns:20px 1fr;grid-template-rows:8px 1fr"><i class="nav" style="grid-row:1/3"></i><i class="tabs"></i><i class="ed"></i></span>In alto</span>
+                <span class="opt"><span class="win" style="grid-template-columns:20px 1fr;grid-template-rows:1fr 8px"><i class="nav" style="grid-row:1/3"></i><i class="ed"></i><i class="tabs"></i></span>In basso</span>
+              </div>
+            </div>
+            <div class="layout">
+              <div class="lt">Pannelli laterali</div>
+              <div class="ld">Cronologia, metadati, agenti: dalla parte opposta al navigator o dalla stessa.</div>
+              <div class="opts">
+                <span class="opt on"><span class="win" style="grid-template-columns:20px 1fr 22px;grid-template-rows:8px 1fr"><i class="nav" style="grid-row:1/3"></i><i class="tabs"></i><i class="pan" style="grid-row:1/3"></i><i class="ed"></i></span>A destra</span>
+                <span class="opt"><span class="win" style="grid-template-columns:20px 22px 1fr;grid-template-rows:8px 1fr"><i class="nav" style="grid-row:1/3"></i><i class="pan" style="grid-row:1/3"></i><i class="tabs"></i><i class="ed"></i></span>A sinistra</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="h2">Icone e animazioni <span class="muted" style="font-weight:400">(sotto-scheda accanto, qui insieme per il mockup)</span></div>
+          <div class="iconsets">
+            <div class="iset on"><div class="nm"><span class="strong">Lucide</span><i data-i="check" class="sm ck"></i></div><div class="row"><i data-i="database"></i><i data-i="table"></i><i data-i="folder"></i><i data-i="play"></i><i data-i="settings"></i></div><div class="d">Quelle di oggi: tratto medio, angoli morbidi.</div></div>
+            <div class="iset thin"><div class="nm"><span>Tabler</span></div><div class="row"><i data-i="database"></i><i data-i="table"></i><i data-i="folder"></i><i data-i="play"></i><i data-i="settings"></i></div><div class="d">Tratto sottile, più leggere sullo schermo.</div></div>
+            <div class="iset duo"><div class="nm"><span>Phosphor</span></div><div class="row"><i data-i="database"></i><i data-i="table"></i><i data-i="folder"></i><i data-i="play"></i><i data-i="settings"></i></div><div class="d">Riempimento tenue, più riconoscibili da piccole.</div></div>
+          </div>
+          <div class="settings">
+            <div class="setting changed">
+              <div><div class="t">Animazioni</div><div class="d">Apertura dei pannelli e cambio di scheda. Ridotte: solo dissolvenze brevi. Predefinito: come il sistema.</div></div>
+              <div class="ctl"><button class="btn sm ghost">Ripristina</button><span class="seg"><span>Come il sistema</span><span class="on">Sì</span><span>Ridotte</span><span>No</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span class="l"><i data-i="check" class="sm" style="color:var(--ok)"></i>Salvato in settings.toml</span>
+      <button class="btn primary">Fatto<kbd>Esc</kbd></button>
+    </footer>
+  </div>
+</div>
+
+<div class="mk-note" style="left:1060px;top:90px"><b>Disposizione</b>Quattro scelte, ognuna con il disegno della finestra: si capisce l'effetto prima di cliccare, e si applica subito.</div>
+<div class="mk-note" style="left:1060px;top:420px"><b>Set di icone</b>Tre famiglie con lo stesso elenco di nomi: tutta l'app cambia insieme. Le icone dei driver restano i loghi dei database.</div>
+<div class="mk-note" style="left:1060px;top:600px"><b>Animazioni misurate</b>Brevi (sotto i 200 ms) e mai sul contenuto; "Come il sistema" rispetta Riduci movimento di Windows e macOS.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

@@ -97,12 +97,11 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .result-loading::after {
-    width: 100%;
-    animation: none;
-    opacity: 0.6;
-  }
+/* A still bar with reduced or no motion (motion.css). */
+:root:not([data-motion="full"]) .result-loading::after {
+  width: 100%;
+  animation: none;
+  opacity: 0.6;
 }
 
 /* Grid */
@@ -241,9 +240,22 @@
   padding: var(--space-2) var(--space-8);
 }
 
+/* The hint gives way to the buttons: cut short with an ellipsis, never over them. */
+.edit-bar > .muted.small {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.edit-bar .divider {
+  align-self: center;
+  height: var(--icon-lg);
+}
+
 .edit-count {
   font-size: var(--text-sm);
-  color: var(--warn);
+  color: var(--modified-fg);
 }
 
 .edit-error {
@@ -260,7 +272,7 @@
   padding: 0 var(--space-8);
   border: 2px solid var(--accent);
   border-radius: 0;
-  font: 12px var(--font-mono);
+  font: var(--text-sm) var(--font-mono);
   background: var(--bg-input);
   color: var(--fg);
   outline: none;
@@ -397,10 +409,32 @@
 }
 
 .result-error {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  white-space: pre-wrap;
+  margin: var(--space-24) auto;
+  max-width: 640px;
   user-select: text;
+}
+
+.result-error .state-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 500;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.result-error .state-text {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The empty result: the grid keeps its header, the state fills the body under it. */
+.result-empty {
+  position: absolute;
+  inset: 40px 0 0;
+  max-width: none;
+  padding: 0;
+  pointer-events: none;
 }
 
 /* Grid: totals, record view, grouping and references panels, columns dialog */
@@ -493,7 +527,7 @@
   top: 3px;
   bottom: 3px;
   right: 0;
-  background: var(--grid-selection);
+  background: var(--selection-bg);
   z-index: -1;
 }
 
@@ -648,7 +682,7 @@
 }
 
 .compare-list tr.differs td {
-  background: var(--grid-selection);
+  background: var(--selection-bg);
 }
 
 .compare-list td.null {
@@ -675,7 +709,7 @@
   color: var(--syn-ident);
 }
 .doc-focused {
-  background: var(--grid-selection);
+  background: var(--selection-bg);
 }
 .doc-string {
   color: var(--syn-string);

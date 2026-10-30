@@ -160,8 +160,8 @@ export const theme = EditorView.theme({
   ".cm-activeLine": { backgroundColor: "var(--hover)" },
   ".cm-activeLineGutter": { backgroundColor: "var(--hover)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
-    { backgroundColor: "var(--grid-selection)" },
-  ".cm-executing": { backgroundColor: "var(--grid-selection)", transition: "background-color 0.4s" },
+    { backgroundColor: "var(--selection-bg)" },
+  ".cm-executing": { backgroundColor: "var(--selection-bg)", transition: "background-color 0.4s" },
   // The glass of the menus (styles/dialogs.css), solid where it is not supported.
   ".cm-tooltip": {
     backgroundColor: "var(--glass-menu, var(--bg-sidebar))",
@@ -178,8 +178,8 @@ export const theme = EditorView.theme({
   // Beside the list it would blur nothing (its backdrop is the list's own box): solid.
   ".cm-tooltip.cm-completionInfo": { backgroundColor: "var(--bg-sidebar)", backdropFilter: "none", WebkitBackdropFilter: "none" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-fg)",
+    backgroundColor: "color-mix(in srgb, var(--accent) 18%, transparent)",
+    color: "var(--fg-strong)",
   },
   ".cm-panels": { backgroundColor: "var(--bg-sidebar)", color: "var(--fg)" },
   // CodeMirror's own lines are light gray, also in the dark themes.

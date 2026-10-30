@@ -85,12 +85,23 @@
   --icon-md: 16px;
   --icon-lg: 18px;
 
+  /* What the grid, the editor and the navigator share: one row height and icon size, one
+     selection, one look for what is changed and not yet saved. The selection follows the
+     theme's accent; the amber of a change reads on light and dark alike. */
+  --row-height: var(--control-md);
+  --row-icon: var(--icon-md);
+  --selection-bg: var(--grid-selection);
+  --selection-fg: var(--fg-strong);
+  --modified-bg: rgba(177, 151, 252, 0.3);
+  --modified-fg: var(--warn);
+
   font-family: var(--font-ui);
   font-size: var(--text-md);
   line-height: 1.45;
 }
 
 :root[data-theme="light"] {
+  --modified-bg: rgba(124, 58, 237, 0.2);
   --shadow: 0 20px 48px rgba(16, 24, 32, 0.16), 0 2px 6px rgba(16, 24, 32, 0.08);
 }
 
@@ -101,15 +112,6 @@
 /* Scrollbars in the palette's tones, thin and out of the way. */
 * {
   scrollbar-color: color-mix(in srgb, var(--fg-muted) 45%, transparent) transparent;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0s !important;
-    animation-duration: 0s !important;
-  }
 }
 
 * {
@@ -234,6 +236,23 @@ textarea {
   padding: var(--space-6) var(--space-10);
 }
 
+/* A native select drawn as the other fields, with a chevron of the theme's own. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: var(--space-24);
+  background-image: linear-gradient(45deg, transparent 50%, var(--fg-muted) 50%), linear-gradient(135deg, var(--fg-muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+}
+
+option {
+  background: var(--bg-input);
+  color: var(--fg);
+}
+
 input::placeholder,
 textarea::placeholder {
   color: var(--fg-muted);
@@ -256,6 +275,7 @@ button:focus-visible {
 /* Rows and items the arrows move through: a ring inside, so a list's edge does not clip it. */
 [role="treeitem"]:focus-visible,
 [role="menuitem"]:focus-visible,
+[role="menuitemcheckbox"]:focus-visible,
 [role="option"]:focus-visible,
 .modal:focus-visible {
   outline: 2px solid var(--accent);

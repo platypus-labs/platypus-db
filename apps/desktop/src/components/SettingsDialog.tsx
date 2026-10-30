@@ -1,11 +1,11 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { allActions } from "../actions";
+import { bindableActions } from "../actions";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { ThemesPanel } from "../themes/ThemesPanel";
 import { toCommandError } from "../api";
-import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
+import { type SettingDef, type SettingPicture, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
-import { Icon, type IconName } from "../ui/Icon";
+import { Icon, type IconName, type IconSet } from "../ui/Icon";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
@@ -36,7 +36,7 @@ const PANELS: {
   {
     title: msg("Keyboard shortcuts"),
     keywords: "keys keyboard",
-    contains: (needle) => allActions().some((a) => actionMatches(a, needle)),
+    contains: (needle) => bindableActions().some((a) => actionMatches(a, needle)),
     render: (search) => <ShortcutsPanel search={search} />,
   },
 ];
@@ -50,7 +50,7 @@ const NAV_GROUPS: { label: string; pages: string[] }[] = [
 
 /** The icon and one line about each page, shown above its content. */
 const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
-  "Appearance": { icon: "theme", about: msg("Language, theme, colors and the size of the interface.") },
+  "Appearance": { icon: "theme", about: msg("Theme, language, layout and icons.") },
   "Navigator": { icon: "sidebar", about: msg("How the navigator lists your databases and objects.") },
   "Driver updates": { icon: "refresh", about: msg("When PlatypusDB looks for newer versions of the downloaded drivers.") },
   "SQL editor": { icon: "sql", about: msg("Editing, completion and checking of SQL.") },
@@ -69,6 +69,86 @@ const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
   "Diagnostics": { icon: "activity", about: msg("Logs and reports to help find and fix problems.") },
   "Keyboard shortcuts": { icon: "terminal", about: msg("Every command and its key combination.") },
 };
+
+/** Pages with enough settings to split: their sub-tabs, in order, each with the keys it holds
+ *  (and a class for its body, laid out its own way). A setting in none of them goes to the last
+ *  sub-tab. Pages not listed have a single body. */
+const SUB_TABS: Record<string, { label: string; keys: string[]; className?: string }[]> = {
+  "Appearance": [
+    { label: msg("Theme"), keys: ["appearance.theme", "appearance.accent", "appearance.background", "appearance.sidebar", "appearance.text"] },
+    { label: msg("Language and text"), keys: ["appearance.language", "appearance.editor_font_size", "appearance.grid_font_size"] },
+    { label: msg("Density"), keys: ["appearance.zoom", "appearance.density", "appearance.radius"] },
+    {
+      label: msg("Layout"),
+      keys: ["layout.navigator_side", "layout.results_position", "layout.tab_bar_position", "layout.side_panels_side"],
+      className: "layout-choices",
+    },
+    { label: msg("Icons and animations"), keys: ["appearance.icon_set", "appearance.animations"] },
+    { label: msg("Window"), keys: ["appearance.title_bar", "appearance.tray"] },
+  ],
+  "SQL editor": [
+    { label: msg("Editing"), keys: ["editor.vim", "editor.spellcheck", "editor.lint"] },
+    { label: msg("Formatting"), keys: ["editor.format_keyword_case", "editor.format_indent"] },
+    { label: msg("Execution"), keys: ["editor.script_row_limit", "editor.notify_after_seconds"] },
+  ],
+  "Results": [
+    {
+      label: msg("Formats"),
+      keys: ["results.date_format", "results.timestamp_format", "results.time_zone", "results.number_format", "results.relative_time"],
+    },
+    { label: msg("Display"), keys: ["grid.value_panel"] },
+  ],
+  "Safety": [
+    {
+      label: msg("Before changes"),
+      keys: ["safety.unfiltered", "safety.confirm_production", "safety.transaction_warning_minutes", "safety.auto_limit", "agents.confirm_writes"],
+    },
+    { label: msg("Masking"), keys: ["safety.mask", "safety.mask_names", "safety.mask_types"] },
+    { label: msg("Lock and backups"), keys: ["safety.lock_minutes", "safety.snapshots"] },
+  ],
+};
+
+/** The sub-tabs of a page with its settings in them, or null for a page with a single body. */
+function subTabsOf(page: string, defs: SettingDef<Value>[] | undefined) {
+  const spec = SUB_TABS[page];
+  if (!spec || !defs) return null;
+  const groups = spec.map((g) => ({ label: g.label, className: g.className, defs: defs.filter((d) => g.keys.includes(d.key)) }));
+  const rest = defs.filter((d) => !spec.some((g) => g.keys.includes(d.key)));
+  groups[groups.length - 1]!.defs.push(...rest);
+  const shown = groups.filter((g) => g.defs.length > 0);
+  return shown.length > 1 ? shown : null;
+}
+
+/** Moves between tabs with the two arrows (previous, next), Home and End: selects the tab
+ *  reached and focuses it among its siblings. `attr` is the data attribute holding a tab's name. */
+function moveTab(
+  e: KeyboardEvent<HTMLElement>,
+  names: string[],
+  attr: "section" | "subtab",
+  [previous, next]: [string, string],
+  select: (name: string) => void,
+  fallback: string,
+) {
+  const at = names.indexOf(e.currentTarget.dataset[attr] ?? fallback);
+  const moves: Record<string, number> = { [next]: at + 1, [previous]: at - 1 + names.length, Home: 0, End: names.length - 1 };
+  const to = moves[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  const name = names[to % names.length]!;
+  select(name);
+  e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-${attr}="${CSS.escape(name)}"]`)?.focus();
+}
+
+/** Arrow keys in a radio group: select the previous or next option (wrapping) and focus it. */
+function moveRadio(e: KeyboardEvent<HTMLElement>, values: string[], select: (value: string) => void) {
+  const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+  if (step === undefined) return;
+  e.preventDefault();
+  const at = values.indexOf(e.currentTarget.dataset.value ?? "");
+  const value = values[(at + step + values.length) % values.length]!;
+  select(value);
+  e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-value="${CSS.escape(value)}"]`)?.focus();
+}
 
 function PageHeader({ page }: { page: string }) {
   const head = PAGE_HEAD[page];
@@ -93,10 +173,13 @@ function found(needle: string, ...texts: (string | undefined)[]): boolean {
   return texts.some((s) => !!s && (startsWord(s, needle) || startsWord(t(s), needle)));
 }
 
+/** Whether the setting's name, text, key or choices hold `needle`, or the sub-tab that shows
+ *  it is named so. */
 function settingFound(needle: string, def: SettingDef<Value>): boolean {
   const c = def.control;
-  const options = c.type === "select" || c.type === "swatches" ? c.options.map((o) => o.label) : [];
-  return found(needle, def.label, def.description, def.key, ...options);
+  const options = "options" in c ? c.options.map((o) => o.label) : [];
+  const subTab = SUB_TABS[def.section]?.find((g) => g.keys.includes(def.key))?.label;
+  return found(needle, def.label, def.description, def.key, subTab, ...options);
 }
 
 /** Every declared setting, by section, then the other pages: one tab each, chosen in the list
@@ -123,6 +206,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   // The keyboard moves through the pages in the order the list shows them.
   const names = grouped.flatMap((g) => g.pages);
   const [chosen, setChosen] = useState(() => getStored(SECTION_KEY));
+  // The sub-tab of each page, kept while the dialog is open.
+  const [subChosen, setSubChosen] = useState<Record<string, string>>({});
   const current = typeof chosen === "string" && names.includes(chosen) ? chosen : names[0]!;
   // Stored once the dialog closes: a write on each tab change would save the file and
   // refresh the whole app at every arrow key.
@@ -135,17 +220,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     },
     [],
   );
-  const onTabKey = (e: KeyboardEvent<HTMLElement>) => {
+  const onTabKey = (e: KeyboardEvent<HTMLElement>) =>
     // From the focused tab, which a click elsewhere may have left apart from the selected one.
-    const at = names.indexOf(e.currentTarget.dataset.section ?? current);
-    const moves: Record<string, number> = { ArrowDown: at + 1, ArrowUp: at - 1 + names.length, Home: 0, End: names.length - 1 };
-    const to = moves[e.key];
-    if (to === undefined) return;
-    e.preventDefault();
-    const next = names[to % names.length]!;
-    setChosen(next);
-    e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
-  };
+    moveTab(e, names, "section", ["ArrowUp", "ArrowDown"], setChosen, current);
+  const onSubTabKey = (e: KeyboardEvent<HTMLElement>, labels: string[]) =>
+    moveTab(e, labels, "subtab", ["ArrowLeft", "ArrowRight"], (next) => setSubChosen((m) => ({ ...m, [current]: next })), "");
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
     setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
@@ -166,6 +245,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   });
   const titles = [...groups.map(([section]) => section), ...panels.filter((p) => p.shown).map((p) => p.title)];
   const panel = PANELS.find((p) => p.title === current);
+  const subs = subTabsOf(current, sections.get(current));
+  const sub = subs?.find((g) => g.label === subChosen[current])?.label ?? subs?.[0]?.label;
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -252,7 +333,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                         onKeyDown={onTabKey}
                       >
                         <Icon name={PAGE_HEAD[name]?.icon ?? "settings"} size={14} />
-                        {t(name)}
+                        <span className="settings-nav-text" title={t(name)}>
+                          {t(name)}
+                        </span>
                       </button>
                     );
                   })}
@@ -270,7 +353,49 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               tabIndex={0}
             >
               <PageHeader page={current} />
-              {sections.get(current)?.map(row)}
+              {subs ? (
+                <>
+                  <div className="dialog-tabs" role="tablist" aria-label={t(current)}>
+                    {subs.map((g, i) => (
+                      <button
+                        key={g.label}
+                        type="button"
+                        role="tab"
+                        id={`settings-sub-${i}`}
+                        data-subtab={g.label}
+                        title={t(g.label)}
+                        aria-selected={g.label === sub}
+                        aria-controls={`settings-subpage-${i}`}
+                        tabIndex={g.label === sub ? 0 : -1}
+                        onClick={() => setSubChosen((m) => ({ ...m, [current]: g.label }))}
+                        onKeyDown={(e) =>
+                          onSubTabKey(
+                            e,
+                            subs.map((x) => x.label),
+                          )
+                        }
+                      >
+                        {t(g.label)}
+                      </button>
+                    ))}
+                  </div>
+                  {/* All stay mounted, the others hidden: a setting is found in the page whichever sub-tab shows. */}
+                  {subs.map((g, i) => (
+                    <div
+                      key={g.label}
+                      id={`settings-subpage-${i}`}
+                      className={`dialog-page${g.className ? ` ${g.className}` : ""}`}
+                      role="tabpanel"
+                      aria-labelledby={`settings-sub-${i}`}
+                      hidden={g.label !== sub}
+                    >
+                      {g.defs.map(row)}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                sections.get(current)?.map(row)
+              )}
               {panel?.render("")}
             </section>
           </div>
@@ -360,6 +485,29 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
         </div>
       );
       break;
+    case "pictures":
+      input = (
+        <div className={`pictures-control${c.options.some((o) => "icons" in o.picture) ? " icons" : ""}`} role="radiogroup" aria-label={t(def.label)}>
+          {c.options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              data-value={o.value}
+              aria-checked={value === o.value}
+              className={`picture-choice${value === o.value ? " selected" : ""}`}
+              tabIndex={value === o.value ? 0 : -1}
+              onClick={() => onSave(o.value)}
+              onKeyDown={(e) => moveRadio(e, c.options.map((x) => x.value), onSave)}
+            >
+              <Picture picture={o.picture} />
+              <span className="picture-choice-name">{t(o.label)}</span>
+              {o.description && <span className="muted small">{t(o.description)}</span>}
+            </button>
+          ))}
+        </div>
+      );
+      break;
     case "select":
       input = (
         <select value={value as string} onChange={(e) => onSave(e.target.value)}>
@@ -390,9 +538,9 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
     </span>
   );
   // Cards take a row of their own, under the label.
-  if (c.type === "swatches") {
+  if (c.type === "swatches" || c.type === "pictures") {
     return (
-      <div className="setting">
+      <div className={`setting${c.type === "pictures" ? " pictures" : ""}`} data-key={def.key}>
         {text}
         {reset}
         {input}
@@ -400,7 +548,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
     );
   }
   return (
-    <label className="setting">
+    <label className="setting" data-key={def.key}>
       {text}
       {input}
       {reset}
@@ -411,12 +559,35 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
 /** The default of a setting as its control names it: an option's label, On or Off. */
 function defaultText(def: SettingDef<Value>): string {
   const c = def.control;
-  if (c.type === "select" || c.type === "swatches") {
+  if ("options" in c) {
     const option = (c.options as { value: unknown; label: string }[]).find((o) => o.value === def.default);
     if (option) return t(option.label);
   }
   if (c.type === "boolean") return t(def.default ? "Enabled" : "Disabled");
   return String(def.default);
+}
+
+/** The icons each family shows in its card. */
+const SAMPLE_ICONS: IconName[] = ["database", "table", "folder", "run", "settings"];
+
+/** The picture of a choice: the window drawn with its parts in place, or a row of icons. */
+function Picture({ picture }: { picture: SettingPicture }) {
+  if ("icons" in picture) {
+    return (
+      <span className="picture-icons">
+        {SAMPLE_ICONS.map((name) => (
+          <Icon key={name} name={name} size={16} set={picture.icons as IconSet} />
+        ))}
+      </span>
+    );
+  }
+  return (
+    <span className="picture-window" style={{ gridTemplateColumns: picture.columns, gridTemplateRows: picture.rows }}>
+      {picture.parts.map((p, i) => (
+        <i key={i} className={p.part} style={{ gridRow: p.row, gridColumn: p.column }} />
+      ))}
+    </span>
+  );
 }
 
 /** Saves on blur or Enter, and only valid numbers within bounds (whole ones for a whole

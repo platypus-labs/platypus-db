@@ -6,6 +6,7 @@ import { ProfileButtons } from "../transfer/ProfileSave";
 import { KEPT_URL } from "../transfer/profiles";
 import { fmt } from "./ResultPanel";
 import { t, msg } from "../i18n";
+import { DialogHeader } from "../ui/DialogHeader";
 
 export type ExportSource = "query" | "loaded";
 
@@ -251,8 +252,8 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="modal small" onSubmit={submit} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{profile ? profile.name : t("Export result")}</h2>
+      <form className="modal export-result" onSubmit={submit} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+        <DialogHeader title={profile ? profile.name : t("Export result")} onClose={onClose} />
         <label className="field">
           <span>{t("Format")}</span>
           <select

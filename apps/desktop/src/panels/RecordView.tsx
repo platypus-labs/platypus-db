@@ -3,6 +3,7 @@ import { api, type CellInput, type ColumnInfo, toCommandError } from "../api";
 import { shown as masked, useMask } from "../guards/mask";
 import { formatCount, t } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   jobId: number;
@@ -68,10 +69,10 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
     <div className="record-view" ref={box} tabIndex={0} onKeyDown={onKeyDown}>
       <div className="value-bar">
         <button onClick={() => onMove(0)} disabled={row <= 0} title={t("First row (Home)")} aria-label={t("First row (Home)")}>
-          ⏮
+          <Icon name="first" />
         </button>
         <button onClick={() => onMove(row - 1)} disabled={row <= 0} title={t("Previous row (←)")} aria-label={t("Previous row (←)")}>
-          ◀
+          <Icon name="chevron-left" />
         </button>
         <span className="small record-position">
           {dataRow < 0
@@ -79,14 +80,14 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
             : t("Row {n} of {count}", { n: formatCount(dataRow + 1), count: formatCount(rowCount - topRows) })}
         </span>
         <button onClick={() => onMove(row + 1)} disabled={row >= rowCount - 1} title={t("Next row (→)")} aria-label={t("Next row (→)")}>
-          ▶
+          <Icon name="chevron-right" />
         </button>
         <button onClick={() => onMove(rowCount - 1)} disabled={row >= rowCount - 1} title={t("Last row (End)")} aria-label={t("Last row (End)")}>
-          ⏭
+          <Icon name="last" />
         </button>
         <span className="spacer" />
         <button className="icon" title={t("Back to the grid")} aria-label={t("Back to the grid")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
