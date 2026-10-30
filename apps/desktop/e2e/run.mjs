@@ -233,7 +233,7 @@ async function agentDefaults(dir) {
 function appearanceDefault(dir, key, value) {
   const file = join(dir, "settings.toml");
   const text = existsSync(file) ? readFileSync(file, "utf8") : "";
-  if (new RegExp(`^${key}\s*=`, "m").test(text)) return;
+  if (new RegExp(`^${key}\\s*=`, "m").test(text)) return;
   const line = `${key} = ${value}`;
   writeFileSync(file, text.includes("[appearance]") ? text.replace("[appearance]", `[appearance]\n${line}`) : `[appearance]\n${line}\n\n${text}`);
 }
