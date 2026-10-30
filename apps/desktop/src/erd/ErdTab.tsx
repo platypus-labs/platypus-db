@@ -27,6 +27,7 @@ import {
   withRenamedNew,
 } from "./edits";
 import { type Box, type Point, placeTables } from "./layout";
+import { pathThrough, quickWire, routeWires } from "./route";
 import { TablesDialog } from "./TablesDialog";
 
 export type { ErdEdits };
@@ -153,6 +154,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const drag = useRef<Dragging | null>(null);
+  /** The routes of the last drawing with no table being dragged, by wire. */
+  const routed = useRef(new Map<string, Point[]>());
   const lastPress = useRef<{ what: string; at: number } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
   // The tab as the last render saw it, for the actions that wait for the database.
@@ -214,6 +217,32 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const pos = (name: string): Point => placed[name] ?? { x: PAD, y: PAD };
   const notes = useMemo(() => tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] })), [tab.notes, movedNotes]);
   const unreadable = (tables ?? []).filter((t) => t.error !== null);
+  // Every foreign key drawn, its line routed around the tables from where they are now.
+  const keys = useMemo(() => {
+    const byName = new Map(drawn.map((d) => [d.name, d]));
+    const shown = drawn.flatMap((table) =>
+      table.foreign_keys.flatMap((fk) => {
+        const target = local(fk, tab.schema) ? byName.get(fk.ref_table) : undefined;
+        // A table going to be dropped takes its keys with it.
+        if (!target || table.state === "dropped" || target.state === "dropped") return [];
+        return [{ table, fk, target }];
+      }),
+    );
+    const rects = Object.fromEntries(boxes.map((b) => [b.name, { ...pos(b.name), width: b.width, height: b.height }]));
+    const wires = shown.map(({ table, fk, target }) => ({ from: table.name, fromRow: rowY(table, fk.columns[0]), to: target.name, toRow: rowY(target, fk.ref_columns[0]) }));
+    const id = (w: (typeof wires)[number], i: number) => `${w.from}.${shown[i]!.fk.columns.join(",")}>${w.to}`;
+    // While a table is dragged, only the wires touching it are redrawn (cheaply); the others
+    // keep the route they had, and everything is routed again on the drop.
+    const dragged = Object.keys(moved);
+    const kept = routed.current;
+    const touches = (w: (typeof wires)[number]) => dragged.includes(w.from) || dragged.includes(w.to);
+    if (dragged.length > 0 && wires.every((w, i) => touches(w) || kept.has(id(w, i)))) {
+      return shown.map((k, i) => ({ ...k, points: touches(wires[i]!) ? quickWire(rects, wires[i]!) : kept.get(id(wires[i]!, i))! }));
+    }
+    const lines = routeWires(rects, wires);
+    if (dragged.length === 0) routed.current = new Map(wires.map((w, i) => [id(w, i), lines[i]!]));
+    return shown.map((k, i) => ({ ...k, points: lines[i]! }));
+  }, [drawn, boxes, placed, moved, tab.schema]);
   const size = useMemo(() => {
     let w = 400;
     let h = 300;
@@ -226,8 +255,15 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
       w = Math.max(w, n.x + NOTE_WIDTH + PAD);
       h = Math.max(h, n.y + noteHeight(n) + PAD);
     }
+    // A line may go round below the lowest table or right of the rightmost one.
+    for (const k of keys) {
+      for (const p of k.points) {
+        w = Math.max(w, p.x + PAD);
+        h = Math.max(h, p.y + PAD);
+      }
+    }
     return { w, h };
-  }, [boxes, placed, notes]);
+  }, [boxes, placed, notes, keys]);
 
   const at = (e: PointerEvent): Point => {
     const rect = svg.current!.getBoundingClientRect();
@@ -556,31 +592,19 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
             </marker>
           </defs>
           <rect width={size.w} height={size.h} fill={colors.background} />
-          {drawn.map((table, i) =>
-            table.foreign_keys.map((fk) => {
-              if (!local(fk, tab.schema)) return null;
-              const j = drawn.findIndex((o) => o.name === fk.ref_table);
-              if (j < 0) return null;
-              const target = drawn[j]!;
-              // A table going to be dropped takes its keys with it.
-              if (table.state === "dropped" || target.state === "dropped") return null;
-              const a = { ...pos(table.name), width: boxes[i]!.width };
-              const b = { ...pos(target.name), width: boxes[j]!.width };
-              return (
-                <path
-                  key={`${table.name}/${fk.name}`}
-                  d={edgePath(table, a, target, b, fk.columns[0], fk.ref_columns[0])}
-                  stroke={colors.muted}
-                  fill="none"
-                  data-fk={`${table.name}.${fk.columns.join(",")}->${target.name}`}
-                  markerStart={`url(#${id("many")})`}
-                  markerEnd={`url(#${id("one")})`}
-                >
-                  <title>{`${fk.name}: ${table.name} (${fk.columns.join(", ")}) → ${fk.ref_table} (${fk.ref_columns.join(", ")})`}</title>
-                </path>
-              );
-            }),
-          )}
+          {keys.map(({ table, fk, target, points }) => (
+            <path
+              key={`${table.name}/${fk.name}`}
+              d={pathThrough(points)}
+              stroke={colors.muted}
+              fill="none"
+              data-fk={`${table.name}.${fk.columns.join(",")}->${target.name}`}
+              markerStart={`url(#${id("many")})`}
+              markerEnd={`url(#${id("one")})`}
+            >
+              <title>{`${fk.name}: ${table.name} (${fk.columns.join(", ")}) → ${fk.ref_table} (${fk.ref_columns.join(", ")})`}</title>
+            </path>
+          ))}
           {drawn.map((table, i) => (
             <TableBox
               key={table.name}
@@ -701,29 +725,12 @@ function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }:
   );
 }
 
-/** The line of a foreign key, from the row of its column in `from` (its box at `a`) to the row
- *  of the referenced column in `to` (at `b`), leaving and entering the boxes on the sides facing
- *  each other. */
-function edgePath(from: Drawn, a: Point & { width: number }, to: Drawn, b: Point & { width: number }, column?: string, refColumn?: string): string {
-  const row = (t: Drawn, name?: string) => {
-    let i = t.columns.findIndex((c) => c.name === name);
-    if (i < 0) i = Math.max(0, t.columns.findIndex((c) => c.primary_key));
-    return HEAD + i * ROW + ROW / 2;
-  };
-  const wa = a.width;
-  const wb = b.width;
-  const ya = a.y + row(from, column);
-  const yb = b.y + row(to, refColumn);
-  if (from === to) {
-    const x = a.x + wa;
-    return `M ${x} ${ya} C ${x + 40} ${ya}, ${x + 40} ${yb}, ${x} ${yb}`;
-  }
-  const right = b.x + wb / 2 > a.x + wa / 2;
-  const xa = right ? a.x + wa : a.x;
-  const xb = right ? b.x : b.x + wb;
-  const bend = Math.max(30, Math.abs(xb - xa) / 2);
-  const dir = right ? 1 : -1;
-  return `M ${xa} ${ya} C ${xa + dir * bend} ${ya}, ${xb - dir * bend} ${yb}, ${xb} ${yb}`;
+/** Where the line of a foreign key meets `table`: the middle of the row of `column` (from the
+ *  top of the box), or of its primary key when the column is not there. */
+function rowY(table: Drawn, column?: string): number {
+  let i = table.columns.findIndex((c) => c.name === column);
+  if (i < 0) i = Math.max(0, table.columns.findIndex((c) => c.primary_key));
+  return HEAD + i * ROW + ROW / 2;
 }
 
 function NoteDialog({ text, onSave, onClose }: { text: string; onSave: (text: string | null) => void; onClose: () => void }) {
