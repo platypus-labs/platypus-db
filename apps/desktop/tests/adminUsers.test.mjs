@@ -1,4 +1,4 @@
-// Unit tests of the Users and roles view's pure helpers (src/admin/users.ts).
+// Unit tests of the Users and roles view's pure helpers (src/admin/usersModel.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -16,7 +16,7 @@ import {
   principalLabel,
   privilegesOn,
   sortPrincipals,
-} from "../src/admin/users.ts";
+} from "../src/admin/usersModel.ts";
 
 const principal = (name, extra = {}) => ({
   name,

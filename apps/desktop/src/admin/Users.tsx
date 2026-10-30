@@ -22,7 +22,7 @@ import {
   principalKey,
   principalLabel,
   sortPrincipals,
-} from "./users";
+} from "./usersModel";
 
 type Kind = "all" | "user" | "role";
 
