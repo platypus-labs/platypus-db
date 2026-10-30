@@ -318,6 +318,7 @@ impl Connection for DuckDbConnection {
             metadata_search: true,
             bulk_load: true,
             server_parameters: true,
+            debugger: false,
             ..Default::default()
         }
     }

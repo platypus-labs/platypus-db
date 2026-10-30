@@ -19,7 +19,7 @@ platypus-sql.workspace = true
 platypus-tls.workspace = true
 postgres-protocol.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tokio-postgres.workspace = true
 tokio-postgres-rustls.workspace = true
 

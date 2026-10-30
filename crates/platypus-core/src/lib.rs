@@ -8,6 +8,7 @@ mod admin;
 mod capabilities;
 mod config;
 mod connection;
+mod debug;
 mod env;
 mod error;
 mod explain;
@@ -36,6 +37,11 @@ pub use connection::{
     BulkRows, CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed,
     NextResult, RecordBatchStream, ServerInfo, execute_each,
 };
+pub use debug::{
+    DEBUG_RESULT_ROWS, DebugArgument, DebugAvailability, DebugFrame, DebugOutcome, DebugParameter,
+    DebugPosition, DebugRoutine, DebugSession, DebugState, DebugStep, DebugVariable, Debugger,
+    ParameterMode, RoutineRef, VariableKind, debug_break_id,
+};
 pub use env::{ENV_FILE, EnvVars, expand as expand_env, parse_dotenv, without_references};
 pub use error::{DbError, Error, Result, without_repeats};
 pub use explain::{
@@ -47,7 +53,7 @@ pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
     FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, NamedRow, ObjectKind,
     ObjectMeta, Property, ReferencingKey, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow,
-    TextRowExt, group_sorted, query_catalog, query_named, query_text,
+    TextRowExt, group_sorted, query_catalog, query_named, query_text, text_rows,
 };
 pub use metrics::{
     DatabaseSize, Metric, ReplicationRow, ServerMetrics, float_of, query_row, query_sizes,

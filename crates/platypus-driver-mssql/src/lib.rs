@@ -476,6 +476,7 @@ impl Connection for MssqlConnection {
             bulk_load: true,
             server_parameters: true,
             server_metrics: true,
+            debugger: false,
         }
     }
 

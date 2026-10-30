@@ -11,6 +11,8 @@ mod admin;
 pub mod columns;
 mod cursor;
 mod ddl;
+mod debug;
+pub use debug::PgDebugger;
 #[doc(hidden)]
 pub mod decode;
 mod explain;
@@ -422,6 +424,14 @@ impl Connection for PgConnection {
         ddl::databases(self).await
     }
 
+    fn debugger(&self) -> Result<Arc<dyn platypus_core::Debugger>> {
+        if self.has_debugger() {
+            Ok(Arc::new(PgDebugger))
+        } else {
+            Err(platypus_core::unsupported("debugging routines"))
+        }
+    }
+
     async fn search_metadata(&self, needle: &str) -> Result<Vec<platypus_core::MetadataMatch>> {
         meta::search_metadata(self, needle).await
     }
@@ -525,6 +535,7 @@ impl Connection for PgConnection {
             bulk_load: !is_cockroach(self),
             server_parameters: self.has_server_admin(),
             server_metrics: self.has_server_admin(),
+            debugger: self.has_debugger(),
         }
     }
 
@@ -651,6 +662,13 @@ impl PgConnection {
     /// Whether the server lists its sessions and locks as PostgreSQL does: CockroachDB has
     /// no `pg_blocking_pids` nor `pg_terminate_backend`, YugabyteDB keeps its locks
     /// elsewhere.
+    /// Whether PL/pgSQL can be debugged here, where the server has pldebugger: not on the
+    /// databases that only speak the protocol, nor behind a pooler in transaction mode, where
+    /// the routine marked for debugging and the call could reach different server sessions.
+    fn has_debugger(&self) -> bool {
+        self.has_server_admin() && !self.unnamed_statements
+    }
+
     fn has_server_admin(&self) -> bool {
         !is_cockroach(self) && !is_yugabyte(self)
     }

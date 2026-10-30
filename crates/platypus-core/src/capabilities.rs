@@ -55,6 +55,10 @@ pub struct Capabilities {
     pub server_parameters: bool,
     /// [`Connection::server_metrics`](crate::Connection::server_metrics).
     pub server_metrics: bool,
+    /// [`Connection::debugger`](crate::Connection::debugger): routines can be debugged step
+    /// by step, where the server has the debugger (see
+    /// [`Debugger::availability`](crate::Debugger::availability)).
+    pub debugger: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.

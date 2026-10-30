@@ -477,6 +477,7 @@ impl Connection for MySqlConnection {
             bulk_load: self.local_infile,
             server_parameters: true,
             server_metrics: true,
+            debugger: false,
             ..Default::default()
         }
     }
