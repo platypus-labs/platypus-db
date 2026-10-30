@@ -7,10 +7,10 @@ import type { DriverKind, Schedule, ScheduleRepeat, ScheduleTask, ScheduleView, 
 export const backsUp = (driver: DriverKind) => driver === "postgres" || driver === "mysql";
 
 /** The tasks a connection's database can run: a backup with the database's own tools, or
- *  else as the SQL dump of a schema, which MongoDB and Redis have not. A saved transfer
- *  profile runs on any of them: it opens the connections it names. */
+ *  else as the SQL dump of a schema, which MongoDB, Redis and Elasticsearch have not. A saved
+ *  transfer profile runs on any of them: it opens the connections it names. */
 export function taskKinds(driver: DriverKind): ScheduleTask["kind"][] {
-  return driver === "mongo" || driver === "redis" ? ["script", "export", "profile"] : ["script", "export", "backup", "snapshot", "profile"];
+  return driver === "mongo" || driver === "redis" || driver === "elasticsearch" ? ["script", "export", "profile"] : ["script", "export", "backup", "snapshot", "profile"];
 }
 
 /** A task's own fields for `kind`, as a new one starts. */

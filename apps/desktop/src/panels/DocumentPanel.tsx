@@ -1,5 +1,5 @@
-// The document of the focused row of a MongoDB or Redis result, as a tree: the grid shows the
-// top-level fields, nested documents and arrays arrive as JSON text (db_type `document`,
+// The document of the focused row of a MongoDB, Redis or Elasticsearch result, as a tree: the
+// grid shows the top-level fields, nested documents and arrays arrive as JSON text (db_type `document`,
 // `array`, `mixed`, Redis's `json`) and unfold here.
 import { useEffect, useMemo, useState } from "react";
 import { api, type ColumnInfo, toCommandError } from "../api";
@@ -39,11 +39,20 @@ function cellValue(column: ColumnInfo, text: string | null): Json {
       }
     case "bool":
       return text === "true";
+    // Elasticsearch does not coerce `_source`: a value that is no boolean stays text.
+    case "boolean":
+      return text === "true" ? true : text === "false" ? false : text;
     case "int":
     case "long":
     case "double":
     case "integer":
     case "ttl":
+    case "short":
+    case "byte":
+    case "float":
+    case "half_float":
+    case "scaled_float":
+    case "unsigned_long":
       return jsonNumber(text) ?? text;
     default:
       return text;

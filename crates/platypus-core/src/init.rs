@@ -57,6 +57,11 @@ impl SessionInit {
                     }
                     out.push(format!("SELECT {n}"));
                 }
+                DriverKind::Elasticsearch => {
+                    return Err(Error::Config(
+                        "Elasticsearch has no default schema".to_owned(),
+                    ));
+                }
                 DriverKind::Oracle => out.push(format!(
                     "ALTER SESSION SET CURRENT_SCHEMA = {}",
                     quote(schema, '"')
@@ -98,7 +103,7 @@ impl SessionInit {
                         "SQL Server has no session time zone".to_owned(),
                     ));
                 }
-                DriverKind::Mongo | DriverKind::Redis => {
+                DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch => {
                     return Err(Error::Config(format!(
                         "{} has no session time zone",
                         driver.name()

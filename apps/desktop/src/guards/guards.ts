@@ -58,12 +58,12 @@ export interface CheckedStatement {
 
 export interface UnfilteredChange {
   sql: string;
-  /** What changes the table: `UPDATE`, `DELETE`, `TRUNCATE`, `deleteMany`, `updateMany`. */
+  /** What changes the table: `UPDATE`, `DELETE`, `TRUNCATE`, `deleteMany`, `updateMany`, Elasticsearch's `DELETE BY QUERY`. */
   verb: string;
   table: string;
   /** SQL Server's `TOP (n)`: up to that many rows, which the database picks. */
   limited: boolean;
-  /** MongoDB: the table is a collection of documents. */
+  /** MongoDB and Elasticsearch: the table is a collection of documents. */
   documents: boolean;
   /** About how many rows; `null` when unknown. */
   rows: number | null;
@@ -104,7 +104,7 @@ export async function check(
       const counted = id !== null && t.verb !== "DELETE HISTORY" && t.name !== "";
       const rows = counted ? await api.estimateRows(id, t.schema, t.name).catch(() => null) : null;
       const table = t.schema ? `${t.schema}.${t.name}` : t.name;
-      return { sql, verb: t.verb, table, limited: t.limited, documents: connection.driver === "mongo", rows };
+      return { sql, verb: t.verb, table, limited: t.limited, documents: connection.driver === "mongo" || connection.driver === "elasticsearch", rows };
     }),
   );
   return { connection, unfiltered, production, blocked: mode === "block" && unfiltered.length > 0 };

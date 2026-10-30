@@ -1,0 +1,29 @@
+[package]
+name = "platypus-driver-search"
+description = "Elasticsearch and OpenSearch driver for PlatypusDB, over HTTP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "platypus_driver_search"
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+platypus-core.workspace = true
+platypus-tls.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

@@ -184,6 +184,9 @@ fn sample_sql(driver: DriverKind, schema: &str, table: &str, rows: u64) -> Strin
     if driver == DriverKind::Redis {
         return format!("BROWSE {schema}.{table} LIMIT {rows}");
     }
+    if driver == DriverKind::Elasticsearch {
+        return platypus_driver_search::command::browse_limited(table, Some(rows));
+    }
     let dialect = Dialect::from(driver);
     let name = dialect.qualified(Some(schema), table);
     dialect.limited(&format!("SELECT * FROM {name}"), rows)
@@ -704,6 +707,8 @@ impl Agent {
             access::check_mongo(&args.sql, access, unfiltered, &saved.name)
         } else if saved.driver == DriverKind::Redis {
             access::check_redis(&args.sql, access, unfiltered, &saved.name)
+        } else if saved.driver == DriverKind::Elasticsearch {
+            access::check_search(&args.sql, access, unfiltered, &saved.name)
         } else {
             let dialect = Dialect::from(saved.driver);
             access::check(&args.sql, dialect, access, unfiltered, &saved.name)
@@ -804,7 +809,10 @@ impl Agent {
         let limits = Limits::new(None, args.max_bytes, args.timeout_seconds)?;
         let analyze = args.analyze.unwrap_or(false);
         let (store, saved) = self.find(&args.connection)?;
-        if matches!(saved.driver, DriverKind::Mongo | DriverKind::Redis) {
+        if matches!(
+            saved.driver,
+            DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+        ) {
             return Err(AgentError::Invalid(format!(
                 "explain works on SQL databases: {} has no query plans here",
                 saved.driver.name()

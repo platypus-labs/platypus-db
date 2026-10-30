@@ -134,7 +134,10 @@ export default async function (page, { dir }) {
   await page.waitFor(`${form} !== null`);
   await setField(page, `.schedule-form [data-field="kind"]`, "profile");
   await page.waitFor(`${form}.querySelector('[data-field="profile"]') !== null`, 10_000);
-  await fillAndSave(page, { name: "Direct" });
+  // The profiles load beside the form: choose one once they are there, so that the task
+  // does not keep the empty profile of a kind picked before they arrived.
+  await page.waitFor(`[...${form}.querySelector('[data-field="profile"]').options].some(o => o.textContent === ${JSON.stringify(PROFILE)})`, 10_000);
+  await fillAndSave(page, { name: "Direct", profile: "00000000-0000-4000-8000-0000000000d1" });
   await page.waitFor(`${row("Direct")} !== undefined`, 15_000);
   await runNow(page, "Direct");
   assert.match(await page.eval(last("Direct")), /^done/, await page.eval(`${row("Direct")}.querySelector('[data-field="last"] .admin-badge')?.title`));

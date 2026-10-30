@@ -362,6 +362,56 @@ fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Scrip
     Ok(Script { statements, undo })
 }
 
+/// The cells of a document or key-value edit: values as text, `None` for NULL.
+type Cells = Vec<(usize, Option<String>)>;
+
+/// The rows a command-based session (Redis, Elasticsearch) edits: loaded text and new values.
+struct RowEdits {
+    schema: arrow_schema::SchemaRef,
+    updates: Vec<(Vec<Option<String>>, Cells)>,
+    inserts: Vec<Cells>,
+    deletes: Vec<Vec<Option<String>>>,
+}
+
+impl RowEdits {
+    fn of(job: &Job, changes: &Changes) -> CommandResult<Self> {
+        let (schema, _) = job
+            .window(0, 0)
+            .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
+        let cells = |values: &[ColumnValue]| -> Cells {
+            values
+                .iter()
+                .map(|v| match &v.value {
+                    CellInput::Value { text } => (v.column, Some(text.clone())),
+                    CellInput::Null | CellInput::Default => (v.column, None),
+                })
+                .collect()
+        };
+        Ok(Self {
+            schema,
+            updates: changes
+                .updates
+                .iter()
+                .map(|u| Ok((row_text(job, u.row)?, cells(&u.values))))
+                .collect::<CommandResult<_>>()?,
+            inserts: changes.inserts.iter().map(|v| cells(v)).collect(),
+            deletes: changes
+                .deletes
+                .iter()
+                .map(|&row| row_text(job, row))
+                .collect::<CommandResult<_>>()?,
+        })
+    }
+
+    fn columns(&self) -> Vec<String> {
+        self.schema
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect()
+    }
+}
+
 /// The Redis commands for `changes` to a key type's virtual table (see
 /// [`platypus_driver_redis::edit`]), which the session runs as one `MULTI`/`EXEC`.
 fn redis_script(
@@ -373,46 +423,75 @@ fn redis_script(
     let kind = KeyType::from_table(&changes.table.name)
         .ok_or_else(|| CommandError::not_found("table", &changes.table.name))?;
     let db = meta::database(&changes.table.schema).map_err(|e| invalid(e.to_string()))?;
-    let (schema, _) = job
-        .window(0, 0)
-        .ok_or_else(|| CommandError::new("not_ready", "query has no result set yet"))?;
-    let columns: Vec<String> = schema.fields().iter().map(|f| f.name().clone()).collect();
-    let values = |values: &[ColumnValue]| -> Vec<(usize, Option<String>)> {
-        values
-            .iter()
-            .map(|v| match &v.value {
-                CellInput::Value { text } => (v.column, Some(text.clone())),
-                CellInput::Null | CellInput::Default => (v.column, None),
-            })
-            .collect()
-    };
+    let rows = RowEdits::of(job, changes)?;
     let edits = edit::Edits {
         db,
         kind,
-        columns: &columns,
-        updates: changes
+        columns: &rows.columns(),
+        updates: rows
             .updates
-            .iter()
-            .map(|u| {
-                Ok(edit::Update {
-                    loaded: row_text(job, u.row)?,
-                    set: values(&u.values),
-                })
-            })
-            .collect::<CommandResult<_>>()?,
-        inserts: changes.inserts.iter().map(|v| values(v)).collect(),
-        deletes: changes
-            .deletes
-            .iter()
-            .map(|&row| row_text(job, row))
-            .collect::<CommandResult<_>>()?,
+            .into_iter()
+            .map(|(loaded, set)| edit::Update { loaded, set })
+            .collect(),
+        inserts: rows.inserts,
+        deletes: rows.deletes,
     };
     edit::script(&edits).map_err(invalid)
 }
 
-/// Whether the result's session is a Redis one, whose edits are commands, not SQL.
-fn is_redis(state: &AppState, job: &Job) -> CommandResult<bool> {
-    Ok(state.session(job.session_id)?.config.driver == platypus_core::DriverKind::Redis)
+/// The requests for `changes` to the documents of an index (see
+/// [`platypus_driver_search::edit`]), which the session runs one by one.
+fn search_script(
+    job: &Job,
+    changes: &Changes,
+) -> CommandResult<platypus_driver_search::edit::Script> {
+    use platypus_driver_search::edit;
+    let rows = RowEdits::of(job, changes)?;
+    let types: Vec<String> = rows
+        .schema
+        .fields()
+        .iter()
+        .map(|f| {
+            f.metadata()
+                .get(platypus_core::META_DB_TYPE)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .collect();
+    let edits = edit::Edits {
+        index: &changes.table.name,
+        columns: &rows.columns(),
+        types: &types,
+        updates: rows
+            .updates
+            .into_iter()
+            .map(|(loaded, set)| edit::Update { loaded, set })
+            .collect(),
+        inserts: rows.inserts,
+        deletes: rows.deletes,
+    };
+    edit::script(&edits).map_err(|m| CommandError::new("invalid_value", m))
+}
+
+/// The commands that saving `changes` runs when the result's session is a Redis or an
+/// Elasticsearch one, whose edits are commands, not SQL, with the commands that undo them;
+/// `None` for the SQL drivers.
+fn command_script(
+    state: &AppState,
+    job: &Job,
+    changes: &Changes,
+) -> CommandResult<Option<(Vec<String>, Vec<String>)>> {
+    Ok(match state.session(job.session_id)?.config.driver {
+        platypus_core::DriverKind::Redis => {
+            let script = redis_script(job, changes)?;
+            Some((script.commands, script.undo))
+        }
+        platypus_core::DriverKind::Elasticsearch => {
+            let script = search_script(job, changes)?;
+            Some((script.commands, script.undo))
+        }
+        _ => None,
+    })
 }
 
 /// The SQL that saving `changes` would run.
@@ -423,8 +502,8 @@ pub fn preview_changes(
     changes: Changes,
 ) -> CommandResult<Vec<String>> {
     let job = state.job(job_id)?;
-    if is_redis(&state, &job)? {
-        return Ok(redis_script(&job, &changes)?.commands);
+    if let Some((commands, _)) = command_script(&state, &job, &changes)? {
+        return Ok(commands);
     }
     let script = script(&state, &job, &changes)?;
     Ok(script.statements.into_iter().map(|s| s.sql).collect())
@@ -448,8 +527,8 @@ pub async fn save_changes(
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
     state.editable(job.session_id)?;
-    if is_redis(&state, &job)? {
-        return save_redis(&state, &job, &changes).await;
+    if let Some((commands, undo)) = command_script(&state, &job, &changes)? {
+        return save_commands(&state, &job, &commands, &undo).await;
     }
     let script = script(&state, &job, &changes)?;
     // The driver's dialect brackets the statements: the generic ODBC driver translates no
@@ -472,19 +551,24 @@ pub async fn save_changes(
     })
 }
 
-/// [`save_changes`] on Redis: the commands in one `MULTI`/`EXEC` on the result's session.
-async fn save_redis(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Saved> {
-    let script = redis_script(job, changes)?;
+/// [`save_changes`] on Redis (one `MULTI`/`EXEC`) and Elasticsearch (one request after the
+/// other, up to the first the server refuses): the commands on the result's session.
+async fn save_commands(
+    state: &AppState,
+    job: &Job,
+    commands: &[String],
+    undo: &[String],
+) -> CommandResult<Saved> {
     let conn = state.live(job.session_id).await?;
     stop_jobs(state, job.session_id);
-    let commands: Vec<&str> = script.commands.iter().map(String::as_str).collect();
+    let commands: Vec<&str> = commands.iter().map(String::as_str).collect();
     let ran = conn.execute_all(&commands, &[]).await;
     if let Some(error) = ran.error {
         return Err(CommandError::from(&error).context(format!("Command {}", ran.rows.len() + 1)));
     }
     Ok(Saved {
         statements: commands.len(),
-        undo: script.undo.join("\n") + "\n",
+        undo: undo.join("\n") + "\n",
     })
 }
 

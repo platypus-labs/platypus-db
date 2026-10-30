@@ -41,6 +41,12 @@ impl ConnectionConfig {
             DriverKind::Mongo => return Some(self.mongo_url()),
             DriverKind::Redis if self.redis_tls() => "rediss",
             DriverKind::Redis => "redis",
+            DriverKind::Elasticsearch => match (self.es_tls(), self.is_opensearch()) {
+                (false, false) => "elasticsearch",
+                (true, false) => "elasticsearchs",
+                (false, true) => "opensearch",
+                (true, true) => "opensearchs",
+            },
             _ => return None,
         };
         if self.driver.is_embedded() {
@@ -56,7 +62,7 @@ impl ConnectionConfig {
         let mut params = Vec::new();
         // `rediss://` says TLS, verified unless told otherwise.
         let implied = match scheme {
-            "rediss" => SslMode::VerifyFull,
+            "rediss" | "elasticsearchs" | "opensearchs" => SslMode::VerifyFull,
             _ => Self::url_ssl_mode(self.driver),
         };
         if self.ssl_mode != implied {
@@ -90,6 +96,20 @@ impl ConnectionConfig {
     #[must_use]
     pub const fn redis_tls(&self) -> bool {
         !matches!(self.ssl_mode, SslMode::Disable | SslMode::Prefer)
+    }
+
+    /// Whether an Elasticsearch or `OpenSearch` connection goes over HTTPS: HTTP does not
+    /// negotiate it, so `prefer` is plaintext.
+    #[must_use]
+    pub const fn es_tls(&self) -> bool {
+        !matches!(self.ssl_mode, SslMode::Disable | SslMode::Prefer)
+    }
+
+    /// Whether the connection was made from an `opensearch://` URL.
+    fn is_opensearch(&self) -> bool {
+        self.options
+            .get(super::FLAVOR)
+            .is_some_and(|f| f == "opensearch")
     }
 
     /// `user@host:port`, the host in brackets when it is an IPv6 address, its zone's `%`
@@ -273,6 +293,24 @@ mod tests {
         assert_eq!(
             round_trip("redis://h/0?sslmode=require"),
             "rediss://h:6379/0?sslmode=require"
+        );
+    }
+
+    #[test]
+    fn search_urls_round_trip() {
+        assert_eq!(
+            round_trip("elasticsearch://u:p@h/logs-*"),
+            "elasticsearch://u@h:9200/logs-%2A"
+        );
+        assert_eq!(round_trip("opensearch://h:9201"), "opensearch://h:9201/");
+        assert_eq!(round_trip("elasticsearchs://h"), "elasticsearchs://h:9200/");
+        assert_eq!(
+            round_trip("opensearchs://h/?sslmode=require"),
+            "opensearchs://h:9200/?sslmode=require"
+        );
+        assert_eq!(
+            round_trip("elasticsearch://h/?sslmode=require"),
+            "elasticsearchs://h:9200/?sslmode=require"
         );
     }
 

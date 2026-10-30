@@ -2,7 +2,7 @@
 // database, tables to files.
 import { createElement } from "react";
 import { registerAction } from "../actions";
-import { api, isMongo, isNoSql, isRedis, keepsDataIn, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows, toCommandError } from "../api";
+import { api, isMongo, isNoSql, isRedis, isSearch, keepsDataIn, opensDataFile, type SavedConnection, type SchemaMeta, takesNoRows, toCommandError } from "../api";
 import { isRelation } from "../components/Navigator";
 import { omitsSchema, schemaRef } from "../sqlNames";
 import { answerFor } from "../testAnswers";
@@ -186,8 +186,8 @@ registerAction({
   title: "Generate data…",
   group: "manage",
   order: 74,
-  // Fake keys are not made: a Redis table is a key type.
-  when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver) && !takesNoRows(connection),
+  // Fake keys and documents are not made: a Redis table is a key type, an index holds documents.
+  when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver) && !isSearch(connection.driver) && !takesNoRows(connection),
   run: ({ connection, database, schema, object }) =>
     workbench().openDialog((close) =>
       createElement(GenerateDataDialog, {

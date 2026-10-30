@@ -77,6 +77,7 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   odbc: null,
   mongo: 27017,
   redis: 6379,
+  elasticsearch: 9200,
 };
 
 /** The database files of the embedded drivers: file picker filter and example path. */
@@ -300,7 +301,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
       current = false;
     };
   }, [urlMode, conn]);
-  const secret = t(adbcProfile?.secret ?? (libsql ? "Auth token" : "Password"));
+  const secret =
+    adbcProfile?.secret != null
+      ? t(adbcProfile.secret)
+      : t(libsql ? "Auth token" : conn.driver === "elasticsearch" ? "Password or API key" : "Password");
 
   // An empty password field keeps the stored one when editing.
   const passwordInput = (typed = password): PasswordInput =>
@@ -598,6 +602,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <option value="libsql">libSQL / Turso</option>
                     <option value="mongo">MongoDB</option>
                     <option value="redis">Redis</option>
+                    <option value="elasticsearch">Elasticsearch / OpenSearch</option>
                     <option value="snowflake">Snowflake</option>
                     <option value="bigquery">BigQuery</option>
                     <option value="databricks">Databricks</option>
@@ -765,9 +770,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                             conn.driver === "mongo" ||
                             conn.driver === "redis"
                             ? "Database (optional)"
-                            : conn.driver === "oracle"
-                              ? "Service name"
-                              : "Database",
+                            : conn.driver === "elasticsearch"
+                              ? "Index pattern (optional)"
+                              : conn.driver === "oracle"
+                                ? "Service name"
+                                : "Database",
                         )}
                       </span>
                       <input
@@ -780,7 +787,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                               ? "FREEPDB1"
                               : conn.driver === "redis"
                                 ? "0"
-                                : undefined
+                                : conn.driver === "elasticsearch"
+                                  ? "logs-*"
+                                  : undefined
                         }
                         title={
                           conn.driver === "mongo"
@@ -789,7 +798,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                               ? t("The service name; with an empty host, a net service name (tnsnames.ora) or a whole connect descriptor.")
                               : conn.driver === "redis"
                                 ? t("The database number, 0 when empty. TLS needs an SSL mode from require up, as rediss:// URLs do.")
-                                : undefined
+                                : conn.driver === "elasticsearch"
+                                  ? t("The indices the navigator lists, as a pattern (logs-*, or several separated by commas); all of them when empty. TLS needs an SSL mode from require up, as elasticsearchs:// URLs do.")
+                                  : undefined
                         }
                       />
                     </label>
@@ -797,7 +808,15 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   {!libsql && (
                     <label className="field">
                       <span>{t("User")}</span>
-                      <input value={conn.user} onChange={(e) => set("user", e.target.value)} />
+                      <input
+                        value={conn.user}
+                        onChange={(e) => set("user", e.target.value)}
+                        title={
+                          conn.driver === "elasticsearch"
+                            ? t("Leave empty to send the password as an API key.")
+                            : undefined
+                        }
+                      />
                     </label>
                   )}
                   {conn.driver === "oracle" && (

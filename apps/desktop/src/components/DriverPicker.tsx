@@ -4,6 +4,7 @@ import {
   siCockroachlabs,
   siDatabricks,
   siDuckdb,
+  siElasticsearch,
   siGooglebigquery,
   siGooglecloud,
   siMariadb,
@@ -69,6 +70,8 @@ const CHOICES: Choice[] = [
   },
   { driver: "mongo", label: "MongoDB", path: siMongodb.path, bg: DARK, fg: `#${siMongodb.hex}` },
   { driver: "redis", label: "Redis", path: siRedis.path, bg: `#${siRedis.hex}`, fg: "#fff" },
+  // OpenSearch speaks the same protocol: one driver, and the server says which it is.
+  { driver: "elasticsearch", label: "Elasticsearch / OpenSearch", path: siElasticsearch.path, bg: DARK, fg: `#${siElasticsearch.hex}` },
   // Through ADBC drivers, downloaded when a connection first needs one.
   // A cloud service: the account (or workspace) to type in place of `localhost`.
   { driver: "snowflake", label: "Snowflake", path: siSnowflake.path, bg: `#${siSnowflake.hex}`, fg: "#fff", preset: { host: "" } },

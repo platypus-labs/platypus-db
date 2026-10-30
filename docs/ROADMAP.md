@@ -90,6 +90,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 | Problema | Trovato |
 |---|---|
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
+| `SchedulesDialog`: aperto con "Schedule…" da un profilo, il form si apre prima che la lista dei profili arrivi e il task si salva con `profile_id` vuoto se l'utente non sceglie di nuovo il profilo (lo scenario `profiles-schedule-sqlite` lo aggira scegliendolo esplicitamente) | gruppo G, 2026-10-30 |
 | Diagramma ER, "Disposizione automatica" senza senso su uno schema vero (decine di tabelle, poche tabelle "hub" come utenti e studi riferite da tutte): `erd/layout.ts` mette le tabelle in colonne per profondità delle chiavi esterne e ordina ogni colonna una volta sola, senza ridurre gli incroci, senza raggruppare le tabelle collegate e con linee dritte che attraversano tutto. Rifarla: gruppi connessi separati (un blocco per insieme di tabelle collegate), layout a livelli vero (più passate su e giù col baricentro per ridurre gli incroci, hub al centro del loro gruppo), linee instradate che non passano sopra le tabelle; test unitari che contano gli incroci su schemi di esempio e scenario E2E con screenshot su uno schema di 50+ tabelle | utente, 2026-10-29 |
 | "Genera il DDL" su molte tabelle (`objects/actions.ts`, `object.generate_ddl`) ci mette molto e non mostra niente: chiama `objectDdl` una tabella alla volta e apre il tab solo alla fine, senza avanzamento ("12 di 80") né annullamento. Mostrare l'avanzamento con Annulla, aprire il tab subito e riempirlo man mano, e sul backend leggere il DDL di più oggetti con meno query (il dump in SQL di `platypus-transfer` scrive già il DDL di molti oggetti insieme); misurare prima e dopo su uno schema di centinaia di tabelle | utente, 2026-10-29 |
 
@@ -110,7 +111,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
-| G — Nuovi driver | 🔒 Delfa · group-g-search · 2026-10-29 |
+| G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ completato |
 | J — Amministrazione del server | ✅ fatto (P2) |
@@ -387,7 +388,7 @@ parallelizzabile: **una persona per driver**.
 **Stato: P1 e P2 completate, P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
 ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
 ODBC generico, Redis; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo
-uso. Da fare: aggiornamento automatico dei driver, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
+uso, Elasticsearch/OpenSearch. Da fare: aggiornamento automatico dei driver, Cassandra/ScyllaDB). Elasticsearch/OpenSearch (`platypus-driver-search`, un solo driver: il server dice quale è): richieste nella forma della console di Kibana e SQL (`_sql`, `_plugins/_sql`) con colonne tipizzate e cursore, ricerche lette a pagine (point in time e `search_after`, scroll su OpenSearch) con colonne fisse e `_other` per i campi non mappati, indici come tabelle e alias/data stream come viste, modifica in griglia con anteprima e script di annullamento, conferma per `_delete_by_query`/`_update_by_query` senza filtro e `DELETE /_all`, sola lettura, MCP, Cancel sul server, login Basic o chiave API. Provato su Elasticsearch 8.15 e OpenSearch 2.17 (profilo `search` di `docker/compose.yml`, conformance e scenari E2E `search-*`), non su Elasticsearch 7.x. SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -472,7 +473,7 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
 | ✅ **Redis** | P2 | Il NoSQL più richiesto: chiavi per tipo (string, hash, list, set, zset, JSON) come tabelle virtuali, comandi nell'editor, modifica dei valori; stesso schema di MongoDB (griglia + albero) |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
-| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
+| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero). **Elasticsearch/OpenSearch fatto** (provato su 8.15 e 2.17, non su 7.x); resta Cassandra/ScyllaDB (CQL), per cui la riga resta aperta |
 
 ---
 

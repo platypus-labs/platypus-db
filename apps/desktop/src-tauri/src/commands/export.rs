@@ -7,11 +7,11 @@ use std::collections::HashSet;
 
 use platypus_core::ConnectionConfig;
 use platypus_transfer::ExportOptions;
-use platypus_transfer::import::select_all;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::Channel;
 
+use super::transfer::read_all;
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
 use crate::export::{Export, ExportEvent};
@@ -149,7 +149,7 @@ pub(crate) fn start_tables(
     let files = tables
         .into_iter()
         .map(|t| {
-            let sql = select_all(driver, (t.schema.as_deref(), &t.name), None);
+            let sql = read_all(driver, (t.schema.as_deref(), &t.name), None);
             let path = dir.join(format!(
                 "{}.{}{}",
                 unique_name(file_name(&t.name), &mut taken),
