@@ -113,7 +113,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | G — Nuovi driver | ✅ completato |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ completato |
-| J — Amministrazione del server | 🔒 Delfa · group-j-admin-p3 · 2026-10-30 |
+| J — Amministrazione del server | ✅ fatto (P2; P3 in parte) |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ completato |
