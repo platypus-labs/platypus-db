@@ -696,6 +696,9 @@ through the MCP server.
 - **Shared projects**: *Share project…* writes a project's connections (without credentials)
   and scripts to a folder a team keeps in Git or on a shared drive; *Open shared project…*
   follows it, and each person enters their own password.
+  SQL a teammate sets to run at every connect (a connection's init statements) is shown
+  first and runs only after you approve that exact text on your machine; if the file changes it,
+  you are asked again, and you can always connect without it. Your own init statements never ask.
 - **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
   and the navigator, or a driver for a database reached over HTTP; each asks for its
   permissions at install. See [PLUGINS.md](PLUGINS.md).
