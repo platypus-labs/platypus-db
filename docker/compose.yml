@@ -393,3 +393,45 @@ services:
       timeout: 10s
       retries: 60
       start_period: 10s
+
+  # Elasticsearch 8 with security on, plain HTTP, not started by default (the JVM takes
+  # memory): `docker compose --profile search up -d --wait elasticsearch`. Test-only login:
+  # `elastic` / `platypus`. The heap is capped at 512 MB.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    profiles: [search]
+    environment:
+      discovery.type: single-node
+      ELASTIC_PASSWORD: platypus
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.ml.enabled: "false"
+      xpack.watcher.enabled: "false"
+      ingest.geoip.downloader.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "59200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -u elastic:platypus localhost:9200/_cluster/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # OpenSearch 2 without its security plugin (plain HTTP, no login), same profile.
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    profiles: [search]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "59201:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf localhost:9200/_cluster/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s

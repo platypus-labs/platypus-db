@@ -172,6 +172,11 @@ fn config_of(
             .into_iter()
             .map(|r| script[r].to_owned())
             .collect()
+    } else if saved.driver == DriverKind::Elasticsearch {
+        platypus_driver_search::command::split(script)
+            .into_iter()
+            .map(|r| script[r].to_owned())
+            .collect()
     } else {
         platypus_sql::split(script, Dialect::from(saved.driver))
             .iter()

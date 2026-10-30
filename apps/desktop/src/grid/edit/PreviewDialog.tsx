@@ -5,22 +5,31 @@ interface Props {
   busy: boolean;
   /** Saving changes a production database: said in the dialog. */
   production?: boolean;
-  /** Redis commands, sent as one MULTI/EXEC, rather than SQL statements. */
-  commands?: boolean;
+  /** Commands rather than SQL statements: Redis's, sent as one MULTI/EXEC, or Elasticsearch's
+   *  requests, sent one after the other. */
+  commands?: "multi" | "requests";
   onSave: () => void;
   onClose: () => void;
 }
 
 /** The statements that saving would run, before they run. */
-export function PreviewDialog({ statements, busy, production = false, commands = false, onSave, onClose }: Props) {
-  const script = statements.map((s) => (commands ? s : `${s};`)).join("\n");
+export function PreviewDialog({ statements, busy, production = false, commands, onSave, onClose }: Props) {
+  // A request may have a body: a blank line ends it.
+  const script =
+    commands === "requests" ? statements.join("\n\n") : statements.map((s) => (commands ? s : `${s};`)).join("\n");
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t("Changes to save")}</h2>
         {production && <div className="notice warn small">{t("This is a production connection: check the SQL before saving.")}</div>}
         <p className="muted small">
-          {commands
+          {commands === "requests"
+            ? plural(
+                statements.length,
+                "{n} request runs on the server: a request the server refuses stops the rest, and the ones before it stay.",
+                "{n} requests run one after the other: a request the server refuses stops the rest, and the ones before it stay.",
+              )
+            : commands
             ? plural(
                 statements.length,
                 "{n} command runs in one MULTI/EXEC: a command the server refuses does not undo the others.",

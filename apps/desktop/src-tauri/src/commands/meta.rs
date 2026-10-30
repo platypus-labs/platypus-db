@@ -145,6 +145,19 @@ pub async fn estimate_rows(
         return Ok(None);
     }
     let conn = state.live(session_id).await?;
+    // An index is counted by the server: `GET /<index>/_count`.
+    if driver == DriverKind::Elasticsearch {
+        let request = format!(
+            "GET /{}/_count",
+            platypus_driver_search::meta::segment(&table)
+        );
+        let rows = platypus_core::query_text(conn.as_ref(), &request).await?;
+        return Ok(rows
+            .into_iter()
+            .next()
+            .and_then(|r| r.into_iter().next().flatten())
+            .and_then(|n| n.parse().ok()));
+    }
     if driver != DriverKind::Mongo {
         return Ok(Dialect::from(driver)
             .estimate_rows(conn.as_ref(), schema.as_deref(), &table)

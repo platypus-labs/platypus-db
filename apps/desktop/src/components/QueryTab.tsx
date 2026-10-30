@@ -20,6 +20,7 @@ import {
   isMongo,
   isNoSql,
   isRedis,
+  isSearch,
   keepsDataIn,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
@@ -1502,7 +1503,8 @@ export function QueryTab({
    * editor that reads one table. Results of scripts stay read-only.
    */
   function editTarget(result: Result): TableEditTarget | null {
-    // The data editor writes SQL, or Redis commands: MongoDB results stay read-only.
+    // The data editor writes SQL, Redis commands or Elasticsearch requests: MongoDB results
+    // stay read-only.
     if (isMongo(connection.driver)) return null;
     const ref = tab.tableRef;
     const viewer = !!tab.table && !!ref && viewerOwn.has(result.sql);
@@ -1620,8 +1622,9 @@ export function QueryTab({
   const toolbar = useToolbar();
   // ClickHouse, MongoDB and Redis have no transactions (`capabilities.transactions` is false):
   // no commit mode.
-  // The data viewer's bar, with its row count: not on Redis, whose rows are read as shown.
-  const viewerBar = !!tab.table && !isRedis(connection.driver);
+  // The data viewer's bar, with its row count: not on Redis and Elasticsearch, whose rows are
+  // read as shown.
+  const viewerBar = !!tab.table && !isRedis(connection.driver) && !isSearch(connection.driver);
   const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isNoSql(connection.driver);
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = view?.status.kind === "rows" && view.columns ? view : null;

@@ -88,6 +88,9 @@ export function quoteIdent(name: string, driver: DriverKind): string {
   if (driver === "mongo") return /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
   // Redis names databases `db0` and key types `hash`: nothing to quote.
   if (driver === "redis") return name;
+  // An index name is a path segment of the request: Elasticsearch allows no characters that
+  // need quoting there.
+  if (driver === "elasticsearch") return name;
   const upper = name.toUpperCase();
   const reserved = RESERVED.has(upper);
   if (driver === "sqlserver") {

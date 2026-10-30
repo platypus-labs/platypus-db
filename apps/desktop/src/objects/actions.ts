@@ -8,6 +8,7 @@ import {
   type DriverKind,
   type GenerateRequest,
   isRedis,
+  isSearch,
   type GenerateTarget,
   type ObjectKind,
 } from "../api";
@@ -25,7 +26,7 @@ import { t, msg } from "../i18n";
 type ObjectArg = ActionScopes["navigator.object"];
 
 const support = new Map<DriverKind, DialectSupport>();
-for (const driver of ["postgres", "mysql", "sqlite", "duckdb", "sqlserver", "clickhouse", "libsql", "mongo", "redis"] as const) {
+for (const driver of ["postgres", "mysql", "sqlite", "duckdb", "sqlserver", "clickhouse", "libsql", "mongo", "redis", "elasticsearch"] as const) {
   api.dialectSupport(driver).then((s) => support.set(driver, s), console.warn);
 }
 
@@ -86,10 +87,12 @@ for (const { id, title, statement, order } of DML) {
     title,
     group: "generate",
     order,
-    // Writes go to tables; views get SELECT only, as Redis's key types (their keys change in
-    // the grid or with commands).
+    // Writes go to tables; views get SELECT only, as Redis's key types and the indices of
+    // Elasticsearch (their keys and documents change in the grid or with commands).
     when: ({ connection, object }) =>
-      statement === "select" ? isRelation(object.kind) : isTable(object.kind) && !isRedis(connection.driver),
+      statement === "select"
+        ? isRelation(object.kind)
+        : isTable(object.kind) && !isRedis(connection.driver) && !isSearch(connection.driver),
     run: (arg) =>
       generate(
         arg,
@@ -213,7 +216,7 @@ registerAction({
   title: "Truncate…",
   group: "manage",
   order: 85,
-  when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver),
+  when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver) && !isSearch(connection.driver),
   run: (arg) =>
     confirmStatement(
       arg,
