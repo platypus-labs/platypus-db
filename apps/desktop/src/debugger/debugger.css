@@ -1,0 +1,236 @@
+/* The routine debugger: its dialog of arguments and its tab. */
+
+.debug-dialog {
+  width: min(560px, 92vw);
+}
+
+.debug-arguments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.debug-argument {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 2fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug-argument-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-argument.wrong select {
+  border-color: var(--error);
+}
+
+.debug-toolbar {
+  display: flex;
+  gap: 6px;
+}
+
+.debug-toolbar .debug-stop:not(:disabled) {
+  color: var(--error);
+}
+
+/* Paused, running, or how the call ended: a dot and a word, as the admin tab's badges. */
+.debug-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+}
+
+.debug-status.stopped {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.debug-status.running,
+.debug-status.done {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.debug-status.failed {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.debug-status.stopped .admin-dot {
+  background: var(--warn);
+}
+
+.debug-status.running .admin-dot,
+.debug-status.done .admin-dot {
+  background: var(--ok);
+}
+
+.debug-status.failed .admin-dot {
+  background: var(--error);
+}
+
+.debug-error {
+  margin: 8px 14px 0;
+}
+
+/* The source beside the stack and the variables. */
+.debug-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.debug-source-pane {
+  flex: 2;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-source {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.debug-source .cm-editor {
+  height: 100%;
+}
+
+.debug-source .debug-current-line {
+  background: var(--warn-bg);
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.debug-breakpoints .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+}
+
+.debug-source.editable .debug-breakpoints .cm-gutterElement {
+  cursor: pointer;
+}
+
+.debug-breakpoint-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--error);
+}
+
+.debug-side {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+}
+
+.debug-frames {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.debug-frame {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  text-align: left;
+  border: 1px solid transparent;
+  background: none;
+  padding: 4px 6px;
+}
+
+.debug-frame.selected {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.debug-frame-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.debug-frame-args {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-variables {
+  font-size: 12px;
+  width: 100%;
+}
+
+.debug-variables tr.argument td:first-child {
+  font-style: italic;
+}
+
+.debug-value {
+  font-family: var(--font-mono);
+}
+
+.debug-value-text {
+  font-family: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.debug-value input {
+  width: 100%;
+  min-width: 80px;
+  font-family: var(--font-mono);
+}
+
+/* What the call returned, under the source once it ended. */
+.debug-outcome {
+  max-height: 40%;
+  overflow: auto;
+  padding: 0 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.debug-result-rows {
+  font-size: 12px;
+}
+
+.debug-messages {
+  margin: 0;
+}

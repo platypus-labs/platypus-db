@@ -196,6 +196,19 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("table statistics"))
     }
 
+    /// The configuration parameters of the server, by name, with their defaults where the
+    /// server tells them. Optional: see [`Capabilities::server_parameters`].
+    async fn server_parameters(&self) -> Result<Vec<crate::ServerParameter>> {
+        Err(unsupported("server parameters"))
+    }
+
+    /// A snapshot of the server's load: connections, counters, sizes and replication. What
+    /// the server does not tell, or the session may not read, is missing in it with the
+    /// reason. Optional: see [`Capabilities::server_metrics`].
+    async fn server_metrics(&self) -> Result<crate::ServerMetrics> {
+        Err(unsupported("server metrics"))
+    }
+
     /// Runs `operation` on table `schema.table`; returns what the server said of it, a line
     /// each. Optional: see [`Capabilities::maintenance`].
     async fn maintain(
@@ -206,6 +219,30 @@ pub trait Connection: Send + Sync + fmt::Debug {
     ) -> Result<Vec<String>> {
         let _ = (schema, table, operation);
         Err(unsupported("table maintenance"))
+    }
+
+    /// The users and roles of the server, sorted by name, with the roles each belongs to.
+    /// Optional: see [`Capabilities::security`].
+    async fn principals(&self) -> Result<Vec<crate::Principal>> {
+        Err(unsupported("users and roles"))
+    }
+
+    /// The privileges given to the user or role `name` (with `host`, for a MySQL account)
+    /// itself: not those it has through the roles it belongs to. Optional: see
+    /// [`Capabilities::security`].
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        host: Option<&str>,
+    ) -> Result<Vec<crate::PrivilegeGrant>> {
+        let _ = (name, host);
+        Err(unsupported("privileges"))
+    }
+
+    /// The debugger of the database's routines, which runs a call on sessions of its own.
+    /// Optional: see [`Capabilities::debugger`].
+    fn debugger(&self) -> Result<Arc<dyn crate::Debugger>> {
+        Err(unsupported("debugging routines"))
     }
 
     /// Objects of the user schemas whose name, column names or source contain `needle`,

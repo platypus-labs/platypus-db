@@ -13,5 +13,6 @@
 @import "../catalog/catalog.css";
 @import "../analysis/analysis.css";
 @import "../admin/admin.css";
+@import "../debugger/debugger.css";
 @import "../notebook/notebook.css";
 @import "../dashboard/dashboard.css";

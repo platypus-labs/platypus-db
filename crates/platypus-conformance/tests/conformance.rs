@@ -2265,6 +2265,21 @@ async fn server_capabilities_match(
         b.name
     );
 
+    let principals = conn.principals().await;
+    assert_eq!(
+        matches!(principals, Err(Error::Unsupported(_))),
+        !caps.security,
+        "{}: principals vs capabilities.security: {principals:?}",
+        b.name
+    );
+    let privileges = conn.principal_privileges("conf_no_such_user", None).await;
+    assert_eq!(
+        matches!(privileges, Err(Error::Unsupported(_))),
+        !caps.security,
+        "{}: principal_privileges vs capabilities.security: {privileges:?}",
+        b.name
+    );
+
     let queries = conn.top_queries().await;
     assert_eq!(
         matches!(queries, Err(Error::Unsupported(_))),
@@ -2277,6 +2292,28 @@ async fn server_capabilities_match(
         matches!(statistics, Err(Error::Unsupported(_))),
         !caps.server_statistics,
         "{}: object_statistics vs capabilities.server_statistics: {statistics:?}",
+        b.name
+    );
+    let parameters = conn.server_parameters().await;
+    assert_eq!(
+        matches!(parameters, Err(Error::Unsupported(_))),
+        !caps.server_parameters,
+        "{}: server_parameters vs capabilities.server_parameters: {:?}",
+        b.name,
+        parameters.as_ref().map(Vec::len)
+    );
+    let metrics = conn.server_metrics().await;
+    assert_eq!(
+        matches!(metrics, Err(Error::Unsupported(_))),
+        !caps.server_metrics,
+        "{}: server_metrics vs capabilities.server_metrics: {metrics:?}",
+        b.name
+    );
+    let debugger = conn.debugger();
+    assert_eq!(
+        matches!(debugger, Err(Error::Unsupported(_))),
+        !caps.debugger,
+        "{}: debugger vs capabilities.debugger: {debugger:?}",
         b.name
     );
     // No such table: a supported operation fails, but not as unsupported.
@@ -2426,6 +2463,244 @@ async fn lists_and_ends_server_sessions() {
     }
 }
 
+/// Every parameter has a name once, the listing has the well-known ones with the values the
+/// server documents, and a change made in the session shows as differing from the default
+/// where the server tells defaults.
+#[tokio::test]
+async fn reads_server_parameters() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        if !conn.capabilities().server_parameters {
+            continue;
+        }
+        let list = conn
+            .server_parameters()
+            .await
+            .unwrap_or_else(|e| panic!("{}: server_parameters: {e}", b.name));
+        assert!(
+            list.len() >= 10,
+            "{}: only {} parameters",
+            b.name,
+            list.len()
+        );
+        assert!(list.iter().all(|p| !p.name.is_empty()), "{}", b.name);
+        // Listed once, by name (ClickHouse has a setting of the server and of the session
+        // by the same name), as the tab shows them.
+        let mut keys: Vec<(&str, Option<&str>)> = list
+            .iter()
+            .map(|p| (p.name.as_str(), p.source.as_deref()))
+            .collect();
+        assert!(
+            keys.windows(2).all(|w| w[0] <= w[1]),
+            "{}: not sorted",
+            b.name
+        );
+        keys.dedup();
+        assert_eq!(
+            keys.len(),
+            list.len(),
+            "{}: a parameter is listed twice",
+            b.name
+        );
+
+        let (known, default) = known_parameter(b.name);
+        let parameter = list
+            .iter()
+            .find(|p| p.name == known)
+            .unwrap_or_else(|| panic!("{}: no parameter {known}", b.name));
+        assert!(
+            parameter.value.is_some(),
+            "{}: {known} has no value",
+            b.name
+        );
+        if let Some(default) = default {
+            assert_eq!(parameter.default.as_deref(), Some(default), "{}", b.name);
+        }
+        assert!(
+            parameter
+                .statement
+                .as_deref()
+                .is_some_and(|s| s.contains(known)),
+            "{}: {known}: {:?}",
+            b.name,
+            parameter.statement
+        );
+        changed_in_session(&b, &*conn).await;
+    }
+}
+
+/// The parameter each database has, and its default where the database documents one.
+fn known_parameter(backend: &str) -> (&'static str, Option<&'static str>) {
+    match backend {
+        "sqlite" | "libsql" => ("page_size", Some("4096")),
+        "duckdb" => ("threads", None),
+        "clickhouse" => ("max_threads", None),
+        "sqlserver" => ("cost threshold for parallelism", Some("5")),
+        "mariadb" => ("max_connections", Some("151")),
+        "mysql" => ("max_connections", None),
+        _ => ("max_connections", Some("100")),
+    }
+}
+
+/// Sets something in the session that is not the default and reads it back as changed; the
+/// statement the tab would offer for it runs. Servers that tell no default or are set by
+/// the configuration alone (MySQL, SQL Server) are left out.
+async fn changed_in_session(b: &Backend, conn: &dyn Connection) {
+    let (set, name) = match b.name {
+        "postgres" => ("SET work_mem = '8MB'", "work_mem"),
+        "duckdb" => (
+            "SET default_null_order = 'nulls_first'",
+            "default_null_order",
+        ),
+        "sqlite" => ("PRAGMA cache_size = 1234", "cache_size"),
+        _ => return,
+    };
+    run(conn, set)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {set}: {e}", b.name));
+    let list = conn.server_parameters().await.unwrap();
+    let parameter = list.iter().find(|p| p.name == name).unwrap();
+    assert!(
+        parameter.changed,
+        "{}: {name} is not changed: {parameter:?}",
+        b.name
+    );
+    assert_ne!(parameter.value, parameter.default, "{}", b.name);
+    // A statement for a changed parameter runs, as long as it only reaches the session.
+    if matches!(b.name, "duckdb" | "sqlite") {
+        let statement = parameter.statement.clone().unwrap();
+        run(conn, &statement)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {statement}: {e}", b.name));
+    }
+}
+
+/// A metric holds a value or a reason, never both and never neither.
+fn assert_metric(backend: &str, what: &str, metric: &platypus_core::Metric) {
+    assert_ne!(
+        metric.value.is_some(),
+        metric.unavailable.is_some(),
+        "{backend}: {what}: {metric:?}"
+    );
+}
+
+/// The load snapshot has its gauges and counters where the server keeps them, the counters
+/// do not go back between two snapshots, and what is missing says why.
+#[tokio::test]
+async fn reads_server_metrics() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        if !conn.capabilities().server_metrics {
+            continue;
+        }
+        let first = conn
+            .server_metrics()
+            .await
+            .unwrap_or_else(|e| panic!("{}: server_metrics: {e}", b.name));
+        for (what, metric) in [
+            ("connections_active", &first.connections_active),
+            ("connections_idle", &first.connections_idle),
+            ("connections_max", &first.connections_max),
+            ("uptime_seconds", &first.uptime_seconds),
+            ("transactions", &first.transactions),
+            ("statements", &first.statements),
+            ("cache_hits", &first.cache_hits),
+            ("cache_reads", &first.cache_reads),
+        ] {
+            assert_metric(b.name, what, metric);
+        }
+        assert!(
+            first.uptime_seconds.value.is_some_and(|s| s > 0.0),
+            "{}: {:?}",
+            b.name,
+            first.uptime_seconds
+        );
+        assert!(
+            first.connections_active.value.is_some(),
+            "{}: {:?}",
+            b.name,
+            first.connections_active
+        );
+        assert!(
+            !first.databases.is_empty(),
+            "{}: {:?}",
+            b.name,
+            first.databases_unavailable
+        );
+        assert!(first.databases.windows(2).all(|w| w[0].bytes >= w[1].bytes));
+        // A server with replication unreadable says why; one without has none to list.
+        assert!(
+            first.replication.is_empty() || first.replication_unavailable.is_none(),
+            "{}",
+            b.name
+        );
+        expect_counters(&b, &first);
+
+        // Work between the two snapshots only adds to the counters.
+        let table = format!("{}.conf_metrics", b.schema);
+        run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap();
+        for i in 0..5 {
+            run(&*conn, &format!("INSERT INTO {table} VALUES ({i})"))
+                .await
+                .unwrap();
+            collect(&b, &*conn, &format!("SELECT id FROM {table}")).await;
+        }
+        let second = conn.server_metrics().await.unwrap();
+        for (what, before, after) in [
+            ("transactions", &first.transactions, &second.transactions),
+            ("statements", &first.statements, &second.statements),
+            ("cache_hits", &first.cache_hits, &second.cache_hits),
+        ] {
+            if let (Some(x), Some(y)) = (before.value, after.value) {
+                assert!(y >= x, "{}: {what} went back: {x} -> {y}", b.name);
+            }
+        }
+        // The statements run are counted by the servers that count them.
+        if let (Some(x), Some(y)) = (first.statements.value, second.statements.value) {
+            assert!(y >= x + 5.0, "{}: statements {x} -> {y}", b.name);
+        }
+        run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+    }
+}
+
+/// The counters each server keeps are in the snapshot.
+fn expect_counters(b: &Backend, metrics: &platypus_core::ServerMetrics) {
+    let (transactions, statements, cache) = match b.name {
+        "postgres" => (true, false, true),
+        "mysql" | "mariadb" => (true, true, true),
+        "sqlserver" => (true, true, false),
+        "clickhouse" => (false, true, true),
+        _ => return,
+    };
+    for (what, expected, metric) in [
+        ("transactions", transactions, &metrics.transactions),
+        ("statements", statements, &metrics.statements),
+        ("cache_hits", cache, &metrics.cache_hits),
+        ("cache_reads", cache, &metrics.cache_reads),
+    ] {
+        assert_eq!(
+            metric.value.is_some(),
+            expected,
+            "{}: {what}: {metric:?}",
+            b.name
+        );
+    }
+    if b.name == "postgres" {
+        assert!(metrics.connections_max.value.is_some_and(|m| m > 0.0));
+    }
+}
+
 /// The statistics list a new table and its indexes, each maintenance operation of the
 /// database runs on it, and the costliest statements are read where the server keeps them
 /// (`pg_stat_statements`, `performance_schema`, the plan cache).
@@ -2532,6 +2807,388 @@ async fn reads_server_statistics_and_maintains_tables() {
             ),
         }
         run(&*conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
+/// A connection that may create users: the demo user of the MySQL containers may not, so
+/// they take `root` (`PLATYPUS_TEST_MYSQL_ADMIN_URL`, `PLATYPUS_TEST_MARIADB_ADMIN_URL`).
+async fn security_connection(b: &Backend) -> Option<Box<dyn Connection>> {
+    let (env, default) = match b.name {
+        "mysql" => (
+            "PLATYPUS_TEST_MYSQL_ADMIN_URL",
+            "mysql://root:platypus@localhost:53306/platypus",
+        ),
+        "mariadb" => (
+            "PLATYPUS_TEST_MARIADB_ADMIN_URL",
+            "mysql://root:platypus@localhost:53307/platypus",
+        ),
+        _ => return Some(b.connect().await),
+    };
+    let config = server_config(env, default, b.name).await?;
+    Some(driver(config.driver).connect(&config).await.unwrap())
+}
+
+/// Runs the statements `change` makes in `dialect`, as the app would.
+async fn change_security(
+    b: &Backend,
+    conn: &dyn Connection,
+    change: &platypus_core::SecurityChange,
+) {
+    let dialect = platypus_sql::Dialect::from(b.config.driver);
+    let statements = platypus_sql::security::statements(dialect, change, false)
+        .unwrap_or_else(|e| panic!("{}: {change:?}: {e}", b.name));
+    for sql in statements {
+        run(conn, &sql)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {sql}: {e}", b.name));
+    }
+}
+
+/// A user of the test has host `%` on MySQL and MariaDB; a role has none.
+fn grantee(b: &Backend, name: &str) -> platypus_core::Grantee {
+    platypus_core::Grantee {
+        name: name.to_owned(),
+        host: (b.config.driver == DriverKind::MySql && !name.ends_with("_role"))
+            .then(|| "%".to_owned()),
+    }
+}
+
+async fn find_principal(conn: &dyn Connection, name: &str) -> Option<platypus_core::Principal> {
+    conn.principals()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|p| p.name == name)
+}
+
+/// What `privileges` hold on the test table.
+fn on_table<'a>(
+    privileges: &'a [platypus_core::PrivilegeGrant],
+    b: &Backend,
+) -> Vec<&'a platypus_core::PrivilegeGrant> {
+    privileges
+        .iter()
+        .filter(|g| {
+            g.kind == platypus_core::GrantKind::Table
+                && g.object.as_deref() == Some("conf_sec")
+                && g.schema
+                    .as_deref()
+                    .is_some_and(|s| s.eq_ignore_ascii_case(&b.schema))
+        })
+        .collect()
+}
+
+/// Drops a user or a role, and what a drop needs to say for the database: PostgreSQL's
+/// objects it owns, SQL Server's login. The error of the first statement that fails.
+async fn drop_security(
+    b: &Backend,
+    conn: &dyn Connection,
+    name: &str,
+    kind: platypus_core::PrincipalKind,
+    host: Option<&str>,
+) -> Result<(), Error> {
+    let change = platypus_core::SecurityChange::Drop {
+        name: name.to_owned(),
+        host: host.map(str::to_owned),
+        kind,
+        options: platypus_core::DropOptions {
+            drop_owned: b.config.driver == DriverKind::Postgres,
+            drop_login: b.config.driver == DriverKind::SqlServer,
+            login: (b.config.driver == DriverKind::SqlServer).then(|| name.to_owned()),
+            ..platypus_core::DropOptions::default()
+        },
+    };
+    let dialect = platypus_sql::Dialect::from(b.config.driver);
+    for sql in platypus_sql::security::statements(dialect, &change, false).unwrap() {
+        run(conn, &sql).await?;
+    }
+    Ok(())
+}
+
+/// Changes what the database lets a user have changed, and reads it back: PostgreSQL's
+/// connection limit, ClickHouse's expiry, the lock of the others.
+async fn change_an_attribute(b: &Backend, conn: &dyn Connection, user: &str, host: Option<&str>) {
+    use platypus_core::{PrincipalFlag, PrincipalKind, PrincipalSpec, SecurityChange};
+    let mut alter = PrincipalSpec {
+        name: user.to_owned(),
+        host: host.map(str::to_owned),
+        kind: PrincipalKind::User,
+        ..PrincipalSpec::default()
+    };
+    match b.config.driver {
+        DriverKind::Postgres => alter.connection_limit = Some(3),
+        DriverKind::ClickHouse => alter.valid_until = Some("2035-01-01 00:00:00".to_owned()),
+        _ => alter.flags_on = vec![PrincipalFlag::Locked],
+    }
+    alter.login = (b.config.driver == DriverKind::SqlServer).then(|| user.to_owned());
+    change_security(b, conn, &SecurityChange::Alter { spec: alter }).await;
+    let changed = find_principal(conn, user).await.unwrap();
+    match b.config.driver {
+        DriverKind::Postgres => assert_eq!(changed.connection_limit, Some(3), "{}", b.name),
+        DriverKind::ClickHouse => assert!(
+            changed
+                .valid_until
+                .as_deref()
+                .is_some_and(|v| v.starts_with("2035")),
+            "{}: {changed:?}",
+            b.name
+        ),
+        _ => assert!(
+            changed.has(PrincipalFlag::Locked),
+            "{}: {changed:?}",
+            b.name
+        ),
+    }
+}
+
+/// Grants SELECT with the grant option to a role and two privileges to a user, reads them
+/// back, and revokes them.
+async fn grant_and_revoke(
+    b: &Backend,
+    admin: &dyn Connection,
+    user: &str,
+    host: Option<&str>,
+    role: &str,
+    role_host: Option<&str>,
+) {
+    use platypus_core::{GrantAction, GrantTarget, SecurityChange};
+    // Grant on the table: SELECT with the grant option to the role, INSERT to the user.
+    let target = GrantTarget::Table {
+        schema: b.schema.clone(),
+        name: "conf_sec".to_owned(),
+    };
+    let privilege = |action, who: &str, names: &[&str], option| SecurityChange::Privileges {
+        action,
+        grantees: vec![grantee(b, who)],
+        target: target.clone(),
+        privileges: names.iter().map(|n| (*n).to_owned()).collect(),
+        grant_option: option,
+        // SQL Server refuses to revoke what can be passed on without it.
+        cascade: action == GrantAction::Revoke,
+    };
+    change_security(
+        b,
+        admin,
+        &privilege(GrantAction::Grant, role, &["SELECT"], true),
+    )
+    .await;
+    change_security(
+        b,
+        admin,
+        &privilege(GrantAction::Grant, user, &["INSERT", "SELECT"], false),
+    )
+    .await;
+    let given = admin.principal_privileges(role, role_host).await.unwrap();
+    let ours = on_table(&given, b);
+    assert_eq!(ours.len(), 1, "{}: {given:?}", b.name);
+    assert_eq!(ours[0].privilege.to_uppercase(), "SELECT", "{}", b.name);
+    assert!(ours[0].grantable, "{}: grant option: {given:?}", b.name);
+    let given = admin.principal_privileges(user, host).await.unwrap();
+    let mut names: Vec<String> = on_table(&given, b)
+        .iter()
+        .map(|g| g.privilege.to_uppercase())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["INSERT", "SELECT"], "{}: {given:?}", b.name);
+    assert!(on_table(&given, b).iter().all(|g| !g.grantable));
+
+    // Revoke one of them, then the other grant.
+    change_security(
+        b,
+        admin,
+        &privilege(GrantAction::Revoke, user, &["SELECT"], false),
+    )
+    .await;
+    let given = admin.principal_privileges(user, host).await.unwrap();
+    assert_eq!(on_table(&given, b).len(), 1, "{}: {given:?}", b.name);
+    change_security(
+        b,
+        admin,
+        &privilege(GrantAction::Revoke, role, &["SELECT"], false),
+    )
+    .await;
+    let given = admin.principal_privileges(role, role_host).await.unwrap();
+    assert!(on_table(&given, b).is_empty(), "{}: {given:?}", b.name);
+
+    // A whole schema: PostgreSQL's USAGE, SELECT elsewhere. MySQL and ClickHouse read it
+    // back as the privilege on a database.
+    let privilege_name = if b.config.driver == DriverKind::Postgres {
+        "USAGE"
+    } else {
+        "SELECT"
+    };
+    let on_schema = |action| SecurityChange::Privileges {
+        action,
+        grantees: vec![grantee(b, user)],
+        target: GrantTarget::Schema {
+            name: b.schema.clone(),
+        },
+        privileges: vec![privilege_name.to_owned()],
+        grant_option: false,
+        cascade: false,
+    };
+    let on_the_schema = |given: &[platypus_core::PrivilegeGrant]| {
+        given
+            .iter()
+            .filter(|g| {
+                matches!(
+                    g.kind,
+                    platypus_core::GrantKind::Schema | platypus_core::GrantKind::Database
+                ) && g
+                    .schema
+                    .as_deref()
+                    .is_some_and(|s| s.eq_ignore_ascii_case(&b.schema))
+                    && g.privilege.eq_ignore_ascii_case(privilege_name)
+            })
+            .count()
+    };
+    change_security(b, admin, &on_schema(GrantAction::Grant)).await;
+    let given = admin.principal_privileges(user, host).await.unwrap();
+    assert_eq!(on_the_schema(&given), 1, "{}: {given:?}", b.name);
+    change_security(b, admin, &on_schema(GrantAction::Revoke)).await;
+    let given = admin.principal_privileges(user, host).await.unwrap();
+    assert_eq!(on_the_schema(&given), 0, "{}: {given:?}", b.name);
+}
+
+/// Puts `user` in `role`, or takes it out.
+async fn membership(
+    b: &Backend,
+    conn: &dyn Connection,
+    action: platypus_core::GrantAction,
+    role: &str,
+    user: &str,
+) {
+    let change = platypus_core::SecurityChange::Membership {
+        action,
+        role: role.to_owned(),
+        members: vec![grantee(b, user)],
+        admin_option: false,
+    };
+    change_security(b, conn, &change).await;
+}
+
+/// Whether the server has roles, and what the test uses as one: MySQL before 8.0 has none,
+/// so a second user stands in for the role, to take privileges, and nothing joins it.
+fn role_stand_in(
+    admin: &dyn Connection,
+    driver: DriverKind,
+    host: Option<&str>,
+) -> (bool, platypus_core::PrincipalKind, Option<String>) {
+    let roles = platypus_sql::security::roles_supported(
+        platypus_sql::Dialect::from(driver),
+        admin.server_info(),
+    );
+    let kind = platypus_core::PrincipalKind::of(roles);
+    (roles, kind, host.map(str::to_owned).filter(|_| !roles))
+}
+
+/// Users and roles are created, listed with their memberships and privileges, changed and
+/// dropped; a grant is read back, and gone after the revoke.
+#[tokio::test]
+async fn manages_users_roles_and_privileges() {
+    use platypus_core::{GrantAction, PrincipalFlag, PrincipalKind, PrincipalSpec, SecurityChange};
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let caps = b.connect().await.capabilities();
+        if !caps.security {
+            continue;
+        }
+        let Some(admin) = security_connection(&b).await else {
+            continue;
+        };
+        let admin = &*admin;
+        let table = format!("{}.conf_sec", b.schema);
+        let (user, role) = ("conf_sec_user", "conf_sec_role");
+        let host = (b.config.driver == DriverKind::MySql).then(|| "%".to_owned());
+        let (roles, role_kind, role_host) = role_stand_in(admin, b.config.driver, host.as_deref());
+        // Leftovers of a run that failed half way.
+        run(admin, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        for (name, kind) in [(user, PrincipalKind::User), (role, role_kind)] {
+            let _ = drop_security(&b, admin, name, kind, host.as_deref()).await;
+        }
+        run(admin, &format!("CREATE TABLE {table} (id INT, v INT)"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+
+        // Create a role and a user that belongs to it.
+        change_security(
+            &b,
+            admin,
+            &SecurityChange::Create {
+                spec: PrincipalSpec {
+                    name: role.to_owned(),
+                    host: role_host.clone(),
+                    kind: role_kind,
+                    ..PrincipalSpec::default()
+                },
+            },
+        )
+        .await;
+        let mut spec = PrincipalSpec {
+            name: user.to_owned(),
+            host: host.clone(),
+            kind: PrincipalKind::User,
+            password: Some("Conf-Sec-2026!x".to_owned()),
+            ..PrincipalSpec::default()
+        };
+        if b.config.driver == DriverKind::Postgres {
+            spec.flags_on = vec![PrincipalFlag::Login];
+        }
+        change_security(&b, admin, &SecurityChange::Create { spec: spec.clone() }).await;
+        if roles {
+            membership(&b, admin, GrantAction::Grant, role, user).await;
+        }
+
+        let listed_user = find_principal(admin, user)
+            .await
+            .unwrap_or_else(|| panic!("{}: {user} is not listed", b.name));
+        let listed_role = find_principal(admin, role)
+            .await
+            .unwrap_or_else(|| panic!("{}: {role} is not listed", b.name));
+        assert_eq!(listed_user.kind, PrincipalKind::User, "{}", b.name);
+        assert_eq!(listed_role.kind, role_kind, "{}", b.name);
+        assert_eq!(
+            listed_user.member_of.iter().any(|r| r == role),
+            roles,
+            "{}: {listed_user:?}",
+            b.name
+        );
+
+        grant_and_revoke(
+            &b,
+            admin,
+            user,
+            host.as_deref(),
+            role,
+            listed_role.host.as_deref(),
+        )
+        .await;
+
+        change_an_attribute(&b, admin, user, host.as_deref()).await;
+
+        // Take the user out of the role, then drop both.
+        if roles {
+            membership(&b, admin, GrantAction::Revoke, role, user).await;
+        }
+        let left = find_principal(admin, user).await.unwrap();
+        assert!(
+            left.member_of.iter().all(|r| r != role),
+            "{}: {left:?}",
+            b.name
+        );
+        drop_security(&b, admin, user, PrincipalKind::User, host.as_deref())
+            .await
+            .unwrap();
+        drop_security(&b, admin, role, role_kind, role_host.as_deref())
+            .await
+            .unwrap();
+        assert!(find_principal(admin, user).await.is_none(), "{}", b.name);
+        assert!(find_principal(admin, role).await.is_none(), "{}", b.name);
+        run(admin, &format!("DROP TABLE {table}")).await.unwrap();
+        eprintln!("{}: users, roles and privileges managed", b.name);
     }
 }
 

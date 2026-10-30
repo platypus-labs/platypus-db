@@ -31,8 +31,12 @@ A database feature that not every driver supports is an optional method on the
 the flag says whether the driver overrides it. `open_session` returns the capabilities, so
 the UI can hide what a connection cannot do.
 
-Existing optional methods are `explain`, `object_ddl`, `databases`, `server_sessions` and
-`bulk_load`. `object_properties`
+Existing optional methods are `explain`, `object_ddl`, `databases`, `server_sessions`,
+`server_parameters`, `server_metrics` and `bulk_load`.
+`principals` and `principal_privileges` (flag `security`) list the users, roles and privileges
+of a server; the statements that change them are not driver methods: `platypus_sql::security`
+writes them per dialect.
+`object_properties`
 and `catalog_foreign_keys` are optional too, but need no flag: their default is an empty
 list. `object_comment` has a default too: it takes the comment from the object list, and a
 driver whose list is expensive overrides it with a direct query. `objects_ddl` (the DDL of
@@ -49,6 +53,19 @@ PostgreSQL does, and a wrapping connection forwards it. To add one:
    `apps/desktop/src-tauri/src/querylog.rs`.
 
 A driver that implements the method sets its flag in `fn capabilities`.
+
+`debugger` (flag `debugger`) is the one optional method that returns an object rather than
+a result: a `platypus_core::Debugger` for the database's routines (PostgreSQL's
+`PgDebugger`, on the pldebugger extension). It says whether the database can debug now
+(`availability`, and `install` for a missing extension), reads a routine and its
+parameters (`routine`), and `start`s a call on two sessions of its own, which it is given:
+the *target*, blocked by the call, and the *debugger*, which drives it. The
+`DebugSession` it returns steps, reads the stack and the variables, changes a variable,
+sets breakpoints, and `stop`s: the call is aborted, and the target's server process ended
+when it does not answer, so that no session is left blocked. The desktop opens the two
+sessions from the saved connection (`commands/debugger.rs`), never the user's own ones. A
+wrapping connection forwards `debugger`; the statements are logged through the sessions
+it is given.
 
 `explain` returns the server's plan document and the same plan as a tree of
 `platypus_core::PlanNode` (operation, detail, cost, estimated and actual rows, time, loops,

@@ -10,7 +10,7 @@ registerTabKind({
   label: () => t("Server activity"),
   persist: (tab) => ({ view: tab.view, interval: tab.interval }),
   restore: (saved) => ({
-    view: (["locks", "statements", "objects"] as const).find((v) => v === saved.view) ?? ("sessions" as const),
+    view: (["locks", "statements", "objects", "parameters", "dashboard", "users"] as const).find((v) => v === saved.view) ?? ("sessions" as const),
     interval: typeof saved.interval === "number" ? saved.interval : 5,
   }),
 });

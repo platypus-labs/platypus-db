@@ -12,3 +12,4 @@ import "./admin";
 import "./notebook";
 import "./dashboard";
 import "./tableProfile";
+import "./debugger";
