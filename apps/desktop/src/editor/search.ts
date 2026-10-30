@@ -106,7 +106,7 @@ const tokens = StreamLanguage.define<{ mode: Mode }>({
       if (state.mode === "request") state.mode = "body";
       if (COMMENT.test(stream.string)) {
         stream.skipToEnd();
-        return "comment";
+        return "lineComment";
       }
       if (state.mode !== "body" && METHOD_LINE.test(stream.string)) {
         state.mode = "request";
@@ -123,6 +123,10 @@ const tokens = StreamLanguage.define<{ mode: Mode }>({
     }
     if (state.mode === "body") return bodyToken(stream);
     return sqlToken(stream);
+  },
+  // Empty lines never reach `token`: they end a request or a statement all the same.
+  blankLine(state) {
+    state.mode = "none";
   },
   languageData: { commentTokens: { line: "#" } },
 });
@@ -151,7 +155,7 @@ function bodyToken(stream: StringStream): string | null {
 function sqlToken(stream: StringStream): string | null {
   if (stream.match("--")) {
     stream.skipToEnd();
-    return "comment";
+    return "lineComment";
   }
   const c = stream.next();
   if (c === "'" || c === '"') {
@@ -238,9 +242,15 @@ function completeSearch(catalog: CompletionCatalog | null | undefined) {
       return { from: word.from, options: Object.keys(names).map(index), validFor: NAME };
     }
     const fields = [...new Set(Object.values(names).flat())];
+    // The first word of a statement may be the method of a request still to be written.
+    const methods =
+      head === line.text && /^\s*[A-Za-z]*$/.test(before)
+        ? METHODS.map((label): Completion => ({ label, type: "keyword", apply: `${label} /`, boost: 1 }))
+        : [];
     return {
       from: word.from,
       options: [
+        ...methods,
         ...fields.map((f): Completion => ({ label: f, type: "property" })),
         ...SQL_KEYWORDS.map((label): Completion => ({ label, type: "keyword" })),
       ],

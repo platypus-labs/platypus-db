@@ -136,6 +136,7 @@ pub async fn objects(shared: &Shared, pattern: &str) -> Result<Vec<ObjectMeta>> 
             .into_iter()
             .flatten()
         {
+            remove_backing(&mut objects, stream);
             if let Some(name) = text(stream, "name")
                 && (pattern.is_empty() || !objects.iter().any(|o| o.name == name))
             {
@@ -150,6 +151,19 @@ pub async fn objects(shared: &Shared, pattern: &str) -> Result<Vec<ObjectMeta>> 
     objects.sort_by(|a, b| a.name.cmp(&b.name));
     objects.dedup_by(|a, b| a.name == b.name);
     Ok(objects)
+}
+
+/// Takes the backing indices of a data stream (`stream` is its entry of `_data_stream`) out
+/// of `objects`: a stream that is not hidden shows them in `_cat/indices`.
+fn remove_backing(objects: &mut Vec<ObjectMeta>, stream: &Value) {
+    let backing: Vec<&str> = stream
+        .get("indices")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|i| text(i, "index_name"))
+        .collect();
+    objects.retain(|o| !backing.contains(&o.name.as_str()));
 }
 
 /// The fields of the `properties` of a mapping, the leaves of objects, in `out`.
@@ -239,6 +253,19 @@ pub fn top_level_fields(reply: &Value) -> Vec<(String, String)> {
     fields
 }
 
+/// The fields of a `_mapping` reply, and the objects that hold them: the grid shows an
+/// object as one column of the whole document, which is what a cell of it edits.
+fn with_containers(reply: &Value) -> Vec<Field> {
+    let mut fields = mapped_fields(reply);
+    for (name, ty) in top_level_fields(reply) {
+        if ty == "document" && !fields.iter().any(|(n, _, _)| *n == name) {
+            fields.push((name, "object".to_owned(), None));
+        }
+    }
+    fields.sort_by(|a, b| a.0.cmp(&b.0));
+    fields
+}
+
 pub async fn table_details(shared: &Shared, table: &str) -> Result<TableDetails> {
     let reply = get(shared, &format!("/{}/_mapping", segment(table))).await?;
     let mut columns = vec![ColumnMeta {
@@ -252,7 +279,7 @@ pub async fn table_details(shared: &Shared, table: &str) -> Result<TableDetails>
         fields: Vec::new(),
     }];
     columns.extend(
-        mapped_fields(&reply)
+        with_containers(&reply)
             .into_iter()
             .map(|(name, ty, comment)| ColumnMeta {
                 name,
@@ -397,6 +424,32 @@ pub async fn object_properties(shared: &Shared, object: &ObjectRef<'_>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn objects_are_columns_beside_their_fields() {
+        let reply: Value = serde_json::from_str(
+            r#"{"i":{"mappings":{"properties":{"meta":{"properties":{"x":{"type":"long"}}},"n":{"type":"long"}}}}}"#,
+        )
+        .unwrap();
+        let names: Vec<String> = with_containers(&reply).into_iter().map(|f| f.0).collect();
+        assert_eq!(names, ["meta", "meta.x", "n"]);
+    }
+
+    #[test]
+    fn backing_indices_are_not_listed() {
+        let stream: Value = serde_json::from_str(
+            r#"{"name":"logs","indices":[{"index_name":".ds-logs-000001"},{"index_name":".ds-logs-000002"}]}"#,
+        )
+        .unwrap();
+        let mut objects = vec![
+            ObjectMeta::new(".ds-logs-000001".to_owned(), ObjectKind::Table, None),
+            ObjectMeta::new("orders".to_owned(), ObjectKind::Table, None),
+            ObjectMeta::new(".ds-logs-000002".to_owned(), ObjectKind::Table, None),
+        ];
+        remove_backing(&mut objects, &stream);
+        let names: Vec<&str> = objects.iter().map(|o| o.name.as_str()).collect();
+        assert_eq!(names, ["orders"]);
+    }
 
     #[test]
     fn flattens_mappings() {
