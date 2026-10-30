@@ -244,8 +244,10 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           </span>
         </div>
         <span className="spacer" />
+        {/* Everything about the object from its page: data, structure, DDL, diagram. */}
         {relation && (
           <button
+            className="primary"
             onClick={() =>
               workbench().focusTab((t) => showsData(t, connection.id, tab.database, qualified)) ||
               workbench().openTab("query", connection.id, {
@@ -258,6 +260,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               })
             }
           >
+            <Icon name="table" />
             {t("Open data")}
           </button>
         )}
@@ -267,6 +270,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             onClick={() => openTableEditor(connection.id, { database: tab.database, schema: tab.schema, name: tab.name })}
             title={t("Edit the columns, keys, indexes and constraints of the table")}
           >
+            <Icon name="edit" />
             {t("Edit table…")}
           </button>
         )}
@@ -280,7 +284,23 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               })
             }
           >
+            <Icon name="sql" />
             {t("Edit DDL in editor")}
+          </button>
+        )}
+        {tab.objectKind === "table" && (
+          <button
+            onClick={() =>
+              workbench().openTab("erd", connection.id, {
+                database: tab.database,
+                schema: tab.schema,
+                currentSchema: false,
+                tables: [tab.name],
+              })
+            }
+          >
+            <Icon name="builder" />
+            {t("Show in ER diagram")}
           </button>
         )}
         <button className="square" onClick={() => setVersion((v) => v + 1)} title={t("Refresh from the database")} aria-label={t("Refresh")}>

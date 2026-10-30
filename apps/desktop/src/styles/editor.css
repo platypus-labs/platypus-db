@@ -236,23 +236,49 @@ button.toggled {
   flex-direction: column;
 }
 
+/* The page of an object: its icon in a tile, its name and where it is, then every action on it. */
 .object-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-10);
-  padding: var(--space-10) var(--space-12);
+  gap: var(--space-8) var(--space-12);
+  padding: var(--space-16) var(--space-20) var(--space-12);
   border-bottom: 1px solid var(--border);
 }
 
 .object-icon {
-  font-size: var(--text-2xl);
-  color: var(--fg-muted);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--control-xl);
+  height: var(--control-xl);
+  border-radius: var(--radius-xl);
+  background: var(--active);
+  color: var(--obj-table, var(--fg-muted));
+}
+
+.object-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
 .object-title {
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
   min-width: 0;
+}
+
+.object-title strong {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.object-header > button:not(.square) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
 }
 
 .object-sections {
