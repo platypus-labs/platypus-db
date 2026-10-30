@@ -70,6 +70,48 @@ const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
   "Keyboard shortcuts": { icon: "terminal", about: msg("Every command and its key combination.") },
 };
 
+/** Pages with enough settings to split: their sub-tabs, in order, each with the keys it holds.
+ *  A setting in none of them goes to the last sub-tab. Pages not listed have a single body. */
+const SUB_TABS: Record<string, { label: string; keys: string[] }[]> = {
+  "Appearance": [
+    { label: msg("Theme"), keys: ["appearance.theme", "appearance.accent", "appearance.background", "appearance.sidebar", "appearance.text"] },
+    { label: msg("Language and text"), keys: ["appearance.language", "appearance.editor_font_size", "appearance.grid_font_size"] },
+    { label: msg("Density"), keys: ["appearance.zoom", "appearance.density", "appearance.radius"] },
+    { label: msg("Window"), keys: ["appearance.title_bar", "appearance.tray"] },
+  ],
+  "SQL editor": [
+    { label: msg("Editing"), keys: ["editor.vim", "editor.spellcheck", "editor.lint"] },
+    { label: msg("Formatting"), keys: ["editor.format_keyword_case", "editor.format_indent"] },
+    { label: msg("Execution"), keys: ["editor.script_row_limit", "editor.notify_after_seconds"] },
+  ],
+  "Results": [
+    {
+      label: msg("Formats"),
+      keys: ["results.date_format", "results.timestamp_format", "results.time_zone", "results.number_format", "results.relative_time"],
+    },
+    { label: msg("Display"), keys: ["grid.value_panel"] },
+  ],
+  "Safety": [
+    {
+      label: msg("Before changes"),
+      keys: ["safety.unfiltered", "safety.confirm_production", "safety.transaction_warning_minutes", "safety.auto_limit", "agents.confirm_writes"],
+    },
+    { label: msg("Masking"), keys: ["safety.mask", "safety.mask_names", "safety.mask_types"] },
+    { label: msg("Lock and backups"), keys: ["safety.lock_minutes", "safety.snapshots"] },
+  ],
+};
+
+/** The sub-tabs of a page with its settings in them, or null for a page with a single body. */
+function subTabsOf(page: string, defs: SettingDef<Value>[] | undefined) {
+  const spec = SUB_TABS[page];
+  if (!spec || !defs) return null;
+  const groups = spec.map((g) => ({ label: g.label, defs: defs.filter((d) => g.keys.includes(d.key)) }));
+  const rest = defs.filter((d) => !spec.some((g) => g.keys.includes(d.key)));
+  groups[groups.length - 1]!.defs.push(...rest);
+  const shown = groups.filter((g) => g.defs.length > 0);
+  return shown.length > 1 ? shown : null;
+}
+
 function PageHeader({ page }: { page: string }) {
   const head = PAGE_HEAD[page];
   return (
@@ -123,6 +165,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   // The keyboard moves through the pages in the order the list shows them.
   const names = grouped.flatMap((g) => g.pages);
   const [chosen, setChosen] = useState(() => getStored(SECTION_KEY));
+  // The sub-tab of each page, kept while the dialog is open.
+  const [subChosen, setSubChosen] = useState<Record<string, string>>({});
   const current = typeof chosen === "string" && names.includes(chosen) ? chosen : names[0]!;
   // Stored once the dialog closes: a write on each tab change would save the file and
   // refresh the whole app at every arrow key.
@@ -146,6 +190,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setChosen(next);
     e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
   };
+  const onSubTabKey = (e: KeyboardEvent<HTMLElement>, labels: string[]) => {
+    const at = labels.indexOf(e.currentTarget.dataset.subtab ?? "");
+    const moves: Record<string, number> = { ArrowRight: at + 1, ArrowLeft: at - 1 + labels.length, Home: 0, End: labels.length - 1 };
+    const to = moves[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = labels[to % labels.length]!;
+    setSubChosen((m) => ({ ...m, [current]: next }));
+    e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-subtab="${CSS.escape(next)}"]`)?.focus();
+  };
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
     setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
@@ -166,6 +220,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   });
   const titles = [...groups.map(([section]) => section), ...panels.filter((p) => p.shown).map((p) => p.title)];
   const panel = PANELS.find((p) => p.title === current);
+  const subs = subTabsOf(current, sections.get(current));
+  const sub = subs?.find((g) => g.label === subChosen[current])?.label ?? subs?.[0]?.label;
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -270,7 +326,48 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               tabIndex={0}
             >
               <PageHeader page={current} />
-              {sections.get(current)?.map(row)}
+              {subs ? (
+                <>
+                  <div className="dialog-tabs" role="tablist" aria-label={t(current)}>
+                    {subs.map((g, i) => (
+                      <button
+                        key={g.label}
+                        type="button"
+                        role="tab"
+                        id={`settings-sub-${i}`}
+                        data-subtab={g.label}
+                        aria-selected={g.label === sub}
+                        aria-controls={`settings-subpage-${i}`}
+                        tabIndex={g.label === sub ? 0 : -1}
+                        onClick={() => setSubChosen((m) => ({ ...m, [current]: g.label }))}
+                        onKeyDown={(e) =>
+                          onSubTabKey(
+                            e,
+                            subs.map((x) => x.label),
+                          )
+                        }
+                      >
+                        {t(g.label)}
+                      </button>
+                    ))}
+                  </div>
+                  {/* All stay mounted, the others hidden: a setting is found in the page whichever sub-tab shows. */}
+                  {subs.map((g, i) => (
+                    <div
+                      key={g.label}
+                      id={`settings-subpage-${i}`}
+                      className="dialog-page"
+                      role="tabpanel"
+                      aria-labelledby={`settings-sub-${i}`}
+                      hidden={g.label !== sub}
+                    >
+                      {g.defs.map(row)}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                sections.get(current)?.map(row)
+              )}
               {panel?.render("")}
             </section>
           </div>

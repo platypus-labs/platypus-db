@@ -2944,6 +2944,17 @@ const de: Record<string, string> = {
   "Agents do not see this connection.": "Agenten sehen diese Verbindung nicht.",
   "They can read the data and the schema, and change nothing.": "Sie können Daten und Schema lesen und nichts ändern.",
   "They can also change data, within the connection's safety settings.": "Sie können auch Daten ändern, im Rahmen der Sicherheitseinstellungen der Verbindung.",
+  "Language and text": "Sprache und Text",
+  "Density": "Dichte",
+  "Window": "Fenster",
+  "Editing": "Bearbeiten",
+  "Formatting": "Formatierung",
+  "Execution": "Ausführung",
+  "Formats": "Formate",
+  "Display": "Anzeige",
+  "Before changes": "Vor Änderungen",
+  "Masking": "Maskierung",
+  "Lock and backups": "Sperre und Sicherungen",
 };
 
 export default de;
