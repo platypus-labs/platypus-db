@@ -89,8 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
-| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
 
 ### Lock dei gruppi
 
