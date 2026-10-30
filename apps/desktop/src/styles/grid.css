@@ -97,12 +97,11 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .result-loading::after {
-    width: 100%;
-    animation: none;
-    opacity: 0.6;
-  }
+/* A still bar with reduced or no motion (motion.css). */
+:root:not([data-motion="full"]) .result-loading::after {
+  width: 100%;
+  animation: none;
+  opacity: 0.6;
 }
 
 /* Grid */

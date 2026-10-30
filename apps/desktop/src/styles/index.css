@@ -11,6 +11,7 @@
 @import "./explain.css";
 @import "./table-editor.css";
 @import "./schema.css";
+@import "./motion.css";
 @import "../catalog/catalog.css";
 @import "../analysis/analysis.css";
 @import "../admin/admin.css";

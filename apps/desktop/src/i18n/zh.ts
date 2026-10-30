@@ -2983,6 +2983,17 @@ const zh: Record<string, string> = {
   "History, variables, the value and metadata of a cell: on the right or on the left of the work.": "历史、变量、单元格的值和元数据：在工作区右侧或左侧。",
   "On the right": "右侧",
   "On the left": "左侧",
+  "Icons and animations": "图标和动画",
+  "Icon set": "图标集",
+  "The whole app changes together; the logos of the databases stay as they are.": "整个应用一起变化；数据库的标志保持不变。",
+  "The default: a medium stroke, soft corners.": "默认：中等线条，圆润转角。",
+  "A thinner stroke, lighter on the screen.": "更细的线条，在屏幕上更轻盈。",
+  "Rounder shapes, easy to tell apart when small.": "更圆润的形状，尺寸小时也容易分辨。",
+  "Animations": "动画",
+  "Panels and dialogs opening, tabs appearing. Reduced: short fades only.": "面板和对话框打开、标签出现。减少：仅短暂淡入淡出。",
+  "Like the system": "跟随系统",
+  "Yes": "是",
+  "Reduced": "减少",
 };
 
 export default zh;

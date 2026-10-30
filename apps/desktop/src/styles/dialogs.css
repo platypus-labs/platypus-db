@@ -1274,6 +1274,31 @@ button.primary.danger:hover:not(:disabled) {
   color: var(--fg);
 }
 
+/* In the Settings, the underline of the chosen sub-tab grows in from its middle (motion.css
+   times it): a line of its own where the border was. */
+.modal.settings .dialog-tabs button {
+  position: relative;
+  border-bottom-width: 0;
+  padding-bottom: calc(var(--space-4) + 2px);
+}
+
+.modal.settings .dialog-tabs button::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transform: scaleX(0.3);
+}
+
+.modal.settings .dialog-tabs button[aria-selected="true"]::after {
+  opacity: 1;
+  transform: none;
+}
+
 .dialog-page {
   display: flex;
   flex-direction: column;
@@ -2120,10 +2145,9 @@ label.multi-run-row:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .multi-run-row.running .multi-run-state {
-    animation: none;
-  }
+/* Still with reduced or no motion (motion.css). */
+:root:not([data-motion="full"]) .multi-run-row.running .multi-run-state {
+  animation: none;
 }
 
 /* The transaction log: a block per transaction, its edge colored by how it ended. */

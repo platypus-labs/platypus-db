@@ -83,6 +83,7 @@ const SUB_TABS: Record<string, { label: string; keys: string[]; className?: stri
       keys: ["layout.navigator_side", "layout.results_position", "layout.tab_bar_position", "layout.side_panels_side"],
       className: "layout-choices",
     },
+    { label: msg("Icons and animations"), keys: ["appearance.icon_set", "appearance.animations"] },
     { label: msg("Window"), keys: ["appearance.title_bar", "appearance.tray"] },
   ],
   "SQL editor": [

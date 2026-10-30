@@ -2983,6 +2983,17 @@ const de: Record<string, string> = {
   "History, variables, the value and metadata of a cell: on the right or on the left of the work.": "Verlauf, Variablen, Wert und Metadaten einer Zelle: rechts oder links neben der Arbeit.",
   "On the right": "Rechts",
   "On the left": "Links",
+  "Icons and animations": "Symbole und Animationen",
+  "Icon set": "Symbolsatz",
+  "The whole app changes together; the logos of the databases stay as they are.": "Die ganze App ändert sich gemeinsam; die Logos der Datenbanken bleiben, wie sie sind.",
+  "The default: a medium stroke, soft corners.": "Der Standard: mittlere Strichstärke, weiche Ecken.",
+  "A thinner stroke, lighter on the screen.": "Dünnere Striche, leichter auf dem Bildschirm.",
+  "Rounder shapes, easy to tell apart when small.": "Rundere Formen, auch klein gut zu unterscheiden.",
+  "Animations": "Animationen",
+  "Panels and dialogs opening, tabs appearing. Reduced: short fades only.": "Öffnen von Leisten und Dialogen, Erscheinen von Tabs. Reduziert: nur kurze Überblendungen.",
+  "Like the system": "Wie das System",
+  "Yes": "Ja",
+  "Reduced": "Reduziert",
 };
 
 export default de;

@@ -1,0 +1,114 @@
+/* Measured motion (Settings › Appearance › Animations, ui/motion.ts): under 200 ms, on
+   transform and opacity only, never on content such as the rows of a grid. The root's
+   `data-motion` is `full`, `reduced` (short fades only) or `none`; "like the system" is
+   `reduced` while the system asks for less motion. */
+
+@keyframes motion-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes motion-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes motion-slide {
+  from {
+    opacity: 0;
+    transform: translateX(var(--motion-panel-from, 8px));
+  }
+}
+
+@keyframes motion-tab {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+/* Side panels come in from the side they stand on. */
+:root[data-panels="left"] {
+  --motion-panel-from: -8px;
+}
+
+/* Dialogs and the palette open, menus drop, side panels slide in, a new tab grows into the bar
+   and the pane of the tab chosen fades in. */
+:root[data-motion="full"] :is(.modal-backdrop, .palette-backdrop) {
+  animation: motion-fade 120ms ease-out;
+}
+
+:root[data-motion="full"] .modal {
+  animation: motion-rise 160ms ease-out;
+}
+
+:root[data-motion="full"] :is(.context-menu, .palette) {
+  animation: motion-drop 120ms ease-out;
+}
+
+:root[data-motion="full"] :is(.query-tab > aside, .result-grid-body > .value-panel) {
+  animation: motion-slide 160ms ease-out;
+}
+
+:root[data-motion="full"] .workspace > .tabs .tab {
+  animation: motion-tab 140ms ease-out;
+}
+
+:root[data-motion="full"] .panes > .pane {
+  animation: motion-fade 120ms ease-out;
+}
+
+:root[data-motion="full"] .modal.settings .dialog-tabs button::after {
+  transition: transform 160ms ease-out, opacity 160ms ease-out;
+}
+
+/* Reduced: the same moments as short fades, and what changes color still fades; nothing
+   moves, grows or turns. */
+:root[data-motion="reduced"]
+  :is(
+    .modal-backdrop,
+    .palette-backdrop,
+    .modal,
+    .context-menu,
+    .palette,
+    .query-tab > aside,
+    .result-grid-body > .value-panel,
+    .workspace > .tabs .tab,
+    .panes > .pane
+  ) {
+  animation: motion-fade 100ms ease-out;
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  transition-property: color, background-color, border-color, box-shadow, opacity !important;
+}
+
+:root[data-motion="reduced"] .modal.settings .dialog-tabs button::after {
+  transform: none;
+  transition: opacity 100ms ease-out;
+}
+
+/* What loops (a spinner, a pulse) stands still with reduced motion. */
+:root[data-motion="reduced"] :is(.state.loading .state-icon, .activity-button .busy, .tx-open.long) {
+  animation: none;
+}
+
+/* None: no animation and no transition anywhere. */
+:root[data-motion="none"] *,
+:root[data-motion="none"] *::before,
+:root[data-motion="none"] *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+}

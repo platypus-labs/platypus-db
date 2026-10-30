@@ -14,6 +14,8 @@ import { startErrorLog } from "./diagnostics/Diagnostics";
 import { startAgentProposals } from "./agents/proposals";
 import { startAgentBridge } from "./agents/bridge";
 import { startLayout } from "./shell/layout";
+import "./ui/iconSet";
+import { startMotion } from "./ui/motion";
 import "./styles/index.css";
 
 paintCached();
@@ -29,6 +31,7 @@ void loadSettings()
   .then(() => {
     startAppearance();
     startLayout();
+    startMotion();
     startAgentProposals();
     startAgentBridge();
     createRoot(document.getElementById("root")!).render(

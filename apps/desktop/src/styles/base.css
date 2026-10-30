@@ -113,15 +113,6 @@
   scrollbar-color: color-mix(in srgb, var(--fg-muted) 45%, transparent) transparent;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0s !important;
-    animation-duration: 0s !important;
-  }
-}
-
 * {
   box-sizing: border-box;
 }
