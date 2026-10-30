@@ -35,7 +35,7 @@ window ready in under half a second, and a results grid that scrolls through mil
 - **Safe with production.** Connection types color the window frame, risky statements ask
   first, production opens in manual commit, and every save of edited rows leaves an undo script.
 - **Many databases, one app.** PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse,
-  SQLite, DuckDB, MongoDB, Redis, Elasticsearch, Snowflake, BigQuery and more, with the same editor and grid.
+  SQLite, DuckDB, MongoDB, Redis, Elasticsearch, Cassandra, Snowflake, BigQuery and more, with the same editor and grid.
 - **Ready for agents.** Claude Code, Codex, Cursor and other MCP clients use your saved
   connections with the access you give each one, and their changes wait for your OK.
 - **Open source.** AGPL-3.0, no account, no telemetry.
@@ -71,6 +71,7 @@ another machine or a USB stick ([more](docs/FEATURES.md#portable-copy)).
 | MongoDB 5+ | official driver | mongosh syntax; no transactions, explain or data editing |
 | Redis 6+ | `redis` crate (RESP3, rustls) | Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON |
 | Elasticsearch 8, OpenSearch 2 | HTTP API (`reqwest`, rustls) | Requests as Kibana's console writes them, and SQL; indices as tables, edited in the grid |
+| Apache Cassandra 4+, ScyllaDB 5.4+ | `scylla` crate (rustls) | CQL; keyspaces, tables, views, types and functions in the navigator; edited in the grid by primary key |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their defaults |
 | Snowflake, BigQuery, Databricks, Trino, any ADBC driver | ADBC, downloaded on first use | Queries, results, navigator and completion; no data editing or explain yet |
 | IBM Db2, any ODBC driver or DSN | ODBC (Windows) | |
