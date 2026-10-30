@@ -160,8 +160,8 @@ export const theme = EditorView.theme({
   ".cm-activeLine": { backgroundColor: "var(--hover)" },
   ".cm-activeLineGutter": { backgroundColor: "var(--hover)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
-    { backgroundColor: "var(--grid-selection)" },
-  ".cm-executing": { backgroundColor: "var(--grid-selection)", transition: "background-color 0.4s" },
+    { backgroundColor: "var(--selection-bg)" },
+  ".cm-executing": { backgroundColor: "var(--selection-bg)", transition: "background-color 0.4s" },
   // The glass of the menus (styles/dialogs.css), solid where it is not supported.
   ".cm-tooltip": {
     backgroundColor: "var(--glass-menu, var(--bg-sidebar))",

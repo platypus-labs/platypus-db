@@ -85,6 +85,16 @@
   --icon-md: 16px;
   --icon-lg: 18px;
 
+  /* What the grid, the editor and the navigator share: one row height and icon size, one
+     selection, one look for what is changed and not yet saved. The selection follows the
+     theme's accent; the amber of a change reads on light and dark alike. */
+  --row-height: var(--control-md);
+  --row-icon: var(--icon-md);
+  --selection-bg: var(--grid-selection);
+  --selection-fg: var(--fg-strong);
+  --modified-bg: rgba(250, 176, 5, 0.24);
+  --modified-fg: var(--warn);
+
   font-family: var(--font-ui);
   font-size: var(--text-md);
   line-height: 1.45;

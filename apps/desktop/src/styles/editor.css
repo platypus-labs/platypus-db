@@ -23,7 +23,7 @@
 }
 
 button.toggled {
-  background: var(--grid-selection);
+  background: var(--selection-bg);
   border-color: var(--accent);
 }
 
@@ -212,7 +212,7 @@ button.toggled {
   max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--warn, #e8590c);
+  color: var(--modified-fg);
   font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
@@ -415,7 +415,7 @@ button.toggled {
   max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--warn, #e8590c);
+  color: var(--modified-fg);
   font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
@@ -673,7 +673,7 @@ button.toggled {
 
 .outline-kind.dml,
 .outline-kind.ddl {
-  color: var(--warn, #e8590c);
+  color: var(--modified-fg);
 }
 
 .outline-text {

@@ -243,7 +243,7 @@
 
 .edit-count {
   font-size: var(--text-sm);
-  color: var(--warn);
+  color: var(--modified-fg);
 }
 
 .edit-error {
@@ -493,7 +493,7 @@
   top: 3px;
   bottom: 3px;
   right: 0;
-  background: var(--grid-selection);
+  background: var(--selection-bg);
   z-index: -1;
 }
 
@@ -648,7 +648,7 @@
 }
 
 .compare-list tr.differs td {
-  background: var(--grid-selection);
+  background: var(--selection-bg);
 }
 
 .compare-list td.null {
@@ -675,7 +675,7 @@
   color: var(--syn-ident);
 }
 .doc-focused {
-  background: var(--grid-selection);
+  background: var(--selection-bg);
 }
 .doc-string {
   color: var(--syn-string);
