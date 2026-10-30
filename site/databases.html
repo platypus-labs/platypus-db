@@ -62,29 +62,40 @@
 
   <section class="section" style="padding-top:110px">
     <header class="head"><p class="eyebrow">Supported</p><h2>Pick yours.</h2><p>Hover a database to see its color; each connects the way the table below says.</p></header>
+    <div class="db-filter" role="search">
+      <input type="search" id="db-find" placeholder="Find a database" aria-label="Find a database">
+      <div class="seg-pills kind-pick" role="group" aria-label="Kind">
+        <button type="button" aria-selected="true" data-kind="">All</button>
+        <button type="button" aria-selected="false" data-kind="relational">Relational</button>
+        <button type="button" aria-selected="false" data-kind="analytical">Analytical</button>
+        <button type="button" aria-selected="false" data-kind="documents">Documents</button>
+        <button type="button" aria-selected="false" data-kind="pgwire">PostgreSQL-compatible</button>
+        <button type="button" aria-selected="false" data-kind="generic">Generic</button>
+      </div>
+    </div>
     <ul class="logos">
-      <li style="--c:#4169E1"><svg aria-hidden="true"><use href="img/databases.svg#postgresql"/></svg>PostgreSQL</li>
-      <li style="--c:#4479A1"><svg aria-hidden="true"><use href="img/databases.svg#mysql"/></svg>MySQL</li>
-      <li style="--c:#c0765a"><svg aria-hidden="true"><use href="img/databases.svg#mariadb"/></svg>MariaDB</li>
-      <li style="--c:#cc2927"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>SQL Server</li>
-      <li style="--c:#c74634"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>Oracle</li>
-      <li style="--c:#FFCC01"><svg aria-hidden="true"><use href="img/databases.svg#clickhouse"/></svg>ClickHouse</li>
-      <li style="--c:#3d8fc6"><svg aria-hidden="true"><use href="img/databases.svg#sqlite"/></svg>SQLite</li>
-      <li style="--c:#FFF000"><svg aria-hidden="true"><use href="img/databases.svg#duckdb"/></svg>DuckDB</li>
-      <li style="--c:#4FF8D2"><svg aria-hidden="true"><use href="img/databases.svg#turso"/></svg>Turso / libSQL</li>
-      <li style="--c:#47A248"><svg aria-hidden="true"><use href="img/databases.svg#mongodb"/></svg>MongoDB</li>
-      <li style="--c:#29B5E8"><svg aria-hidden="true"><use href="img/databases.svg#snowflake"/></svg>Snowflake</li>
-      <li style="--c:#669DF6"><svg aria-hidden="true"><use href="img/databases.svg#bigquery"/></svg>BigQuery</li>
-      <li style="--c:#FF3621"><svg aria-hidden="true"><use href="img/databases.svg#databricks"/></svg>Databricks</li>
-      <li style="--c:#DD00A1"><svg aria-hidden="true"><use href="img/databases.svg#trino"/></svg>Trino</li>
-      <li style="--c:#8f6bff"><svg aria-hidden="true"><use href="img/databases.svg#cockroachdb"/></svg>CockroachDB</li>
-      <li style="--c:#ff5f3b"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>YugabyteDB</li>
-      <li style="--c:#FDB515"><svg aria-hidden="true"><use href="img/databases.svg#timescale"/></svg>TimescaleDB</li>
-      <li style="--c:#3FCF8E"><svg aria-hidden="true"><use href="img/databases.svg#supabase"/></svg>Supabase</li>
-      <li style="--c:#34D59A"><svg aria-hidden="true"><use href="img/databases.svg#neon"/></svg>Neon</li>
-      <li style="--c:#0f62fe"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>IBM Db2</li>
-      <li style="--c:#e8e8e8"><svg aria-hidden="true"><use href="img/databases.svg#arrow"/></svg>ADBC drivers</li>
-      <li style="--c:#a0a8ae"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>ODBC sources</li>
+      <li data-kind="relational" style="--c:#4169E1"><svg aria-hidden="true"><use href="img/databases.svg#postgresql"/></svg>PostgreSQL</li>
+      <li data-kind="relational" style="--c:#4479A1"><svg aria-hidden="true"><use href="img/databases.svg#mysql"/></svg>MySQL</li>
+      <li data-kind="relational" style="--c:#c0765a"><svg aria-hidden="true"><use href="img/databases.svg#mariadb"/></svg>MariaDB</li>
+      <li data-kind="relational" style="--c:#cc2927"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>SQL Server</li>
+      <li data-kind="relational" style="--c:#c74634"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>Oracle</li>
+      <li data-kind="analytical" style="--c:#FFCC01"><svg aria-hidden="true"><use href="img/databases.svg#clickhouse"/></svg>ClickHouse</li>
+      <li data-kind="relational" style="--c:#3d8fc6"><svg aria-hidden="true"><use href="img/databases.svg#sqlite"/></svg>SQLite</li>
+      <li data-kind="analytical" style="--c:#FFF000"><svg aria-hidden="true"><use href="img/databases.svg#duckdb"/></svg>DuckDB</li>
+      <li data-kind="relational" style="--c:#4FF8D2"><svg aria-hidden="true"><use href="img/databases.svg#turso"/></svg>Turso / libSQL</li>
+      <li data-kind="documents" style="--c:#47A248"><svg aria-hidden="true"><use href="img/databases.svg#mongodb"/></svg>MongoDB</li>
+      <li data-kind="analytical" style="--c:#29B5E8"><svg aria-hidden="true"><use href="img/databases.svg#snowflake"/></svg>Snowflake</li>
+      <li data-kind="analytical" style="--c:#669DF6"><svg aria-hidden="true"><use href="img/databases.svg#bigquery"/></svg>BigQuery</li>
+      <li data-kind="analytical" style="--c:#FF3621"><svg aria-hidden="true"><use href="img/databases.svg#databricks"/></svg>Databricks</li>
+      <li data-kind="analytical" style="--c:#DD00A1"><svg aria-hidden="true"><use href="img/databases.svg#trino"/></svg>Trino</li>
+      <li data-kind="pgwire" style="--c:#8f6bff"><svg aria-hidden="true"><use href="img/databases.svg#cockroachdb"/></svg>CockroachDB</li>
+      <li data-kind="pgwire" style="--c:#ff5f3b"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>YugabyteDB</li>
+      <li data-kind="pgwire" style="--c:#FDB515"><svg aria-hidden="true"><use href="img/databases.svg#timescale"/></svg>TimescaleDB</li>
+      <li data-kind="pgwire" style="--c:#3FCF8E"><svg aria-hidden="true"><use href="img/databases.svg#supabase"/></svg>Supabase</li>
+      <li data-kind="pgwire" style="--c:#34D59A"><svg aria-hidden="true"><use href="img/databases.svg#neon"/></svg>Neon</li>
+      <li data-kind="relational" style="--c:#0f62fe"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>IBM Db2</li>
+      <li data-kind="generic" style="--c:#e8e8e8"><svg aria-hidden="true"><use href="img/databases.svg#arrow"/></svg>ADBC drivers</li>
+      <li data-kind="generic" style="--c:#a0a8ae"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>ODBC sources</li>
     </ul>
   </section>
 

@@ -68,6 +68,12 @@
   var os = /win/i.test(p) ? "Windows" : /mac/i.test(p) ? "macOS" : /linux/i.test(p) ? "Linux" : "";
   var button = document.getElementById("download-os");
   if (os && button) button.textContent = "Download for " + os;
+  // On the download page, the card of that system comes first and is marked.
+  var card = os && document.querySelector('.os-cards [data-os="' + os + '"]');
+  if (card) {
+    card.classList.add("yours");
+    card.parentNode.insertBefore(card, card.parentNode.firstChild);
+  }
 })();
 
 // The app window types its query again every few seconds while it is in view.
@@ -172,4 +178,28 @@
     select(b);
   });
   select(buttons[0]);
+})();
+
+// Databases: the logos filtered by a word and by kind.
+(function () {
+  var find = document.getElementById("db-find");
+  if (!find) return;
+  var items = Array.prototype.slice.call(document.querySelectorAll(".logos li"));
+  var kinds = Array.prototype.slice.call(document.querySelectorAll(".db-filter button"));
+  var kind = "";
+  function apply() {
+    var word = find.value.trim().toLowerCase();
+    items.forEach(function (li) {
+      var fits = (!kind || li.getAttribute("data-kind") === kind) && li.textContent.toLowerCase().indexOf(word) >= 0;
+      li.hidden = !fits;
+    });
+  }
+  find.addEventListener("input", apply);
+  kinds.forEach(function (b) {
+    b.addEventListener("click", function () {
+      kind = b.getAttribute("data-kind");
+      kinds.forEach(function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
+      apply();
+    });
+  });
 })();

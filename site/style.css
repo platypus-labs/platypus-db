@@ -2022,7 +2022,8 @@ svg.i.sm {
   margin-bottom: 16px;
 }
 
-.vs-pick button {
+.vs-pick button,
+.kind-pick button {
   padding: 7px 12px;
   border: 0;
   border-radius: 8px;
@@ -2032,7 +2033,8 @@ svg.i.sm {
   cursor: pointer;
 }
 
-.vs-pick button[aria-selected="true"] {
+.vs-pick button[aria-selected="true"],
+.kind-pick button[aria-selected="true"] {
   background: var(--card-2);
   color: var(--hi);
 }
@@ -2234,4 +2236,51 @@ svg.i.sm {
   .bar .cl-me {
     display: none;
   }
+}
+
+/* Databases: the filter above the logos. */
+.db-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.db-filter input {
+  width: 280px;
+  max-width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--hi);
+  font: 15px var(--font-ui);
+}
+
+.db-filter .kind-pick {
+  margin: 0;
+}
+
+.logos li[hidden] {
+  display: none;
+}
+
+/* Download: the visitor's system, first and marked. */
+.os-cards .card.yours {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 1px var(--acc), 0 18px 50px rgba(255, 141, 40, 0.12);
+}
+
+.os-cards .card.yours h3::after {
+  content: "Your system";
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--glow);
+  color: var(--acc-2);
+  font: 600 11.5px/1.4 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
