@@ -89,6 +89,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Progetti condivisi (gruppo O): il file `platypus-project.toml` di un collega può ancora impostare le istruzioni di init di una connessione (SQL eseguito a ogni collegamento), applicate senza chiedere. Decidere se non farle viaggiare, tenerle in sola lettura o chiederne conferma la prima volta, in `crates/platypus-sync/src/portable.rs` (`guard`) | gruppo O, 2026-10-30 |
 | Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
 | Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`, e quelli del gruppo O `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
@@ -1108,7 +1109,11 @@ usa l'ora in cui una modifica è stata notata e un computer spento più di 90 gi
 elementi eliminati; `connections.toml` passa alla versione 8 (un'app precedente non lo legge); i
 driver plugin solo via HTTP, senza transazioni, annullamento né tunnel SSH; la parte di sistema
 della condivisione (associazione dei file, link, istanza unica) non è stata provata su
-un'installazione vera. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
+un'installazione vera. In un progetto condiviso, un file cambiato fuori dall'app che sposta una
+connessione (driver, host, porta, database, SSH, proxy) ne fa dimenticare password e segreti, che
+si chiedono di nuovo al collegamento; accesso degli agenti, restrizioni, sola lettura e tipo Prod
+tengono sempre il valore più restrittivo. Le opzioni che possono eseguire comandi
+(`before_connect`, `after_disconnect`) e i percorsi locali non viaggiano mai. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
