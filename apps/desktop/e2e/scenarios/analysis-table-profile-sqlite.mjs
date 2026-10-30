@@ -16,6 +16,7 @@ const card = (column) => `${tab}?.querySelector('.tp-card[data-column="${column}
 const text = (expression) => `(${expression}?.textContent ?? null)`;
 const texts = (selector, root = tab) => `[...(${root}?.querySelectorAll(${JSON.stringify(selector)}) ?? [])].map(e => e.textContent)`;
 const cardCount = `(${tab}?.querySelectorAll('.tp-card').length ?? 0)`;
+const duplicates = `(${tab}?.querySelector('.tp-kpi[data-kpi="Duplicates"]'))`;
 const barStatus = `(${tab}?.querySelector('.tp-status')?.textContent ?? '')`;
 
 /** The rows of `people`: valid emails but for one bad, one empty and one NULL; numbers and dates
@@ -43,6 +44,8 @@ export function setup({ dir }) {
            INSERT INTO people VALUES ${peopleRows()};
            CREATE VIEW adults AS SELECT * FROM people WHERE id > 12;
            CREATE TABLE empty_t (a TEXT, b INTEGER);
+           CREATE TABLE twins (a TEXT, b INTEGER);
+           INSERT INTO twins VALUES ('x', 1), ('x', 1), ('x', 1), ('y', 2), ('z', NULL), ('z', NULL);
            CREATE TABLE gone (a TEXT);
            INSERT INTO gone VALUES ('x');
            CREATE TABLE big (id INTEGER PRIMARY KEY, label TEXT);
@@ -200,6 +203,22 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(text(`${card("a")}.querySelector('.tp-nulls')`)), "0 (0%)");
   assert.equal(await page.eval(`${card("a")}.querySelector('.tp-patterns') ?? null`), null);
   assert.equal(await page.eval(`${card("b")}.querySelector('.tp-outliers') ?? null`), null);
+
+  // Duplicates: rows identical to another one, NULLs counting as equal; none in a table with a key.
+  await profile(page, "twins", "6 rows read");
+  await page.waitFor(`${text(`${duplicates}?.querySelector('.tp-kpi-value')`)} === '3'`, 15_000);
+  await profile(page, "people", "24 rows read");
+  await page.waitFor(`${text(`${duplicates}?.querySelector('.tp-kpi-value')`)} === '0'`, 15_000);
+  // A table cut by the sample is not counted: a dash, with the reason, and no error.
+  await profile(page, "big", "10,050 rows read");
+  await chooseSample(page, "10000");
+  await page.waitFor(`${barStatus}.includes('first 10,000 rows')`, 30_000);
+  await page.waitFor(`${text(`${duplicates}?.querySelector('.tp-kpi-value')`)} === '—'`, 15_000);
+  assert.match(await page.eval(`${duplicates}.title`), /whole table/);
+  assert.equal(await page.eval(`${tab}.querySelector('.tp-error') ?? null`), null);
+  await chooseSample(page, "null");
+  await page.waitFor(`${barStatus}.includes('10,050 rows read')`, 30_000);
+  await page.waitFor(`${text(`${duplicates}?.querySelector('.tp-kpi-value')`)} === '0'`, 30_000);
 
   // A long table: all its rows by default; a smaller sample reads the first rows and says so;
   // the whole table comes back with the last choice.

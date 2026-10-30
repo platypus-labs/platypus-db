@@ -2962,6 +2962,12 @@ const es: Record<string, string> = {
   "None (top level)": "Ninguna (nivel principal)",
   "Create index…": "Crear índice…",
   "Ignore": "Ignorar",
+  "This database cannot count identical rows.": "Esta base de datos no puede contar filas idénticas.",
+  "Only counted when the whole table was read: choose a larger sample.": "Solo se cuentan si se leyó toda la tabla: elige una muestra mayor.",
+  "The database could not count identical rows.": "La base de datos no pudo contar las filas idénticas.",
+  "Duplicates": "Duplicados",
+  "Rows identical to another row": "Filas idénticas a otra fila",
+  "Counting identical rows…": "Contando filas idénticas…",
 };
 
 export default es;

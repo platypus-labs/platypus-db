@@ -3,7 +3,7 @@
  *  the length of text and the shapes its values take, with a histogram or the most frequent
  *  values. A value or an outlier opens the table's data filtered to it. */
 import { useEffect, useMemo, useState } from "react";
-import { api, type ObjectKind, type TableColumnProfile, type TableProfile, type ValuePattern, toCommandError } from "../api";
+import { api, type DriverKind, type ObjectKind, type TableColumnProfile, type TableProfile, type ValuePattern, toCommandError } from "../api";
 import { shown as masked, useMask } from "../guards/mask";
 import { locale, msg, plural, t } from "../i18n";
 import { quoteIdent } from "../sqlIdent";
@@ -62,6 +62,19 @@ const SAMPLE_OPTIONS: [number | null, string][] = [
   [null, msg("Whole table")],
 ];
 
+/** Databases that do not speak SQL: no `SELECT DISTINCT *` to count identical rows with. */
+const NOT_SQL = new Set<DriverKind>(["mongo", "redis", "elasticsearch", "cassandra"]);
+
+/** The Duplicates card: the number of rows identical to an earlier one, or why it is not
+ *  counted. */
+interface Duplicates {
+  value: string;
+  /** Why there is no number; `null` when there is. */
+  why: string | null;
+}
+
+const unavailable = (why: string): Duplicates => ({ value: "—", why });
+
 /** A figure of the spread of numbers, with the decimals that tell something. */
 const figure = (n: number) => n.toLocaleString(locale(), { maximumFractionDigits: 4 });
 
@@ -73,6 +86,8 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
   const [filter, setFilter] = useState("");
   // What the last click did when it could not open the data: the value went to the clipboard.
   const [note, setNote] = useState<string | null>(null);
+  // Counted after the profile, on its own: a failure leaves the card without a number.
+  const [duplicates, setDuplicates] = useState<Duplicates | null>(null);
   const hide = useMask({ connectionId: connection.id, database: tab.database, schema: tab.schema, table: tab.name });
 
   useEffect(() => {
@@ -101,6 +116,31 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
   }, [tab.schema, tab.name, tab.sample, version]);
 
   const target = qualifiedName(connection.driver, { name: tab.schema, current: tab.currentSchema }, tab.name);
+
+  useEffect(() => {
+    setDuplicates(null);
+    if (!profile || profile.rows === 0) return;
+    if (NOT_SQL.has(connection.driver)) return setDuplicates(unavailable(t("This database cannot count identical rows.")));
+    // Telling identical rows apart reads the whole table: only a table read in full is counted.
+    if (profile.cut !== null) return setDuplicates(unavailable(t("Only counted when the whole table was read: choose a larger sample.")));
+    let live = true;
+    void (async () => {
+      try {
+        const sid = await sideSession();
+        if (sid === null || !live) return;
+        const sql = `SELECT COUNT(*) - (SELECT COUNT(*) FROM (SELECT DISTINCT * FROM ${target}) d) FROM ${target}`;
+        const value = await api.queryValue(sid, sql);
+        if (!live) return;
+        setDuplicates(value === null || Number.isNaN(Number(value)) ? unavailable(t("The database could not count identical rows.")) : { value: count(Number(value)), why: null });
+      } catch {
+        // Columns that cannot be compared whole (JSON, large objects) refuse DISTINCT.
+        if (live) setDuplicates(unavailable(t("The database could not count identical rows.")));
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [profile]);
   const openRows = (condition: string) =>
     workbench().openTab("query", connection.id, {
       sql: viewerSql(connection.driver, target, condition),
@@ -182,7 +222,7 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
       {note && <div className="notice ok tp-note">{note}</div>}
       <div className="object-body tp-body">
         {profile && columns.length === 0 && filter.trim() !== "" && <div className="muted tp-none">{t("No column matches.")}</div>}
-        {profile && profile.rows > 0 && <Kpis profile={profile} />}
+        {profile && profile.rows > 0 && <Kpis profile={profile} duplicates={duplicates} />}
         {profile && columns.length > 0 && <div className="tp-section">{t("Columns")}</div>}
         <div className="tp-cards">
           {columns.map((c) => (
@@ -201,18 +241,19 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
 }
 
 /** The figures of the whole table, above its columns. */
-function Kpis({ profile }: { profile: TableProfile }) {
+function Kpis({ profile, duplicates }: { profile: TableProfile; duplicates: Duplicates | null }) {
   const cells = profile.columns.reduce((n, c) => n + c.rows, 0);
   const nulls = profile.columns.reduce((n, c) => n + c.nulls, 0);
-  const cards: [string, string][] = [
-    [t("Rows"), count(profile.rows)],
-    [t("Columns"), count(profile.columns.length)],
-    [t("NULL values"), percent(cells > 0 ? nulls / cells : 0)],
+  const cards: [string, string, string | undefined][] = [
+    [t("Rows"), count(profile.rows), undefined],
+    [t("Columns"), count(profile.columns.length), undefined],
+    [t("NULL values"), percent(cells > 0 ? nulls / cells : 0), undefined],
+    [t("Duplicates"), duplicates?.value ?? "…", duplicates ? (duplicates.why ?? t("Rows identical to another row")) : t("Counting identical rows…")],
   ];
   return (
     <div className="tp-kpis">
-      {cards.map(([label, value]) => (
-        <div key={label} className="tp-kpi">
+      {cards.map(([label, value, hint]) => (
+        <div key={label} className="tp-kpi" title={hint} data-kpi={label}>
           <span className="tp-kpi-label">{label}</span>
           <span className="tp-kpi-value">{value}</span>
         </div>

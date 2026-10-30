@@ -2962,6 +2962,12 @@ const de: Record<string, string> = {
   "None (top level)": "Keiner (oberste Ebene)",
   "Create index…": "Index erstellen…",
   "Ignore": "Ignorieren",
+  "This database cannot count identical rows.": "Diese Datenbank kann identische Zeilen nicht zählen.",
+  "Only counted when the whole table was read: choose a larger sample.": "Nur gezählt, wenn die ganze Tabelle gelesen wurde: Wähle eine größere Stichprobe.",
+  "The database could not count identical rows.": "Die Datenbank konnte identische Zeilen nicht zählen.",
+  "Duplicates": "Duplikate",
+  "Rows identical to another row": "Zeilen, die einer anderen Zeile gleichen",
+  "Counting identical rows…": "Identische Zeilen werden gezählt…",
 };
 
 export default de;

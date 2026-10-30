@@ -2962,6 +2962,12 @@ const zh: Record<string, string> = {
   "None (top level)": "无(顶层)",
   "Create index…": "创建索引…",
   "Ignore": "忽略",
+  "This database cannot count identical rows.": "此数据库无法统计相同的行。",
+  "Only counted when the whole table was read: choose a larger sample.": "只有读取了整张表才会统计：请选择更大的样本。",
+  "The database could not count identical rows.": "数据库无法统计相同的行。",
+  "Duplicates": "重复项",
+  "Rows identical to another row": "与其他行相同的行",
+  "Counting identical rows…": "正在统计相同的行…",
 };
 
 export default zh;

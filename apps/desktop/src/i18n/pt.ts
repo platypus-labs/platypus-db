@@ -2962,6 +2962,12 @@ const pt: Record<string, string> = {
   "None (top level)": "Nenhuma (nível principal)",
   "Create index…": "Criar índice…",
   "Ignore": "Ignorar",
+  "This database cannot count identical rows.": "Este banco de dados não consegue contar linhas idênticas.",
+  "Only counted when the whole table was read: choose a larger sample.": "Só contadas quando a tabela inteira foi lida: escolha uma amostra maior.",
+  "The database could not count identical rows.": "O banco de dados não conseguiu contar as linhas idênticas.",
+  "Duplicates": "Duplicados",
+  "Rows identical to another row": "Linhas idênticas a outra linha",
+  "Counting identical rows…": "Contando linhas idênticas…",
 };
 
 export default pt;
