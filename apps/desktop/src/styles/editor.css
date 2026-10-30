@@ -701,3 +701,11 @@ button.toggled {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+
+/* "Generate DDL" still reading: how far, and Stop. */
+.ddl-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}

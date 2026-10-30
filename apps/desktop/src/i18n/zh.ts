@@ -2364,6 +2364,9 @@ const zh: Record<string, string> = {
   "Edit the columns, keys, indexes and constraints of the table": "编辑表的列、键、索引和约束",
   "Open the details: properties, columns, keys and DDL": "打开详细信息：属性、列、键和 DDL",
   "Read-only: the table cannot be changed from here": "只读：无法从这里更改表",
+  "Stopped: the DDL of {done} of {total} objects was read": "已停止：已读取 {total} 个对象中 {done} 个的 DDL",
+  "DDL: {done} of {total} objects": "DDL：{done} / {total} 个对象",
+  "Stop reading the DDL; what was read stays in the editor": "停止读取 DDL；已读取的内容保留在编辑器中",
 };
 
 export default zh;

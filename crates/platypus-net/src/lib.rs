@@ -593,6 +593,10 @@ impl Connection for Held {
         self.inner.object_ddl(object).await
     }
 
+    async fn objects_ddl(&self, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
+        self.inner.objects_ddl(objects).await
+    }
+
     async fn catalog_foreign_keys(&self) -> Result<Vec<CatalogForeignKey>> {
         self.inner.catalog_foreign_keys().await
     }

@@ -2364,6 +2364,9 @@ const fr: Record<string, string> = {
   "Edit the columns, keys, indexes and constraints of the table": "Modifier les colonnes, clés, index et contraintes de la table",
   "Open the details: properties, columns, keys and DDL": "Ouvrir les détails : propriétés, colonnes, clés et DDL",
   "Read-only: the table cannot be changed from here": "Lecture seule : la table ne peut pas être modifiée d'ici",
+  "Stopped: the DDL of {done} of {total} objects was read": "Arrêté : DDL lu pour {done} objets sur {total}",
+  "DDL: {done} of {total} objects": "DDL : {done} sur {total} objets",
+  "Stop reading the DDL; what was read stays in the editor": "Arrêter la lecture du DDL ; ce qui a été lu reste dans l'éditeur",
 };
 
 export default fr;
