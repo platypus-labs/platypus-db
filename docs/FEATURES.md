@@ -296,7 +296,9 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
 
 ![Designing a table](screenshots/table-editor.png)
 
-Right-click a table, *Edit table…*, or a schema, *Create table…*: columns (type, NOT NULL,
+Right-click a table, *Edit table…* (F4), or a schema, *Create table…*; *Edit table…* is also
+in a table's tab, next to *Open data*, and in the data viewer's bar, next to *Structure*, which
+opens the table's tab. Either brings forward the editor already open on the table. Columns (type, NOT NULL,
 default, primary key, comment), indexes, foreign keys with their `ON DELETE`/`ON UPDATE`
 actions, and UNIQUE and CHECK constraints. Saving shows the `CREATE TABLE` or `ALTER TABLE`
 script first and runs it in one transaction where the database can roll DDL back (MySQL

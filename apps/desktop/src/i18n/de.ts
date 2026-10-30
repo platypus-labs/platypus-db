@@ -2360,6 +2360,9 @@ const de: Record<string, string> = {
   "Every column needs a name.": "Jede Spalte braucht einen Namen.",
   "Every column needs a type.": "Jede Spalte braucht einen Typ.",
   "Two columns have the same name.": "Zwei Spalten haben denselben Namen.",
+  "Structure": "Struktur",
+  "Open the structure of the table: columns, keys, indexes and DDL": "Struktur der Tabelle öffnen: Spalten, Schlüssel, Indizes und DDL",
+  "Edit the columns, keys, indexes and constraints of the table": "Spalten, Schlüssel, Indizes und Constraints der Tabelle bearbeiten",
 };
 
 export default de;

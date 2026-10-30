@@ -18,6 +18,7 @@ import { onNavigatorRefresh, requestNavigatorRefresh } from "../navigatorEvents"
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { editsTables, openObjectTab, openTableEditor } from "./open";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 
@@ -195,14 +196,13 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   );
 
   function openReferenced(schema: string, table: string) {
-    workbench().openTab("object", connection.id, {
+    openObjectTab(connection.id, {
       database: tab.database,
       schema,
       currentSchema: schema === tab.schema ? tab.currentSchema : false,
       name: table,
-      objectKind: "table",
+      kind: "table",
       parent: null,
-      title: table,
     });
   }
 
@@ -249,6 +249,14 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             }
           >
             {t("Open data")}
+          </button>
+        )}
+        {tab.objectKind === "table" && editsTables(connection.driver) && (
+          <button
+            onClick={() => openTableEditor(connection.id, { database: tab.database, schema: tab.schema, name: tab.name })}
+            title={t("Edit the columns, keys, indexes and constraints of the table")}
+          >
+            {t("Edit table…")}
           </button>
         )}
         {data?.ddl && (

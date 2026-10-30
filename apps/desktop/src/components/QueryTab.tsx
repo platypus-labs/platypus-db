@@ -39,6 +39,7 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
 import { useResultSql } from "../analysis/ResultSql";
 import { provideContext } from "../agents/context";
@@ -1610,6 +1611,8 @@ export function QueryTab({
   // no commit mode.
   // The data viewer's bar, with its row count: not on Redis, whose rows are read as shown.
   const viewerBar = !!tab.table && !isRedis(connection.driver);
+  /** The table the data viewer browses, for its structure and its editor. */
+  const viewed = tab.table && tab.tableRef ? { ...tab.tableRef, database: tab.database } : null;
   const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isNoSql(connection.driver);
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = view?.status.kind === "rows" && view.columns ? view : null;
@@ -1790,6 +1793,30 @@ export function QueryTab({
         </div>
         {viewerBar && (
           <div className="viewer-bar">
+            {viewed && (
+              <button
+                type="button"
+                onClick={() =>
+                  openObjectTab(connection.id, {
+                    ...viewed,
+                    currentSchema: viewed.schema === catalog?.default_schema,
+                    parent: null,
+                  })
+                }
+                title={t("Open the structure of the table: columns, keys, indexes and DDL")}
+              >
+                {t("Structure")}
+              </button>
+            )}
+            {viewed?.kind === "table" && editsTables(connection.driver) && (
+              <button
+                type="button"
+                onClick={() => openTableEditor(connection.id, viewed)}
+                title={t("Edit the columns, keys, indexes and constraints of the table")}
+              >
+                {t("Edit table…")}
+              </button>
+            )}
             <span className="spacer" />
             {shownCount && <span className="muted small">{shownCount}</span>}
             <button
