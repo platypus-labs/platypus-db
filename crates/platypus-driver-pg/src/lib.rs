@@ -14,6 +14,7 @@ mod ddl;
 #[doc(hidden)]
 pub mod decode;
 mod explain;
+mod security;
 pub use explain::read_plan;
 mod meta;
 mod tls;
@@ -459,6 +460,20 @@ impl Connection for PgConnection {
         admin::maintain(self, schema, table, operation).await
     }
 
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        self.server_admin()?;
+        security::principals(self).await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        _host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        self.server_admin()?;
+        security::privileges(self, name).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -489,6 +504,7 @@ impl Connection for PgConnection {
             server_sessions: self.has_server_admin(),
             cancel_server_queries: self.has_server_admin(),
             server_statistics: self.has_server_admin(),
+            security: self.has_server_admin(),
             maintenance: if self.has_server_admin() {
                 admin::MAINTENANCE
             } else {

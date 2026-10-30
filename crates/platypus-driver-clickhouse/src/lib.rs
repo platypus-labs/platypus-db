@@ -9,6 +9,7 @@
 mod error;
 mod http;
 mod meta;
+mod security;
 mod stream;
 mod types;
 
@@ -244,8 +245,21 @@ impl Connection for ClickHouseConnection {
             explain: true,
             object_ddl: true,
             metadata_search: true,
+            security: true,
             ..Capabilities::default()
         }
+    }
+
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        security::principals(self).await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        _host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        security::privileges(self, name).await
     }
 
     async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {

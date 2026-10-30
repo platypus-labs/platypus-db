@@ -14,6 +14,7 @@ mod explain;
 pub mod geometry;
 mod init;
 mod metadata;
+mod security;
 pub mod special;
 mod transaction;
 mod version;
@@ -45,6 +46,10 @@ pub use metadata::{
     FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta,
     Property, ReferencingKey, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow, TextRowExt,
     group_sorted, query_catalog, query_text,
+};
+pub use security::{
+    DropOptions, GrantAction, GrantKind, GrantTarget, Grantee, Principal, PrincipalFlag,
+    PrincipalKind, PrincipalSpec, PrivilegeGrant, SecurityChange, TargetClass,
 };
 pub use transaction::{
     TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,
