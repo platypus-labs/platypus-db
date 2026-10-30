@@ -316,8 +316,9 @@ ${s.filter}`;
                 <code>{s.filter}</code>
                 {t(": an index on the columns of that condition may help.")}
               </span>
-              {/* A plan read from a document has no connection to create the index on. */}
-              {!tab.plan && columns.length > 0 && (
+              {/* A plan read from a document has no connection to create the index on. MySQL and MariaDB
+                  report the alias, not the table, so only PostgreSQL gets the button for now. */}
+              {!tab.plan && connection.driver === "postgres" && columns.length > 0 && (
                 <button type="button" onClick={() => workbench().openTab("query", connection.id, { sql: createIndexSql(connection.driver, s.table, columns) })}>
                   {t("Create index…")}
                 </button>
