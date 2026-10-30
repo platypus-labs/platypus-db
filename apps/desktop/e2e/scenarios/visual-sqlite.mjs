@@ -76,7 +76,7 @@ async function screens(page, theme, shots) {
   // Theme cards are buttons taller than the others: their color strip stays inside them.
   const strip = await page.eval(`(() => {
     const card = document.querySelector('.theme-card').getBoundingClientRect();
-    const colors = document.querySelector('.theme-card .theme-card-colors').getBoundingClientRect();
+    const colors = document.querySelector('.theme-card .theme-preview').getBoundingClientRect();
     return colors.height > 0 && colors.bottom <= card.bottom;
   })()`);
   assert.equal(strip, true, "theme card colors inside the card");
@@ -97,7 +97,7 @@ export default async function (page, { shots }) {
   // No tab yet: the welcome screen, with its actions and the shell's shortcuts.
   assert.deepEqual(
     JSON.parse(await page.eval(`JSON.stringify([...document.querySelectorAll('.welcome-card strong')].map(s => s.textContent))`)),
-    ["Open a data file", "Import connections"],
+    ["Open a data file", "Try the sample database", "Import connections"],
   );
   assert.equal(await page.eval(`document.querySelector('.welcome-keys kbd')?.textContent`), "Ctrl+K");
   await page.key("2", "Digit2", 50, CTRL);
