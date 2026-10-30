@@ -73,9 +73,10 @@ async function checkList(page) {
   await page.waitFor(`${principalRow("e2e_u_app")} !== null`);
 
   // The text filter looks at names and roles; nothing matching says so.
+  // The three seeded accounts: e2e_u_app, e2e_u_readers and e2e_u_tmp.
   const search = '[data-view="users"] input[type=search]';
   await setValue(page, search, "e2e_u_");
-  await page.waitFor(`${usersView}.querySelectorAll('tr.admin-principal').length === 2`);
+  await page.waitFor(`${usersView}.querySelectorAll('tr.admin-principal').length === 3`);
   await setValue(page, search, "nothing-like-this");
   await page.waitFor(`${usersView}.querySelector('.admin-empty')?.textContent === 'No users or roles match.'`);
   await setValue(page, search, "");

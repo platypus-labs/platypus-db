@@ -268,8 +268,8 @@ export const parameterCell = (page, name, column) => page.eval(`${parameterRow(n
 
 /** A tile of the dashboard: its figure, as shown, and the tooltip it has when it shows "—". */
 export const tile = (id) => `${adminTab}?.querySelector('.dash-tile[data-tile="${id}"]')`;
-export const tileValue = (id) => `${tile(id)}?.querySelector('[data-field="value"]')?.textContent ?? null`;
-export const tileTitle = (id) => `${tile(id)}?.querySelector('[data-field="value"]')?.title ?? null`;
+export const tileValue = (id) => `(${tile(id)}?.querySelector('[data-field="value"]')?.textContent ?? null)`;
+export const tileTitle = (id) => `(${tile(id)}?.querySelector('[data-field="value"]')?.title ?? null)`;
 
 /** How many readings the sparkline of tile `id` draws. */
 export const sparkPoints = (id) =>
