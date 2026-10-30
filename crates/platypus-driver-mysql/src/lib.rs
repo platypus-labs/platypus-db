@@ -11,6 +11,8 @@ pub mod columns;
 mod explain;
 pub use explain::read_plan;
 mod meta;
+mod monitor;
+mod security;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, PoisonError};
@@ -402,6 +404,14 @@ impl Connection for MySqlConnection {
         admin::object_statistics(self).await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        monitor::parameters(self).await
+    }
+
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        monitor::metrics(self).await
+    }
+
     async fn maintain(
         &self,
         schema: &str,
@@ -409,6 +419,18 @@ impl Connection for MySqlConnection {
         operation: platypus_core::Maintenance,
     ) -> Result<Vec<String>> {
         admin::maintain(self, schema, table, operation).await
+    }
+
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        security::principals(self).await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        security::privileges(self, name, host).await
     }
 
     fn transaction(&self) -> TransactionState {
@@ -451,7 +473,11 @@ impl Connection for MySqlConnection {
             cancel_server_queries: true,
             server_statistics: true,
             maintenance: admin::MAINTENANCE,
+            security: true,
             bulk_load: self.local_infile,
+            server_parameters: true,
+            server_metrics: true,
+            debugger: false,
             ..Default::default()
         }
     }

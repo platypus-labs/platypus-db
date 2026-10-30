@@ -452,6 +452,20 @@ then run the SELECT or open it in the editor.
   `VACUUM`, `ANALYZE` and `REINDEX` on PostgreSQL; `ANALYZE`, `OPTIMIZE` and `CHECK TABLE` on
   MySQL and MariaDB; `UPDATE STATISTICS`, an index rebuild and `DBCC CHECKTABLE` on SQL
   Server. Each asks first and shows what the server said.
+- **Parameters**: the server's settings with their value, default, source and description,
+  searchable, with *Only changed*; *Open in the editor* writes the statement that changes one
+  (`ALTER SYSTEM SET`, `SET GLOBAL`, `sp_configure`…) for you to run.
+- **Dashboard**: connections, transactions and statements per second, cache hit ratio,
+  database sizes, replication and uptime, with their recent history; what the server does not
+  let the login read shows "—" and why.
+- **Users and roles**: the server's users and roles with their attributes, memberships and
+  privileges; create, change and drop them, grant and revoke privileges on databases, schemas,
+  tables and routines (with grant option) from a form, with the SQL previewed first. Passwords
+  are masked in the preview and never reach the query log. PostgreSQL, MySQL, MariaDB, SQL
+  Server and ClickHouse.
+- **Debug…** a PL/pgSQL function or procedure (PostgreSQL with the `pldebugger` extension):
+  arguments in a form, then step into, step over, continue (F11, F10, F5), breakpoints on the
+  source, the stack, variables you can change, and the result at the end.
 - **Back up… and Restore…** of a PostgreSQL or MySQL database (or a PostgreSQL schema) with
   its own tools on the PATH (`pg_dump`, `pg_restore`, `psql`, `mysqldump`, `mysql`), through
   the connection's tunnel or proxy, table by table with a progress bar. A `pg_dump` archive

@@ -55,7 +55,7 @@ const MARIADB_LOCKS: &str = "SELECT x.trx_mysql_thread_id, l.lock_type, \
      JOIN information_schema.INNODB_TRX x ON x.trx_id = l.lock_trx_id \
      WHERE x.trx_mysql_thread_id <> CONNECTION_ID()";
 
-fn mariadb(conn: &dyn Connection) -> bool {
+pub(crate) fn mariadb(conn: &dyn Connection) -> bool {
     conn.server_info().product == "MariaDB"
 }
 

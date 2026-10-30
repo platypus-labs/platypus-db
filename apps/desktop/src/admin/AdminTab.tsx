@@ -6,6 +6,7 @@ import {
   type Maintenance,
   type ObjectStatistics,
   type ServerLock,
+  type ServerParameter,
   type ServerQuery,
   type ServerSession,
   toCommandError,
@@ -15,13 +16,41 @@ import { workbench } from "../workbench";
 import { ask } from "../ui/ask";
 import { Icon } from "../ui/Icon";
 import { msg, t } from "../i18n";
+import { Dashboard } from "./Dashboard";
+import { pushSample, type Sample } from "./dashboardModel";
+import { Parameters } from "./Parameters";
 import { type Activity, activity, blockingChains, type Chain, matches, seconds } from "./sessions";
 import { ObjectsView, TopQueries } from "./Statistics";
+import { Users } from "./Users";
 
-export type AdminView = "sessions" | "locks" | "statements" | "objects";
+export type AdminView = "sessions" | "locks" | "statements" | "objects" | "parameters" | "dashboard" | "users";
 
-/** Views read on demand, not every few seconds: the server sums their numbers over hours. */
-const ON_DEMAND = new Set<AdminView>(["statements", "objects"]);
+/** Views read on demand, not every few seconds: the server sums their numbers over hours, or
+ *  they do not change while the tab is open. */
+const ON_DEMAND = new Set<AdminView>(["statements", "objects", "parameters"]);
+
+/** The label of each view's button. */
+const VIEW_LABELS: Record<AdminView, string> = {
+  sessions: msg("Sessions"),
+  locks: msg("Locks"),
+  dashboard: msg("Dashboard"),
+  users: msg("Users and roles"),
+  statements: msg("Costliest statements"),
+  objects: msg("Tables and indexes"),
+  parameters: msg("Parameters"),
+};
+
+/** The views `caps` offers, in the order of the tab's buttons: a database without sessions
+ *  (SQLite, DuckDB) still lists its parameters. */
+export function availableViews(caps: Capabilities): AdminView[] {
+  const views: AdminView[] = [];
+  if (caps.server_sessions) views.push("sessions", "locks");
+  if (caps.server_metrics) views.push("dashboard");
+  if (caps.security) views.push("users");
+  if (caps.server_statistics) views.push("statements", "objects");
+  if (caps.server_parameters) views.push("parameters");
+  return views;
+}
 
 /** The server's sessions and locks, read again every few seconds; its costliest statements
  *  and the use of its tables and indexes. */
@@ -72,9 +101,12 @@ interface Statistics {
 }
 
 export function AdminTab({ tab, connection, active, sideSession, onChange }: TabProps<AdminTabModel>) {
-  const view = tab.view ?? "sessions";
-  const interval = tab.interval ?? 5;
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  // A view the database does not offer gives way to the first it does.
+  const offered = caps ? availableViews(caps) : [];
+  const requested = tab.view ?? "sessions";
+  const view = (!offered.includes(requested) && offered[0]) || requested;
+  const interval = tab.interval ?? 5;
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -84,6 +116,12 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   const [onlyWaiting, setOnlyWaiting] = useState(false);
   const [version, setVersion] = useState(0);
   const [statistics, setStatistics] = useState<Statistics>({ queries: null, objects: null, error: null });
+  const [parameters, setParameters] = useState<{ list: ServerParameter[] | null; error: string | null }>({
+    list: null,
+    error: null,
+  });
+  /** The dashboard's last snapshots, kept across views so that its sparklines have a past. */
+  const [samples, setSamples] = useState<Sample[]>([]);
   const busy = useRef(false);
   /** A load asked while one ran: it runs once that one ends, with the view then shown. */
   const again = useRef(false);
@@ -106,6 +144,16 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         if (sid === null) return;
         const capabilities = workbench().capabilities(sid) ?? null;
         setCaps(capabilities);
+        if (viewNow.current === "dashboard") {
+          await loadMetrics(sid, capabilities);
+          continue;
+        }
+        if (viewNow.current === "parameters") {
+          await loadParameters(sid, capabilities);
+          continue;
+        }
+        // The users and roles read themselves.
+        if (viewNow.current === "users") return;
         if (ON_DEMAND.has(viewNow.current)) {
           await loadStatistics(sid, viewNow.current, capabilities);
           continue;
@@ -149,6 +197,30 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
     }
   }
 
+  /** Reads a snapshot for the dashboard; its rates come from the ones before. */
+  async function loadMetrics(sid: number, capabilities: Capabilities | null) {
+    if (!capabilities?.server_metrics) return;
+    try {
+      const metrics = await api.serverMetrics(sid);
+      setSamples((s) => pushSample(s, { at: Date.now(), metrics }));
+      setSnapshot((s) => ({ sessions: s?.sessions ?? [], locks: s?.locks ?? null, locksError: null, at: new Date() }));
+      setError(null);
+    } catch (e) {
+      setError(toCommandError(e).message);
+    }
+  }
+
+  /** Reads the parameters; an error is the view's, not the tab's. */
+  async function loadParameters(sid: number, capabilities: Capabilities | null) {
+    if (!capabilities?.server_parameters) return;
+    try {
+      setParameters({ list: await api.serverParameters(sid), error: null });
+      setSnapshot((s) => s && { ...s, at: new Date() });
+    } catch (e) {
+      setParameters((p) => ({ ...p, error: toCommandError(e).message }));
+    }
+  }
+
   async function maintain(schema: string, table: string, operation: Maintenance): Promise<string[]> {
     const sid = await sideSession();
     if (sid === null) return [];
@@ -161,7 +233,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   useEffect(() => {
     if (!active) return;
     void load();
-    if (interval <= 0 || ON_DEMAND.has(view)) return;
+    if (interval <= 0 || ON_DEMAND.has(view) || view === "users") return;
     const timer = window.setInterval(() => void load(), interval * 1000);
     return () => window.clearInterval(timer);
   }, [active, interval, view, version]);
@@ -195,7 +267,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   const shown = sessions.filter((s) => (only === null || activity(s) === only) && matches(s, filter));
   const chosen = sessions.find((s) => s.id === selected) ?? null;
   const waiting = counts.get("waiting") ?? 0;
-  const unsupported = caps !== null && !caps.server_sessions;
+  const unsupported = caps !== null && offered.length === 0;
   const show = (id: string) => {
     setSelected(id);
     onChange({ view: "sessions" });
@@ -237,27 +309,17 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         </button>
       </header>
       <nav className="object-sections">
-        <button className={view === "sessions" ? "active" : ""} onClick={() => onChange({ view: "sessions" })}>
-          {t("Sessions")} <span className="count">{sessions.length}</span>
-        </button>
-        <button className={view === "locks" ? "active" : ""} onClick={() => onChange({ view: "locks" })}>
-          {t("Locks")}
-          {waiting > 0 && (
-            <span className="count admin-blocked-count" title={t("{n} waiting for a lock", { n: waiting })}>
-              {waiting}
-            </span>
-          )}
-        </button>
-        {caps?.server_statistics && (
-          <>
-            <button className={view === "statements" ? "active" : ""} onClick={() => onChange({ view: "statements" })}>
-              {t("Costliest statements")}
-            </button>
-            <button className={view === "objects" ? "active" : ""} onClick={() => onChange({ view: "objects" })}>
-              {t("Tables and indexes")}
-            </button>
-          </>
-        )}
+        {offered.map((v) => (
+          <button key={v} className={view === v ? "active" : ""} onClick={() => onChange({ view: v })}>
+            {t(VIEW_LABELS[v])}
+            {v === "sessions" && <span className="count">{sessions.length}</span>}
+            {v === "locks" && waiting > 0 && (
+              <span className="count admin-blocked-count" title={t("{n} waiting for a lock", { n: waiting })}>
+                {waiting}
+              </span>
+            )}
+          </button>
+        ))}
       </nav>
       {unsupported && (
         <div className="object-body">
@@ -265,6 +327,25 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         </div>
       )}
       {error && <div className="notice error small admin-error">{error}</div>}
+      {!unsupported && view === "dashboard" && (
+        <div className="object-body admin-body">
+          <Dashboard samples={samples} />
+        </div>
+      )}
+      {!unsupported && view === "parameters" && (
+        <div className="object-body admin-body">
+          {parameters.error && <div className="notice error small" data-field="parameters-error">{parameters.error}</div>}
+          {parameters.list && (
+            <Parameters
+              parameters={parameters.list}
+              onOpen={(sql) => workbench().openTab("query", connection.id, { sql })}
+            />
+          )}
+          {!parameters.error && !parameters.list && (
+            <p className="muted small">{loading ? t("Reading the parameters…") : ""}</p>
+          )}
+        </div>
+      )}
       {!unsupported && view === "sessions" && (
         <div className="object-body admin-body">
           <div className="admin-toolbar">
@@ -329,6 +410,9 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             <p className="muted small">{loading ? t("Reading the statistics…") : ""}</p>
           )}
         </div>
+      )}
+      {view === "users" && caps?.security && (
+        <Users connection={connection} active={active} refresh={version} sideSession={sideSession} />
       )}
       {!unsupported && view === "locks" && (
         <div className="object-body admin-body">

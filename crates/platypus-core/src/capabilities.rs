@@ -43,9 +43,22 @@ pub struct Capabilities {
     /// The operations [`Connection::maintain`](crate::Connection::maintain) runs; empty
     /// when it runs none.
     pub maintenance: &'static [crate::Maintenance],
+    /// [`Connection::principals`](crate::Connection::principals) and
+    /// [`principal_privileges`](crate::Connection::principal_privileges): the users, roles
+    /// and privileges of the server can be read, and `platypus_sql::security` writes the
+    /// statements that change them.
+    pub security: bool,
     /// [`Connection::bulk_load`](crate::Connection::bulk_load): rows go in with the
     /// database's own bulk loading instead of INSERT statements.
     pub bulk_load: bool,
+    /// [`Connection::server_parameters`](crate::Connection::server_parameters).
+    pub server_parameters: bool,
+    /// [`Connection::server_metrics`](crate::Connection::server_metrics).
+    pub server_metrics: bool,
+    /// [`Connection::debugger`](crate::Connection::debugger): routines can be debugged step
+    /// by step, where the server has the debugger (see
+    /// [`Debugger::availability`](crate::Debugger::availability)).
+    pub debugger: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.

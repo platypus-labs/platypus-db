@@ -41,6 +41,26 @@ pub enum Error {
 }
 
 impl Error {
+    /// The error with each message it carries (and a database error's detail and hint)
+    /// passed through `f`, to hide what a server echoed that must not be shown.
+    #[must_use]
+    pub fn map_text(mut self, f: impl Fn(&str) -> String) -> Self {
+        match &mut self {
+            Self::Database(db) => {
+                db.message = f(&db.message);
+                db.detail = db.detail.as_deref().map(&f);
+                db.hint = db.hint.as_deref().map(&f);
+            }
+            Self::Config(m)
+            | Self::Connect(m)
+            | Self::Unsupported(m)
+            | Self::Other(m)
+            | Self::Decode { message: m, .. } => *m = f(m),
+            _ => {}
+        }
+        self
+    }
+
     /// The error with the server it came from, `(MySQL 5.7.44)` after its message, so that a
     /// reason that depends on the version says which. Cancels, closed connections, missing
     /// drivers and messages that name the version already stay as they are.

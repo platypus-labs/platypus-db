@@ -2,7 +2,8 @@
 //! the admin tab; and the upkeep of a table.
 
 use platypus_core::{
-    EndSession, Maintenance, ObjectStatistics, ServerLock, ServerQuery, ServerSession,
+    EndSession, Maintenance, ObjectStatistics, ServerLock, ServerMetrics, ServerParameter,
+    ServerQuery, ServerSession,
 };
 use tauri::State;
 
@@ -77,4 +78,24 @@ pub async fn maintain_table(
         Ok(conn.maintain(&schema, &table, operation).await?)
     })
     .await
+}
+
+/// The server's configuration parameters, with their defaults where it tells them.
+#[tauri::command]
+pub async fn server_parameters(
+    state: State<'_, AppState>,
+    session_id: u64,
+) -> CommandResult<Vec<ServerParameter>> {
+    let conn = state.live(session_id).await?;
+    Ok(conn.server_parameters().await?)
+}
+
+/// A snapshot of the server's load, for the dashboard.
+#[tauri::command]
+pub async fn server_metrics(
+    state: State<'_, AppState>,
+    session_id: u64,
+) -> CommandResult<ServerMetrics> {
+    let conn = state.live(session_id).await?;
+    Ok(conn.server_metrics().await?)
 }

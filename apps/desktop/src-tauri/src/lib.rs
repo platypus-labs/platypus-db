@@ -159,6 +159,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         dir(app, false).map(|d| d.join("dashboards")),
     ));
     app.manage(windows::Detached::default());
+    app.manage(commands::debugger::Debugs::default());
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
         applog::init(&data);
@@ -425,7 +426,25 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::admin::end_server_session,
         commands::admin::top_queries,
         commands::admin::object_statistics,
+        commands::admin::server_parameters,
+        commands::admin::server_metrics,
         commands::admin::maintain_table,
+        commands::security::list_principals,
+        commands::security::principal_privileges,
+        commands::security::security_options,
+        commands::security::security_preview,
+        commands::security::apply_security,
+        commands::debugger::debug_routine,
+        commands::debugger::debug_install,
+        commands::debugger::debug_start,
+        commands::debugger::debug_step,
+        commands::debugger::debug_continue,
+        commands::debugger::debug_set_breakpoint,
+        commands::debugger::debug_stack,
+        commands::debugger::debug_variables,
+        commands::debugger::debug_set_variable,
+        commands::debugger::debug_source,
+        commands::debugger::debug_stop,
         commands::backup::backup_database,
         commands::backup::restore_database,
         commands::schedules::list_schedules,

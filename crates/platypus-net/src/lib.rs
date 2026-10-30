@@ -633,6 +633,14 @@ impl Connection for Held {
         self.inner.object_statistics().await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        self.inner.server_parameters().await
+    }
+
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        self.inner.server_metrics().await
+    }
+
     async fn maintain(
         &self,
         schema: &str,
@@ -642,7 +650,23 @@ impl Connection for Held {
         self.inner.maintain(schema, table, operation).await
     }
 
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        self.inner.principals().await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        self.inner.principal_privileges(name, host).await
+    }
+
     async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
         self.inner.bulk_load(rows).await
+    }
+
+    fn debugger(&self) -> Result<Arc<dyn platypus_core::Debugger>> {
+        self.inner.debugger()
     }
 }
