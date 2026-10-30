@@ -5779,6 +5779,7 @@ dependencies = [
  "platypus-schema",
  "platypus-sql",
  "platypus-store",
+ "platypus-sync",
  "platypus-transfer",
  "rmcp",
  "rusqlite",
@@ -6206,6 +6207,15 @@ dependencies = [
  "unicode-normalization",
  "uuid",
  "zip 9.1.0",
+]
+
+[[package]]
+name = "platypus-sync"
+version = "0.2.1"
+dependencies = [
+ "serde",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

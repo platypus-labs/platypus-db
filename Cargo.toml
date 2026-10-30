@@ -37,6 +37,7 @@ platypus-store = { path = "crates/platypus-store" }
 platypus-tls = { path = "crates/platypus-tls" }
 platypus-docs = { path = "crates/platypus-docs" }
 platypus-local = { path = "crates/platypus-local" }
+platypus-sync = { path = "crates/platypus-sync" }
 
 aes = "=0.9.3"
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }

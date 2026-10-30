@@ -34,6 +34,7 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 platypus-core.workspace = true
 platypus-docs.workspace = true
 platypus-local.workspace = true
+platypus-sync.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-odbc.workspace = true
 platypus-driver-oracle.workspace = true
