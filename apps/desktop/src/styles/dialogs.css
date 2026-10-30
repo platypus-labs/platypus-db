@@ -83,7 +83,174 @@
 }
 
 .modal.connection-dialog {
-  width: min(680px, calc(100vw - 32px));
+  width: min(880px, calc(100vw - 48px));
+}
+
+/* The connection form: header (logo, title, steps), page list at the left, page at the right. */
+.connection-dialog .dialog-header {
+  justify-content: flex-start;
+  gap: var(--space-8);
+}
+
+.connection-dialog .dialog-header h2 {
+  font-size: var(--text-lg);
+}
+
+.connection-dialog .steps {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.connection-dialog .steps span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.connection-dialog .steps b {
+  display: inline-grid;
+  place-items: center;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.connection-dialog .steps .on {
+  color: var(--fg-strong);
+}
+
+.connection-dialog .steps .on b {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg, var(--fg-strong));
+}
+
+.connection-dialog .steps i {
+  width: 20px;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.dialog-split {
+  display: flex;
+  gap: var(--space-12);
+  min-height: 0;
+}
+
+.dialog-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.connection-dialog .dialog-tabs {
+  flex: none;
+  width: 168px;
+  flex-direction: column;
+  align-self: flex-start;
+  gap: var(--space-2);
+  margin-bottom: 0;
+  padding-right: var(--space-8);
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+}
+
+.connection-dialog .dialog-tabs button {
+  height: var(--control-md);
+  padding: 0 var(--space-6);
+  border: none;
+  border-radius: var(--radius);
+  text-align: left;
+}
+
+.connection-dialog .dialog-tabs button[aria-selected="true"] {
+  background: var(--active);
+  color: var(--fg-strong);
+}
+
+/* One grid for the whole page: label at the left, control at the right. */
+.connection-dialog .dialog-page,
+.connection-dialog .form-section {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: var(--space-8) var(--space-10);
+  align-items: center;
+}
+
+.connection-dialog .dialog-page > *,
+.connection-dialog .form-section > * {
+  grid-column: 1 / -1;
+}
+
+.connection-dialog .dialog-page > .check,
+.connection-dialog .form-section > .check,
+.connection-dialog .dialog-page > small,
+.connection-dialog .form-section > small {
+  grid-column: 2;
+}
+
+.connection-dialog .dialog-page[hidden] {
+  display: none;
+}
+
+.connection-dialog .row {
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.connection-dialog .row.tight {
+  flex-direction: row;
+  gap: var(--space-6);
+}
+
+.connection-dialog .field {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: var(--space-4) var(--space-10);
+  align-items: center;
+}
+
+.connection-dialog .field > span:first-child {
+  grid-column: 1;
+  font-weight: 400;
+  color: var(--fg-muted);
+  text-align: right;
+}
+
+.connection-dialog .field > :not(span:first-child) {
+  grid-column: 2;
+}
+
+.connection-dialog .field.port {
+  flex: none;
+}
+
+.connection-dialog .form-section + .form-section,
+.connection-dialog .form-section + .field,
+.connection-dialog .field + .form-section {
+  padding-top: var(--space-12);
+}
+
+.connection-dialog .swatches {
+  height: auto;
+}
+
+.connection-dialog .actions {
+  flex-wrap: wrap;
+}
+
+.connection-dialog .actions .notice {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: var(--text-sm);
 }
 
 .modal.wide {

@@ -569,15 +569,28 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           }}
         >
           <div className="dialog-header">
-            <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
             <DriverIcon driver={conn.driver} label={tile} />
+            <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
+            {!existing && (
+              <div className="steps" aria-hidden="true">
+                <span className="done">
+                  <b>1</b> {t("Database")}
+                </span>
+                <i />
+                <span className="on">
+                  <b>2</b> {t("Connection")}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="dialog-tabs" role="tablist">
+          <div className="dialog-split">
+          <div className="dialog-tabs" role="tablist" aria-orientation="vertical">
             {tab("general", t("General"))}
             {server && !adbcProfile && tab("network", `${t("Network")}${networkSet ? " ●" : ""}`)}
             {tab("init", `${t("Init")}${initSet ? " ●" : ""}`)}
           </div>
 
+          <div className="dialog-content">
           <div data-page="general" hidden={page !== "general"} className="dialog-page">
             <label className="field">
               <span>{t("Name")}</span>
@@ -1220,6 +1233,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               />
             </label>
           </div>
+          </div>
+          </div>
 
           {otherDriver && (
             <div className="notice warn url-other" role="status">
@@ -1237,26 +1252,25 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             </div>
           )}
 
-          {result && (
-            <div className={result.ok ? "notice ok" : "notice error"}>
-              {result.ok
-                ? `${t("Connected: {server}", { server: `${result.server.product} ${result.server.version}` })}${
-                    !server ? "" : result.server.encrypted ? " · TLS" : ` · ${t("not encrypted")}`
-                  }`
-                : result.message}
-            </div>
-          )}
-
           <div className="actions">
+            <button type="button" onClick={test} disabled={busy}>
+              {t("Test connection")}
+            </button>
+            {result && (
+              <div className={result.ok ? "notice ok" : "notice error"}>
+                {result.ok
+                  ? `${t("Connected: {server}", { server: `${result.server.product} ${result.server.version}` })}${
+                      !server ? "" : result.server.encrypted ? " · TLS" : ` · ${t("not encrypted")}`
+                    }`
+                  : result.message}
+              </div>
+            )}
+            <span className="spacer" />
             {!existing && (
               <button type="button" onClick={() => back()} disabled={busy} title={t("Choose another database; this form is cleared")}>
                 {t("Back")}
               </button>
             )}
-            <button type="button" onClick={test} disabled={busy}>
-              {t("Test connection")}
-            </button>
-            <span className="spacer" />
             <button type="button" onClick={onClose} disabled={busy}>
               {t("Cancel")}
             </button>
