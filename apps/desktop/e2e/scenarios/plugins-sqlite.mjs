@@ -29,7 +29,7 @@ const PORT = 41000 + Math.floor(Math.random() * 4000);
 
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
-const editorText = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
+const editorText = `[...${visibleTab}.querySelector('.cm-content').querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
 const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const menuButton = (label) =>
@@ -125,6 +125,9 @@ async function openPluginsPage(page) {
 }
 
 async function closeSettings(page) {
+  // Escape closes the dialog only while the focus is inside it, and a dialog that was just
+  // closed or a row that was just removed leaves it elsewhere: focus its selected tab, then press.
+  await page.eval(`document.querySelector('.modal.settings [role="tab"][aria-selected="true"]')?.focus()`);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
 }
@@ -144,12 +147,13 @@ async function setEditor(page, sql) {
   await page.waitFor(`${editorText} === ${JSON.stringify(sql)}`);
 }
 
-/** Runs the editor's statement and waits for its status (blanked before, so not the old one). */
+/** Runs the editor's statement and waits for its final status (blanked before, so not the old
+ *  one; "N rows loaded · more available" is the first block of a fetch that goes on). */
 async function run(page, sql) {
   await setEditor(page, sql);
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.key("Enter", "Enter", 13, CTRL);
-  await page.waitFor(`(() => { const s = ${status}; return s !== '' && !s.includes('Executing'); })()`, 20_000);
+  await page.waitFor(`(() => { const s = ${status}; return s !== '' && !s.includes('Executing') && !s.includes('more available'); })()`, 20_000);
   return page.eval(status);
 }
 
@@ -328,11 +332,20 @@ async function driverConnection(page, seen) {
   assert.ok(seen.includes("SELECT * FROM fruits"), seen.join(", "));
 
   // The server's error reaches the result as it wrote it.
-  await run(page, "NONSENSE");
+  // An error leaves the status bar empty, so there is no status to wait for: the error is.
+  await setEditor(page, "NONSENSE");
+  await page.key("Enter", "Enter", 13, CTRL);
   await page.waitFor(`/syntax error near "NONSENSE"/.test(${visibleTab}.querySelector('.result-error')?.textContent ?? '') || /syntax error near/.test(${toast})`, 15_000);
 
   // A statement without rows reports what it changed.
-  assert.match(await run(page, "DELETE FROM fruits"), /2/);
+  // A DELETE without WHERE asks first; the plugin's driver is no exception.
+  await setEditor(page, "DELETE FROM fruits");
+  await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await page.key("Enter", "Enter", 13, CTRL);
+  const guard = `[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Run')`;
+  await page.waitFor(`${guard} !== undefined`, 15_000);
+  await page.eval(`${guard}.click()`);
+  await page.waitFor(`/2/.test(${status})`, 20_000);
 
   // The navigator: the plugin's schema and table.
   await page.eval(`${treeRow(TOY)}.querySelector('.twisty').click()`);
