@@ -60,7 +60,7 @@ for (const file of scenarios) {
   }
   const dir = mkdtempSync(join(tmpdir(), "platypus-e2e-"));
   // `port` lets a scenario reach the app's other windows.
-  const ctx = { dir, port, shots: process.env.PLATYPUS_E2E_SHOTS ?? null };
+  const ctx = { dir, port, exe, shots: process.env.PLATYPUS_E2E_SHOTS ?? null };
   if (ctx.shots) mkdirSync(ctx.shots, { recursive: true });
   await scenario.setup?.(ctx);
   englishInterface(dir);

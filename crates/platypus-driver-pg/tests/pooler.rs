@@ -9,7 +9,7 @@ use futures::TryStreamExt;
 use platypus_core::{Connection, ConnectionConfig, ExecOptions, ExecResult};
 use platypus_driver_pg::PgConnection;
 
-const DEFAULT_URL: &str = "postgres://platypus:platypus@localhost:56432/platypus?sslmode=disable";
+const DEFAULT_URL: &str = "postgres://platypus:platypus@localhost:46432/platypus?sslmode=disable";
 
 async fn connect(pooler: Option<&str>) -> Option<PgConnection> {
     let (url, required) = match std::env::var("PLATYPUS_TEST_PGBOUNCER_URL") {

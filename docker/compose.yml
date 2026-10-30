@@ -31,7 +31,7 @@ services:
       timeout: 3s
       retries: 60
 
-  # The PostgreSQL above behind PgBouncer in transaction mode, on 56432: the driver's pooler
+  # The PostgreSQL above behind PgBouncer in transaction mode, on 46432: the driver's pooler
   # mode (crates/platypus-driver-pg/tests/pooler.rs).
   pgbouncer:
     image: edoburu/pgbouncer:v1.26.1-p0
@@ -40,7 +40,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "56432:5432"
+      - "46432:5432"
     volumes:
       - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
@@ -135,7 +135,7 @@ services:
     environment:
       REDIS_ARGS: "--requirepass platypus"
     ports:
-      - "56379:6379"
+      - "46379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "platypus", "--no-auth-warning", "ping"]
       interval: 2s
