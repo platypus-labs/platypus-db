@@ -4,8 +4,17 @@
   background: var(--bg);
 }
 
+/* The page header: the name of the dashboard large, its connection, then the actions. */
+.dashboard-toolbar {
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-16) var(--space-8);
+  border-bottom: 0;
+}
+
 .dashboard-title {
-  width: 220px;
+  width: 260px;
+  font-size: var(--text-xl);
   font-weight: 600;
 }
 
@@ -13,12 +22,12 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 12px 16px 48px;
+  padding: var(--space-12) var(--space-16) var(--space-48);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   /* A widget of one row is this tall; one of two rows takes two and the gap between. */
   grid-auto-rows: 250px;
-  gap: 12px;
+  gap: var(--space-12);
   align-content: start;
 }
 
@@ -29,7 +38,7 @@
   min-height: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--bg);
+  background: var(--bg-sidebar);
   overflow: hidden;
 }
 
@@ -40,13 +49,36 @@
 .dashboard-widget-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px 4px 10px;
-  background: var(--bg-sidebar);
+  gap: var(--space-4);
+  min-height: var(--control-lg);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10);
   border-bottom: 1px solid var(--border);
 }
 
+.dashboard-widget-source {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.dashboard-widget-bar button.icon {
+  border-color: transparent;
+  color: var(--fg-muted);
+}
+
+.dashboard-widget-bar button.icon:hover:not(:disabled) {
+  color: var(--fg);
+}
+
 .dashboard-widget-title {
+  flex: none;
+  max-width: 60%;
   font-weight: 600;
   min-width: 0;
   overflow: hidden;
@@ -65,8 +97,8 @@
 .dashboard-widget-status {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 3px 10px;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-10);
   border-top: 1px solid var(--border);
 }
 
@@ -75,8 +107,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
-  font-size: 42px;
+  padding: var(--space-8);
+  font-size: var(--text-display);
   font-weight: 600;
   color: var(--fg-strong);
   overflow: hidden;
@@ -89,15 +121,13 @@
 }
 
 .dashboard-error {
-  margin: 8px;
+  margin: var(--space-8);
   overflow: auto;
   white-space: pre-wrap;
 }
 
 .dashboard-empty {
   grid-column: 1 / -1;
-  text-align: center;
-  padding: 24px;
 }
 
 .dashboard-form {
@@ -110,7 +140,7 @@
 
 .dashboards-list {
   list-style: none;
-  margin: 8px 0;
+  margin: var(--space-8) 0;
   padding: 0;
   max-height: 320px;
   overflow: auto;
@@ -119,8 +149,8 @@
 .dashboards-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: var(--space-8);
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border);
 }
 

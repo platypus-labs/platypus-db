@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type Project, toCommandError } from "../api";
+import { api, type Project, type SavedConnection, toCommandError } from "../api";
+import { ConnectionPicker } from "./ConnectionPicker";
 import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
 import { openSharedProject } from "./shared";
@@ -21,6 +22,12 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   const [initials, setInitials] = useState(project?.initials ?? "");
   const [ownInitials, setOwnInitials] = useState(project !== null);
   const [error, setError] = useState<string | null>(null);
+  const [all, setAll] = useState<SavedConnection[]>([]);
+  const [picked, setPicked] = useState(new Set(project?.connections ?? []));
+
+  useEffect(() => {
+    api.listConnections().then(setAll, () => {});
+  }, []);
 
   // Computed in Rust, so the store and the dialog never disagree.
   useEffect(() => {
@@ -39,7 +46,8 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
       name,
       color,
       initials,
-      connections: project?.connections ?? [],
+      // The ones kept keep their order; the newly picked follow.
+      connections: [...(project?.connections ?? []).filter((id) => picked.has(id)), ...[...picked].filter((id) => !project?.connections.includes(id))],
     };
     try {
       const all = await api.saveProject(saved);
@@ -53,9 +61,6 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="modal small project-dialog" onSubmit={save} onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{t(project ? "Edit project" : "New project")}</h2>
-        <div className="project-dialog-preview" style={{ background: color }} aria-hidden>
-          {initials}
-        </div>
         <label className="field">
           <span>{t("Name")}</span>
           <input
@@ -87,16 +92,27 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
         </label>
         <label className="field">
           <span>{t("Initials — on the project's square")}</span>
-          <input
-            className="project-initials"
-            value={initials}
-            maxLength={2}
-            onChange={(e) => {
-              setInitials(e.target.value);
-              setOwnInitials(e.target.value !== "");
-            }}
-          />
+          <div className="project-dialog-icon">
+            <div className="project-dialog-preview" style={{ background: color }} aria-hidden>
+              {initials}
+            </div>
+            <input
+              className="project-initials"
+              value={initials}
+              maxLength={2}
+              onChange={(e) => {
+                setInitials(e.target.value);
+                setOwnInitials(e.target.value !== "");
+              }}
+            />
+          </div>
         </label>
+        {all.length > 0 && (
+          <div className="field">
+            <span>{t("Connections")}</span>
+            <ConnectionPicker connections={all} picked={picked} onChange={setPicked} />
+          </div>
+        )}
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">
           {project === null && (

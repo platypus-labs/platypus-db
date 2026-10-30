@@ -2,6 +2,7 @@ import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useM
 import { api, type ColumnInfo, type Geometries, type Shape, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
 import { formatCount, t, plural } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   jobId: number;
@@ -162,9 +163,9 @@ export function MapPanel({ jobId, columns, grid, selection, rows, version, focus
         onPointerUp={onPointerUp}
         onDoubleClick={() => setView(null)}
       >
-        {cols.length === 0 && <div className="muted small value-empty">{t("Select a column with geometries.")}</div>}
+        {cols.length === 0 && <EmptyState compact className="value-empty" title={t("Select a column with geometries.")} />}
         {data && shapes.length === 0 && !error && (
-          <div className="muted small value-empty">{t("No geometries in the selected columns.")}</div>
+          <EmptyState compact className="value-empty" title={t("No geometries in the selected columns.")} />
         )}
         {v && shapes.length > 0 && (
           <svg width={size.w} height={size.h}>

@@ -29,6 +29,7 @@ import {
 import { type Box, type Point, placeTables } from "./layout";
 import { pathThrough, quickWire, routeWires } from "./route";
 import { TablesDialog } from "./TablesDialog";
+import { LoadingState } from "../ui/State";
 
 export type { ErdEdits };
 
@@ -66,8 +67,10 @@ declare module "../tabs/registry" {
 /** Above this many tables, a diagram of a whole schema asks which ones to show first. */
 export const ERD_LIMIT = 100;
 
-const HEAD = 26;
-const ROW = 20;
+const HEAD = 28;
+const ROW = 22;
+/** The room of the key mark (PK, FK) at the start of a column row. */
+const MARK = 24;
 const CHAR = 7;
 const NOTE_WIDTH = 200;
 const NOTE_CHARS = 28;
@@ -81,7 +84,7 @@ const TAGS: Record<TableState, string> = { plain: "", new: msg("new"), changed: 
 const boxWidth = (table: Drawn) => {
   const tag = table.state === "plain" ? 0 : t(TAGS[table.state]).length + 1;
   const longest = Math.max(table.name.length + 2 + tag, ...table.columns.map((c) => c.name.length + c.data_type.length + 3));
-  return Math.min(340, Math.max(140, 16 + CHAR * longest));
+  return Math.min(340, Math.max(140, 16 + MARK + CHAR * longest));
 };
 
 /** Whether `fk` references a table of `schema`, the diagram's: a table of another schema is
@@ -524,22 +527,6 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         <button type="button" onClick={addNote}>
           {t("Add note")}
         </button>
-        <button type="button" onClick={() => onChange({ positions: {} })} title={t("Place every table again from the foreign keys")}>
-          {t("Auto layout")}
-        </button>
-        <button className="square" type="button" onClick={() => zoom(-0.25)} aria-label={t("Zoom out")} title={t("Zoom out")}>
-          −
-        </button>
-        <span className="small muted">{Math.round(tab.zoom * 100)}%</span>
-        <button className="square" type="button" onClick={() => zoom(0.25)} aria-label={t("Zoom in")} title={t("Zoom in")}>
-          +
-        </button>
-        <button type="button" onClick={() => save("svg")}>
-          SVG…
-        </button>
-        <button type="button" onClick={() => save("png")}>
-          PNG…
-        </button>
         <button type="button" onClick={() => setFull(!full)} aria-pressed={full}>
           {full ? t("Exit full screen") : t("Full screen")}
         </button>
@@ -570,8 +557,29 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
           {t("Could not read {tables}: {error}", { tables: unreadable.map((u) => u.name).join(", "), error: unreadable[0]!.error! })}
         </div>
       )}
+      <div className="erd-stage">
+        <div className="erd-float">
+          <button className="square" type="button" onClick={() => zoom(-0.25)} aria-label={t("Zoom out")} title={t("Zoom out")}>
+            −
+          </button>
+          <span className="small muted erd-zoom">{Math.round(tab.zoom * 100)}%</span>
+          <button className="square" type="button" onClick={() => zoom(0.25)} aria-label={t("Zoom in")} title={t("Zoom in")}>
+            +
+          </button>
+          <span className="erd-sep" />
+          <button type="button" onClick={() => onChange({ positions: {} })} title={t("Place every table again from the foreign keys")}>
+            {t("Auto layout")}
+          </button>
+          <span className="erd-sep" />
+          <button type="button" onClick={() => save("svg")}>
+            SVG…
+          </button>
+          <button type="button" onClick={() => save("png")}>
+            PNG…
+          </button>
+        </div>
       <div className="erd-canvas">
-        {tables === null && !error && <p className="muted small erd-loading">{t("Reading the tables…")}</p>}
+        {tables === null && !error && <LoadingState className="erd-loading" title={t("Reading the tables…")} />}
         <svg
           ref={svg}
           width={size.w * tab.zoom}
@@ -591,7 +599,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
               <path d="M 10 5 L 0 0 M 10 5 L 0 10 M 10 5 L 0 5" stroke={colors.muted} fill="none" />
             </marker>
           </defs>
-          <rect width={size.w} height={size.h} fill={colors.background} />
+          <rect className="erd-bg" width={size.w} height={size.h} fill={colors.background} />
           {keys.map(({ table, fk, target, points }) => (
             <path
               key={`${table.name}/${fk.name}`}
@@ -629,6 +637,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
             </g>
           ))}
         </svg>
+      </div>
       </div>
       {note && (
         <NoteDialog
@@ -686,21 +695,24 @@ function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }:
     <g transform={`translate(${at.x},${at.y})`} className="erd-table" data-state={table.state} opacity={dropped ? 0.45 : 1} onPointerDown={onPointerDown}>
       <title>{table.comment ?? table.name}</title>
       <rect width={b.width} height={b.height} rx={4} fill={colors.background} stroke={table.state === "new" ? head : colors.grid} strokeDasharray={table.state === "new" ? "6 3" : undefined} />
-      <rect width={b.width} height={HEAD} rx={4} fill={head} fillOpacity={table.state === "plain" ? 0.2 : 0.4} />
-      <text x={8} y={17} fill={colors.text} fontWeight={600} textDecoration={dropped ? "line-through" : undefined}>
+      <rect className="erd-head" width={b.width} height={HEAD} rx={4} fill={head} fillOpacity={table.state === "plain" ? 0.14 : 0.4} />
+      <path className="erd-rule" d={`M 0 ${HEAD} H ${b.width}`} stroke={colors.grid} />
+      <text x={10} y={18} fill={colors.text} fontWeight={600} textDecoration={dropped ? "line-through" : undefined}>
         {table.name}
       </text>
       {table.state !== "plain" && (
-        <text x={b.width - 8} y={17} fill={colors.muted} fontSize={10} textAnchor="end" className="erd-tag">
+        <text x={b.width - 10} y={18} fill={colors.muted} fontSize={10} textAnchor="end" className="erd-tag">
           {t(TAGS[table.state])}
         </text>
       )}
       {table.columns.map((c, i) => (
         <g key={c.name} transform={`translate(0,${HEAD + i * ROW})`}>
-          <text x={8} y={14} fill={c.primary_key ? colors.series[0] : colors.text} fontWeight={c.primary_key ? 600 : 400}>
-            {`${keys.has(c.name) ? "→ " : ""}${c.name}${c.nullable ? "" : " *"}`}
+          {c.primary_key && <KeyMark label="PK" fill={colors.series[0]!} />}
+          {!c.primary_key && keys.has(c.name) && <KeyMark label="FK" fill={colors.series[4]!} />}
+          <text x={MARK + 6} y={15} fill={c.primary_key ? colors.series[0] : colors.text} fontWeight={c.primary_key ? 600 : 400}>
+            {`${c.name}${c.nullable ? "" : " *"}`}
           </text>
-          <text x={b.width - (editing && !dropped ? 20 : 8)} y={14} fill={colors.muted} textAnchor="end">
+          <text x={b.width - (editing && !dropped ? 22 : 10)} y={15} fill={colors.muted} fontSize={11} textAnchor="end">
             {c.data_type.length > 24 ? `${c.data_type.slice(0, 23)}…` : c.data_type}
           </text>
           {editing && !dropped && c.name !== "" && (
@@ -721,6 +733,18 @@ function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }:
           )}
         </g>
       ))}
+    </g>
+  );
+}
+
+/** The small PK or FK mark at the start of a column row. */
+function KeyMark({ label, fill }: { label: string; fill: string }) {
+  return (
+    <g className="erd-key" pointerEvents="none">
+      <rect x={6} y={4} width={MARK - 4} height={14} rx={3} fill={fill} fillOpacity={0.18} />
+      <text x={6 + (MARK - 4) / 2} y={14} fill={fill} fontSize={9} fontWeight={600} textAnchor="middle">
+        {label}
+      </text>
     </g>
   );
 }

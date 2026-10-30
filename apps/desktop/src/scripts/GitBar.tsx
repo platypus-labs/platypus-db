@@ -88,7 +88,7 @@ export function GitBar({ project, status, problem, reload, onError }: Props) {
   if (!status.is_repo) {
     return (
       <div className="git-bar">
-        <button type="button" className="small" disabled={busy} onClick={() => void run(init)}>
+        <button type="button" className="git-init" disabled={busy} onClick={() => void run(init)}>
           {t("Turn this project's scripts into a Git repository")}
         </button>
         {note && <div className="muted small">{note}</div>}

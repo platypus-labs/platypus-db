@@ -7,6 +7,7 @@ import { api, type DebugArgument, type DebugInfo, type SavedConnection, toComman
 import { t } from "../i18n";
 import { workbench } from "../workbench";
 import { initialArguments, inputParameters, isTrigger, misplacedDefault, parameterName } from "./model";
+import { LoadingState } from "../ui/State";
 
 interface Props {
   connection: SavedConnection;
@@ -87,7 +88,7 @@ export function DebugDialog({ connection, database, schema, name, onClose }: Pro
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal debug-dialog" role="dialog" onKeyDown={(e) => e.key === "Escape" && close()}>
         <h2>{t("Debug {routine}", { routine: `${schema}.${name}` })}</h2>
-        {load.step === "loading" && <p className="muted small">{t("Reading the routine…")}</p>}
+        {load.step === "loading" && <LoadingState compact title={t("Reading the routine…")} />}
         {load.step === "failed" && (
           <div className="notice error small" data-field="debug-error">
             {load.message}

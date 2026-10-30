@@ -6,6 +6,7 @@ import { api, type ColumnInfo, toCommandError } from "../api";
 import { t } from "../i18n";
 import { MASK, useMask } from "../guards/mask";
 import { JsonNumber, type JsonValue as Json, jsonNumber, parseJson, stringifyJson } from "../jsonText";
+import { EmptyState, LoadingState } from "../ui/State";
 
 /** An object of the document: not a leaf, not an array. */
 const isObject = (value: Json): value is { [key: string]: Json } =>
@@ -178,9 +179,9 @@ export function DocumentPanel({ jobId, columns, row, field, version, onClose }: 
       {error ? (
         <div className="error-text small value-empty">{error}</div>
       ) : row === null ? (
-        <div className="muted small value-empty">{t("Select a row to see its document.")}</div>
+        <EmptyState compact className="value-empty" title={t("Select a row to see its document.")} />
       ) : !doc ? (
-        <div className="muted small value-empty">{t("Loading…")}</div>
+        <LoadingState compact className="value-empty" title={t("Loading…")} />
       ) : (
         <div className="doc-tree">
           {Object.entries(doc).map(([k, v]) => (

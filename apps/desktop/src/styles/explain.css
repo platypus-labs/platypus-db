@@ -12,22 +12,23 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 14px;
+  gap: var(--space-12);
 }
 
 .explain-tree {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .explain-node {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 4px;
-  border-radius: var(--radius);
+  gap: var(--space-6);
+  min-height: var(--control-md);
+  padding: 0 var(--space-8) 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
   cursor: default;
 }
 
@@ -42,7 +43,7 @@
 .explain-toggle {
   border: none;
   background: none;
-  padding: 0 2px;
+  padding: 0 var(--space-2);
   width: 16px;
   color: var(--fg-muted);
 }
@@ -63,14 +64,34 @@
 
 .explain-figures {
   display: flex;
-  gap: 10px;
+  gap: var(--space-10);
   color: var(--fg-muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-/* Heatmap: a step tinted by its share of the work it does itself (--heat, a percentage). */
-.explain-node,
+/* The share of the work a step does itself (--heat, a percentage) is a bar in its row; the
+ * table view tints the cell. */
+.explain-bar {
+  flex: none;
+  width: 120px;
+  height: 6px;
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.explain-bar i {
+  display: block;
+  width: var(--heat, 0%);
+  height: 100%;
+  background: var(--accent);
+}
+
+.explain-bar i.hot {
+  background: var(--warn);
+}
+
 .explain-heat {
   background: color-mix(in srgb, var(--error) calc(var(--heat, 0%) * 0.6), transparent);
 }
@@ -84,12 +105,47 @@
 
 .explain-misestimate {
   flex: none;
-  padding: 0 6px;
+  padding: 0 var(--space-6);
   border-radius: var(--radius);
   background: var(--warn-bg);
   color: var(--warn);
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
+}
+
+/* The summary in the header: cost, time and rows of the whole plan. */
+.explain-summary {
+  display: flex;
+  gap: var(--space-16);
+}
+
+.explain-metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.explain-metric-label {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.explain-metric-value {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* A warning with its fix: a banner above the plan. */
+.explain-suggestion {
+  border-left: 3px solid var(--warn);
+}
+
+.explain-tree {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .explain-properties {
@@ -104,7 +160,7 @@
 .explain-text {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre;
 }
 
@@ -123,7 +179,7 @@
 .query-manager-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .query-manager-bar input:not([type="checkbox"]) {
@@ -188,8 +244,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 14px;
-  font-size: 12px;
+  gap: var(--space-4) var(--space-12);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -223,7 +279,7 @@
   display: inline-block;
   width: 8px;
   height: 8px;
-  margin-right: 5px;
+  margin-right: var(--space-6);
   border-radius: 2px;
   background: var(--part);
 }
@@ -238,17 +294,17 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .explain-graph-zoom {
   display: flex;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .explain-graph-zoom button {
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: var(--text-xs);
+  padding: var(--space-2) var(--space-8);
 }
 
 .explain-graph-zoom button.active {
@@ -289,7 +345,7 @@
 
 .explain-box text {
   fill: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .explain-box-op {
@@ -315,14 +371,14 @@
 .explain-compare-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
 }
 
 .explain-compare {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   min-height: 0;
   overflow: auto;
 }
@@ -330,14 +386,14 @@
 .explain-compare-summary {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-24);
   flex-wrap: wrap;
 }
 
 .explain-compare-summary > div {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
 }
 
 .explain-compare-summary strong {
@@ -349,7 +405,7 @@
 }
 
 .explain-compare-table {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .explain-compare-table .num {
@@ -376,9 +432,9 @@
 .explain-change {
   display: inline-block;
   min-width: 52px;
-  padding: 0 6px;
+  padding: 0 var(--space-6);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-align: center;
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
@@ -405,7 +461,7 @@
   min-height: 260px;
   resize: vertical;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre;
 }
 

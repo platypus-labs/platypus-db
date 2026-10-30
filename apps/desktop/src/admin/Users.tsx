@@ -23,6 +23,7 @@ import {
   principalLabel,
   sortPrincipals,
 } from "./usersModel";
+import { EmptyState, LoadingState } from "../ui/State";
 
 type Kind = "all" | "user" | "role";
 
@@ -235,9 +236,11 @@ function PrincipalTable({
           ))}
         </tbody>
       </table>
-      {principals.length === 0 && (
-        <p className="muted small admin-empty">{loading ? t("Reading the users and roles…") : t("No users or roles match.")}</p>
-      )}
+      {principals.length === 0 && (loading ? (
+        <LoadingState compact className="admin-empty" title={t("Reading the users and roles…")} />
+      ) : (
+        <EmptyState compact className="admin-empty" title={t("No users or roles match.")} />
+      ))}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 /* Colors, corner radius and grid density are set by theme.ts from the Appearance settings. */
 @import "./base.css";
+@import "./states.css";
 @import "./shell.css";
 @import "./navigator.css";
 @import "./projects.css";

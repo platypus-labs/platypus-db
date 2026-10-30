@@ -164,11 +164,11 @@ function CrossQueryDialog({ start, onClose }: { start: AcrossStart[]; onClose: (
         <div className="actions">
           <span className="muted small">{plural(rows.length, "{n} table", "{n} tables")}</span>
           <span className="spacer" />
-          <button type="button" className="primary" data-action="open" disabled={busy || !ready} onClick={() => void open()}>
-            {busy ? t("Loading…") : t("Open")}
-          </button>
           <button type="button" data-action="cancel" disabled={busy} onClick={onClose}>
             {t("Cancel")}
+          </button>
+          <button type="button" className="primary" data-action="open" disabled={busy || !ready} onClick={() => void open()}>
+            {busy ? t("Loading…") : t("Open")}
           </button>
         </div>
       </div>

@@ -10,6 +10,7 @@ import { workbench } from "../workbench";
 import { t } from "../i18n";
 import { translateWarning } from "../schema/warnings";
 import { DesignForm, blankDesign, type TableEditorSection } from "./DesignForm";
+import { LoadingState } from "../ui/State";
 
 export type { TableEditorSection };
 
@@ -91,7 +92,7 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
   if (!design) {
     return (
       <div className="object-tab" style={{ display: active ? "flex" : "none" }}>
-        <div className="object-body">{error ? <div className="notice error">{error}</div> : <div className="muted small">{t("Loading…")}</div>}</div>
+        <div className="object-body">{error ? <div className="notice error">{error}</div> : <LoadingState compact title={t("Loading…")} />}</div>
       </div>
     );
   }

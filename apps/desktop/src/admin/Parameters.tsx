@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ServerParameter } from "../api";
 import { formatCount, msg, plural, t } from "../i18n";
 import { changedCount, shownParameters, valueText } from "./parametersModel";
+import { EmptyState } from "../ui/State";
 
 /** Rows drawn at once: ClickHouse has thousands of settings. */
 const LIMIT = 500;
@@ -99,11 +100,9 @@ export function Parameters({
             </tbody>
           </table>
           {matching.length > shown.length && (
-            <p className="muted small admin-empty">
-              {t("{n} more: narrow the search to see them.", { n: formatCount(matching.length - shown.length) })}
-            </p>
+            <EmptyState compact className="admin-empty" title={t("{n} more: narrow the search to see them.", { n: formatCount(matching.length - shown.length) })} />
           )}
-          {matching.length === 0 && <p className="muted small admin-empty">{t("No parameters match.")}</p>}
+          {matching.length === 0 && <EmptyState compact className="admin-empty" title={t("No parameters match.")} />}
         </div>
         <ParameterDetails parameter={chosen} onOpen={onOpen} />
       </div>

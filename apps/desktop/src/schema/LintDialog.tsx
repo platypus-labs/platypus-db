@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type LintFinding, type LintKind, type SavedConnection, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t, plural, msg } from "../i18n";
+import { LoadingState } from "../ui/State";
 
 interface Props {
   connection: SavedConnection;
@@ -61,9 +62,9 @@ export function LintDialog({ connection, database, schema, onClose }: Props) {
         {error ? (
           <div className="notice error small">{error}</div>
         ) : findings === null ? (
-          <p className="muted small">{t("Reading the tables…")}</p>
+          <LoadingState compact title={t("Reading the tables…")} />
         ) : findings.length === 0 ? (
-          <p className="muted small">{t("No problems found.")}</p>
+          <LoadingState compact title={t("No problems found.")} />
         ) : (
           <>
             <p className="muted small">{plural(findings.length, "{n} problem found.", "{n} problems found.")}</p>

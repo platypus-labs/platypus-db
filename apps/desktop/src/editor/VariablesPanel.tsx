@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { t, tNodes } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   variables: Record<string, string>;
@@ -46,7 +47,7 @@ export function VariablesPanel({ variables, onChange, onClose }: Props) {
             </button>
           </li>
         ))}
-        {entries.length === 0 && <li className="muted history-empty">{t("No variables yet")}</li>}
+        {entries.length === 0 && <li className="history-empty"><EmptyState compact title={t("No variables yet")} /></li>}
       </ul>
       <form
         className="variable-add"

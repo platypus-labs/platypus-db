@@ -17,6 +17,7 @@ import type { Cell, GridActionContext } from "../DataGrid";
 import { type EditSource, resultColumns } from "../edit/meta";
 import type { TableEditTarget } from "../edit/TableEditor";
 import { t, plural } from "../../i18n";
+import { EmptyState } from "../../ui/State";
 
 /** Foreign keys of a result's table, for grid actions in `source.references`. */
 export interface GridReferences {
@@ -235,9 +236,9 @@ function ReferencesPanel({
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
-      {keys?.length === 0 && <div className="muted small value-empty">{t("No foreign key points at {name}.", { name })}</div>}
+      {keys?.length === 0 && <EmptyState compact className="value-empty" title={t("No foreign key points at {name}.", { name })} />}
       {keys && keys.length > 0 && row === null && (
-        <div className="muted small value-empty">{t("Focus a row of the result.")}</div>
+        <EmptyState compact className="value-empty" title={t("Focus a row of the result.")} />
       )}
       <div className="references-list">
         {row !== null &&

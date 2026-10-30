@@ -25,6 +25,7 @@ import { editsTables, openObjectTab, openTableEditor, showsData } from "./open";
 import { openScriptFile, scriptFile } from "../scripts/scripts";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
+import { LoadingState } from "../ui/State";
 
 export type ObjectSection =
   | "properties"
@@ -243,8 +244,10 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           </span>
         </div>
         <span className="spacer" />
+        {/* Everything about the object from its page: data, structure, DDL, diagram. */}
         {relation && (
           <button
+            className="primary"
             onClick={() =>
               workbench().focusTab((t) => showsData(t, connection.id, tab.database, qualified)) ||
               workbench().openTab("query", connection.id, {
@@ -257,6 +260,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               })
             }
           >
+            <Icon name="table" />
             {t("Open data")}
           </button>
         )}
@@ -266,6 +270,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             onClick={() => openTableEditor(connection.id, { database: tab.database, schema: tab.schema, name: tab.name })}
             title={t("Edit the columns, keys, indexes and constraints of the table")}
           >
+            <Icon name="edit" />
             {t("Edit table…")}
           </button>
         )}
@@ -279,7 +284,23 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               })
             }
           >
+            <Icon name="sql" />
             {t("Edit DDL in editor")}
+          </button>
+        )}
+        {tab.objectKind === "table" && (
+          <button
+            onClick={() =>
+              workbench().openTab("erd", connection.id, {
+                database: tab.database,
+                schema: tab.schema,
+                currentSchema: false,
+                tables: [tab.name],
+              })
+            }
+          >
+            <Icon name="builder" />
+            {t("Show in ER diagram")}
           </button>
         )}
         <button className="square" onClick={() => setVersion((v) => v + 1)} title={t("Refresh from the database")} aria-label={t("Refresh")}>
@@ -304,7 +325,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
       </nav>
       <div className="object-body">
         {error && <div className="notice error">{error}</div>}
-        {!data && !error && <div className="muted small">{t("Loading…")}</div>}
+        {!data && !error && <LoadingState compact title={t("Loading…")} />}
         {data && section === "properties" && (
           <MetaTable
             head={[t("Property"), t("Value")]}
@@ -328,7 +349,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               c.data_type,
               t(c.nullable ? "yes" : "no"),
               c.default ?? "",
-              c.primary_key ? "PK" : "",
+              c.primary_key ? <span key="pk" className="key-badge pk">PK</span> : "",
               editable ? (
                 <button key="comment" className="link" onClick={() => editComment(c.name, c.comment)}>
                   {c.comment || t("Edit")}
@@ -499,7 +520,7 @@ function ColumnUsageSection(props: {
   }, [props.version, columns.join("\n")]);
 
   if (error) return <div className="notice error">{error}</div>;
-  if (!usage) return <div className="muted small">{t("Loading…")}</div>;
+  if (!usage) return <LoadingState compact title={t("Loading…")} />;
   const unused = columns.filter((c) => !usage.uses.some((u) => u.column === c));
   const open = (u: ColumnUse) =>
     u.kind

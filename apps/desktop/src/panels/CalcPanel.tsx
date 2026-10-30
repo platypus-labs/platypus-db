@@ -3,6 +3,7 @@ import { api, type ColumnInfo, type ColumnStats, toCommandError } from "../api";
 import type { GridApi } from "../grid/DataGrid";
 import { formatExact } from "../grid/exactNumber";
 import { formatCount, t, plural } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   jobId: number;
@@ -62,7 +63,7 @@ export function CalcPanel({ jobId, columns, grid, selection, onClose }: Props) {
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
-      {!stats && !error && <div className="muted small value-empty">{t("Select cells of loaded rows.")}</div>}
+      {!stats && !error && <EmptyState compact className="value-empty" title={t("Select cells of loaded rows.")} />}
       {stats && (
         <div className="calc-list">
           {stats.map((s) => (

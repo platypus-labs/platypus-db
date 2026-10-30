@@ -6,7 +6,7 @@
   display: flex;
   flex-direction: column;
   min-width: 180px;
-  padding: 4px;
+  padding: var(--space-4);
   background: var(--bg-sidebar);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
@@ -16,24 +16,24 @@
 .context-menu button {
   display: flex;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--space-24);
   border: none;
   background: none;
   text-align: left;
   align-items: center;
   height: 30px;
-  padding: 0 8px 0 10px;
+  padding: 0 var(--space-8) 0 var(--space-10);
   border-radius: var(--radius-lg);
 }
 
 .context-menu .shortcut {
   color: var(--fg-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .context-menu hr {
   width: 100%;
-  margin: 4px 0;
+  margin: var(--space-4) 0;
   border: none;
   border-top: 1px solid var(--border);
 }
@@ -73,8 +73,8 @@
   z-index: 6;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: var(--space-8);
+  padding: var(--space-8);
   white-space: normal;
   background: var(--bg-sidebar);
   border: 1px solid var(--border-strong);
@@ -83,7 +83,198 @@
 }
 
 .modal.connection-dialog {
-  width: min(680px, calc(100vw - 32px));
+  width: min(880px, calc(100vw - 48px));
+}
+
+/* The connection form: header (logo, title, steps), page list at the left, page at the right. */
+.connection-dialog .dialog-header {
+  justify-content: flex-start;
+  gap: var(--space-8);
+}
+
+.connection-dialog .dialog-header h2 {
+  font-size: var(--text-lg);
+}
+
+.connection-dialog .steps {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.connection-dialog .steps span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.connection-dialog .steps b {
+  display: inline-grid;
+  place-items: center;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.connection-dialog .steps .on {
+  color: var(--fg-strong);
+}
+
+.connection-dialog .steps .on b {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg, var(--fg-strong));
+}
+
+.connection-dialog .steps i {
+  width: 20px;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.dialog-split {
+  display: flex;
+  gap: var(--space-12);
+  min-height: 0;
+}
+
+.dialog-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.connection-dialog .dialog-tabs {
+  flex: none;
+  width: 168px;
+  flex-direction: column;
+  align-self: flex-start;
+  gap: var(--space-2);
+  margin-bottom: 0;
+  padding-right: var(--space-8);
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+}
+
+.connection-dialog .dialog-tabs button {
+  height: var(--control-md);
+  padding: 0 var(--space-6);
+  border: none;
+  border-radius: var(--radius);
+  text-align: left;
+}
+
+.connection-dialog .dialog-tabs button[aria-selected="true"] {
+  background: var(--active);
+  color: var(--fg-strong);
+}
+
+/* One grid for the whole page: label at the left, control at the right. */
+/* The pages and sections: one column of rows. A row holds one field, or two side by side (Host
+   and Port, Database and pooler, where the password comes from and the password). Each field puts
+   its label on the left, so the form reads down one line of labels. */
+.connection-dialog {
+  --label-w: 120px;
+}
+
+.connection-dialog .dialog-page,
+.connection-dialog .form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.connection-dialog .dialog-page[hidden] {
+  display: none;
+}
+
+.connection-dialog .row,
+.connection-dialog .field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-8) var(--space-16);
+  align-items: start;
+}
+
+.connection-dialog .row:has(> .field.port) {
+  grid-template-columns: minmax(0, 1fr) 200px;
+}
+
+.connection-dialog .row.tight {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.connection-dialog .field {
+  display: grid;
+  grid-template-columns: var(--label-w) minmax(0, 1fr);
+  gap: var(--space-4) var(--space-10);
+  align-items: center;
+}
+
+/* The second field of a row: its label as wide as its text. */
+.connection-dialog .row > .field + .field,
+.connection-dialog .field-grid > .field:nth-child(even) {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.connection-dialog .field > span:first-child {
+  grid-column: 1;
+  font-weight: 400;
+  color: var(--fg-muted);
+  text-align: right;
+}
+
+.connection-dialog .field > :not(span:first-child) {
+  grid-column: 2;
+}
+
+.connection-dialog .dialog-page > .check,
+.connection-dialog .form-section > .check,
+.connection-dialog .dialog-page > small,
+.connection-dialog .form-section > small,
+.connection-dialog .form-section > p {
+  margin-left: calc(var(--label-w) + var(--space-10));
+}
+
+.connection-dialog .connect-by {
+  display: grid;
+  grid-template-columns: var(--label-w) auto;
+  justify-content: start;
+  gap: var(--space-10);
+  align-items: center;
+}
+
+.connection-dialog .connect-by > span {
+  text-align: right;
+  color: var(--fg-muted);
+}
+
+.connection-dialog .form-section + .form-section,
+.connection-dialog .form-section + .field,
+.connection-dialog .field + .form-section {
+  padding-top: var(--space-12);
+}
+
+.connection-dialog .swatches {
+  height: auto;
+}
+
+.connection-dialog .actions {
+  flex-wrap: wrap;
+}
+
+.connection-dialog .actions .notice {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: var(--text-sm);
 }
 
 .modal.wide {
@@ -103,14 +294,14 @@
   background: var(--bg-sidebar);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sheet);
-  padding: 20px 22px;
+  padding: var(--space-20) var(--space-24);
   width: min(520px, calc(100vw - 32px));
   /* Clear of the top bar, whose window buttons stay above dialogs. */
   max-height: calc(100vh - 96px);
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
   box-shadow: var(--shadow);
 }
 
@@ -149,17 +340,17 @@
 }
 
 .modal.confirm p {
-  font-size: 14px;
+  font-size: var(--text-lg);
   line-height: 1.5;
   color: var(--fg-strong);
 }
 
 .modal h2 {
-  font-size: 17px;
+  font-size: var(--text-xl);
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--fg-strong);
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-4);
 }
 
 /* The dialog's column spaces its parts: paragraphs add no margins of their own. */
@@ -180,19 +371,19 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
 }
 
 .field > span {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--fg-strong);
 }
 
 .row {
   display: flex;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .row > .field {
@@ -200,14 +391,14 @@
 }
 
 .row.tight {
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 /* The bucket of an upload: two fields a row. */
 .bucket-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 10px;
+  gap: var(--space-8) var(--space-10);
 }
 
 .row.tight > input {
@@ -222,12 +413,12 @@
 .check {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .swatches {
   display: flex;
-  gap: 6px;
+  gap: var(--space-6);
   align-items: center;
   height: 30px;
 }
@@ -249,14 +440,14 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
 }
 
 .modal.settings h3 {
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  margin: 0 0 2px;
+  margin: 0 0 var(--space-2);
   color: var(--fg-strong);
 }
 
@@ -264,13 +455,52 @@
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-4) var(--space-16);
+  padding: var(--space-12) 0;
+  border-top: 1px solid var(--border);
+}
+
+.setting:first-of-type {
+  border-top: 0;
 }
 
 .setting > span {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
+  grid-column: 1;
+  max-width: 520px;
+}
+
+.setting > span > .muted {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+
+.setting-title {
+  color: var(--fg-strong);
+}
+
+/* A small dot after the name of a setting that differs from its default. */
+.setting-title.changed::after {
+  content: "";
+  display: inline-block;
+  width: var(--space-6);
+  height: var(--space-6);
+  margin-left: var(--space-8);
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+.setting-reset {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.setting > :not(span):not(.setting-reset) {
+  grid-column: 3;
+  grid-row: 1;
 }
 
 .setting input[type="number"] {
@@ -290,16 +520,16 @@ button.primary.danger:hover:not(:disabled) {
 
 .modal.sql-action {
   width: min(640px, calc(100vw - 32px));
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .sql-preview {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--space-8) var(--space-10);
   max-height: 260px;
   overflow: auto;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   background: var(--bg-sidebar);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -310,14 +540,14 @@ button.primary.danger:hover:not(:disabled) {
 .record-fields {
   flex: 1;
   overflow: auto;
-  padding: 4px 0;
+  padding: var(--space-4) 0;
 }
 
 .record-field {
   display: grid;
   grid-template-columns: minmax(140px, 25%) 1fr;
-  gap: 12px;
-  padding: 3px 12px;
+  gap: var(--space-12);
+  padding: var(--space-4) var(--space-12);
   border-bottom: 1px solid var(--border);
 }
 
@@ -325,64 +555,108 @@ button.primary.danger:hover:not(:disabled) {
 .virtual-key-columns {
   max-height: 50vh;
   overflow: auto;
-  margin: 8px 0;
+  margin: var(--space-8) 0;
 }
 
 .columns-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 0;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
 }
 
 .columns-row button {
-  padding: 0 6px;
+  padding: 0 var(--space-6);
 }
 
 /* Settings: theme cards and color pickers */
 
 .swatches-control {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-8);
   grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: var(--space-8);
 }
 
 .theme-card {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
-  width: 104px;
-  padding: 5px;
+  gap: var(--space-8);
+  padding: var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--bg-input);
+  background: var(--bg-side, var(--bg-input));
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-md);
+  text-align: left;
   white-space: normal;
 }
 
 .theme-card.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
-.theme-card-colors {
-  display: flex;
-  height: 22px;
+/* A miniature of the app in the theme's colors: two side panels and the editor's code bars. */
+.theme-preview {
+  display: grid;
+  grid-template-columns: var(--space-12) var(--space-24) 1fr;
+  height: var(--control-xl);
+  border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent);
   border-radius: var(--radius);
   overflow: hidden;
 }
 
-.theme-card-colors span {
-  flex: 1;
+.theme-preview i {
+  display: block;
+}
+
+.theme-preview i + i {
+  filter: brightness(1.08);
+}
+
+.theme-preview-editor {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-6);
+}
+
+.theme-preview-editor b {
+  display: block;
+  height: var(--space-4);
+  border-radius: var(--space-2);
+}
+
+.theme-preview-editor b:nth-child(1) {
+  width: 40%;
+}
+
+.theme-preview-editor b:nth-child(2) {
+  width: 70%;
+}
+
+.theme-preview-editor b:nth-child(3) {
+  width: 55%;
+}
+
+.theme-card-name {
+  padding: 0 var(--space-2);
+  color: var(--fg);
+}
+
+.theme-card.selected .theme-card-name {
+  color: var(--fg-strong);
 }
 
 .color-control {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .color-control input[type="color"] {
@@ -423,12 +697,12 @@ button.primary.danger:hover:not(:disabled) {
   /* Over the 30px of every text input in base.css, whose selector is more specific. */
   height: 44px !important;
   margin: 0;
-  padding: 0 16px;
+  padding: 0 var(--space-16);
   border: none;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 .palette input:focus {
@@ -438,16 +712,16 @@ button.primary.danger:hover:not(:disabled) {
 .palette ul {
   list-style: none;
   margin: 0;
-  padding: 4px;
+  padding: var(--space-4);
   overflow: auto;
 }
 
 .palette li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 0 10px;
+  gap: var(--space-8);
+  min-height: var(--control-lg);
+  padding: 0 var(--space-10);
   border-radius: var(--radius-lg);
   cursor: pointer;
   white-space: nowrap;
@@ -463,11 +737,42 @@ button.primary.danger:hover:not(:disabled) {
   opacity: 0.5;
 }
 
-.palette-kind {
-  flex: none;
-  width: 92px;
-  font-size: 12px;
+/* The group title above the first row of each kind. */
+.palette li.group-start {
+  position: relative;
+  margin-top: var(--space-20);
+}
+
+.palette li.group-start::before {
+  content: attr(data-group);
+  position: absolute;
+  top: calc(-1 * var(--space-16));
+  left: var(--space-10);
   color: var(--fg-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.palette-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-6) var(--space-12);
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}
+
+.palette-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.palette-hint .palette-count {
+  margin-left: auto;
 }
 
 .palette-label {
@@ -484,13 +789,13 @@ button.primary.danger:hover:not(:disabled) {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .palette kbd,
 .shortcut-key {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .palette kbd {
@@ -511,7 +816,7 @@ button.primary.danger:hover:not(:disabled) {
 .settings-header {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .settings-header h2 {
@@ -530,14 +835,14 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .settings-none {
-  margin: 24px 0;
+  margin: var(--space-24) 0;
   text-align: center;
 }
 
 .settings-layout {
   display: grid;
   grid-template-columns: 170px 1fr;
-  gap: 14px;
+  gap: var(--space-12);
   flex: 1;
   min-height: 0;
 }
@@ -545,17 +850,40 @@ button.primary.danger:hover:not(:disabled) {
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   overflow: auto;
 }
 
+.settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-nav-group + .settings-nav-group {
+  margin-top: var(--space-8);
+}
+
+.settings-nav-label {
+  padding: var(--space-4) var(--space-10);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
   flex: none;
-  min-height: 30px;
+  min-height: var(--control-md);
   border: none;
+  border-radius: var(--radius);
   background: none;
   text-align: left;
-  padding: 0 10px;
+  padding: 0 var(--space-10);
   color: var(--fg-muted);
 }
 
@@ -573,39 +901,69 @@ button.primary.danger:hover:not(:disabled) {
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   min-height: 0;
   overflow: auto;
-  padding: 0 4px 0 18px;
+  padding: 0 var(--space-4) 0 var(--space-16);
   border-left: 1px solid var(--border);
+}
+
+/* The head of a page: its icon, the title and one line about it. */
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+.settings-head-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--control-xl);
+  height: var(--control-xl);
+  border-radius: var(--radius-xl);
+  background: var(--active);
+  color: var(--accent);
+}
+
+.settings-head h3 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.settings-head p {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
 }
 
 /* While searching, the matches of every section, grouped under their section's name. */
 .settings-results > section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .settings-results > section:not([hidden]) ~ section:not([hidden]) {
-  margin-top: 6px;
-  padding-top: 14px;
+  margin-top: var(--space-6);
+  padding-top: var(--space-12);
   border-top: 1px solid var(--border);
 }
 
 .shortcuts table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .shortcuts td {
-  padding: 2px 4px;
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
 .shortcuts-scope th {
-  padding: 8px 4px 2px;
+  padding: var(--space-8) var(--space-4) var(--space-2);
   text-align: left;
   font-weight: 600;
   color: var(--fg-muted);
@@ -613,7 +971,7 @@ button.primary.danger:hover:not(:disabled) {
 
 .shortcut-key {
   min-width: 110px;
-  padding: 1px 8px;
+  padding: var(--space-2) var(--space-8);
 }
 
 .shortcut-key.recording {
@@ -628,9 +986,9 @@ button.primary.danger:hover:not(:disabled) {
 .ssh-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--space-8) var(--space-10);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
@@ -638,16 +996,16 @@ button.primary.danger:hover:not(:disabled) {
 .import-sources {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-  margin: 4px 0 12px;
+  gap: var(--space-8);
+  margin: var(--space-4) 0 var(--space-12);
 }
 
 .import-tile {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-10);
   border-radius: var(--radius-lg);
   text-align: left;
 }
@@ -660,9 +1018,9 @@ button.primary.danger:hover:not(:disabled) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  margin-bottom: var(--space-12);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
   color: var(--fg-muted);
@@ -681,7 +1039,7 @@ button.primary.danger:hover:not(:disabled) {
   flex-direction: column;
   max-height: 45vh;
   overflow: auto;
-  padding: 6px 8px;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-input);
@@ -690,13 +1048,13 @@ button.primary.danger:hover:not(:disabled) {
 .import-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-height: 26px;
   white-space: nowrap;
 }
 
 .import-row.project {
-  margin-top: 4px;
+  margin-top: var(--space-4);
 }
 
 .import-row .dot {
@@ -722,11 +1080,11 @@ button.primary.danger:hover:not(:disabled) {
 
 .import-note {
   color: var(--warn);
-  padding-bottom: 2px;
+  padding-bottom: var(--space-2);
 }
 
 .import-rail {
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .import-rail-name {
@@ -735,7 +1093,7 @@ button.primary.danger:hover:not(:disabled) {
 
 .import-passwords {
   align-items: flex-start;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .import-passwords-hint {
@@ -743,7 +1101,7 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .import-project-note {
-  padding-bottom: 2px;
+  padding-bottom: var(--space-2);
 }
 
 .align-end {
@@ -752,8 +1110,8 @@ button.primary.danger:hover:not(:disabled) {
 
 .dialog-tabs {
   display: flex;
-  gap: 2px;
-  margin-bottom: 10px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-10);
   border-bottom: 1px solid var(--border);
 }
 
@@ -762,7 +1120,7 @@ button.primary.danger:hover:not(:disabled) {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: none;
-  padding: 4px 12px;
+  padding: var(--space-4) var(--space-12);
   color: var(--fg-muted);
 }
 
@@ -774,11 +1132,35 @@ button.primary.danger:hover:not(:disabled) {
 .dialog-page {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .dialog-page[hidden] {
   display: none;
+}
+
+/* A titled part of a dialog page (the connection: Connection, Authentication, Appearance and
+   safety): its fields spaced as the page's, a line between one part and the next. */
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.form-section + .form-section,
+.form-section + .field,
+.field + .form-section {
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--border);
+}
+
+.form-section > h3 {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
 }
 
 /* Pages of the Settings: their parts spaced by the column's gap. */
@@ -789,7 +1171,7 @@ button.primary.danger:hover:not(:disabled) {
 .shortcuts {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .master-password-form {
@@ -803,33 +1185,176 @@ button.primary.danger:hover:not(:disabled) {
 .agent-command {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .agents-panel {
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .agents-connections {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .agents-connections th {
-  padding: 2px 4px;
+  padding: var(--space-2) var(--space-4);
   text-align: left;
   font-weight: 600;
   color: var(--fg-muted);
 }
 
 .agents-connections td {
-  padding: 2px 4px;
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
 .agents-connections tr.selected td {
   background: var(--active);
+}
+
+/* Security: the connections as cards, the selected one explained beside. */
+.agents-split {
+  display: flex;
+  gap: var(--space-12);
+  align-items: flex-start;
+}
+
+.agent-cards {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+
+.agent-cards thead {
+  display: none;
+}
+
+.agent-cards tbody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.agent-cards tr {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-6) var(--space-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.agent-cards tr:hover {
+  background: var(--hover);
+}
+
+.agent-cards tr.selected {
+  border-color: var(--accent);
+  background: var(--active);
+}
+
+.agent-cards td,
+.agent-cards tr.selected td {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.agent-cards td:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-weight: 600;
+}
+
+.agent-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-cards td:last-child {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--fg-muted);
+  text-align: right;
+}
+
+.agent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+}
+
+.agent-dot.read_only {
+  background: var(--type-test);
+}
+
+.agent-dot.read_write {
+  background: var(--accent);
+}
+
+.agent-detail {
+  flex: none;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.agent-detail header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.agent-levels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.agent-level {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.agent-level.on {
+  border-color: var(--accent);
+  background: var(--grid-selection);
+}
+
+.agent-level-radio {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.agent-level.on .agent-level-radio {
+  border-color: var(--accent);
+  background: radial-gradient(var(--accent) 45%, transparent 50%);
+}
+
+.agent-level-title {
+  font-weight: 600;
 }
 
 .agent-client-path code,
@@ -841,7 +1366,7 @@ button.primary.danger:hover:not(:disabled) {
 .agent-clients {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .agent-activity-filters input[type="search"] {
@@ -862,9 +1387,9 @@ button.primary.danger:hover:not(:disabled) {
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  padding: 6px 8px;
+  padding: var(--space-6) var(--space-8);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   resize: vertical;
 }
 
@@ -873,15 +1398,15 @@ button.primary.danger:hover:not(:disabled) {
 .guard .notice {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .guard-statements {
   margin: 0;
-  padding-left: 22px;
+  padding-left: var(--space-24);
   max-height: 40vh;
   overflow: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .guard-statements code {
@@ -890,7 +1415,7 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .modal.driver-picker {
-  width: min(640px, calc(100vw - 32px));
+  width: min(820px, calc(100vw - 32px));
 }
 
 /* A search field at the top of a dialog: the database picker, the settings. Spaced, like
@@ -911,55 +1436,72 @@ button.primary.danger:hover:not(:disabled) {
 .modal-search input {
   flex: 1;
   min-width: 0;
-  padding-left: 30px;
+  padding-left: var(--space-32);
 }
 
 .driver-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin: 4px 0 12px;
+  gap: var(--space-8);
+  margin: var(--space-4) 0 var(--space-8);
 }
 
 .driver-none {
-  margin: 12px 0;
+  margin: var(--space-12) 0;
   text-align: center;
 }
 
 .driver-tile {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 14px 8px 10px;
+  gap: var(--space-10);
+  min-width: 0;
+  padding: var(--space-8) var(--space-10);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: none;
-  color: var(--fg);
+  border-radius: var(--radius);
+  background: var(--bg-sidebar);
+  color: var(--fg-strong);
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
 }
 
-.driver-tile:hover,
+.driver-tile > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-tile:hover {
+  background: var(--hover);
+}
+
 .driver-tile:focus-visible {
   border-color: var(--accent);
+  background: var(--accent-soft, var(--hover));
 }
 
 .driver-logo {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-lg);
+  flex: none;
+  width: var(--control-xl);
+  height: var(--control-xl);
+  border-radius: var(--radius);
 }
 
 .driver-logo svg {
-  width: 26px;
-  height: 26px;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 
 .driver-section {
-  margin: 4px 0 0;
-  font-size: 12px;
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-xs);
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--fg-muted);
 }
 
@@ -967,11 +1509,11 @@ button.primary.danger:hover:not(:disabled) {
 .connect-by {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .connect-by > span {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 
@@ -999,7 +1541,7 @@ button.primary.danger:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-12);
 }
 
 .dialog-header h2 {
@@ -1012,8 +1554,8 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .driver-icon .driver-logo svg {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 
 /* A pasted URL for another database, with the button back to the picker. */
@@ -1021,11 +1563,11 @@ button.primary.danger:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-12);
 }
 
 .url-notes > div + div {
-  margin-top: 4px;
+  margin-top: var(--space-4);
 }
 
 /* Drivers downloaded when a database needs one. */
@@ -1039,8 +1581,8 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .driver-package {
-  margin: 8px 0;
-  padding: 10px;
+  margin: var(--space-8) 0;
+  padding: var(--space-10);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-input);
@@ -1054,7 +1596,7 @@ button.primary.danger:hover:not(:disabled) {
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .field-grid.three {
@@ -1064,8 +1606,8 @@ button.primary.danger:hover:not(:disabled) {
 .driver-state {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 4px 0 8px;
+  gap: var(--space-6);
+  margin: var(--space-4) 0 var(--space-8);
 }
 
 .driver-state .dot {
@@ -1086,24 +1628,24 @@ button.primary.danger:hover:not(:disabled) {
 .driver-row-inner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: var(--space-8);
+  padding: var(--space-6) 0;
 }
 
 .driver-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 8px 0;
+  gap: var(--space-8);
+  margin: var(--space-8) 0;
 }
 
 .update-badge {
-  margin-left: 8px;
-  padding: 1px 6px;
+  margin-left: var(--space-8);
+  padding: var(--space-2) var(--space-6);
   border-radius: var(--radius-lg);
   background: var(--accent);
   color: var(--accent-fg, #fff);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .update-badge.active {
@@ -1111,23 +1653,23 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .driver-versions {
-  margin: 0 0 8px 12px;
-  padding-left: 8px;
+  margin: 0 0 var(--space-8) var(--space-12);
+  padding-left: var(--space-8);
   border-left: 2px solid var(--border);
 }
 
 .driver-version {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 0;
+  gap: var(--space-8);
+  padding: var(--space-4) 0;
 }
 
 .driver-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: var(--space-8);
+  padding: var(--space-6) 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1150,10 +1692,10 @@ button.primary.danger:hover:not(:disabled) {
 .activity-entry {
   display: grid;
   grid-template-columns: auto 64px minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: var(--space-10);
   align-items: baseline;
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: var(--space-6) var(--space-10);
+  font-size: var(--text-sm);
   border-bottom: 1px solid var(--border);
 }
 
@@ -1164,7 +1706,7 @@ button.primary.danger:hover:not(:disabled) {
 .activity-entry time,
 .activity-ms {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1199,7 +1741,7 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .vendor-drivers {
-  margin-top: 6px;
+  margin-top: var(--space-6);
 }
 
 .vendor-drivers .driver-state {
@@ -1207,8 +1749,8 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .odbc-system ul {
-  margin: 4px 0 8px;
-  padding-left: 18px;
+  margin: var(--space-4) 0 var(--space-8);
+  padding-left: var(--space-16);
   max-height: 140px;
   overflow: auto;
 }
@@ -1216,12 +1758,12 @@ button.primary.danger:hover:not(:disabled) {
 /* The data editor's mass edits (grid/edit/MassEditDialog.tsx): what applying changes, and
    the cells that stay as they are. */
 .mass-edit-modes {
-  gap: 16px;
+  gap: var(--space-16);
 }
 
 .mass-edit-summary ul {
-  margin: 4px 0 0;
-  padding-left: 18px;
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-16);
   max-height: 120px;
   overflow: auto;
 }
@@ -1230,8 +1772,8 @@ button.primary.danger:hover:not(:disabled) {
 .modal .pooler-hint {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 6px;
+  gap: var(--space-10);
+  margin-top: var(--space-6);
 }
 
 .modal .pooler-hint button {
@@ -1245,33 +1787,29 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .formatting-dialog h3 {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--fg-strong);
-  margin: 4px 0 0;
+  margin: var(--space-4) 0 0;
 }
 
 .formatting-rules {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   max-height: 30vh;
   overflow: auto;
-  padding: 4px;
+  padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-input);
 }
 
-.formatting-empty {
-  padding: 6px;
-}
-
 .formatting-rule {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6);
   border-radius: var(--radius);
 }
 
@@ -1280,7 +1818,7 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .formatting-rule > button:not(.link) {
-  padding: 0 6px;
+  padding: 0 var(--space-6);
 }
 
 .formatting-sample {
@@ -1298,15 +1836,15 @@ button.primary.danger:hover:not(:disabled) {
   white-space: nowrap;
   color: var(--fg-strong);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
 }
 
 .formatting-target {
   flex: 0 0 auto;
-  padding: 1px 6px;
+  padding: var(--space-2) var(--space-6);
   border-radius: var(--radius);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--fg-muted);
   background: var(--hover);
@@ -1315,7 +1853,7 @@ button.primary.danger:hover:not(:disabled) {
 .formatting-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .formatting-form .swatches {
@@ -1329,7 +1867,7 @@ button.primary.danger:hover:not(:disabled) {
 .computed-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .computed-form .mono {
@@ -1350,10 +1888,10 @@ button.primary.danger:hover:not(:disabled) {
 .multi-run-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--space-2);
   max-height: 45vh;
   overflow: auto;
-  padding: 4px;
+  padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-input);
@@ -1362,9 +1900,9 @@ button.primary.danger:hover:not(:disabled) {
 .multi-run-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-height: 28px;
-  padding: 2px 6px;
+  padding: var(--space-2) var(--space-6);
   border-radius: var(--radius);
 }
 
@@ -1402,7 +1940,7 @@ label.multi-run-row:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: right;
 }
 
@@ -1448,7 +1986,7 @@ label.multi-run-row:hover {
 .tx-log-groups {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   max-height: 55vh;
   overflow: auto;
 }
@@ -1457,8 +1995,8 @@ label.multi-run-row:hover {
   border: 1px solid var(--border);
   border-left: 3px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: var(--space-6) var(--space-10);
+  font-size: var(--text-sm);
 }
 
 .tx-log-group.commit {
@@ -1475,9 +2013,9 @@ label.multi-run-row:hover {
 
 .tx-log-group header {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-4);
 }
 
 .tx-log-end {
@@ -1497,9 +2035,9 @@ label.multi-run-row:hover {
 
 .tx-log-group li {
   display: flex;
-  gap: 10px;
+  gap: var(--space-10);
   align-items: baseline;
-  padding: 2px 0;
+  padding: var(--space-2) 0;
 }
 
 .tx-log-time {
@@ -1534,7 +2072,7 @@ label.multi-run-row:hover {
 .snapshot-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   max-height: 55vh;
   margin: 0;
   padding: 0;
@@ -1545,17 +2083,17 @@ label.multi-run-row:hover {
 .snapshot-list li {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-10);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .snapshot-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: var(--space-4) var(--space-10);
   align-items: baseline;
 }
 
@@ -1567,7 +2105,7 @@ label.multi-run-row:hover {
 
 .snapshot-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
   justify-content: flex-end;
 }
 
@@ -1598,20 +2136,20 @@ label.multi-run-row:hover {
 /* An agent's change waiting for the user's answer. */
 .agent-write-plan summary {
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 
 .agent-write-plan pre {
-  margin-top: 6px;
+  margin-top: var(--space-6);
 }
 
 .agent-bridge {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 12px;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
+  padding-top: var(--space-12);
   border-top: 1px solid var(--border);
 }
 
@@ -1623,7 +2161,7 @@ label.multi-run-row:hover {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .agent-bridge-port input {
@@ -1631,11 +2169,11 @@ label.multi-run-row:hover {
 }
 
 .agent-context-items {
-  margin: 8px 0;
-  padding-left: 20px;
+  margin: var(--space-8) 0;
+  padding-left: var(--space-20);
 }
 .agent-context-items li {
-  margin: 4px 0;
+  margin: var(--space-4) 0;
 }
 
 /* The create dialog for views, sequences, functions and triggers: tall forms scroll. */
@@ -1646,13 +2184,13 @@ label.multi-run-row:hover {
 
 .object-form textarea {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .object-params {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   align-items: flex-start;
 }
 
@@ -1677,20 +2215,20 @@ label.multi-run-row:hover {
 .git-commit-files label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 0;
+  gap: var(--space-8);
+  padding: var(--space-2) 0;
 }
 
 .git-commit-path {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .git-diff-body {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow: auto;
   max-height: 60vh;
   border: 1px solid var(--border-strong);
@@ -1698,7 +2236,7 @@ label.multi-run-row:hover {
 }
 
 .git-diff-hunk {
-  padding: 2px 8px;
+  padding: var(--space-2) var(--space-8);
   color: var(--fg-muted);
   background: color-mix(in srgb, var(--fg-muted) 12%, transparent);
 }
@@ -1719,7 +2257,7 @@ label.multi-run-row:hover {
 .git-diff-no {
   flex: none;
   width: 4ch;
-  padding: 0 4px;
+  padding: 0 var(--space-4);
   text-align: right;
   color: var(--fg-muted);
   user-select: none;
@@ -1735,7 +2273,7 @@ label.multi-run-row:hover {
 /* Group O: share a query as a link or file */
 .share-dialog textarea.share-link {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   resize: vertical;
   width: 100%;
 }
@@ -1748,16 +2286,16 @@ label.multi-run-row:hover {
 .share-choices {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px 8px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-10) var(--space-8);
 }
 
 .share-choice {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   cursor: pointer;
 }
 
@@ -1768,7 +2306,7 @@ label.multi-run-row:hover {
 
 .share-link-dialog textarea {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   width: 100%;
 }
 
@@ -1777,11 +2315,11 @@ label.multi-run-row:hover {
   max-height: 260px;
   overflow: auto;
   margin: 0;
-  padding: 10px 12px;
-  border-radius: 6px;
+  padding: var(--space-10) var(--space-12);
+  border-radius: var(--radius-lg);
   background: var(--bg-input);
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   user-select: text;
 }

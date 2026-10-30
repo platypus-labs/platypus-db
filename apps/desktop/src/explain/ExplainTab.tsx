@@ -250,6 +250,7 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
           </code>
         </div>
         <span className="spacer" />
+        {explain && <Summary node={explain.root} />}
         {running && <span className="muted small">{t("Running…")}</span>}
         {explain && (
           <button onClick={() => void compare()} title={t("Compare this plan with the previous run or another plan")}>
@@ -337,6 +338,11 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
                   <Misestimate node={n} />
                   <Figures node={n} />
                   {heated && (
+                    <span className="explain-bar" aria-hidden="true">
+                      <i className={shareOf(n) >= 0.4 ? "hot" : undefined} />
+                    </span>
+                  )}
+                  {heated && (
                     <span className="explain-share" title={t("Share of the {what} spent in this step itself", { what: own })}>
                       {percent.format(shareOf(n))}
                     </span>
@@ -410,6 +416,27 @@ export function ExplainTab({ tab, active, ensureSession, onChange }: TabProps<Ex
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The totals of the plan, always in view: the cost, the time and the rows of its root. */
+function Summary({ node }: { node: PlanNode }) {
+  const rows = node.actual_rows ?? node.rows;
+  const figures: [string, string][] = [
+    ...(node.cost !== null ? [[t("Cost"), num(node.cost)] as [string, string]] : []),
+    ...(node.actual_ms !== null ? [[t("Time (ms)"), num(node.actual_ms)] as [string, string]] : []),
+    ...(rows !== null ? [[t(node.actual_rows !== null ? "Actual rows" : "Estimated rows"), num(rows)] as [string, string]] : []),
+  ];
+  if (figures.length === 0) return null;
+  return (
+    <div className="explain-summary">
+      {figures.map(([label, value]) => (
+        <div key={label} className="explain-metric">
+          <span className="explain-metric-label">{label}</span>
+          <span className="explain-metric-value">{value}</span>
+        </div>
+      ))}
     </div>
   );
 }

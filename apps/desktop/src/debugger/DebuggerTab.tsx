@@ -19,6 +19,7 @@ import { t } from "../i18n";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { breakpointLines, isStopped, nextState, withBreakpoint } from "./model";
 import { SourceView } from "./SourceView";
+import { LoadingState } from "../ui/State";
 
 /** Not kept for the next start: the call ends with the app. */
 export interface DebuggerTabModel extends TabBase {
@@ -250,7 +251,7 @@ function Debugging({ started, active }: { started: DebugStarted; active: boolean
               onToggle={(line, on) => void toggle(line, on)}
             />
           ) : (
-            <p className="muted small">{t("Reading the source…")}</p>
+            <LoadingState compact title={t("Reading the source…")} />
           )}
         </section>
         <aside className="debug-side">
@@ -291,7 +292,7 @@ function Stack({ frames, selected, onSelect }: { frames: DebugFrame[]; selected:
     <div className="debug-panel" data-field="debug-stack">
       <h3 className="admin-heading">{t("Call stack")}</h3>
       {frames.length === 0 ? (
-        <p className="muted small">{t("Only while the call is paused.")}</p>
+        <LoadingState compact title={t("Only while the call is paused.")} />
       ) : (
         <ul className="debug-frames">
           {frames.map((f) => (
@@ -333,7 +334,7 @@ function Variables({
     <div className="debug-panel" data-field="debug-variables">
       <h3 className="admin-heading">{t("Variables")}</h3>
       {variables.length === 0 ? (
-        <p className="muted small">{t("Only while the call is paused.")}</p>
+        <LoadingState compact title={t("Only while the call is paused.")} />
       ) : (
         <table className="meta-table debug-variables">
           <thead>

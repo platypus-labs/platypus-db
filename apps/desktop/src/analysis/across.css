@@ -6,7 +6,7 @@
 .across-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   max-height: 50vh;
   overflow: auto;
 }
@@ -14,8 +14,8 @@
 .across-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--space-6);
+  padding: var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-input);

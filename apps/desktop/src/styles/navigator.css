@@ -10,46 +10,35 @@
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px 6px 6px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-6) var(--space-6) var(--space-10);
 }
 
 .sidebar-title {
   flex: 1;
   min-width: 0;
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--fg-muted);
 }
 
 .empty-cta {
-  margin: 8px 12px;
+  margin: var(--space-8) var(--space-12);
 }
 
 /* Buttons do not wrap by default: this one says a sentence. */
 .empty-import {
-  margin: 4px 12px;
+  margin: var(--space-4) var(--space-12);
   max-width: calc(100% - 24px);
   text-align: left;
   white-space: normal;
   line-height: 1.4;
 }
 
-.project-empty {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 10px 12px;
-}
-
-.project-empty p {
-  margin: 0 0 4px;
-}
-
 .navigator-project {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -67,7 +56,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  margin: 0 8px 6px 6px;
+  margin: 0 var(--space-8) var(--space-6) var(--space-6);
 }
 
 .tree-search-icon {
@@ -80,7 +69,7 @@
 .tree-filter {
   flex: 1;
   min-width: 0;
-  padding: 4px 10px 4px 28px;
+  padding: var(--space-4) var(--space-10) var(--space-4) var(--space-32);
   border-color: transparent;
 }
 
@@ -91,7 +80,7 @@
 .tree {
   list-style: none;
   margin: 0;
-  padding: 2px 8px 8px 4px;
+  padding: var(--space-2) var(--space-8) var(--space-8) var(--space-4);
   overflow: auto;
   flex: 1;
 }
@@ -105,9 +94,9 @@
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   height: 28px;
-  padding-right: 6px;
+  padding-right: var(--space-6);
   border-radius: var(--radius-xl);
   cursor: default;
   user-select: none;
@@ -153,9 +142,14 @@
 
 .tree-icon {
   display: flex;
-  width: 14px;
+  width: var(--icon-md);
   flex: none;
   color: var(--fg-muted);
+}
+
+.tree-icon svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .tree-icon[data-kind="database"] {
@@ -185,7 +179,7 @@
 .dot {
   width: 8px;
   height: 8px;
-  margin: 0 3px;
+  margin: 0 var(--space-4);
   border-radius: 50%;
   flex: none;
 }
@@ -202,7 +196,7 @@
   flex: 1 1 0;
   min-width: 0;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 /* The row count at the row's end. Its shrink factor is far above the label's, so it is the
@@ -214,7 +208,7 @@
   overflow: hidden;
   text-overflow: clip;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -230,10 +224,10 @@
 /* Connections: type badges, SSH section, import */
 
 .type-badge {
-  margin-left: 4px;
-  padding: 1px 6px;
+  margin-left: var(--space-4);
+  padding: var(--space-2) var(--space-6);
   border-radius: var(--radius);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--type-dev);
   background: var(--type-dev-bg);
@@ -271,7 +265,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  margin-top: 6px;
+  margin-top: var(--space-6);
 }
 
 .scripts-panel.open {
@@ -279,7 +273,7 @@
 }
 
 .scripts-header {
-  padding: 6px 8px 4px 6px;
+  padding: var(--space-6) var(--space-8) var(--space-4) var(--space-6);
 }
 
 .scripts-tree {
@@ -289,11 +283,7 @@
 .script-rename {
   flex: 1;
   min-width: 0;
-  padding: 1px 4px;
-}
-
-.scripts-empty {
-  padding: 4px 12px;
+  padding: var(--space-2) var(--space-4);
 }
 
 /* A connection with an open session. */
@@ -308,7 +298,7 @@
 
 /* Saved results, under the scripts: the search field and the buttons of a row. */
 .saved-results-search {
-  margin: 2px 8px 4px;
+  margin: var(--space-2) var(--space-8) var(--space-4);
   min-width: 0;
 }
 
@@ -330,22 +320,42 @@
 
 /* Git for the scripts: the bar under the panel's header, the badge of a changed script. */
 .git-bar {
-  padding: 2px 8px 6px;
+  padding: var(--space-2) var(--space-8) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
+}
+
+/* Offered, not pushed: a quiet line that wraps, until the scripts are a repository. */
+.git-bar .git-init {
+  align-self: flex-start;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  text-align: left;
+  white-space: normal;
+}
+
+.git-bar .git-init:hover:not(:disabled) {
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .git-bar-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .git-branch {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -355,7 +365,7 @@
 .git-merging {
   margin: 0;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .git-badge {
@@ -363,7 +373,7 @@
   min-width: 12px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--warn);
 }
@@ -380,4 +390,49 @@
 
 .git-badge.folder {
   color: var(--fg-muted);
+}
+
+/* A connection: its driver's logo, the connection's color as a mark on its top left corner and
+   its state (open session, failure) as a dot on the bottom right. */
+.conn-logo {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+
+/* As big as the icons of the other rows; the picker's tiles (dialogs.css) are bigger. */
+.conn-logo .driver-icon .driver-logo {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  border-radius: var(--radius);
+}
+
+.conn-logo .driver-icon .driver-logo svg {
+  width: 11px;
+  height: 11px;
+}
+
+.conn-color {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1.5px var(--frame, var(--bg-rail));
+}
+
+.conn-logo .connected-mark,
+.conn-failed {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--frame, var(--bg-rail));
+}
+
+.conn-failed {
+  background: var(--error);
 }

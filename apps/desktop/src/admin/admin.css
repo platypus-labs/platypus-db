@@ -1,21 +1,21 @@
 /* Admin tab: the server's sessions and locks. */
 
 .admin-interval {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .admin-error {
-  margin: 8px 14px 0;
+  margin: var(--space-8) var(--space-12) 0;
 }
 
 .admin-body {
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .admin-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-12);
   flex-wrap: wrap;
 }
 
@@ -26,17 +26,17 @@
 /* The counts by activity, which filter the list. */
 .admin-filters {
   display: flex;
-  gap: 6px;
+  gap: var(--space-6);
   flex-wrap: wrap;
 }
 
 .admin-filter {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-10);
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -60,10 +60,10 @@
 .admin-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 1px 8px;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--space-8);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   color: var(--fg-muted);
   background: var(--bg-input);
@@ -112,7 +112,7 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 14px;
+  gap: var(--space-12);
 }
 
 .admin-list {
@@ -122,7 +122,7 @@
 }
 
 .admin-table {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .admin-table td {
@@ -160,16 +160,12 @@
 }
 
 .admin-own {
-  margin-left: 6px;
-  padding: 0 6px;
+  margin-left: var(--space-6);
+  padding: 0 var(--space-6);
   border-radius: 999px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
-}
-
-.admin-empty {
-  margin: 8px 0;
 }
 
 .admin-details {
@@ -178,8 +174,8 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: var(--space-10);
+  padding: var(--space-12);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-sidebar);
@@ -194,20 +190,20 @@
 .admin-details-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .admin-fields {
   display: grid;
-  gap: 4px;
+  gap: var(--space-4);
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .admin-fields > div {
   display: grid;
   grid-template-columns: 110px 1fr;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .admin-fields dt {
@@ -221,7 +217,7 @@
 
 .admin-blocked-by dd {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .admin-statement {
@@ -229,12 +225,12 @@
   min-height: 60px;
   max-height: 260px;
   margin: 0;
-  padding: 8px;
+  padding: var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow: auto;
   white-space: pre-wrap;
 }
@@ -242,7 +238,7 @@
 .admin-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .admin-end:not(:disabled) {
@@ -250,8 +246,8 @@
 }
 
 .admin-heading {
-  font-size: 13px;
-  margin: 0 0 6px;
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-6);
 }
 
 /* Waiting chains: each session under the one it waits for, joined by lines. */
@@ -263,12 +259,12 @@
 }
 
 .admin-chains {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-12);
 }
 
 .admin-chains ul {
-  margin-left: 14px;
-  padding-left: 14px;
+  margin-left: var(--space-12);
+  padding-left: var(--space-12);
   border-left: 1px solid var(--border-strong);
 }
 
@@ -288,9 +284,9 @@
 .admin-chain-session {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 2px 0;
-  padding: 4px 8px;
+  gap: var(--space-8);
+  margin: var(--space-2) 0;
+  padding: var(--space-4) var(--space-8);
   max-width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -312,7 +308,7 @@
 
 .admin-chain-query {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -329,7 +325,7 @@
 
 /* Tables and indexes: each index under its table, indented. */
 .admin-objects tr.admin-kind-index .admin-object-name {
-  padding-left: 22px;
+  padding-left: var(--space-24);
   color: var(--fg-muted);
 }
 
@@ -339,7 +335,7 @@
 
 .admin-issues {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -366,7 +362,7 @@
 }
 
 .backup-output pre {
-  margin-top: 6px;
+  margin-top: var(--space-6);
   max-height: 220px;
 }
 
@@ -394,12 +390,12 @@
 }
 
 .schedule-name {
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .schedule-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-4);
   justify-content: flex-end;
   white-space: nowrap;
 }
@@ -407,35 +403,35 @@
 .schedule-runs ul {
   list-style: none;
   margin: 0;
-  padding: 4px 0 8px 22px;
+  padding: var(--space-4) 0 var(--space-8) var(--space-24);
   display: grid;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .schedule-runs li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .schedule-file {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-muted);
 }
 
 .schedule-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   overflow: auto;
 }
 
 .schedule-form textarea {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .schedule-form .schedule-when {
@@ -445,7 +441,7 @@
 .schedule-form .schedule-days {
   display: flex;
   flex-direction: row;
-  gap: 14px;
+  gap: var(--space-12);
   flex-wrap: wrap;
 }
 
@@ -481,45 +477,53 @@
 .dash {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-16);
   overflow: auto;
 }
 
 .dash-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .dash-tile {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-12);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-sidebar);
 }
 
 .dash-title {
-  font-size: 12px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--fg-muted);
 }
 
 .dash-value {
-  font-size: 24px;
+  font-size: var(--text-2xl);
   font-weight: 600;
+  color: var(--fg-strong);
   font-variant-numeric: tabular-nums;
 }
 
 .dash-spark {
-  margin-top: 4px;
+  margin-top: var(--space-4);
   max-width: 100%;
 }
 
 .dash-section h3 {
-  margin: 0 0 6px;
-  font-size: 13px;
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
 }
 
 .dash-bar-cell {
@@ -529,7 +533,7 @@
 .dash-bar {
   display: block;
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--accent);
   opacity: 0.7;
 }
@@ -540,7 +544,7 @@
 }
 
 .users-flag + .users-flag {
-  margin-left: 4px;
+  margin-left: var(--space-4);
 }
 
 .users-flag.superuser {
@@ -551,22 +555,22 @@
 .users-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .users-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 4px 1px 8px;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-8);
   border: 1px solid var(--border);
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   background: var(--bg-input);
 }
 
 .users-chip-remove {
-  padding: 0 5px;
+  padding: 0 var(--space-6);
   border: none;
   background: none;
   color: var(--fg-muted);
@@ -589,7 +593,7 @@
 .users-grants {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .users-privilege.grantable {
@@ -606,7 +610,7 @@
 .security-privileges {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 6px 12px;
+  gap: var(--space-6) var(--space-12);
 }
 
 .security-privileges {

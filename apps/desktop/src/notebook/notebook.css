@@ -8,15 +8,15 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
-  padding: 6px 14px;
+  gap: var(--space-8) var(--space-12);
+  padding: var(--space-6) var(--space-12);
   border-bottom: 1px solid var(--border);
 }
 
 .notebook-param {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .notebook-param input {
@@ -25,7 +25,7 @@
 
 .notebook-param code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 
@@ -33,10 +33,10 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 12px 16px 48px;
+  padding: var(--space-12) var(--space-16) var(--space-48);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
 }
 
 .notebook-cell {
@@ -56,8 +56,8 @@
 .notebook-cell-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 10px;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6) var(--space-4) var(--space-10);
   background: var(--bg-sidebar);
   border-bottom: 1px solid var(--border);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
@@ -65,7 +65,7 @@
 
 .notebook-name {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   min-width: 28px;
 }
@@ -80,8 +80,8 @@
 .notebook-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-10);
   border-top: 1px solid var(--border);
 }
 
@@ -102,16 +102,16 @@
 }
 
 .notebook-cell > .notice {
-  margin: 6px 10px;
+  margin: var(--space-6) var(--space-10);
 }
 
 .notebook-plan {
   list-style: none;
   margin: 0;
-  padding: 6px 10px 8px;
+  padding: var(--space-6) var(--space-10) var(--space-8);
   border-top: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .notebook-plan li {
@@ -121,12 +121,12 @@
 }
 
 .notebook-text {
-  margin: 8px;
-  padding: 6px 8px;
+  margin: var(--space-8);
+  padding: var(--space-6) var(--space-8);
   min-height: 70px;
   resize: vertical;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -134,7 +134,7 @@
 }
 
 .notebook-rendered {
-  padding: 4px 14px;
+  padding: var(--space-4) var(--space-12);
   min-height: 32px;
   cursor: text;
 }
@@ -142,38 +142,38 @@
 .notebook-markdown h1,
 .notebook-markdown h2,
 .notebook-markdown h3 {
-  margin: 10px 0 6px;
+  margin: var(--space-10) 0 var(--space-6);
   color: var(--fg-strong);
 }
 
 .notebook-markdown h1 {
-  font-size: 20px;
+  font-size: var(--text-2xl);
 }
 
 .notebook-markdown h2 {
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 .notebook-markdown h3 {
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 .notebook-markdown p,
 .notebook-markdown ul,
 .notebook-markdown ol {
-  margin: 6px 0;
+  margin: var(--space-6) 0;
 }
 
 .notebook-markdown code {
   font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 1px 4px;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius);
   background: var(--bg-sidebar);
 }
 
 .notebook-markdown pre {
-  padding: 8px 10px;
+  padding: var(--space-8) var(--space-10);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-sidebar);
@@ -186,8 +186,8 @@
 }
 
 .notebook-markdown blockquote {
-  margin: 6px 0;
-  padding-left: 10px;
+  margin: var(--space-6) 0;
+  padding-left: var(--space-10);
   border-left: 3px solid var(--border-strong);
   color: var(--fg-muted);
 }
@@ -202,7 +202,3 @@
   text-decoration: underline;
 }
 
-.notebook-empty {
-  text-align: center;
-  padding: 24px;
-}

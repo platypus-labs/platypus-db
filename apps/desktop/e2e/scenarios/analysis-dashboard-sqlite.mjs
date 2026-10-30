@@ -205,7 +205,8 @@ async function arranging(page) {
   const before = await page.eval(atOf("Broken"));
   await page.eval(click(widget("Broken"), "edit"));
   await page.waitFor(`document.querySelector('.dashboard-form') !== null`);
-  assert.equal(await page.eval(`document.querySelector('.dashboard-form [data-field=script]').value`), "broken.sql");
+  // The saved scripts arrive after the form opens: until then the choice reads "Loading…".
+  await page.waitFor(`document.querySelector('.dashboard-form [data-field=script]').value === "broken.sql"`, 10_000);
   await fillForm(page, { script: "total.sql", title: "Fixed total", view: "value", width: 2, height: 2 });
   await page.waitFor(`${widget("Fixed total")} != null && ${atOf("Fixed total")} !== ${JSON.stringify(before)}`, 30_000);
   await page.waitFor(`${valueOf("Fixed total")} === '125'`);

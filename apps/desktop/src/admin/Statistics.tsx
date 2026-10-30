@@ -17,6 +17,7 @@ import {
   sortQueries,
   tableOf,
 } from "./statisticsOrder";
+import { EmptyState } from "../ui/State";
 
 const ORDERS: [QueryOrder, string][] = [
   ["total", msg("Total time")],
@@ -119,7 +120,7 @@ export function TopQueries({
               ))}
             </tbody>
           </table>
-          {shown.length === 0 && <p className="muted small admin-empty">{t("No statements match.")}</p>}
+          {shown.length === 0 && <EmptyState compact className="admin-empty" title={t("No statements match.")} />}
         </div>
         <QueryDetails query={chosen ?? null} onOpen={onOpen} onExplain={onExplain} />
       </div>
@@ -282,7 +283,7 @@ export function ObjectsView({
               ))}
             </tbody>
           </table>
-          {shown.length === 0 && <p className="muted small admin-empty">{t("No tables or indexes match.")}</p>}
+          {shown.length === 0 && <EmptyState compact className="admin-empty" title={t("No tables or indexes match.")} />}
         </div>
         <ObjectDetails
           key={chosen ? keyOf(chosen) : ""}

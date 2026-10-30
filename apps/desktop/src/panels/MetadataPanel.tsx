@@ -1,6 +1,7 @@
 import type { ColumnInfo, ColumnMeta } from "../api";
 import type { TableRef } from "../grid/edit/meta";
 import { t } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   /** The focused result column; `undefined` before a cell is focused. */
@@ -41,7 +42,7 @@ export function MetadataPanel({ column, table, meta, inKey, onClose }: Props) {
           ×
         </button>
       </div>
-      {!column && <div className="muted small value-empty">{t("Select a cell to see its column.")}</div>}
+      {!column && <EmptyState compact className="value-empty" title={t("Select a cell to see its column.")} />}
       {column && (
         <dl className="metadata-list small">
           {rows

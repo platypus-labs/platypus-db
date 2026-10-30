@@ -5,7 +5,7 @@ import { ThemesPanel } from "../themes/ThemesPanel";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
-import { Icon } from "../ui/Icon";
+import { Icon, type IconName } from "../ui/Icon";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
@@ -41,6 +41,50 @@ const PANELS: {
   },
 ];
 
+/** The groups of the page list, in order; a page in none of them goes to the end of the last. */
+const NAV_GROUPS: { label: string; pages: string[] }[] = [
+  { label: msg("Interface"), pages: ["Appearance", "Navigator", "SQL editor", "Results", "Toolbar", "Tabs", "Themes", "Keyboard shortcuts"] },
+  { label: msg("Data and safety"), pages: ["Safety", "Connections", "Performance", "Master password", "Sync", "Driver updates"] },
+  { label: msg("Tools"), pages: ["Agents", "Drivers", "Plugins", "Diagnostics"] },
+];
+
+/** The icon and one line about each page, shown above its content. */
+const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
+  "Appearance": { icon: "theme", about: msg("Language, theme, colors and the size of the interface.") },
+  "Navigator": { icon: "sidebar", about: msg("How the navigator lists your databases and objects.") },
+  "Driver updates": { icon: "refresh", about: msg("When PlatypusDB looks for newer versions of the downloaded drivers.") },
+  "SQL editor": { icon: "sql", about: msg("Editing, completion and checking of SQL.") },
+  "Results": { icon: "table", about: msg("How results are shown, formatted and exported.") },
+  "Safety": { icon: "lock", about: msg("What PlatypusDB asks before changes, and what it blocks.") },
+  "Connections": { icon: "database", about: msg("Checks on open connections.") },
+  "Toolbar": { icon: "settings", about: msg("Which buttons the editor toolbar shows.") },
+  "Performance": { icon: "activity", about: msg("When slow queries are marked.") },
+  "Tabs": { icon: "split", about: msg("How open tabs are arranged.") },
+  "Themes": { icon: "theme", about: msg("Import, export and choose the color themes.") },
+  "Master password": { icon: "key", about: msg("Protects saved passwords with one password of yours.") },
+  "Sync": { icon: "refresh", about: msg("Keep your settings and connections in step across computers.") },
+  "Agents": { icon: "agent", about: msg("Connect assistants and tools that work with your databases.") },
+  "Drivers": { icon: "database", about: msg("Database drivers installed and available to download.") },
+  "Plugins": { icon: "extension", about: msg("Add-ons that extend PlatypusDB.") },
+  "Diagnostics": { icon: "activity", about: msg("Logs and reports to help find and fix problems.") },
+  "Keyboard shortcuts": { icon: "terminal", about: msg("Every command and its key combination.") },
+};
+
+function PageHeader({ page }: { page: string }) {
+  const head = PAGE_HEAD[page];
+  return (
+    <div className="settings-head">
+      <span className="settings-head-icon">
+        <Icon name={head?.icon ?? "settings"} size={18} />
+      </span>
+      <div>
+        <h3>{t(page)}</h3>
+        {head && <p>{t(head.about)}</p>}
+      </div>
+    </div>
+  );
+}
+
 /** The section shown last, opened again next time; stored without a Settings entry. */
 const SECTION_KEY = "ui.settings_section";
 
@@ -68,7 +112,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   for (const def of settingDefs()) {
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
   }
-  const names = [...sections.keys(), ...PANELS.map((p) => p.title)];
+  const all = [...sections.keys(), ...PANELS.map((p) => p.title)];
+  const grouped = NAV_GROUPS.map((g, i) => ({
+    label: g.label,
+    pages: [
+      ...g.pages.filter((n) => all.includes(n)),
+      ...(i === NAV_GROUPS.length - 1 ? all.filter((n) => !NAV_GROUPS.some((x) => x.pages.includes(n))) : []),
+    ],
+  })).filter((g) => g.pages.length > 0);
+  // The keyboard moves through the pages in the order the list shows them.
+  const names = grouped.flatMap((g) => g.pages);
   const [chosen, setChosen] = useState(() => getStored(SECTION_KEY));
   const current = typeof chosen === "string" && names.includes(chosen) ? chosen : names[0]!;
   // Stored once the dialog closes: a write on each tab change would save the file and
@@ -91,7 +144,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     const next = names[to % names.length]!;
     setChosen(next);
-    e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
+    e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
   };
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
@@ -180,21 +233,30 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="settings-layout">
             <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("Settings")}>
-              {names.map((name, i) => (
-                <button
-                  key={name}
-                  type="button"
-                  role="tab"
-                  id={`settings-tab-${i}`}
-                  data-section={name}
-                  aria-selected={name === current}
-                  aria-controls="settings-panel"
-                  tabIndex={name === current ? 0 : -1}
-                  onClick={() => setChosen(name)}
-                  onKeyDown={onTabKey}
-                >
-                  {t(name)}
-                </button>
+              {grouped.map((g) => (
+                <div key={g.label} className="settings-nav-group">
+                  <div className="settings-nav-label">{t(g.label)}</div>
+                  {g.pages.map((name) => {
+                    const i = names.indexOf(name);
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        role="tab"
+                        id={`settings-tab-${i}`}
+                        data-section={name}
+                        aria-selected={name === current}
+                        aria-controls="settings-panel"
+                        tabIndex={name === current ? 0 : -1}
+                        onClick={() => setChosen(name)}
+                        onKeyDown={onTabKey}
+                      >
+                        <Icon name={PAGE_HEAD[name]?.icon ?? "settings"} size={14} />
+                        {t(name)}
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
             </div>
             <section
@@ -207,7 +269,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               // Its first content, the heading, takes no focus: the panel does, after the tabs.
               tabIndex={0}
             >
-              <h3>{t(current)}</h3>
+              <PageHeader page={current} />
               {sections.get(current)?.map(row)}
               {panel?.render("")}
             </section>
@@ -283,12 +345,16 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
               className={`theme-card${value === o.value ? " selected" : ""}`}
               onClick={() => onSave(o.value)}
             >
-              <span className="theme-card-colors">
-                {o.colors.map((color, i) => (
-                  <span key={i} style={{ background: color }} />
-                ))}
+              <span className="theme-preview" style={{ background: o.colors[0] }}>
+                <i style={{ background: o.colors[1] }} />
+                <i style={{ background: o.colors[1] }} />
+                <span className="theme-preview-editor">
+                  {o.colors.slice(2, 5).map((color, i) => (
+                    <b key={i} style={{ background: color }} />
+                  ))}
+                </span>
               </span>
-              {t(o.label)}
+              <span className="theme-card-name">{t(o.label)}</span>
             </button>
           ))}
         </div>
@@ -309,8 +375,8 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
   const reset = (
     <button
       type="button"
-      className="link"
-      style={{ visibility: changed ? "visible" : "hidden", gridColumn: c.type === "swatches" ? 3 : undefined }}
+      className="link setting-reset"
+      style={{ visibility: changed ? "visible" : "hidden" }}
       title={c.type === "color" ? t("Back to the theme's color") : t("Default: {value}", { value: defaultText(def) })}
       onClick={() => onSave(null)}
     >
@@ -319,7 +385,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
   );
   const text = (
     <span>
-      {t(def.label)}
+      <span className={`setting-title${changed ? " changed" : ""}`}>{t(def.label)}</span>
       {def.description && <span className="muted small">{t(def.description)}</span>}
     </span>
   );

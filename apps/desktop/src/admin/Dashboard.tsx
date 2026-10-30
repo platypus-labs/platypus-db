@@ -18,6 +18,7 @@ import {
   uptimeText,
 } from "./dashboardModel";
 import { Sparkline } from "./Sparkline";
+import { LoadingState } from "../ui/State";
 
 const ROLES: Record<ReplicationRow["role"], string> = {
   standby: msg("Replica"),
@@ -66,7 +67,7 @@ function Tile({
 
 export function Dashboard({ samples }: { samples: Sample[] }) {
   const cur = samples[samples.length - 1];
-  if (!cur) return <p className="muted small">{t("Reading the server…")}</p>;
+  if (!cur) return <LoadingState compact title={t("Reading the server…")} />;
   const m = cur.metrics;
   const n = samples.length;
   const transactions = rateSeries(samples, (x) => x.transactions);

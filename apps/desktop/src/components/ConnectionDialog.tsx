@@ -50,7 +50,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Page = "general" | "network" | "init";
+type Page = "general" | "safety" | "network" | "init";
 
 /** Where the password comes from; stored as `save_password`, `pgpass` and `password_command`,
  *  which a password manager's source writes for its CLI. */
@@ -565,19 +565,33 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           // A required field left empty on another tab: show that tab.
           onInvalidCapture={(e) => {
             const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-page]")?.dataset.page;
-            if (tab === "general" || tab === "network" || tab === "init") setPage(tab);
+            if (tab === "general" || tab === "safety" || tab === "network" || tab === "init") setPage(tab);
           }}
         >
           <div className="dialog-header">
-            <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
             <DriverIcon driver={conn.driver} label={tile} />
+            <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
+            {!existing && (
+              <div className="steps" aria-hidden="true">
+                <span className="done">
+                  <b>1</b> {t("Database")}
+                </span>
+                <i />
+                <span className="on">
+                  <b>2</b> {t("Connection")}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="dialog-tabs" role="tablist">
+          <div className="dialog-split">
+          <div className="dialog-tabs" role="tablist" aria-orientation="vertical">
             {tab("general", t("General"))}
+            {tab("safety", t("Appearance and safety"))}
             {server && !adbcProfile && tab("network", `${t("Network")}${networkSet ? " ●" : ""}`)}
             {tab("init", `${t("Init")}${initSet ? " ●" : ""}`)}
           </div>
 
+          <div className="dialog-content">
           <div data-page="general" hidden={page !== "general"} className="dialog-page">
             <label className="field">
               <span>{t("Name")}</span>
@@ -620,39 +634,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </select>
                 </label>
               )}
-              <label className="field">
-                <span>{t("Type")}</span>
-                <select
-                  value={conn.connection_type ?? ""}
-                  onChange={(e) => set("connection_type", (e.target.value || null) as ConnectionType | null)}
-                  title={t("Production asks before changes and starts in manual commit")}
-                >
-                  <option value="">{t("None")}</option>
-                  {CONNECTION_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {t(type.label)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>{t("Color")}</span>
-                <div className="swatches">
-                  {COLORS.map((c) => (
-                    <button
-                      type="button"
-                      key={c || "none"}
-                      className={`swatch${(conn.color ?? "") === c ? " selected" : ""}`}
-                      style={{ background: c || "transparent" }}
-                      title={c || t("No color")}
-                      onClick={() => set("color", c || null)}
-                    />
-                  ))}
-                </div>
-              </label>
             </div>
 
             {!server ? (
+              <section className="form-section">
+                <h3>{t("Connection")}</h3>
               <label className="field">
                 <span>{t("Database file")}</span>
                 <div className="row tight">
@@ -667,7 +653,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </button>
                 </div>
               </label>
+              </section>
             ) : adbcProfile ? (
+              <section className="form-section">
+                <h3>{t("Connection")}</h3>
               <ProfileFields
                 conn={conn}
                 profile={adbcProfile}
@@ -687,8 +676,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   )
                 }
               />
+              </section>
             ) : (
               <>
+                <section className="form-section">
+                <h3>{t("Connection")}</h3>
                 {conn.driver === "plugin" && (
                   <PluginDriverField
                     value={conn.options?.plugin ?? ""}
@@ -821,6 +813,40 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       />
                     </label>
                   )}
+                  {conn.driver === "postgres" && (
+                    <label className="field">
+                      <span>{t("Connection pooler")}</span>
+                      <select
+                        value={conn.options?.pooler ?? ""}
+                        onChange={(e) => setOption("pooler", e.target.value)}
+                        data-field="pooler"
+                        title={t("In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.")}
+                      >
+                        <option value="">{t("None or session mode")}</option>
+                        <option value="transaction">{t("Transaction mode (PgBouncer, Supavisor, Neon)")}</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
+                )}
+                {conn.driver === "postgres" && poolerHint && (
+                  <div className="notice small pooler-hint" role="status">
+                    <span>
+                      {t("This is {service}'s pooler in transaction mode.", { service: poolerHint.service })}
+                    </span>
+                    <button type="button" onClick={() => setOption("pooler", "transaction")}>
+                      {t("Use transaction mode")}
+                    </button>
+                  </div>
+                )}
+                {VENDOR_DRIVERS.includes(conn.driver) ? <VendorDriverState driver={conn.driver} /> : null}
+                </section>
+
+                <section className="form-section">
+                <h3>{t("Authentication")}</h3>
+                {/* In URL mode too: the URL field prints the user typed here, and a URL fills it. */}
+                {(!libsql || conn.driver === "oracle") && (
+                <div className="field-grid">
                   {!libsql && (
                     <label className="field">
                       <span>{t("User")}</span>
@@ -857,34 +883,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       </select>
                     </label>
                   )}
-                  {conn.driver === "postgres" && (
-                    <label className="field">
-                      <span>{t("Connection pooler")}</span>
-                      <select
-                        value={conn.options?.pooler ?? ""}
-                        onChange={(e) => setOption("pooler", e.target.value)}
-                        data-field="pooler"
-                        title={t("In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.")}
-                      >
-                        <option value="">{t("None or session mode")}</option>
-                        <option value="transaction">{t("Transaction mode (PgBouncer, Supavisor, Neon)")}</option>
-                      </select>
-                    </label>
-                  )}
                 </div>
                 )}
-                {conn.driver === "postgres" && poolerHint && (
-                  <div className="notice small pooler-hint" role="status">
-                    <span>
-                      {t("This is {service}'s pooler in transaction mode.", { service: poolerHint.service })}
-                    </span>
-                    <button type="button" onClick={() => setOption("pooler", "transaction")}>
-                      {t("Use transaction mode")}
-                    </button>
-                  </div>
-                )}
-                {VENDOR_DRIVERS.includes(conn.driver) ? <VendorDriverState driver={conn.driver} /> : null}
-
                 <div className="field-grid">
                   <label className="field">
                     <span>{t("{secret} from", { secret })}</span>
@@ -977,36 +977,47 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     })}
                   </p>
                 )}
+                </section>
               </>
             )}
 
-            <div className="field">
-              <span>{t("Variables file (.env)")}</span>
-              <div className="row tight">
-                <input
-                  className="grow"
-                  value={conn.options?.env_file ?? ""}
-                  onChange={(e) => setOption("env_file", e.target.value)}
-                  placeholder={t("None: the environment's variables only")}
-                  data-field="env_file"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const path = await open({ multiple: false, directory: false });
-                    if (typeof path === "string") setOption("env_file", path);
-                  }}
-                >
-                  {t("Browse…")}
-                </button>
-              </div>
-              <small className="muted">
-                {tNodes("Any field, the password too, can read {example}: from the environment, then from this file.", {
-                  example: <code key="example">{"${env:NAME}"}</code>,
-                })}
-              </small>
-            </div>
 
+          </div>
+
+          <div data-page="safety" hidden={page !== "safety"} className="dialog-page">
+            <section className="form-section">
+            <div className="row">
+              <label className="field">
+                <span>{t("Type")}</span>
+                <select
+                  value={conn.connection_type ?? ""}
+                  onChange={(e) => set("connection_type", (e.target.value || null) as ConnectionType | null)}
+                  title={t("Production asks before changes and starts in manual commit")}
+                >
+                  <option value="">{t("None")}</option>
+                  {CONNECTION_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {t(type.label)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>{t("Color")}</span>
+                <div className="swatches">
+                  {COLORS.map((c) => (
+                    <button
+                      type="button"
+                      key={c || "none"}
+                      className={`swatch${(conn.color ?? "") === c ? " selected" : ""}`}
+                      style={{ background: c || "transparent" }}
+                      title={c || t("No color")}
+                      onClick={() => set("color", c || null)}
+                    />
+                  ))}
+                </div>
+              </label>
+            </div>
             <label className="check">
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />
               {t("Read-only (warn before modifying data)")}
@@ -1043,6 +1054,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             </label>
 
             <AgentAccessField conn={conn} onChange={(access) => set("agent_access", access)} />
+            </section>
 
             {projects.length > 0 && (
               <div className="field">
@@ -1160,6 +1172,32 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
           <div data-page="init" hidden={page !== "init"} className="dialog-page">
             <p className="muted small">{t("Runs after every connection, and again when a lost connection is reopened.")}</p>
+            <div className="field">
+              <span>{t("Variables file (.env)")}</span>
+              <div className="row tight">
+                <input
+                  className="grow"
+                  value={conn.options?.env_file ?? ""}
+                  onChange={(e) => setOption("env_file", e.target.value)}
+                  placeholder={t("None: the environment's variables only")}
+                  data-field="env_file"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const path = await open({ multiple: false, directory: false });
+                    if (typeof path === "string") setOption("env_file", path);
+                  }}
+                >
+                  {t("Browse…")}
+                </button>
+              </div>
+              <small className="muted">
+                {tNodes("Any field, the password too, can read {example}: from the environment, then from this file.", {
+                  example: <code key="example">{"${env:NAME}"}</code>,
+                })}
+              </small>
+            </div>
             {server && !libsql && (conn.driver === "postgres" || hasSessionTimeZone(conn.driver)) && (
               <div className="row">
                 {conn.driver === "postgres" && (
@@ -1199,6 +1237,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               />
             </label>
           </div>
+          </div>
+          </div>
 
           {otherDriver && (
             <div className="notice warn url-other" role="status">
@@ -1216,26 +1256,25 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             </div>
           )}
 
-          {result && (
-            <div className={result.ok ? "notice ok" : "notice error"}>
-              {result.ok
-                ? `${t("Connected: {server}", { server: `${result.server.product} ${result.server.version}` })}${
-                    !server ? "" : result.server.encrypted ? " · TLS" : ` · ${t("not encrypted")}`
-                  }`
-                : result.message}
-            </div>
-          )}
-
           <div className="actions">
+            <button type="button" onClick={test} disabled={busy}>
+              {t("Test connection")}
+            </button>
+            {result && (
+              <div className={result.ok ? "notice ok" : "notice error"}>
+                {result.ok
+                  ? `${t("Connected: {server}", { server: `${result.server.product} ${result.server.version}` })}${
+                      !server ? "" : result.server.encrypted ? " · TLS" : ` · ${t("not encrypted")}`
+                    }`
+                  : result.message}
+              </div>
+            )}
+            <span className="spacer" />
             {!existing && (
               <button type="button" onClick={() => back()} disabled={busy} title={t("Choose another database; this form is cleared")}>
                 {t("Back")}
               </button>
             )}
-            <button type="button" onClick={test} disabled={busy}>
-              {t("Test connection")}
-            </button>
-            <span className="spacer" />
             <button type="button" onClick={onClose} disabled={busy}>
               {t("Cancel")}
             </button>

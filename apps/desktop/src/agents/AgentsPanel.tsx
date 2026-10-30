@@ -2,18 +2,20 @@ import { useEffect, useState } from "react";
 import {
   api,
   toCommandError,
+  type AgentAccess,
   type AgentBlocker,
   type AgentSetup,
   type SavedConnection,
   type StaleRegistration,
 } from "../api";
 import { isProduction } from "../connections";
-import { agentAccessLabel, effectiveAgentAccess } from "./access";
+import { DriverIcon } from "../components/DriverPicker";
+import { AGENT_ACCESS, agentAccessLabel, effectiveAgentAccess } from "./access";
 import { AgentActivity } from "./AgentActivity";
 import { AgentBridge } from "./AgentBridge";
 import { AgentClients } from "./AgentClients";
 import { CopyBlock } from "./CopyBlock";
-import { t, tNodes } from "../i18n";
+import { msg, t, tNodes } from "../i18n";
 
 type Page = "setup" | "activity" | "security";
 
@@ -48,7 +50,31 @@ function StaleNotice({ stale }: { stale: StaleRegistration }) {
   );
 }
 
-/** The access each connection gives agents. */
+/** What each access level lets agents do, as the detail panel explains it. */
+const LEVEL_NOTES: Record<AgentAccess, string> = {
+  off: msg("Agents do not see this connection."),
+  read_only: msg("They can read the data and the schema, and change nothing."),
+  read_write: msg("They can also change data, within the connection's safety settings."),
+};
+
+/** The three levels of a connection, the one it has marked. */
+function AccessLevels({ current }: { current: AgentAccess }) {
+  return (
+    <div className="agent-levels">
+      {AGENT_ACCESS.map((a) => (
+        <div key={a.value} className={`agent-level${a.value === current ? " on" : ""}`} data-level={a.value}>
+          <span className="agent-level-radio" />
+          <div>
+            <div className="agent-level-title">{t(a.label)}</div>
+            <div className="muted small">{t(LEVEL_NOTES[a.value])}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The access each connection gives agents: a card for each, the selected one explained beside. */
 function AgentSecurity({
   connections,
   blockers,
@@ -56,44 +82,70 @@ function AgentSecurity({
   connections: SavedConnection[];
   blockers: Record<string, AgentBlocker>;
 }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const chosen = connections.find((c) => c.id === selectedId) ?? connections[0];
+  const chosenAccess = chosen ? effectiveAgentAccess(chosen) : "off";
+  const chosenBlocker = chosen && chosenAccess !== "off" ? blockers[chosen.id] : undefined;
   return (
     <>
-      <table className="agents-connections">
-        <thead>
-          <tr>
-            <th>{t("Connection")}</th>
-            <th>{t("Agent access")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {connections.map((c) => {
-            const access = effectiveAgentAccess(c);
-            const blocker = access === "off" ? undefined : blockers[c.id];
-            return (
-              <tr key={c.id} data-connection={c.name}>
-                <td>{c.name}</td>
-                <td className={access === "off" ? "muted" : undefined}>
-                  {agentAccessLabel(access)}
-                  {isProduction(c) && access !== "off" && <span className="muted small"> · {t("production")}</span>}
-                  {blocker && (
-                    <span className="small agent-blocked" data-blocker={blocker}>
-                      {" · "}
-                      {blockerNote(blocker)}
-                    </span>
-                  )}
+      <div className="agents-split">
+        <table className="agents-connections agent-cards">
+          <thead>
+            <tr>
+              <th>{t("Connection")}</th>
+              <th>{t("Agent access")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {connections.map((c) => {
+              const access = effectiveAgentAccess(c);
+              const blocker = access === "off" ? undefined : blockers[c.id];
+              return (
+                <tr
+                  key={c.id}
+                  data-connection={c.name}
+                  className={c.id === chosen?.id ? "selected" : undefined}
+                  onClick={() => setSelectedId(c.id)}
+                >
+                  <td>
+                    <DriverIcon driver={c.driver} />
+                    <span className="agent-card-name">{c.name}</span>
+                  </td>
+                  <td className={access === "off" ? "muted" : undefined}>
+                    <span className={`agent-dot ${access}`} aria-hidden />
+                    {agentAccessLabel(access)}
+                    {isProduction(c) && access !== "off" && <span className="muted small"> · {t("production")}</span>}
+                    {blocker && (
+                      <span className="small agent-blocked" data-blocker={blocker}>
+                        {" · "}
+                        {blockerNote(blocker)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {connections.length === 0 && (
+              <tr>
+                <td colSpan={2} className="muted">
+                  {t("No saved connections yet.")}
                 </td>
               </tr>
-            );
-          })}
-          {connections.length === 0 && (
-            <tr>
-              <td colSpan={2} className="muted">
-                {t("No saved connections yet.")}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            )}
+          </tbody>
+        </table>
+        {chosen && (
+          <aside className="agent-detail" aria-label={t("Agent access")}>
+            <header>
+              <DriverIcon driver={chosen.driver} />
+              <strong>{chosen.name}</strong>
+              {isProduction(chosen) && <span className="badge prod">{t("production")}</span>}
+            </header>
+            <AccessLevels current={chosenAccess} />
+            {chosenBlocker && <p className="small agent-blocked">{blockerNote(chosenBlocker)}</p>}
+          </aside>
+        )}
+      </div>
       <p className="muted small">
         {t(
           "Change a connection's access in its settings, under Agent access. Read only is the default; production and read-only connections are never more than read only.",

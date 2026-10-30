@@ -82,6 +82,7 @@
 
 .panel-resizer.column {
   width: 7px;
+  /* Half of the width, so that the handle sits on the edge: a size, not a space. */
   margin: 0 -3px;
   cursor: col-resize;
 }
@@ -142,7 +143,7 @@
   min-width: 0;
   min-height: 0;
   position: relative;
-  margin: 0 8px 8px 0;
+  margin: 0 var(--space-8) var(--space-8) 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sheet);
@@ -155,16 +156,16 @@
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   height: 44px;
-  padding: 0 10px 0 13px;
+  padding: 0 var(--space-10) 0 13px;
   min-width: 0;
   white-space: nowrap;
 }
 
 .topbar-mark {
   flex: none;
-  margin-right: 2px;
+  margin-right: var(--space-2);
 }
 
 .topbar-project {
@@ -183,7 +184,7 @@
 .topbar-connection {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-8);
   min-width: 0;
   font-weight: 500;
   color: var(--env-ink);
@@ -206,14 +207,14 @@
 .topbar-masked {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   height: 26px;
-  padding: 0 10px;
+  padding: 0 var(--space-10);
   border-color: transparent;
   border-radius: var(--radius-xl);
   background: var(--warn-bg);
   color: var(--warn);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -222,15 +223,15 @@
 .topbar-agents {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   height: 26px;
   max-width: 200px;
-  padding: 0 10px;
+  padding: 0 var(--space-10);
   border-color: transparent;
   border-radius: var(--radius-xl);
   background: var(--ok-bg);
   color: var(--ok);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -244,8 +245,8 @@
   margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 6px 0 10px;
+  gap: var(--space-8);
+  padding: 0 var(--space-6) 0 var(--space-10);
   border-color: transparent;
   border-radius: var(--radius-xl);
   background: var(--bg-input);
@@ -289,9 +290,9 @@
   right: 0;
   min-width: 15px;
   height: 15px;
-  padding: 0 4px;
+  padding: 0 var(--space-4);
   border-radius: 999px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   line-height: 15px;
   font-variant-numeric: tabular-nums;
@@ -329,7 +330,7 @@
   z-index: 60;
   align-self: stretch;
   display: flex;
-  margin-left: 6px;
+  margin-left: var(--space-6);
 }
 
 .window-controls button {
@@ -357,33 +358,35 @@
 /* Welcome: the workspace with no tab open */
 
 .welcome {
-  margin: auto;
+  margin: 0 auto;
   width: 100%;
-  max-width: 920px;
-  padding: 48px 32px;
+  max-width: 1180px;
+  padding: var(--space-48) var(--space-32);
+  font-size: var(--text-lg);
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 48px;
+  gap: var(--space-48);
   overflow: auto;
 }
 
 .welcome-intro {
-  flex: 1 1 340px;
+  flex: 1 1 420px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 18px;
+  gap: var(--space-16);
 }
 
+/* The banner art is 4:1 with its own margins: the h1 moves it left by them, so that the
+   platypus lines up with the text below. One version per background. */
 .welcome h1 {
-  margin: 0 0 0 -24px;
+  margin: 0 0 0 -76px;
 }
 
-/* The banner art is 4:1 with its own margins; one version per background. */
 .welcome .banner {
   display: block;
-  width: min(420px, 100%);
+  width: min(560px, 100%);
   height: auto;
 }
 
@@ -395,7 +398,7 @@
 .welcome-lead {
   margin: 0;
   max-width: 46ch;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1.55;
   color: var(--fg);
 }
@@ -407,27 +410,27 @@
 .welcome-cta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 18px;
+  gap: var(--space-8);
+  height: var(--control-xl);
+  padding: 0 var(--space-16);
   border-radius: var(--radius-xl);
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
 }
 
 .welcome-actions {
-  flex: 1 1 320px;
+  flex: 1 1 400px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .welcome-card {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: var(--space-12);
   height: auto;
-  padding: 14px 16px;
+  padding: var(--space-16) var(--space-20);
   border: none;
   border-radius: var(--radius-sheet);
   background: var(--bg-sidebar);
@@ -450,24 +453,83 @@
 
 .welcome-card strong {
   display: block;
-  margin-bottom: 2px;
-  font-size: 14px;
+  margin-bottom: var(--space-4);
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--fg-strong);
 }
 
-.welcome-keys {
-  margin: 14px 0 0;
+/* Under the two columns: the connections used last and the shortcuts, as lists. */
+.welcome-more {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-24);
+}
+
+.welcome-heading {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.welcome-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.welcome-list > li + li,
+.welcome-list > div + div {
+  border-top: 1px solid var(--border);
+}
+
+.welcome-recent button {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: var(--space-10);
+  width: 100%;
+  min-height: var(--control-xl);
+  padding: 0 var(--space-16);
+  border: none;
+  border-radius: 0;
+  text-align: left;
+}
+
+.welcome-recent .driver-icon .driver-logo {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border-radius: var(--radius);
+}
+
+.welcome-recent .driver-icon .driver-logo svg {
+  width: 12px;
+  height: 12px;
+}
+
+.welcome-name {
+  color: var(--fg-strong);
+}
+
+.welcome-when {
+  margin-left: auto;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 
 .welcome-keys > div {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-12);
+  min-height: var(--control-lg);
+  padding: 0 var(--space-16);
 }
 
 .welcome-keys dd {
@@ -480,9 +542,9 @@
 .tabs {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
+  gap: var(--space-2);
   height: 38px;
-  padding: 0 8px;
+  padding: 0 var(--space-8);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   overflow-y: hidden;
@@ -493,9 +555,9 @@
 .tab {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-8);
   height: 37px;
-  padding: 0 4px 0 10px;
+  padding: 0 var(--space-4) 0 var(--space-10);
   color: var(--fg-muted);
   cursor: default;
   white-space: nowrap;
@@ -532,7 +594,7 @@
 }
 
 .tab > button.icon {
-  padding: 0 4px;
+  padding: 0 var(--space-4);
   border-radius: var(--radius);
   opacity: 0.7;
 }
@@ -550,7 +612,7 @@
 
 /* A pinned tab: its icon alone, first in the bar. */
 .tab.pinned {
-  padding: 0 10px;
+  padding: 0 var(--space-10);
 }
 
 /* The other tab of a split editor. */
@@ -564,12 +626,12 @@
   align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   height: 22px;
-  margin: 0 2px 0 8px;
-  padding: 0 8px;
+  margin: 0 var(--space-2) 0 var(--space-8);
+  padding: 0 var(--space-8);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
   color: var(--fg);
@@ -587,7 +649,7 @@
 
 .tab-count {
   min-width: 16px;
-  padding: 0 4px;
+  padding: 0 var(--space-4);
   border-radius: 999px;
   font-variant-numeric: tabular-nums;
   background: var(--bg);
@@ -628,13 +690,13 @@
 .statusbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-12);
   min-height: 26px;
-  padding: 3px 12px;
+  padding: var(--space-4) var(--space-12);
   background: var(--bg-tabbar);
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -670,8 +732,8 @@
 .update-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-10);
   background: var(--ok-bg);
   border-bottom: 1px solid var(--border);
 }
@@ -694,9 +756,9 @@
 .window-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
   min-height: 38px;
-  padding: 4px 10px;
+  padding: var(--space-4) var(--space-10);
   border-bottom: 1px solid var(--border);
   background: var(--bg-sidebar);
 }
@@ -704,13 +766,10 @@
 .window-connection {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .window-connection select {
   min-width: 220px;
 }
 
-.window-empty {
-  margin: auto;
-}

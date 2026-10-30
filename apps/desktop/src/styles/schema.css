@@ -2,7 +2,7 @@
 
 .erd .object-header {
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: var(--space-6) var(--space-10);
 }
 
 /* Over the whole window, not the system's full screen. Below the dialogs (z-index 10), which
@@ -19,11 +19,63 @@
   padding-right: 170px;
 }
 
+/* The canvas is quiet: a dotted ground under the diagram, the toolbar floating over it. */
+.erd-stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .erd-canvas {
   position: relative;
   flex: 1;
   min-height: 0;
+  /* The diagram starts below the floating toolbar, which would cover the first row of tables. */
+  padding-top: calc(var(--control-md) + var(--space-16) + var(--space-4));
   overflow: auto;
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.erd-bg {
+  fill: transparent;
+}
+
+.erd-rule {
+  fill: none;
+}
+
+.erd-float {
+  position: absolute;
+  top: var(--space-16);
+  left: var(--space-16);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-elevated, var(--bg-sidebar));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.erd-float button {
+  border-color: transparent;
+}
+
+.erd-zoom {
+  min-width: 36px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.erd-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--space-2) var(--space-2);
+  background: var(--border);
 }
 
 .erd-canvas svg {
@@ -33,7 +85,6 @@
 
 .erd-loading {
   position: absolute;
-  margin: 14px;
 }
 
 /* The edit mode of the diagram: a bar with the pending changes, and handles on the column rows. */
@@ -41,8 +92,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
-  padding: 6px 14px;
+  gap: var(--space-6) var(--space-10);
+  padding: var(--space-6) var(--space-12);
   border-bottom: 1px solid var(--border);
   background: var(--bg-sidebar);
 }
@@ -58,7 +109,7 @@
 .modal.design-dialog .object-body {
   flex: none;
   max-height: 50vh;
-  padding: 6px 0;
+  padding: var(--space-6) 0;
 }
 
 .modal.design-dialog .object-sections {
@@ -93,16 +144,16 @@
 
 .erd-table-list li label {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
   align-items: center;
-  padding: 3px 8px;
+  padding: var(--space-4) var(--space-8);
 }
 
 .lint-findings li {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 8px 10px;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-10);
   border-bottom: 1px solid var(--border);
 }
 
@@ -112,13 +163,13 @@
 
 .lint-head {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
   align-items: baseline;
 }
 
 .lint-kind {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--warn);
 }
 
@@ -129,7 +180,7 @@
 
 .lint-fix {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
   align-items: baseline;
 }
 
@@ -137,7 +188,7 @@
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .modal.schema-migrations {
@@ -146,21 +197,21 @@
 
 .migration-summary {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
   align-items: center;
 }
 
 .migration-tools {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
   overflow: auto;
   max-height: 50vh;
 }
 
 .migration-tools h3 {
-  margin: 0 0 4px;
-  font-size: 13px;
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-md);
 }
 
 .migration-table {
@@ -173,9 +224,9 @@
 
 .mig-status {
   display: inline-block;
-  padding: 1px 8px;
+  padding: var(--space-2) var(--space-8);
   border-radius: 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   background: var(--ok-bg);
   color: var(--ok);
@@ -199,17 +250,17 @@
 }
 
 .schema-history .history-notice {
-  margin: 8px 12px 0;
+  margin: var(--space-8) var(--space-12) 0;
 }
 
 .history-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 12px;
+  padding: var(--space-12);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
 }
 
 .history-list {
@@ -222,23 +273,23 @@
 
 .history-changes-head {
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .history-table h3 {
-  margin: 10px 0 4px;
-  font-size: 13px;
+  margin: var(--space-10) 0 var(--space-4);
+  font-size: var(--text-md);
 }
 
 .history-table ul {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 12px;
+  padding: 0 0 0 var(--space-12);
 }
 
 .history-change {
-  padding: 2px 0;
-  font-size: 12px;
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
 }
 
 .history-change.table_added,

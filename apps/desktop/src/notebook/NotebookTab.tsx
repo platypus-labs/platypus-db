@@ -36,6 +36,7 @@ import {
   planLines,
   resultTables,
 } from "./model";
+import { EmptyState } from "../ui/State";
 
 export interface NotebookTabModel extends TabBase {
   kind: "notebook";
@@ -489,7 +490,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
             onFocus={() => onNeedCatalog(false)}
           />
         ))}
-        {tab.cells.length === 0 && <p className="muted notebook-empty">{t("An empty notebook: add a SQL or a text cell.")}</p>}
+        {tab.cells.length === 0 && <EmptyState className="notebook-empty" title={t("An empty notebook: add a SQL or a text cell.")} />}
       </div>
     </div>
   );

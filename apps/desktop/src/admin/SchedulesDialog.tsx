@@ -21,6 +21,7 @@ import { ask } from "../ui/ask";
 import { workbench } from "../workbench";
 import { createsTables, exportsFiles, profileConnections, profilesOf } from "../transfer/profiles";
 import { cleaned, newProfileSchedule, newSchedule, newSnapshotSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
+import { EmptyState } from "../ui/State";
 
 const KINDS: Record<ScheduleTask["kind"], string> = {
   script: msg("Run a SQL script"),
@@ -155,7 +156,7 @@ export function SchedulesDialog({
               {t("They run while PlatypusDB is open; a time missed while it was closed runs at the next start.")}
             </p>
             {error && <div className="notice error small">{error}</div>}
-            {schedules && schedules.length === 0 && <p className="muted small schedules-empty">{t("No scheduled tasks yet.")}</p>}
+            {schedules && schedules.length === 0 && <EmptyState compact className="schedules-empty" title={t("No scheduled tasks yet.")} />}
             {schedules && schedules.length > 0 && (
               <div className="schedules-list">
                 <table className="meta-table admin-table">

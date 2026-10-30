@@ -2,7 +2,7 @@
 .table-editor .table-name {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .table-editor .table-name input {
@@ -27,17 +27,17 @@
 .table-editor .type-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .table-editor .add-row {
   align-self: flex-start;
-  margin-top: 8px;
+  margin-top: var(--space-8);
 }
 
 .table-editor .notice + .sql-preview,
 .table-editor .notice + .notice {
-  margin-top: 6px;
+  margin-top: var(--space-6);
 }
 
 /* A failed save lists the statements that stay applied, one per line. */

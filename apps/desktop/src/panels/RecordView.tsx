@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type CellInput, type ColumnInfo, toCommandError } from "../api";
 import { shown as masked, useMask } from "../guards/mask";
 import { formatCount, t } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   jobId: number;
@@ -90,7 +91,7 @@ export function RecordView({ jobId, columns, shown, row, rowCount, topRows, vers
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}
       {dataRow < 0 ? (
-        <div className="muted small value-empty">{t("A new row of the editor: it shows in the grid until saved.")}</div>
+        <EmptyState compact className="value-empty" title={t("A new row of the editor: it shows in the grid until saved.")} />
       ) : (
         <div className="record-fields">
           {shown.map((c) => {

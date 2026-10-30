@@ -9,6 +9,7 @@ import { workbench } from "../workbench";
 import { NOW, type Pick, groupChanges, pair, stillThere, toggled } from "./history";
 import { commentHeader } from "./script";
 import { translateWarning } from "./warnings";
+import { EmptyState } from "../ui/State";
 
 /** The history of a schema's structure: the snapshots taken, by hand or by a scheduled task,
  *  and what changed between two of them, or between one and the schema now. */
@@ -249,7 +250,7 @@ export function HistoryTab({ tab, connection, active, sideSession }: TabProps<Hi
             ))}
           </tbody>
         </table>
-        {snapshots?.length === 0 && <p className="muted small history-empty">{t("No snapshots yet. Take one to start the history.")}</p>}
+        {snapshots?.length === 0 && <EmptyState compact className="history-empty" title={t("No snapshots yet. Take one to start the history.")} />}
         <section className="history-changes">
           {compared === null ? (
             <p className="muted small history-hint">{t("Tick two snapshots, or one and Now, to see what changed between them.")}</p>
