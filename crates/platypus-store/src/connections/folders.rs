@@ -781,7 +781,7 @@ mod tests {
         assert_eq!(project(&s, p).folders, []);
         s.create_folder(p, "F", None).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 7"), "{text}");
+        assert!(text.contains("version = 8"), "{text}");
     }
 
     #[test]
