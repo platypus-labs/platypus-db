@@ -92,6 +92,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 | Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
 | Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
+| Scenari E2E del gruppo Q (P3) scritti in un container Linux e mai eseguiti: `sensitive-columns-sqlite` (segni, mascheramento, intestazioni, export), `column-usage-sqlite` (Used by: viste, trigger, script, Refresh). Eseguirli su Windows dopo la build di release e correggere scenari o codice | gruppo Q, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -117,10 +118,10 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ completato |
-| N — Accesso per agenti (MCP) | ✅ fatto (P1, P2; P3 in parte) |
+| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-masking · 2026-10-30 |
 | O — Collaborazione e sync | 🔒 Delfa · group-o-collab · 2026-10-30 |
 | P — Piattaforma, qualità e release | 🔒 Claude · claude/exciting-galileo-ukai8j · 2026-10-30 |
-| Q — Documentazione e catalogo dei dati | 🔒 Delfa · group-q-sensitive · 2026-10-30 |
+| Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
@@ -1166,7 +1167,19 @@ repository aspettano che diventi pubblico.
 
 ### Gruppo Q — Documentazione e catalogo dei dati
 
-**Stato: P2 completate** (restano le P3). **Note e tag** in `catalog.db`, un SQLite a parte nella
+**Stato: completato.** P3: **colonne sensibili**, un segno a mano per colonna (*Sensitive* nelle
+Columns del tab oggetto, tabella `sensitive_columns` di `catalog.db`) sopra le regole su nome e
+tipo delle impostazioni Safety (`guards/maskRules.ts`, `guards/mask.ts`: `useSensitive`, con la
+tabella del risultato da `SensitiveScope` dove è nota, data viewer e profilo tabella); le usano
+il mascheramento, le intestazioni della griglia e gli export (`ExportOptions.masked`/`omitted`
+in `platypus-transfer`: valori scritti come `••••••`, NULL lasciati NULL, o colonne tolte);
+gli agenti del gruppo N le useranno col mascheramento delle colonne sensibili di N. **Dove si usa
+una colonna**: la sezione *Used by* del tab di una tabella (`column_usage` in
+`commands/catalog.rs`): il DDL di viste, routine e trigger dello schema letto in blocco con
+`Connection::objects_ddl`, più gli script salvati del progetto sulla stessa connessione o su
+nessuna; il confronto dei nomi è in `platypus-sql::usage` (parole e identificatori quotati fuori
+da commenti e stringhe, il corpo `$$` delle routine PostgreSQL riletto come SQL), e conta solo
+un testo che nomina anche la tabella. P2: **Note e tag** in `catalog.db`, un SQLite a parte nella
 cartella dati (`CatalogStore` in `platypus-store`, migrazioni con `PRAGMA user_version`), per
 connessione salvata, database e `schema.oggetto.colonna`: riquadro Notes e colonne Note e Tags nel
 tab oggetto, segno e tooltip nel navigator con il filtro `#tag`, segno sulle intestazioni di
@@ -1199,8 +1212,8 @@ rispettate da tutta l'app.
 | ✅ **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
 | ✅ Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
 | ✅ **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
-| 🆕 **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
-| 🆕 Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
+| ✅ **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
+| ✅ Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
 
 ---
 

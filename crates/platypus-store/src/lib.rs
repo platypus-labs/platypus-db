@@ -30,7 +30,8 @@ pub use auth::{
     command_password, external_password, external_password_quiet, pgpass_password, pgpass_path,
 };
 pub use catalog::{
-    CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, TagCount, normalize_tags,
+    CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, SensitiveColumn, TagCount,
+    normalize_tags,
 };
 pub use connections::{
     AgentAccess, ConnectBy, ConnectionFolder, ConnectionStore, ConnectionType, ImportInto,
