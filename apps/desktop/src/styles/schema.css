@@ -225,7 +225,7 @@
 .mig-status {
   display: inline-block;
   padding: var(--space-2) var(--space-8);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   font-size: var(--text-sm);
   font-weight: 600;
   background: var(--ok-bg);

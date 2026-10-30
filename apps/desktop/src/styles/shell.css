@@ -65,7 +65,7 @@
   bottom: 0;
   left: 3px;
   width: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: var(--accent);
   opacity: 0;
   transition: opacity 0.15s ease-out 0.1s;
@@ -94,7 +94,7 @@
 .panel-resizer::after {
   content: "";
   position: absolute;
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: var(--accent);
   opacity: 0;
   transition: opacity 0.15s ease-out 0.1s;
@@ -158,7 +158,7 @@
   align-items: center;
   gap: var(--space-8);
   height: 44px;
-  padding: 0 var(--space-10) 0 13px;
+  padding: 0 var(--space-10) 0 var(--space-12);
   min-width: 0;
   white-space: nowrap;
 }
@@ -398,7 +398,7 @@
 .welcome-lead {
   margin: 0;
   max-width: 46ch;
-  font-size: 18px;
+  font-size: var(--text-xl);
   line-height: 1.55;
   color: var(--fg);
 }
@@ -648,7 +648,7 @@
 }
 
 .tab-count {
-  min-width: 16px;
+  min-width: var(--icon-md);
   padding: 0 var(--space-4);
   border-radius: 999px;
   font-variant-numeric: tabular-nums;
