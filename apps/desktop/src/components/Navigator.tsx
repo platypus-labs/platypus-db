@@ -24,7 +24,7 @@ import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
 import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
 import { openDocs } from "../catalog/DocsDialog";
 import { toggled } from "../sets";
-import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
+import { type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
 import type { TabInit } from "../tabs/registry";
 import { dispatchKey, registerAction } from "../actions";
 import { workbench } from "../workbench";
@@ -39,6 +39,8 @@ import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listL
 import { t, msg, plural } from "../i18n";
 import { openObjectTab, showsData } from "../objects/open";
 import { EmptyState } from "../ui/State";
+import { type Point, pointerDrag } from "../ui/pointerDrag";
+import { dropSql, type SqlDropTarget, sqlDropTarget } from "../editor/dropSql";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -179,10 +181,8 @@ interface Row {
   sql?: SqlDrag | (() => SqlDrag);
 }
 
-const DRAG_TYPE = "application/x-platypus-navigator";
-
-/** Whether a connection or folder of the list is being dragged. */
-const isArranging = (e: React.DragEvent) => e.dataTransfer.types.includes(DRAG_TYPE);
+/** Where a dragged row drops: a place in the list, or an editor or text field. */
+type NavDrop = { kind: "arrange"; change: Arrange; key: string | null; zone: DropZone } | { kind: "sql"; target: SqlDropTarget };
 
 export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
@@ -215,9 +215,10 @@ export function Navigator(props: Props) {
   const anchor = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const signatures = useRef(new Map<string, string>());
-  /** The connection or folder being dragged, and the row and zone it would land in. */
-  const dragging = useRef<DragItem | null>(null);
+  /** The row and zone a dragged connection or folder would land in. */
   const [dropAt, setDropAt] = useState<{ key: string; zone: DropZone } | null>(null);
+  /** Where a drag of a row drops under the pointer, from the tree of the last render. */
+  const dropFinder = useRef<(row: Row, el: Element | null, at: Point) => NavDrop | null>(() => null);
   /** The step of rows the tree is scrolled to: see rowWindow.ts. */
   const [step, setStep] = useState(0);
 
@@ -582,48 +583,49 @@ export function Navigator(props: Props) {
   /** What the list arranges: the project, or the saved list for All connections. */
   const layout = project ?? listLayout(connections);
 
-  /** Where the dragged connection or folder lands on `row` at the pointer, and the change it
-   *  makes there; `null` where it cannot go or would not move. */
-  function rowDrop(row: Row, e: React.DragEvent): { zone: DropZone; change: Arrange } | null {
-    const item = dragging.current;
-    if (!item || !row.item) return null;
-    const r = e.currentTarget.getBoundingClientRect();
-    const zone = dropZone(e.clientY - r.top, r.height, item.kind, row.item.kind, project !== null);
+  /** Where the connection or folder `item` lands under the pointer at `at`, on `el`, and
+   *  the change it makes there; `null` where it cannot go or would not move. A row that
+   *  takes nothing refuses it; below the rows it goes last at the root. */
+  function arrangeAt(item: DragItem, el: Element | null, at: Point): NavDrop | null {
+    const tree = treeRef.current;
+    if (!tree || !el || !tree.contains(el)) return null;
+    const li = el.closest<HTMLElement>("li.tree-row[data-row]");
+    if (!li) {
+      const change = dropChange(layout, item, null, "into");
+      return change && { kind: "arrange", change, key: null, zone: "into" };
+    }
+    const row = rows[Number(li.dataset.row)];
+    if (!row?.item) return null;
+    const r = li.getBoundingClientRect();
+    const zone = dropZone(at.y - r.top, r.height, item.kind, row.item.kind, project !== null);
     const change = dropChange(layout, item, row.item, zone);
-    return change && { zone, change };
+    return change && { kind: "arrange", change, key: row.key, zone };
   }
 
-  /** Shows where a drop would land: on `key` in `zone`, or nowhere. */
-  function showDrop(key: string | null, zone: DropZone = "into") {
-    setDropAt((at) => (key === null ? null : at?.key === key && at.zone === zone ? at : { key, zone }));
+  // A drag reads where it would drop from the tree as it is at each move.
+  dropFinder.current = (row, el, at) => {
+    if (row.item && el && treeRef.current?.contains(el)) return arrangeAt(row.item, el, at);
+    const target = row.sql ? sqlDropTarget(el) : null;
+    return target && { kind: "sql", target };
+  };
+
+  /** Drags `row` (a connection or folder to arrange, or a table or column for an editor). */
+  function startDrag(row: Row, e: React.PointerEvent) {
+    const sql = typeof row.sql === "function" ? row.sql() : row.sql;
+    pointerDrag<NavDrop>(e, {
+      label: sql?.name ?? row.label,
+      target: (el, at) => dropFinder.current(row, el, at),
+      show: (drop) => {
+        const key = drop?.kind === "arrange" ? drop.key : null;
+        const zone = drop?.kind === "arrange" ? drop.zone : "into";
+        setDropAt((was) => (key === null ? null : was?.key === key && was.zone === zone ? was : { key, zone }));
+      },
+      drop: (drop, at, up) => {
+        if (drop.kind === "arrange") applyArrange(project, drop.change).catch((err: unknown) => onError(toCommandError(err).message));
+        else if (sql) dropSql(drop.target, sql, at, up.shiftKey);
+      },
+    });
   }
-
-  function arrange(change: Arrange | null) {
-    showDrop(null);
-    dragging.current = null;
-    if (change) applyArrange(project, change).catch((e: unknown) => onError(toCommandError(e).message));
-  }
-
-  /** A row taking a dragged connection or folder; one that takes nothing refuses it, so
-   *  the drop does not reach the list below it. */
-  const rowDropHandlers = (row: Row) => ({
-    onDragOver: (e: React.DragEvent) => {
-      if (!isArranging(e)) return;
-      e.stopPropagation();
-      const drop = rowDrop(row, e);
-      showDrop(drop && row.key, drop?.zone);
-      if (drop) e.preventDefault();
-    },
-    onDrop: (e: React.DragEvent) => {
-      if (!isArranging(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      arrange(rowDrop(row, e)?.change ?? null);
-    },
-  });
-
-  /** Below the rows: last at the root. */
-  const listDrop = () => (dragging.current ? dropChange(layout, dragging.current, null, "into") : null);
 
   if (project) {
     const tree = folderTree(project, connections);
@@ -1136,20 +1138,6 @@ export function Navigator(props: Props) {
           e.preventDefault();
           setMenu({ x: e.clientX, y: e.clientY, target: { scope: "navigator.list", arg: { project } } });
         }}
-        // Dropped below the rows: last at the root.
-        onDragOver={(e) => {
-          if (!isArranging(e)) return;
-          showDrop(null);
-          if (listDrop()) e.preventDefault();
-        }}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) showDrop(null);
-        }}
-        onDrop={(e) => {
-          if (!isArranging(e)) return;
-          e.preventDefault();
-          arrange(listDrop());
-        }}
       >
         {/* The rows not rendered keep their place, so the scrollbar spans the whole tree. */}
         {from > 0 && <li role="none" style={{ height: from * ROW_HEIGHT }} />}
@@ -1164,26 +1152,7 @@ export function Navigator(props: Props) {
             tabIndex={row.key === tabStop ? 0 : -1}
             className={`tree-row${row.muted ? " muted" : ""}${row.status === "error" ? " failed" : ""}${selected.has(row.key) ? " selected" : ""}${dropAt?.key === row.key ? ` drop-${dropAt.zone}` : ""}`}
             style={{ paddingLeft: 6 + row.depth * 16 }}
-            draggable={!!row.item || !!row.sql}
-            onDragStart={(e) => {
-              dragging.current = row.item ?? null;
-              if (row.item) {
-                e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(row.item));
-                e.dataTransfer.effectAllowed = "move";
-              }
-              const sql = typeof row.sql === "function" ? row.sql() : row.sql;
-              if (sql) {
-                e.dataTransfer.setData(SQL_DRAG, JSON.stringify(sql));
-                // Anywhere else that takes text, e.g. a filter box, gets the name.
-                e.dataTransfer.setData("text/plain", sql.name);
-                e.dataTransfer.effectAllowed = "copy";
-              }
-            }}
-            onDragEnd={() => {
-              dragging.current = null;
-              showDrop(null);
-            }}
-            {...rowDropHandlers(row)}
+            onPointerDown={row.item || row.sql ? (e) => startDrag(row, e) : undefined}
             title={
               row.status === "error"
                 ? (row.detail ?? row.label)

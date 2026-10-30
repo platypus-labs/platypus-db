@@ -10,6 +10,10 @@ import { changedInFolder, statusByPath } from "./gitModel";
 import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, scriptsChanged } from "./scripts";
 import { t } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { markedTarget, pointerDrag } from "../ui/pointerDrag";
+
+/** Marks the folder a dragged script or folder drops into: `""` is the top. */
+const DROP = "data-script-folder";
 
 interface Props {
   project: Project | null;
@@ -29,6 +33,8 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
   // Escape leaves the name as it was; the blur that follows must not save it.
   const cancelled = useRef(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  /** The folder a dragged script would move into. */
+  const [dropInto, setDropInto] = useState<string | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const fail = (e: unknown) => onError(toCommandError(e).message);
 
@@ -109,20 +115,22 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
   const entries = list?.entries ?? [];
   const changed = statusByPath(git?.files ?? []);
   const hidden = (path: string) => [...collapsed].some((f) => path.startsWith(`${f}/`));
-  const drop = (folder: string) => (e: React.DragEvent) => {
-    const path = e.dataTransfer.getData("application/x-platypus-script");
-    if (!path) return;
-    e.preventDefault();
-    e.stopPropagation();
-    moveScript(projectId, path, folder).catch(fail);
-  };
-  const allowDrop = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("application/x-platypus-script")) e.preventDefault();
-  };
+  /** Drags a script or folder into another folder, or (on the header) to the top. */
+  const drag = (path: string) => (e: React.PointerEvent) =>
+    pointerDrag<string>(e, {
+      label: nameOf(path),
+      target: (el) => {
+        const folder = markedTarget(el, DROP)?.value;
+        const moves = folder !== undefined && folder !== parentOf(path) && folder !== path && !folder.startsWith(`${path}/`);
+        return moves ? folder : null;
+      },
+      show: setDropInto,
+      drop: (folder) => moveScript(projectId, path, folder).catch(fail),
+    });
 
   return (
     <section className={`scripts-panel${open ? " open" : ""}`} aria-label={t("Scripts")}>
-      <div className="sidebar-header scripts-header" onDragOver={allowDrop} onDrop={drop("")}>
+      <div className={`sidebar-header scripts-header${dropInto === "" ? " drop-into" : ""}`} data-script-folder="">
         <button className="icon twisty-button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title={t(open ? "Hide scripts" : "Show scripts")}>
           <Icon name={open ? "chevron-down" : "chevron-right"} size={12} />
         </button>
@@ -147,15 +155,13 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
             return (
               <li
                 key={entry.path}
-                className="tree-row script-row"
+                className={`tree-row script-row${dropInto === entry.path ? " drop-into" : ""}`}
                 style={{ paddingLeft: 6 + depth * 14 }}
                 tabIndex={0}
-                draggable={editing !== entry.path}
                 onKeyDown={(e) => editing !== entry.path && dispatchKey("script", arg, e.nativeEvent, fail)}
                 data-path={entry.path}
-                onDragStart={(e) => e.dataTransfer.setData("application/x-platypus-script", entry.path)}
-                onDragOver={entry.folder ? allowDrop : undefined}
-                onDrop={entry.folder ? drop(entry.path) : undefined}
+                data-script-folder={entry.folder ? entry.path : undefined}
+                onPointerDown={editing === entry.path ? undefined : drag(entry.path)}
                 onClick={() =>
                   entry.folder &&
                   setCollapsed((c) => {

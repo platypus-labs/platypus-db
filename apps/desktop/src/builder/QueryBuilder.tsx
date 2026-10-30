@@ -11,6 +11,7 @@ import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { pointerDrag } from "../ui/pointerDrag";
 
 export interface BuilderTable {
   id: number;
@@ -126,6 +127,8 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
   const [filter, setFilter] = useState("");
   const [details, setDetails] = useState(new Map<string, TableDetails>());
   const canvas = useRef<HTMLDivElement>(null);
+  /** A table of the list is dragged over the canvas. */
+  const [dropping, setDropping] = useState(false);
   const fail = (e: unknown) => onError(toCommandError(e).message);
   const session = async () => {
     const id = await sideSession();
@@ -217,6 +220,17 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
 
   const open = (autorun: boolean) =>
     workbench().openTab("query", connection.id, { sql, database: tab.database, autorun });
+  /** Drags a table of the list onto the canvas, where it is added under the pointer. */
+  const dragTable = (e: React.PointerEvent, name: string) =>
+    pointerDrag<HTMLElement>(e, {
+      label: name,
+      target: (el) => (canvas.current && el && canvas.current.contains(el) ? canvas.current : null),
+      show: (el) => setDropping(el !== null),
+      drop: (el, at) => {
+        const r = el.getBoundingClientRect();
+        add(name, Math.max(0, at.x - r.left + el.scrollLeft - BOX / 2), Math.max(0, at.y - r.top + el.scrollTop - 12));
+      },
+    });
   const center = (t: BuilderTable) => ({ x: t.x + BOX / 2, y: t.y + 16 });
   const visible = objects.filter((o) => o.name.toLowerCase().includes(filter.toLowerCase()));
 
@@ -236,9 +250,8 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
             <li
               key={o.name}
               className="tree-row builder-source"
-              draggable
               title={t("Drag onto the canvas, or double-click")}
-              onDragStart={(e) => e.dataTransfer.setData("application/x-platypus-table", o.name)}
+              onPointerDown={(e) => dragTable(e, o.name)}
               onDoubleClick={() => add(o.name)}
             >
               <span className="tree-icon" data-kind={o.kind === "table" ? "table" : "view"}>
@@ -251,17 +264,8 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
       </aside>
       <div className="builder-main">
         <div
-          className="builder-canvas"
+          className={`builder-canvas${dropping ? " drop-into" : ""}`}
           ref={canvas}
-          onDragOver={(e) => e.dataTransfer.types.includes("application/x-platypus-table") && e.preventDefault()}
-          onDrop={(e) => {
-            const name = e.dataTransfer.getData("application/x-platypus-table");
-            if (!name) return;
-            e.preventDefault();
-            const r = canvas.current!.getBoundingClientRect();
-            const el = canvas.current!;
-            add(name, Math.max(0, e.clientX - r.left + el.scrollLeft - BOX / 2), Math.max(0, e.clientY - r.top + el.scrollTop - 12));
-          }}
         >
           {tab.tables.length === 0 && <EmptyState className="builder-empty" title={t("Drag tables here from the list. Their foreign keys join them.")} />}
           <svg className="builder-lines">

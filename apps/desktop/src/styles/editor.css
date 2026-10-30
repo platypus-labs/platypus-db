@@ -946,3 +946,8 @@ button.toggled {
   gap: var(--space-6);
   white-space: nowrap;
 }
+
+/* A table of the list dragged over the canvas. */
+.builder-canvas.drop-into {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}

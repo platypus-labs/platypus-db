@@ -317,3 +317,29 @@ button:focus-visible {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* What a drag inside the page carries, following the pointer (ui/pointerDrag.ts). */
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  max-width: 280px;
+  padding: var(--space-2) var(--space-8);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pointer-dragging,
+.pointer-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}

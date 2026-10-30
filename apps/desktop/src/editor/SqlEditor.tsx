@@ -45,7 +45,6 @@ import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
 import { onVimWrite, vimMode, vimSetting, vimTakes } from "./vim";
 import { workbench } from "../workbench";
-import { SQL_DRAG, type SqlDrag } from "../sqlNames";
 import "./actions";
 import { type CatalogNote, closeOnTypedWord, codeOnly, keywordCompletion, nameCompletion } from "./completion";
 import { CQL } from "./cql";
@@ -375,28 +374,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
               if (!name) return false;
               e.preventDefault();
               open(...name);
-              return true;
-            },
-            dragover: (e) => {
-              if (e.dataTransfer?.types.includes(SQL_DRAG)) e.preventDefault();
-              return false;
-            },
-            // A table from the navigator: its name, or a query of it in an empty editor or
-            // with Shift held.
-            drop: (e, view) => {
-              const data = e.dataTransfer?.getData(SQL_DRAG);
-              if (!data || view.state.readOnly) return false;
-              e.preventDefault();
-              const { name, select } = JSON.parse(data) as SqlDrag;
-              const empty = view.state.doc.toString().trim() === "";
-              const insert = select && (empty || e.shiftKey) ? select : name;
-              const from = empty ? 0 : (view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.doc.length);
-              view.dispatch({
-                changes: { from, to: empty ? view.state.doc.length : from, insert },
-                selection: { anchor: from + insert.length },
-                userEvent: "input.drop",
-              });
-              view.focus();
               return true;
             },
             contextmenu: (e, view) => {

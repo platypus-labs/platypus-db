@@ -278,3 +278,27 @@
   margin: var(--space-2) 0 var(--space-6);
   padding-left: var(--space-16);
 }
+
+/* Where a dragged project would land: a line between two squares, or the square or folder
+   it would join outlined. */
+.project-rail {
+  position: relative;
+}
+
+.rail-drop-line {
+  position: absolute;
+  left: 50%;
+  width: 32px;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: var(--accent);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.project-square.drop-into,
+.project-folder.drop-into,
+.project-folder-open.drop-into {
+  box-shadow: 0 0 0 2px var(--accent);
+}

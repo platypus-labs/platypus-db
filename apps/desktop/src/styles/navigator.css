@@ -436,3 +436,8 @@
 .conn-failed {
   background: var(--error);
 }
+
+/* A script dragged onto the header goes to the top of the scripts folder. */
+.scripts-header.drop-into {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
