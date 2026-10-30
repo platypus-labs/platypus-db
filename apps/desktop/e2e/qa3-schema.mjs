@@ -254,7 +254,7 @@ export const visibleErd = `[...document.querySelectorAll('.erd')].find(t => t.st
 /** The whole text of the visible query editor (CodeMirror draws only the lines in view). */
 export const queryText = `(() => {
   const c = ${visibleQuery}?.querySelector('.editor .cm-content');
-  const v = c?.cmView?.view ?? c?.cmView?.rootView?.view;
+  const v = c?.cmTile?.root?.view ?? c?.cmView?.view ?? c?.cmView?.rootView?.view;
   return v ? v.state.doc.toString() : [...(c?.querySelectorAll('.cm-line') ?? [])].map(l => l.textContent).join('\\n');
 })()`;
 export const buttonIn = (scope, text) =>

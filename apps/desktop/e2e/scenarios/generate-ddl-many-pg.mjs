@@ -27,9 +27,11 @@ const progress = `${visibleQuery}?.querySelector('.ddl-progress')`;
 
 /** Clicks the tree row `label`, scrolling the tree until it is drawn. */
 async function clickRow(page, label, options = {}) {
+  const scroll = (by) => page.eval(`(() => { let e = document.querySelector('.tree-row'); while (e && e.scrollHeight <= e.clientHeight) e = e.parentElement; if (e) e.scrollTop ${by === null ? "= 0" : `+= ${by}`}; })()`);
+  // The tree draws only the rows in view: from the top, scroll its scrolling box down.
+  if (!(await page.eval(`${row(label)} !== undefined`))) await scroll(null);
   for (let i = 0; i < 100 && !(await page.eval(`${row(label)} !== undefined`)); i++) {
-    // The tree draws only the rows in view: scroll its scrolling box down.
-    await page.eval(`(() => { let e = document.querySelector('.tree-row'); while (e && e.scrollHeight <= e.clientHeight) e = e.parentElement; if (e) e.scrollTop += 400; })()`);
+    await scroll(400);
     await page.sleep(100);
   }
   await page.eval(`${row(label)}.scrollIntoView({ block: 'center' }); ${row(label)}.querySelector('.tree-label').id = 'e2e-row'`);
@@ -41,7 +43,12 @@ async function clickRow(page, label, options = {}) {
 async function generateAll(page) {
   await clickRow(page, name(1));
   await clickRow(page, name(TABLES), { modifiers: SHIFT });
-  await page.waitFor(`document.querySelectorAll('.tree-row.selected').length === ${TABLES}`, 10_000);
+  // The tree draws only the rows in view, so the 300 are counted by the tab title below: here
+  // the last row is selected and so is every table row drawn.
+  await page.waitFor(
+    `${row(name(TABLES))}?.classList.contains('selected') && [...document.querySelectorAll('.tree-row')].filter(r => /^t\d{4}$/.test(r.querySelector('.tree-label')?.textContent ?? '')).every(r => r.classList.contains('selected'))`,
+    10_000,
+  );
   await clickRow(page, name(TABLES), { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate DDL')).click()`);
