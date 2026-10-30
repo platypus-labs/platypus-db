@@ -1,7 +1,8 @@
 /**
  * What assistive technology needs from every dialog (`.modal`), in one place instead of in
  * each of them: the dialog role, a name from its heading, the focus moved inside while it is
- * open and back where it was once it closes, and Tab kept within the dialog on top.
+ * open and back where it was once it closes, Tab kept within the dialog on top, and Enter
+ * confirming its primary action in the dialogs that are not a form.
  */
 
 const FOCUSABLE =
@@ -77,6 +78,25 @@ function escapeToTop(e: KeyboardEvent) {
   top?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
 }
 
+/** Fields where Enter already means something: a new line, a choice, a list. */
+const OWN_ENTER = 'textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], .cm-editor';
+
+/** Enter confirms the dialog on top, as its primary button would, in the dialogs that are not a
+ *  form (a form submits by itself). Never a destructive action: that one takes a click. */
+function enterToPrimary(e: KeyboardEvent) {
+  if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  const target = e.target as HTMLElement | null;
+  const top = [...document.querySelectorAll<HTMLElement>(".modal")].filter((m) => m.getClientRects().length > 0).at(-1);
+  if (!top || !target || !top.contains(target)) return;
+  if (target.closest("form") || target.closest(OWN_ENTER) || target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) return;
+  const primaries = [...top.querySelectorAll<HTMLButtonElement>(".actions button.primary")].filter(
+    (b) => !b.disabled && !b.classList.contains("danger") && b.getClientRects().length > 0,
+  );
+  if (primaries.length !== 1) return;
+  e.preventDefault();
+  primaries[0]!.click();
+}
+
 function trapTab(e: KeyboardEvent) {
   if (e.key !== "Tab") return;
   // A dialog left open in a hidden tab is not the one on top.
@@ -114,4 +134,5 @@ export function startModalA11y() {
   );
   document.addEventListener("keydown", trapTab, true);
   document.addEventListener("keydown", escapeToTop);
+  document.addEventListener("keydown", enterToPrimary);
 }
