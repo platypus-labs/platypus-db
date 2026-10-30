@@ -2368,6 +2368,10 @@ const fr: Record<string, string> = {
   "Every column needs a name.": "Chaque colonne a besoin d'un nom.",
   "Every column needs a type.": "Chaque colonne a besoin d'un type.",
   "Two columns have the same name.": "Deux colonnes ont le même nom.",
+  "Structure": "Structure",
+  "Edit the columns, keys, indexes and constraints of the table": "Modifier les colonnes, clés, index et contraintes de la table",
+  "Open the details: properties, columns, keys and DDL": "Ouvrir les détails : propriétés, colonnes, clés et DDL",
+  "Read-only: the table cannot be changed from here": "Lecture seule : la table ne peut pas être modifiée d'ici",
 
 // Group M: pivot
   "Count distinct": "Nombre distinct",

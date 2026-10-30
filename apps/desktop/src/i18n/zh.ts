@@ -2368,6 +2368,10 @@ const zh: Record<string, string> = {
   "Every column needs a name.": "每一列都需要名称。",
   "Every column needs a type.": "每一列都需要类型。",
   "Two columns have the same name.": "有两列同名。",
+  "Structure": "结构",
+  "Edit the columns, keys, indexes and constraints of the table": "编辑表的列、键、索引和约束",
+  "Open the details: properties, columns, keys and DDL": "打开详细信息：属性、列、键和 DDL",
+  "Read-only: the table cannot be changed from here": "只读：无法从这里更改表",
 
 // Group M: pivot
   "Count distinct": "去重计数",

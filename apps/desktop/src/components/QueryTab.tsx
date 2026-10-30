@@ -38,9 +38,10 @@ import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
-import { viewerSql } from "../sqlNames";
+import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
+import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
 import { AcrossBar } from "../analysis/CrossQueryDialog";
 import type { AcrossOrigin } from "../analysis/acrossModel";
@@ -1117,14 +1118,13 @@ export function QueryTab({
           o.kind === "function" || o.kind === "procedure" ? o.name.replace(/\(.*$/, "") : o.name;
         const object = objects.find((o) => base(o) === name) ?? objects.find((o) => same(base(o), name));
         if (object) {
-          workbench().openTab("object", connection.id, {
+          openObjectTab(connection.id, {
             database: tab.database,
             schema: s.name,
             currentSchema: s.current,
             name: object.name,
-            objectKind: object.kind,
+            kind: object.kind,
             parent: object.parent,
-            title: object.name,
           });
           return;
         }
@@ -1625,6 +1625,8 @@ export function QueryTab({
   // The data viewer's bar, with its row count: not on Redis and Elasticsearch, whose rows are
   // read as shown.
   const viewerBar = !!tab.table && !isRedis(connection.driver) && !isSearch(connection.driver);
+  /** The table the data viewer browses, for its structure and its editor. */
+  const viewed = tab.table && tab.tableRef ? { ...tab.tableRef, database: tab.database } : null;
   const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isNoSql(connection.driver);
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = view?.status.kind === "rows" && view.columns ? view : null;
@@ -1805,6 +1807,31 @@ export function QueryTab({
         </div>
         {viewerBar && (
           <div className="viewer-bar">
+            {viewed && (
+              <button
+                type="button"
+                onClick={() =>
+                  openObjectTab(connection.id, {
+                    ...viewed,
+                    // Named as the viewer was opened: bare in the session's current schema.
+                    currentSchema: tab.table === qualifiedName(connection.driver, { name: viewed.schema, current: true }, viewed.name),
+                  })
+                }
+                title={t("Open the details: properties, columns, keys and DDL")}
+              >
+                {t("Structure")}
+              </button>
+            )}
+            {viewed?.kind === "table" && editsTables(connection.driver) && (
+              <button
+                type="button"
+                onClick={() => openTableEditor(connection.id, viewed)}
+                disabled={connection.read_only}
+                title={t(connection.read_only ? "Read-only: the table cannot be changed from here" : "Edit the columns, keys, indexes and constraints of the table")}
+              >
+                {t("Edit table…")}
+              </button>
+            )}
             <span className="spacer" />
             {shownCount && <span className="muted small">{shownCount}</span>}
             <button
