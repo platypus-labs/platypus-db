@@ -148,7 +148,20 @@ async function clickGutter(page, n) {
   await page.click(at.x, at.y);
 }
 
-const dots = `(${tab}?.querySelectorAll('.debug-breakpoint-dot').length ?? 0)`;
+/** The lines with a breakpoint dot in the gutter, as JSON. The gutter's hidden spacer holds a
+ *  dot too (it sizes the gutter), so only the visible ones count. */
+const breakpointLines = `JSON.stringify((() => {
+  const t = ${tab};
+  if (!t) return [];
+  const lines = [...t.querySelectorAll('.debug-source .cm-line')].map(l => l.getBoundingClientRect());
+  return [...t.querySelectorAll('.debug-breakpoint-dot')]
+    .filter(d => d.closest('.cm-gutterElement')?.style.visibility !== 'hidden')
+    .map(d => {
+      const r = d.getBoundingClientRect();
+      const y = r.top + r.height / 2;
+      return lines.findIndex(l => y >= l.top && y < l.bottom) + 1;
+    });
+})())`;
 
 /** No debugged call still runs on the server. */
 async function noCallLeft(page) {
@@ -197,8 +210,9 @@ async function debugToTheEnd(page) {
   assert.ok((await page.eval(`${inTab(".debug-source .cm-content")}.textContent`)).includes("FOR i IN 1..n LOOP"));
 
   // A breakpoint on the loop's body, then F5 to it.
+  assert.equal(await page.eval(breakpointLines), "[]", "no breakpoint yet");
   await clickGutter(page, BODY_LINE);
-  await page.waitFor(`${dots} === 1`);
+  await page.waitFor(`${breakpointLines} === '[${BODY_LINE}]'`);
   await press(page, "F5");
   await page.waitFor(`${where}.endsWith('line ${BODY_LINE}')`, 20_000);
   await page.waitFor(`${variable("i")} === '1'`, 10_000);
@@ -237,7 +251,7 @@ async function debugToTheEnd(page) {
 
   // The breakpoint cleared, F5 runs to the end: 100 + 4 + 6.
   await clickGutter(page, BODY_LINE);
-  await page.waitFor(`${dots} === 0`);
+  await page.waitFor(`${breakpointLines} === '[]'`);
   await press(page, "F5");
   await page.waitFor(`${statusOf} === 'done'`, 30_000);
   assert.equal(await page.eval(`${inTab('[data-field="debug-rows"] tbody td')}.textContent`), "110");
