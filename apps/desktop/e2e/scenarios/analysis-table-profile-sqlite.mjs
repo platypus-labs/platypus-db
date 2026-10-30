@@ -207,7 +207,8 @@ export default async function (page, { dir }) {
   // Duplicates: rows identical to another one, NULLs counting as equal; none in a table with a key.
   await profile(page, "twins", "6 rows read");
   await page.waitFor(`${text(`${duplicates}?.querySelector('.tp-kpi-value')`)} === '3'`, 15_000);
-  await profile(page, "people", "24 rows read");
+  // (25 rows: the one added for Refresh above.)
+  await profile(page, "people", "25 rows read");
   await page.waitFor(`${text(`${duplicates}?.querySelector('.tp-kpi-value')`)} === '0'`, 15_000);
   // A table cut by the sample is not counted: a dash, with the reason, and no error.
   await profile(page, "big", "10,050 rows read");
