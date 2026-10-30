@@ -114,13 +114,13 @@ per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva
 | G — Nuovi driver | ✅ completato |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ completato |
-| J — Amministrazione del server | ✅ fatto (P2; P3 in parte) |
+| J — Amministrazione del server | ✅ completato |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ completato |
 | O — Collaborazione e sync | ✅ completato |
-| P — Piattaforma, qualità e release | libero |
+| P — Piattaforma, qualità e release | 🔒 Delfa · group-p-release-2 · 2026-10-30 |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | 🔒 Delfa · group-r-redesign · 2026-10-30 |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
@@ -695,9 +695,9 @@ storico; stati applicata, pendente, divergente, fallita, mancante. Gli scenari E
 
 ### Gruppo J — Amministrazione del server
 
-**Stato: P2 completati, P3 in parte** (fatti utenti e ruoli, dashboard e parametri del server;
-il debugger PL/pgSQL è provato su un server con `pldebugger`, lo scenario E2E resta da lanciare, vedi "Correzioni
-aperte"). Dal 30 ottobre 2026: **parametri del server** (`server_parameters`, capacità omonima:
+**Stato: completato** (fatti utenti e ruoli, dashboard e parametri del server;
+il debugger PL/pgSQL è provato su un server con `pldebugger`: conformance e scenario E2E
+`admin-debugger-postgres` verdi su Windows il 30 ottobre 2026). Dal 30 ottobre 2026: **parametri del server** (`server_parameters`, capacità omonima:
 `pg_settings`, variabili di MySQL con la loro origine, `information_schema.SYSTEM_VARIABLES` di
 MariaDB, `sys.configurations` di SQL Server con un elenco dei default, `system.settings` e
 `system.server_settings` di ClickHouse, 31 PRAGMA di SQLite, `duckdb_settings()`), con ricerca,
@@ -759,7 +759,7 @@ solo i lock coinvolti in un'attesa.
 | ✅ Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
 | ✅ Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
 | ✅ **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
-| ✅ Debugger PL/pgSQL (conformance provata sul profilo `pldebug`; lo scenario E2E resta da lanciare) | P3 | D+ |
+| ✅ Debugger PL/pgSQL (conformance e scenario E2E provati sul profilo `pldebug`) | P3 | D+ |
 | ✅ 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
 | ✅ 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
 | ✅ 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
