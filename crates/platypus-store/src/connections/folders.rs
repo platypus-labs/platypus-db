@@ -846,6 +846,27 @@ mod tests {
     }
 
     #[test]
+    fn group_moves_between_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, ids) = projects(dir.path(), 5);
+        let f = s.group_projects(ids[0], ids[1]).unwrap();
+        let g = s.group_projects(ids[2], ids[3]).unwrap();
+        // Dropped onto a project of another folder: out of its own, last in that one.
+        assert_eq!(s.group_projects(ids[2], ids[0]).unwrap(), g);
+        assert_eq!(folder(&s, f).projects, [ids[1]]);
+        assert_eq!(folder(&s, g).projects, [ids[2], ids[3], ids[0]]);
+        // Its folder left empty goes away; folders never nest.
+        assert_eq!(s.group_projects(ids[3], ids[1]).unwrap(), g);
+        assert_eq!(s.project_folders().len(), 1);
+        assert_eq!(folder(&s, g).projects, [ids[2], ids[3], ids[0], ids[1]]);
+        // Onto a loose project: a new folder of the two.
+        let h = s.group_projects(ids[4], ids[2]).unwrap();
+        assert_ne!(h, g);
+        assert_eq!(folder(&s, h).projects, [ids[4], ids[2]]);
+        assert_eq!(folder(&s, g).projects, [ids[3], ids[0], ids[1]]);
+    }
+
+    #[test]
     fn moving_into_its_own_folder_keeps_it() {
         let dir = tempfile::tempdir().unwrap();
         let (mut s, ids) = projects(dir.path(), 2);
