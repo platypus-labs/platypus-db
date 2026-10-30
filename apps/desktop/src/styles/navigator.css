@@ -375,23 +375,24 @@
   display: inline-flex;
 }
 
-.conn-logo .driver-logo {
-  width: var(--icon-lg);
-  height: var(--icon-lg);
+/* As big as the icons of the other rows; the picker's tiles (dialogs.css) are bigger. */
+.conn-logo .driver-icon .driver-logo {
+  width: var(--icon-md);
+  height: var(--icon-md);
   border-radius: var(--radius);
 }
 
-.conn-logo .driver-logo svg {
-  width: 12px;
-  height: 12px;
+.conn-logo .driver-icon .driver-logo svg {
+  width: 11px;
+  height: 11px;
 }
 
 .conn-color {
   position: absolute;
-  left: -3px;
-  top: -3px;
-  width: 7px;
-  height: 7px;
+  left: -2px;
+  top: -2px;
+  width: 6px;
+  height: 6px;
   border-radius: 2px;
   box-shadow: 0 0 0 1.5px var(--frame, var(--bg-rail));
 }
@@ -399,10 +400,10 @@
 .conn-logo .connected-mark,
 .conn-failed {
   position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 7px;
-  height: 7px;
+  right: -2px;
+  bottom: -2px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   box-shadow: 0 0 0 1.5px var(--frame, var(--bg-rail));
 }
