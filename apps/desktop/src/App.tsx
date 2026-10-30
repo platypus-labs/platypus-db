@@ -387,7 +387,7 @@ export function App() {
 
   /** Shows another project with the tab that was active there. Nothing closes. */
   function switchProject(id: string | null) {
-    if (id === activeProject || (id !== null && !projects?.some((p) => p.id === id))) return;
+    if (id === activeProject || (id !== null && !knownProjects.current.some((p) => p.id === id))) return;
     rememberActiveTab();
     showProject(id);
   }
@@ -463,7 +463,13 @@ export function App() {
     return () => void off.then((unlisten) => unlisten());
   }, [workspaceReady]);
 
+  /** The projects as last set, even before the render that shows them: a project that was
+   *  just added can be switched to in the same tick. */
+  const knownProjects = useRef<Project[]>([]);
+  knownProjects.current = projects ?? knownProjects.current;
+
   function setWorkspace(w: Workspace) {
+    knownProjects.current = w.projects;
     setConnections(w.connections);
     setProjects(w.projects);
     setProjectFolders(w.project_folders);
