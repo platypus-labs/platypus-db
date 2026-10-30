@@ -339,7 +339,7 @@ dei tipi si leggono con `query_typed`; in una transazione aperta resta tutto com
 `vendor/tokio-postgres` (patch in `[patch.crates-io]`) svuota con la cache dei tipi anche gli
 statement con nome che li cercano, che il pooler perde. Il
 dialogo propone la modalità per il pooler di Supabase sulla 6543 e per gli host `-pooler` di
-Neon. `docker/compose.yml` ha PgBouncer (profilo `pooler`, porta 56432) in transaction mode
+Neon. `docker/compose.yml` ha PgBouncer (profilo `pooler`, porta 46432) in transaction mode
 con `DISCARD ALL` dopo ogni transazione. Prima: (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
 `pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di

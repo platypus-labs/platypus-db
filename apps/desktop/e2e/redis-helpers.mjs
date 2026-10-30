@@ -1,11 +1,11 @@
 // What the Redis scenarios (scenarios/redis-*.mjs) share: the Redis of docker/compose.yml
-// (password `platypus`, port 56379), a small RESP client to seed and check keys behind the
+// (password `platypus`, port 46379), a small RESP client to seed and check keys behind the
 // app's back, and the saved connections.
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
 
-export const PORT = 56379;
+export const PORT = 46379;
 const PASSWORD = "platypus";
 
 /** A reason to skip when Redis is not running. */

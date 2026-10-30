@@ -17,7 +17,7 @@ use platypus_driver_redis::RedisDriver;
 use platypus_driver_redis::command::KeyType;
 use platypus_driver_redis::edit::{self, Edits, Update};
 
-const DEFAULT_URL: &str = "redis://:platypus@localhost:56379/0";
+const DEFAULT_URL: &str = "redis://:platypus@localhost:46379/0";
 
 fn url() -> Option<(String, bool)> {
     // Another database alone (`PLATYPUS_TEST_ONLY`): not this one.
