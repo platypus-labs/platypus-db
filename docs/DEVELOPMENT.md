@@ -150,7 +150,11 @@ node scripts/conformance-versions.mjs
 | ClickHouse | 58123     | `platypus` / `platypus` / `platypus` (HTTP; the conformance tests create the demo tables) |
 | libSQL     | 58080     | HTTP, no TLS; the auth token is `LIBSQL_TOKEN` in `crates/platypus-conformance/tests/conformance.rs` (the tests create the demo tables) |
 | MongoDB    | 57017     | `platypus` / `platypus` (auth database `admin`) / `platypus` (collections only, no `type_zoo` or `big_table`) |
-| Redis      | 56379     | default user, password `platypus` (Redis Stack, with RedisJSON; the tests fill their own databases) |
+| Redis      | 46379     | default user, password `platypus` (Redis Stack, with RedisJSON; the tests fill their own databases) |
+
+Redis and PgBouncer (46432) sit below 49152 on purpose: Windows reserves blocks of ports in the
+dynamic range above it (Hyper-V, WSL), and 56379 and 56432 fell inside them, so the containers
+could not start. `netsh interface ipv4 show excludedportrange protocol=tcp` lists the blocks.
 
 Each database has `customers`, `orders`, a `customer_totals` view, a `type_zoo` table with one
 column per notable type, and a 1M-row `big_table` for streaming and scrolling benchmarks.

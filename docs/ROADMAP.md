@@ -120,7 +120,7 @@ per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ completato |
 | O — Collaborazione e sync | ✅ completato |
-| P — Piattaforma, qualità e release | 🔒 Delfa · group-p-release-2 · 2026-10-30 |
+| P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | 🔒 Delfa · group-r-redesign · 2026-10-30 |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
@@ -339,7 +339,7 @@ dei tipi si leggono con `query_typed`; in una transazione aperta resta tutto com
 `vendor/tokio-postgres` (patch in `[patch.crates-io]`) svuota con la cache dei tipi anche gli
 statement con nome che li cercano, che il pooler perde. Il
 dialogo propone la modalità per il pooler di Supabase sulla 6543 e per gli host `-pooler` di
-Neon. `docker/compose.yml` ha PgBouncer (profilo `pooler`, porta 56432) in transaction mode
+Neon. `docker/compose.yml` ha PgBouncer (profilo `pooler`, porta 46432) in transaction mode
 con `DISCARD ALL` dopo ogni transazione. Prima: (tunnel SSH con password, chiave, agent e jump host; tipi
 Dev/Test/Prod con colore e commit manuale in Prod; import da DBeaver, DataGrip, pgAdmin e
 `pg_service.conf`, con cartelle e progetti da un export `.dbp` di DBeaver; cartelle di
@@ -1181,7 +1181,13 @@ senza installarla (marker `share/platypusdb/package-manager`). Immagine di antep
 1280×640 (`docs/brand/social-preview.png`, da `social-preview.html` con
 `scripts/social-preview.mjs`) e testi della vetrina (descrizione, topic, Discussions, `good
 first issue`) in RELEASING.md. La pubblicazione dei pacchetti e le impostazioni del
-repository aspettano che diventi pubblico.
+repository aspettano che diventi pubblico. Sempre dal 30 ottobre: otto scenari E2E del banner di
+aggiornamento (`update-banner*`, con un `latest.json` servito in locale tramite
+`PLATYPUS_UPDATE_URL`, accettato solo su HTTP verso 127.0.0.1, ::1 o localhost); Redis e
+PgBouncer spostati su 46379 e 46432, fuori dai blocchi di porte che Windows riserva;
+`scripts/bench-windows.ps1` per avvio e memoria dei client su Windows (profilo temporaneo,
+finestra stabile, memoria privata). Il benchmark con DBeaver CE 26.2.3 resta da misurare: serve
+la macchina ferma e lo schermo non toccato per una decina di minuti.
 
 | Attività | Prio |
 |---|---|
@@ -1200,7 +1206,7 @@ repository aspettano che diventi pubblico.
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
 | ⏭ serve un Mac — Prova del cask Homebrew su macOS (il manifest è pronto in `packaging/`) | P3 |
-| 🆕 Scenario E2E del banner di aggiornamento (oggi `UpdateBanner.tsx` non ha copertura E2E; serve un `latest.json` finto servito in locale) | P3 |
+| ✅ Scenario E2E del banner di aggiornamento (`update-banner*.mjs`: `latest.json` finto servito in locale con `PLATYPUS_UPDATE_URL`; versione nuova, "Later", uguale, più vecchia, malformato, errore 500, irraggiungibile, senza piattaforma, gestore di pacchetti) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |

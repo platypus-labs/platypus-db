@@ -1249,7 +1249,7 @@ fn plan_support(b: &Backend, conn: &dyn Connection) -> PlanSupport {
 async fn works_through_a_transaction_pooler() {
     let _serial = SERIAL.lock().await;
     let url = std::env::var("PLATYPUS_TEST_PGBOUNCER_URL").unwrap_or_else(|_| {
-        "postgres://platypus:platypus@localhost:56432/platypus?sslmode=disable".to_owned()
+        "postgres://platypus:platypus@localhost:46432/platypus?sslmode=disable".to_owned()
     });
     let mut config = ConnectionConfig::from_url(&url).unwrap();
     config

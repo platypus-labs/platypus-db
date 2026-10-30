@@ -246,13 +246,62 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(setup)
         .invoke_handler(handlers())
-        .build(tauri::generate_context!())
+        .build(context())
         .expect("error while running PlatypusDB")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 agent::stop(app);
             }
         });
+}
+
+/// The app's context, with the update endpoint of `PLATYPUS_UPDATE_URL` when it is set (the
+/// end-to-end tests serve a `latest.json` of their own).
+fn context() -> tauri::Context {
+    let mut context = tauri::generate_context!();
+    if let Ok(url) = std::env::var("PLATYPUS_UPDATE_URL") {
+        override_update_endpoint(&mut context.config_mut().plugins.0, &url);
+    }
+    context
+}
+
+/// Points the updater at `url`, only when that is a plain-HTTP address on this machine: the
+/// published endpoint stays the only one a release can ever ask. The update signature check is
+/// untouched.
+fn override_update_endpoint(
+    plugins: &mut std::collections::HashMap<String, serde_json::Value>,
+    url: &str,
+) {
+    if !is_local_http(url) {
+        eprintln!("PLATYPUS_UPDATE_URL ignored: not a plain-HTTP address on this machine");
+        return;
+    }
+    let Some(updater) = plugins
+        .get_mut("updater")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        eprintln!("PLATYPUS_UPDATE_URL ignored: the updater plugin is not configured");
+        return;
+    };
+    updater.insert("endpoints".to_owned(), serde_json::json!([url]));
+    updater.insert(
+        "dangerousInsecureTransportProtocol".to_owned(),
+        serde_json::json!(true),
+    );
+}
+
+/// `http://` to `127.0.0.1`, `[::1]` or `localhost`, with no credentials.
+fn is_local_http(url: &str) -> bool {
+    let Ok(url) = url::Url::parse(url) else {
+        return false;
+    };
+    let local_host = match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        Some(url::Host::Domain(name)) => name == "localhost",
+        None => false,
+    };
+    url.scheme() == "http" && local_host && url.username().is_empty() && url.password().is_none()
 }
 
 /// Every command the web UI can call.
@@ -553,4 +602,63 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema_history::delete_schema_snapshot,
         commands::schema_history::diff_schema_snapshots,
     ]
+}
+
+#[cfg(test)]
+mod update_endpoint_tests {
+    use super::override_update_endpoint;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    fn plugins() -> HashMap<String, serde_json::Value> {
+        HashMap::from([(
+            "updater".to_owned(),
+            json!({"endpoints": ["https://example.com/latest.json"]}),
+        )])
+    }
+
+    #[test]
+    fn a_local_address_replaces_the_endpoint() {
+        let mut p = plugins();
+        override_update_endpoint(&mut p, "http://127.0.0.1:9000/latest.json");
+        assert_eq!(
+            p["updater"]["endpoints"],
+            json!(["http://127.0.0.1:9000/latest.json"])
+        );
+        assert_eq!(
+            p["updater"]["dangerousInsecureTransportProtocol"],
+            json!(true)
+        );
+    }
+
+    #[test]
+    fn ipv6_and_localhost_are_local() {
+        for url in ["http://[::1]:9000/x", "http://localhost:9000/x"] {
+            let mut p = plugins();
+            override_update_endpoint(&mut p, url);
+            assert_eq!(p["updater"]["endpoints"], json!([url]));
+        }
+    }
+
+    #[test]
+    fn a_missing_updater_entry_is_left_alone() {
+        let mut p = HashMap::new();
+        override_update_endpoint(&mut p, "http://127.0.0.1:9000/x");
+        assert!(p.is_empty());
+    }
+
+    #[test]
+    fn any_other_address_is_ignored() {
+        for url in [
+            "https://evil.example/latest.json",
+            "http://example.com:80/x",
+            "http://127.0.0.1:80@evil.com/x",
+            "http://127.0.0.1.evil.com/x",
+            "",
+        ] {
+            let mut p = plugins();
+            override_update_endpoint(&mut p, url);
+            assert_eq!(p, plugins(), "{url}");
+        }
+    }
 }
