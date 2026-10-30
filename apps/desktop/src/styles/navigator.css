@@ -326,6 +326,26 @@
   gap: var(--space-4);
 }
 
+/* Offered, not pushed: a quiet line that wraps, until the scripts are a repository. */
+.git-bar .git-init {
+  align-self: flex-start;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  text-align: left;
+  white-space: normal;
+}
+
+.git-bar .git-init:hover:not(:disabled) {
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
 .git-bar-row {
   display: flex;
   align-items: center;
