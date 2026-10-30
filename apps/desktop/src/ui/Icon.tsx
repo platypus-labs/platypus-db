@@ -1,180 +1,50 @@
 /**
- * The app's icons, by name. Components use `Icon` and never import Lucide themselves: a new
- * icon is one more name here, and only the icons named here end up in the bundle.
+ * The app's icons, by name. Components use `Icon` and never import an icon family themselves: a
+ * new icon is one more name in `icons/lucide.ts` plus its Tabler and Phosphor match, and only the
+ * icons named there end up in the bundle. The family comes from the `appearance.icon_set`
+ * preference.
  */
-import {
-  Activity,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  Bookmark,
-  Bot,
-  Braces,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  CircleAlert,
-  Code2,
-  Columns2,
-  Columns3,
-  Copy,
-  CornerDownLeft,
-  Database,
-  Download,
-  Ellipsis,
-  Eraser,
-  Eye,
-  EyeOff,
-  FileCode,
-  FilePlus,
-  Flag,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  Hash,
-  History,
-  Inbox,
-  Info,
-  KeyRound,
-  Layers,
-  Link2,
-  ListOrdered,
-  ListTree,
-  ListVideo,
-  LoaderCircle,
-  Lock,
-  Maximize2,
-  Minus,
-  type LucideIcon,
-  PanelLeft,
-  PanelLeftClose,
-  Pencil,
-  Pin,
-  Play,
-  Plus,
-  Puzzle,
-  RefreshCw,
-  RotateCcw,
-  ScrollText,
-  Save,
-  Search,
-  Settings,
-  Shapes,
-  Square,
-  SquareFunction,
-  SquareTerminal,
-  SunMoon,
-  Table2,
-  Timer,
-  ToggleLeft,
-  ToggleRight,
-  Trash2,
-  Undo2,
-  Workflow,
-  X,
-  Zap,
-} from "lucide-react";
+import { getStored, useSettingsVersion } from "../settings";
+import { LUCIDE, type IconName } from "./icons/lucide";
+import { ICON_SETS, type IconSet } from "./icons/sets";
+import { PHOSPHOR } from "./icons/phosphor";
+import { TABLER } from "./icons/tabler";
 import type { ObjectKind } from "../api";
 
-const ICONS = {
-  database: Database,
-  schema: Layers,
-  table: Table2,
-  view: Eye,
-  routine: SquareFunction,
-  trigger: Zap,
-  sequence: Hash,
-  type: Shapes,
-  extension: Puzzle,
-  event: Timer,
-  column: Columns3,
-  key: KeyRound,
-  index: ListTree,
-  "fk-out": ArrowRight,
-  "fk-in": ArrowLeft,
-  folder: Folder,
-  bookmark: Bookmark,
-  sql: Code2,
-  object: Info,
-  run: Play,
-  script: ListVideo,
-  cancel: Square,
-  "chevron-right": ChevronRight,
-  "chevron-down": ChevronDown,
-  "chevron-left": ChevronLeft,
-  first: ChevronsLeft,
-  last: ChevronsRight,
-  "arrow-up": ArrowUp,
-  "arrow-down": ArrowDown,
-  insert: CornerDownLeft,
-  flag: Flag,
-  download: Download,
-  minus: Minus,
-  search: Search,
-  settings: Settings,
-  theme: SunMoon,
-  plus: Plus,
-  history: History,
-  open: FolderOpen,
-  save: Save,
-  edit: Pencil,
-  import: Download,
-  commit: Check,
-  rollback: Undo2,
-  autocommit: ToggleRight,
-  "manual-commit": ToggleLeft,
-  refresh: RefreshCw,
-  more: Ellipsis,
-  variables: Braces,
-  outline: ListOrdered,
-  terminal: SquareTerminal,
-  file: FileCode,
-  "new-file": FilePlus,
-  "new-folder": FolderPlus,
-  link: Link2,
-  builder: Workflow,
-  minimize: Minus,
-  maximize: Square,
-  expand: Maximize2,
-  restore: Copy,
-  close: X,
-  copy: Copy,
-  delete: Trash2,
-  discard: Eraser,
-  revert: RotateCcw,
-  pin: Pin,
-  split: Columns2,
-  activity: Activity,
-  sidebar: PanelLeft,
-  empty: Inbox,
-  error: CircleAlert,
-  loading: LoaderCircle,
-  "sidebar-close": PanelLeftClose,
-  lock: Lock,
-  "tx-log": ScrollText,
-  masked: EyeOff,
-  agent: Bot,
-} satisfies Record<string, LucideIcon>;
+export type { IconName };
+export { ICON_SETS };
+export type { IconSet };
 
-export type IconName = keyof typeof ICONS;
+const SET_KEY = "appearance.icon_set";
 
-/** An icon in the current text color; decorative unless it has a `title`. */
-export function Icon({ name, size = 14, className, title }: { name: IconName; size?: number; className?: string; title?: string }) {
-  const Svg = ICONS[name];
-  return (
-    <Svg
-      size={size}
-      strokeWidth={2}
-      className={className}
-      aria-hidden={title ? undefined : true}
-      aria-label={title}
-      role={title ? "img" : undefined}
-    />
-  );
+/** The family chosen in Settings; Lucide when unset or unknown. */
+function useIconSet(): IconSet {
+  useSettingsVersion();
+  const v = getStored(SET_KEY);
+  return ICON_SETS.some((s) => s.id === v) ? (v as IconSet) : "lucide";
+}
+
+/**
+ * An icon in the current text color; decorative unless it has a `title`. `set` forces a family
+ * (the Settings samples), otherwise the chosen one applies.
+ */
+export function Icon({ name, size = 14, className, title, set }: { name: IconName; size?: number; className?: string; title?: string; set?: IconSet }) {
+  const chosen = useIconSet();
+  const a11y = { "aria-hidden": title ? undefined : (true as const), "aria-label": title, role: title ? "img" : undefined };
+  switch (set ?? chosen) {
+    case "tabler": {
+      const Svg = TABLER[name];
+      return <Svg size={size} stroke={1.75} className={className} {...a11y} />;
+    }
+    case "phosphor": {
+      const Svg = PHOSPHOR[name];
+      return <Svg size={size} weight="regular" className={className} {...a11y} />;
+    }
+    default: {
+      const Svg = LUCIDE[name];
+      return <Svg size={size} strokeWidth={2} className={className} {...a11y} />;
+    }
+  }
 }
 
 const OBJECT_ICONS: Record<ObjectKind, IconName> = {
