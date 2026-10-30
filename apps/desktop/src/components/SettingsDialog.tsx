@@ -119,6 +119,26 @@ function subTabsOf(page: string, defs: SettingDef<Value>[] | undefined) {
   return shown.length > 1 ? shown : null;
 }
 
+/** Moves between tabs with the two arrows (previous, next), Home and End: selects the tab
+ *  reached and focuses it among its siblings. `attr` is the data attribute holding a tab's name. */
+function moveTab(
+  e: KeyboardEvent<HTMLElement>,
+  names: string[],
+  attr: "section" | "subtab",
+  [previous, next]: [string, string],
+  select: (name: string) => void,
+  fallback: string,
+) {
+  const at = names.indexOf(e.currentTarget.dataset[attr] ?? fallback);
+  const moves: Record<string, number> = { [next]: at + 1, [previous]: at - 1 + names.length, Home: 0, End: names.length - 1 };
+  const to = moves[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  const name = names[to % names.length]!;
+  select(name);
+  e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-${attr}="${CSS.escape(name)}"]`)?.focus();
+}
+
 function PageHeader({ page }: { page: string }) {
   const head = PAGE_HEAD[page];
   return (
@@ -146,7 +166,7 @@ function found(needle: string, ...texts: (string | undefined)[]): boolean {
  *  it is named so. */
 function settingFound(needle: string, def: SettingDef<Value>): boolean {
   const c = def.control;
-  const options = c.type === "select" || c.type === "swatches" || c.type === "pictures" ? c.options.map((o) => o.label) : [];
+  const options = "options" in c ? c.options.map((o) => o.label) : [];
   const subTab = SUB_TABS[def.section]?.find((g) => g.keys.includes(def.key))?.label;
   return found(needle, def.label, def.description, def.key, subTab, ...options);
 }
@@ -189,27 +209,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     },
     [],
   );
-  const onTabKey = (e: KeyboardEvent<HTMLElement>) => {
+  const onTabKey = (e: KeyboardEvent<HTMLElement>) =>
     // From the focused tab, which a click elsewhere may have left apart from the selected one.
-    const at = names.indexOf(e.currentTarget.dataset.section ?? current);
-    const moves: Record<string, number> = { ArrowDown: at + 1, ArrowUp: at - 1 + names.length, Home: 0, End: names.length - 1 };
-    const to = moves[e.key];
-    if (to === undefined) return;
-    e.preventDefault();
-    const next = names[to % names.length]!;
-    setChosen(next);
-    e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
-  };
-  const onSubTabKey = (e: KeyboardEvent<HTMLElement>, labels: string[]) => {
-    const at = labels.indexOf(e.currentTarget.dataset.subtab ?? "");
-    const moves: Record<string, number> = { ArrowRight: at + 1, ArrowLeft: at - 1 + labels.length, Home: 0, End: labels.length - 1 };
-    const to = moves[e.key];
-    if (to === undefined) return;
-    e.preventDefault();
-    const next = labels[to % labels.length]!;
-    setSubChosen((m) => ({ ...m, [current]: next }));
-    e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-subtab="${CSS.escape(next)}"]`)?.focus();
-  };
+    moveTab(e, names, "section", ["ArrowUp", "ArrowDown"], setChosen, current);
+  const onSubTabKey = (e: KeyboardEvent<HTMLElement>, labels: string[]) =>
+    moveTab(e, labels, "subtab", ["ArrowLeft", "ArrowRight"], (next) => setSubChosen((m) => ({ ...m, [current]: next })), "");
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
     setSetting(def, value).catch((e: unknown) => setError(`${t(def.label)}: ${toCommandError(e).message}`));
@@ -347,7 +351,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                         type="button"
                         role="tab"
                         id={`settings-sub-${i}`}
-                        data-subtab={g.label} title={t(g.label)}
+                        data-subtab={g.label}
+                        title={t(g.label)}
                         aria-selected={g.label === sub}
                         aria-controls={`settings-subpage-${i}`}
                         tabIndex={g.label === sub ? 0 : -1}
@@ -541,7 +546,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
 /** The default of a setting as its control names it: an option's label, On or Off. */
 function defaultText(def: SettingDef<Value>): string {
   const c = def.control;
-  if (c.type === "select" || c.type === "swatches" || c.type === "pictures") {
+  if ("options" in c) {
     const option = (c.options as { value: unknown; label: string }[]).find((o) => o.value === def.default);
     if (option) return t(option.label);
   }

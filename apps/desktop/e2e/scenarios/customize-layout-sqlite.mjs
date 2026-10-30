@@ -8,15 +8,14 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
 import { runQuery, sqliteConnection, treeRow, visibleTab } from "../query.mjs";
-import { settingsFile, settingsLack } from "../settings.mjs";
+import { settingReset, settingRow, settingsFile, settingsLack, settingsSubTab as subTab } from "../settings.mjs";
 
 const NAME = "E2E layout";
 const KEYS = ["navigator_side", "results_position", "tab_bar_position", "side_panels_side"];
 
-const setting = (key) => `document.querySelector('.modal.settings .setting[data-key="layout.${key}"]')`;
+const setting = (key) => settingRow(`layout.${key}`);
 const choice = (key, value) => `${setting(key)}?.querySelector('[role=radio][data-value="${value}"]')`;
-const resetOf = (key) => `[...${setting(key)}.querySelectorAll('button')].find(b => b.textContent === 'Reset')`;
-const subTab = (label) => `document.querySelector('.modal.settings [role=tab][data-subtab=${JSON.stringify(label)}]')`;
+const resetOf = (key) => settingReset(`layout.${key}`);
 const attr = (name) => `document.documentElement.dataset.${name}`;
 /** The box of the element `expr` evaluates to, as plain numbers. */
 const box = (expr) => `(() => { const r = (${expr}).getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; })()`;

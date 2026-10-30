@@ -7,13 +7,10 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
-import { settingsFile, settingsLack } from "../settings.mjs";
+import { settingReset as resetOf, settingRow as setting, settingsFile, settingsLack, settingsSubTab as subTab } from "../settings.mjs";
 
-const setting = (key) => `document.querySelector('.modal.settings .setting[data-key="${key}"]')`;
 const animations = `${setting("appearance.animations")}.querySelector('select')`;
 const card = (value) => `${setting("appearance.icon_set")}?.querySelector('[role=radio][data-value="${value}"]')`;
-const resetOf = (key) => `[...${setting(key)}.querySelectorAll('button')].find(b => b.textContent === 'Reset')`;
-const subTab = (label) => `document.querySelector('.modal.settings [role=tab][data-subtab=${JSON.stringify(label)}]')`;
 const motion = `document.documentElement.dataset.motion`;
 const systemMotion = `(matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full')`;
 const style = (expr, prop, pseudo = null) => `getComputedStyle(${expr}${pseudo ? `, ${JSON.stringify(pseudo)}` : ""}).${prop}`;

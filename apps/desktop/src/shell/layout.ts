@@ -130,20 +130,17 @@ export function startLayout() {
   onSettingsChanged(applyLayout);
 }
 
-/** The navigator is on the right of the work. */
-export function useNavigatorRight(): boolean {
-  useSetting(navigatorSideSetting);
-  return choice(navigatorSideSetting) === "right";
+/** Whether the choice made in `def` is `value`, following the setting. */
+function useChoice(def: SettingDef<string>, value: string): boolean {
+  useSetting(def);
+  return choice(def) === value;
 }
+
+/** The navigator is on the right of the work. */
+export const useNavigatorRight = () => useChoice(navigatorSideSetting, "right");
 
 /** The results of the SQL editor are beside it, not below. */
-export function useResultsBeside(): boolean {
-  useSetting(resultsPositionSetting);
-  return choice(resultsPositionSetting) === "beside";
-}
+export const useResultsBeside = () => useChoice(resultsPositionSetting, "beside");
 
 /** The side panels are on the left of the work. */
-export function useSidePanelsLeft(): boolean {
-  useSetting(sidePanelsSideSetting);
-  return choice(sidePanelsSideSetting) === "left";
-}
+export const useSidePanelsLeft = () => useChoice(sidePanelsSideSetting, "left");
