@@ -2955,6 +2955,10 @@ const it: Record<string, string> = {
   "Before changes": "Prima delle modifiche",
   "Masking": "Mascheramento",
   "Lock and backups": "Blocco e copie",
+  "Overview of the diagram": "Panoramica del diagramma",
+  "Widget actions": "Azioni del widget",
+  "Already first": "È già il primo",
+  "Already last": "È già l'ultimo",
 };
 
 export default it;

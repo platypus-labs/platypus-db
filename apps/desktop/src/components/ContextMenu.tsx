@@ -137,6 +137,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
       <button
         key={action.id}
         role="menuitem"
+        data-action={action.id}
         aria-disabled={reason ? true : undefined}
         aria-describedby={reason ? hint : undefined}
         title={reason ? t(reason) : undefined}

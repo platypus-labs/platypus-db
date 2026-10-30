@@ -2955,6 +2955,10 @@ const zh: Record<string, string> = {
   "Before changes": "更改之前",
   "Masking": "遮蔽",
   "Lock and backups": "锁定和备份",
+  "Overview of the diagram": "图表概览",
+  "Widget actions": "小组件操作",
+  "Already first": "已在最前",
+  "Already last": "已在最后",
 };
 
 export default zh;
