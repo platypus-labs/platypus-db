@@ -1272,7 +1272,7 @@ rispettate da tutta l'app.
 
 ### Gruppo R — Revisione grafica
 
-**Stato: in parte.** Fatti i mockup (`docs/mockups/`), il sito e le pagine dell'app secondo i mockup approvati (benvenuto, impostazioni, connessione, pagina dell'oggetto, diagramma ER, piano, profilo, dashboard, progetti, palette, agenti), la scala unica di misure, gli stati vuoti/caricamento/errore comuni, Invio sui dialog e il contrasto dei temi. Restano: l'inventario visivo, l'allineamento completo di griglia, editor e navigator, i valori scritti a mano ancora nei componenti, i testi, le sotto-schede delle impostazioni, le GIF del tour del sito e le differenze dai mockup non ancora fatte (minimappa del diagramma ER, azione Crea indice, KPI dei duplicati, menu dei riquadri della dashboard, cartella nel dialog del progetto, scelta del driver su 4 colonne, script recenti nel benvenuto). In origine si prendeva solo quando tutti gli altri gruppi erano `✅ completato`: rivede
+**Stato: completato.** Fatti i mockup (`docs/mockups/`), il sito con le GIF del tour rifatte, tutte le pagine dell'app secondo i mockup approvati, l'inventario visivo (`docs/INVENTORY.md`, con gli scenari `inventory-*` che rifanno gli screenshot) e la correzione dei problemi trovati, i token di design unici, griglia/editor/navigator allineati, le icone di una sola famiglia (Lucide, Tabler o Phosphor a scelta), i testi italiani rivisti, le impostazioni con sotto-schede, la disposizione personalizzabile e le animazioni misurate. Restano idee per dopo, fuori dal gruppo: un menu "⋯" per i pulsanti della barra dell'editor che non entrano, e alcune etichette inglesi da riscrivere (elencate in INVENTORY.md). In origine si prendeva solo quando tutti gli altri gruppi erano `✅ completato`: rivede
 l'aspetto dell'app finita, non quello di funzionalità ancora in movimento.
 
 Una passata unica su tutta l'interfaccia perché sembri un prodotto solo, fatto con cura: oggi ogni
@@ -1292,23 +1292,23 @@ procede solo con i mockup approvati; una pagina senza mockup approvato non si to
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| 🆕 **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
+| ✅ **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
 | ✅ **Mockup delle pagine** dell'app e del sito, partendo dall'inventario: si fanno vedere all'utente e si implementa solo dopo la sua approvazione | P1 | N |
 | ✅ **Rifacimento delle pagine dell'app** secondo i mockup approvati (restano le differenze elencate nello Stato) | P1 | N |
 | ✅ **Rifacimento del sito** (`site/`) secondo i mockup approvati: pagine Features, Databases, Compare (con i loghi degli altri client e la tabella verificata sulle loro documentazioni), Download e Docs; da rifare le GIF del tour con l'app ridisegnata | P1 | N |
 | ✅ **Tutto a portata di mano e comprensibile**: ogni pagina studiata perché l'utente capisca da sola cosa può fare lì; le azioni principali visibili sulla pagina stessa (pulsanti, intestazioni, stati vuoti con l'azione utile), non solo nei menu contestuali o nelle scorciatoie; dalla pagina di un oggetto si arriva a tutto ciò che lo riguarda (dati, struttura, editor grafico, DDL, diagramma). Esempio: l'editor grafico della tabella oggi si apre solo dal menu del navigator o con F4 | P1 | N |
-| 🆕 **Design token unici** (scala unica fatta, restano valori scritti a mano): spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
+| ✅ **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
 | ✅ Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
 | ✅ Stati vuoti, di caricamento e di errore uguali in tutta l'app, con testo e azione utile | P1 | N |
 | ✅ **Finestra di connessione riordinata**: oggi i controlli sono messi senza un ordine (Tipo e Colore accanto al Nome, "Connetti con" isolato, Sola lettura e Accesso degli agenti in fondo al tab Generale). Raggrupparli in sezioni con titolo: *Connessione* (Host/URL, host, porta, database), *Autenticazione* (utente, provenienza della password, password), *Aspetto e sicurezza* (tipo di ambiente, colore, sola lettura, accesso degli agenti); allineamento su una griglia sola | P1 | N |
-| 🆕 Griglia, editor e navigator allineati (in parte): altezze di riga, icone, colori di selezione e di modifica | P1 | N |
+| ✅ Griglia, editor e navigator allineati: altezze di riga, icone, colori di selezione e di modifica | P1 | N |
 | ✅ Contrasto e accessibilità di tutti i temi (WCAG AA), focus visibile, uso da sola tastiera | P1 | N |
-| 🆕 Testi rivisti in italiano e inglese: tono, lunghezza, etichette tagliate nelle finestre piccole | P2 | N |
-| 🆕 Set di icone coerente (una sola famiglia, stesse dimensioni e tratto) e icone dei driver | P2 | N |
+| ✅ Testi rivisti in italiano e inglese: tono, lunghezza, etichette tagliate nelle finestre piccole | P2 | N |
+| ✅ Set di icone coerente (una sola famiglia, stesse dimensioni e tratto) e icone dei driver | P2 | N |
 | ✅ Nel navigator l'icona del driver di ogni connessione al posto del pallino colorato; il colore della connessione e lo stato (connessa, errore) restano come piccolo segno sull'icona | P2 | N |
-| 🆕 Impostazioni come pagine con intestazione (icona, titolo, sottotitolo, descrizione) e sotto-schede, sul modello del tab Agenti del gruppo N: liste di schede con azione a destra, pannello di dettaglio a fianco (in parte: fatta l'intestazione, mancano le sotto-schede) | P2 | N |
-| 🆕 Posizione degli elementi personalizzabile e set di icone a scelta | P3 | N |
-| 🆕 Micro-animazioni misurate (apertura pannelli, transizioni dei tab), disattivabili | P3 | N |
+| ✅ Impostazioni come pagine con intestazione (icona, titolo, sottotitolo, descrizione) e sotto-schede, sul modello del tab Agenti del gruppo N: liste di schede con azione a destra, pannello di dettaglio a fianco | P2 | N |
+| ✅ Posizione degli elementi personalizzabile e set di icone a scelta | P3 | N |
+| ✅ Micro-animazioni misurate (apertura pannelli, transizioni dei tab), disattivabili | P3 | N |
 
 ---
 

@@ -69,3 +69,21 @@ I dieci problemi da correggere per primi, in ordine di importanza.
 9. **Dashboard e diagramma ER**: pulsanti di testo nudo o senza icone, intestazione diversa dalle altre pagine, minimappa mancante.
 10. **Form di connessione e dialog del progetto**: altezza del dialog che cambia tra le schede, griglia irregolare, sezioni mancanti in "Aspetto e sicurezza"; campo Iniziali senza segnaposto; [it] "Ctrl+Maiusc+T" esce dal badge del tasto (benvenuto).
 
+
+## Correzioni (30 ottobre 2026)
+
+I dieci problemi prioritari sono stati corretti nel gruppo R, poi verificati sugli screenshot rifatti:
+impostazioni (sotto-schede e pagine senza tagli, un solo scorrimento, schede dei temi a tutta
+larghezza), nomi dei driver su due righe, dialog con la stessa testata, larghezza, piè e velo,
+stati vuoti e di errore comuni, tabelle della pagina dell'oggetto a tutta larghezza, barre
+dell'editor raggruppate con i separatori, accento tenue al posto dei pieni arancio, cella
+modificata distinta da quella attiva, intestazioni di dashboard e diagramma ER come le altre
+pagine, form di connessione ad altezza fissa con le sezioni di "Aspetto e sicurezza".
+
+Restano, fuori dal gruppo:
+
+- un menu "⋯" per i pulsanti della barra dell'editor che non entrano quando la finestra è stretta
+  e le etichette sono attive;
+- alcune etichette inglesi da riscrivere (le chiavi dei testi, usate anche dagli scenari E2E):
+  "Query with SQL", "Take out", "Take out of a role", "Made for {place}", "Keep {name} after
+  all?", "Turns {schema} as of {from} into {to}", "Reload from result", "Run script button".
