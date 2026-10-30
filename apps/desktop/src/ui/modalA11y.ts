@@ -82,17 +82,18 @@ function escapeToTop(e: KeyboardEvent) {
 const OWN_ENTER = 'textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], .cm-editor';
 
 /** Enter confirms the dialog on top, as its primary button would, in the dialogs that are not a
- *  form (a form submits by itself). Never a destructive action: that one takes a click. */
+ *  form (a form submits by itself) and that have something to confirm beside a way out. Never
+ *  a destructive action: that one takes a click. */
 function enterToPrimary(e: KeyboardEvent) {
   if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
   const target = e.target as HTMLElement | null;
   const top = [...document.querySelectorAll<HTMLElement>(".modal")].filter((m) => m.getClientRects().length > 0).at(-1);
   if (!top || !target || !top.contains(target)) return;
   if (target.closest("form") || target.closest(OWN_ENTER) || target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) return;
-  const primaries = [...top.querySelectorAll<HTMLButtonElement>(".actions button.primary")].filter(
-    (b) => !b.disabled && !b.classList.contains("danger") && b.getClientRects().length > 0,
-  );
-  if (primaries.length !== 1) return;
+  const buttons = [...top.querySelectorAll<HTMLButtonElement>(".actions button")].filter((b) => b.getClientRects().length > 0);
+  const primaries = buttons.filter((b) => b.classList.contains("primary") && !b.disabled && !b.classList.contains("danger"));
+  // A dialog with one button only closes (Settings' Done, a Close): Enter belongs to its fields.
+  if (primaries.length !== 1 || buttons.length < 2) return;
   e.preventDefault();
   primaries[0]!.click();
 }
