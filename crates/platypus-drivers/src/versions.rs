@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::registry::compare_versions;
 use crate::{
@@ -15,6 +15,9 @@ use crate::{
 
 /// Names the version in use among those of a driver's folder.
 const ACTIVE_FILE: &str = "ACTIVE";
+
+/// The file that holds what the last check found, so the updates survive a restart.
+const UPDATES_FILE: &str = "last-updates.toml";
 
 /// The file that holds when the registry was last asked for updates.
 const CHECK_FILE: &str = "last-update-check";
@@ -32,7 +35,7 @@ pub struct InstalledVersion {
 }
 
 /// A newer version in the registry than the active one installed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Update {
     pub name: String,
     /// The version in use now.
@@ -54,6 +57,8 @@ pub(crate) fn versions_in(root: &Path, name: &str) -> Vec<Installed> {
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
+        // A version removed while Windows kept its library locked waits for the next start.
+        .filter(|e| !e.path().join(REMOVED_MARK).exists())
         .filter_map(|e| read_installed(&e.path()))
         .collect();
     all.sort_by(|a, b| compare_versions(&b.version, &a.version));
@@ -200,4 +205,40 @@ pub fn record_update_check(data_dir: &Path, now: u64) -> Result<(), DriverError>
     let file = check_file(data_dir);
     std::fs::create_dir_all(drivers_dir(data_dir)).map_err(io_error(&file))?;
     std::fs::write(&file, now.to_string()).map_err(io_error(&file))
+}
+
+/// What the file of the last check's result holds (TOML needs a table at the top).
+#[derive(Serialize, Deserialize, Default)]
+struct StoredUpdates {
+    #[serde(default)]
+    updates: Vec<Update>,
+}
+
+/// Keeps what the last check found, replacing the previous result.
+pub fn store_updates(data_dir: &Path, updates: &[Update]) -> Result<(), DriverError> {
+    let file = drivers_dir(data_dir).join(UPDATES_FILE);
+    std::fs::create_dir_all(drivers_dir(data_dir)).map_err(io_error(&file))?;
+    let text = toml::to_string(&StoredUpdates {
+        updates: updates.to_vec(),
+    })
+    .map_err(|e| DriverError::Format(e.to_string()))?;
+    std::fs::write(&file, text).map_err(io_error(&file))
+}
+
+/// The updates the last check found that still apply: those whose driver is still at the
+/// version the check saw (one installed or switched since no longer needs its update).
+#[must_use]
+pub fn stored_updates(data_dir: &Path) -> Vec<Update> {
+    let Some(stored) = std::fs::read_to_string(drivers_dir(data_dir).join(UPDATES_FILE))
+        .ok()
+        .and_then(|text| toml::from_str::<StoredUpdates>(&text).ok())
+    else {
+        return Vec::new();
+    };
+    let root = adbc_dir(data_dir);
+    stored
+        .updates
+        .into_iter()
+        .filter(|u| active_in(&root, &u.name).is_some_and(|i| i.version == u.installed))
+        .collect()
 }

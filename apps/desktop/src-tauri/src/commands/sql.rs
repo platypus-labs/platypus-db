@@ -218,7 +218,12 @@ pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
             .all(|range| {
                 let text = &sql[range.clone()];
                 !is_cql_batch(text)
-                    && platypus_sql::analyze(text, Dialect::Ansi).kind == StatementKind::Query
+                    && platypus_sql::analyze(
+                        &platypus_driver_cassandra::cql::for_analysis(text),
+                        Dialect::Ansi,
+                    )
+                    .kind
+                        == StatementKind::Query
             });
     }
     let dialect = Dialect::from(driver);
@@ -340,7 +345,9 @@ fn analyze_cql(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
             .iter()
             .map(|range| {
                 let text = &src[range.clone()];
-                let analysis = platypus_sql::analyze(text, Dialect::Ansi);
+                // The SQL lexer reads CQL's `//` comments and `$$` strings from this rewrite.
+                let readable = platypus_driver_cassandra::cql::for_analysis(text);
+                let analysis = platypus_sql::analyze(&readable, Dialect::Ansi);
                 // A batch hides its statements from the analysis: it asks as DDL does.
                 let batch = is_cql_batch(text);
                 StatementSpan {
@@ -365,7 +372,7 @@ fn analyze_cql(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
                             limited: u.limited,
                         })
                         .collect(),
-                    parameters: parameter_spans(text, range.start, map),
+                    parameters: parameter_spans(&readable, range.start, map),
                 }
             })
             .collect(),
@@ -745,6 +752,21 @@ mod tests {
     }
 
     #[test]
+    fn cql_comments_and_dollar_strings_hide_nothing_and_make_no_parameters() {
+        let src = "// note ? here\nTRUNCATE shop.t; CREATE FUNCTION f(x int) RETURNS NULL ON NULL INPUT \
+                   RETURNS int LANGUAGE java AS $$ return x > 0 ? 1 : 2; $$; SELECT * FROM t WHERE id = ?"
+            .to_owned();
+        let a = analyze_sql(src.clone(), DriverKind::Cassandra, 0);
+        assert_eq!(a.statements.len(), 3);
+        assert_eq!(a.statements[0].unfiltered.len(), 1);
+        assert!(a.statements[0].parameters.is_empty());
+        assert!(a.statements[1].parameters.is_empty());
+        let marks = &a.statements[2].parameters;
+        assert_eq!(marks.len(), 1);
+        assert_eq!(&src[marks[0].start..marks[0].end], "?");
+    }
+
+    #[test]
     fn analyzes_cql_scripts() {
         let src = "SELECT * FROM shop.t WHERE id = 1; -- a; b\nTRUNCATE shop.t;\n\
                    BEGIN BATCH INSERT INTO t (id) VALUES (1); APPLY BATCH;\nUPDATE t SET v = 1 WHERE id = 2"
@@ -787,6 +809,8 @@ mod tests {
             DriverKind::Cassandra
         ));
         assert!(!only_reads("USE shop", DriverKind::Cassandra));
+        assert!(!only_reads("// x\nTRUNCATE t", DriverKind::Cassandra));
+        assert!(only_reads("// x\nSELECT 1", DriverKind::Cassandra));
         let source = query_source(
             "SELECT * FROM shop.t LIMIT 10".to_owned(),
             DriverKind::Cassandra,

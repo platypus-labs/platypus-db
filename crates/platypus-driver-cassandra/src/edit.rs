@@ -115,7 +115,7 @@ const NATIVE: &[&str] = &[
 ];
 
 /// Splits `a, map<b, c>, d` at the commas outside `<…>`.
-fn split_args(text: &str) -> Vec<&str> {
+pub(crate) fn split_args(text: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let (mut depth, mut start) = (0usize, 0);
     for (i, c) in text.char_indices() {
@@ -205,8 +205,13 @@ fn scalar(text: &str, name: &str) -> Result<String, String> {
             }
         }
         "counter" => Err("a counter changes by increments, which the grid cannot write".to_owned()),
+        // CQL spells the special values `NaN`, `Infinity` and `-Infinity`; the grid shows them
+        // the way Arrow prints them (`NaN`, `inf`, `-inf`).
         "float" | "double" => match t {
             "NaN" | "Infinity" | "-Infinity" => Ok(t.to_owned()),
+            "inf" | "+inf" => Ok("Infinity".to_owned()),
+            "-inf" => Ok("-Infinity".to_owned()),
+            "nan" => Ok("NaN".to_owned()),
             _ if t.parse::<f64>().is_ok_and(f64::is_finite) => Ok(t.to_owned()),
             _ => bad("number"),
         },
@@ -484,25 +489,33 @@ impl Builder<'_> {
         ))
     }
 
-    fn deleted(&self, loaded: &[Option<String>]) -> Result<(String, String), String> {
+    fn deleted(&self, loaded: &[Option<String>]) -> Result<(String, Option<String>), String> {
         let values: Vec<(usize, Option<&str>)> = loaded
             .iter()
             .enumerate()
-            .filter(|(c, v)| v.is_some() && !self.is_counter(*c))
+            .filter(|(_, v)| v.is_some())
             .map(|(c, v)| (c, v.as_deref()))
             .collect();
+        // CQL refuses an INSERT on a counter table, so such a row has no undo but the note
+        // that `script` adds.
+        let undo = if self.counter_table() {
+            None
+        } else {
+            Some(self.insert(&values)?)
+        };
         Ok((
             format!(
                 "DELETE FROM {} WHERE {}",
                 self.target,
                 self.where_clause(loaded)?
             ),
-            self.insert(&values)?,
+            undo,
         ))
     }
 
-    fn is_counter(&self, column: usize) -> bool {
-        self.edits.types.get(column).is_some_and(|t| t == "counter")
+    /// Whether the table has counter columns, and so takes no INSERT.
+    fn counter_table(&self) -> bool {
+        self.edits.types.iter().any(|t| t == "counter")
     }
 }
 
@@ -521,12 +534,8 @@ pub fn script(edits: &Edits<'_>) -> Result<Script, String> {
     for loaded in &edits.deletes {
         let (command, undo) = builder.deleted(loaded)?;
         deletes.push(command);
-        undo_deletes.push(undo);
-        if loaded
-            .iter()
-            .enumerate()
-            .any(|(c, v)| v.is_some() && builder.is_counter(c))
-        {
+        undo_deletes.extend(undo);
+        if builder.counter_table() {
             undo_deletes
                 .push("-- the counters of the deleted rows cannot be written back".to_owned());
         }
@@ -579,7 +588,10 @@ mod tests {
         assert!(lit("4.2", "int").is_err());
         assert_eq!(lit("-1.5e3", "decimal").unwrap(), "-1.5e3");
         assert_eq!(lit("NaN", "double").unwrap(), "NaN");
-        assert!(lit("inf", "double").is_err());
+        assert_eq!(lit("inf", "double").unwrap(), "Infinity");
+        assert_eq!(lit("-inf", "float").unwrap(), "-Infinity");
+        assert_eq!(lit("Infinity", "double").unwrap(), "Infinity");
+        assert!(lit("infinity!", "double").is_err());
         assert_eq!(lit("TRUE", "boolean").unwrap(), "true");
         assert_eq!(
             lit("123e4567-e89b-12d3-a456-426614174000", "uuid").unwrap(),
@@ -687,6 +699,21 @@ mod tests {
                 "UPDATE shop.\"Items\" SET name = 'old', tags = null WHERE id = 1 AND day = '2024-01-02'",
                 "INSERT INTO shop.\"Items\" (id, day, name) VALUES (3, '2024-01-04', 'x')",
             ]
+        );
+    }
+
+    #[test]
+    fn a_deleted_counter_row_has_only_a_note_for_undo() {
+        let columns = cols(&["id", "n", "hits"]);
+        let types = cols(&["int", "int", "counter"]);
+        let udts = Udts::new();
+        let mut e = edits(&columns, &types, &[0], &udts);
+        e.deletes.push(vec![some("1"), some("2"), some("5")]);
+        let script = script(&e).unwrap();
+        assert_eq!(script.commands, ["DELETE FROM shop.\"Items\" WHERE id = 1"]);
+        assert_eq!(
+            script.undo,
+            ["-- the counters of the deleted rows cannot be written back"]
         );
     }
 

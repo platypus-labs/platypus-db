@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// A package of a driver, ready to download.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
     /// Its name in the registry, e.g. `snowflake`.
     pub name: String,

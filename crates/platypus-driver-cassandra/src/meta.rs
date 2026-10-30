@@ -168,31 +168,11 @@ fn parse_signature(signature: &str) -> (String, Vec<String>) {
     let args = rest.trim_end().trim_end_matches(')');
     (
         name.trim().to_owned(),
-        split_types(args).into_iter().collect(),
+        crate::edit::split_args(args)
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
     )
-}
-
-/// Splits a type list at the commas that are not inside `<…>`.
-fn split_types(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut depth = 0usize;
-    let mut start = 0;
-    for (i, c) in text.char_indices() {
-        match c {
-            '<' | '(' => depth += 1,
-            '>' | ')' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                out.push(text[start..i].trim().to_owned());
-                start = i + 1;
-            }
-            _ => {}
-        }
-    }
-    let last = text[start..].trim();
-    if !last.is_empty() {
-        out.push(last.to_owned());
-    }
-    out
 }
 
 /// A column of a table, with its role in the key.

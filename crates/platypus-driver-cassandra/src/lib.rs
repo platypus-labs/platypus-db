@@ -77,10 +77,20 @@ impl Connection for CassandraConnection {
         let Some((last, earlier)) = ranges.split_last() else {
             return Err(error::parse_error("no statement"));
         };
+        // One subscription for the whole script: a clone sees a Cancel that came between two
+        // statements, which a subscription made per statement would miss.
+        let cancel = self.shared.cancel.subscribe();
         for range in earlier {
-            exec::run(&self.shared, &sql[range.clone()], &ExecOptions::default()).await?;
+            let statement = &sql[range.clone()];
+            exec::run(
+                &self.shared,
+                statement,
+                &ExecOptions::default(),
+                cancel.clone(),
+            )
+            .await?;
         }
-        exec::run(&self.shared, &sql[last.clone()], options).await
+        exec::run(&self.shared, &sql[last.clone()], options, cancel).await
     }
 
     fn cancel_handle(&self) -> CancelHandle {

@@ -388,7 +388,16 @@ pub fn check_cql<'a>(
             "batches are not available to agents: run the statements one at a time".to_owned(),
         ));
     }
-    check_statement(statement, Dialect::Ansi, access, unfiltered, connection)
+    // Judged on the text as the SQL lexer reads CQL (same offsets), but the statement that runs
+    // is the original.
+    check_statement(
+        &cql::for_analysis(statement),
+        Dialect::Ansi,
+        access,
+        unfiltered,
+        connection,
+    )
+    .map(|_| statement)
 }
 
 /// [`check`] for the one `statement` it found.
@@ -663,6 +672,10 @@ mod tests {
         assert!(rw("DELETE FROM t WHERE id = 2").is_ok());
         assert!(rw("DROP TABLE t").is_ok());
         assert!(matches!(rw("TRUNCATE t"), Err(AgentError::Denied(_))));
+        // A `//` comment is a comment in CQL, so it cannot hide the statement after it.
+        assert!(matches!(rw("// x\nTRUNCATE t"), Err(AgentError::Denied(_))));
+        assert!(matches!(ro("// x\nTRUNCATE t"), Err(AgentError::Denied(_))));
+        assert_eq!(ro("// x\nSELECT 1").unwrap(), "// x\nSELECT 1");
         assert!(
             check_cql(
                 "TRUNCATE t",

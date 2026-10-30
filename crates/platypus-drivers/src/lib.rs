@@ -22,7 +22,7 @@ pub use vendor::{
 };
 pub use versions::{
     InstalledVersion, Update, activate, last_update_check, migrate_layout, newer_than,
-    record_update_check, remove_version, update_check_due, versions,
+    record_update_check, remove_version, store_updates, stored_updates, update_check_due, versions,
 };
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();

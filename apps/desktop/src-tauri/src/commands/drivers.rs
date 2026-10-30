@@ -271,7 +271,7 @@ fn sessions_using(state: &AppState, driver: DriverKind) -> usize {
 #[derive(Debug, Serialize)]
 pub struct UpdateCheck {
     /// Whether the registry was asked: a check that is not forced and ran less than a day ago
-    /// does nothing.
+    /// does not, and answers with the updates the last one found.
     checked: bool,
     updates: Vec<Update>,
     /// Why the registry could not answer.
@@ -290,13 +290,14 @@ pub async fn check_driver_updates(force: bool) -> CommandResult<UpdateCheck> {
     {
         return Ok(UpdateCheck {
             checked: false,
-            updates: Vec::new(),
+            updates: platypus_drivers::stored_updates(dir),
             error: None,
         });
     }
     match registry(dir).updates(&platypus_drivers::list(dir)).await {
         Ok(updates) => {
             let _ = platypus_drivers::record_update_check(dir, now);
+            let _ = platypus_drivers::store_updates(dir, &updates);
             Ok(UpdateCheck {
                 checked: true,
                 updates,

@@ -184,6 +184,47 @@ pub fn first_word(statement: &str) -> String {
     word
 }
 
+/// `text` rewritten so that the standard SQL lexer reads it as CQL does, with every byte at the
+/// same offset: `//` comments become `--` comments and a `$$ … $$` string becomes a `'…'` string
+/// (quotes inside it are blanked out so they cannot end it). Without this, a `//` comment would
+/// hide the statement after it from the safety analysis and a `?` in a comment or in a function
+/// body would be taken for a parameter.
+#[must_use]
+pub fn for_analysis(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while !rest.is_empty() {
+        if let Some(comment) = rest.strip_prefix("//") {
+            let len = comment.find('\n').unwrap_or(comment.len());
+            out.push_str("--");
+            out.push_str(&comment[..len]);
+            rest = &comment[len..];
+        } else if let Some(body) = rest.strip_prefix("$$") {
+            // The delimiters become a space and a quote so the length does not change.
+            let (inner, after) = body
+                .find("$$")
+                .map_or((body, ""), |i| (&body[..i], &body[i + 2..]));
+            out.push_str(" '");
+            out.push_str(&inner.replace('\'', "_"));
+            if after.len() + inner.len() < body.len() {
+                out.push_str("' ");
+            }
+            rest = after;
+        } else {
+            // Strings, quoted names and the other comments are copied as they are.
+            let mut scanner = Scanner::new(rest);
+            let len = if scanner.skip_quoted() {
+                scanner.pos
+            } else {
+                rest.chars().next().map_or(0, char::len_utf8)
+            };
+            out.push_str(&rest[..len]);
+            rest = &rest[len..];
+        }
+    }
+    out
+}
+
 /// What the driver does with `statement` by itself.
 #[must_use]
 pub fn kind(statement: &str) -> Kind {
@@ -195,20 +236,45 @@ pub fn kind(statement: &str) -> Kind {
     Kind::Other
 }
 
-/// The keyspace of `USE name` or `USE "Name"`.
-fn use_keyspace(statement: &str) -> Option<Keyspace> {
-    let text = statement.trim().trim_end_matches(';').trim();
-    let rest = text.get(3..)?.trim();
-    if let Some(quoted) = rest.strip_prefix('"') {
-        let inner = quoted.strip_suffix('"')?;
-        return Some(Keyspace {
-            name: inner.replace("\"\"", "\""),
-        });
+/// `text` without the blanks and comments (`--`, `//`, `/* */`) at its start.
+fn skip_blank(mut text: &str) -> &str {
+    loop {
+        text = text.trim_start();
+        if text.starts_with("--") || text.starts_with("//") {
+            text = &text[text.find('\n').unwrap_or(text.len())..];
+        } else if let Some(inner) = text.strip_prefix("/*") {
+            text = inner.find("*/").map_or("", |i| &inner[i + 2..]);
+        } else {
+            return text;
+        }
     }
-    let valid = !rest.is_empty() && rest.chars().all(|c| c.is_alphanumeric() || c == '_');
-    valid.then(|| Keyspace {
-        name: rest.to_lowercase(),
-    })
+}
+
+/// The keyspace of `USE name` or `USE "Name"`, with comments allowed around the name.
+fn use_keyspace(statement: &str) -> Option<Keyspace> {
+    let rest = skip_blank(statement).get(3..)?;
+    let rest = skip_blank(rest);
+    let (name, rest) = if let Some(quoted) = rest.strip_prefix('"') {
+        // A quote doubled inside is a quote of the name.
+        let mut end = None;
+        let mut chars = quoted.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            if c == '"' && chars.next_if(|&(_, n)| n == '"').is_none() {
+                end = Some(i);
+                break;
+            }
+        }
+        let end = end?;
+        (quoted[..end].replace("\"\"", "\""), &quoted[end + 1..])
+    } else {
+        let len = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        (rest[..len].to_lowercase(), &rest[len..])
+    };
+    let rest = skip_blank(rest);
+    let rest = skip_blank(rest.strip_prefix(';').unwrap_or(rest));
+    (!name.is_empty() && rest.is_empty()).then_some(Keyspace { name })
 }
 
 /// A name that is safe to write bare in CQL: lower-case letters, digits and `_`, starting with
@@ -368,7 +434,35 @@ mod tests {
             })
         );
         assert_eq!(kind("USE a b"), Kind::Other);
+        let shop = Kind::Use(Keyspace {
+            name: "shop".into(),
+        });
+        assert_eq!(kind("-- switch\nUSE shop"), shop);
+        assert_eq!(kind("USE shop -- go"), shop);
+        assert_eq!(kind("USE /*x*/ shop /*y*/ ; // z"), shop);
+        assert_eq!(
+            kind("USE /*x*/ \"Sh\"\"op\""),
+            Kind::Use(Keyspace {
+                name: "Sh\"op".into()
+            })
+        );
+        assert_eq!(kind("USE \"Shop"), Kind::Other);
+        assert_eq!(kind("USE"), Kind::Other);
+        assert_eq!(kind("USE shop; x"), Kind::Other);
         assert_eq!(kind("SELECT 1"), Kind::Other);
+    }
+
+    #[test]
+    fn analysis_text_reads_cql_comments_and_dollar_strings() {
+        let text = "// x\nTRUNCATE t; SELECT 'a//b', \"c\" -- k\n /* // */ $$ it's ? $$ ?";
+        let out = for_analysis(text);
+        assert_eq!(out.len(), text.len());
+        assert!(out.starts_with("-- x\nTRUNCATE t;"));
+        assert!(out.contains("'a//b'") && out.contains("/* // */"));
+        assert!(out.ends_with("  ' it_s ? '  ?"));
+        // Unterminated strings stay the same length.
+        assert_eq!(for_analysis("a $$ b").len(), 6);
+        assert_eq!(for_analysis("é // ü").len(), "é // ü".len());
     }
 
     #[test]

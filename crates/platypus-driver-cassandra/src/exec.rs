@@ -18,14 +18,19 @@ use crate::cql::{self, Kind};
 use crate::error;
 use crate::session::Shared;
 
-/// Runs `text`, a single CQL statement.
-pub async fn run(shared: &Arc<Shared>, text: &str, options: &ExecOptions) -> Result<ExecResult> {
+/// Runs `text`, a single CQL statement. `cancel` is the subscription the whole script shares,
+/// so a Cancel between two statements stops the ones after it as well.
+pub async fn run(
+    shared: &Arc<Shared>,
+    text: &str,
+    options: &ExecOptions,
+    mut cancel: watch::Receiver<u64>,
+) -> Result<ExecResult> {
     if let Kind::Use(keyspace) = cql::kind(text) {
-        return use_keyspace(shared, &keyspace.name).await;
+        return use_keyspace(shared, &keyspace.name, &mut cancel).await;
     }
     let mut statement = Statement::new(text);
     statement.set_page_size(i32::try_from(options.batch_size.max(1)).unwrap_or(i32::MAX));
-    let mut cancel = shared.cancel.subscribe();
     let (result, state) = fetch(shared, &mut cancel, &statement, PagingState::start()).await?;
     shared.warn(result.warnings());
     if !result.is_rows() {
@@ -57,10 +62,13 @@ pub async fn run(shared: &Arc<Shared>, text: &str, options: &ExecOptions) -> Res
 }
 
 /// `USE keyspace`: the driver holds the keyspace of the whole session.
-async fn use_keyspace(shared: &Shared, name: &str) -> Result<ExecResult> {
-    let mut cancel = shared.cancel.subscribe();
+async fn use_keyspace(
+    shared: &Shared,
+    name: &str,
+    cancel: &mut watch::Receiver<u64>,
+) -> Result<ExecResult> {
     shared
-        .guarded(&mut cancel, async {
+        .guarded(cancel, async {
             shared
                 .session
                 .use_keyspace(name, true)

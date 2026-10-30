@@ -55,10 +55,11 @@ export function kindOf(name: string): DriverKind | null {
 }
 
 /** Asks the registry for newer versions of the installed drivers. Unless `force`, the backend
- *  skips the question when it was asked less than a day ago, and the updates found before stay. */
+ *  skips the question when it was asked less than a day ago and answers with the updates the
+ *  last check found (kept across restarts). */
 export async function refreshUpdates(force: boolean): Promise<DriverUpdateCheck> {
   const result = await api.checkDriverUpdates(force);
-  if (result.checked && !result.error) setUpdates(result.updates);
+  if (!result.error) setUpdates(result.updates);
   return result;
 }
 
@@ -92,7 +93,8 @@ export async function startupDriverCheck() {
   let found: DriverUpdate[];
   try {
     const result = await refreshUpdates(false);
-    found = result.checked && !result.error ? result.updates : [];
+    // Also the updates of an earlier check: one not installed yet is retried at each start.
+    found = result.error ? [] : result.updates;
   } catch (e) {
     console.info("driver update check:", e);
     return;

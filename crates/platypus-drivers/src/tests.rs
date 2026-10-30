@@ -503,3 +503,54 @@ fn a_chosen_version_that_vanished_falls_back_to_the_newest() {
     std::fs::write(root.join("ACTIVE"), "v0.1.0").unwrap();
     assert_eq!(installed(dir.path(), "test").unwrap().version, "v1.10.0");
 }
+
+#[test]
+fn a_version_marked_removed_is_not_listed_active_or_counted() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("drivers").join("adbc").join("test");
+    for version in ["v1.9.0", "v1.10.0"] {
+        write_driver(&root.join(version), version);
+    }
+    std::fs::write(root.join("ACTIVE"), "v1.10.0").unwrap();
+    // The library of the newest was locked when it was removed.
+    std::fs::write(root.join("v1.10.0").join(".removed"), b"").unwrap();
+    let listed = versions(dir.path(), "test");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].installed.version, "v1.9.0");
+    assert!(listed[0].active);
+    assert_eq!(installed(dir.path(), "test").unwrap().version, "v1.9.0");
+    // Only one version is left, so removing it removes the whole driver.
+    remove_version(dir.path(), "test", "v1.9.0").unwrap();
+    assert_eq!(installed(dir.path(), "test"), None);
+}
+
+#[test]
+fn the_updates_of_the_last_check_survive_until_they_are_installed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("drivers").join("adbc").join("test");
+    write_driver(&root.join("v1.0.0"), "v1.0.0");
+    assert_eq!(crate::stored_updates(dir.path()).len(), 0);
+    let update = crate::Update {
+        name: "test".into(),
+        installed: "v1.0.0".into(),
+        package: crate::Package {
+            name: "test".into(),
+            title: "Test".into(),
+            version: "v1.1.0".into(),
+            license: "MIT".into(),
+            url: "http://example.invalid/test".into(),
+            sha256: None,
+        },
+    };
+    crate::store_updates(dir.path(), std::slice::from_ref(&update)).unwrap();
+    assert_eq!(
+        crate::stored_updates(dir.path()),
+        std::slice::from_ref(&update)
+    );
+    // A newer version became the active one since: the update no longer applies.
+    write_driver(&root.join("v1.1.0"), "v1.1.0");
+    assert_eq!(crate::stored_updates(dir.path()).len(), 0);
+    // A new result replaces the old one.
+    crate::store_updates(dir.path(), &[]).unwrap();
+    assert_eq!(crate::stored_updates(dir.path()).len(), 0);
+}
