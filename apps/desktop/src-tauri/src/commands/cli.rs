@@ -71,7 +71,8 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
         | DriverKind::Adbc
         | DriverKind::Oracle
         | DriverKind::Db2
-        | DriverKind::Odbc => Err(CommandError::new(
+        | DriverKind::Odbc
+        | DriverKind::Plugin => Err(CommandError::new(
             "cli",
             format!("terminal mode is not available for {}", driver.name()),
         )),
@@ -244,7 +245,8 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
         | DriverKind::Adbc
         | DriverKind::Oracle
         | DriverKind::Db2
-        | DriverKind::Odbc => {}
+        | DriverKind::Odbc
+        | DriverKind::Plugin => {}
     }
     (args, env)
 }

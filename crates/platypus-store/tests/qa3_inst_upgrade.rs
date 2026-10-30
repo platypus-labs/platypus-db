@@ -125,7 +125,7 @@ fn connections_of_0_1_0_are_rewritten_once_and_stay_stable() {
     let saved = store.get(id).unwrap().clone();
     store.save(saved, PasswordUpdate::Keep).unwrap();
     let first = std::fs::read_to_string(&path).unwrap();
-    assert!(first.contains("version = 7"), "{first}");
+    assert!(first.contains("version = 8"), "{first}");
     // Saving again after a reopen writes the same file.
     let mut store = ConnectionStore::open(&path, secrets).unwrap();
     let saved = store.get(id).unwrap().clone();

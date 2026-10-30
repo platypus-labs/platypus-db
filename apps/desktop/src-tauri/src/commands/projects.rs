@@ -10,7 +10,7 @@ use super::AppState;
 use crate::error::CommandResult;
 
 /// Connections, projects and rail folders, for changes that touch more than one.
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Workspace {
     connections: Vec<SavedConnection>,
     projects: Vec<Project>,

@@ -9,7 +9,9 @@ import { Icon } from "../ui/Icon";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
+import { PluginsPanel } from "../plugins/PluginsPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
+import { SyncPanel } from "../sync/SyncPanel";
 import { msg, t } from "../i18n";
 import { settingNumber } from "./settingValue";
 
@@ -26,8 +28,10 @@ const PANELS: {
 }[] = [
   { title: msg("Themes"), keywords: "theme import export JSON colors appearance file", render: () => <ThemesPanel /> },
   { title: msg("Master password"), keywords: "password encryption credentials keyring", render: () => <MasterPasswordPanel /> },
+  { title: msg("Sync"), keywords: "synchronize encrypted folder cloud passphrase backup computers devices share", render: () => <SyncPanel /> },
   { title: msg("Agents"), keywords: "MCP AI assistant", render: () => <AgentsPanel /> },
   { title: msg("Drivers"), keywords: "ODBC ADBC Oracle Instant Client download", render: () => <DriversPanel /> },
+  { title: msg("Plugins"), keywords: "plugin WebAssembly WASM extension actions driver install", render: () => <PluginsPanel /> },
   { title: msg("Diagnostics"), keywords: "log logs crash report bug support zip", render: () => <DiagnosticsPanel /> },
   {
     title: msg("Keyboard shortcuts"),

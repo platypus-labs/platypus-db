@@ -19,6 +19,7 @@ use platypus_driver_pg::PgDriver;
 use platypus_driver_redis::RedisDriver;
 use platypus_driver_search::SearchDriver;
 use platypus_driver_sqlite::SqliteDriver;
+use platypus_plugins::PluginDriver;
 use platypus_sql::Dialect;
 use platypus_store::{ConnectionStore, SavedConnection, SavedSsh, SshAuthKind, StoreError};
 use uuid::Uuid;
@@ -51,6 +52,7 @@ pub async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, E
             | DriverKind::Adbc => AdbcDriver::shared()?.connect(&config).await,
             DriverKind::Oracle => OracleDriver::shared()?.connect(&config).await,
             DriverKind::Db2 | DriverKind::Odbc => OdbcDriver.connect(&config).await,
+            DriverKind::Plugin => PluginDriver::shared()?.connect(&config).await,
         }
     })
     .await

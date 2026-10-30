@@ -28,9 +28,20 @@ const APP = new Set([
     "The statement did not stop on Cancel, so its connection was closed and a new one is opened; the open transaction was rolled back.",
   ),
   msg("the table must be rebuilt outside a transaction: commit or roll back first"),
+  // Git for the saved scripts (platypus-sync); Git's own messages pass as they are.
+  msg("Git is not installed"),
+  msg("this folder is not a Git repository"),
+  msg("Git does not know your name and email"),
+  msg("authentication needed: configure a credential helper"),
+  msg("the repository has no remote"),
+  msg("the branch has no upstream branch"),
+  msg("Git did not answer in time"),
+  msg("the commit message is empty"),
+  msg("no file selected"),
 ]);
 
 const APP_PATTERNS: [RegExp, string, string[]][] = [
+  [/^not a file of the repository: (.*)$/s, msg("not a file of the repository: {path}"), ["path"]],
   [/^(.*) does not exist, nor does its folder$/s, msg("{path} does not exist, nor does its folder"), ["path"]],
   [
     /^(.*) not found: a relative path is not created, give the full path of the file$/s,

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dispatchKey } from "../actions";
-import { type Project, type SavedConnection, type ScriptEntry, type ScriptList, api, toCommandError } from "../api";
+import { type GitStatus, type Project, type SavedConnection, type ScriptEntry, type ScriptList, api, toCommandError } from "../api";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { Icon } from "../ui/Icon";
 import { moveScript, registerScriptConnections } from "./actions";
+import { GitBar } from "./GitBar";
+import { badgeTitle } from "./GitDialogs";
+import { changedInFolder, statusByPath } from "./gitModel";
 import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, scriptsChanged } from "./scripts";
 import { t } from "../i18n";
 
@@ -28,10 +31,30 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
   const closeMenu = useCallback(() => setMenu(null), []);
   const fail = (e: unknown) => onError(toCommandError(e).message);
 
+  // Git: the status of the scripts folder, or why it could not be read.
+  const [git, setGit] = useState<GitStatus | null>(null);
+  const [gitProblem, setGitProblem] = useState<{ kind: string; message: string } | null>(null);
+
   const load = useCallback(() => {
     api.listScripts(projectId).then(setList, fail);
+    api.gitStatus(projectId).then(
+      (s) => {
+        setGit(s);
+        setGitProblem(null);
+      },
+      (e) => {
+        const { kind, message } = toCommandError(e);
+        setGit(null);
+        setGitProblem({ kind, message });
+      },
+    );
   }, [projectId]);
   useEffect(load, [load]);
+  // Files change outside the app too: look again when the window comes back.
+  useEffect(() => {
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [load]);
   useEffect(() => onScriptsChanged(load), [load]);
   useEffect(() => registerScriptConnections(connections), [connections]);
 
@@ -83,6 +106,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
   }
 
   const entries = list?.entries ?? [];
+  const changed = statusByPath(git?.files ?? []);
   const hidden = (path: string) => [...collapsed].some((f) => path.startsWith(`${f}/`));
   const drop = (folder: string) => (e: React.DragEvent) => {
     const path = e.dataTransfer.getData("application/x-platypus-script");
@@ -109,6 +133,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
           <Icon name="new-folder" />
         </button>
       </div>
+      {open && <GitBar project={projectId} status={git} problem={gitProblem} reload={load} onError={onError} />}
       {open && (
         <ul className="tree scripts-tree">
           {entries.map((entry) => {
@@ -116,7 +141,8 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
             const depth = entry.path.split("/").length - 1;
             const isCollapsed = collapsed.has(entry.path);
             const linked = connections.find((c) => c.id === entry.connection);
-            const arg = { entry, project: projectId, root: list!.root, connections, rename };
+            const fileStatus = changed.get(entry.path);
+            const arg = { entry, project: projectId, root: list!.root, connections, rename, git: fileStatus };
             return (
               <li
                 key={entry.path}
@@ -171,6 +197,16 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
                   />
                 ) : (
                   <span className="tree-label">{entry.folder ? nameOf(entry.path) : nameOf(entry.path).replace(/\.sql$/i, "")}</span>
+                )}
+                {fileStatus && (
+                  <span className={`git-badge ${fileStatus.badge === "?" ? "untracked" : fileStatus.badge}`} title={badgeTitle(fileStatus.badge)}>
+                    {fileStatus.badge}
+                  </span>
+                )}
+                {entry.folder && changedInFolder(entry.path, git?.files ?? []) && (
+                  <span className="git-badge folder" title={t("Contains changed scripts")}>
+                    •
+                  </span>
                 )}
                 {linked && (
                   <span className="tree-detail" title={t("Opens on {name}", { name: linked.name })}>

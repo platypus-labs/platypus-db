@@ -276,6 +276,16 @@ downloads instead of building in:
 Conformance: `crates/platypus-conformance/tests/bridges.rs` runs Trino (`--profile trino`)
 through the bridge, downloading its driver to `target/conformance-drivers`.
 
+### WebAssembly plugins
+
+Users extend the app without rebuilding it through plugins: WebAssembly modules with
+actions for the editor, the grid and the navigator, or a driver for a database with an HTTP
+API (`DriverKind::Plugin`, the plugin's id in the `plugin` option). The guest ABI, the
+permissions and the limits are in [PLUGINS.md](PLUGINS.md); the host is
+`crates/platypus-plugins`, the desktop commands `commands/plugins.rs`, the page side
+`apps/desktop/src/plugins/` (the actions join the action registry under a "Plugins" submenu).
+A change to the ABI raises `API_VERSION` and keeps the old version working while plugins use it.
+
 ### Vendor client libraries: Oracle, ODBC and DuckDB
 
 Oracle, IBM Db2, DuckDB and any ODBC driver need a library that the vendor publishes and the

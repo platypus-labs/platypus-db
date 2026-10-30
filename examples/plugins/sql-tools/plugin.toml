@@ -1,0 +1,11 @@
+id = "sql-tools"
+name = "SQL tools"
+version = "1.0.0"
+author = "PlatypusDB"
+description = "Uppercase SQL keywords in the editor, copy grid rows as a Markdown table, count the rows of a table."
+api = 1
+kinds = ["actions"]
+
+[permissions]
+# "Copy rows as Markdown table" puts its text on the clipboard.
+clipboard = true

@@ -89,8 +89,10 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Progetti condivisi (gruppo O): il file `platypus-project.toml` di un collega può ancora impostare le istruzioni di init di una connessione (SQL eseguito a ogni collegamento), applicate senza chiedere. Decidere se non farle viaggiare, tenerle in sola lettura o chiederne conferma la prima volta, in `crates/platypus-sync/src/portable.rs` (`guard`) | gruppo O, 2026-10-30 |
 | Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
-| Scenari E2E del gruppo Q (P3) scritti in un container Linux e mai eseguiti: `sensitive-columns-sqlite` (segni, mascheramento, intestazioni, export), `column-usage-sqlite` (Used by: viste, trigger, script, Refresh). Eseguirli su Windows dopo la build di release e correggere scenari o codice | gruppo Q, 2026-10-30 |
+| Scenari E2E del gruppo O scritti in un container Linux e mai eseguiti: `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
+| Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -120,9 +122,9 @@ per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ completato |
-| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-masking · 2026-10-30 |
-| O — Collaborazione e sync | 🔒 Delfa · group-o-collab · 2026-10-30 |
-| P — Piattaforma, qualità e release | 🔒 Claude · claude/exciting-galileo-ukai8j · 2026-10-30 |
+| N — Accesso per agenti (MCP) | ✅ completato |
+| O — Collaborazione e sync | ✅ completato |
+| P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
@@ -984,8 +986,16 @@ scritti ma non ancora eseguiti (runner Windows).
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Stato: P1 e P2 completate, P3 quasi** (resta il mascheramento delle colonne sensibili del
-gruppo Q nei tool su script e cronologia, che aspetta quelle colonne). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+**Stato: completato.** P3 finita col mascheramento delle colonne sensibili del gruppo Q nei
+tool su script e cronologia: `platypus-sql::sensitive` (le regole sui nomi come le impostazioni
+dell'app, `DEFAULT_NAMES` tenuto uguale a `maskRules.ts` da un test, e `mask_literals`, che
+scrive `'••••••'` al posto dei valori legati a una colonna sensibile: confronti, `IN`, `SET`,
+le posizioni di `INSERT … VALUES` e `INSERT … SELECT`, attraverso cast, chiamate e `BETWEEN`; e
+`mask_error` per gli errori di PostgreSQL, MySQL e SQL Server che citano un valore), usato da
+`read_script` e `search_history` coi segni "sensibile" di `catalog.db` delle connessioni dello
+script (di tutte quelle visibili per uno script senza connessione). Nel testo una colonna si
+conosce solo per nome: un segno "non sensibile" non toglie le regole, e le regole sui tipi non
+servono; se `catalog.db` non si legge il tool fallisce invece di mostrare i valori. Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
@@ -1077,7 +1087,7 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | ✅ Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 | ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
-| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate (fatti i tool `list_scripts`, `read_script`, `search_history`; manca il mascheramento, che aspetta le colonne sensibili del gruppo Q) | P3 | N |
+| ✅ Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
 
@@ -1086,13 +1096,44 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 **Area:** nuovo crate `platypus-sync`, `apps/desktop/src/projects/`
 **Dipende da:** il pannello script del gruppo D
 
+**Stato: completato** (30 ottobre 2026), senza server: tutto passa da cartelle. **Git per gli
+script** (`platypus-sync/src/git.rs`, eseguibile `git` di sistema senza shell,
+`GIT_TERMINAL_PROMPT=0`, timeout): barra Git nel pannello Scripts con ramo, avanti/indietro,
+Pull solo fast-forward (con "Pull con merge" e "Abort merge" se divergono), Push, Commit dei file
+scelti (chiede l'autore se Git non lo ha), badge di stato e diff unificato. **Condivisione di una
+query** (`src/share/`): file `.platypus` (JSON con SQL, titolo, parametri facoltativi e la
+connessione descritta senza credenziali) o link `platypus://query?d=…` (deflate, al massimo
+8.192 caratteri); si apre dalla palette, trascinando il file, da riga di comando o dal sistema
+(plugin `deep-link` e `single-instance`, associazione `.platypus`), cerca la connessione salvata
+che corrisponde e apre la query senza eseguirla. **Sincronizzazione cifrata**
+(`platypus-sync`: Argon2id e AES-256-GCM di `ring`, file `platypus-sync.bin` in una cartella
+scelta): impostazioni senza quelle della macchina, connessioni senza alcun segreto (elenco dei
+campi ammessi in `portable.rs`), progetti e script; unione per elemento con tombstone e conflitti
+tenuti come copie; passphrase nel keychain; all'avvio, ogni N minuti o a mano. **Progetti
+condivisi** ("Share project…" / "Open shared project…"): `platypus-project.toml` e `scripts/` in
+una cartella (repo Git o disco condiviso), scritti a ogni modifica e riletti al focus; ognuno
+inserisce le proprie credenziali al primo collegamento. **Plugin WebAssembly**
+(`platypus-plugins` su `wasmi`, ABI in `docs/PLUGINS.md`, esempi in `examples/plugins/`): azioni
+per editor, griglia e oggetti del navigator e driver che parlano HTTP (`DriverKind::Plugin`), con
+permessi approvati all'installazione (host HTTP, appunti), limiti di fuel, memoria e messaggi.
+Limiti: Git va installato a parte, niente clone né cambio di ramo dall'app; la sincronizzazione
+usa l'ora in cui una modifica è stata notata e un computer spento più di 90 giorni riporta gli
+elementi eliminati; `connections.toml` passa alla versione 8 (un'app precedente non lo legge); i
+driver plugin solo via HTTP, senza transazioni, annullamento né tunnel SSH; la parte di sistema
+della condivisione (associazione dei file, link, istanza unica) non è stata provata su
+un'installazione vera. In un progetto condiviso, un file cambiato fuori dall'app che sposta una
+connessione (driver, host, porta, database, SSH, proxy) ne fa dimenticare password e segreti, che
+si chiedono di nuovo al collegamento; accesso degli agenti, restrizioni, sola lettura e tipo Prod
+tengono sempre il valore più restrittivo. Le opzioni che possono eseguire comandi
+(`before_connect`, `after_disconnect`) e i percorsi locali non viaggiano mai. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
+
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Integrazione Git per gli script: stato, diff, commit e pull | P3 | D+ |
-| Sincronizzazione cifrata end-to-end di impostazioni, connessioni senza password e script | P3 | N |
-| Progetti condivisi in un team: connessioni e script, senza credenziali | P3 | D+ |
-| Plugin in WASM per azioni e driver personalizzati | P3 | N |
-| Condivisione di una query come link o file `.platypus` | P3 | N |
+| ✅ Integrazione Git per gli script: stato, diff, commit e pull | P3 | D+ |
+| ✅ Sincronizzazione cifrata end-to-end di impostazioni, connessioni senza password e script | P3 | N |
+| ✅ Progetti condivisi in un team: connessioni e script, senza credenziali | P3 | D+ |
+| ✅ Plugin in WASM per azioni e driver personalizzati | P3 | N |
+| ✅ Condivisione di una query come link o file `.platypus` | P3 | N |
 
 ---
 
@@ -1132,6 +1173,14 @@ dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri
 distribuzione;
 la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program) e sono
 segnate `⏭ serve un Mac`: si saltano finché non ce n'è uno.
+Dal 30 ottobre 2026: manifest per winget, Homebrew, AUR e Flathub in `packaging/`, riempiti
+con versione e SHA-256 degli installer da `scripts/packaging.mjs` (test in
+`scripts/packaging.test.mjs`); installata da Flatpak o AUR, l'app annuncia la nuova versione
+senza installarla (marker `share/platypusdb/package-manager`). Immagine di anteprima social
+1280×640 (`docs/brand/social-preview.png`, da `social-preview.html` con
+`scripts/social-preview.mjs`) e testi della vetrina (descrizione, topic, Discussions, `good
+first issue`) in RELEASING.md. La pubblicazione dei pacchetti e le impostazioni del
+repository aspettano che diventi pubblico.
 
 | Attività | Prio |
 |---|---|
@@ -1148,12 +1197,12 @@ segnate `⏭ serve un Mac`: si saltano finché non ce n'è uno.
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
-| Distribuzione: winget, Flatpak, AUR | P3 |
-| ⏭ serve un Mac — Distribuzione con Homebrew cask (da provare su macOS) | P3 |
+| Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
+| ⏭ serve un Mac — Prova del cask Homebrew su macOS (il manifest è pronto in `packaging/`) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
-| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
+| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire (pronti l'immagine `docs/brand/social-preview.png` e i testi in [RELEASING.md](RELEASING.md), "Repository showcase"; restano le impostazioni su GitHub, da fare quando il repository è pubblico) | P2 |
 | ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
 | ✅ 🆕 Le stesse GIF nel sito (`site/`) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
@@ -1320,7 +1369,7 @@ dell'ondata.
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
 | **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: completato |
 | **3** | **I**, **J**, **M**, **N**, **Q**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
-| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
+| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | O completato; restano P3 di F, J, N, Q |
 | **5** | **R** | Revisione grafica di tutta l'app, a funzionalità finite | v1.0 | In attesa |
 | **6** | **S** | Collaudo finale di tutta l'app, dopo la revisione grafica | v1.0 | In attesa |
 

@@ -193,6 +193,7 @@ const LETTER: Record<DriverKind, string> = {
   oracle: "-",
   db2: "-",
   odbc: "-",
+  plugin: "-",
 };
 
 const entries = (driver: DriverKind) => FUNCTIONS.filter((f) => f.at(3)!.includes(LETTER[driver]));

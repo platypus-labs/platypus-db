@@ -1664,3 +1664,110 @@ label.multi-run-row:hover {
   flex: 1;
   min-width: 0;
 }
+
+/* Git for the scripts: the commit dialog and the read-only diff. */
+.git-commit-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.git-commit-files label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.git-commit-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-diff-body {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: auto;
+  max-height: 60vh;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.git-diff-hunk {
+  padding: 2px 8px;
+  color: var(--fg-muted);
+  background: color-mix(in srgb, var(--fg-muted) 12%, transparent);
+}
+
+.git-diff-line {
+  display: flex;
+  white-space: pre;
+}
+
+.git-diff-line.added {
+  background: var(--ok-bg);
+}
+
+.git-diff-line.removed {
+  background: var(--error-bg);
+}
+
+.git-diff-no {
+  flex: none;
+  width: 4ch;
+  padding: 0 4px;
+  text-align: right;
+  color: var(--fg-muted);
+  user-select: none;
+}
+
+.git-diff-sign {
+  flex: none;
+  width: 2ch;
+  text-align: center;
+  user-select: none;
+}
+
+/* Group O: share a query as a link or file */
+.share-dialog textarea.share-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.modal.share-open .sql-preview {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.share-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px 8px;
+}
+
+.share-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.share-choice > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.share-link-dialog textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 100%;
+}

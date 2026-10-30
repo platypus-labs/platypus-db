@@ -50,6 +50,14 @@ live in `data`, and the folder can move to another machine or a USB stick. Saved
 in the system's keychain unless a master password keeps them in the folder too. A portable
 copy updates by replacing its executable; the welcome screen says `portable` beside the version.
 
+## Package managers
+
+Besides the installers of each release, the app can come from winget
+(`winget install PaoloCisly.PlatypusDB`), Homebrew (`brew install --cask platypusdb`), the AUR
+(`platypusdb-bin`) and Flathub (`dev.platypusdb.desktop`), once each package is published.
+Installed from Flatpak or the AUR, the app says when a new version is out but leaves the update
+to the package manager.
+
 ## Connections
 
 ![Choosing the database for a new connection](screenshots/connections.png)
@@ -670,6 +678,27 @@ through the MCP server.
   notification when the window is in the background.
 - From the keyboard: arrows, Enter and the menu key in the navigator, the tab bar and the
   context menus; dialogs keep the focus inside them and give it back when they close.
+
+## Sharing and sync
+
+- **Git for scripts**: when a project's scripts folder is a Git repository (or after *Turn into
+  a Git repository*), the Scripts panel shows the branch, changes per script, *Commit…* of the
+  chosen files, *Pull* (fast-forward, or merge when both sides moved), *Push* and the diff of
+  a script. Git must be installed.
+- **Share query…** from an editor tab: a link (`platypus://…`) or a `.platypus` file with the
+  SQL, its title and, if asked, the parameter values, naming the database but never a password.
+  Opening one (palette, drag and drop, double click) finds the matching saved connection, or
+  offers a new one filled in, and shows the query without running it.
+- **Sync** (Settings): settings, connections without passwords, projects and scripts kept in
+  one end-to-end encrypted file in a folder you choose (a cloud drive, a network share); other
+  computers with the same passphrase merge it with their own, keeping both versions of
+  something changed on two sides.
+- **Shared projects**: *Share project…* writes a project's connections (without credentials)
+  and scripts to a folder a team keeps in Git or on a shared drive; *Open shared project…*
+  follows it, and each person enters their own password.
+- **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
+  and the navigator, or a driver for a database reached over HTTP; each asks for its
+  permissions at install. See [PLUGINS.md](PLUGINS.md).
 
 ## Settings and themes
 

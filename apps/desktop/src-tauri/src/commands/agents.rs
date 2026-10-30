@@ -33,7 +33,7 @@ const OLD_SERVER: &str = "platypus-mcp";
 
 #[derive(Debug, Serialize)]
 pub struct AgentSetup {
-    /// The app's executable, which agents start with `--mcp`.
+    /// The program agents start: the app's executable, or `flatpak` for the Flatpak.
     mcp_path: String,
     /// `claude mcp add …`, for Claude Code.
     claude_command: String,
@@ -41,20 +41,55 @@ pub struct AgentSetup {
     codex_config: String,
 }
 
+/// How agents start the server: the program and its arguments, ending with `--mcp`.
+#[derive(Debug, PartialEq, Eq)]
+struct Launch {
+    command: String,
+    args: Vec<String>,
+}
+
+impl Launch {
+    /// The executable at `path`, with `--mcp`.
+    fn app(path: &str) -> Self {
+        Self {
+            command: path.to_owned(),
+            args: vec![MCP_FLAG.to_owned()],
+        }
+    }
+
+    /// The app of the Flatpak `id`: its executable is inside the sandbox, so agents on the
+    /// host go through `flatpak run`.
+    fn flatpak(id: &str) -> Self {
+        Self {
+            command: "flatpak".to_owned(),
+            args: vec![
+                "run".to_owned(),
+                "--command=platypus-db".to_owned(),
+                id.to_owned(),
+                MCP_FLAG.to_owned(),
+            ],
+        }
+    }
+}
+
 /// `claude mcp add platypus -- "<path>" --mcp`, with the profile's folder when the app uses
 /// one.
-fn claude_command(path: &str, data_dir: Option<&str>) -> String {
+fn claude_command(launch: &Launch, data_dir: Option<&str>) -> String {
     let env = data_dir
         .map(|dir| format!("-e \"{DATA_DIR_ENV}={dir}\" "))
         .unwrap_or_default();
-    format!("claude mcp add platypus {env}-- \"{path}\" {MCP_FLAG}")
+    format!(
+        "claude mcp add platypus {env}-- \"{}\" {}",
+        launch.command,
+        launch.args.join(" ")
+    )
 }
 
 /// The Codex table for the server, as TOML.
-fn codex_config(path: &str, data_dir: Option<&str>) -> String {
+fn codex_config(launch: &Launch, data_dir: Option<&str>) -> String {
     let mut server = toml::Table::new();
-    server.insert("command".to_owned(), path.into());
-    server.insert("args".to_owned(), vec![MCP_FLAG].into());
+    server.insert("command".to_owned(), launch.command.clone().into());
+    server.insert("args".to_owned(), launch.args.clone().into());
     if let Some(dir) = data_dir {
         let mut env = toml::Table::new();
         env.insert(DATA_DIR_ENV.to_owned(), dir.into());
@@ -67,30 +102,32 @@ fn codex_config(path: &str, data_dir: Option<&str>) -> String {
     toml::to_string(&root).unwrap_or_default()
 }
 
-fn setup(path: &str, data_dir: Option<&str>) -> AgentSetup {
+fn setup(launch: &Launch, data_dir: Option<&str>) -> AgentSetup {
     AgentSetup {
-        claude_command: claude_command(path, data_dir),
-        codex_config: codex_config(path, data_dir),
-        mcp_path: path.to_owned(),
+        claude_command: claude_command(launch, data_dir),
+        codex_config: codex_config(launch, data_dir),
+        mcp_path: launch.command.clone(),
     }
 }
 
-/// The executable agents start. An `AppImage` runs from a folder mounted anew at each start:
-/// the `AppImage` file itself stays put.
-fn app_path() -> CommandResult<PathBuf> {
-    if let Some(image) = std::env::var_os("APPIMAGE") {
-        return Ok(image.into());
+/// How agents start this app as a server. An `AppImage` runs from a folder mounted anew at
+/// each start: the `AppImage` file itself stays put.
+fn launch() -> CommandResult<Launch> {
+    if let Some(id) = std::env::var_os("FLATPAK_ID") {
+        return Ok(Launch::flatpak(&id.to_string_lossy()));
     }
-    std::env::current_exe().map_err(|e| CommandError::new("other", e.to_string()))
+    if let Some(image) = std::env::var_os("APPIMAGE") {
+        return Ok(Launch::app(&image.to_string_lossy()));
+    }
+    std::env::current_exe()
+        .map(|exe| Launch::app(&exe.display().to_string()))
+        .map_err(|e| CommandError::new("other", e.to_string()))
 }
 
 #[tauri::command]
 pub fn agent_setup() -> CommandResult<AgentSetup> {
     let data_dir = std::env::var(DATA_DIR_ENV).ok();
-    Ok(setup(
-        &app_path()?.display().to_string(),
-        data_dir.as_deref(),
-    ))
+    Ok(setup(&launch()?, data_dir.as_deref()))
 }
 
 /// Why agents cannot open each connection that has a reason (see
@@ -209,9 +246,10 @@ pub fn stale_agent_registrations() -> Vec<StaleRegistration> {
 /// The server entry the clients get: this app with `--mcp`, and the profile's folder when
 /// the app uses one.
 fn server_entry() -> CommandResult<clients::ServerEntry> {
+    let Launch { command, args } = launch()?;
     Ok(clients::ServerEntry {
-        command: app_path()?.display().to_string(),
-        args: vec![MCP_FLAG.to_owned()],
+        command,
+        args,
         env: std::env::var(DATA_DIR_ENV)
             .ok()
             .map(|dir| (DATA_DIR_ENV.to_owned(), dir))
@@ -350,14 +388,18 @@ mod tests {
     fn commands_for_claude_code_and_codex() {
         let path = r"C:\Program Files\PlatypusDB\platypus-db.exe";
         assert_eq!(
-            claude_command(path, None),
+            claude_command(&Launch::app(path), None),
             r#"claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp"#
         );
         assert_eq!(
-            claude_command("/opt/p/platypus-db", Some("/tmp/profile")),
+            claude_command(&Launch::app("/opt/p/platypus-db"), Some("/tmp/profile")),
             r#"claude mcp add platypus -e "PLATYPUS_DATA_DIR=/tmp/profile" -- "/opt/p/platypus-db" --mcp"#
         );
-        let setup = setup(path, Some(r"D:\profile"));
+        assert_eq!(
+            claude_command(&Launch::flatpak("dev.platypusdb.desktop"), None),
+            r#"claude mcp add platypus -- "flatpak" run --command=platypus-db dev.platypusdb.desktop --mcp"#
+        );
+        let setup = setup(&Launch::app(path), Some(r"D:\profile"));
         let parsed: toml::Table = toml::from_str(&setup.codex_config).unwrap();
         let server = &parsed["mcp_servers"]["platypus"];
         assert_eq!(server["command"].as_str(), Some(path));

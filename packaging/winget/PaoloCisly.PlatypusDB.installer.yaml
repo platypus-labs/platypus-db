@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: PaoloCisly.PlatypusDB
+PackageVersion: @VERSION@
+InstallerType: nullsoft
+Scope: user
+UpgradeBehavior: install
+ReleaseDate: @DATE@
+Installers:
+  - Architecture: x64
+    InstallerUrl: @URL_WINDOWS_NSIS@
+    InstallerSha256: @SHA256_WINDOWS_NSIS@
+ManifestType: installer
+ManifestVersion: 1.6.0

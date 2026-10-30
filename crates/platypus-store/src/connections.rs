@@ -11,16 +11,19 @@ use uuid::Uuid;
 
 use crate::{Result, SecretStore, StoreError};
 
+mod batch;
 mod folders;
 mod imports;
 
+pub use batch::SyncBatch;
 pub use imports::{ImportInto, ImportRequest, ImportTarget};
 
 /// 2 added projects, 3 network profiles, 4 the agents' access, 5 folders, 6 drivers loaded
 /// at run time and their `options`: an older app would drop them on its first save, so it
 /// refuses the file. 7: the order of a project's connections and folders is the user's;
-/// older files are put in the order they were shown (see `ordered_as_shown`).
-const FILE_VERSION: u32 = 7;
+/// older files are put in the order they were shown (see `ordered_as_shown`). 8: a project
+/// can be linked to a shared folder (`Project::shared`).
+const FILE_VERSION: u32 = 8;
 
 /// The first version whose projects keep their connections and folders in the user's order.
 const ARRANGED_VERSION: u32 = 7;
@@ -279,6 +282,19 @@ pub struct Project {
     /// The folder of each connection in one; connections not here are at the root.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub placement: BTreeMap<Uuid, Uuid>,
+    /// The folder the project is shared through, when it is a shared project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<SharedLink>,
+}
+
+/// Where a shared project lives: a plain folder (a team's Git checkout or shared drive) that
+/// holds `platypus-project.toml` and `scripts/`. Removing the project never deletes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedLink {
+    pub path: PathBuf,
+    /// Whether the connections' user names are written to the folder.
+    #[serde(default)]
+    pub share_user: bool,
 }
 
 /// A folder of projects in the rail. A project is in one folder at most.
@@ -317,6 +333,7 @@ impl Project {
             connections: Vec::new(),
             folders: Vec::new(),
             placement: BTreeMap::new(),
+            shared: None,
         }
     }
 
@@ -554,6 +571,8 @@ pub struct ConnectionStore {
     project_folders: Vec<ProjectFolder>,
     network_profiles: Vec<NetworkProfile>,
     connections: Vec<SavedConnection>,
+    /// Counts the writes, so a caller can tell whether anything changed.
+    revision: std::sync::atomic::AtomicU64,
 }
 
 impl ConnectionStore {
@@ -615,7 +634,14 @@ impl ConnectionStore {
             project_folders,
             network_profiles,
             connections,
+            revision: std::sync::atomic::AtomicU64::new(0),
         })
+    }
+
+    /// How many times the file was written since it was opened.
+    #[must_use]
+    pub fn revision(&self) -> u64 {
+        self.revision.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     #[must_use]
@@ -660,6 +686,8 @@ impl ConnectionStore {
         if let Some(existing) = at.map(|i| &mut self.projects[i]) {
             project.folders = std::mem::take(&mut existing.folders);
             project.placement = std::mem::take(&mut existing.placement);
+            // The link changes through its own commands.
+            project.shared = existing.shared.take();
         }
         project.drop_dangling();
         match at {
@@ -1109,6 +1137,8 @@ impl ConnectionStore {
         let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(io_error)?;
         tmp.write_all(text.as_bytes()).map_err(io_error)?;
         tmp.persist(&self.path).map_err(|e| io_error(e.error))?;
+        self.revision
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 }
@@ -1152,6 +1182,7 @@ mod tests {
             connections,
             folders: Vec::new(),
             placement: BTreeMap::new(),
+            shared: None,
         }
     }
 
@@ -1175,7 +1206,7 @@ mod tests {
         s.save_project(project("Interno", vec![shared.id])).unwrap();
 
         let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
-        assert!(text.contains("version = 7"), "{text}");
+        assert!(text.contains("version = 8"), "{text}");
         assert!(text.contains("[[projects]]"), "{text}");
         let reopened = ConnectionStore::open(dir.path().join("connections.toml"), secrets).unwrap();
         let projects = reopened.projects();
@@ -1281,7 +1312,7 @@ mod tests {
         let old = s.get(id).unwrap().clone();
         s.save(old, PasswordUpdate::Keep).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("version = 7"), "{text}");
+        assert!(text.contains("version = 8"), "{text}");
         assert!(!text.contains("folder"), "{text}");
         // Older files leave agents to read only.
         assert!(text.contains("agent_access = \"read_only\""), "{text}");

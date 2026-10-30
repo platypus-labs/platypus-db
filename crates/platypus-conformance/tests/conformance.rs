@@ -112,7 +112,8 @@ impl Backend {
     }
 }
 
-/// The drivers reached through a bridge, as a pattern: they have their own tests.
+/// The drivers reached through a bridge, and plugin drivers, as a pattern: they have their
+/// own tests.
 macro_rules! bridged {
     () => {
         DriverKind::Snowflake
@@ -123,10 +124,11 @@ macro_rules! bridged {
             | DriverKind::Oracle
             | DriverKind::Db2
             | DriverKind::Odbc
+            | DriverKind::Plugin
     };
 }
 
-const BRIDGED: &str = "drivers with a bridge or a vendor client have their own tests in      bridges.rs, oracle.rs and odbc.rs";
+const BRIDGED: &str = "drivers with a bridge or a vendor client have their own tests in      bridges.rs, oracle.rs and odbc.rs; plugin drivers in platypus-plugins";
 
 fn driver(kind: DriverKind) -> &'static dyn Driver {
     match kind {

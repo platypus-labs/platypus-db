@@ -3,9 +3,9 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { type Update, check } from "@tauri-apps/plugin-updater";
 import { t } from "../i18n";
 
-/** Looks for a newer release once at startup and offers to install it; a portable copy
- *  only says so, as the installer would not update it. */
-export function UpdateBanner({ portable }: { portable: boolean }) {
+/** Looks for a newer release once at startup and offers to install it; a portable copy, or
+ *  one a package manager installed, only says so, as the installer would not update it. */
+export function UpdateBanner({ portable, packageManager }: { portable: boolean; packageManager: string | null }) {
   const [update, setUpdate] = useState<Update | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
 
@@ -43,6 +43,7 @@ export function UpdateBanner({ portable }: { portable: boolean }) {
       </span>
       <span className="spacer" />
       {portable && !progress && <span className="muted">{t("Replace this portable copy's executable with the new one.")}</span>}
+      {packageManager && <span className="muted">{t("Update it with {manager} once the new version reaches it.", { manager: packageManager })}</span>}
       {progress ? (
         <span className="muted">{progress}</span>
       ) : (
@@ -50,7 +51,7 @@ export function UpdateBanner({ portable }: { portable: boolean }) {
           <button type="button" onClick={() => setUpdate(null)}>
             {t("Later")}
           </button>
-          {!portable && (
+          {!portable && !packageManager && (
             <button type="button" className="primary" onClick={() => void install(update)}>
               {t("Install and restart")}
             </button>

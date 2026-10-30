@@ -22,7 +22,9 @@ export type DriverKind =
   | "adbc"
   | "oracle"
   | "db2"
-  | "odbc";
+  | "odbc"
+  /** A driver of an installed WebAssembly plugin, its id in `options.plugin`. */
+  | "plugin";
 
 /** Speaks mongosh instead of SQL (MongoDB): no SQL completion, formatter, linter or data editor. */
 export const isMongo = (driver: DriverKind) => driver === "mongo";
@@ -972,6 +974,117 @@ export interface ScriptEntry {
   connection: string | null;
 }
 
+// Group O: Git for the saved scripts
+
+export interface GitBranch {
+  /** `null` when HEAD is detached. */
+  name: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  has_commits: boolean;
+}
+
+/** A changed script; `badge` is M odified, A dded, D eleted, R enamed, ? untracked, U nmerged. */
+export interface GitFileStatus {
+  path: string;
+  orig_path: string | null;
+  badge: "M" | "A" | "D" | "R" | "?" | "U";
+}
+
+export interface GitStatus {
+  /** False when the scripts folder is not a repository yet. */
+  is_repo: boolean;
+  branch: GitBranch;
+  files: GitFileStatus[];
+  /** A merge stopped on conflicts and waits to be resolved or aborted. */
+  merging: boolean;
+}
+
+export type GitPullOutcome =
+  | { kind: "up_to_date" | "fast_forwarded" | "merged" | "diverged" }
+  | { kind: "conflicts"; files: string[] };
+
+export interface GitDiffLine {
+  kind: "context" | "added" | "removed";
+  old_no: number | null;
+  new_no: number | null;
+  text: string;
+}
+
+export interface GitHunk {
+  header: string;
+  lines: GitDiffLine[];
+}
+
+export interface GitFileDiff {
+  binary: boolean;
+  hunks: GitHunk[];
+}
+
+/** The author of commits, set in the repository when Git has none. */
+export interface GitIdentity {
+  name: string;
+  email: string;
+}
+
+// Group O: encrypted folder sync and shared team projects
+
+/** A change found on both sides of the sync, as the Sync page lists it. */
+export interface SyncConflict {
+  at: number;
+  /** `script`, `connection`, `setting`, `project`… */
+  what: string;
+  name: string;
+  /** `first_sync`: the item differed at this computer's first sync, and the synced version won. */
+  kind: "both_edited" | "deleted_and_edited" | "first_sync";
+  /** The name of the copy that keeps the other version, when there is one. */
+  copy: string | null;
+  machine: string;
+  /** For `first_sync` without a copy: the value this computer had (a setting's). */
+  replaced?: string | null;
+}
+
+export interface SyncStatus {
+  folder: string | null;
+  has_passphrase: boolean;
+  interval_minutes: number;
+  on_start: boolean;
+  last_sync: number | null;
+  machine: string;
+  conflicts: SyncConflict[];
+}
+
+export interface SyncReport {
+  /** Items taken into this computer. */
+  applied: number;
+  /** Whether the file in the folder was written. */
+  written: boolean;
+  skipped: number;
+  conflicts: SyncConflict[];
+  at: number;
+}
+
+/** What reading a shared project's folder found. */
+export interface SharedNotice {
+  project: string;
+  name: string;
+  kind: "changed" | "missing" | "invalid";
+  added: number;
+  removed: number;
+  changed: number;
+  /** Connections the file now sends to another server: their saved credentials were forgotten. */
+  retargeted: number;
+  /** Connections whose safety settings the file loosened: this computer's stricter ones were kept. */
+  kept_stricter: number;
+  message: string | null;
+}
+
+export interface OpenedShared {
+  workspace: Workspace;
+  project: string;
+}
+
 export interface ScriptList {
   /** The project's scripts folder, absolute. */
   root: string;
@@ -1737,6 +1850,9 @@ export interface Project {
   folders?: ConnectionFolder[];
   /** The folder of each connection not at the root, by connection id. */
   placement?: Record<string, string>;
+  /** The folder the project is shared through, when it is a shared project (the app reads
+   *  and writes `platypus-project.toml` and `scripts/` there). */
+  shared?: { path: string; share_user: boolean };
 }
 
 /** A folder of connections inside a project. */
@@ -1920,6 +2036,8 @@ export interface AppInfo {
   /** A portable copy: its data is in the `data` folder next to it, and it updates by
    *  replacing its executable. */
   portable: boolean;
+  /** The package manager that installed the app (Flatpak, AUR) and updates it. */
+  package_manager: string | null;
   os: string;
   arch: string;
 }
@@ -2224,6 +2342,18 @@ export const api = {
   /** Drops the passwords `readImport` keeps for `saveImported`. */
   forgetImport: () => invoke<void>("forget_import"),
   listProjects: () => invoke<Project[]>("list_projects"),
+  // Group O: encrypted folder sync and shared team projects
+  syncStatus: () => invoke<SyncStatus>("sync_status"),
+  /** Chooses the sync folder and passphrase (`null`: keep the saved one) and when it runs. */
+  syncConfigure: (folder: string, passphrase: string | null, intervalMinutes: number, onStart: boolean) =>
+    invoke<SyncStatus>("sync_configure", { folder, passphrase, intervalMinutes, onStart }),
+  syncDisconnect: () => invoke<SyncStatus>("sync_disconnect"),
+  syncClearConflicts: () => invoke<SyncStatus>("sync_clear_conflicts"),
+  syncNow: () => invoke<SyncReport>("sync_now"),
+  shareProject: (projectId: string, folder: string, shareUser: boolean) =>
+    invoke<Workspace>("share_project", { projectId, folder, shareUser }),
+  openSharedProject: (folder: string) => invoke<OpenedShared>("open_shared_project", { folder }),
+  refreshSharedProjects: () => invoke<SharedNotice[]>("refresh_shared_projects"),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
   deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),
@@ -2538,6 +2668,20 @@ export const api = {
   deleteScript: (project: string | null, path: string) => invoke<void>("delete_script", { project, path }),
   linkScript: (project: string | null, path: string, connection: string | null) =>
     invoke<void>("link_script", { project, path, connection }),
+  // Git for the saved scripts (group O)
+  gitStatus: (project: string | null) => invoke<GitStatus>("git_status", { project }),
+  gitInit: (project: string | null) => invoke<void>("git_init", { project }),
+  gitDiff: (project: string | null, path: string) => invoke<GitFileDiff>("git_diff", { project, path }),
+  /** Commits `paths`; returns the short id. Fails with kind `git_identity_missing` when Git
+   *  does not know the author and no `identity` is given. */
+  gitCommit: (project: string | null, paths: string[], message: string, identity: GitIdentity | null) =>
+    invoke<string>("git_commit", { project, paths, message, identity }),
+  gitFetch: (project: string | null) => invoke<void>("git_fetch", { project }),
+  gitPull: (project: string | null) => invoke<GitPullOutcome>("git_pull", { project }),
+  gitPullMerge: (project: string | null, identity: GitIdentity | null) =>
+    invoke<GitPullOutcome>("git_pull_merge", { project, identity }),
+  gitMergeAbort: (project: string | null) => invoke<void>("git_merge_abort", { project }),
+  gitPush: (project: string | null) => invoke<void>("git_push", { project }),
   // Dashboards (group M): files in the data folder, per project
   listDashboards: (project: string | null) => invoke<DashboardEntry[]>("list_dashboards", { project }),
   /** The JSON text of a saved dashboard. */
@@ -2826,6 +2970,11 @@ export const api = {
   tableProfile: (sessionId: number, schema: string, table: string, maxRows: number | null) =>
     invoke<TableProfile>("table_profile", { sessionId, schema, table, maxRows }),
 
+  // Collaboration (group O): shared queries
+  /** The links and `.platypus` file paths the app was started or reopened with, since the
+   *  last call; the page asks again whenever `share-open` is emitted. */
+  takePendingShares: () => invoke<string[]>("take_pending_shares"),
+
   // Analysis (group M): charts
   /** What `request` draws from the rows the result has loaded. */
   chartData: (jobId: number, request: ChartRequest) => invoke<ChartData>("chart_data", { jobId, request }),
@@ -2875,4 +3024,75 @@ export const api = {
   /** The differences from the kept run to result `jobId`, by the `key` columns when given. */
   diffPrevious: (sessionId: number, jobId: number, key: number[] | null) =>
     invoke<Diff>("diff_previous", { sessionId, jobId, key }),
+
+  // Group O: WebAssembly plugins
+  /** The installed plugins, by id. */
+  pluginsList: () => invoke<InstalledPlugin[]>("plugins_list"),
+  /** Reads a package (a folder or a `.zip`) for the user to review before installing it. */
+  pluginInspect: (path: string) => invoke<InspectedPlugin>("plugin_inspect", { path }),
+  /** Installs a package, approving the permissions of its manifest; refused when the package is
+   *  no longer the one reviewed (`hash` from `pluginInspect`). */
+  pluginInstall: (path: string, hash: string) => invoke<InstalledPlugin>("plugin_install", { path, hash }),
+  pluginSetEnabled: (id: string, enabled: boolean) => invoke<void>("plugin_set_enabled", { id, enabled }),
+  pluginRemove: (id: string) => invoke<void>("plugin_remove", { id }),
+  /** Runs a plugin's action on the context of its scope; the page applies the outcome. */
+  pluginRunAction: (plugin: string, action: string, context: unknown) =>
+    invoke<PluginOutcome>("plugin_run_action", { plugin, action, context }),
 };
+
+// Group O: WebAssembly plugins (`platypus-plugins`)
+export interface PluginPermissions {
+  /** Hosts the plugin may send HTTP requests to (`*.example.com` for subdomains). */
+  http: string[];
+  clipboard: boolean;
+}
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  api: number;
+  kinds: ("actions" | "driver")[];
+  permissions: PluginPermissions;
+}
+
+export type PluginActionScope = "editor" | "grid" | "navigator.object";
+
+export interface PluginActionInfo {
+  id: string;
+  /** In the plugin's own language: not translated. */
+  title: string;
+  scope: PluginActionScope;
+  shortcut?: string | null;
+}
+
+export interface PluginDescription {
+  actions: PluginActionInfo[];
+  driver: { name: string; metadata: boolean } | null;
+}
+
+export interface InstalledPlugin {
+  manifest: PluginManifest;
+  enabled: boolean;
+  approved: PluginPermissions;
+  description: PluginDescription;
+}
+
+export interface InspectedPlugin {
+  manifest: PluginManifest;
+  description: PluginDescription;
+  /** The installed version it replaces. */
+  replaces: string | null;
+  /** The package's hash, given back to `pluginInstall` so that what is installed is what was reviewed. */
+  hash: string;
+}
+
+/** What the app does with an action's result. */
+export type PluginOutcome =
+  | { kind: "replace"; text: string }
+  | { kind: "new_tab"; text: string }
+  | { kind: "copy"; text: string }
+  | { kind: "message"; text: string }
+  | { kind: "none" };

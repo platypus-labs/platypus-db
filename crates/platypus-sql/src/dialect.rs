@@ -53,9 +53,12 @@ impl From<DriverKind> for Dialect {
             | DriverKind::Elasticsearch => Self::Postgres,
             DriverKind::Snowflake => Self::Snowflake,
             // CQL quotes names with `"…"` and strings with `'…'`, as standard SQL does.
-            DriverKind::Trino | DriverKind::Adbc | DriverKind::Odbc | DriverKind::Cassandra => {
-                Self::Ansi
-            }
+            // A plugin's database is unknown: standard SQL is the safest guess.
+            DriverKind::Trino
+            | DriverKind::Adbc
+            | DriverKind::Odbc
+            | DriverKind::Cassandra
+            | DriverKind::Plugin => Self::Ansi,
             DriverKind::Oracle => Self::Oracle,
             DriverKind::Db2 => Self::Db2,
             DriverKind::BigQuery => Self::BigQuery,
