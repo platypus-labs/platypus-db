@@ -101,6 +101,10 @@ priorità finite, e il resto del gruppo si può ancora prendere, come un gruppo 
 prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 [CLAUDE.md](../CLAUDE.md).
 
+**Righe `⏭ serve un Mac`.** Non abbiamo un Mac: le attività segnate così (verifica, firma,
+scenari e distribuzione su macOS) si saltano finché non ce n'è uno. Non si prendono, non contano
+per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva un Mac.
+
 | Gruppo | Lock |
 |---|---|
 | A — Modifica dei dati | ✅ completato |
@@ -1126,16 +1130,17 @@ prestazioni e il confronto. Restano la verifica su un desktop Linux con GPU, il 
 dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri (li misura
 `scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
 distribuzione;
-la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
+la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program) e sono
+segnate `⏭ serve un Mac`: si saltano finché non ce n'è uno.
 
 | Attività | Prio |
 |---|---|
 | Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
-| Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma (serve un Mac) | P3 |
+| ⏭ serve un Mac — Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma | P3 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0; v0.2.1 solo Windows, compilata in locale perché i minuti di Actions erano finiti) | P1 |
 | Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
-| Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
+| ⏭ serve un Mac — Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
@@ -1143,7 +1148,8 @@ la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Prog
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
-| Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
+| Distribuzione: winget, Flatpak, AUR | P3 |
+| ⏭ serve un Mac — Distribuzione con Homebrew cask (da provare su macOS) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
@@ -1219,13 +1225,20 @@ le differenze, senza cambiare il comportamento. Restano le scelte di fondo già 
 attuali, rail dei progetti in stile Discord, tab in alto, interfaccia minimale che non sembri
 generata.
 
+**Prima i mockup.** Il gruppo rifà anche le pagine dell'app e il sito (`site/`). Prima di
+scrivere codice si preparano i mockup delle pagine (app e sito), si fanno vedere all'utente e si
+procede solo con i mockup approvati; una pagina senza mockup approvato non si tocca.
+
 **Area:** `apps/desktop/src/styles/`, i componenti di tutte le aree (solo CSS, markup e testi),
-`apps/desktop/src/assets/`; nessuna modifica a backend, driver o formati dei file
+`apps/desktop/src/assets/`, `site/`; nessuna modifica a backend, driver o formati dei file
 **Dipende da:** tutti gli altri gruppi completati
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | 🆕 **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
+| 🆕 **Mockup delle pagine** dell'app e del sito, partendo dall'inventario: si fanno vedere all'utente e si implementa solo dopo la sua approvazione | P1 | N |
+| 🆕 **Rifacimento delle pagine dell'app** secondo i mockup approvati | P1 | N |
+| 🆕 **Rifacimento del sito** (`site/`) secondo i mockup approvati, con lo stesso stile dell'app | P1 | N |
 | 🆕 **Tutto a portata di mano e comprensibile**: ogni pagina studiata perché l'utente capisca da sola cosa può fare lì; le azioni principali visibili sulla pagina stessa (pulsanti, intestazioni, stati vuoti con l'azione utile), non solo nei menu contestuali o nelle scorciatoie; dalla pagina di un oggetto si arriva a tutto ciò che lo riguarda (dati, struttura, editor grafico, DDL, diagramma). Esempio: l'editor grafico della tabella oggi si apre solo dal menu del navigator o con F4 | P1 | N |
 | 🆕 **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
 | 🆕 Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
@@ -1256,7 +1269,8 @@ poi le correzioni e un secondo giro con occhi nuovi; un agente o una persona all
 rilascio) è meglio non farlo in una sessione di un agente in cloud: lì gli E2E non girano (solo
 Windows, WebView2), non c'è GPU né macOS, i download dei driver e degli altri client sono
 bloccati dalla rete del container, e il disco è un'allowance fissa che i database di test
-riempiono. Va fatto su macchine vere: Windows, poi macOS e un desktop Linux.
+riempiono. Va fatto su macchine vere: Windows, poi un desktop Linux; macOS quando ci sarà un Mac
+(`⏭ serve un Mac`).
 
 **Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/BENCHMARKS.md`; le correzioni
 nei file delle aree toccate, in commit piccoli e separati
@@ -1269,7 +1283,8 @@ nei file delle aree toccate, in commit piccoli e separati
 | 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
 | 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
 | 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano | P1 | N |
-| 🆕 **macOS e Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
+| 🆕 **Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
+| ⏭ serve un Mac — 🆕 **macOS**: gli scenari E2E o un collaudo a mano con la stessa lista | P2 | N |
 | 🆕 **Prestazioni e memoria**: tabelle da milioni di righe, schemi con migliaia di oggetti, una sessione di ore senza che la memoria cresca, database remoto lento; i numeri in BENCHMARKS.md | P2 | N |
 | 🆕 **Revisione di sicurezza** del codice: credenziali, MCP, sola lettura, SQL generato, file letti e scritti | P2 | N |
 | 🆕 Secondo giro con tester nuovi che non hanno visto i rapporti del primo, poi la verifica completa (fmt, clippy, test, E2E, conformance) tutta verde prima della v1.0 | P1 | N |
