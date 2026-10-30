@@ -982,8 +982,16 @@ scritti ma non ancora eseguiti (runner Windows).
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Stato: P1 e P2 completate, P3 quasi** (resta il mascheramento delle colonne sensibili del
-gruppo Q nei tool su script e cronologia, che aspetta quelle colonne). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+**Stato: completato.** P3 finita col mascheramento delle colonne sensibili del gruppo Q nei
+tool su script e cronologia: `platypus-sql::sensitive` (le regole sui nomi come le impostazioni
+dell'app, `DEFAULT_NAMES` tenuto uguale a `maskRules.ts` da un test, e `mask_literals`, che
+scrive `'••••••'` al posto dei valori legati a una colonna sensibile: confronti, `IN`, `SET`,
+le posizioni di `INSERT … VALUES` e `INSERT … SELECT`, attraverso cast, chiamate e `BETWEEN`; e
+`mask_error` per gli errori di PostgreSQL, MySQL e SQL Server che citano un valore), usato da
+`read_script` e `search_history` coi segni "sensibile" di `catalog.db` delle connessioni dello
+script (di tutte quelle visibili per uno script senza connessione). Nel testo una colonna si
+conosce solo per nome: un segno "non sensibile" non toglie le regole, e le regole sui tipi non
+servono; se `catalog.db` non si legge il tool fallisce invece di mostrare i valori. Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
@@ -1075,7 +1083,7 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | ✅ Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 | ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
-| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate (fatti i tool `list_scripts`, `read_script`, `search_history`; manca il mascheramento, che aspetta le colonne sensibili del gruppo Q) | P3 | N |
+| ✅ Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
 
