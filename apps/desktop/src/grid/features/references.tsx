@@ -131,16 +131,18 @@ export function useReferences({ edit, jobId, columns, row, onError }: Options) {
         }
       : undefined;
 
-  const panel = panelOpen && edit && source && mapped && (
-    <ReferencesPanel
-      edit={edit}
-      source={source}
-      mapped={mapped}
-      jobId={jobId}
-      row={row}
-      onClose={() => setPanelOpen(false)}
-    />
-  );
+  // `null` when closed (not `false`): the grid shows the side panels' handle only for a panel.
+  const panel =
+    panelOpen && edit && source && mapped ? (
+      <ReferencesPanel
+        edit={edit}
+        source={source}
+        mapped={mapped}
+        jobId={jobId}
+        row={row}
+        onClose={() => setPanelOpen(false)}
+      />
+    ) : null;
   return { references, panel };
 }
 
