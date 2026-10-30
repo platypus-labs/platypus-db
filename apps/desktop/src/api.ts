@@ -257,6 +257,10 @@ export interface Capabilities {
   maintenance: Maintenance[];
   /** The driver loads rows natively (PostgreSQL `COPY`, MySQL `LOAD DATA LOCAL`). */
   bulk_load: boolean;
+  /** The admin tab's list of the server's configuration parameters. */
+  server_parameters: boolean;
+  /** The admin tab's dashboard of the server's load. */
+  server_metrics: boolean;
 }
 
 /** A session of the server; see `platypus_core::ServerSession`. */
@@ -319,6 +323,67 @@ export interface ObjectStatistics {
   last_analyze: string | null;
   /** A unique or primary key index. */
   unique: boolean;
+}
+
+/** A configuration parameter of the server; see `platypus_core::ServerParameter`. */
+export interface ServerParameter {
+  name: string;
+  value: string | null;
+  unit: string | null;
+  default: string | null;
+  /** The value differs from the default. */
+  changed: boolean;
+  source: string | null;
+  /** When a change takes effect (PostgreSQL's context), or the scope of the setting. */
+  context: string | null;
+  description: string | null;
+  min: string | null;
+  max: string | null;
+  pending_restart: boolean;
+  /** A statement that sets it to its current value; `null` when it cannot be set. */
+  statement: string | null;
+}
+
+/** One figure of a metrics snapshot, or why the server gave none. */
+export interface Metric {
+  value: number | null;
+  unavailable: string | null;
+}
+
+/** One database of the server and its size on disk. */
+export interface DatabaseSize {
+  name: string;
+  bytes: number;
+}
+
+/** A link of the server's replication; see `platypus_core::ReplicationRow`. */
+export interface ReplicationRow {
+  role: "standby" | "primary" | "group" | "table";
+  name: string | null;
+  state: string | null;
+  lag_seconds: number | null;
+  lag_bytes: number | null;
+  detail: string | null;
+}
+
+/** A snapshot of the server's load; see `platypus_core::ServerMetrics`. */
+export interface ServerMetrics {
+  connections_active: Metric;
+  connections_idle: Metric;
+  connections_max: Metric;
+  uptime_seconds: Metric;
+  /** Counter since the start. */
+  transactions: Metric;
+  /** Counter since the start. */
+  statements: Metric;
+  /** Counter since the start. */
+  cache_hits: Metric;
+  /** Counter since the start. */
+  cache_reads: Metric;
+  databases: DatabaseSize[];
+  databases_unavailable: string | null;
+  replication: ReplicationRow[];
+  replication_unavailable: string | null;
 }
 
 /** A backup's or restore's progress and outcome; see `commands::backup::BackupEvent`. */
@@ -2335,6 +2400,8 @@ export const api = {
   serverLocks: (sessionId: number) => invoke<ServerLock[]>("server_locks", { sessionId }),
   topQueries: (sessionId: number) => invoke<ServerQuery[]>("top_queries", { sessionId }),
   objectStatistics: (sessionId: number) => invoke<ObjectStatistics[]>("object_statistics", { sessionId }),
+  serverParameters: (sessionId: number) => invoke<ServerParameter[]>("server_parameters", { sessionId }),
+  serverMetrics: (sessionId: number) => invoke<ServerMetrics>("server_metrics", { sessionId }),
   /** Runs `operation` on table `schema.table`; returns what the server said, a line each. */
   maintainTable: (sessionId: number, schema: string, table: string, operation: Maintenance) =>
     invoke<string[]>("maintain_table", { sessionId, schema, table, operation }),
