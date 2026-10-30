@@ -63,12 +63,12 @@
   <section class="section deep">
     <header class="head"><p class="eyebrow">Head to head</p><h2>One client at a time.</h2></header>
     <div class="seg-pills vs-pick" role="tablist" aria-label="Compare with">
-      <button type="button" role="tab" aria-selected="true" data-client="dbeaver">DBeaver CE</button>
-      <button type="button" role="tab" aria-selected="false" data-client="datagrip">DataGrip</button>
-      <button type="button" role="tab" aria-selected="false" data-client="tableplus">TablePlus</button>
-      <button type="button" role="tab" aria-selected="false" data-client="beekeeper">Beekeeper Studio</button>
+      <button type="button" role="tab" aria-selected="true" aria-controls="vs-panel" data-client="dbeaver">DBeaver CE</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="vs-panel" data-client="datagrip">DataGrip</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="vs-panel" data-client="tableplus">TablePlus</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="vs-panel" data-client="beekeeper">Beekeeper Studio</button>
     </div>
-    <div class="vs" aria-live="polite">
+    <div class="vs" id="vs-panel" role="tabpanel" aria-live="polite">
       <div class="vs-col me">
         <div class="vs-name"><img src="img/mark.png" alt="" width="34" height="34">PlatypusDB</div>
         <dl>

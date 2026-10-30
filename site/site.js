@@ -100,18 +100,21 @@
   });
 })();
 
-// The link of the section in view is marked in the navigation.
+// The link of the section in view is marked in the navigation and in the bar of the areas.
 (function () {
   // Only the links to sections of this page; the others open pages of their own.
-  var links = document.querySelectorAll('.nav-links a[href^="#"]');
+  var links = document.querySelectorAll('.nav-links a[href^="#"], .pill-nav a[href^="#"]');
   if (!("IntersectionObserver" in window) || !links.length) return;
   var byId = {};
-  links.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
+  links.forEach(function (a) {
+    var id = a.getAttribute("href").slice(1);
+    (byId[id] = byId[id] || []).push(a);
+  });
   var watcher = new IntersectionObserver(function (entries) {
     entries.forEach(function (e) {
       if (!e.isIntersecting) return;
       links.forEach(function (a) { a.removeAttribute("aria-current"); });
-      byId[e.target.id].setAttribute("aria-current", "true");
+      byId[e.target.id].forEach(function (a) { a.setAttribute("aria-current", "true"); });
     });
   }, { rootMargin: "-45% 0px -50% 0px" });
   Object.keys(byId).forEach(function (id) {
@@ -148,8 +151,25 @@
       b.setAttribute("aria-selected", b.getAttribute("data-client") === id ? "true" : "false");
     });
   }
+  var buttons = Array.prototype.slice.call(pick.querySelectorAll("button[data-client]"));
+  function select(b) {
+    buttons.forEach(function (x) { x.tabIndex = x === b ? 0 : -1; });
+    show(b.getAttribute("data-client"));
+  }
   pick.addEventListener("click", function (e) {
     var b = e.target.closest("button[data-client]");
-    if (b) show(b.getAttribute("data-client"));
+    if (b) select(b);
   });
+  // The arrows and Home/End move between the clients, as in the tour.
+  pick.addEventListener("keydown", function (e) {
+    var at = buttons.indexOf(document.activeElement);
+    if (at < 0) return;
+    var next = { ArrowRight: at + 1, ArrowDown: at + 1, ArrowLeft: at - 1, ArrowUp: at - 1, Home: 0, End: buttons.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    var b = buttons[(next + buttons.length) % buttons.length];
+    b.focus();
+    select(b);
+  });
+  select(buttons[0]);
 })();

@@ -1716,10 +1716,8 @@ svg.i.sm {
 }
 
 /* Features: the pill navigation under the heading. */
+/* The areas of the Features page: an index under the title, not a bar over the content. */
 .pill-nav {
-  position: sticky;
-  top: 88px;
-  z-index: 40;
   max-width: var(--page);
   margin: 56px auto 0;
   padding: 0 var(--gutter);
@@ -1750,7 +1748,7 @@ svg.i.sm {
   background: var(--card-2);
 }
 
-.pill-nav a.on {
+.pill-nav a[aria-current] {
   color: var(--hi);
   background: var(--card-2);
 }
