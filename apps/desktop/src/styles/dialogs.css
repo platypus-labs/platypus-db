@@ -1079,6 +1079,50 @@ button.primary.danger:hover:not(:disabled) {
   background: var(--type-dev, #2f9e44);
 }
 
+.driver-block {
+  border-bottom: 1px solid var(--border);
+}
+
+.driver-row-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.driver-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.update-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: var(--radius-lg);
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  font-size: 11px;
+}
+
+.update-badge.active {
+  background: var(--type-dev, #2f9e44);
+}
+
+.driver-versions {
+  margin: 0 0 8px 12px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+
+.driver-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
 .driver-row {
   display: flex;
   align-items: center;

@@ -351,11 +351,28 @@ pub async fn test_connection(
     password: PasswordInput,
     ssh_secrets: Option<SshSecrets>,
 ) -> CommandResult<ServerInfo> {
-    let ssh = ssh_secrets.unwrap_or_default();
+    let conn = open_for_test(
+        &state,
+        &connection,
+        password,
+        ssh_secrets.unwrap_or_default(),
+    )
+    .await?;
+    Ok(conn.server_info().clone())
+}
+
+/// Opens the connection `connection` describes, with the password the form typed, else the
+/// one it keeps; shared by the connection test and the driver compatibility probe.
+pub(crate) async fn open_for_test(
+    state: &AppState,
+    connection: &SavedConnection,
+    password: PasswordInput,
+    ssh: SshSecrets,
+) -> CommandResult<Box<dyn Connection>> {
     let secret = match password {
         PasswordInput::Set(p) => Some(Secret::new(p)),
         PasswordInput::Clear => None,
-        PasswordInput::Keep => match external_password(&connection).await? {
+        PasswordInput::Keep => match external_password(connection).await? {
             Some(secret) => Some(secret),
             // A connection that was never saved has nothing stored yet.
             None => state.with_store(|s| match s.get(connection.id) {
@@ -365,13 +382,12 @@ pub async fn test_connection(
         },
     };
     let config = state
-        .with_store(|s| Ok(config_of(s, &connection, secret, &ssh)))?
+        .with_store(|s| Ok(config_of(s, connection, secret, &ssh)))?
         .with_env()?;
     if !config.driver.is_embedded() {
         config.check_host()?;
     }
-    let conn = connect(&config).await?;
-    Ok(conn.server_info().clone())
+    Ok(connect(&config).await?)
 }
 
 /// Whether a failed login is about the credentials, so that asking for the password again
