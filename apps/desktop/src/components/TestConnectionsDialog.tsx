@@ -6,6 +6,8 @@ import { api, type Project, type SavedConnection, toCommandError } from "../api"
 import { type TestOutcome, tally, testable } from "../connectionTest";
 import { pool } from "../editor/multiRun";
 import { formatCount, t } from "../i18n";
+import { DialogHeader } from "../ui/DialogHeader";
+import { Icon } from "../ui/Icon";
 import { connectionsOf } from "../projects/state";
 import { workbench } from "../workbench";
 
@@ -66,7 +68,7 @@ export function TestConnectionsDialog({ scope, connections, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal multi-run test-connections" role="dialog" aria-label={t("Test connections")} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{scope ? t("Test the connections of {project}", { project: scope }) : t("Test connections")}</h2>
+        <DialogHeader title={scope ? t("Test the connections of {project}", { project: scope }) : t("Test connections")} onClose={onClose} />
         {connections.length === 0 ? (
           <p className="muted small">{t("No connections to test.")}</p>
         ) : (
@@ -122,7 +124,11 @@ function TestRow({ connection, outcome }: { connection: SavedConnection; outcome
   }
   return (
     <div className={`multi-run-row outcome ${outcome.state}`} role="listitem" data-id={connection.id} data-state={outcome.state}>
-      <span className="multi-run-state" aria-hidden />
+      <span className="multi-run-state" aria-hidden>
+        {outcome.state === "done" && <Icon name="commit" size={14} />}
+        {outcome.state === "failed" && <Icon name="error" size={14} />}
+        {outcome.state === "skipped" && <Icon name="lock" size={14} />}
+      </span>
       <span className="multi-run-name">{connection.name}</span>
       <span className="multi-run-outcome" title={text}>
         {text}

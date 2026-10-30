@@ -1,5 +1,6 @@
 import { workbench } from "../workbench";
 import { t } from "../i18n";
+import { DialogHeader } from "./DialogHeader";
 
 let open = 0;
 
@@ -42,12 +43,13 @@ export function choose<T>(message: string, choices: Choice<T>[]): Promise<T | nu
       return (
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && answer(null)}>
           <div
-            className="modal small confirm"
+            className="modal confirm"
             role="alertdialog"
             aria-modal="true"
             aria-describedby="confirm-message"
             onKeyDown={(e) => e.key === "Escape" && answer(null)}
           >
+            <DialogHeader title={t("Please confirm")} onClose={() => answer(null)} />
             <p id="confirm-message">{message}</p>
             <div className="actions">
               <span className="spacer" />

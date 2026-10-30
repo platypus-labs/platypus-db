@@ -1,9 +1,5 @@
 /* Import of data files. */
 
-.modal.import-data {
-  width: min(900px, calc(100vw - 32px));
-}
-
 .import-preview {
   max-height: 30vh;
   overflow: auto;
@@ -98,8 +94,3 @@
   color: var(--fg-muted);
 }
 
-.export-tables .actions,
-.import-data .actions {
-  padding-top: var(--space-12);
-  border-top: 1px solid var(--border);
-}

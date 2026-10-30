@@ -31,6 +31,7 @@ import {
   toggleAll,
 } from "./importTree";
 import { t, msg } from "../i18n";
+import { DialogHeader } from "../ui/DialogHeader";
 
 interface Props {
   existing: SavedConnection[];
@@ -146,7 +147,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide import-dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{t("Import connections and projects")}</h2>
+        <DialogHeader title={t("Import connections and projects")} onClose={onClose} />
         <span className="muted small">{t("Source")}</span>
         <div className="import-sources">
           {SOURCES.map((s) => (

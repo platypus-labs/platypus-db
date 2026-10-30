@@ -85,7 +85,7 @@
   display: block;
   width: var(--heat, 0%);
   height: 100%;
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .explain-bar i.hot {
@@ -460,10 +460,6 @@
 }
 
 /* Paste or open a plan. */
-.modal.plan-dialog {
-  width: min(760px, calc(100vw - 32px));
-}
-
 .plan-text {
   width: 100%;
   min-height: 260px;

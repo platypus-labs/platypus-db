@@ -26,6 +26,7 @@ import { withDriver } from "../drivers/DriverPopup";
 import { ProfileButtons } from "./ProfileSave";
 import { changedKeys, mappingFor, missingColumns, type NewColumn, newColumnsFor } from "./profiles";
 import { t, plural, msg } from "../i18n";
+import { DialogHeader } from "../ui/DialogHeader";
 
 /** A table of a connection: where rows come from or go to. */
 export interface TableAt {
@@ -409,7 +410,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal wide import-data" onKeyDown={(e) => e.key === "Escape" && close()}>
-        <h2>{title}</h2>
+        <DialogHeader title={title} onClose={close} />
         {transfer ? (
           <div className="row">
             <label className="field grow">

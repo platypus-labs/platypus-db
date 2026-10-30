@@ -2,6 +2,7 @@ import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type PlanSource, type ReadPlan, toCommandError } from "../api";
 import { msg, t } from "../i18n";
+import { DialogHeader } from "../ui/DialogHeader";
 
 const SOURCES: [PlanSource | "", string][] = [
   ["", msg("Recognize it")],
@@ -67,7 +68,7 @@ export function PlanDialog({
           void read();
         }}
       >
-        <h2>{title}</h2>
+        <DialogHeader title={title} onClose={onClose} disabled={busy} />
         <p className="muted small">
           {t("Paste the output of EXPLAIN, as psql, the MySQL client, sqlcmd or a server log prints it, or open a file.")}
         </p>
