@@ -127,6 +127,24 @@ pub enum InstallEvent {
     Progress { done: u64, total: Option<u64> },
 }
 
+/// Downloads and installs `package`, reporting progress on `on_event`; the download can be
+/// cancelled by package name.
+async fn install_package(
+    name: &'static str,
+    registry: &Registry,
+    package: &Package,
+    on_event: &Channel<InstallEvent>,
+) -> CommandResult<Installed> {
+    let (cancel, _installing) = start_install(name);
+    let progress = |done, total| {
+        let _ = on_event.send(InstallEvent::Progress { done, total });
+    };
+    registry
+        .install(package, progress, &cancel)
+        .await
+        .map_err(driver_error)
+}
+
 /// Downloads and installs the driver of `driver`, reporting progress on `on_event`.
 #[tauri::command]
 pub async fn install_driver(
@@ -136,14 +154,7 @@ pub async fn install_driver(
     let name = package_name(driver)?;
     let registry = registry(data_dir()?);
     let package = registry.package(name).await.map_err(driver_error)?;
-    let (cancel, _installing) = start_install(name);
-    let progress = |done, total| {
-        let _ = on_event.send(InstallEvent::Progress { done, total });
-    };
-    registry
-        .install(&package, progress, &cancel)
-        .await
-        .map_err(driver_error)
+    install_package(name, &registry, &package, &on_event).await
 }
 
 /// Stops the download of `driver`'s driver; others go on.
@@ -212,14 +223,7 @@ pub async fn install_driver_version(
         .ok_or_else(|| {
             CommandError::new("drivers", format!("the registry has no {name} {version}"))
         })?;
-    let (cancel, _installing) = start_install(name);
-    let progress = |done, total| {
-        let _ = on_event.send(InstallEvent::Progress { done, total });
-    };
-    registry
-        .install(&package, progress, &cancel)
-        .await
-        .map_err(driver_error)
+    install_package(name, &registry, &package, &on_event).await
 }
 
 /// Makes the installed `version` of the driver of `driver` the one connections use. Sessions

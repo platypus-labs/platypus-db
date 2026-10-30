@@ -217,7 +217,7 @@ pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
             .iter()
             .all(|range| {
                 let text = &sql[range.clone()];
-                platypus_driver_cassandra::cql::first_word(text) != "BEGIN"
+                !is_cql_batch(text)
                     && platypus_sql::analyze(text, Dialect::Ansi).kind == StatementKind::Query
             });
     }
@@ -342,7 +342,7 @@ fn analyze_cql(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
                 let text = &src[range.clone()];
                 let analysis = platypus_sql::analyze(text, Dialect::Ansi);
                 // A batch hides its statements from the analysis: it asks as DDL does.
-                let batch = platypus_driver_cassandra::cql::first_word(text) == "BEGIN";
+                let batch = is_cql_batch(text);
                 StatementSpan {
                     start: map.to_utf16(range.start),
                     end: map.to_utf16(range.end),
@@ -370,6 +370,11 @@ fn analyze_cql(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
             })
             .collect(),
     }
+}
+
+/// Whether the CQL statement `text` is a `BEGIN … BATCH`, which the analysis cannot see into.
+fn is_cql_batch(text: &str) -> bool {
+    platypus_driver_cassandra::cql::first_word(text) == "BEGIN"
 }
 
 /// The placeholders of the statement `text`, which starts at byte `offset` of the editor's
