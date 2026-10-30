@@ -2858,6 +2858,11 @@ export const api = {
   tableProfile: (sessionId: number, schema: string, table: string, maxRows: number | null) =>
     invoke<TableProfile>("table_profile", { sessionId, schema, table, maxRows }),
 
+  // Collaboration (group O): shared queries
+  /** The links and `.platypus` file paths the app was started or reopened with, since the
+   *  last call; the page asks again whenever `share-open` is emitted. */
+  takePendingShares: () => invoke<string[]>("take_pending_shares"),
+
   // Analysis (group M): charts
   /** What `request` draws from the rows the result has loaded. */
   chartData: (jobId: number, request: ChartRequest) => invoke<ChartData>("chart_data", { jobId, request }),

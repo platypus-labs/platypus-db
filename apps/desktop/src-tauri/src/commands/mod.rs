@@ -39,6 +39,7 @@ pub mod scripts;
 pub mod search;
 pub mod security;
 pub mod settings;
+pub mod share;
 pub mod snapshots;
 pub mod sql;
 pub mod summary;
