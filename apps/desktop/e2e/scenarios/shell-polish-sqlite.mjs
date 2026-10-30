@@ -158,8 +158,9 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${shownSettings}.includes('Group tabs by connection')`);
   assert.equal(await page.eval(`${shownSettings}.includes('Language')`), false);
   await page.eval(setInput(".modal.settings .modal-search input", "language"));
-  await page.waitFor(`${shownSettings}.length === 1`);
-  assert.deepEqual(await page.eval(shownSettings), ["Language"]);
+  // The setting, and those of the sub-tab named after it ("Language and text").
+  await page.waitFor(`${shownSettings}.length === 3`);
+  assert.deepEqual(await page.eval(shownSettings), ["Language", "SQL editor font size", "Result grid font size"]);
   assert.equal(await page.eval(`document.querySelectorAll('.settings-nav button').length`), 1);
   // The matches show grouped under their section, in place of the tabs.
   assert.deepEqual(await page.eval(`[...document.querySelectorAll('.settings-results > section:not([hidden]) > h3')].map(h => h.textContent)`), ["Appearance"]);
