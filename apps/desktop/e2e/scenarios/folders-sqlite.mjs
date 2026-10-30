@@ -1,8 +1,10 @@
 // Folders: a folder of connections made in a project, a connection moved into it from its
 // menu, then the folder deleted with the connection staying in the project; connections
-// reordered by drag and drop and Alt+Up, and one dropped onto another making a folder; in
-// the rail, a project dropped on another makes a folder, which is renamed and ungrouped from
-// its menu.
+// reordered by drag and drop and Alt+Up, and one dropped onto another making a folder. In
+// the rail, projects reordered by drag and drop (kept after a reload), a drag cancelled with
+// Escape, a project dropped on another making a folder, reordered inside it, dropped into it
+// and out of it at the end of the rail; the folder renamed and ungrouped from its menu.
+// Every drag is real pointer input (press, moves, release), as a user's mouse makes it.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,6 +12,7 @@ import { ALT } from "../cdp.mjs";
 
 const P = "00000000-0000-4000-9000-000000000041";
 const Q = "00000000-0000-4000-9000-000000000042";
+const T = "00000000-0000-4000-9000-000000000043";
 const A = "00000000-0000-4000-8000-0000000000a4";
 const B = "00000000-0000-4000-8000-0000000000b4";
 
@@ -37,6 +40,11 @@ connections = ["${A}", "${B}"]
 id = "${Q}"
 name = "Secondo"
 color = "#3d7bf7"
+
+[[projects]]
+id = "${T}"
+name = "Terzo"
+color = "#2f9e6e"
 
 ${connection(A, "alpha")}
 ${connection(B, "beta")}`,
@@ -67,20 +75,22 @@ async function answerName(page, name) {
   await page.waitFor(`${nameDialog} === null`);
 }
 
-/** Drags the row `from` onto the row `to`: on its top edge (`before`), its middle (`into`)
- *  or its bottom edge (`after`). */
-const drag = (page, from, to, where) =>
-  page.eval(`(() => {
-    const dt = new DataTransfer();
-    ${treeRow(from)}.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
-    const target = ${treeRow(to)};
-    const r = target.getBoundingClientRect();
-    const y = { before: r.top + 2, into: r.top + r.height / 2, after: r.bottom - 2 }[${JSON.stringify(where)}];
-    const at = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 40, clientY: y };
-    target.dispatchEvent(new DragEvent('dragover', at));
-    target.dispatchEvent(new DragEvent('drop', at));
-    ${treeRow(from)}?.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
-  })()`);
+/** How far down a target a drop on its top edge (`before`), middle (`into`) or bottom edge
+ *  (`after`) is. */
+const EDGE = { before: 0.1, into: 0.5, after: 0.9 };
+
+/** Drags the row `from` onto the row `to`, at `where` of it. */
+const drag = (page, from, to, where) => page.dragEl(treeRow(from), treeRow(to), { fromAt: [0.3, 0.5], toAt: [0.3, EDGE[where]] });
+
+/** The rail's square of the project `name`. */
+const square = (name) => `[...document.querySelectorAll('.project-rail .project-square')].find(s => s.title === ${JSON.stringify(name)})`;
+/** The rail's projects, top to bottom, and those of its open folder. */
+const railNames = `[...document.querySelectorAll('.project-rail .project-square:not(.all)')].map(s => s.title).join()`;
+const folderNames = `[...document.querySelectorAll('.project-folder-open .project-square')].map(s => s.title).join()`;
+const pressed = (name) => `${square(name)}?.getAttribute('aria-pressed') === 'true'`;
+
+/** Drags the project `from` in the rail onto `to` (an element expression), at `where`. */
+const railDrag = (page, from, to, where, options = {}) => page.dragEl(square(from), to, { toAt: [0.5, EDGE[where]], ...options });
 
 const mark = (page, expression) =>
   page.eval(`document.querySelectorAll('#e2e-target').forEach(e => e.removeAttribute('id')); ${expression}.id = 'e2e-target'`);
@@ -126,13 +136,62 @@ export default async function (page, { dir }) {
   await page.key("ArrowUp", "ArrowUp", 38, ALT);
   await page.waitFor(`${labels}.join() === 'Gruppo,alpha,beta'`);
 
-  // In the rail: a project dropped on another makes a folder (the drop as the store sees it).
-  const workspace = await page.eval(
-    `window.__TAURI_INTERNALS__.invoke('group_projects', { target: ${JSON.stringify(P)}, dragged: ${JSON.stringify(Q)} })`,
-  );
-  assert.equal(workspace.project_folders.length, 1);
+  await rail(page);
+}
+
+/** Drags and drops in the rail, with the project Primo active throughout. */
+async function rail(page) {
+  await page.waitFor(`${railNames} === 'Primo,Secondo,Terzo' && ${pressed("Primo")}`);
+
+  // Terzo onto the top edge of Primo goes before it: a line shows where, the label follows
+  // the pointer, and the release does not switch to the dragged project.
+  let during = null;
+  await railDrag(page, "Terzo", square("Primo"), "before", {
+    before: async () => {
+      during = await page.eval(`({ line: !!document.querySelector('.rail-drop-line'), ghost: document.querySelector('.drag-ghost')?.textContent })`);
+    },
+  });
+  assert.deepEqual(during, { line: true, ghost: "Terzo" });
+  await page.waitFor(`${railNames} === 'Terzo,Primo,Secondo'`);
+  assert.equal(await page.eval(`document.querySelector('.drag-ghost') === null && document.querySelector('.rail-drop-line') === null`), true);
+  assert.equal(await page.eval(pressed("Primo")), true, "the drag switched project");
+
+  // Escape cancels a drag: nothing moves, nothing is grouped, no project is switched.
+  await railDrag(page, "Secondo", square("Terzo"), "into", { before: () => page.key("Escape", "Escape", 27) });
+  await page.sleep(400);
+  assert.equal(await page.eval(`${railNames} + '|' + ${folderNames}`), "Terzo,Primo,Secondo|");
+  assert.equal(await page.eval(`document.querySelector('.drag-ghost') === null && ${pressed("Primo")}`), true);
+
+  // Primo onto the bottom edge of Secondo goes after it; the order is saved.
+  await railDrag(page, "Primo", square("Secondo"), "after");
+  await page.waitFor(`${railNames} === 'Terzo,Secondo,Primo'`);
   await page.eval(`location.reload()`);
-  await page.waitFor(`document.querySelectorAll('.project-folder-open .project-square').length === 2`, 15_000);
+  await page.waitFor(`${railNames} === 'Terzo,Secondo,Primo'`, 15_000);
+
+  // Secondo onto the middle of Terzo: the target is outlined, then a folder holds both.
+  await railDrag(page, "Secondo", square("Terzo"), "into", {
+    before: async () => {
+      during = await page.eval(`document.querySelector('.project-square.drop-into')?.title`);
+    },
+  });
+  assert.equal(during, "Terzo");
+  await page.waitFor(`${folderNames} === 'Terzo,Secondo'`);
+  assert.equal(await page.eval(railNames), "Terzo,Secondo,Primo");
+
+  // Inside the open folder, Secondo onto Terzo's top edge goes before it, in the folder.
+  await railDrag(page, "Secondo", square("Terzo"), "before");
+  await page.waitFor(`${folderNames} === 'Secondo,Terzo'`);
+
+  // Primo onto the lower half of the folder's head goes into it, last.
+  await railDrag(page, "Primo", `document.querySelector('.project-folder-head')`, "after");
+  await page.waitFor(`${folderNames} === 'Secondo,Terzo,Primo'`);
+
+  // Primo to the end of the rail leaves the folder, last.
+  await railDrag(page, "Primo", `document.querySelector('.project-add')`, "into");
+  await page.waitFor(`${folderNames} === 'Secondo,Terzo' && ${railNames} === 'Secondo,Terzo,Primo'`);
+  await page.eval(`location.reload()`);
+  await page.waitFor(`${folderNames} === 'Secondo,Terzo' && ${railNames} === 'Secondo,Terzo,Primo'`, 15_000);
+  assert.equal(await page.eval(pressed("Primo")), true);
 
   // Renamed and ungrouped from its menu.
   await menu(page, ".project-folder-head", "Rename folder");
@@ -140,5 +199,9 @@ export default async function (page, { dir }) {
   await page.waitFor(`document.querySelector('.project-folder-head').title === 'Clienti'`);
   await menu(page, ".project-folder-head", "Ungroup");
   await page.waitFor(`document.querySelector('.project-folder-open') === null`);
-  assert.equal(await page.eval(`document.querySelectorAll('.project-rail .project-square:not(.all)').length`), 2);
+  assert.equal(await page.eval(railNames), "Secondo,Terzo,Primo");
+
+  // A click without moving still switches project.
+  await page.clickSel(`.project-rail .project-square[data-project="${Q}"]`);
+  await page.waitFor(pressed("Secondo"));
 }

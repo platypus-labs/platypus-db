@@ -102,6 +102,37 @@ export class Page {
     await this.mouse("mouseReleased", x, y, options);
   }
 
+  /** Drags with the left button from (x1, y1) to (x2, y2) as a real pointer does: press,
+   *  moves with the button held, release (with `modifiers` held). `before` runs before the
+   *  release, with the pointer over the target, e.g. to check what the drag shows there. */
+  async drag(x1, y1, x2, y2, { steps = 8, modifiers = 0, before } = {}) {
+    await this.mouse("mousePressed", x1, y1);
+    for (let i = 1; i <= steps; i++) {
+      await this.mouse("mouseMoved", x1 + ((x2 - x1) * i) / steps, y1 + ((y2 - y1) * i) / steps);
+      await sleep(16);
+    }
+    if (before) await before();
+    await this.mouse("mouseReleased", x2, y2, { modifiers });
+  }
+
+  /** The rectangle of the element `expression` evaluates to, or `null`. */
+  async rectOf(expression) {
+    return this.eval(`(() => {
+      const r = (${expression})?.getBoundingClientRect();
+      return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : null;
+    })()`);
+  }
+
+  /** Drags from the element `from` to the element `to` (expressions), at fractions of
+   *  their size (`at`: `[0.5, 0.5]` is the centre), with `drag`'s options. */
+  async dragEl(from, to, { fromAt = [0.5, 0.5], toAt = [0.5, 0.5], ...options } = {}) {
+    const a = await this.rectOf(from);
+    const b = await this.rectOf(to);
+    if (!a) throw new Error(`not found: ${from}`);
+    if (!b) throw new Error(`not found: ${to}`);
+    await this.drag(a.x + a.w * fromAt[0], a.y + a.h * fromAt[1], b.x + b.w * toAt[0], b.y + b.h * toAt[1], options);
+  }
+
   /** Clicks the centre of the first element matching `selector`. */
   async clickSel(selector, options = {}) {
     const r = await this.rect(selector);
