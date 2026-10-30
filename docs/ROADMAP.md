@@ -90,7 +90,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 | Problema | Trovato |
 |---|---|
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
-| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato). Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
+| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -383,10 +383,28 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 parallelizzabile: **una persona per driver**.
 **Dipende da:** 0.5, 0.6
 
-**Stato: P1 e P2 completate, P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
+**Stato: completato** (P2: ClickHouse, i server con protocollo PostgreSQL,
 ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
 ODBC generico, Redis; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo
-uso, Elasticsearch/OpenSearch. Da fare: aggiornamento automatico dei driver, Cassandra/ScyllaDB). Elasticsearch/OpenSearch (`platypus-driver-search`, un solo driver: il server dice quale è): richieste nella forma della console di Kibana e SQL (`_sql`, `_plugins/_sql`) con colonne tipizzate e cursore, ricerche lette a pagine (point in time e `search_after`, scroll su OpenSearch) con colonne fisse e `_other` per i campi non mappati, indici come tabelle e alias/data stream come viste, modifica in griglia con anteprima e script di annullamento, conferma per `_delete_by_query`/`_update_by_query` senza filtro e `DELETE /_all`, sola lettura, MCP, Cancel sul server, login Basic o chiave API. Provato su Elasticsearch 8.15 e OpenSearch 2.17 (profilo `search` di `docker/compose.yml`, conformance e scenari E2E `search-*`), non su Elasticsearch 7.x. SQL Server usa `tiberius` copiato
+uso, Elasticsearch/OpenSearch, Cassandra/ScyllaDB, aggiornamento dei driver scaricati).
+Cassandra/ScyllaDB (30 ottobre 2026, `platypus-driver-cassandra` sul crate `scylla`): CQL con
+script divisi rispettando stringhe, `$$` e `BEGIN BATCH … APPLY BATCH`, colonne Arrow tipizzate
+(collezioni, tuple e UDT come JSON), pagine con il paging state, LWT con `[applied]`; keyspace come
+schemi, tabelle, viste materializzate, tipi, funzioni e aggregati da `system_schema`, con il DDL
+ricostruito; modifica in griglia per chiave primaria completa con anteprima e script di
+annullamento; controlli di sicurezza tramite l'analisi SQL. Con un solo host (o un tunnel) tutto
+passa da quel nodo. Provato su Cassandra 5.0 e ScyllaDB 2025.1 (servizi `cassandra` e `scylla` di
+`docker/compose.yml`). Limiti: una scrittura CQL dice "0 righe" (il protocollo non le conta);
+annullare smette di aspettare ma la query continua sul server; il data viewer non conta, ordina
+né filtra (CQL non ha `OFFSET`); inserimenti e modifiche sono upsert; niente terminale (cqlsh
+vuole la password sulla riga di comando); `verify-full` fallisce con certificati per nome
+(usare `verify-ca`). Aggiornamento dei driver (stessa data, `platypus-drivers/src/versions.rs`):
+più versioni di un driver ADBC scaricato una accanto all'altra con la versione attiva in
+`ACTIVE`, controllo delle novità una volta al giorno (impostazioni `drivers.check_updates` e
+`drivers.auto_update`), *Versions…* per installare o tornare a un'altra versione, e dopo ogni
+cambio la prova delle connessioni salvate che lo usano con *Go back*. Limiti: i driver nativi si
+aggiornano con l'app; Oracle Instant Client, DuckDB e Db2 restano a una versione per release;
+le sessioni aperte tengono la libreria già caricata. Elasticsearch/OpenSearch (`platypus-driver-search`, un solo driver: il server dice quale è): richieste nella forma della console di Kibana e SQL (`_sql`, `_plugins/_sql`) con colonne tipizzate e cursore, ricerche lette a pagine (point in time e `search_after`, scroll su OpenSearch) con colonne fisse e `_other` per i campi non mappati, indici come tabelle e alias/data stream come viste, modifica in griglia con anteprima e script di annullamento, conferma per `_delete_by_query`/`_update_by_query` senza filtro e `DELETE /_all`, sola lettura, MCP, Cancel sul server, login Basic o chiave API. Provato su Elasticsearch 8.15 e OpenSearch 2.17 (profilo `search` di `docker/compose.yml`, conformance e scenari E2E `search-*`), non su Elasticsearch 7.x. SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -466,12 +484,12 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | ✅ CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon; AlloyDB no | P2 | Wire PG: profili e test, non driver nuovi |
 | ✅ ADBC e ODBC generici (Snowflake, Oracle, Db2, Databricks, BigQuery, Trino) | P2 | ADBC (Snowflake, BigQuery, Databricks, Trino, ADBC generico; driver scaricati dal registro dbc). Oracle con driver nativo (crate `oracle`, Instant Client scaricato da Oracle al primo uso, cancel con break, metadati da `ALL_*`). ODBC (`platypus-driver-odbc`, solo Windows): Db2 col driver IBM installato al primo uso (registrazione con UAC), ODBC generico con DSN o connection string |
 | ✅ **Versioni vecchie dei server**: versioni minime dichiarate per ogni database (es. PostgreSQL 12+, MySQL 5.7+, MariaDB 10.6+, SQL Server 2017+, MongoDB 5+), query di catalogo, admin e DDL adattate alla versione letta alla connessione (es. `prokind` da PG 11, `attgenerated` da PG 12), messaggio chiaro sotto la minima | P2 | Conformance su una matrice di versioni in `docker/compose.yml` (un profilo per le versioni vecchie, ad esempio `postgres:12`…`16`, `mysql:5.7`, `mysql:8.0`); oggi i test girano solo sull'ultima versione |
-| Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
+| ✅ Aggiornamento automatico dei driver di tutti i database (scaricati ADBC/ODBC e nativi), con verifica che i dialetti restino compatibili; scelta di versioni precedenti di un driver | P3 | Scaricati: registro con più versioni. Nativi: compilati nell'app, si aggiornano con l'app; versioni vecchie = più versioni dello stesso crate o driver caricabili a parte. Test di compatibilità per versione |
 | ✅ Oracle nativo | P3 | Crate `oracle` con Instant Client scaricato al primo uso (Oracle Free Use Terms) |
 | ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
 | ✅ **Redis** | P2 | Il NoSQL più richiesto: chiavi per tipo (string, hash, list, set, zset, JSON) come tabelle virtuali, comandi nell'editor, modifica dei valori; stesso schema di MongoDB (griglia + albero) |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
-| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero). **Elasticsearch/OpenSearch fatto** (provato su 8.15 e 2.17, non su 7.x); resta Cassandra/ScyllaDB (CQL), per cui la riga resta aperta |
+| ✅ 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero). Elasticsearch/OpenSearch provato su 8.15 e 2.17 (non su 7.x); Cassandra 5.0 e ScyllaDB 2025.1 |
 
 ---
 
