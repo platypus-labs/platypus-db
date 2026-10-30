@@ -497,7 +497,8 @@ async fn reads_the_catalog_and_the_mappings() {
     assert_eq!(column("title.raw").unwrap().data_type, "keyword");
     assert_eq!(column("n").unwrap().data_type, "long");
     assert_eq!(column("when").unwrap().data_type, "date");
-    assert!(column("customer").is_none(), "objects are their fields");
+    // An object is a column of its own beside its fields: the grid edits it as one cell.
+    assert_eq!(column("customer").unwrap().data_type, "object");
     assert_eq!(details.indexes.len(), 1);
     // An alias has the columns of its index.
     let through = conn

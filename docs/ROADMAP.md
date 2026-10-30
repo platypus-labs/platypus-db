@@ -89,6 +89,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| `SchedulesDialog`: aperto con "Schedule…" da un profilo, il form si apre prima che la lista dei profili arrivi e il task si salva con `profile_id` vuoto se l'utente non sceglie di nuovo il profilo (lo scenario `profiles-schedule-sqlite` lo aggira scegliendolo esplicitamente) | gruppo G, 2026-10-30 |
 
 ### Lock dei gruppi
 
