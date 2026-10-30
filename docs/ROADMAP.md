@@ -1200,7 +1200,7 @@ repository aspettano che diventi pubblico.
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
 | ⏭ serve un Mac — Prova del cask Homebrew su macOS (il manifest è pronto in `packaging/`) | P3 |
-| 🆕 Scenario E2E del banner di aggiornamento (oggi `UpdateBanner.tsx` non ha copertura E2E; serve un `latest.json` finto servito in locale) | P3 |
+| ✅ Scenario E2E del banner di aggiornamento (`update-banner*.mjs`: `latest.json` finto servito in locale con `PLATYPUS_UPDATE_URL`; versione nuova, "Later", uguale, più vecchia, malformato, errore 500, irraggiungibile, senza piattaforma, gestore di pacchetti) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |

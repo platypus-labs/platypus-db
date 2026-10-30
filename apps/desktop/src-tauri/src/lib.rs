@@ -246,13 +246,45 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(setup)
         .invoke_handler(handlers())
-        .build(tauri::generate_context!())
+        .build(context())
         .expect("error while running PlatypusDB")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 agent::stop(app);
             }
         });
+}
+
+/// The app's context, with the update endpoint of `PLATYPUS_UPDATE_URL` when it is set (the
+/// end-to-end tests serve a `latest.json` of their own).
+fn context() -> tauri::Context {
+    let mut context = tauri::generate_context!();
+    if let Ok(url) = std::env::var("PLATYPUS_UPDATE_URL") {
+        override_update_endpoint(&mut context.config_mut().plugins.0, &url);
+    }
+    context
+}
+
+/// Points the updater at `url`, only when that is a plain-HTTP address on this machine: the
+/// published endpoint stays the only one a release can ever ask.
+fn override_update_endpoint(
+    plugins: &mut std::collections::HashMap<String, serde_json::Value>,
+    url: &str,
+) {
+    let local = ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"];
+    if url.contains('@') || !local.iter().any(|prefix| url.starts_with(prefix)) {
+        return;
+    }
+    if let Some(updater) = plugins
+        .get_mut("updater")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        updater.insert("endpoints".to_owned(), serde_json::json!([url]));
+        updater.insert(
+            "dangerousInsecureTransportProtocol".to_owned(),
+            serde_json::json!(true),
+        );
+    }
 }
 
 /// Every command the web UI can call.
@@ -553,4 +585,47 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema_history::delete_schema_snapshot,
         commands::schema_history::diff_schema_snapshots,
     ]
+}
+
+#[cfg(test)]
+mod update_endpoint_tests {
+    use super::override_update_endpoint;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    fn plugins() -> HashMap<String, serde_json::Value> {
+        HashMap::from([(
+            "updater".to_owned(),
+            json!({"endpoints": ["https://example.com/latest.json"]}),
+        )])
+    }
+
+    #[test]
+    fn a_local_address_replaces_the_endpoint() {
+        let mut p = plugins();
+        override_update_endpoint(&mut p, "http://127.0.0.1:9000/latest.json");
+        assert_eq!(
+            p["updater"]["endpoints"],
+            json!(["http://127.0.0.1:9000/latest.json"])
+        );
+        assert_eq!(
+            p["updater"]["dangerousInsecureTransportProtocol"],
+            json!(true)
+        );
+    }
+
+    #[test]
+    fn any_other_address_is_ignored() {
+        for url in [
+            "https://evil.example/latest.json",
+            "http://example.com:80/x",
+            "http://127.0.0.1:80@evil.com/x",
+            "http://127.0.0.1.evil.com/x",
+            "",
+        ] {
+            let mut p = plugins();
+            override_update_endpoint(&mut p, url);
+            assert_eq!(p, plugins(), "{url}");
+        }
+    }
 }
