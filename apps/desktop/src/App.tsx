@@ -1225,6 +1225,8 @@ export function App() {
             onOpenFile={(path) => void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message))}
             onSample={openSample}
             onError={setToast}
+            connections={connections ?? []}
+            onOpenConnection={(c) => addTab(createTab("query", c.id))}
           />
         )}
       </main>

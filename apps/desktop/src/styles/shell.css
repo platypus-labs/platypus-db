@@ -358,10 +358,11 @@
 /* Welcome: the workspace with no tab open */
 
 .welcome {
-  margin: auto;
+  margin: 0 auto;
   width: 100%;
-  max-width: 920px;
+  max-width: 1180px;
   padding: var(--space-48) var(--space-32);
+  font-size: var(--text-lg);
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -370,21 +371,22 @@
 }
 
 .welcome-intro {
-  flex: 1 1 340px;
+  flex: 1 1 420px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-16);
 }
 
+/* The banner art is 4:1 with its own margins: the h1 moves it left by them, so that the
+   platypus lines up with the text below. One version per background. */
 .welcome h1 {
-  margin: 0 0 0 calc(-1 * var(--space-24));
+  margin: 0 0 0 -76px;
 }
 
-/* The banner art is 4:1 with its own margins; one version per background. */
 .welcome .banner {
   display: block;
-  width: min(420px, 100%);
+  width: min(560px, 100%);
   height: auto;
 }
 
@@ -396,7 +398,7 @@
 .welcome-lead {
   margin: 0;
   max-width: 46ch;
-  font-size: var(--text-xl);
+  font-size: 18px;
   line-height: 1.55;
   color: var(--fg);
 }
@@ -417,7 +419,7 @@
 }
 
 .welcome-actions {
-  flex: 1 1 320px;
+  flex: 1 1 400px;
   display: flex;
   flex-direction: column;
   gap: var(--space-10);
@@ -428,7 +430,7 @@
   align-items: flex-start;
   gap: var(--space-12);
   height: auto;
-  padding: var(--space-12) var(--space-16);
+  padding: var(--space-16) var(--space-20);
   border: none;
   border-radius: var(--radius-sheet);
   background: var(--bg-sidebar);
@@ -451,24 +453,83 @@
 
 .welcome-card strong {
   display: block;
-  margin-bottom: var(--space-2);
-  font-size: var(--text-lg);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--fg-strong);
 }
 
-.welcome-keys {
-  margin: var(--space-12) 0 0;
+/* Under the two columns: the connections used last and the shortcuts, as lists. */
+.welcome-more {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-24);
+}
+
+.welcome-heading {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.welcome-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.welcome-list > li + li,
+.welcome-list > div + div {
+  border-top: 1px solid var(--border);
+}
+
+.welcome-recent button {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
+  align-items: center;
+  gap: var(--space-10);
+  width: 100%;
+  min-height: var(--control-xl);
+  padding: 0 var(--space-16);
+  border: none;
+  border-radius: 0;
+  text-align: left;
+}
+
+.welcome-recent .driver-icon .driver-logo {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border-radius: var(--radius);
+}
+
+.welcome-recent .driver-icon .driver-logo svg {
+  width: 12px;
+  height: 12px;
+}
+
+.welcome-name {
+  color: var(--fg-strong);
+}
+
+.welcome-when {
+  margin-left: auto;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 
 .welcome-keys > div {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-12);
+  min-height: var(--control-lg);
+  padding: 0 var(--space-16);
 }
 
 .welcome-keys dd {

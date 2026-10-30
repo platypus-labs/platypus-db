@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { shortcutLabel, useActions } from "../actions";
-import { DATA_FILE_EXTENSIONS, toCommandError } from "../api";
+import { api, DATA_FILE_EXTENSIONS, type SavedConnection, toCommandError } from "../api";
+import { DriverIcon } from "../components/DriverPicker";
+import { typeBadge } from "../connections";
 import bannerOnDark from "../assets/brand/platypus-db-on-dark.png";
 import bannerOnLight from "../assets/brand/platypus-db-on-light.png";
 import { Icon } from "../ui/Icon";
-import { t } from "../i18n";
+import { language, t } from "../i18n";
 import { SHARE_EXTENSION } from "../share/shareQuery";
 
 interface Props {
@@ -19,6 +21,54 @@ interface Props {
   /** Opens the sample database, made at the first click. */
   onSample: () => Promise<void>;
   onError: (message: string) => void;
+  /** The saved connections: the recent ones are listed. */
+  connections: SavedConnection[];
+  onOpenConnection: (connection: SavedConnection) => void;
+}
+
+/** The connections used last, from the history of the queries: at most this many. */
+const RECENT = 5;
+
+/** When a connection was used last: "2 hours ago", in the app's language. */
+function ago(epochMs: number): string {
+  const seconds = (epochMs - Date.now()) / 1000;
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["year", 31_536_000],
+    ["month", 2_592_000],
+    ["week", 604_800],
+    ["day", 86_400],
+    ["hour", 3_600],
+    ["minute", 60],
+  ];
+  const format = new Intl.RelativeTimeFormat(language(), { numeric: "auto" });
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
+  }
+  return format.format(0, "minute");
+}
+
+/** The connections queried last, newest first, with when. */
+function useRecent(connections: SavedConnection[]): { connection: SavedConnection; at: number }[] {
+  const [recent, setRecent] = useState<{ connection: SavedConnection; at: number }[]>([]);
+  useEffect(() => {
+    if (connections.length === 0) return;
+    let live = true;
+    api
+      .searchHistory({ limit: 200 })
+      .then((entries) => {
+        const seen = new Map<string, number>();
+        for (const e of entries) if (!seen.has(e.connection_id)) seen.set(e.connection_id, e.started_at);
+        const byId = new Map(connections.map((c) => [c.id, c]));
+        const list = [...seen].flatMap(([id, at]) => (byId.has(id) ? [{ connection: byId.get(id)!, at }] : []));
+        if (live) setRecent(list.slice(0, RECENT));
+      })
+      // The history is a convenience here: without it the list stays empty.
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [connections]);
+  return recent;
 }
 
 /** The shell's actions worth knowing first, with their shortcuts as the user set them. */
@@ -37,8 +87,9 @@ export async function pickDataFile(): Promise<string | null> {
 }
 
 /** What the workspace shows with no tab open. */
-export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample, onError }: Props) {
+export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample, onError, connections, onOpenConnection }: Props) {
   const [sampleBusy, setSampleBusy] = useState(false);
+  const recent = useRecent(connections);
   async function pickFile() {
     const path = await pickDataFile();
     if (path !== null) onOpenFile(path);
@@ -101,16 +152,40 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample,
             <span className="muted">{t("From DBeaver, DataGrip or pgAdmin.")}</span>
           </span>
         </button>
-        <dl className="welcome-keys">
-          {shortcuts.map((s) => (
-            <div key={s.id}>
-              <dt>{s.title}</dt>
-              <dd>
-                <kbd>{s.keys}</kbd>
-              </dd>
-            </div>
-          ))}
-        </dl>
+      </div>
+      <div className="welcome-more">
+        {recent.length > 0 && (
+          <section>
+            <h2 className="welcome-heading">{t("Recent")}</h2>
+            <ul className="welcome-list welcome-recent">
+              {recent.map(({ connection, at }) => (
+                <li key={connection.id}>
+                  <button type="button" onClick={() => onOpenConnection(connection)}>
+                    <DriverIcon driver={connection.driver} />
+                    <span className="welcome-name">{connection.name}</span>
+                    {typeBadge(connection) && (
+                      <span className={`type-badge ${typeBadge(connection)!.toLowerCase()}`}>{typeBadge(connection)}</span>
+                    )}
+                    <span className="welcome-when">{ago(at)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        <section>
+          <h2 className="welcome-heading">{t("Keyboard shortcuts")}</h2>
+          <dl className="welcome-keys welcome-list">
+            {shortcuts.map((s) => (
+              <div key={s.id}>
+                <dt>{s.title}</dt>
+                <dd>
+                  <kbd>{s.keys}</kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       </div>
     </div>
   );
