@@ -14,6 +14,7 @@ import {
   scaleColor,
 } from "./formatting";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   columns: ColumnInfo[];
@@ -133,7 +134,7 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
               <span className="formatting-target">{t(rule.row ? "Row" : "Cell")}</span>
               <span className="spacer" />
               <button type="button" onClick={() => onChange(moveRule(rules, i, -1))} disabled={i === 0} title={t("Move up")} aria-label={t("Move up")}>
-                ↑
+                <Icon name="arrow-up" />
               </button>
               <button
                 type="button"
@@ -142,10 +143,10 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
                 title={t("Move down")}
                 aria-label={t("Move down")}
               >
-                ↓
+                <Icon name="arrow-down" />
               </button>
               <button type="button" onClick={() => remove(rule.id)} title={t("Delete rule")} aria-label={t("Delete rule")}>
-                ✕
+                <Icon name="close" />
               </button>
             </div>
           ))}

@@ -2,6 +2,7 @@ import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } 
 import { api, toCommandError } from "../../api";
 import type { CellDecoration, GridApi } from "../DataGrid";
 import { t } from "../../i18n";
+import { Icon } from "../../ui/Icon";
 
 const MATCH: CellDecoration = { background: "rgba(255, 212, 59, 0.45)" };
 const CURRENT: CellDecoration = { background: "rgba(255, 146, 43, 0.75)" };
@@ -113,13 +114,13 @@ export function useGridSearch(
         {error ? t("error") : !text ? "" : count === 0 ? t("no matches") : t("{index} of {count}", { index: index + 1, count: `${count}${found?.truncated ? "+" : ""}` })}
       </span>
       <button className="icon" onClick={() => step(-1)} disabled={count === 0} title={t("Previous (Shift+Enter)")} aria-label={t("Previous (Shift+Enter)")}>
-        ↑
+        <Icon name="arrow-up" />
       </button>
       <button className="icon" onClick={() => step(1)} disabled={count === 0} title={t("Next (Enter)")} aria-label={t("Next (Enter)")}>
-        ↓
+        <Icon name="arrow-down" />
       </button>
       <button className="icon" onClick={close} title={t("Close (Escape)")} aria-label={t("Close (Escape)")}>
-        ×
+        <Icon name="close" />
       </button>
     </div>
   );

@@ -6,6 +6,7 @@ import { sameJson } from "./jsonChange";
 import { formatJson } from "../../jsonText";
 import type { EditorKind } from "./meta";
 import { t } from "../../i18n";
+import { Icon } from "../../ui/Icon";
 
 /** Where to go after committing: the next cell in a direction, or stay. */
 export type Move = "down" | "up" | "right" | "left" | null;
@@ -251,7 +252,7 @@ export function CellEditor({
           onMouseDown={(e) => e.preventDefault()}
           onClick={loadFile}
         >
-          …
+          <Icon name="more" />
         </button>
       )}
       {kind === "lookup" && (

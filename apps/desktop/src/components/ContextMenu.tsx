@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { type Action, type ActionScope, type ActionScopes, actionsFor, runAction, shortcutLabel } from "../actions";
 import { t } from "../i18n";
+import { Icon } from "../ui/Icon";
 
 /** Where a context menu was opened: the scope whose actions it lists, and their argument. */
 export type MenuTarget = { [S in ActionScope]: { scope: S; arg: ActionScopes[S] } }[ActionScope];
@@ -175,7 +176,9 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
             <div className="submenu-anchor" onMouseEnter={() => setOpen(entry.submenu)}>
               <button role="menuitem" aria-haspopup="menu" onClick={() => setOpen(entry.submenu)} aria-expanded={open === entry.submenu}>
                 <span>{t(entry.submenu)}</span>
-                <span className="shortcut">▸</span>
+                <span className="shortcut">
+                  <Icon name="chevron-right" />
+                </span>
               </button>
               {open === entry.submenu && (
                 <div className="context-menu submenu" role="menu">

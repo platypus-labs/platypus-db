@@ -37,6 +37,7 @@ import {
   resultTables,
 } from "./model";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 export interface NotebookTabModel extends TabBase {
   kind: "notebook";
@@ -454,7 +455,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
                 title={t("Remove")}
                 onClick={() => edit({ params: Object.fromEntries(Object.entries(tab.params).filter(([k]) => k !== key)) })}
               >
-                ×
+                <Icon name="close" />
               </button>
             </label>
           ))}

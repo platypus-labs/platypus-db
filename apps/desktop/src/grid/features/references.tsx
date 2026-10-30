@@ -18,6 +18,7 @@ import { type EditSource, resultColumns } from "../edit/meta";
 import type { TableEditTarget } from "../edit/TableEditor";
 import { t, plural } from "../../i18n";
 import { EmptyState } from "../../ui/State";
+import { Icon } from "../../ui/Icon";
 
 /** Foreign keys of a result's table, for grid actions in `source.references`. */
 export interface GridReferences {
@@ -232,7 +233,7 @@ function ReferencesPanel({
         <strong className="small value-name">{t("References to {name}", { name })}</strong>
         <span className="spacer" />
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}

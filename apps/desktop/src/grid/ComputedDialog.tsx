@@ -3,6 +3,7 @@ import type { ColumnInfo } from "../api";
 import { t } from "../i18n";
 import { type ComputedColumn, compile, ExpressionError, FUNCTION_NAMES } from "./computed";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   /** The result's columns, which expressions can use. */
@@ -93,7 +94,7 @@ export function ComputedDialog({ columns, computed, saved, onChange, onClose }: 
               </button>
               <span className="spacer" />
               <button type="button" onClick={() => remove(i)} title={t("Remove")} aria-label={t("Remove")}>
-                ✕
+                <Icon name="close" />
               </button>
             </div>
           ))}

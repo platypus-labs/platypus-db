@@ -1973,7 +1973,7 @@ export function QueryTab({
                       closeResult(r.id);
                     }}
                   >
-                    ×
+                    <Icon name="close" />
                   </span>
                 </button>
               ))}
@@ -2073,7 +2073,7 @@ export function QueryTab({
               )}
               {!exportBusy && (
                 <button className="link" onClick={() => setExporting(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
-                  ×
+                  <Icon name="close" />
                 </button>
               )}
             </span>
@@ -2089,7 +2089,7 @@ export function QueryTab({
                 {t("Undo script")}
               </button>
               <button className="link" onClick={() => setUndoScript(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
-                ×
+                <Icon name="close" />
               </button>
             </span>
           )}

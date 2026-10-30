@@ -350,7 +350,7 @@ ${s.filter}`;
                       toggle(path);
                     }}
                   >
-                    {collapsed.has(path) ? "▸" : "▾"}
+                    <Icon name={collapsed.has(path) ? "chevron-right" : "chevron-down"} />
                   </button>
                   <span className="explain-op">{n.operation}</span>
                   {n.detail && <span className="explain-detail">{n.detail}</span>}

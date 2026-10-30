@@ -2,6 +2,7 @@ import type { ColumnInfo, ColumnMeta } from "../api";
 import type { TableRef } from "../grid/edit/meta";
 import { t } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   /** The focused result column; `undefined` before a cell is focused. */
@@ -39,7 +40,7 @@ export function MetadataPanel({ column, table, meta, inKey, onClose }: Props) {
         </strong>
         <span className="spacer" />
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {!column && <EmptyState compact className="value-empty" title={t("Select a cell to see its column.")} />}

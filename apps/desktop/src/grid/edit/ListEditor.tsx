@@ -3,6 +3,7 @@ import { api, type CellInput, type FieldMeta, toCommandError } from "../../api";
 import type { Move } from "./CellEditor";
 import type { Box } from "./popupBox";
 import { t, plural } from "../../i18n";
+import { Icon } from "../../ui/Icon";
 
 interface Props {
   /** Where the popup goes, inside the grid, and its size. */
@@ -180,7 +181,7 @@ export function ListEditor({ box, composite, type, fields, initial, typed, nulla
                   aria-label={t("Remove the element")}
                   onClick={() => remove(i)}
                 >
-                  ×
+                  <Icon name="close" />
                 </button>
               )}
             </div>

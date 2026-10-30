@@ -24,6 +24,7 @@ import {
   sortPrincipals,
 } from "./usersModel";
 import { EmptyState, LoadingState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 type Kind = "all" | "user" | "role";
 
@@ -453,7 +454,7 @@ function MemberChips({
                 aria-label={t("Take out of {role}", { role: name })}
                 onClick={() => onRemove(name)}
               >
-                ×
+                <Icon name="close" />
               </button>
             )}
           </span>
@@ -491,7 +492,7 @@ function PrivilegeGroups({
                   title={p.grantable ? t("With grant option") : undefined}
                 >
                   {p.name}
-                  {p.grantable && " ⚑"}
+                  {p.grantable && <Icon name="flag" size={12} />}
                 </span>
               ))}
             </td>

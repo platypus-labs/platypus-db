@@ -3,6 +3,7 @@ import { api, type ColumnInfo, type GroupCounts, toCommandError } from "../api";
 import { formatCount, t, plural } from "../i18n";
 import { shown as masked, useMask } from "../guards/mask";
 import { LoadingState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   jobId: number;
@@ -47,7 +48,7 @@ export function GroupingPanel({ jobId, cols, columns, rows, onClose }: Props) {
         </strong>
         <span className="spacer" />
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}

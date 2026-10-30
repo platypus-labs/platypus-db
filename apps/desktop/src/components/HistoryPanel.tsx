@@ -3,6 +3,7 @@ import { api, toCommandError, type HistoryEntry, type HistoryOrigin } from "../a
 import { formatMs } from "./ResultPanel";
 import { t, plural } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 const PAGE = 100;
 
@@ -74,7 +75,7 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
           <option value="agent">{t("Agents")}</option>
         </select>
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       <input
@@ -106,10 +107,10 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
               )}
               <span className="spacer" />
               <button className="icon" title={t("Insert into editor")} aria-label={t("Insert into editor")} onClick={() => onInsert(e.sql)}>
-                ↵
+                <Icon name="insert" />
               </button>
               <button className="icon" title={t("Delete")} aria-label={t("Delete")} onClick={() => void remove(e.id)}>
-                ×
+                <Icon name="close" />
               </button>
             </div>
           </li>

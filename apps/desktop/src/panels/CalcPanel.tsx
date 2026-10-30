@@ -4,6 +4,7 @@ import type { GridApi } from "../grid/DataGrid";
 import { formatExact } from "../grid/exactNumber";
 import { formatCount, t, plural } from "../i18n";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 interface Props {
   jobId: number;
@@ -59,7 +60,7 @@ export function CalcPanel({ jobId, columns, grid, selection, onClose }: Props) {
         <strong className="small value-name">{t("Calculate")}</strong>
         <span className="spacer" />
         <button className="icon" title={t("Close")} aria-label={t("Close")} onClick={onClose}>
-          ×
+          <Icon name="close" />
         </button>
       </div>
       {error && <div className="error-text small value-empty">{error}</div>}

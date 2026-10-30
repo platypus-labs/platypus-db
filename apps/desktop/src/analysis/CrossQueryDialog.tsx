@@ -20,6 +20,7 @@ import {
   type NameProblem,
   nameProblems,
 } from "./acrossModel";
+import { Icon } from "../ui/Icon";
 
 /** The kinds of object whose rows can be copied. */
 const READABLE: ObjectKind[] = ["table", "view", "materialized_view", "foreign_table"];
@@ -287,7 +288,7 @@ function SourceRow({ row, connections, name, problem, disabled, onChange, onRemo
         </label>
         {onRemove && (
           <button type="button" className="across-remove" data-action="remove-source" disabled={disabled} onClick={onRemove} title={t("Remove")} aria-label={t("Remove")}>
-            ×
+            <Icon name="close" />
           </button>
         )}
       </div>

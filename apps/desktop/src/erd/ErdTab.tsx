@@ -562,11 +562,11 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
       <div className="erd-stage">
         <div className="erd-float">
           <button className="square" type="button" onClick={() => zoom(-0.25)} aria-label={t("Zoom out")} title={t("Zoom out")}>
-            −
+            <Icon name="minus" />
           </button>
           <span className="small muted erd-zoom">{Math.round(tab.zoom * 100)}%</span>
           <button className="square" type="button" onClick={() => zoom(0.25)} aria-label={t("Zoom in")} title={t("Zoom in")}>
-            +
+            <Icon name="plus" />
           </button>
           <span className="erd-sep" />
           <button type="button" onClick={() => onChange({ positions: {} })} title={t("Place every table again from the foreign keys")}>

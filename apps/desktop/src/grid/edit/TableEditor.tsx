@@ -760,7 +760,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
         <span className="error-text small edit-error" title={error}>
           {error}
           <button className="link" onClick={() => setError(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
-            ×
+            <Icon name="close" />
           </button>
         </span>
       )}

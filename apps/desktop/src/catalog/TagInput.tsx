@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { addTags } from "./annotation";
 import { t } from "../i18n";
+import { Icon } from "../ui/Icon";
 
 /** A change of the tags, applied to the stored ones when it is saved. */
 export type TagsUpdate = (tags: string[]) => string[];
@@ -42,7 +43,7 @@ export function TagInput({ tags, suggestions, onChange, label = t("Tags") }: Pro
         <span key={tag} className="tag-chip">
           #{tag}
           <button type="button" aria-label={t("Remove {tag}", { tag })} onClick={() => remove(tag)}>
-            ×
+            <Icon name="close" />
           </button>
         </span>
       ))}
