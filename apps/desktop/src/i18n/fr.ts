@@ -2932,6 +2932,9 @@ const fr: Record<string, string> = {
   "Every command and its key combination.": "Chaque commande et son raccourci clavier.",
   "Recent": "Récents",
   "When PlatypusDB looks for newer versions of the downloaded drivers.": "Quand PlatypusDB cherche des versions plus récentes des pilotes téléchargés.",
+  "Interface": "Interface",
+  "Data and safety": "Données et sécurité",
+  "Tools": "Outils",
 };
 
 export default fr;

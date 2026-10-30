@@ -426,12 +426,12 @@ export const themeSetting = defineSetting<string>({
       {
         value: "system",
         label: "System",
-        colors: [PRESETS.platypus_light.colors.bg, PRESETS.platypus_dark.colors.bg, PRESETS.platypus_dark.colors.accent],
+        colors: [PRESETS.platypus_light.colors.bg, PRESETS.platypus_dark.colors.bg, PRESETS.platypus_dark.colors.accent, PRESETS.platypus_dark.colors["syn-keyword"], PRESETS.platypus_light.colors.accent],
       },
       ...(Object.entries(PRESETS) as [PresetName, Preset][]).map(([value, p]) => ({
         value,
         label: p.label,
-        colors: [p.colors.bg, p.colors["bg-sidebar"], p.colors.accent, p.colors["syn-keyword"]],
+        colors: [p.colors.bg, p.colors["bg-sidebar"], p.colors.accent, p.colors["syn-keyword"], paletteOf(p)["syn-string"]],
       })),
     ],
   },

@@ -41,6 +41,13 @@ const PANELS: {
   },
 ];
 
+/** The groups of the page list, in order; a page in none of them goes to the end of the last. */
+const NAV_GROUPS: { label: string; pages: string[] }[] = [
+  { label: msg("Interface"), pages: ["Appearance", "Navigator", "SQL editor", "Results", "Toolbar", "Tabs", "Themes", "Keyboard shortcuts"] },
+  { label: msg("Data and safety"), pages: ["Safety", "Connections", "Performance", "Master password", "Sync", "Driver updates"] },
+  { label: msg("Tools"), pages: ["Agents", "Drivers", "Plugins", "Diagnostics"] },
+];
+
 /** The icon and one line about each page, shown above its content. */
 const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
   "Appearance": { icon: "theme", about: msg("Language, theme, colors and the size of the interface.") },
@@ -105,7 +112,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   for (const def of settingDefs()) {
     sections.set(def.section, [...(sections.get(def.section) ?? []), def]);
   }
-  const names = [...sections.keys(), ...PANELS.map((p) => p.title)];
+  const all = [...sections.keys(), ...PANELS.map((p) => p.title)];
+  const grouped = NAV_GROUPS.map((g, i) => ({
+    label: g.label,
+    pages: [
+      ...g.pages.filter((n) => all.includes(n)),
+      ...(i === NAV_GROUPS.length - 1 ? all.filter((n) => !NAV_GROUPS.some((x) => x.pages.includes(n))) : []),
+    ],
+  })).filter((g) => g.pages.length > 0);
+  // The keyboard moves through the pages in the order the list shows them.
+  const names = grouped.flatMap((g) => g.pages);
   const [chosen, setChosen] = useState(() => getStored(SECTION_KEY));
   const current = typeof chosen === "string" && names.includes(chosen) ? chosen : names[0]!;
   // Stored once the dialog closes: a write on each tab change would save the file and
@@ -128,7 +144,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     const next = names[to % names.length]!;
     setChosen(next);
-    e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
+    e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-section="${CSS.escape(next)}"]`)?.focus();
   };
   const save = (def: SettingDef<Value>, value: Value | null) => {
     setError(null);
@@ -217,21 +233,30 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="settings-layout">
             <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("Settings")}>
-              {names.map((name, i) => (
-                <button
-                  key={name}
-                  type="button"
-                  role="tab"
-                  id={`settings-tab-${i}`}
-                  data-section={name}
-                  aria-selected={name === current}
-                  aria-controls="settings-panel"
-                  tabIndex={name === current ? 0 : -1}
-                  onClick={() => setChosen(name)}
-                  onKeyDown={onTabKey}
-                >
-                  {t(name)}
-                </button>
+              {grouped.map((g) => (
+                <div key={g.label} className="settings-nav-group">
+                  <div className="settings-nav-label">{t(g.label)}</div>
+                  {g.pages.map((name) => {
+                    const i = names.indexOf(name);
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        role="tab"
+                        id={`settings-tab-${i}`}
+                        data-section={name}
+                        aria-selected={name === current}
+                        aria-controls="settings-panel"
+                        tabIndex={name === current ? 0 : -1}
+                        onClick={() => setChosen(name)}
+                        onKeyDown={onTabKey}
+                      >
+                        <Icon name={PAGE_HEAD[name]?.icon ?? "settings"} size={14} />
+                        {t(name)}
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
             </div>
             <section
@@ -320,12 +345,16 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
               className={`theme-card${value === o.value ? " selected" : ""}`}
               onClick={() => onSave(o.value)}
             >
-              <span className="theme-card-colors">
-                {o.colors.map((color, i) => (
-                  <span key={i} style={{ background: color }} />
-                ))}
+              <span className="theme-preview" style={{ background: o.colors[0] }}>
+                <i style={{ background: o.colors[1] }} />
+                <i style={{ background: o.colors[1] }} />
+                <span className="theme-preview-editor">
+                  {o.colors.slice(2, 5).map((color, i) => (
+                    <b key={i} style={{ background: color }} />
+                  ))}
+                </span>
               </span>
-              {t(o.label)}
+              <span className="theme-card-name">{t(o.label)}</span>
             </button>
           ))}
         </div>
@@ -346,8 +375,8 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
   const reset = (
     <button
       type="button"
-      className="link"
-      style={{ visibility: changed ? "visible" : "hidden", gridColumn: c.type === "swatches" ? 3 : undefined }}
+      className="link setting-reset"
+      style={{ visibility: changed ? "visible" : "hidden" }}
       title={c.type === "color" ? t("Back to the theme's color") : t("Default: {value}", { value: defaultText(def) })}
       onClick={() => onSave(null)}
     >
@@ -356,7 +385,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
   );
   const text = (
     <span>
-      {t(def.label)}
+      <span className={`setting-title${changed ? " changed" : ""}`}>{t(def.label)}</span>
       {def.description && <span className="muted small">{t(def.description)}</span>}
     </span>
   );

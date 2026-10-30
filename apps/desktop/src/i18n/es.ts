@@ -2932,6 +2932,9 @@ const es: Record<string, string> = {
   "Every command and its key combination.": "Cada comando y su combinación de teclas.",
   "Recent": "Recientes",
   "When PlatypusDB looks for newer versions of the downloaded drivers.": "Cuándo busca PlatypusDB versiones más recientes de los controladores descargados.",
+  "Interface": "Interfaz",
+  "Data and safety": "Datos y seguridad",
+  "Tools": "Herramientas",
 };
 
 export default es;

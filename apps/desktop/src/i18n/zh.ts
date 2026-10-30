@@ -2932,6 +2932,9 @@ const zh: Record<string, string> = {
   "Every command and its key combination.": "每个命令及其快捷键。",
   "Recent": "最近使用",
   "When PlatypusDB looks for newer versions of the downloaded drivers.": "PlatypusDB 何时检查已下载驱动的新版本。",
+  "Interface": "界面",
+  "Data and safety": "数据与安全",
+  "Tools": "工具",
 };
 
 export default zh;
