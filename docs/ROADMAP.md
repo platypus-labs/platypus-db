@@ -89,6 +89,8 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
+| Scenari E2E del gruppo Q (P3) scritti in un container Linux e mai eseguiti: `sensitive-columns-sqlite` (segni, mascheramento, intestazioni, export), `column-usage-sqlite` (Used by: viste, trigger, script, Refresh). Eseguirli su Windows dopo la build di release e correggere scenari o codice | gruppo Q, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -110,14 +112,14 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | G — Nuovi driver | ✅ completato |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ completato |
-| J — Amministrazione del server | 🔒 Delfa · group-j-admin-p3 · 2026-10-30 |
+| J — Amministrazione del server | ✅ fatto (P2; P3 in parte) |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ completato |
-| N — Accesso per agenti (MCP) | ✅ fatto (P1, P2; P3 in parte) |
-| O — Collaborazione e sync | libero |
-| P — Piattaforma, qualità e release | libero |
-| Q — Documentazione e catalogo dei dati | 🔒 Delfa · group-q-sensitive · 2026-10-30 |
+| N — Accesso per agenti (MCP) | 🔒 Delfa · group-n-masking · 2026-10-30 |
+| O — Collaborazione e sync | 🔒 Delfa · group-o-collab · 2026-10-30 |
+| P — Piattaforma, qualità e release | 🔒 Claude · claude/exciting-galileo-ukai8j · 2026-10-30 |
+| Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
@@ -691,8 +693,31 @@ storico; stati applicata, pendente, divergente, fallita, mancante. Gli scenari E
 
 ### Gruppo J — Amministrazione del server
 
-**Stato: P2 completati** (restano i P3: utenti e ruoli, dashboard, debugger PL/pgSQL,
-parametri del server). Dal 29 ottobre 2026: query più costose e statistiche di tabelle e
+**Stato: P2 completati, P3 in parte** (fatti utenti e ruoli, dashboard e parametri del server;
+il debugger PL/pgSQL è scritto ma mai provato su un server con `pldebugger`, vedi "Correzioni
+aperte"). Dal 30 ottobre 2026: **parametri del server** (`server_parameters`, capacità omonima:
+`pg_settings`, variabili di MySQL con la loro origine, `information_schema.SYSTEM_VARIABLES` di
+MariaDB, `sys.configurations` di SQL Server con un elenco dei default, `system.settings` e
+`system.server_settings` di ClickHouse, 31 PRAGMA di SQLite, `duckdb_settings()`), con ricerca,
+"solo cambiati" e l'istruzione per cambiarli aperta nell'editor (mai eseguita da sola);
+**dashboard** (`server_metrics`: connessioni, transazioni e statement al secondo calcolati tra
+due letture, cache hit, dimensioni dei database, replica, uptime; ogni misura che il server
+rifiuta mostra "—" con il motivo; PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse);
+**utenti, ruoli e permessi** (`principals` e `principal_privileges`, capacità `security`; lo SQL
+lo scrive `platypus_sql::security` per PostgreSQL, MySQL/MariaDB, SQL Server e ClickHouse): crea,
+modifica, elimina (con `REASSIGN OWNED`/`DROP OWNED` in PostgreSQL), GRANT/REVOKE con grant
+option e appartenenza ai ruoli, anteprima con la password mascherata, che non arriva mai nel
+query log. Limiti: in MySQL serve `SELECT ON mysql.*` per leggere i permessi; SQL Server solo il
+database corrente e niente `DENY`; si vedono i permessi diretti, non quelli ereditati dai ruoli;
+in MySQL le transazioni al secondo contano solo i COMMIT/ROLLBACK espliciti. **Debugger
+PL/pgSQL** (`Connection::debugger`, capacità `debugger`, `platypus-driver-pg/src/debug/`, tab
+`debugger`): chiamata diretta di una funzione o procedura su due sessioni proprie
+(`pldbg_oid_debug`, `pldbg_attach_to_port`), passi dentro e sopra, continua, breakpoint nella
+colonna del sorgente, stack, variabili modificabili, risultato e messaggi alla fine, Stop che
+non lascia la sessione bloccata; profilo `pldebug` di `docker/compose.yml` con l'immagine che
+installa `pldebugger` (non costruibile nel container cloud: apt bloccato). Limiti: niente
+breakpoint globali né funzioni trigger; serve `plugin_debugger` in `shared_preload_libraries`.
+Dal 29 ottobre 2026: query più costose e statistiche di tabelle e
 indici (`top_queries` e `object_statistics`, capacità `server_statistics`; PostgreSQL da
 `pg_stat_statements` e `pg_stat_user_tables/indexes`, MySQL e MariaDB da `performance_schema`
 e `information_schema`, SQL Server da `dm_exec_query_stats`, `dm_db_partition_stats` e
@@ -729,13 +754,13 @@ solo i lock coinvolti in un'attesa.
 | ✅ **Lock manager**: blocchi e catene di attesa | P2 | D |
 | ✅ Backup e restore con `pg_dump`/`pg_restore` e `mysqldump`, con avanzamento | P2 | D |
 | ✅ Manutenzione: VACUUM, ANALYZE, REINDEX, OPTIMIZE e CHECK TABLE dal menu | P2 | D+ |
-| Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
-| Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
+| ✅ Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
+| ✅ Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
 | ✅ **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
-| Debugger PL/pgSQL | P3 | D+ |
+| Debugger PL/pgSQL (scritto, da provare con il profilo `pldebug`) | P3 | D+ |
 | ✅ 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
 | ✅ 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
-| 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
+| ✅ 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
 
 ---
 
@@ -1132,7 +1157,19 @@ la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Prog
 
 ### Gruppo Q — Documentazione e catalogo dei dati
 
-**Stato: P2 completate** (restano le P3). **Note e tag** in `catalog.db`, un SQLite a parte nella
+**Stato: completato.** P3: **colonne sensibili**, un segno a mano per colonna (*Sensitive* nelle
+Columns del tab oggetto, tabella `sensitive_columns` di `catalog.db`) sopra le regole su nome e
+tipo delle impostazioni Safety (`guards/maskRules.ts`, `guards/mask.ts`: `useSensitive`, con la
+tabella del risultato da `SensitiveScope` dove è nota, data viewer e profilo tabella); le usano
+il mascheramento, le intestazioni della griglia e gli export (`ExportOptions.masked`/`omitted`
+in `platypus-transfer`: valori scritti come `••••••`, NULL lasciati NULL, o colonne tolte);
+gli agenti del gruppo N le useranno col mascheramento delle colonne sensibili di N. **Dove si usa
+una colonna**: la sezione *Used by* del tab di una tabella (`column_usage` in
+`commands/catalog.rs`): il DDL di viste, routine e trigger dello schema letto in blocco con
+`Connection::objects_ddl`, più gli script salvati del progetto sulla stessa connessione o su
+nessuna; il confronto dei nomi è in `platypus-sql::usage` (parole e identificatori quotati fuori
+da commenti e stringhe, il corpo `$$` delle routine PostgreSQL riletto come SQL), e conta solo
+un testo che nomina anche la tabella. P2: **Note e tag** in `catalog.db`, un SQLite a parte nella
 cartella dati (`CatalogStore` in `platypus-store`, migrazioni con `PRAGMA user_version`), per
 connessione salvata, database e `schema.oggetto.colonna`: riquadro Notes e colonne Note e Tags nel
 tab oggetto, segno e tooltip nel navigator con il filtro `#tag`, segno sulle intestazioni di
@@ -1165,8 +1202,8 @@ rispettate da tutta l'app.
 | ✅ **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
 | ✅ Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
 | ✅ **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
-| 🆕 **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
-| 🆕 Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
+| ✅ **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
+| ✅ Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
 
 ---
 

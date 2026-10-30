@@ -11,11 +11,15 @@ mod admin;
 pub mod columns;
 mod cursor;
 mod ddl;
+mod debug;
+pub use debug::PgDebugger;
 #[doc(hidden)]
 pub mod decode;
 mod explain;
+mod security;
 pub use explain::read_plan;
 mod meta;
+mod monitor;
 mod tls;
 
 use std::pin::Pin;
@@ -420,6 +424,14 @@ impl Connection for PgConnection {
         ddl::databases(self).await
     }
 
+    fn debugger(&self) -> Result<Arc<dyn platypus_core::Debugger>> {
+        if self.has_debugger() {
+            Ok(Arc::new(PgDebugger))
+        } else {
+            Err(platypus_core::unsupported("debugging routines"))
+        }
+    }
+
     async fn search_metadata(&self, needle: &str) -> Result<Vec<platypus_core::MetadataMatch>> {
         meta::search_metadata(self, needle).await
     }
@@ -449,6 +461,16 @@ impl Connection for PgConnection {
         admin::object_statistics(self).await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        self.server_admin()?;
+        monitor::parameters(self).await
+    }
+
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        self.server_admin()?;
+        monitor::metrics(self).await
+    }
+
     async fn maintain(
         &self,
         schema: &str,
@@ -457,6 +479,20 @@ impl Connection for PgConnection {
     ) -> Result<Vec<String>> {
         self.server_admin()?;
         admin::maintain(self, schema, table, operation).await
+    }
+
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        self.server_admin()?;
+        security::principals(self).await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        _host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        self.server_admin()?;
+        security::privileges(self, name).await
     }
 
     fn transaction(&self) -> TransactionState {
@@ -489,6 +525,7 @@ impl Connection for PgConnection {
             server_sessions: self.has_server_admin(),
             cancel_server_queries: self.has_server_admin(),
             server_statistics: self.has_server_admin(),
+            security: self.has_server_admin(),
             maintenance: if self.has_server_admin() {
                 admin::MAINTENANCE
             } else {
@@ -496,6 +533,9 @@ impl Connection for PgConnection {
             },
             // CockroachDB's COPY has limits of its own in a transaction: rows go as INSERTs.
             bulk_load: !is_cockroach(self),
+            server_parameters: self.has_server_admin(),
+            server_metrics: self.has_server_admin(),
+            debugger: self.has_debugger(),
         }
     }
 
@@ -617,6 +657,13 @@ impl PgConnection {
                 }
             }
         }
+    }
+
+    /// Whether PL/pgSQL can be debugged here, where the server has pldebugger: not on the
+    /// databases that only speak the protocol, nor behind a pooler in transaction mode, where
+    /// the routine marked for debugging and the call could reach different server sessions.
+    fn has_debugger(&self) -> bool {
+        self.has_server_admin() && !self.unnamed_statements
     }
 
     /// Whether the server lists its sessions and locks as PostgreSQL does: CockroachDB has

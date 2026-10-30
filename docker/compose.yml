@@ -45,6 +45,29 @@ services:
       - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
 
+  # PostgreSQL 17 with the PL/pgSQL debugger, on 55437: the routine debugger and its tests
+  # (crates/platypus-conformance/tests/debugger.rs). Not started by default, since its image
+  # is built: `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`.
+  # The `pldbgapi` extension is left to create: the tests install it, as the app offers to.
+  postgres-pldebug:
+    build: ./postgres-pldebug
+    image: platypus-db/postgres-pldebug:17
+    profiles: [pldebug]
+    command:
+      - -c
+      - shared_preload_libraries=plugin_debugger
+    environment:
+      POSTGRES_USER: platypus
+      POSTGRES_PASSWORD: platypus
+      POSTGRES_DB: platypus
+    ports:
+      - "55437:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platypus -d platypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
   mysql:
     image: mysql:8.4
     # Binary logging is on by default; without this only SUPER may create triggers and

@@ -157,6 +157,15 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   MongoDB, Redis and Elasticsearch have none.
 - **Row label**: the column that names a table's rows where foreign keys point to it, picked in
   the object tab or from a header's menu in the grid.
+- **Sensitive columns** (personal data, secrets): the rules of Settings › Safety name them by
+  name or type (emails, phones, passwords…), and the *Sensitive* column of the object tab marks
+  a column sensitive or not over the rules, kept with the notes. Masking hides them, the data
+  viewer's headers say which they are, and an export can keep, mask or leave them out.
+- **Used by**, in a table's tab: for each column, the views, routines and triggers of its schema
+  and the saved scripts of the project that name it, with the line, and the columns named
+  nowhere. A text counts when it names the table and the column (a column of the same name of
+  another table in it counts too). Comments and strings do not; a PostgreSQL routine's `$$`
+  body does.
 - **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
   or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes,
   tags and an ER diagram of each schema of up to 100 tables.
@@ -443,6 +452,20 @@ then run the SELECT or open it in the editor.
   `VACUUM`, `ANALYZE` and `REINDEX` on PostgreSQL; `ANALYZE`, `OPTIMIZE` and `CHECK TABLE` on
   MySQL and MariaDB; `UPDATE STATISTICS`, an index rebuild and `DBCC CHECKTABLE` on SQL
   Server. Each asks first and shows what the server said.
+- **Parameters**: the server's settings with their value, default, source and description,
+  searchable, with *Only changed*; *Open in the editor* writes the statement that changes one
+  (`ALTER SYSTEM SET`, `SET GLOBAL`, `sp_configure`…) for you to run.
+- **Dashboard**: connections, transactions and statements per second, cache hit ratio,
+  database sizes, replication and uptime, with their recent history; what the server does not
+  let the login read shows "—" and why.
+- **Users and roles**: the server's users and roles with their attributes, memberships and
+  privileges; create, change and drop them, grant and revoke privileges on databases, schemas,
+  tables and routines (with grant option) from a form, with the SQL previewed first. Passwords
+  are masked in the preview and never reach the query log. PostgreSQL, MySQL, MariaDB, SQL
+  Server and ClickHouse.
+- **Debug…** a PL/pgSQL function or procedure (PostgreSQL with the `pldebugger` extension):
+  arguments in a form, then step into, step over, continue (F11, F10, F5), breakpoints on the
+  source, the stack, variables you can change, and the result at the end.
 - **Back up… and Restore…** of a PostgreSQL or MySQL database (or a PostgreSQL schema) with
   its own tools on the PATH (`pg_dump`, `pg_restore`, `psql`, `mysqldump`, `mysql`), through
   the connection's tunnel or proxy, table by table with a progress bar. A `pg_dump` archive
@@ -600,8 +623,9 @@ through the MCP server.
   *Snapshots before changes…* in the palette, opens that script. On by default.
 - A connection can forbid **exports** (no file, other database or agent gets its data) and
   **data editing** (rows change only by SQL: no grid edits, imports or generated rows).
-- **Mask sensitive data** (Ctrl+Alt+M) shows the columns named in Settings › Safety (emails,
-  phones, passwords… by name or type) as dots while the screen is shared; copies keep the values.
+- **Mask sensitive data** (Ctrl+Alt+M) shows the sensitive columns (named in Settings › Safety
+  by name or type, or marked in the table's tab) as dots while the screen is shared; copies keep
+  the values.
 - With a master password, the app can **lock** after some idle minutes, closing the production
   connections; *Lock PlatypusDB* in the palette locks it at once.
 

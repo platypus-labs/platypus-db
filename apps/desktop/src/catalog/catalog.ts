@@ -1,9 +1,9 @@
 /**
- * The local notes, tags and display columns of each connection (`catalog.db`), loaded once per
- * connection and shared by the navigator, the object tab, the grid and the editor's completion.
+ * The local notes, tags, display columns and sensitive marks of each connection (`catalog.db`),
+ * loaded once per connection and shared by the navigator, the object tab, the grid and the editor's completion.
  */
 import { useSyncExternalStore } from "react";
-import { api, type CatalogEntry, type CatalogKey, type DisplayColumn, toCommandError } from "../api";
+import { api, type CatalogEntry, type CatalogKey, type DisplayColumn, type SensitiveColumn, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
 import { annotation as describe, type AnnotationOptions } from "./annotation";
@@ -24,6 +24,8 @@ export function annotation(
 const loaded = new Map<string, Map<string, CatalogEntry>>();
 /** Per connection: `database \0 schema \0 table` → the column that describes its rows. */
 const displays = new Map<string, Map<string, string>>();
+/** Per connection: a column's key (`id`) → the user's mark, sensitive or not. */
+const marks = new Map<string, Map<string, boolean>>();
 const loading = new Map<string, Promise<void>>();
 /**
  * The writes to the catalog of a connection, one after the other. A refetch (after a rename)
@@ -39,14 +41,16 @@ const tableId = (database: string | null | undefined, schema: string, table: str
   [database ?? "", schema, table].join("\u0000");
 
 async function fetchCatalog(connectionId: string) {
-  const [entries, columns] = await Promise.all([
+  const [entries, columns, sensitive] = await Promise.all([
     api.catalogEntries(connectionId),
     api.catalogDisplayColumns(connectionId),
+    api.catalogSensitiveColumns(connectionId),
   ]);
-  store(connectionId, entries, columns);
+  store(connectionId, entries, columns, sensitive);
 }
 
-function store(connectionId: string, entries: CatalogEntry[], columns: DisplayColumn[]) {
+function store(connectionId: string, entries: CatalogEntry[], columns: DisplayColumn[], sensitive: SensitiveColumn[]) {
+  marks.set(connectionId, new Map(sensitive.map((m) => [id(m.key), m.sensitive])));
   loaded.set(connectionId, new Map(entries.map((e) => [id(e.key), e])));
   displays.set(connectionId, new Map(columns.map((d) => [tableId(d.key.database, d.key.schema, d.key.object), d.column])));
 }
@@ -66,7 +70,7 @@ function load(connectionId: string): Promise<void> {
   if (loaded.has(connectionId)) return Promise.resolve();
   const p = fetchCatalog(connectionId).catch((e: unknown) => {
     // The app works without notes; say so once.
-    store(connectionId, [], []);
+    store(connectionId, [], [], []);
     if (!warned) {
       warned = true;
       workbench().showError(t("Notes are unavailable: {error}", { error: toCommandError(e).message }));
@@ -135,6 +139,7 @@ export const reportCatalogError = (e: unknown) => workbench().showError(toComman
 function dropCached(connectionId: string) {
   loaded.delete(connectionId);
   displays.delete(connectionId);
+  marks.delete(connectionId);
 }
 
 /** Drops what is cached for a deleted connection. */
@@ -174,6 +179,30 @@ export function setDisplayColumn(
     if (column === null) columns.delete(tableId(database, schema, table));
     else columns.set(tableId(database, schema, table), column);
     displays.set(connectionId, columns);
+    changed();
+  });
+}
+
+/** The user's mark on the column `key`: sensitive or not; `undefined` when the rules decide
+ *  (or until loaded). */
+export function sensitiveMark(connectionId: string, key: CatalogKey): boolean | undefined {
+  const known = marks.get(connectionId);
+  if (!known) {
+    load(connectionId);
+    return undefined;
+  }
+  return known.get(id(key));
+}
+
+/** Marks the column `key` sensitive or not; `null` leaves it to the rules again. */
+export function setSensitiveMark(connectionId: string, key: CatalogKey, sensitive: boolean | null): Promise<void> {
+  return writes.run(connectionId, async () => {
+    await load(connectionId);
+    await api.setCatalogSensitive(connectionId, key, sensitive);
+    const known = marks.get(connectionId) ?? new Map<string, boolean>();
+    if (sensitive === null) known.delete(id(key));
+    else known.set(id(key), sensitive);
+    marks.set(connectionId, known);
     changed();
   });
 }

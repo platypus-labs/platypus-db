@@ -72,7 +72,7 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
   const [filter, setFilter] = useState("");
   // What the last click did when it could not open the data: the value went to the clipboard.
   const [note, setNote] = useState<string | null>(null);
-  const hide = useMask();
+  const hide = useMask({ connectionId: connection.id, database: tab.database, schema: tab.schema, table: tab.name });
 
   useEffect(() => {
     let live = true;

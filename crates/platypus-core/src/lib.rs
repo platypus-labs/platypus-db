@@ -8,12 +8,16 @@ mod admin;
 mod capabilities;
 mod config;
 mod connection;
+mod debug;
 mod env;
 mod error;
 mod explain;
 pub mod geometry;
 mod init;
 mod metadata;
+mod metrics;
+mod parameters;
+mod security;
 pub mod special;
 mod transaction;
 mod version;
@@ -33,6 +37,11 @@ pub use connection::{
     BulkRows, CancelHandle, Canceller, Connection, Driver, ExecOptions, ExecResult, Executed,
     NextResult, RecordBatchStream, ServerInfo, execute_each,
 };
+pub use debug::{
+    DEBUG_RESULT_ROWS, DebugArgument, DebugAvailability, DebugFrame, DebugOutcome, DebugParameter,
+    DebugPosition, DebugRoutine, DebugSession, DebugState, DebugStep, DebugVariable, Debugger,
+    ParameterMode, RoutineRef, VariableKind, debug_break_id,
+};
 pub use env::{ENV_FILE, EnvVars, expand as expand_env, parse_dotenv, without_references};
 pub use error::{DbError, Error, Result, without_repeats};
 pub use explain::{
@@ -42,9 +51,17 @@ pub use explain::{
 pub use init::{SessionInit, run_init};
 pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
-    FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta,
-    Property, ReferencingKey, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow, TextRowExt,
-    group_sorted, query_catalog, query_text,
+    FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, NamedRow, ObjectKind,
+    ObjectMeta, Property, ReferencingKey, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow,
+    TextRowExt, group_sorted, query_catalog, query_named, query_text, text_rows,
+};
+pub use metrics::{
+    DatabaseSize, Metric, ReplicationRow, ServerMetrics, float_of, query_row, query_sizes,
+};
+pub use parameters::{ServerParameter, differs_from, same_value, set_value, sort_parameters};
+pub use security::{
+    DropOptions, GrantAction, GrantKind, GrantTarget, Grantee, Principal, PrincipalFlag,
+    PrincipalKind, PrincipalSpec, PrivilegeGrant, SecurityChange, TargetClass, memberships,
 };
 pub use transaction::{
     TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,

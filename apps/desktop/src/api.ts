@@ -255,8 +255,103 @@ export interface Capabilities {
   server_statistics: boolean;
   /** What "Maintenance" runs on a table; empty for none. */
   maintenance: Maintenance[];
+  /** The users, roles and privileges of the server can be read and changed. */
+  security: boolean;
   /** The driver loads rows natively (PostgreSQL `COPY`, MySQL `LOAD DATA LOCAL`). */
   bulk_load: boolean;
+  /** The admin tab's list of the server's configuration parameters. */
+  server_parameters: boolean;
+  /** The admin tab's dashboard of the server's load. */
+  server_metrics: boolean;
+  /** Routines can be debugged step by step (PL/pgSQL), where the server has the debugger. */
+  debugger: boolean;
+}
+
+/** Whether a database can debug routines now; see `platypus_core::DebugAvailability`. */
+export type DebugAvailability = "ready" | "missing_extension" | "not_loaded" | "not_installed";
+
+export type ParameterMode = "in" | "out" | "inout" | "variadic" | "table";
+
+export interface DebugParameter {
+  name: string | null;
+  type_name: string;
+  mode: ParameterMode;
+  has_default: boolean;
+}
+
+/** A routine to debug; see `platypus_core::DebugRoutine`. */
+export interface DebugRoutine {
+  id: string;
+  schema: string;
+  name: string;
+  signature: string;
+  language: string;
+  procedure: boolean;
+  returns: string | null;
+  parameters: DebugParameter[];
+  /** Why it cannot be debugged; `null` when it can. */
+  refusal: string | null;
+}
+
+export interface DebugInfo {
+  availability: DebugAvailability;
+  routine: DebugRoutine;
+}
+
+/** The value of an input parameter of a debugged call. */
+export type DebugArgument = { kind: "value"; value: string } | { kind: "null" } | { kind: "default" };
+
+export type DebugStep = "into" | "over" | "continue";
+
+export interface DebugPosition {
+  routine: string;
+  name: string;
+  /** Of the routine's source, from 1. */
+  line: number;
+}
+
+export interface DebugFrame {
+  level: number;
+  position: DebugPosition;
+  arguments: string;
+}
+
+export interface DebugVariable {
+  name: string;
+  kind: "argument" | "local";
+  line: number;
+  type_name: string;
+  value: string;
+  constant: boolean;
+  not_null: boolean;
+}
+
+export interface DebugOutcome {
+  columns: string[];
+  rows: (string | null)[][];
+  truncated: boolean;
+  error: string | null;
+  messages: string[];
+  aborted: boolean;
+}
+
+/** Where a debugged call is; see `platypus_core::DebugState`. */
+export type DebugState =
+  | { state: "running" }
+  | { state: "stopped"; position: DebugPosition }
+  | { state: "finished"; outcome: DebugOutcome };
+
+export interface DebugStarted {
+  debug_id: number;
+  routine: DebugRoutine;
+  source: string;
+  state: DebugState;
+}
+
+/** The `debug-state` event: a debugged call changed state. */
+export interface DebugStateEvent {
+  debug_id: number;
+  state: DebugState;
 }
 
 /** A session of the server; see `platypus_core::ServerSession`. */
@@ -319,6 +414,67 @@ export interface ObjectStatistics {
   last_analyze: string | null;
   /** A unique or primary key index. */
   unique: boolean;
+}
+
+/** A configuration parameter of the server; see `platypus_core::ServerParameter`. */
+export interface ServerParameter {
+  name: string;
+  value: string | null;
+  unit: string | null;
+  default: string | null;
+  /** The value differs from the default. */
+  changed: boolean;
+  source: string | null;
+  /** When a change takes effect (PostgreSQL's context), or the scope of the setting. */
+  context: string | null;
+  description: string | null;
+  min: string | null;
+  max: string | null;
+  pending_restart: boolean;
+  /** A statement that sets it to its current value; `null` when it cannot be set. */
+  statement: string | null;
+}
+
+/** One figure of a metrics snapshot, or why the server gave none. */
+export interface Metric {
+  value: number | null;
+  unavailable: string | null;
+}
+
+/** One database of the server and its size on disk. */
+export interface DatabaseSize {
+  name: string;
+  bytes: number;
+}
+
+/** A link of the server's replication; see `platypus_core::ReplicationRow`. */
+export interface ReplicationRow {
+  role: "standby" | "primary" | "group" | "table";
+  name: string | null;
+  state: string | null;
+  lag_seconds: number | null;
+  lag_bytes: number | null;
+  detail: string | null;
+}
+
+/** A snapshot of the server's load; see `platypus_core::ServerMetrics`. */
+export interface ServerMetrics {
+  connections_active: Metric;
+  connections_idle: Metric;
+  connections_max: Metric;
+  uptime_seconds: Metric;
+  /** Counter since the start. */
+  transactions: Metric;
+  /** Counter since the start. */
+  statements: Metric;
+  /** Counter since the start. */
+  cache_hits: Metric;
+  /** Counter since the start. */
+  cache_reads: Metric;
+  databases: DatabaseSize[];
+  databases_unavailable: string | null;
+  replication: ReplicationRow[];
+  replication_unavailable: string | null;
 }
 
 /** A backup's or restore's progress and outcome; see `commands::backup::BackupEvent`. */
@@ -448,6 +604,116 @@ export interface ScheduleView extends Schedule {
   next: string | null;
   runs: ScheduleRun[];
   running: boolean;
+}
+
+/** Whether a principal logs in or only groups privileges; see `platypus_core::PrincipalKind`. */
+export type PrincipalKind = "user" | "role";
+
+/** A yes/no attribute of a user or role; see `platypus_core::PrincipalFlag`. */
+export type PrincipalFlag =
+  | "login"
+  | "superuser"
+  | "create_db"
+  | "create_role"
+  | "inherit"
+  | "replication"
+  | "bypass_rls"
+  | "locked"
+  | "password_expired";
+
+/** A user or role of the server; see `platypus_core::Principal`. */
+export interface Principal {
+  name: string;
+  /** The host of a MySQL account. */
+  host: string | null;
+  kind: PrincipalKind;
+  flags: PrincipalFlag[];
+  connection_limit: number | null;
+  valid_until: string | null;
+  authentication: string | null;
+  /** SQL Server: the login the user is mapped to. */
+  login?: string | null;
+  member_of: string[];
+}
+
+export type GrantKind = "server" | "database" | "schema" | "table" | "column" | "routine";
+
+/** A privilege given to a principal; see `platypus_core::PrivilegeGrant`. */
+export interface PrivilegeGrant {
+  kind: GrantKind;
+  schema: string | null;
+  object: string | null;
+  column: string | null;
+  privilege: string;
+  grantable: boolean;
+}
+
+export interface Grantee {
+  name: string;
+  host?: string | null;
+}
+
+/** What a grant or revoke is on; see `platypus_core::GrantTarget`. */
+export type GrantTarget =
+  | { kind: "server" }
+  | { kind: "database"; name: string }
+  | { kind: "schema"; name: string }
+  | { kind: "table"; schema: string; name: string }
+  | { kind: "all_tables"; schema: string }
+  | { kind: "all_routines"; schema: string };
+
+export type TargetClass = GrantTarget["kind"];
+
+/** A user or role to create or alter; see `platypus_core::PrincipalSpec`. */
+export interface PrincipalSpec {
+  name: string;
+  host?: string | null;
+  kind: PrincipalKind;
+  flags_on?: PrincipalFlag[];
+  flags_off?: PrincipalFlag[];
+  /** `-1` removes the limit; `null` leaves it. */
+  connection_limit?: number | null;
+  /** Empty removes the date; `null` leaves it. */
+  valid_until?: string | null;
+  /** Never shown: previews and the query log mask it. */
+  password?: string | null;
+  rename_to?: string | null;
+  /** SQL Server: the login of the user, needed for a password or lock change. */
+  login?: string | null;
+}
+
+export interface DropOptions {
+  reassign_to?: string | null;
+  drop_owned?: boolean;
+  drop_login?: boolean;
+  /** The login to drop with `drop_login`. */
+  login?: string | null;
+}
+
+/** A change to the users, roles and privileges of the server; see
+ *  `platypus_core::SecurityChange`. */
+export type SecurityChange =
+  | { change: "create"; spec: PrincipalSpec }
+  | { change: "alter"; spec: PrincipalSpec }
+  | { change: "drop"; name: string; host?: string | null; kind: PrincipalKind; options: DropOptions }
+  | {
+      change: "privileges";
+      action: "grant" | "revoke";
+      grantees: Grantee[];
+      target: GrantTarget;
+      privileges: string[];
+      grant_option: boolean;
+      cascade: boolean;
+    }
+  | { change: "membership"; action: "grant" | "revoke"; role: string; members: Grantee[]; admin_option: boolean };
+
+/** What the form of a database offers: its attributes, and the privileges on each kind of
+ *  object (a kind with none cannot be granted on). */
+export interface SecurityOptions {
+  flags: PrincipalFlag[];
+  /** False on a server without roles (MySQL before 8.0). */
+  roles: boolean;
+  targets: { target: TargetClass; privileges: string[] }[];
 }
 
 /** The upkeep of a table; see `platypus_core::Maintenance`. */
@@ -1345,6 +1611,10 @@ export interface ExportOptions {
   upload_url?: string | null;
   /** A bucket the finished file is also sent to, signed with its keys. */
   bucket?: Bucket | null;
+  /** Columns written as dots (a NULL stays NULL): sensitive data. */
+  masked?: string[];
+  /** Columns left out of the file. */
+  omitted?: string[];
 }
 
 /** A bucket of S3 or a service with its API (GCS with HMAC keys, R2, MinIO), as `s3::Bucket`. */
@@ -1501,6 +1771,30 @@ export interface TagCount {
 export interface DisplayColumn {
   key: CatalogKey;
   column: string;
+}
+
+/** Where a column of a table is used: an object of its schema (`kind` set), or a saved script
+ *  (`name` its path in `ColumnUsage.scripts_root`). */
+export interface ColumnUse {
+  column: string;
+  kind: ObjectKind | null;
+  name: string;
+  parent: string | null;
+  /** The first line naming the column, from 1, and its text. */
+  line: number;
+  excerpt: string;
+}
+
+export interface ColumnUsage {
+  /** `null` when the scripts' folder cannot be read: no script is searched. */
+  scripts_root: string | null;
+  uses: ColumnUse[];
+}
+
+/** A column the user marked sensitive or not, over the rules on names and types. */
+export interface SensitiveColumn {
+  key: CatalogKey;
+  sensitive: boolean;
 }
 
 export type DocsFormat = "markdown" | "html";
@@ -2335,11 +2629,43 @@ export const api = {
   serverLocks: (sessionId: number) => invoke<ServerLock[]>("server_locks", { sessionId }),
   topQueries: (sessionId: number) => invoke<ServerQuery[]>("top_queries", { sessionId }),
   objectStatistics: (sessionId: number) => invoke<ObjectStatistics[]>("object_statistics", { sessionId }),
+  serverParameters: (sessionId: number) => invoke<ServerParameter[]>("server_parameters", { sessionId }),
+  serverMetrics: (sessionId: number) => invoke<ServerMetrics>("server_metrics", { sessionId }),
   /** Runs `operation` on table `schema.table`; returns what the server said, a line each. */
   maintainTable: (sessionId: number, schema: string, table: string, operation: Maintenance) =>
     invoke<string[]>("maintain_table", { sessionId, schema, table, operation }),
+  listPrincipals: (sessionId: number) => invoke<Principal[]>("list_principals", { sessionId }),
+  principalPrivileges: (sessionId: number, name: string, host: string | null) =>
+    invoke<PrivilegeGrant[]>("principal_privileges", { sessionId, name, host }),
+  securityOptions: (sessionId: number) => invoke<SecurityOptions>("security_options", { sessionId }),
+  /** The statements of `change`, a password masked. */
+  securityPreview: (sessionId: number, change: SecurityChange) =>
+    invoke<string[]>("security_preview", { sessionId, change }),
+  /** Runs `change` and returns its statements as shown (a password masked). */
+  applySecurity: (sessionId: number, change: SecurityChange) =>
+    invoke<string[]>("apply_security", { sessionId, change }),
   endServerSession: (sessionId: number, id: string, how: EndSession) =>
     invoke<void>("end_server_session", { sessionId, id, how }),
+  /** Whether the database can debug routines, and routine `schema.name(argument types)`. */
+  debugRoutine: (sessionId: number, schema: string, name: string) =>
+    invoke<DebugInfo>("debug_routine", { sessionId, schema, name }),
+  /** Creates the debugger's extension; returns what the database can do then. */
+  debugInstall: (sessionId: number) => invoke<DebugAvailability>("debug_install", { sessionId }),
+  /** Calls routine `routine` (its id) on sessions of its own, stopped at its first statement. */
+  debugStart: (sessionId: number, routine: string, args: DebugArgument[]) =>
+    invoke<DebugStarted>("debug_start", { sessionId, routine, arguments: args }),
+  debugStep: (debugId: number, step: DebugStep) => invoke<DebugState>("debug_step", { debugId, step }),
+  debugContinue: (debugId: number) => invoke<DebugState>("debug_continue", { debugId }),
+  debugSetBreakpoint: (debugId: number, routine: string, line: number, on: boolean) =>
+    invoke<void>("debug_set_breakpoint", { debugId, routine, line, on }),
+  debugStack: (debugId: number) => invoke<DebugFrame[]>("debug_stack", { debugId }),
+  debugVariables: (debugId: number, frame: number) => invoke<DebugVariable[]>("debug_variables", { debugId, frame }),
+  /** `value` `null` sets NULL. */
+  debugSetVariable: (debugId: number, frame: number, name: string, line: number, value: string | null) =>
+    invoke<void>("debug_set_variable", { debugId, frame, name, line, value }),
+  debugSource: (debugId: number, routine: string) => invoke<string>("debug_source", { debugId, routine }),
+  /** Aborts the call; `null` when it had ended already. */
+  debugStop: (debugId: number) => invoke<DebugState | null>("debug_stop", { debugId }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),
   objectsDdl: (sessionId: number, objects: ObjectTarget[]) => invoke<ObjectDdl[]>("objects_ddl", { sessionId, objects }),
   objectProperties: (sessionId: number, object: ObjectTarget) =>
@@ -2471,6 +2797,14 @@ export const api = {
     invoke<DisplayColumn[]>("catalog_display_columns", { connectionId }),
   setCatalogDisplayColumn: (connectionId: string, key: CatalogKey, column: string | null) =>
     invoke<void>("set_catalog_display_column", { connectionId, key, column }),
+  /** Where the `columns` of `schema.table` are used: views, routines and triggers of the schema,
+   *  and the saved scripts of `project` on this connection or on none. */
+  columnUsage: (sessionId: number, schema: string, table: string, columns: string[], project: string | null) =>
+    invoke<ColumnUsage>("column_usage", { sessionId, schema, table, columns, project }),
+  catalogSensitiveColumns: (connectionId: string) =>
+    invoke<SensitiveColumn[]>("catalog_sensitive_columns", { connectionId }),
+  setCatalogSensitive: (connectionId: string, key: CatalogKey, sensitive: boolean | null) =>
+    invoke<void>("set_catalog_sensitive", { connectionId, key, sensitive }),
   /** Writes the documentation of `request.schemas`; cancelled with `cancelDocs`. */
   exportDocs: (
     sessionId: number,

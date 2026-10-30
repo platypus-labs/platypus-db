@@ -217,12 +217,34 @@ impl Logged {
     }
 }
 
+/// The secrets of `sql` when `masked` hides some of it; none for a statement that is logged
+/// as it is.
+fn secrets_if_masked(masked: &str, sql: &str) -> Vec<String> {
+    if masked == sql {
+        Vec::new()
+    } else {
+        platypus_sql::security::secrets_of(sql)
+    }
+}
+
+/// `error` without the `secrets` a server may have quoted in its text.
+fn hide_in_error(error: Error, secrets: &[String]) -> Error {
+    if secrets.is_empty() {
+        error
+    } else {
+        error.map_text(|t| platypus_sql::security::hide_secrets(t, secrets))
+    }
+}
+
 #[async_trait]
 impl Connection for Logged {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
+        // A password in a `CREATE USER` is not for the log.
+        let masked = platypus_sql::security::mask_secrets(sql);
+        let secrets = secrets_if_masked(&masked, sql);
         let id = self
             .log
-            .start(&self.connection, LogKind::Query, sql.to_owned());
+            .start(&self.connection, LogKind::Query, masked.into_owned());
         let started = Instant::now();
         let result = self.inner.execute(sql, options).await;
         let first = millis_since(started);
@@ -254,7 +276,8 @@ impl Connection for Logged {
                 ))
             }
             Err(e) => {
-                let e = self.tag(e);
+                // The server may quote the password back (MySQL: `near 'hunter2'`).
+                let e = hide_in_error(self.tag(e), &secrets);
                 self.log.finish(id, started, Some(e.to_string()));
                 Err(e)
             }
@@ -263,12 +286,15 @@ impl Connection for Logged {
 
     /// One entry for all of them, as they reach the server together.
     async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
+        let script = statements.join(";\n");
+        let masked = platypus_sql::security::mask_secrets(&script);
+        let secrets = secrets_if_masked(&masked, &script);
         let id = self
             .log
-            .start(&self.connection, LogKind::Query, statements.join(";\n"));
+            .start(&self.connection, LogKind::Query, masked.into_owned());
         let started = Instant::now();
         let mut executed = self.inner.execute_all(statements, expected).await;
-        executed.error = executed.error.map(|e| self.tag(e));
+        executed.error = executed.error.map(|e| hide_in_error(self.tag(e), &secrets));
         let rows = executed.rows.iter().sum();
         self.log.update(id, |e| e.rows = Some(rows));
         let error = executed.error.as_ref().map(ToString::to_string);
@@ -447,6 +473,20 @@ impl Connection for Logged {
         .await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        self.track(
+            LogKind::Metadata,
+            "server parameters",
+            self.inner.server_parameters(),
+        )
+        .await
+    }
+
+    // Not logged, like the sessions: the dashboard reads it every few seconds.
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        self.inner.server_metrics().await.map_err(|e| self.tag(e))
+    }
+
     async fn object_statistics(&self) -> Result<Vec<platypus_core::ObjectStatistics>> {
         self.track(
             LogKind::Metadata,
@@ -471,10 +511,38 @@ impl Connection for Logged {
         .await
     }
 
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        self.track(
+            LogKind::Metadata,
+            "users and roles",
+            self.inner.principals(),
+        )
+        .await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        let text = format!("privileges of {name}");
+        self.track(
+            LogKind::Metadata,
+            text,
+            self.inner.principal_privileges(name, host),
+        )
+        .await
+    }
+
     async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
         let text = format!("bulk load of {} rows into {}", rows.rows.len(), rows.table);
         self.track(LogKind::Query, text, self.inner.bulk_load(rows))
             .await
+    }
+
+    // The debugger runs its statements through the sessions it is given, which are logged.
+    fn debugger(&self) -> Result<Arc<dyn platypus_core::Debugger>> {
+        self.inner.debugger()
     }
 }
 
@@ -611,6 +679,55 @@ mod tests {
             let logged = log.page(0).entries.into_iter().last().unwrap();
             assert!(logged.error.unwrap().ends_with(&tag), "the log says it too");
         });
+    }
+
+    #[test]
+    fn a_password_does_not_reach_the_log() {
+        use platypus_core::{ConnectionConfig, Driver, DriverKind};
+
+        tauri::async_runtime::block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+            config.database = dir.path().join("p.db").to_string_lossy().into_owned();
+            let log = Arc::new(QueryLog::default());
+            let raw = platypus_driver_sqlite::SqliteDriver
+                .connect(&config)
+                .await
+                .unwrap();
+            let conn = Logged::wrap(Arc::from(raw), &log, "local");
+            // SQLite has no users: the statement fails, and is logged all the same.
+            let create = "CREATE USER app WITH PASSWORD 'hunter2'";
+            let _ = conn.execute(create, &ExecOptions::default()).await;
+            let _ = conn
+                .execute_all(&["SELECT 1", "ALTER ROLE app PASSWORD 'hunter2'"], &[0, 0])
+                .await;
+            let entries = log.page(0).entries;
+            assert!(
+                entries.iter().all(|e| !e.text.contains("hunter2")),
+                "{entries:?}"
+            );
+            assert!(entries.iter().any(|e| e.text.contains("'********'")));
+        });
+    }
+
+    #[test]
+    fn a_server_error_does_not_quote_the_password() {
+        let sql = "CREATE USER app IDENTIFIED BY 'hunter2'";
+        let masked = platypus_sql::security::mask_secrets(sql);
+        let secrets = secrets_if_masked(&masked, sql);
+        let quoted = Error::Database(platypus_core::DbError {
+            message: "You have an error near 'hunter2' at line 1".to_owned(),
+            detail: Some("hunter2".to_owned()),
+            ..platypus_core::DbError::default()
+        });
+        let hidden = hide_in_error(quoted, &secrets).to_string();
+        assert!(!hidden.contains("hunter2"), "{hidden}");
+        assert!(hidden.contains("near '********' at line 1"), "{hidden}");
+        // A statement that is logged as it is keeps its error as it is.
+        let plain = "SELECT 1 WHERE x = 'hunter2'";
+        let secrets = secrets_if_masked(&platypus_sql::security::mask_secrets(plain), plain);
+        let error = hide_in_error(Error::Other("near 'hunter2'".to_owned()), &secrets);
+        assert_eq!(error.to_string(), "near 'hunter2'");
     }
 
     #[test]
