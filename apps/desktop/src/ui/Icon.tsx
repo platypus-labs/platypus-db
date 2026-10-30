@@ -4,7 +4,8 @@
  * icons named there end up in the bundle. The family comes from the `appearance.icon_set`
  * preference.
  */
-import { getStored, useSettingsVersion } from "../settings";
+import { useSyncExternalStore } from "react";
+import { getStored, onSettingsChanged } from "../settings";
 import { LUCIDE, type IconName } from "./icons/lucide";
 import { ICON_SETS, type IconSet } from "./icons/sets";
 import { PHOSPHOR } from "./icons/phosphor";
@@ -18,11 +19,33 @@ export type { IconSet };
 const SET_KEY = "appearance.icon_set";
 
 /** The family chosen in Settings; Lucide when unset or unknown. */
-function useIconSet(): IconSet {
-  useSettingsVersion();
+function readIconSet(): IconSet {
   const v = getStored(SET_KEY);
   return ICON_SETS.some((s) => s.id === v) ? (v as IconSet) : "lucide";
 }
+
+// One subscription to the settings for all icons: they re-render only when the family changes.
+const setListeners = new Set<() => void>();
+let lastSet: IconSet | null = null;
+let stopWatching: (() => void) | undefined;
+
+function subscribeIconSet(listener: () => void) {
+  if (setListeners.size === 0) {
+    lastSet = readIconSet();
+    stopWatching = onSettingsChanged(() => {
+      const now = readIconSet();
+      if (now === lastSet) return;
+      lastSet = now;
+      setListeners.forEach((l) => l());
+    });
+  }
+  setListeners.add(listener);
+  return () => {
+    setListeners.delete(listener);
+    if (setListeners.size === 0) stopWatching?.();
+  };
+}
+const useIconSet = () => useSyncExternalStore(subscribeIconSet, readIconSet);
 
 /**
  * An icon in the current text color; decorative unless it has a `title`. `set` forces a family
