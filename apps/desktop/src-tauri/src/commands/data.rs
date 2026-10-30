@@ -518,6 +518,21 @@ async fn cassandra_script(
     edit::script(&edits).map_err(|m| CommandError::new("invalid_value", m))
 }
 
+/// The lines of a CQL undo script ended with `;`, the way a CQL editor splits a script; comment
+/// lines stay as they are.
+fn terminated(lines: Vec<String>) -> Vec<String> {
+    lines
+        .into_iter()
+        .map(|l| {
+            if l.starts_with("--") {
+                l
+            } else {
+                format!("{l};")
+            }
+        })
+        .collect()
+}
+
 /// The commands that saving `changes` runs when the result's session is a Redis, an
 /// Elasticsearch or a Cassandra one, whose edits are commands, not SQL, with the commands
 /// that undo them; `None` for the SQL drivers.
@@ -530,12 +545,7 @@ async fn command_script(
         platypus_core::DriverKind::Cassandra => {
             let script = cassandra_script(state, job, changes).await?;
             // The undo goes to a CQL editor, which splits a script at the `;`.
-            let undo = script
-                .undo
-                .into_iter()
-                .map(|l| if l.starts_with("--") { l } else { format!("{l};") })
-                .collect();
-            Some((script.commands, undo))
+            Some((script.commands, terminated(script.undo)))
         }
         platypus_core::DriverKind::Redis => {
             let script = redis_script(job, changes)?;
@@ -661,5 +671,27 @@ pub fn join_literal(composite: bool, type_name: &str, items: Vec<Option<String>>
         pg_literal::join_composite(&items)
     } else {
         pg_literal::join_array(&items, pg_literal::array_delimiter(type_name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::terminated;
+
+    #[test]
+    fn each_cql_statement_of_an_undo_script_ends_with_a_semicolon() {
+        let lines = vec![
+            "-- undo".to_owned(),
+            "INSERT INTO ks.t (id) VALUES (1)".to_owned(),
+            "DELETE FROM ks.t WHERE id = 2".to_owned(),
+        ];
+        assert_eq!(
+            terminated(lines),
+            [
+                "-- undo",
+                "INSERT INTO ks.t (id) VALUES (1);",
+                "DELETE FROM ks.t WHERE id = 2;",
+            ]
+        );
     }
 }
