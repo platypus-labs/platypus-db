@@ -46,6 +46,9 @@ const square = (id) => `document.querySelector('.project-square[data-project="${
 const folderOf = (id) => `(${square(id)}?.closest('[data-folder]')?.dataset.folder ?? '')`;
 const field = `document.querySelector('.project-dialog [data-field=folder]')`;
 
+// No connection: the steps start once the rail shows the projects.
+export const ready = `${square(ids.c)} !== null`;
+
 /** Opens the edit dialog of a project from its rail menu. */
 async function edit(page, id) {
   const r = await page.rect(`.project-square[data-project="${id}"]`);
