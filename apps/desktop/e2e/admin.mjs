@@ -242,3 +242,35 @@ export function toolVersion(program) {
   if (r.status !== 0) return null;
   return Number(/(\d+)\./.exec(r.stdout)?.[1] ?? 0);
 }
+
+/** Types `text` into the search box of the admin tab, the way a person would: React reads the
+ *  value from the input event. */
+export const setSearch = (page, text) =>
+  page.eval(
+    `(() => { const i = ${adminTab}.querySelector('input[type=search]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(text)}); i.dispatchEvent(new Event('input', { bubbles: true })); })()`,
+  );
+
+/** Sets the refresh interval of the admin tab (`0` is manual). */
+export const setRefresh = (page, seconds) =>
+  page.eval(
+    `(() => { const s = ${adminTab}.querySelector('select.admin-interval'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(String(seconds))}); s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+  );
+
+/** The row of the Parameters view named `name`. */
+export const parameterRow = (name) => `${adminTab}?.querySelector('table.admin-parameters tr[data-name="${name}"]')`;
+
+/** The names of the rows the Parameters view lists. */
+export const parameterNames = (page) =>
+  page.eval(`[...${adminTab}.querySelectorAll('table.admin-parameters tbody tr')].map(r => r.dataset.name)`);
+
+/** The text of cell `column` (0 name, 1 value, 2 default, 3 source, 4 context) of a parameter's row. */
+export const parameterCell = (page, name, column) => page.eval(`${parameterRow(name)}.children[${column}].textContent`);
+
+/** A tile of the dashboard: its figure, as shown, and the tooltip it has when it shows "—". */
+export const tile = (id) => `${adminTab}?.querySelector('.dash-tile[data-tile="${id}"]')`;
+export const tileValue = (id) => `${tile(id)}?.querySelector('[data-field="value"]')?.textContent ?? null`;
+export const tileTitle = (id) => `${tile(id)}?.querySelector('[data-field="value"]')?.title ?? null`;
+
+/** How many readings the sparkline of tile `id` draws. */
+export const sparkPoints = (id) =>
+  `(${tile(id)}?.querySelector('svg.dash-spark polyline')?.getAttribute('points') ?? '').split(' ').filter(Boolean).length`;
