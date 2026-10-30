@@ -2960,6 +2960,8 @@ const de: Record<string, string> = {
   "Already first": "Bereits an erster Stelle",
   "Already last": "Bereits an letzter Stelle",
   "None (top level)": "Keiner (oberste Ebene)",
+  "Create index…": "Index erstellen…",
+  "Ignore": "Ignorieren",
 };
 
 export default de;

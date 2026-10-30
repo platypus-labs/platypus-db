@@ -2960,6 +2960,8 @@ const pt: Record<string, string> = {
   "Already first": "Já é o primeiro",
   "Already last": "Já é o último",
   "None (top level)": "Nenhuma (nível principal)",
+  "Create index…": "Criar índice…",
+  "Ignore": "Ignorar",
 };
 
 export default pt;

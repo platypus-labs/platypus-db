@@ -47,4 +47,20 @@ export default async function (page) {
   assert.ok(heats.some((h) => parseInt(h) > 0), `heat in ${heats}`);
   // orders is read in full for the status filter: an index is suggested.
   assert.match(await page.eval(`${explainTab}.querySelector(".explain-suggestion")?.textContent ?? ""`), /^orders is read in full/);
+
+  // The suggestion offers the index: Create index… opens an editor on the same connection with
+  // the statement filled in (not run), and the plan stays as it was.
+  assert.deepEqual(await page.eval(`[...${explainTab}.querySelectorAll('.explain-suggestion button')].map(b => b.textContent)`), ["Create index…", "Ignore"]);
+  const editors = await page.eval(`document.querySelectorAll('.query-tab').length`);
+  await page.eval(`${explainTab}.querySelector('.explain-suggestion button').click()`);
+  await page.waitFor(`document.querySelectorAll('.query-tab').length === ${editors + 1}`, 10_000);
+  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\n') === 'CREATE INDEX orders_status_idx ON orders (status);'`, 10_000);
+  assert.equal(await page.eval(`${queryTab}.querySelector('.result-grid, .grid') === null`), true, "the statement is not run");
+
+  // Ignore hides that suggestion; the plan itself stays. (Back on the plan through its tab.)
+  await page.eval(`[...document.querySelectorAll('.tab')].find(t => t.textContent.startsWith('Explain analyze'))?.click()`);
+  await page.waitFor(`${explainTab} !== undefined`, 5000);
+  await page.eval(`[...${explainTab}.querySelectorAll('.explain-suggestion button')].find(b => b.textContent === 'Ignore').click()`);
+  await page.waitFor(`${explainTab}.querySelector('.explain-suggestion') === null`, 5000);
+  assert.ok((await page.eval(`${explainTab}.querySelectorAll('.explain-node').length`)) > 0, "the plan is still shown");
 }

@@ -2960,6 +2960,8 @@ const zh: Record<string, string> = {
   "Already first": "已在最前",
   "Already last": "已在最后",
   "None (top level)": "无(顶层)",
+  "Create index…": "创建索引…",
+  "Ignore": "忽略",
 };
 
 export default zh;
