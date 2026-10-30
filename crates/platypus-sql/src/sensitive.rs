@@ -99,6 +99,10 @@ impl Sig<'_> {
     fn symbol(&self, s: &str) -> bool {
         self.token.kind == TokenKind::Symbol && self.text == s
     }
+    /// A character of a comparison operator: `=`, `<`, `>` or `!`.
+    fn is_comparison(&self) -> bool {
+        ["=", "<", ">", "!"].iter().any(|s| self.symbol(s))
+    }
     /// A string or a number.
     fn is_literal(&self) -> bool {
         self.number || self.token.kind == TokenKind::String
@@ -116,7 +120,7 @@ impl Sig<'_> {
 /// Whether `sig[i]` ends a comparison operator, and where the operator starts.
 fn operator_before(sig: &[Sig<'_>], i: usize) -> Option<usize> {
     let mut j = i;
-    while j > 0 && ["=", "<", ">", "!"].iter().any(|s| sig[j - 1].symbol(s)) {
+    while j > 0 && sig[j - 1].is_comparison() {
         j -= 1;
     }
     if j < i {
@@ -144,7 +148,7 @@ fn column_of(sig: &[Sig<'_>], i: usize) -> Option<String> {
     }
     // `literal <op> col`.
     let mut j = i + 1;
-    while j < sig.len() && ["=", "<", ">", "!"].iter().any(|s| sig[j].symbol(s)) {
+    while j < sig.len() && sig[j].is_comparison() {
         j += 1;
     }
     if j > i + 1 && j < sig.len() {
