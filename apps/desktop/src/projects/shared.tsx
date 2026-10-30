@@ -15,8 +15,9 @@ import { workbench } from "../workbench";
 /** The messages of the backend's shared-project errors are already readable. */
 const text = (e: unknown) => storeMessage(toCommandError(e).message);
 
-async function pickFolder(title: string): Promise<string | null> {
-  const picked = await answerFor("folder", () => open({ directory: true, multiple: false, title }));
+/** Asks for a folder; `null` when the dialog is cancelled. */
+export async function pickFolder(title: string, defaultPath?: string): Promise<string | null> {
+  const picked = await answerFor("folder", () => open({ directory: true, multiple: false, title, defaultPath }));
   return typeof picked === "string" ? picked : null;
 }
 

@@ -16,7 +16,7 @@ export function installedPlugins(): InstalledPlugin[] {
   return plugins;
 }
 
-export function setPlugins(list: InstalledPlugin[]) {
+function setPlugins(list: InstalledPlugin[]) {
   plugins = list;
   listeners.forEach((l) => l());
 }

@@ -1,8 +1,7 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, type SyncConflict, type SyncStatus } from "../api";
 import { plural, t } from "../i18n";
-import { answerFor } from "../testAnswers";
+import { pickFolder } from "../projects/shared";
 import { onSyncRan, runSync, scheduleSync, syncErrorText, syncSummary } from "./background";
 
 /** What a conflict says, in one line. */
@@ -42,8 +41,8 @@ export function SyncPanel() {
   }, []);
 
   async function browse() {
-    const picked = await answerFor("folder", () => open({ directory: true, multiple: false, title: t("Choose the sync folder"), defaultPath: folder || undefined }));
-    if (typeof picked === "string") setFolder(picked);
+    const picked = await pickFolder(t("Choose the sync folder"), folder || undefined);
+    if (picked) setFolder(picked);
   }
 
   const needsPassphrase = !status?.has_passphrase || passphrase !== "";

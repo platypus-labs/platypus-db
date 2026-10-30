@@ -31,7 +31,7 @@ export function syncErrorText(e: unknown): string {
 }
 
 /** Reloads what a sync or a shared folder changed in the app. */
-export async function reloadWorkspace() {
+async function reloadWorkspace() {
   const [connections, projects, project_folders] = await Promise.all([api.listConnections(), api.listProjects(), api.listProjectFolders()]);
   workbench().setWorkspace({ connections, projects, project_folders });
   scriptsChanged();
@@ -119,7 +119,7 @@ export async function scheduleSync(first = false) {
 }
 
 /** The notice for what reading a shared folder found, or `null`. */
-export function sharedSummary(n: SharedNotice): string {
+function sharedSummary(n: SharedNotice): string {
   switch (n.kind) {
     case "changed":
       return t("{name} was updated from its shared folder: {added} added, {removed} removed, {changed} changed.", {

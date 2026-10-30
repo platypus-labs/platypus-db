@@ -39,7 +39,7 @@ async function newConnectionFor(query: SharedQuery) {
 
 /** Finds the connection of a shared query: the only exact match opens at once, anything else
  *  asks (a choice among the exact and likely ones, or a new connection). */
-export function openSharedQuery(query: SharedQuery) {
+function openSharedQuery(query: SharedQuery) {
   const connections = workbench().connections();
   const { exact, candidates } = matchTarget(query.target, connections);
   const [only] = exact;
@@ -73,7 +73,7 @@ export async function openPendingShares() {
 }
 
 /** Asks for a `.platypus` file and opens it. */
-export async function pickSharedFile() {
+async function pickSharedFile() {
   const path = await answerFor("file", () =>
     open({ multiple: false, filters: [{ name: t("Shared queries"), extensions: [SHARE_EXTENSION] }] }),
   );
@@ -81,7 +81,7 @@ export async function pickSharedFile() {
 }
 
 /** Shows the Share dialog of an SQL editor tab. */
-export function shareTab(tab: QueryTabModel) {
+function shareTab(tab: QueryTabModel) {
   const connection = workbench().connections().find((c) => c.id === tab.connectionId);
   if (!connection) return;
   workbench().openDialog((close) => createElement(ShareQueryDialog, { tab, connection, onClose: close }));

@@ -5,6 +5,7 @@ import { msg, t } from "../i18n";
 import { ask } from "../ui/ask";
 import { answerFor } from "../testAnswers";
 import { reloadPlugins, usePlugins } from "./store";
+import { pickFolder } from "../projects/shared";
 
 const SCOPES: Record<string, string> = {
   editor: msg("SQL editor"),
@@ -66,7 +67,7 @@ export function PluginsPanel() {
       ? answerFor("file", () =>
           open({ multiple: false, title: t("Choose a plugin package"), filters: [{ name: t("Plugin package"), extensions: ["zip"] }] }),
         )
-      : answerFor("folder", () => open({ directory: true, multiple: false, title: t("Choose a plugin folder") })));
+      : pickFolder(t("Choose a plugin folder")));
     if (typeof picked !== "string") return;
     await attempt(async () => setReview({ path: picked, plugin: await api.pluginInspect(picked) }));
   }
