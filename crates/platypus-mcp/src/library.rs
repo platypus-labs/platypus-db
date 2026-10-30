@@ -15,6 +15,8 @@ use uuid::Uuid;
 use crate::agent::{Agent, may_use};
 use crate::error::{AgentError, Result};
 use crate::redact::Redactor;
+use platypus_sql::Dialect;
+use platypus_sql::sensitive::{DEFAULT_NAMES, NameRules, mask_literals};
 
 /// Bytes of a script `read_script` returns at most.
 pub const SCRIPT_BYTES: usize = 256 * 1024;
@@ -141,7 +143,58 @@ impl Visible {
     }
 }
 
+/// Which column names are sensitive, as the app tells them: the user's marks on columns of the
+/// connection, else the rules of the settings (Safety, "Sensitive columns, by name").
+struct SensitiveNames {
+    rules: NameRules,
+    /// Lower-case name → whether some column of that name is marked sensitive, and whether
+    /// one is marked not sensitive.
+    marks: HashMap<String, (bool, bool)>,
+}
+
+impl SensitiveNames {
+    fn is(&self, name: &str) -> bool {
+        match self.marks.get(&name.to_lowercase()) {
+            Some((true, _)) => true,
+            // Marked not sensitive wherever it is marked.
+            Some((false, true)) => false,
+            _ => self.rules.matches(name),
+        }
+    }
+
+    /// `sql` with the values of sensitive columns masked.
+    fn mask(&self, sql: &str, dialect: Dialect) -> String {
+        mask_literals(sql, dialect, &|c| self.is(c))
+    }
+}
+
 impl Agent {
+    /// The sensitive column names of `connections`.
+    fn sensitive_names(&self, connections: &[Uuid]) -> SensitiveNames {
+        let names = self
+            .profile()
+            .settings()
+            .and_then(|s| s.get::<String>("safety.mask_names"))
+            .unwrap_or_else(|| DEFAULT_NAMES.to_owned());
+        let mut marks: HashMap<String, (bool, bool)> = HashMap::new();
+        if let Some(catalog) = self.profile().catalog() {
+            for id in connections {
+                for m in catalog.sensitive_columns(*id).unwrap_or_default() {
+                    let entry = marks.entry(m.key.column.to_lowercase()).or_default();
+                    if m.sensitive {
+                        entry.0 = true;
+                    } else {
+                        entry.1 = true;
+                    }
+                }
+            }
+        }
+        SensitiveNames {
+            rules: NameRules::new(&names),
+            marks,
+        }
+    }
+
     fn visible(&self) -> Result<Visible> {
         let store = self.profile().connections()?;
         Ok(Visible(
@@ -239,14 +292,30 @@ impl Agent {
             // The message names the profile's path, which agents have no use for.
             _ => AgentError::Store(format!("cannot read `{}`", args.path)),
         })?;
-        // Group Q's sensitive columns, once they exist, would be masked in `read.text` here.
+        // The values of sensitive columns: those of the script's connection, or of every
+        // connection agents may use when it opens on none.
+        let ids: Vec<Uuid> = match linked.first() {
+            Some(id) => vec![*id],
+            None => visible.0.keys().copied().collect(),
+        };
+        let dialect = linked
+            .first()
+            .and_then(|id| {
+                self.profile()
+                    .connections()
+                    .ok()?
+                    .get(*id)
+                    .map(|c| Dialect::from(c.driver))
+            })
+            .unwrap_or(Dialect::Postgres);
+        let text = self.sensitive_names(&ids).mask(&read.text, dialect);
         let note = read
             .truncated
             .then(|| format!("cut at {SCRIPT_BYTES} bytes: the script goes on"));
         Ok(ScriptContent {
             path: rel,
             connection,
-            text: read.text,
+            text,
             truncated: read.truncated,
             note,
         })
@@ -273,12 +342,14 @@ impl Agent {
             limit,
         };
         let entries = self.profile().history()?.search(&query)?;
-        // Per connection, not per entry: the name and what to mask.
-        let mut known: HashMap<Uuid, Option<(String, Redactor)>> = HashMap::new();
+        // Per connection, not per entry: the name, the secrets to mask, the dialect and the
+        // sensitive columns.
+        let mut known: HashMap<Uuid, Option<(String, Redactor, Dialect, SensitiveNames)>> =
+            HashMap::new();
         Ok(entries
             .into_iter()
             .filter_map(|e| {
-                let (name, redactor) = known
+                let (name, redactor, dialect, sensitive) = known
                     .entry(e.connection_id)
                     .or_insert_with(|| {
                         let saved = store.get(e.connection_id)?;
@@ -288,15 +359,20 @@ impl Agent {
                         if let Some(command) = &store.effective(saved).password_command {
                             redactor.add(command);
                         }
-                        Some((saved.name.clone(), redactor))
+                        let sensitive = self.sensitive_names(&[e.connection_id]);
+                        Some((
+                            saved.name.clone(),
+                            redactor,
+                            Dialect::from(saved.driver),
+                            sensitive,
+                        ))
                     })
                     .as_ref()?;
-                // Group Q's sensitive columns, once they exist, would be masked in `e.sql`
-                // and in the error here.
                 Some(HistoryItem {
                     connection: name.clone(),
-                    // A statement may carry a password too, e.g. `CREATE USER ... PASSWORD`.
-                    sql: redactor.apply(&e.sql),
+                    // A statement may carry a password too, e.g. `CREATE USER ... PASSWORD`,
+                    // and the values of sensitive columns.
+                    sql: sensitive.mask(&redactor.apply(&e.sql), *dialect),
                     started_at: rfc3339(e.started_at),
                     duration_ms: e.duration_ms,
                     rows: e.rows,
@@ -306,5 +382,120 @@ impl Agent {
                 })
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::time::{Duration, SystemTime};
+
+    use platypus_store::{CatalogKey, CatalogStore, HistoryStore, NewHistoryEntry};
+
+    use super::*;
+    use crate::profile::Profile;
+
+    const ID: &str = "00000000-0000-4000-8000-000000000001";
+
+    fn agent(dir: &Path, settings: &str) -> Agent {
+        std::fs::write(
+            dir.join("connections.toml"),
+            format!(
+                "version = 4\n\n[[connections]]\nid = \"{ID}\"\nname = \"Db\"\ndriver = \"sqlite\"\n\
+                 database = '{}'\n",
+                dir.join("db.sqlite").display()
+            ),
+        )
+        .unwrap();
+        std::fs::write(dir.join("settings.toml"), settings).unwrap();
+        let mut catalog = CatalogStore::open(&dir.join("catalog.db")).unwrap();
+        let key = |column: &str| CatalogKey {
+            database: String::new(),
+            schema: "main".to_owned(),
+            object: "users".to_owned(),
+            column: column.to_owned(),
+        };
+        let id = Uuid::parse_str(ID).unwrap();
+        catalog
+            .set_sensitive(id, &key("private_note"), Some(true))
+            .unwrap();
+        catalog
+            .set_sensitive(id, &key("phone_model"), Some(false))
+            .unwrap();
+        Agent::new(Profile::at(dir))
+    }
+
+    #[test]
+    fn scripts_and_history_mask_the_values_of_sensitive_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = agent(dir.path(), "");
+        let scripts = dir.path().join("scripts").join("all");
+        std::fs::create_dir_all(&scripts).unwrap();
+        std::fs::write(
+            scripts.join("report.sql"),
+            "SELECT * FROM users\nWHERE email = 'a@b.it' AND phone_model = 'Pixel'\n  AND private_note LIKE '%debt%' AND name = 'Ann';",
+        )
+        .unwrap();
+        let read = agent
+            .read_script(&ReadScriptArgs {
+                path: "report.sql".to_owned(),
+                project: None,
+            })
+            .unwrap();
+        // The rules say email, the marks private_note and not phone_model.
+        assert_eq!(
+            read.text,
+            "SELECT * FROM users\nWHERE email = '••••••' AND phone_model = 'Pixel'\n  AND private_note LIKE '••••••' AND name = 'Ann';"
+        );
+
+        let history = HistoryStore::open(&dir.path().join("history.db")).unwrap();
+        history
+            .record(&NewHistoryEntry {
+                connection_id: Uuid::parse_str(ID).unwrap(),
+                sql: "UPDATE users SET email = 'x@y.it', name = 'N' WHERE id = 1".to_owned(),
+                started_at: SystemTime::now(),
+                duration: Duration::from_millis(3),
+                rows: Some(1),
+                status: HistoryStatus::Ok,
+                error: None,
+                origin: None,
+            })
+            .unwrap();
+        let found = agent
+            .search_history(&HistoryArgs {
+                connection: None,
+                text: None,
+                origin: None,
+                limit: None,
+            })
+            .unwrap();
+        assert_eq!(
+            found[0].sql,
+            "UPDATE users SET email = '••••••', name = 'N' WHERE id = 1"
+        );
+    }
+
+    #[test]
+    fn the_rules_are_the_settings_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        // Only `name` by the rules: email goes through, the marks still count.
+        let agent = agent(dir.path(), "[safety]\nmask_names = \"name\"\n");
+        let scripts = dir.path().join("scripts").join("all");
+        std::fs::create_dir_all(&scripts).unwrap();
+        std::fs::write(
+            scripts.join("q.sql"),
+            "SELECT 1 FROM users WHERE email = 'a@b' AND name = 'Ann' AND private_note = 'x'",
+        )
+        .unwrap();
+        let read = agent
+            .read_script(&ReadScriptArgs {
+                path: "q.sql".to_owned(),
+                project: None,
+            })
+            .unwrap();
+        assert_eq!(
+            read.text,
+            "SELECT 1 FROM users WHERE email = 'a@b' AND name = '••••••' AND private_note = '••••••'"
+        );
     }
 }

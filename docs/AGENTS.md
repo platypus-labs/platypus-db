@@ -96,7 +96,10 @@ connection each opens on, `read_script` returns one (256 KB at most), and `searc
 the statements run, newest first (50, up to 500), by connection, text and origin (`app` or
 `agent`). Scripts linked to a connection with no agent access, and that connection's history,
 are left out as if they did not exist; errors in the history are cleaned of the passwords
-the connection's URL or password command would show.
+the connection's URL or password command would show. The values a script or a statement ties
+to a sensitive column (`email = '…'`, `SET phone = '…'`, the positions of `INSERT … VALUES`)
+read `'••••••'`: the sensitive columns are those the user marked in the app, else the names of
+Settings › Safety (emails, phones, passwords…).
 
 Clients that read MCP resources find the schema there too: `resources/list` has one resource
 per connection agents may use (`platypus://<connection>`, its schemas), and two templates,

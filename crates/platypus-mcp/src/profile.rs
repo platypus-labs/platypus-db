@@ -103,6 +103,15 @@ impl Profile {
         )?)
     }
 
+    /// The user's notes, tags and sensitive marks (`catalog.db`); `None` when it cannot be read.
+    #[must_use]
+    pub fn catalog(&self) -> Option<platypus_store::CatalogStore> {
+        let path = self.data_dir.join("catalog.db");
+        path.exists()
+            .then(|| platypus_store::CatalogStore::open(&path).ok())
+            .flatten()
+    }
+
     /// The app's settings; an unreadable file reads as the defaults.
     #[must_use]
     pub fn settings(&self) -> Option<SettingsStore> {
