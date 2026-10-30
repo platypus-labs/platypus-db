@@ -54,7 +54,7 @@ export default async function (page) {
   const editors = await page.eval(`document.querySelectorAll('.query-tab').length`);
   await page.eval(`${explainTab}.querySelector('.explain-suggestion button').click()`);
   await page.waitFor(`document.querySelectorAll('.query-tab').length === ${editors + 1}`, 10_000);
-  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\n') === 'CREATE INDEX orders_status_idx ON orders (status);'`, 10_000);
+  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === 'CREATE INDEX orders_status_idx ON orders (status);'`, 10_000);
   assert.equal(await page.eval(`${queryTab}.querySelector('.result-grid, .grid') === null`), true, "the statement is not run");
 
   // Ignore hides that suggestion; the plan itself stays. (Back on the plan through its tab.)
