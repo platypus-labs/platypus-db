@@ -2,10 +2,16 @@
 // GitHub's `latest.json`, reached through `PLATYPUS_UPDATE_URL` (the app accepts only a local
 // address there). No scenario installs anything: the manifest's download is never fetched.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { seedSqlite } from "./conn-helpers.mjs";
 
-/** The version of the app under test, from `crates/platypus-core`'s workspace version. */
-export const APP_VERSION = "0.2.1";
+/** The version of the app under test. */
+export const APP_VERSION = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src-tauri/tauri.conf.json"), "utf8"),
+).version;
 
 export const banner = `document.querySelector('.update-banner')`;
 export const bannerButton = (text) =>
@@ -44,7 +50,42 @@ export const offering = (version, notes) => (_req, res) => {
 
 export const updateEnv = (ctx) => ({ PLATYPUS_UPDATE_URL: ctx.update.url });
 
-export const stop = (ctx) => new Promise((done) => (ctx.update.server.listening ? ctx.update.server.close(done) : done()));
+export const stop = (ctx) =>
+  new Promise((done) => {
+    const { server } = ctx.update;
+    if (!server.listening) return done();
+    server.close(done);
+    server.closeAllConnections();
+  });
+
+/** A `respond` answering 200 with the JSON `body`, or any text as it is. */
+export const json = (body) => (_req, res) => {
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(typeof body === "string" ? body : JSON.stringify(body));
+};
+
+/** Waits for the banner and checks it: `text` and `absent` are patterns its text must and
+ *  must not match, `install` whether the Install and restart button is there. */
+export async function expectBanner(page, { text = [], absent = [], install }) {
+  await page.waitFor(`${banner} !== null`, 30_000);
+  const shown = await page.eval(`${banner}.textContent`);
+  for (const pattern of text) assert.match(shown, pattern);
+  for (const pattern of absent) assert.doesNotMatch(shown, pattern);
+  assert.equal(await page.eval(`${bannerButton("Later")} !== undefined`), true);
+  assert.equal(await page.eval(`${bannerButton("Install and restart")} !== undefined`), install);
+}
+
+/** A scenario where the endpoint answers with `respond` and no banner must appear. */
+export function noBannerScenario(respond, serveOptions = {}) {
+  return {
+    setup: async (ctx) => {
+      seedSqlite(ctx.dir);
+      await serve(ctx, respond, serveOptions);
+    },
+    env: updateEnv,
+    default: (page, ctx) => expectNoBanner(page, ctx, { asked: serveOptions.listening !== false }),
+  };
+}
 
 /** The banner is the page's only reaction to the check: wait until the app asked (when the
  *  endpoint is up), give the answer time to be handled, then expect no banner and a live page. */

@@ -2,38 +2,44 @@
 // `bin/`) only announces the new version: it says how to update, offers Later, and no Install
 // button. The marker is written next to the executable under test (target/share/...) and
 // removed at the end.
-import assert from "node:assert/strict";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, mkdirSync, readdirSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { seedSqlite } from "../conn-helpers.mjs";
-import { banner, bannerButton, offering, serve, stop, updateEnv } from "../update-helpers.mjs";
+import { banner, bannerButton, expectBanner, offering, serve, stop, updateEnv } from "../update-helpers.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const exe = process.env.PLATYPUS_E2E_EXE ?? resolve(here, "../../../../target/release/platypus-db.exe");
-const share = join(dirname(dirname(exe)), "share", "platypusdb");
-const marker = join(share, "package-manager");
-const sharedBefore = existsSync(share);
+const shareOf = (ctx) => join(dirname(dirname(ctx.exe)), "share", "platypusdb");
+const markerOf = (ctx) => join(shareOf(ctx), "package-manager");
+
+/** Removes the marker, then its folder if it is empty. */
+function cleanUp(ctx) {
+  rmSync(markerOf(ctx), { force: true });
+  const share = shareOf(ctx);
+  if (existsSync(share) && readdirSync(share).length === 0) rmdirSync(share);
+}
 
 export const setup = async (ctx) => {
-  seedSqlite(ctx.dir);
-  mkdirSync(share, { recursive: true });
-  writeFileSync(marker, "Flatpak\n");
-  await serve(ctx, offering("99.2.0", "Announced only."));
+  try {
+    seedSqlite(ctx.dir);
+    mkdirSync(shareOf(ctx), { recursive: true });
+    writeFileSync(markerOf(ctx), "Flatpak\n");
+    await serve(ctx, offering("99.2.0", "Announced only."));
+  } catch (e) {
+    cleanUp(ctx);
+    throw e;
+  }
 };
 export const env = updateEnv;
 
 export default async function (page, ctx) {
   try {
-    await page.waitFor(`${banner} !== null`, 30_000);
-    const text = await page.eval(`${banner}.textContent`);
-    assert.match(text, /PlatypusDB 99\.2\.0 is available — Announced only\./);
-    assert.match(text, /Update it with Flatpak once the new version reaches it\./);
-    assert.equal(await page.eval(`${bannerButton("Install and restart")} === undefined`), true);
+    await expectBanner(page, {
+      text: [/PlatypusDB 99\.2\.0 is available — Announced only\./, /Update it with Flatpak once the new version reaches it\./],
+      install: false,
+    });
     await page.eval(`${bannerButton("Later")}.click()`);
     await page.waitFor(`${banner} === null`);
   } finally {
-    rmSync(sharedBefore ? marker : share, { recursive: true, force: true });
+    cleanUp(ctx);
     await stop(ctx);
   }
 }
