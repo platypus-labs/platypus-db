@@ -1716,11 +1716,14 @@ svg.i.sm {
 }
 
 /* Features: the pill navigation under the heading. */
-/* The areas of the Features page: an index under the title, not a bar over the content. */
+/* The areas of the Features page: a second row of the header, which stays at the top. */
 .pill-nav {
   max-width: var(--page);
-  margin: 56px auto 0;
-  padding: 0 var(--gutter);
+  margin: 8px auto 0;
+}
+
+.section.first {
+  padding-top: 110px;
 }
 
 .pill-nav div {

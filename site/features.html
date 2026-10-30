@@ -35,6 +35,10 @@
         <a class="button primary" href="download.html">Download</a>
       </div>
     </div>
+    <nav class="pill-nav" aria-label="Areas"><div>
+    <a href="#editor">SQL editor</a><a href="#data">Data</a><a href="#schema">Schema</a>
+    <a href="#perf">Performance</a><a href="#safety">Safety</a><a href="#move">Import and export</a><a href="#agents">Agents and CLI</a>
+  </div></nav>
   </header>
 
   <main id="main">
@@ -45,7 +49,7 @@
       <p class="lead">Write and run SQL, edit data, read query plans, design schemas and move data between databases, from one small window.</p>
       <div class="actions">
         <a class="button primary large" href="download.html">Download for free</a>
-        <a class="button ghost large" href="#tour">See it work</a>
+        <a class="button ghost large" href="index.html#tour">See it work</a>
       </div>
     </div>
     <div class="mascot" aria-hidden="true">
@@ -59,35 +63,9 @@
     </div>
   </section>
 
-  <nav class="pill-nav" aria-label="Areas"><div>
-    <a href="#tour">Tour</a><a href="#editor">SQL editor</a><a href="#data">Data</a><a href="#schema">Schema</a>
-    <a href="#perf">Performance</a><a href="#safety">Safety</a><a href="#move">Import and export</a><a href="#agents">Agents and CLI</a>
-  </div></nav>
 
-  <!-- Tour: the GIFs, as on the home page -->
-  <section class="section" id="tour" style="padding-top:96px">
-    <header class="head"><p class="eyebrow">See it work</p><h2>From the first query to production.</h2></header>
-    <div class="tour">
-      <div class="tabs" role="tablist" aria-label="Tour" hidden>
-        <button type="button" role="tab" id="tab-rows" aria-controls="shot-rows"><b>A million rows</b><span>Open, scroll and sort from the header.</span></button>
-        <button type="button" role="tab" id="tab-editor" aria-controls="shot-editor"><b>SQL editor</b><span>JOINs completed from the foreign keys.</span></button>
-        <button type="button" role="tab" id="tab-edit" aria-controls="shot-edit"><b>Data editor</b><span>Edit in place, preview the SQL, save.</span></button>
-        <button type="button" role="tab" id="tab-explain" aria-controls="shot-explain"><b>Query plans</b><span>Explain analyze with a heatmap.</span></button>
-        <button type="button" role="tab" id="tab-docs" aria-controls="shot-docs"><b>Notes and tags</b><span>Comments, notes and tags on every column.</span></button>
-        <button type="button" role="tab" id="tab-palette" aria-controls="shot-palette"><b>Command palette</b><span>Everything one Ctrl+K away.</span></button>
-      </div>
-      <div class="screens">
-        <figure class="panel" id="shot-rows" role="tabpanel" aria-labelledby="tab-rows"><img src="img/screenshots/hero.gif" width="1600" height="960" alt="A table with a million rows opened and sorted from its header."></figure>
-        <figure class="panel" id="shot-editor" role="tabpanel" aria-labelledby="tab-editor"><img src="img/screenshots/editor.gif" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys."></figure>
-        <figure class="panel" id="shot-edit" role="tabpanel" aria-labelledby="tab-edit"><img src="img/screenshots/data-editor.gif" width="1600" height="960" loading="lazy" alt="Edited cells and a new row, the SQL previewed before saving."></figure>
-        <figure class="panel" id="shot-explain" role="tabpanel" aria-labelledby="tab-explain"><img src="img/screenshots/explain.gif" width="1600" height="960" loading="lazy" alt="An explain analyze plan tinted by time, with an index suggestion."></figure>
-        <figure class="panel" id="shot-docs" role="tabpanel" aria-labelledby="tab-docs"><img src="img/screenshots/catalog.png" width="1600" height="960" loading="lazy" alt="A table's comment, notes and tags, and those of each column."></figure>
-        <figure class="panel" id="shot-palette" role="tabpanel" aria-labelledby="tab-palette"><img src="img/screenshots/palette.png" width="1600" height="960" loading="lazy" alt="The command palette listing tables and queries that match orders."></figure>
-      </div>
-    </div>
-  </section>
 
-  <section class="section" id="editor">
+  <section class="section first" id="editor">
     <header class="head"><p class="eyebrow">SQL editor</p><h2>Write it once, run it anywhere.</h2><p>An editor that knows your schema and remembers what you ran.</p></header>
     <ul class="bento">
       <li class="card w4"><h3>Completion from the schema</h3><p>Tables, columns and aliases in scope, and whole JOINs completed from the foreign keys with the alias and the ON condition.</p>
