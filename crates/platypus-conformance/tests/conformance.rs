@@ -6732,21 +6732,24 @@ async fn reads_the_ddl_of_many_tables_together() {
             continue;
         }
         let conn = b.connect().await;
-        run(&*conn, "DROP SCHEMA IF EXISTS conf_many_ddl CASCADE").await.unwrap();
+        run(&*conn, "DROP SCHEMA IF EXISTS conf_many_ddl CASCADE")
+            .await
+            .unwrap();
         run(&*conn, "CREATE SCHEMA conf_many_ddl").await.unwrap();
-        let mut script = String::new();
+        // One statement a call: the driver prepares what it runs.
         for i in 0..TABLES {
-            use std::fmt::Write as _;
-            let _ = write!(
-                script,
-                "CREATE TABLE conf_many_ddl.t{i} (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                 code text NOT NULL UNIQUE, qty integer DEFAULT 0 CHECK (qty >= 0),
-                 parent bigint REFERENCES conf_many_ddl.t{i} (id));
-                 CREATE INDEX t{i}_qty ON conf_many_ddl.t{i} (qty);
-                 COMMENT ON TABLE conf_many_ddl.t{i} IS 'table {i}';"
-            );
+            for sql in [
+                format!(
+                    "CREATE TABLE conf_many_ddl.t{i} (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                     code text NOT NULL UNIQUE, qty integer DEFAULT 0 CHECK (qty >= 0),
+                     parent bigint REFERENCES conf_many_ddl.t{i} (id))"
+                ),
+                format!("CREATE INDEX t{i}_qty ON conf_many_ddl.t{i} (qty)"),
+                format!("COMMENT ON TABLE conf_many_ddl.t{i} IS 'table {i}'"),
+            ] {
+                run(&*conn, &sql).await.unwrap();
+            }
         }
-        run(&*conn, &script).await.unwrap();
         let names: Vec<String> = (0..TABLES).map(|i| format!("t{i}")).collect();
         let objects: Vec<ObjectRef<'_>> = names
             .iter()
@@ -6767,10 +6770,15 @@ async fn reads_the_ddl_of_many_tables_together() {
         let started = std::time::Instant::now();
         let together = conn.objects_ddl(&objects).await;
         let batched = started.elapsed();
-        println!("{}: DDL of {TABLES} tables, one at a time {one_by_one:?}, together {batched:?}", b.name);
+        println!(
+            "{}: DDL of {TABLES} tables, one at a time {one_by_one:?}, together {batched:?}",
+            b.name
+        );
         for (alone, together) in alone.iter().zip(together) {
             assert_eq!(&together.unwrap(), alone, "{}", b.name);
         }
-        run(&*conn, "DROP SCHEMA conf_many_ddl CASCADE").await.unwrap();
+        run(&*conn, "DROP SCHEMA conf_many_ddl CASCADE")
+            .await
+            .unwrap();
     }
 }

@@ -70,17 +70,29 @@ fn statement(sql: &str) -> String {
 fn batched(kind: ObjectKind) -> bool {
     matches!(
         kind,
-        ObjectKind::Table | ObjectKind::ForeignTable | ObjectKind::View | ObjectKind::MaterializedView
+        ObjectKind::Table
+            | ObjectKind::ForeignTable
+            | ObjectKind::View
+            | ObjectKind::MaterializedView
     )
 }
 
 /// The DDL of `objects`: tables and views with a few catalog queries for all of them, the
 /// other kinds one at a time.
 pub async fn objects_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
-    let (many, one): (Vec<usize>, Vec<usize>) = (0..objects.len()).partition(|&i| batched(objects[i].kind));
+    let (many, one): (Vec<usize>, Vec<usize>) =
+        (0..objects.len()).partition(|&i| batched(objects[i].kind));
     let mut out: Vec<Option<Result<String>>> = objects.iter().map(|_| None).collect();
-    let tables: Vec<usize> = many.iter().copied().filter(|&i| is_table(objects[i].kind)).collect();
-    let views: Vec<usize> = many.iter().copied().filter(|&i| !is_table(objects[i].kind)).collect();
+    let tables: Vec<usize> = many
+        .iter()
+        .copied()
+        .filter(|&i| is_table(objects[i].kind))
+        .collect();
+    let views: Vec<usize> = many
+        .iter()
+        .copied()
+        .filter(|&i| !is_table(objects[i].kind))
+        .collect();
     let picked = |at: &[usize]| at.iter().map(|&i| objects[i]).collect::<Vec<_>>();
     for (at, ddl) in tables.iter().zip(tables_ddl(conn, &picked(&tables)).await) {
         out[*at] = Some(ddl);
@@ -91,7 +103,9 @@ pub async fn objects_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Ve
     for i in one {
         out[i] = Some(object_ddl(conn, &objects[i]).await);
     }
-    out.into_iter().map(|r| r.unwrap_or_else(|| Err(Error::Other("no DDL read".to_owned())))).collect()
+    out.into_iter()
+        .map(|r| r.unwrap_or_else(|| Err(Error::Other("no DDL read".to_owned()))))
+        .collect()
 }
 
 fn is_table(kind: ObjectKind) -> bool {
@@ -99,7 +113,6 @@ fn is_table(kind: ObjectKind) -> bool {
 }
 
 pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
-    let name = qualified(o.schema, o.name);
     match o.kind {
         ObjectKind::Table | ObjectKind::ForeignTable => single(tables_ddl(conn, &[*o]).await),
         ObjectKind::View | ObjectKind::MaterializedView => single(views_ddl(conn, &[*o]).await),
@@ -296,7 +309,9 @@ async fn yugabyte_sharding(
 
 /// The one result of a reader called with one object.
 fn single(mut results: Vec<Result<String>>) -> Result<String> {
-    results.pop().unwrap_or_else(|| Err(Error::Other("no DDL read".to_owned())))
+    results
+        .pop()
+        .unwrap_or_else(|| Err(Error::Other("no DDL read".to_owned())))
 }
 
 /// `(schema, name) IN (…)` of `objects`, for `pg_namespace n` and `pg_class c`.
@@ -305,7 +320,10 @@ fn named(objects: &[ObjectRef<'_>]) -> String {
         .iter()
         .map(|o| format!("({}, {})", literal(o.schema), literal(o.name)))
         .collect();
-    format!("(n.nspname::text, c.relname::text) IN ({})", pairs.join(", "))
+    format!(
+        "(n.nspname::text, c.relname::text) IN ({})",
+        pairs.join(", ")
+    )
 }
 
 /// The oids of the relations `objects`, by schema and name.
@@ -340,7 +358,10 @@ async fn by_relation(conn: &dyn Connection, sql: &str) -> Result<HashMap<String,
 
 /// The same failure for every object of a reader whose query failed.
 fn failed(objects: &[ObjectRef<'_>], e: &Error) -> Vec<Result<String>> {
-    objects.iter().map(|_| Err(Error::Other(e.to_string()))).collect()
+    objects
+        .iter()
+        .map(|_| Err(Error::Other(e.to_string())))
+        .collect()
 }
 
 fn not_found(o: &ObjectRef<'_>) -> Error {
@@ -485,6 +506,11 @@ async fn tables_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Res
     out
 }
 
+/// The rows of relation `oid` in `map`, none when it has none.
+fn of<'a>(map: &'a HashMap<String, Vec<TextRow>>, oid: &str) -> &'a [TextRow] {
+    map.get(oid).map_or(&[], Vec::as_slice)
+}
+
 /// The DDL of table `o` from the rows read about it.
 async fn table(
     conn: &dyn Connection,
@@ -493,11 +519,13 @@ async fn table(
     timescale: bool,
 ) -> Result<String> {
     let name = qualified(o.schema, o.name);
-    let of = |map: &HashMap<String, Vec<TextRow>>| map.get(oid).map_or(&[][..], Vec::as_slice);
-    let info = of(&rows.info).first().ok_or_else(|| not_found(o))?;
-    let columns = of(&rows.columns);
-    let indexes: Vec<String> = of(&rows.indexes).iter().map(|i| format!("{};", i.text(0))).collect();
-    let mut create = create_table(&name, info, columns, of(&rows.constraints));
+    let info = of(&rows.info, oid).first().ok_or_else(|| not_found(o))?;
+    let columns = of(&rows.columns, oid);
+    let indexes: Vec<String> = of(&rows.indexes, oid)
+        .iter()
+        .map(|i| format!("{};", i.text(0)))
+        .collect();
+    let mut create = create_table(&name, info, columns, of(&rows.constraints, oid));
     if crate::is_yugabyte(conn) && info.opt(3).is_none() {
         let rel = relation(o.schema, o.name);
         let sharding = yugabyte_sharding(conn, &rel).await.unwrap_or((None, None));
