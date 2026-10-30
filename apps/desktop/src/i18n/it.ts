@@ -2511,6 +2511,11 @@ const it: Record<string, string> = {
   "Mostly {pattern}": "Per lo più: {pattern}",
   "Values that do not match": "Valori che non corrispondono",
   "Profile data…": "Profila i dati…",
+  // Group G: Cassandra and ScyllaDB
+  "Keyspace (optional)": "Keyspace (facoltativo)",
+  "The keyspace to start in; the navigator lists all of them. The host may list several host:port pairs separated by commas. TLS needs an SSL mode from require up, as cassandras:// URLs do.": "Il keyspace da cui partire; il navigatore li elenca tutti. L'host può elencare più coppie host:porta separate da virgole. Per il TLS serve una modalità SSL da require in su, come negli URL cassandras://.",
+  "{n} statement runs on the server: a statement the server refuses stops the rest, and the ones before it stay.": "{n} istruzione gira sul server: un'istruzione rifiutata dal server ferma le altre, e quelle prima restano.",
+  "{n} statements run one after the other: a statement the server refuses stops the rest, and the ones before it stay.": "{n} istruzioni girano una dopo l'altra: un'istruzione rifiutata dal server ferma le altre, e quelle prima restano.",
 };
 
 export default it;

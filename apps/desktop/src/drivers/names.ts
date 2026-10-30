@@ -12,6 +12,7 @@ export const DRIVER_NAMES: Record<DriverKind, string> = {
   mongo: "MongoDB",
   redis: "Redis",
   elasticsearch: "Elasticsearch",
+  cassandra: "Cassandra",
   snowflake: "Snowflake",
   bigquery: "BigQuery",
   databricks: "Databricks",

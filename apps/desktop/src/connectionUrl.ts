@@ -27,6 +27,7 @@ const URL_DRIVERS: ReadonlySet<DriverKind> = new Set([
   "mongo",
   "redis",
   "elasticsearch",
+  "cassandra",
   "sqlite",
   "duckdb",
 ]);

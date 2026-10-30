@@ -14,6 +14,7 @@ export type DriverKind =
   | "mongo"
   | "redis"
   | "elasticsearch"
+  | "cassandra"
   | "snowflake"
   | "bigquery"
   | "databricks"
@@ -33,10 +34,15 @@ export const isRedis = (driver: DriverKind) => driver === "redis";
  *  body), and SQL among them; its indices are tables and their documents the rows. */
 export const isSearch = (driver: DriverKind) => driver === "elasticsearch";
 
-/** Speaks no SQL of the kind the SQL tools read (MongoDB, Redis, Elasticsearch): no SQL
- *  completion, formatter, linter, query builder, ER diagram, table editor, schema tools or SQL
- *  import. */
-export const isNoSql = (driver: DriverKind) => isMongo(driver) || isRedis(driver) || isSearch(driver);
+/** Speaks CQL (Cassandra, ScyllaDB): SQL-like, but with no joins, no `OFFSET`, no transactions
+ *  and a primary key that is the way to every row; its keyspaces are the schemas. */
+export const isCassandra = (driver: DriverKind) => driver === "cassandra";
+
+/** Speaks no SQL of the kind the SQL tools read (MongoDB, Redis, Elasticsearch, Cassandra): no
+ *  SQL completion, formatter, linter, query builder, ER diagram, table editor, schema tools or
+ *  SQL import. */
+export const isNoSql = (driver: DriverKind) =>
+  isMongo(driver) || isRedis(driver) || isSearch(driver) || isCassandra(driver);
 
 /** Runs in-process on a local file (SQLite, DuckDB): no server, host, user or password. */
 export const isEmbedded = (driver: DriverKind) => driver === "sqlite" || driver === "duckdb";

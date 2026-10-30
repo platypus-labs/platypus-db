@@ -5,9 +5,10 @@ interface Props {
   busy: boolean;
   /** Saving changes a production database: said in the dialog. */
   production?: boolean;
-  /** Commands rather than SQL statements: Redis's, sent as one MULTI/EXEC, or Elasticsearch's
-   *  requests, sent one after the other. */
-  commands?: "multi" | "requests";
+  /** Commands rather than SQL statements: Redis's, sent as one MULTI/EXEC, Elasticsearch's
+   *  requests, sent one after the other, or Cassandra's statements, which run one after the
+   *  other too (there is no transaction to undo them with). */
+  commands?: "multi" | "requests" | "statements";
   onSave: () => void;
   onClose: () => void;
 }
@@ -28,6 +29,12 @@ export function PreviewDialog({ statements, busy, production = false, commands, 
                 statements.length,
                 "{n} request runs on the server: a request the server refuses stops the rest, and the ones before it stay.",
                 "{n} requests run one after the other: a request the server refuses stops the rest, and the ones before it stay.",
+              )
+            : commands === "statements"
+            ? plural(
+                statements.length,
+                "{n} statement runs on the server: a statement the server refuses stops the rest, and the ones before it stay.",
+                "{n} statements run one after the other: a statement the server refuses stops the rest, and the ones before it stay.",
               )
             : commands
             ? plural(

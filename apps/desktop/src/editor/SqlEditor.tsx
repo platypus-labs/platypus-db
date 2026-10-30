@@ -48,6 +48,7 @@ import { workbench } from "../workbench";
 import { SQL_DRAG, type SqlDrag } from "../sqlNames";
 import "./actions";
 import { type CatalogNote, closeOnTypedWord, codeOnly, keywordCompletion, nameCompletion } from "./completion";
+import { CQL } from "./cql";
 import { functionCompletion } from "./functions";
 import { joinCompletion } from "./joinCompletion";
 import { lintSql } from "./lint";
@@ -211,6 +212,7 @@ const dialects = {
   clickhouse: MySQL,
   libsql: SQLite,
   mongo: PostgreSQL,
+  cassandra: CQL,
   snowflake: StandardSQL,
   trino: StandardSQL,
   adbc: StandardSQL,

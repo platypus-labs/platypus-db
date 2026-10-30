@@ -5797,6 +5797,7 @@ dependencies = [
  "platypus-core",
  "platypus-docs",
  "platypus-driver-adbc",
+ "platypus-driver-cassandra",
  "platypus-driver-clickhouse",
  "platypus-driver-duckdb",
  "platypus-driver-libsql",

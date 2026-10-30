@@ -140,8 +140,9 @@ pub async fn estimate_rows(
     table: String,
 ) -> CommandResult<Option<u64>> {
     let driver = state.session(session_id)?.config.driver;
-    // The rows of a key type are not counted in advance.
-    if driver == DriverKind::Redis {
+    // The rows of a key type are not counted in advance, nor those of a table that spreads
+    // over a cluster: counting them reads them all.
+    if matches!(driver, DriverKind::Redis | DriverKind::Cassandra) {
         return Ok(None);
     }
     let conn = state.live(session_id).await?;

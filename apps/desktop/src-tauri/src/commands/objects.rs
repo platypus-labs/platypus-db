@@ -180,6 +180,9 @@ pub fn generate_sql(
     };
     let columns: Vec<&str> = target.columns.iter().map(String::as_str).collect();
     let keys: Vec<&str> = target.keys.iter().map(String::as_str).collect();
+    if driver == DriverKind::Cassandra {
+        return cql_statement(&target, &request, (&name, &columns, &keys));
+    }
     match request {
         GenerateRequest::Select { limit } => Some(d.select(&name, &columns, limit)),
         GenerateRequest::Insert => Some(d.insert(&name, &columns)),
@@ -189,6 +192,43 @@ pub fn generate_sql(
         GenerateRequest::Drop { cascade } => d.drop(target.kind, &name, cascade),
         GenerateRequest::Truncate => Some(d.truncate(&name)),
         GenerateRequest::Rename { new_name } => d.rename(target.kind, &name, &new_name),
+    }
+}
+
+/// [`generate_sql`] in CQL: the standard statements for reading and writing rows, with CQL's
+/// `LIMIT`, and the `DROP` and `TRUNCATE` it has. A row is written by its whole primary key, so
+/// an `UPDATE` or a `DELETE` without one has no statement.
+fn cql_statement(
+    target: &GenerateTarget,
+    request: &GenerateRequest,
+    (name, columns, keys): (&ObjectName<'_>, &[&str], &[&str]),
+) -> Option<String> {
+    let d = Dialect::Ansi;
+    let table = match target.schema.as_deref() {
+        Some(schema) => platypus_driver_cassandra::cql::qualified(schema, &target.name),
+        None => platypus_driver_cassandra::cql::quote_ident(&target.name),
+    };
+    match request {
+        GenerateRequest::Select { limit } => {
+            let sql = d.select(name, columns, None);
+            Some(match limit {
+                Some(limit) => format!("{}\nLIMIT {limit};", sql.trim_end_matches(';')),
+                None => sql,
+            })
+        }
+        GenerateRequest::Insert | GenerateRequest::Upsert => Some(d.insert(name, columns)),
+        GenerateRequest::Update if !keys.is_empty() => Some(d.update(name, columns, keys)),
+        GenerateRequest::Delete if !keys.is_empty() => Some(d.delete(name, columns, keys)),
+        GenerateRequest::Drop { .. } => match target.kind {
+            ObjectKind::Table => Some(format!("DROP TABLE {table};")),
+            ObjectKind::MaterializedView => Some(format!("DROP MATERIALIZED VIEW {table};")),
+            ObjectKind::Type => Some(format!("DROP TYPE {table};")),
+            _ => None,
+        },
+        GenerateRequest::Truncate if target.kind == ObjectKind::Table => {
+            Some(format!("TRUNCATE {table};"))
+        }
+        _ => None,
     }
 }
 
@@ -264,6 +304,18 @@ pub fn dialect_support(driver: DriverKind) -> DialectSupport {
             renamable: Vec::new(),
         };
     }
+    // CQL renames nothing (a column of a table's key apart), and drops by kind.
+    if driver == DriverKind::Cassandra {
+        return DialectSupport {
+            cascade: false,
+            droppable: vec![
+                ObjectKind::Table,
+                ObjectKind::MaterializedView,
+                ObjectKind::Type,
+            ],
+            renamable: Vec::new(),
+        };
+    }
     let d = Dialect::from(driver);
     // A probe name with a parent and arguments, so every kind can be tried.
     let probe = ObjectName {
@@ -309,5 +361,72 @@ mod tests {
         assert!(ch.droppable.contains(&ObjectKind::Dictionary));
         assert!(ch.renamable.contains(&ObjectKind::MaterializedView));
         assert!(!ch.droppable.contains(&ObjectKind::Trigger));
+        let cql = dialect_support(DriverKind::Cassandra);
+        assert!(cql.renamable.is_empty() && !cql.cascade);
+        assert_eq!(cql.droppable.len(), 3);
+    }
+
+    #[test]
+    fn generates_cql() {
+        let target = |kind, keys: &[&str]| GenerateTarget {
+            schema: Some("shop".to_owned()),
+            name: "Orders".to_owned(),
+            kind,
+            parent: None,
+            columns: vec!["id".to_owned(), "total".to_owned()],
+            keys: keys.iter().map(|k| (*k).to_owned()).collect(),
+        };
+        let gen_ = |kind, keys: &[&str], request| {
+            generate_sql(DriverKind::Cassandra, target(kind, keys), request)
+        };
+        let select = gen_(
+            ObjectKind::Table,
+            &[],
+            GenerateRequest::Select { limit: Some(50) },
+        );
+        assert_eq!(
+            select.as_deref(),
+            Some("SELECT \"id\",\n       \"total\"\nFROM \"shop\".\"Orders\"\nLIMIT 50;")
+        );
+        assert!(
+            gen_(ObjectKind::Table, &["id"], GenerateRequest::Update)
+                .unwrap()
+                .starts_with("UPDATE")
+        );
+        assert!(gen_(ObjectKind::Table, &[], GenerateRequest::Update).is_none());
+        assert!(gen_(ObjectKind::Table, &[], GenerateRequest::Delete).is_none());
+        assert_eq!(
+            gen_(
+                ObjectKind::Table,
+                &[],
+                GenerateRequest::Drop { cascade: true }
+            )
+            .as_deref(),
+            Some("DROP TABLE shop.\"Orders\";")
+        );
+        assert_eq!(
+            gen_(
+                ObjectKind::MaterializedView,
+                &[],
+                GenerateRequest::Drop { cascade: false }
+            )
+            .as_deref(),
+            Some("DROP MATERIALIZED VIEW shop.\"Orders\";")
+        );
+        assert_eq!(
+            gen_(ObjectKind::Table, &[], GenerateRequest::Truncate).as_deref(),
+            Some("TRUNCATE shop.\"Orders\";")
+        );
+        assert!(
+            gen_(
+                ObjectKind::Table,
+                &[],
+                GenerateRequest::Rename {
+                    new_name: "x".into()
+                }
+            )
+            .is_none()
+        );
+        assert!(gen_(ObjectKind::Type, &[], GenerateRequest::Truncate).is_none());
     }
 }

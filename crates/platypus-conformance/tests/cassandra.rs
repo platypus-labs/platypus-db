@@ -952,7 +952,7 @@ async fn saves_the_grids_changes() {
                     (7, some(r#"{"street":"Main","zip":7}"#)),
                     (8, some("0xCAFE")),
                     (9, some("123e4567-e89b-12d3-a456-426614174000")),
-                    (10, some("2024-03-09T13:05:09.250Z")),
+                    (10, some("2024-03-09 13:05:09.250+00:00")),
                 ],
             }],
             inserts: vec![vec![
@@ -1101,6 +1101,32 @@ async fn stops_at_the_first_statement_that_fails() {
             rows(&run(&*conn, &format!("SELECT id FROM {ks}.items WHERE id = 9")).await),
             1
         );
+    }
+}
+
+#[tokio::test]
+async fn connects_through_a_tunnel_address_and_refuses_tls_on_a_plain_port() {
+    for url in DEFAULT_URLS {
+        let Ok(plain) = connect_to(url).await else {
+            continue;
+        };
+        drop(plain);
+        // `host` names the server; `connect_addr` is where the tunnel's local end listens.
+        let mut config = ConnectionConfig::from_url(url).unwrap();
+        let port = config.port.unwrap();
+        config.host = "cassandra.invalid".to_owned();
+        config.port = None;
+        config.connect_addr = Some(std::net::SocketAddr::from(([127, 0, 0, 1], port)));
+        config.connect_timeout = Some(Duration::from_secs(5));
+        let conn = CassandraDriver.connect(&config).await.unwrap();
+        assert!(conn.check_alive().await, "{url}");
+        assert_eq!(rows(&run(&*conn, "SELECT key FROM system.local").await), 1);
+        // TLS asked of a port that speaks plain CQL: a connection error, not a hang.
+        let mut tls = ConnectionConfig::from_url(url).unwrap();
+        tls.ssl_mode = platypus_core::SslMode::Require;
+        tls.connect_timeout = Some(Duration::from_secs(5));
+        let err = CassandraDriver.connect(&tls).await.unwrap_err();
+        assert!(matches!(err, Error::Connect(_)), "{url}: {err}");
     }
 }
 

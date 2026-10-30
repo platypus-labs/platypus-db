@@ -177,6 +177,11 @@ fn config_of(
             .into_iter()
             .map(|r| script[r].to_owned())
             .collect()
+    } else if saved.driver == DriverKind::Cassandra {
+        platypus_driver_cassandra::cql::split(script)
+            .into_iter()
+            .map(|r| script[r].to_owned())
+            .collect()
     } else {
         platypus_sql::split(script, Dialect::from(saved.driver))
             .iter()

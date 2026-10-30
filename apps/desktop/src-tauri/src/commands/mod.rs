@@ -52,6 +52,7 @@ use std::time::{Duration, Instant};
 
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Error};
 use platypus_driver_adbc::AdbcDriver;
+use platypus_driver_cassandra::CassandraDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_libsql::LibsqlDriver;
@@ -488,6 +489,7 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             DriverKind::Mongo => MongoDriver.connect(&config).await,
             DriverKind::Redis => RedisDriver.connect(&config).await,
             DriverKind::Elasticsearch => SearchDriver.connect(&config).await,
+            DriverKind::Cassandra => CassandraDriver.connect(&config).await,
             DriverKind::Snowflake
             | DriverKind::BigQuery
             | DriverKind::Databricks

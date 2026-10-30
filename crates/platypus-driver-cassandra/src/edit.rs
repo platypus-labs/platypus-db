@@ -62,6 +62,22 @@ pub struct Script {
     pub undo: Vec<String>,
 }
 
+/// Whether any of the CQL types `types` is, or holds, a user-defined type, whose fields the
+/// edits need to know ([`Udts`]).
+#[must_use]
+pub fn uses_udts(types: &[String]) -> bool {
+    fn holds(ty: &Ty) -> bool {
+        match ty {
+            Ty::Native(_) => false,
+            Ty::Udt(_) => true,
+            Ty::List(item) | Ty::Set(item) | Ty::Vector(item) => holds(item),
+            Ty::Map(key, value) => holds(key) || holds(value),
+            Ty::Tuple(items) => items.iter().any(holds),
+        }
+    }
+    types.iter().any(|t| holds(&parse_type(t)))
+}
+
 /// A CQL type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Ty {
@@ -711,6 +727,18 @@ mod tests {
         let mut no_key = no_key;
         no_key.deletes.push(vec![some("1"), None, None]);
         assert!(script(&no_key).unwrap_err().contains("no primary key"));
+    }
+
+    #[test]
+    fn finds_the_columns_that_need_user_types() {
+        let types = |names: &[&str]| names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert!(!uses_udts(&types(&[
+            "int",
+            "map<text, list<int>>",
+            "tuple<int, text>"
+        ])));
+        assert!(uses_udts(&types(&["int", "address"])));
+        assert!(uses_udts(&types(&["map<text, frozen<address>>"])));
     }
 
     #[test]

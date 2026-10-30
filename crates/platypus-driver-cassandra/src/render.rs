@@ -370,7 +370,9 @@ mod tests {
             name: "t".into(),
             fields: vec![("n".into(), Some(CqlValue::Int(1))), ("m".into(), None)],
         };
-        assert_eq!(text(&udt), r#"{"m":null,"n":1}"#);
+        // Whatever order the fields come out in, they are the same JSON.
+        let parsed: Value = serde_json::from_str(&text(&udt)).unwrap();
+        assert_eq!(parsed, serde_json::json!({"m": null, "n": 1}));
         assert_eq!(text(&CqlValue::Double(f64::NAN)), "NaN");
         assert_eq!(text(&CqlValue::Float(1.5)), "1.5");
     }
