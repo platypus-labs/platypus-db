@@ -986,6 +986,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
           <div data-page="safety" hidden={page !== "safety"} className="dialog-page">
             <section className="form-section">
+            <h3>{t("Appearance")}</h3>
             <div className="row">
               <label className="field">
                 <span>{t("Type")}</span>
@@ -1019,6 +1020,19 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               </label>
             </div>
             <label className="check">
+              <input
+                type="checkbox"
+                data-field="text_json"
+                checked={conn.text_json !== "plain"}
+                onChange={(e) => set("text_json", e.target.checked ? undefined : "plain")}
+              />
+              {t("Format JSON found in text columns in the value panel")}
+            </label>
+            </section>
+
+            <section className="form-section">
+            <h3>{t("Safety")}</h3>
+            <label className="check">
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />
               {t("Read-only (warn before modifying data)")}
             </label>
@@ -1043,22 +1057,16 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               {t("No data editing: rows change only by SQL, not in the grid, imports or generated data")}
             </label>
 
-            <label className="check">
-              <input
-                type="checkbox"
-                data-field="text_json"
-                checked={conn.text_json !== "plain"}
-                onChange={(e) => set("text_json", e.target.checked ? undefined : "plain")}
-              />
-              {t("Format JSON found in text columns in the value panel")}
-            </label>
+            </section>
 
+            <section className="form-section">
+            <h3>{t("Agents")}</h3>
             <AgentAccessField conn={conn} onChange={(access) => set("agent_access", access)} />
             </section>
 
             {projects.length > 0 && (
-              <div className="field">
-                <span>{t("Projects")}</span>
+              <section className="form-section">
+                <h3>{t("Projects")}</h3>
                 <div className="project-chips">
                   {projects.map((p) => {
                     const on = inProjects.has(p.id);
@@ -1076,7 +1084,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     );
                   })}
                 </div>
-              </div>
+              </section>
             )}
           </div>
 

@@ -554,7 +554,13 @@
   padding: 0 var(--space-16);
 }
 
+.welcome-keys dt {
+  min-width: 0;
+}
+
+/* The key badge is as wide as its text, in any language. */
 .welcome-keys dd {
+  flex: none;
   margin: 0;
 }
 
