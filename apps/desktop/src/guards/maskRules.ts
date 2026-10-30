@@ -22,3 +22,13 @@ export function masksColumn(column: { name: string; db_type: string }, names: Re
   const type = column.db_type.toLowerCase().replace(/\(.*$/, "").trim();
   return names.some((p) => p.test(name)) || types.some((p) => p.test(type));
 }
+
+/** Whether a column is sensitive: the user's `mark` on it when there is one, else the rules. */
+export function isSensitive(
+  mark: boolean | null | undefined,
+  column: { name: string; db_type: string },
+  names: RegExp[],
+  types: RegExp[],
+): boolean {
+  return mark ?? masksColumn(column, names, types);
+}

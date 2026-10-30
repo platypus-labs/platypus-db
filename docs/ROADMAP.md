@@ -93,6 +93,8 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 | Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
 | Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`, e quelli del gruppo O `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
+| Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
+| Scenari E2E del gruppo Q (P3) scritti in un container Linux e mai eseguiti: `sensitive-columns-sqlite` (segni, mascheramento, intestazioni, export), `column-usage-sqlite` (Used by: viste, trigger, script, Refresh). Eseguirli su Windows dopo la build di release e correggere scenari o codice | gruppo Q, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -118,10 +120,10 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ completato |
-| N — Accesso per agenti (MCP) | ✅ fatto (P1, P2; P3 in parte) |
+| N — Accesso per agenti (MCP) | ✅ completato |
 | O — Collaborazione e sync | 🔒 Delfa · group-o-collab · 2026-10-30 |
 | P — Piattaforma, qualità e release | libero |
-| Q — Documentazione e catalogo dei dati | 🔒 Delfa · group-q-sensitive · 2026-10-30 |
+| Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
@@ -982,8 +984,16 @@ scritti ma non ancora eseguiti (runner Windows).
 
 ### Gruppo N — Accesso per agenti esterni (MCP)
 
-**Stato: P1 e P2 completate, P3 quasi** (resta il mascheramento delle colonne sensibili del
-gruppo Q nei tool su script e cronologia, che aspetta quelle colonne). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+**Stato: completato.** P3 finita col mascheramento delle colonne sensibili del gruppo Q nei
+tool su script e cronologia: `platypus-sql::sensitive` (le regole sui nomi come le impostazioni
+dell'app, `DEFAULT_NAMES` tenuto uguale a `maskRules.ts` da un test, e `mask_literals`, che
+scrive `'••••••'` al posto dei valori legati a una colonna sensibile: confronti, `IN`, `SET`,
+le posizioni di `INSERT … VALUES` e `INSERT … SELECT`, attraverso cast, chiamate e `BETWEEN`; e
+`mask_error` per gli errori di PostgreSQL, MySQL e SQL Server che citano un valore), usato da
+`read_script` e `search_history` coi segni "sensibile" di `catalog.db` delle connessioni dello
+script (di tutte quelle visibili per uno script senza connessione). Nel testo una colonna si
+conosce solo per nome: un segno "non sensibile" non toglie le regole, e le regole sui tipi non
+servono; se `catalog.db` non si legge il tool fallisce invece di mostrare i valori. Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la
@@ -1075,7 +1085,7 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 | ✅ Schema come risorse MCP (`platypus://<connessione>/<schema>/<tabella>`) per i client che le supportano | P3 | D+ |
 | ✅ Plugin pronti: plugin per Claude Code e configurazione per Codex con le istruzioni d'uso (quando usare quale tool, limiti) | P3 | N |
 | ✅ **Tab Agenti come pannello di integrazione**: sotto-schede Setup, Attività e Sicurezza; in Setup l'elenco dei client (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, …) con il percorso del loro file di configurazione e un pulsante **Installa** che scrive la voce del server (con backup del file e conferma), accanto la configurazione da copiare a mano per il client scelto; Attività mostra le chiamate degli agenti, Sicurezza i permessi per connessione | P2 | N |
-| 🆕 Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate (fatti i tool `list_scripts`, `read_script`, `search_history`; manca il mascheramento, che aspetta le colonne sensibili del gruppo Q) | P3 | N |
+| ✅ Tool di sola lettura su script salvati e cronologia del progetto, con le colonne sensibili del gruppo Q escluse o mascherate | P3 | N |
 
 ---
 
@@ -1160,6 +1170,14 @@ dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri
 `scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
 distribuzione;
 la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
+Dal 30 ottobre 2026: manifest per winget, Homebrew, AUR e Flathub in `packaging/`, riempiti
+con versione e SHA-256 degli installer da `scripts/packaging.mjs` (test in
+`scripts/packaging.test.mjs`); installata da Flatpak o AUR, l'app annuncia la nuova versione
+senza installarla (marker `share/platypusdb/package-manager`). Immagine di anteprima social
+1280×640 (`docs/brand/social-preview.png`, da `social-preview.html` con
+`scripts/social-preview.mjs`) e testi della vetrina (descrizione, topic, Discussions, `good
+first issue`) in RELEASING.md. La pubblicazione dei pacchetti e le impostazioni del
+repository aspettano che diventi pubblico.
 
 | Attività | Prio |
 |---|---|
@@ -1176,11 +1194,11 @@ la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Prog
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
-| Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
+| Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
-| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
+| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire (pronti l'immagine `docs/brand/social-preview.png` e i testi in [RELEASING.md](RELEASING.md), "Repository showcase"; restano le impostazioni su GitHub, da fare quando il repository è pubblico) | P2 |
 | ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
 | ✅ 🆕 Le stesse GIF nel sito (`site/`) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
@@ -1190,7 +1208,19 @@ la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Prog
 
 ### Gruppo Q — Documentazione e catalogo dei dati
 
-**Stato: P2 completate** (restano le P3). **Note e tag** in `catalog.db`, un SQLite a parte nella
+**Stato: completato.** P3: **colonne sensibili**, un segno a mano per colonna (*Sensitive* nelle
+Columns del tab oggetto, tabella `sensitive_columns` di `catalog.db`) sopra le regole su nome e
+tipo delle impostazioni Safety (`guards/maskRules.ts`, `guards/mask.ts`: `useSensitive`, con la
+tabella del risultato da `SensitiveScope` dove è nota, data viewer e profilo tabella); le usano
+il mascheramento, le intestazioni della griglia e gli export (`ExportOptions.masked`/`omitted`
+in `platypus-transfer`: valori scritti come `••••••`, NULL lasciati NULL, o colonne tolte);
+gli agenti del gruppo N le useranno col mascheramento delle colonne sensibili di N. **Dove si usa
+una colonna**: la sezione *Used by* del tab di una tabella (`column_usage` in
+`commands/catalog.rs`): il DDL di viste, routine e trigger dello schema letto in blocco con
+`Connection::objects_ddl`, più gli script salvati del progetto sulla stessa connessione o su
+nessuna; il confronto dei nomi è in `platypus-sql::usage` (parole e identificatori quotati fuori
+da commenti e stringhe, il corpo `$$` delle routine PostgreSQL riletto come SQL), e conta solo
+un testo che nomina anche la tabella. P2: **Note e tag** in `catalog.db`, un SQLite a parte nella
 cartella dati (`CatalogStore` in `platypus-store`, migrazioni con `PRAGMA user_version`), per
 connessione salvata, database e `schema.oggetto.colonna`: riquadro Notes e colonne Note e Tags nel
 tab oggetto, segno e tooltip nel navigator con il filtro `#tag`, segno sulle intestazioni di
@@ -1223,8 +1253,8 @@ rispettate da tutta l'app.
 | ✅ **Note e tag locali** su tabelle e colonne (non scritti nel database), mostrati nel navigator, nell'intestazione della griglia e nell'autocomplete | P2 | N |
 | ✅ Modifica dei commenti del database (`COMMENT ON`, `COMMENT` di MySQL, proprietà estese di SQL Server) dal tab oggetto | P2 | D |
 | ✅ **Documentazione dello schema** esportata in HTML o Markdown: tabelle, colonne, chiavi, commenti, note e diagramma ER | P2 | N |
-| 🆕 **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
-| 🆕 Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
+| ✅ **Colonne sensibili** (PII, segreti): regole su nome e tipo più scelte a mano, usate dal mascheramento del gruppo L, dagli agenti del gruppo N e dagli export | P3 | N |
+| ✅ Dove si usa una colonna: viste, funzioni, trigger e script salvati che la nominano | P3 | N |
 
 ---
 

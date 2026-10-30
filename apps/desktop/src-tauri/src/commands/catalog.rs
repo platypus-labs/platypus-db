@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use futures::StreamExt;
 use platypus_core::{Connection, ObjectKind, ObjectMeta, TableDetails};
 use platypus_docs::{DocColumn, DocForeignKey, DocIndex, DocKind, DocModel, DocObject, DocSchema};
-use platypus_store::{CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, TagCount};
+use platypus_store::{
+    CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, SensitiveColumn, TagCount,
+};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
@@ -106,6 +108,163 @@ pub fn set_catalog_display_column(
 ) -> CommandResult<()> {
     state.with_catalog(|c| c.set_display_column(connection_id, &key, column.as_deref()))
 }
+
+/// The columns of a connection marked sensitive or not by hand.
+#[tauri::command]
+pub fn catalog_sensitive_columns(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+) -> CommandResult<Vec<SensitiveColumn>> {
+    state.with_catalog(|c| c.sensitive_columns(connection_id))
+}
+
+/// Marks the column `key` sensitive or not; `None` leaves it to the rules.
+#[tauri::command]
+pub fn set_catalog_sensitive(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+    key: CatalogKey,
+    sensitive: Option<bool>,
+) -> CommandResult<()> {
+    state.with_catalog(|c| c.set_sensitive(connection_id, &key, sensitive))
+}
+
+/// Where a column of a table is used: an object of its schema, or a saved script.
+#[derive(Debug, Serialize)]
+pub struct ColumnUse {
+    pub column: String,
+    /// The object's kind; `None` for a script.
+    pub kind: Option<ObjectKind>,
+    /// The object's name, or the script's path in its project.
+    pub name: String,
+    /// The table of a trigger.
+    pub parent: Option<String>,
+    /// The first line naming the column, from 1, and its text.
+    pub line: usize,
+    pub excerpt: String,
+}
+
+/// Where a table's columns are used, with the folder the scripts' paths start from.
+#[derive(Debug, Serialize)]
+pub struct ColumnUsage {
+    /// `None` when the scripts' folder cannot be read: no script is searched.
+    pub scripts_root: Option<PathBuf>,
+    pub uses: Vec<ColumnUse>,
+}
+
+/// The kinds whose SQL may use the columns of a table.
+const USERS: [ObjectKind; 5] = [
+    ObjectKind::View,
+    ObjectKind::MaterializedView,
+    ObjectKind::Function,
+    ObjectKind::Procedure,
+    ObjectKind::Trigger,
+];
+
+/// Where the columns `columns` of `schema.table` are used: in the views, routines and
+/// triggers of the schema (their DDL read together), and in the saved scripts of `project`
+/// that open on the session's connection or on none.
+#[tauri::command]
+pub async fn column_usage(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    table: String,
+    columns: Vec<String>,
+    project: Option<Uuid>,
+) -> CommandResult<ColumnUsage> {
+    let session = state.session(session_id)?;
+    let dialect = platypus_sql::Dialect::from(session.config.driver);
+    let conn = state.live(session_id).await?;
+    let objects: Vec<ObjectMeta> = conn
+        .objects(&schema)
+        .await?
+        .into_iter()
+        .filter(|o| USERS.contains(&o.kind))
+        .collect();
+    let refs: Vec<platypus_core::ObjectRef<'_>> = objects
+        .iter()
+        .map(|o| platypus_core::ObjectRef {
+            schema: &schema,
+            name: &o.name,
+            kind: o.kind,
+            parent: o.parent.as_deref(),
+        })
+        .collect();
+    let mut out = Vec::new();
+    let found = |sql: &str, out: &mut Vec<ColumnUse>, name: &str, kind, parent: Option<&str>| {
+        for (i, line) in platypus_sql::usage::column_uses(sql, dialect, &table, &columns) {
+            out.push(ColumnUse {
+                column: columns[i].clone(),
+                kind,
+                name: name.to_owned(),
+                parent: parent.map(str::to_owned),
+                line,
+                excerpt: platypus_sql::usage::excerpt(sql, line, EXCERPT_CHARS),
+            });
+        }
+    };
+    // An object whose DDL cannot be read uses nothing that can be told.
+    for (o, ddl) in objects.iter().zip(conn.objects_ddl(&refs).await) {
+        if let Ok(ddl) = ddl {
+            found(&ddl, &mut out, &o.name, Some(o.kind), o.parent.as_deref());
+        }
+    }
+    // The scripts are files: read off the async threads. Without their folder, the objects
+    // still tell where the columns are used.
+    let scripts_root = super::scripts::root(&state, project).ok();
+    if let Some(root) = scripts_root.clone() {
+        let (connection, table, columns) = (session.connection_id, table.clone(), columns.clone());
+        let scripts = tokio::task::spawn_blocking(move || {
+            script_uses(&root, connection, dialect, &table, &columns)
+        })
+        .await
+        .map_err(|e| CommandError::new("io", e.to_string()))?;
+        out.extend(scripts);
+    }
+    Ok(ColumnUsage {
+        scripts_root,
+        uses: out,
+    })
+}
+
+/// The uses of `columns` of `table` in the saved scripts under `root` that open on
+/// `connection` or on none.
+fn script_uses(
+    root: &std::path::Path,
+    connection: Uuid,
+    dialect: platypus_sql::Dialect,
+    table: &str,
+    columns: &[String],
+) -> Vec<ColumnUse> {
+    let links = platypus_store::read_script_links(root);
+    let mut out = Vec::new();
+    for entry in platypus_store::list_scripts(root) {
+        if entry.folder || links.get(&entry.path).is_some_and(|c| *c != connection) {
+            continue;
+        }
+        let Ok(script) = platypus_store::read_script(root, &entry.path, SCRIPT_BYTES) else {
+            continue;
+        };
+        for (i, line) in platypus_sql::usage::column_uses(&script.text, dialect, table, columns) {
+            out.push(ColumnUse {
+                column: columns[i].clone(),
+                kind: None,
+                name: entry.path.clone(),
+                parent: None,
+                line,
+                excerpt: platypus_sql::usage::excerpt(&script.text, line, EXCERPT_CHARS),
+            });
+        }
+    }
+    out
+}
+
+/// The longest excerpt of the line naming a column.
+const EXCERPT_CHARS: usize = 120;
+
+/// How much of a saved script is searched for the columns it uses.
+const SCRIPT_BYTES: usize = 4 << 20;
 
 /// Drops the notes of a deleted connection; a catalog that cannot be opened has none.
 pub(super) fn forget_connection(catalog: &mut Result<CatalogStore, String>, id: Uuid) {

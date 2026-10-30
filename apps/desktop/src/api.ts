@@ -1724,6 +1724,10 @@ export interface ExportOptions {
   upload_url?: string | null;
   /** A bucket the finished file is also sent to, signed with its keys. */
   bucket?: Bucket | null;
+  /** Columns written as dots (a NULL stays NULL): sensitive data. */
+  masked?: string[];
+  /** Columns left out of the file. */
+  omitted?: string[];
 }
 
 /** A bucket of S3 or a service with its API (GCS with HMAC keys, R2, MinIO), as `s3::Bucket`. */
@@ -1885,6 +1889,30 @@ export interface DisplayColumn {
   column: string;
 }
 
+/** Where a column of a table is used: an object of its schema (`kind` set), or a saved script
+ *  (`name` its path in `ColumnUsage.scripts_root`). */
+export interface ColumnUse {
+  column: string;
+  kind: ObjectKind | null;
+  name: string;
+  parent: string | null;
+  /** The first line naming the column, from 1, and its text. */
+  line: number;
+  excerpt: string;
+}
+
+export interface ColumnUsage {
+  /** `null` when the scripts' folder cannot be read: no script is searched. */
+  scripts_root: string | null;
+  uses: ColumnUse[];
+}
+
+/** A column the user marked sensitive or not, over the rules on names and types. */
+export interface SensitiveColumn {
+  key: CatalogKey;
+  sensitive: boolean;
+}
+
 export type DocsFormat = "markdown" | "html";
 
 /** What the schema documentation covers and where it is written. */
@@ -2008,6 +2036,8 @@ export interface AppInfo {
   /** A portable copy: its data is in the `data` folder next to it, and it updates by
    *  replacing its executable. */
   portable: boolean;
+  /** The package manager that installed the app (Flatpak, AUR) and updates it. */
+  package_manager: string | null;
   os: string;
   arch: string;
 }
@@ -2911,6 +2941,14 @@ export const api = {
     invoke<DisplayColumn[]>("catalog_display_columns", { connectionId }),
   setCatalogDisplayColumn: (connectionId: string, key: CatalogKey, column: string | null) =>
     invoke<void>("set_catalog_display_column", { connectionId, key, column }),
+  /** Where the `columns` of `schema.table` are used: views, routines and triggers of the schema,
+   *  and the saved scripts of `project` on this connection or on none. */
+  columnUsage: (sessionId: number, schema: string, table: string, columns: string[], project: string | null) =>
+    invoke<ColumnUsage>("column_usage", { sessionId, schema, table, columns, project }),
+  catalogSensitiveColumns: (connectionId: string) =>
+    invoke<SensitiveColumn[]>("catalog_sensitive_columns", { connectionId }),
+  setCatalogSensitive: (connectionId: string, key: CatalogKey, sensitive: boolean | null) =>
+    invoke<void>("set_catalog_sensitive", { connectionId, key, sensitive }),
   /** Writes the documentation of `request.schemas`; cancelled with `cancelDocs`. */
   exportDocs: (
     sessionId: number,

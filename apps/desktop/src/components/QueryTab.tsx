@@ -40,6 +40,7 @@ import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
+import { maskSetting, useSensitive } from "../guards/mask";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
@@ -1659,6 +1660,10 @@ export function QueryTab({
   /** The shown result's rows still come from the server, slowly: Cancel stops them. */
   const readingRows = shown?.status.kind === "rows" && !shown.status.finished && shown.fetching && shown.jobId !== null;
   const exportBusy = exporting !== null && exporting.done === null;
+  // The sensitive columns of the result to export: the viewer's marks, else the rules.
+  const sensitiveIn = useSensitive(rowsResult ? notesScope(rowsResult) : null);
+  const exportSensitive = rowsResult?.columns?.filter(sensitiveIn).map((c) => c.name) ?? [];
+  const masking = useSetting(maskSetting);
 
   return (
     <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
@@ -2165,6 +2170,8 @@ export function QueryTab({
           transactionOpen={!!tx?.open}
           // The SQL field's output runs on a copy of its own: it cannot be kept as a profile.
           query={rowsResult === resultSql.output ? undefined : { connection_id: connection.id, database: tab.database ?? null, sql: rowsResult.sql }}
+          sensitive={exportSensitive}
+          masking={masking}
           onExport={(path, options, source) => void startExport(rowsResult, path, options, source)}
           onClose={() => setExportOpen(false)}
         />

@@ -1,0 +1,22 @@
+# Maintainer: PlatypusDB <https://github.com/PaoloCisly/platypus-db>
+# After changing a field, change .SRCINFO too (`makepkg --printsrcinfo > .SRCINFO` on Arch).
+pkgname=platypusdb-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Fast, lightweight SQL client"
+arch=('x86_64')
+url="https://github.com/PaoloCisly/platypus-db"
+license=('AGPL-3.0-or-later')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'openssl')
+provides=('platypusdb')
+conflicts=('platypusdb')
+options=('!strip' '!debug')
+source=("PlatypusDB_${pkgver}_amd64.deb::${url}/releases/download/v${pkgver}/PlatypusDB_${pkgver}_amd64.deb")
+sha256sums=('@SHA256_LINUX_DEB@')
+
+package() {
+  bsdtar -xf data.tar.gz -C "${pkgdir}"
+  # Updates come from the AUR: the app then only says a new version is out.
+  install -d "${pkgdir}/usr/share/platypusdb"
+  echo AUR > "${pkgdir}/usr/share/platypusdb/package-manager"
+}

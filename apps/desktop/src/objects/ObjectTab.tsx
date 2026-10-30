@@ -2,6 +2,8 @@ import { createElement, useEffect, useState } from "react";
 import {
   api,
   type CatalogKey,
+  type ColumnUsage,
+  type ColumnUse,
   type DriverKind,
   type ObjectKind,
   type ObjectTarget,
@@ -10,7 +12,8 @@ import {
   toCommandError,
 } from "../api";
 import { isRelation } from "../components/Navigator";
-import { catalogKey, useCatalogVersion } from "../catalog/catalog";
+import { catalogKey, reportCatalogError, sensitiveMark, setSensitiveMark, useCatalogVersion } from "../catalog/catalog";
+import { useSensitive } from "../guards/mask";
 import { CatalogTags, NotesPanel, useNoteDraft } from "../catalog/NotesPanel";
 import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
@@ -19,6 +22,7 @@ import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor, showsData } from "./open";
+import { openScriptFile, scriptFile } from "../scripts/scripts";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 
@@ -29,6 +33,7 @@ export type ObjectSection =
   | "constraints"
   | "foreign_keys"
   | "references"
+  | "usage"
   | "ddl";
 
 const NO_COMMENTS: DriverKind[] = ["sqlite", "libsql", "mongo", "redis", "elasticsearch", "cassandra"];
@@ -77,12 +82,13 @@ const SECTION_LABELS: Record<ObjectSection, string> = {
   constraints: msg("Constraints"),
   foreign_keys: msg("Foreign keys"),
   references: msg("References"),
+  usage: msg("Used by"),
   ddl: "DDL",
 };
 
 function sectionsFor(kind: ObjectKind): ObjectSection[] {
   if (kind === "table" || kind === "foreign_table") {
-    return ["properties", "columns", "indexes", "constraints", "foreign_keys", "references", "ddl"];
+    return ["properties", "columns", "indexes", "constraints", "foreign_keys", "references", "usage", "ddl"];
   }
   if (kind === "view" || kind === "materialized_view" || kind === "dictionary") {
     return ["properties", "columns", "ddl"];
@@ -121,6 +127,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   // Also re-renders the note and tag cells of the columns, which read the catalog as they draw.
   const catalogVersion = useCatalogVersion();
+  // What the rules on names and types say of each column, before the user's marks.
+  const byRules = useSensitive();
   const ckey = (column = "") => catalogKey(tab.database, tab.schema, tab.name, column);
   const sections = sectionsFor(tab.objectKind);
   const section = tab.section && sections.includes(tab.section) ? tab.section : sections[0]!;
@@ -313,7 +321,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         )}
         {d && section === "columns" && (
           <MetaTable
-            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment (database)"), t("Note"), t("Tags")]}
+            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment (database)"), t("Note"), t("Tags"), t("Sensitive")]}
             rows={d.columns.map((c, i) => [
               String(i + 1),
               c.name,
@@ -339,6 +347,12 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
                 connectionId={connection.id}
                 catalogKey={ckey(c.name)}
                 suggestions={tagSuggestions}
+              />,
+              <SensitiveCell
+                key={`sensitive ${c.name}`}
+                connectionId={connection.id}
+                catalogKey={ckey(c.name)}
+                byRules={byRules({ name: c.name, db_type: c.data_type })}
               />,
             ])}
           />
@@ -379,6 +393,18 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               r.columns.join(", "),
               r.ref_columns.join(", "),
             ])}
+          />
+        )}
+        {d && section === "usage" && (
+          <ColumnUsageSection
+            connectionId={connection.id}
+            schema={tab.schema}
+            currentSchema={tab.currentSchema}
+            database={tab.database}
+            table={tab.name}
+            columns={d.columns.map((c) => c.name)}
+            version={version}
+            sideSession={sideSession}
           />
         )}
         {data && section === "ddl" &&
@@ -432,6 +458,91 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** Where the columns of a table are used: views, routines and triggers of its schema, and the
+ *  saved scripts of the active project. Read when shown, and again on Refresh. */
+function ColumnUsageSection(props: {
+  connectionId: string;
+  schema: string;
+  currentSchema: boolean;
+  database: string | null | undefined;
+  table: string;
+  columns: string[];
+  version: number;
+  sideSession: () => Promise<number | null>;
+}) {
+  const { connectionId, schema, table, columns } = props;
+  const [usage, setUsage] = useState<ColumnUsage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setUsage(null);
+    setError(null);
+    void (async () => {
+      try {
+        const sid = await props.sideSession();
+        if (sid === null) {
+          if (live) setError(t("Not connected."));
+          return;
+        }
+        const read = await api.columnUsage(sid, schema, table, columns, workbench().activeProject()?.id ?? null);
+        if (live) setUsage(read);
+      } catch (e) {
+        if (live) setError(toCommandError(e).message);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [props.version, columns.join("\n")]);
+
+  if (error) return <div className="notice error">{error}</div>;
+  if (!usage) return <div className="muted small">{t("Loading…")}</div>;
+  const unused = columns.filter((c) => !usage.uses.some((u) => u.column === c));
+  const open = (u: ColumnUse) =>
+    u.kind
+      ? openObjectTab(connectionId, { database: props.database, schema, currentSchema: props.currentSchema, name: u.name, kind: u.kind, parent: u.parent })
+      : usage.scripts_root && void openScriptFile(scriptFile(usage.scripts_root, u.name), connectionId).catch((e: unknown) => workbench().showError(toCommandError(e).message));
+  return (
+    <>
+      <MetaTable
+        head={[t("Column"), t("Used by"), t("Kind"), t("Line")]}
+        rows={usage.uses.map((u) => [
+          u.column,
+          <button key="use" className="link" onClick={() => open(u)} title={u.excerpt}>
+            {u.kind === "trigger" && u.parent ? `${u.name} (${u.parent})` : u.name}
+          </button>,
+          u.kind ? t(KIND_LABELS[u.kind]) : t("Saved script"),
+          <span key="line" title={u.excerpt}>
+            {u.line}: <code>{u.excerpt}</code>
+          </span>,
+        ])}
+      />
+      {unused.length > 0 && (
+        <p className="muted small" data-field="unused">
+          {t("Not named by any view, routine, trigger or saved script: {columns}", { columns: unused.join(", ") })}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Whether a column is sensitive: as the rules say, or the user's mark over them. */
+function SensitiveCell({ connectionId, catalogKey, byRules }: { connectionId: string; catalogKey: CatalogKey; byRules: boolean }) {
+  const mark = sensitiveMark(connectionId, catalogKey);
+  return (
+    <select
+      className="cell-input"
+      aria-label={t("Sensitive: {column}", { column: catalogKey.column })}
+      value={mark === undefined ? "" : mark ? "yes" : "no"}
+      onChange={(e) => setSensitiveMark(connectionId, catalogKey, e.target.value === "" ? null : e.target.value === "yes").catch(reportCatalogError)}
+    >
+      <option value="">{t(byRules ? "Sensitive, by the rules" : "Not sensitive, by the rules")}</option>
+      <option value="yes">{t("Sensitive")}</option>
+      <option value="no">{t("Not sensitive")}</option>
+    </select>
   );
 }
 

@@ -103,6 +103,20 @@ impl Profile {
         )?)
     }
 
+    /// The user's notes, tags and sensitive marks (`catalog.db`); `None` before the app made it.
+    ///
+    /// # Errors
+    /// When the file is there but cannot be read.
+    pub fn catalog(&self) -> Result<Option<platypus_store::CatalogStore>> {
+        let path = self.data_dir.join("catalog.db");
+        if !path.exists() {
+            return Ok(None);
+        }
+        platypus_store::CatalogStore::open(&path)
+            .map(Some)
+            .map_err(|e| AgentError::Store(format!("cannot read the catalog: {e}")))
+    }
+
     /// The app's settings; an unreadable file reads as the defaults.
     #[must_use]
     pub fn settings(&self) -> Option<SettingsStore> {

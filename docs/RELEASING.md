@@ -60,7 +60,9 @@ Every version goes through the same steps, with or without GitHub Actions:
    is what makes the updater see the version.
 5. **Check the auto-update** from the previous published version: it must offer the new
    one, download it and restart into it.
-6. **Announce** (README badge, site, discussions) once the repository is public.
+6. **Package managers** (once the repository is public, their downloads must be reachable
+   without a login): see "Package managers" below.
+7. **Announce** (README badge, site, discussions) once the repository is public.
 
 ### Local Windows release
 
@@ -85,6 +87,59 @@ gh release create vX.Y.Z --draft --verify-tag --title "PlatypusDB vX.Y.Z" --note
 When the workflow later runs on the same tag, `tauri-action` finds the release by tag and
 adds the macOS and Linux assets, merging them into `latest.json`; check that it did not
 create a second draft.
+
+## Package managers
+
+`packaging/` holds the manifests for winget, Homebrew (cask), the AUR (`platypusdb-bin`, from
+the `.deb`) and Flathub, with `@VERSION@`, `@DATE@` and `@SHA256_…@` placeholders. Download
+the release's installers into a folder, then fill them:
+
+```bash
+node scripts/packaging.mjs X.Y.Z <folder with the installers>
+```
+
+The filled manifests land in `target/packaging/X.Y.Z/<manager>/`; a manager whose installers
+are missing is skipped (a Windows-only release fills only winget). Then submit each one:
+
+- **winget**: a pull request to `microsoft/winget-pkgs` with the three files under
+  `manifests/p/PaoloCisly/PlatypusDB/X.Y.Z/` (or `wingetcreate submit <folder>`). Check first
+  with `winget validate <folder>` and `winget install --manifest <folder>`.
+- **Homebrew**: the first version as a pull request adding `Casks/p/platypusdb.rb` to
+  `Homebrew/homebrew-cask` (`brew audit --new --cask platypusdb` first); later versions are
+  bumped by Homebrew's autobump, or with `brew bump-cask-pr platypusdb --version X.Y.Z`.
+  Homebrew wants a notable, signed and notarized app: until macOS signing is done, a tap
+  of our own (`PaoloCisly/homebrew-tap`) is the alternative.
+- **AUR**: push `PKGBUILD` and `.SRCINFO` to `ssh://aur@aur.archlinux.org/platypusdb-bin.git`
+  (an AUR account with an SSH key); check with `makepkg -si` on Arch first.
+- **Flathub**: the first time, a pull request to `flathub/flathub` (branch `new-pr`) with
+  `dev.platypusdb.desktop.yml`; Flathub then creates the `flathub/dev.platypusdb.desktop`
+  repository, where later versions go. The metainfo file goes with it. Check with
+  `flatpak-builder --user --install --force-clean build dev.platypusdb.desktop.yml` and
+  `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest dev.platypusdb.desktop.yml`.
+
+The AUR and Flatpak packages install `share/platypusdb/package-manager` next to the
+executable: the app then announces a new version but leaves the update to the package
+manager (the built-in updater would otherwise replace files the package manager owns). winget and
+Homebrew install the normal installer, which updates itself.
+
+## Repository showcase
+
+Set once, when the repository becomes public (GitHub › the repository's About and Settings):
+
+- **Description**: "Fast, lightweight SQL client for PostgreSQL, MySQL, SQL Server, SQLite,
+  DuckDB and more, with an MCP server for AI agents. Rust + Tauri."
+- **Website**: the site, once it is online.
+- **Topics**: `sql-client`, `database`, `database-client`, `database-gui`, `postgresql`,
+  `mysql`, `sqlite`, `sql-server`, `duckdb`, `rust`, `tauri`, `mcp`, `mcp-server`,
+  `desktop-app`, `dbeaver-alternative`.
+- **Social preview**: `docs/brand/social-preview.png` (1280×640). Its source is
+  `docs/brand/social-preview.html`; after changing it, or the screenshot it shows, run
+  `node scripts/social-preview.mjs`.
+- **Discussions**: on, with the categories Announcements (releases), Q&A, Ideas and Show
+  and tell; then add a "Ask a question" link to Q&A in `.github/ISSUE_TEMPLATE/config.yml`.
+- **`good first issue`**: label small, self-contained tasks with a pointer to the files to
+  touch: a missing translation, a keyboard shortcut, a type the grid shows as text, a driver
+  test for one more server version. Keep five or so open.
 
 ## Windows code signing plan
 

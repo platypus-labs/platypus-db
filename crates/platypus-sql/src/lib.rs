@@ -18,8 +18,10 @@ mod params;
 pub mod pg_literal;
 mod rewrite;
 pub mod security;
+pub mod sensitive;
 pub mod snapshot;
 mod source;
+pub mod usage;
 
 pub use analysis::{Analysis, StatementKind, TableName, Unfiltered, analyze};
 pub use dialect::{Dialect, contains_pattern};
