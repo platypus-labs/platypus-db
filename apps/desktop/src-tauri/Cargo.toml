@@ -34,10 +34,12 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 platypus-core.workspace = true
 platypus-docs.workspace = true
 platypus-local.workspace = true
+platypus-sync.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-odbc.workspace = true
 platypus-driver-oracle.workspace = true
 platypus-drivers.workspace = true
+platypus-plugins.workspace = true
 platypus-driver-clickhouse.workspace = true
 platypus-driver-duckdb.workspace = true
 platypus-driver-libsql.workspace = true
@@ -71,6 +73,8 @@ tokio-util.workspace = true
 toml_edit = "0.25"
 uuid.workspace = true
 zip = { version = "9", default-features = false, features = ["deflate"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-deep-link = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }

@@ -9,6 +9,7 @@ them can be combined with the AGPL.
 | Component | Where | License |
 |---|---|---|
 | [tiberius](https://github.com/prisma/tiberius) 0.12.3, with PlatypusDB's patches (listed at the top of its `Cargo.toml`) | `vendor/tiberius/` | MIT or Apache-2.0 ([MIT](vendor/tiberius/LICENSE-MIT.txt), [Apache](vendor/tiberius/LICENSE-APACHE.txt)) |
+| [scylla](https://github.com/scylladb/scylla-rust-driver) 1.9.0, the Cassandra and ScyllaDB driver, with rustls on the ring provider only (see the top of its `Cargo.toml`) | `vendor/scylla/` | MIT or Apache-2.0 |
 | [Mermaid](https://github.com/mermaid-js/mermaid) 11.4.1, `mermaid.min.js`, embedded in the HTML schema documentation | `crates/platypus-docs/assets/` | MIT |
 | [Inter](https://github.com/rsms/inter) font | `apps/desktop/src/assets/fonts/`, `site/fonts/` | SIL Open Font License 1.1 ([text](apps/desktop/src/assets/fonts/OFL-Inter.txt)) |
 | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) font | `apps/desktop/src/assets/fonts/`, `site/fonts/` | SIL Open Font License 1.1 ([text](apps/desktop/src/assets/fonts/OFL-JetBrainsMono.txt)) |

@@ -164,6 +164,9 @@ export interface QueryTabModel extends TabBase {
   charts?: SavedChart[];
   /** Read-only for this tab only, as if the connection were; not persisted. */
   readOnly?: boolean;
+  /** The SQL came from a shared query (a file or link) and was not reviewed yet: a notice
+   *  asks for that until it is dismissed. Not persisted. */
+  shared?: boolean;
 }
 
 /** The side panel next to the editor. */
@@ -1182,6 +1185,7 @@ export function QueryTab({
             workbench().openDialog((close) => <MultiRunDialog script={script} origin={connection} onClose={close} />);
           },
     explain: isNoSql(connection.driver) ? undefined : (analyze) => void explain(analyze),
+    openSql: (sql) => workbench().openTab("query", connection.id, { sql, database: tab.database }),
   };
 
   /** Closes a result tab and frees its rows; the shown one asks first if it has edits. */
@@ -1931,6 +1935,12 @@ export function QueryTab({
                 if (again) void run("statement", false, again);
               }}
             />
+          )}
+          {tab.shared && (
+            <div className="notice warn" data-field="shared_notice">
+              {t("Shared query: review before running.")}
+              <button onClick={() => onChange({ shared: false })}>{t("Dismiss")}</button>
+            </div>
           )}
           {blocked !== null && (
             <div className="notice warn">

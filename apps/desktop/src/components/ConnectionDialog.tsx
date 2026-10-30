@@ -1,4 +1,5 @@
 import { ProfileFields } from "../drivers/ProfileFields";
+import { PluginDriverField } from "../plugins/PluginDriverField";
 import { PROFILES } from "../drivers/profiles";
 import { withDriver } from "../drivers/DriverPopup";
 import { VendorDriverState } from "../drivers/VendorDrivers";
@@ -75,6 +76,8 @@ const DEFAULT_PORTS: Record<DriverKind, number | null> = {
   oracle: 1521,
   db2: 50000,
   odbc: null,
+  // The plugin's database decides.
+  plugin: null,
   mongo: 27017,
   redis: 6379,
   elasticsearch: 9200,
@@ -543,7 +546,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
       <DriverPicker
         onPick={(driver, preset, label) => {
           changeDriver(driver);
-          setConn((c) => ({ ...c, ...preset }));
+          setConn((c) => ({ ...c, ...preset, options: { ...c.options, ...preset.options } }));
           setTile(label);
           setPicking(false);
         }}
@@ -613,6 +616,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <option value="oracle">Oracle</option>
                     <option value="db2">IBM Db2</option>
                     <option value="odbc">{t("Other ODBC driver")}</option>
+                    <option value="plugin">{t("Plugin driver")}</option>
                   </select>
                 </label>
               )}
@@ -685,6 +689,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               />
             ) : (
               <>
+                {conn.driver === "plugin" && (
+                  <PluginDriverField
+                    value={conn.options?.plugin ?? ""}
+                    onChange={(plugin) => setConn((c) => ({ ...c, options: { ...c.options, plugin } }))}
+                  />
+                )}
                 {server && urlModeDriver(conn.driver) && (
                   <div className="connect-by" role="radiogroup" aria-label={t("Connect by")} onKeyDown={connectByKey}>
                     <span>{t("Connect by")}</span>

@@ -40,6 +40,15 @@
     "publisher": "PlatypusDB",
     "shortDescription": "Fast, lightweight SQL client",
     "category": "DeveloperTool",
+    "fileAssociations": [
+      {
+        "ext": ["platypus"],
+        "name": "PlatypusDB shared query",
+        "description": "A SQL query shared from PlatypusDB",
+        "mimeType": "application/vnd.platypusdb.query+json",
+        "role": "Editor"
+      }
+    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
@@ -48,6 +57,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["platypus"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDMjVCQkU3QTg3RDZCRUQKUldUdGEzMm81N3NsL0k5RElGTU1icmREQmlnSG5oU0lNRUxWajZUdW5jTmk2Z0Q1UDhzMXJuVWQK",
       "endpoints": [

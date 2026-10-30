@@ -20,11 +20,13 @@ pub mod explain;
 pub mod export;
 pub mod files;
 pub mod geometry;
+pub mod git;
 pub mod grid;
 pub mod health;
 pub mod history;
 pub mod meta;
 pub mod objects;
+pub mod plugins;
 pub mod profiles;
 pub mod projects;
 pub mod query;
@@ -38,9 +40,12 @@ pub mod scripts;
 pub mod search;
 pub mod security;
 pub mod settings;
+pub mod share;
+pub mod shared_projects;
 pub mod snapshots;
 pub mod sql;
 pub mod summary;
+pub mod sync;
 pub mod transactions;
 pub mod transfer;
 pub mod vault;
@@ -67,6 +72,7 @@ use platypus_driver_pg::PgDriver;
 use platypus_driver_redis::RedisDriver;
 use platypus_driver_search::SearchDriver;
 use platypus_driver_sqlite::SqliteDriver;
+use platypus_plugins::PluginDriver;
 use platypus_store::{
     CatalogStore, ConnectionStore, HistoryStore, ImportedSecrets, SchemaHistoryStore,
     SettingsStore, VaultSecrets,
@@ -113,6 +119,9 @@ pub struct AppState {
     import_secrets: Mutex<HashMap<Uuid, ImportedSecrets>>,
     /// What the query manager shows.
     query_log: Arc<QueryLog>,
+    /// The text of each shared project's file as this app last read or wrote it, by project
+    /// id: a file that differs was changed from outside (see `shared_projects`).
+    shared_seen: Mutex<HashMap<Uuid, String>>,
     next_id: AtomicU64,
 }
 
@@ -197,6 +206,7 @@ impl AppState {
             docs: Mutex::new(HashMap::new()),
             import_secrets: Mutex::new(HashMap::new()),
             query_log: Arc::default(),
+            shared_seen: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
         }
     }
@@ -264,7 +274,15 @@ impl AppState {
         f: impl FnOnce(&mut ConnectionStore) -> Result<T, platypus_store::StoreError>,
     ) -> CommandResult<T> {
         match &mut *lock(&self.store) {
-            Ok(store) => f(store).map_err(Into::into),
+            Ok(store) => {
+                let before = store.revision();
+                let result = f(store);
+                // A shared project's folder follows what the app changed.
+                if store.revision() != before {
+                    shared_projects::push(store, &self.shared_seen);
+                }
+                result.map_err(Into::into)
+            }
             Err(e) => Err(CommandError::new("store", e.clone())),
         }
     }
@@ -499,6 +517,7 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             | DriverKind::Adbc => AdbcDriver::shared()?.connect(&config).await,
             DriverKind::Oracle => OracleDriver::shared()?.connect(&config).await,
             DriverKind::Db2 | DriverKind::Odbc => OdbcDriver.connect(&config).await,
+            DriverKind::Plugin => PluginDriver::shared()?.connect(&config).await,
         }
     })
     .await

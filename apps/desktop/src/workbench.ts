@@ -24,6 +24,9 @@ export interface Workbench {
   /** Opens the new connection dialog; the connection goes into `folder` of the active
    *  project when given. */
   newConnection(folder?: string | null): void;
+  /** Opens the new connection dialog filled in from `connection`; `saved` runs with the
+   *  connection once the user saves it. */
+  newConnectionFrom(connection: SavedConnection, saved: (connection: SavedConnection) => void): void;
   /** Saves a copy of the connection, with its passwords, and opens it for editing. */
   duplicateConnection(connection: SavedConnection): Promise<void>;
   /** Opens the project dialog; `null` makes a new project. */
@@ -50,6 +53,8 @@ export interface Workbench {
   /** What an open session's driver supports. */
   capabilities(sessionId: number): Capabilities | undefined;
   showError(message: string): void;
+  /** Shows a message that is not an error (it is not kept in the Activity log). */
+  notify(message: string): void;
   openSettings(): void;
   /** Shows a dialog; `render` gets the function that closes it. */
   openDialog(render: (close: () => void) => ReactNode): void;

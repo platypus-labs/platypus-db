@@ -75,7 +75,8 @@ impl SessionInit {
                 | DriverKind::Databricks
                 | DriverKind::Trino
                 | DriverKind::Adbc
-                | DriverKind::Odbc => {
+                | DriverKind::Odbc
+                | DriverKind::Plugin => {
                     return Err(Error::Config(
                         "set the schema in the connection's own fields".to_owned(),
                     ));
@@ -123,7 +124,11 @@ fn time_zone_sql(driver: DriverKind, zone: &str) -> Result<String> {
         | DriverKind::Cassandra => {
             return refuse(&format!("{} has no session time zone", driver.name()));
         }
-        DriverKind::BigQuery | DriverKind::Adbc | DriverKind::Db2 | DriverKind::Odbc => {
+        DriverKind::BigQuery
+        | DriverKind::Adbc
+        | DriverKind::Db2
+        | DriverKind::Odbc
+        | DriverKind::Plugin => {
             return refuse(&format!("{} has no session time zone here", driver.name()));
         }
     })

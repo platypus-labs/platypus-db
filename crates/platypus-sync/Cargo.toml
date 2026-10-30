@@ -1,0 +1,23 @@
+[package]
+name = "platypus-sync"
+description = "Sharing PlatypusDB's data without a server: Git for the saved scripts, end-to-end encrypted sync through a folder, and shared team projects"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+argon2.workspace = true
+platypus-core.workspace = true
+platypus-store.workspace = true
+ring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

@@ -21,4 +21,5 @@ export const DRIVER_NAMES: Record<DriverKind, string> = {
   oracle: "Oracle",
   db2: "Db2",
   odbc: "ODBC",
+  plugin: "Plugin",
 };

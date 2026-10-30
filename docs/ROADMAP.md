@@ -89,9 +89,10 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Progetti condivisi (gruppo O): il file `platypus-project.toml` di un collega può ancora impostare le istruzioni di init di una connessione (SQL eseguito a ogni collegamento), applicate senza chiedere. Decidere se non farle viaggiare, tenerle in sola lettura o chiederne conferma la prima volta, in `crates/platypus-sync/src/portable.rs` (`guard`) | gruppo O, 2026-10-30 |
 | Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
-| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
+| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`, e quelli del gruppo O `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
 | Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
 | Scenari E2E del gruppo Q (P3) scritti in un container Linux e mai eseguiti: `sensitive-columns-sqlite` (segni, mascheramento, intestazioni, export), `column-usage-sqlite` (Used by: viste, trigger, script, Refresh). Eseguirli su Windows dopo la build di release e correggere scenari o codice | gruppo Q, 2026-10-30 |
 
@@ -1093,13 +1094,44 @@ lettura, `Dialect`), 0.6, 0.7; il gruppo L per le conferme sulle scritture
 **Area:** nuovo crate `platypus-sync`, `apps/desktop/src/projects/`
 **Dipende da:** il pannello script del gruppo D
 
+**Stato: completato** (30 ottobre 2026), senza server: tutto passa da cartelle. **Git per gli
+script** (`platypus-sync/src/git.rs`, eseguibile `git` di sistema senza shell,
+`GIT_TERMINAL_PROMPT=0`, timeout): barra Git nel pannello Scripts con ramo, avanti/indietro,
+Pull solo fast-forward (con "Pull con merge" e "Abort merge" se divergono), Push, Commit dei file
+scelti (chiede l'autore se Git non lo ha), badge di stato e diff unificato. **Condivisione di una
+query** (`src/share/`): file `.platypus` (JSON con SQL, titolo, parametri facoltativi e la
+connessione descritta senza credenziali) o link `platypus://query?d=…` (deflate, al massimo
+8.192 caratteri); si apre dalla palette, trascinando il file, da riga di comando o dal sistema
+(plugin `deep-link` e `single-instance`, associazione `.platypus`), cerca la connessione salvata
+che corrisponde e apre la query senza eseguirla. **Sincronizzazione cifrata**
+(`platypus-sync`: Argon2id e AES-256-GCM di `ring`, file `platypus-sync.bin` in una cartella
+scelta): impostazioni senza quelle della macchina, connessioni senza alcun segreto (elenco dei
+campi ammessi in `portable.rs`), progetti e script; unione per elemento con tombstone e conflitti
+tenuti come copie; passphrase nel keychain; all'avvio, ogni N minuti o a mano. **Progetti
+condivisi** ("Share project…" / "Open shared project…"): `platypus-project.toml` e `scripts/` in
+una cartella (repo Git o disco condiviso), scritti a ogni modifica e riletti al focus; ognuno
+inserisce le proprie credenziali al primo collegamento. **Plugin WebAssembly**
+(`platypus-plugins` su `wasmi`, ABI in `docs/PLUGINS.md`, esempi in `examples/plugins/`): azioni
+per editor, griglia e oggetti del navigator e driver che parlano HTTP (`DriverKind::Plugin`), con
+permessi approvati all'installazione (host HTTP, appunti), limiti di fuel, memoria e messaggi.
+Limiti: Git va installato a parte, niente clone né cambio di ramo dall'app; la sincronizzazione
+usa l'ora in cui una modifica è stata notata e un computer spento più di 90 giorni riporta gli
+elementi eliminati; `connections.toml` passa alla versione 8 (un'app precedente non lo legge); i
+driver plugin solo via HTTP, senza transazioni, annullamento né tunnel SSH; la parte di sistema
+della condivisione (associazione dei file, link, istanza unica) non è stata provata su
+un'installazione vera. In un progetto condiviso, un file cambiato fuori dall'app che sposta una
+connessione (driver, host, porta, database, SSH, proxy) ne fa dimenticare password e segreti, che
+si chiedono di nuovo al collegamento; accesso degli agenti, restrizioni, sola lettura e tipo Prod
+tengono sempre il valore più restrittivo. Le opzioni che possono eseguire comandi
+(`before_connect`, `after_disconnect`) e i percorsi locali non viaggiano mai. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
+
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| Integrazione Git per gli script: stato, diff, commit e pull | P3 | D+ |
-| Sincronizzazione cifrata end-to-end di impostazioni, connessioni senza password e script | P3 | N |
-| Progetti condivisi in un team: connessioni e script, senza credenziali | P3 | D+ |
-| Plugin in WASM per azioni e driver personalizzati | P3 | N |
-| Condivisione di una query come link o file `.platypus` | P3 | N |
+| ✅ Integrazione Git per gli script: stato, diff, commit e pull | P3 | D+ |
+| ✅ Sincronizzazione cifrata end-to-end di impostazioni, connessioni senza password e script | P3 | N |
+| ✅ Progetti condivisi in un team: connessioni e script, senza credenziali | P3 | D+ |
+| ✅ Plugin in WASM per azioni e driver personalizzati | P3 | N |
+| ✅ Condivisione di una query come link o file `.platypus` | P3 | N |
 
 ---
 
@@ -1324,7 +1356,7 @@ dell'ondata.
 | **1** | **A**, **B** (P1), **C** (P1), **F** (SSH, tipi, import), **K** (P1), **L** (P1) | Sostituire DBeaver nell'uso quotidiano | v0.2 | **Fatta** (P1 di A, B, C, F, K e L; P2 di A e B), release v0.2.0 del 24 ottobre 2026 |
 | **2** | **D**, **E**, **G** (SQL Server, DuckDB), **H** (import) | Produttività e più database | v0.3 | D: P1 fatte; E: completato; H: completato |
 | **3** | **I**, **J**, **M**, **N**, **Q**, i P2 rimasti | Strumenti avanzati e differenzianti | v0.4 | Da fare |
-| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | Da fare |
+| **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | O completato; restano P3 di F, J, N, Q |
 | **5** | **R** | Revisione grafica di tutta l'app, a funzionalità finite | v1.0 | In attesa |
 | **6** | **S** | Collaudo finale di tutta l'app, dopo la revisione grafica | v1.0 | In attesa |
 

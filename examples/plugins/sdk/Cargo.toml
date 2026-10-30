@@ -1,0 +1,13 @@
+[package]
+name = "platypus-plugin-sdk"
+description = "The guest side of the PlatypusDB plugin ABI (version 1), for plugins written in Rust"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+serde_json = "1"
+
+# Built on its own, not as a member of the app's workspace.
+[workspace]

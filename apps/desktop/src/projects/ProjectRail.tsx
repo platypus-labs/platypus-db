@@ -55,9 +55,10 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
     <button
       type="button"
       key={p.id}
-      className={square(p.id, p.id === active, txProjects.has(p.id))}
+      className={`${square(p.id, p.id === active, txProjects.has(p.id))}${p.shared ? " shared" : ""}`}
       data-project={p.id}
-      title={p.name}
+      data-shared={p.shared ? "true" : undefined}
+      title={p.shared ? t("{name} (shared through {path})", { name: p.name, path: p.shared.path }) : p.name}
       aria-pressed={p.id === active}
       style={{ background: p.color }}
       draggable
@@ -70,6 +71,7 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
       }}
     >
       {p.initials}
+      {p.shared && <i className="shared-mark" aria-hidden />}
     </button>
   );
 
