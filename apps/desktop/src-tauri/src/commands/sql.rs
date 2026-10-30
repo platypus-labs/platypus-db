@@ -119,6 +119,9 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     if driver == DriverKind::Elasticsearch {
         return analyze_search(&sql, &map, cursor);
     }
+    if driver == DriverKind::Cassandra {
+        return analyze_cql(&sql, &map, cursor);
+    }
     let dialect = Dialect::from(driver);
     let statements = platypus_sql::split(&sql, dialect);
     let at = platypus_sql::statement_at(&sql, dialect, map.to_byte(cursor));
@@ -207,6 +210,16 @@ pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
     }
     if driver == DriverKind::Elasticsearch {
         return platypus_driver_search::command::only_reads(sql);
+    }
+    if driver == DriverKind::Cassandra {
+        // A batch is no read, though the analysis sees `BEGIN`: it holds writes.
+        return platypus_driver_cassandra::cql::split(sql)
+            .iter()
+            .all(|range| {
+                let text = &sql[range.clone()];
+                platypus_driver_cassandra::cql::first_word(text) != "BEGIN"
+                    && platypus_sql::analyze(text, Dialect::Ansi).kind == StatementKind::Query
+            });
     }
     let dialect = Dialect::from(driver);
     platypus_sql::split(sql, dialect)
@@ -306,6 +319,75 @@ fn analyze_redis(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
             })
             .collect(),
     }
+}
+
+/// [`analyze_sql`] for Cassandra and `ScyllaDB`: the statements are split as CQL splits them (a
+/// batch is one statement), and each is read with the standard SQL analysis, which finds
+/// `TRUNCATE` and the writes that name no row.
+fn analyze_cql(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
+    let ranges = platypus_driver_cassandra::cql::split(src);
+    let byte = map.to_byte(cursor);
+    // The statement under the cursor, else the last one before it, else the first.
+    let at_cursor = ranges
+        .iter()
+        .position(|r| r.start <= byte && byte <= r.end)
+        .or_else(|| ranges.iter().rposition(|r| r.end < byte))
+        .or_else(|| (!ranges.is_empty()).then_some(0));
+    SqlAnalysis {
+        at_cursor,
+        batches: Vec::new(),
+        statements: ranges
+            .iter()
+            .map(|range| {
+                let text = &src[range.clone()];
+                let analysis = platypus_sql::analyze(text, Dialect::Ansi);
+                // A batch hides its statements from the analysis: it asks as DDL does.
+                let batch = platypus_driver_cassandra::cql::first_word(text) == "BEGIN";
+                StatementSpan {
+                    start: map.to_utf16(range.start),
+                    end: map.to_utf16(range.end),
+                    read_only: !batch && analysis.kind == StatementKind::Query,
+                    kind: match analysis.kind {
+                        _ if batch => "ddl",
+                        StatementKind::Query => "query",
+                        StatementKind::Dml => "dml",
+                        StatementKind::Ddl => "ddl",
+                        StatementKind::Other => "other",
+                        StatementKind::Command => "command",
+                    },
+                    unfiltered: analysis
+                        .unfiltered
+                        .into_iter()
+                        .map(|u| UnfilteredTable {
+                            schema: u.table.schema,
+                            name: u.table.name,
+                            verb: u.verb,
+                            limited: u.limited,
+                        })
+                        .collect(),
+                    parameters: parameter_spans(text, range.start, map),
+                }
+            })
+            .collect(),
+    }
+}
+
+/// The placeholders of the statement `text`, which starts at byte `offset` of the editor's
+/// text.
+fn parameter_spans(text: &str, offset: usize, map: &Utf16Map) -> Vec<ParameterSpan> {
+    platypus_sql::parameters(text, Dialect::Ansi)
+        .into_iter()
+        .map(|p| ParameterSpan {
+            kind: match p.kind {
+                ParameterKind::Named => "named",
+                ParameterKind::Positional => "positional",
+                ParameterKind::Variable => "variable",
+            },
+            name: p.name,
+            start: map.to_utf16(offset + p.start),
+            end: map.to_utf16(offset + p.end),
+        })
+        .collect()
 }
 
 /// [`analyze_sql`] for Elasticsearch: console requests and SQL statements, which have no
@@ -658,6 +740,67 @@ mod tests {
     }
 
     #[test]
+    fn analyzes_cql_scripts() {
+        let src = "SELECT * FROM shop.t WHERE id = 1; -- a; b\nTRUNCATE shop.t;\n\
+                   BEGIN BATCH INSERT INTO t (id) VALUES (1); APPLY BATCH;\nUPDATE t SET v = 1 WHERE id = 2"
+            .to_owned();
+        let a = analyze_sql(src.clone(), DriverKind::Cassandra, 5);
+        let kinds: Vec<_> = a.statements.iter().map(|s| (s.kind, s.read_only)).collect();
+        assert_eq!(
+            kinds,
+            [
+                ("query", true),
+                ("ddl", false),
+                ("ddl", false),
+                ("dml", false)
+            ]
+        );
+        assert_eq!(a.at_cursor, Some(0));
+        let every: Vec<_> = a
+            .statements
+            .iter()
+            .flat_map(|s| s.unfiltered.iter().map(|t| (t.verb, t.name.as_str())))
+            .collect();
+        assert_eq!(every, [("TRUNCATE", "t")]);
+        // The batch is one statement, its `;` inside.
+        let batch = &a.statements[2];
+        assert!(src[batch.start..batch.end].ends_with("APPLY BATCH"));
+        assert_eq!(
+            analyze_sql(src.clone(), DriverKind::Cassandra, src.len()).at_cursor,
+            Some(3)
+        );
+        assert!(only_reads(
+            "SELECT 1; SELECT * FROM t LIMIT 3",
+            DriverKind::Cassandra
+        ));
+        assert!(!only_reads(
+            "SELECT 1; DELETE FROM t WHERE id = 1",
+            DriverKind::Cassandra
+        ));
+        assert!(!only_reads(
+            "BEGIN BATCH APPLY BATCH",
+            DriverKind::Cassandra
+        ));
+        assert!(!only_reads("USE shop", DriverKind::Cassandra));
+        let source = query_source(
+            "SELECT * FROM shop.t LIMIT 10".to_owned(),
+            DriverKind::Cassandra,
+        )
+        .unwrap();
+        assert_eq!(
+            (source.schema.as_deref(), source.name.as_str()),
+            (Some("shop"), "t")
+        );
+        // The viewer's rewrites would write CQL the server refuses.
+        assert!(sql_count_query("SELECT * FROM t".to_owned(), DriverKind::Cassandra).is_none());
+        assert!(sql_add_limit("SELECT * FROM t".to_owned(), DriverKind::Cassandra, 5).is_none());
+        assert!(!sql_sortable(
+            "SELECT * FROM t".to_owned(),
+            DriverKind::Cassandra
+        ));
+    }
+
+    #[test]
     fn analyzes_search_requests() {
         let src = "GET /orders/_search\n{\"size\":1}\n\nPOST /orders/_delete_by_query\n\n\
                    SELECT * FROM orders\n\nDELETE /orders"
@@ -730,7 +873,9 @@ mod tests {
 fn rewritable(sql: &str, driver: DriverKind) -> bool {
     match driver {
         DriverKind::Mongo => true,
-        DriverKind::Redis | DriverKind::Elasticsearch => false,
+        // CQL has no `OFFSET` and takes `LIMIT` before `ALLOW FILTERING`, so the rewrites that
+        // sort, count, cap and filter a query would write statements the server refuses.
+        DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra => false,
         _ => platypus_sql::analyze(sql, Dialect::from(driver)).kind == StatementKind::Query,
     }
 }

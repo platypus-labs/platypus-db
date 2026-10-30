@@ -22,6 +22,7 @@ platypus-driver-libsql.workspace = true
 platypus-driver-mongo.workspace = true
 platypus-driver-redis.workspace = true
 platypus-driver-search.workspace = true
+platypus-driver-cassandra.workspace = true
 platypus-driver-mssql.workspace = true
 platypus-driver-mysql.workspace = true
 platypus-driver-odbc.workspace = true
@@ -33,6 +34,7 @@ platypus-mcp.workspace = true
 platypus-net.workspace = true
 platypus-schema.workspace = true
 platypus-sql.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 tokio-util.workspace = true

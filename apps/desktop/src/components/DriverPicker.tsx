@@ -1,5 +1,6 @@
 import {
   siApachearrow,
+  siApachecassandra,
   siClickhouse,
   siCockroachlabs,
   siDatabricks,
@@ -10,6 +11,7 @@ import {
   siMariadb,
   siMongodb,
   siRedis,
+  siScylladb,
   siMysql,
   siNeon,
   siPostgresql,
@@ -72,6 +74,9 @@ const CHOICES: Choice[] = [
   { driver: "redis", label: "Redis", path: siRedis.path, bg: `#${siRedis.hex}`, fg: "#fff" },
   // OpenSearch speaks the same protocol: one driver, and the server says which it is.
   { driver: "elasticsearch", label: "Elasticsearch / OpenSearch", path: siElasticsearch.path, bg: DARK, fg: `#${siElasticsearch.hex}` },
+  // ScyllaDB speaks the same protocol: one driver, and the server says which it is.
+  { driver: "cassandra", label: "Apache Cassandra", path: siApachecassandra.path, bg: DARK, fg: `#${siApachecassandra.hex}` },
+  { driver: "cassandra", label: "ScyllaDB", path: siScylladb.path, bg: DARK, fg: `#${siScylladb.hex}` },
   // Through ADBC drivers, downloaded when a connection first needs one.
   // A cloud service: the account (or workspace) to type in place of `localhost`.
   { driver: "snowflake", label: "Snowflake", path: siSnowflake.path, bg: `#${siSnowflake.hex}`, fg: "#fff", preset: { host: "" } },

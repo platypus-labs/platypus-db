@@ -2540,6 +2540,11 @@ const zh: Record<string, string> = {
   "The registry cannot be reached: {message}": "无法访问注册表：{message}",
   "In use": "使用中",
   "Use this version": "使用此版本",
+  // Group G: Cassandra and ScyllaDB
+  "Keyspace (optional)": "键空间（可选）",
+  "The keyspace to start in; the navigator lists all of them. The host may list several host:port pairs separated by commas. TLS needs an SSL mode from require up, as cassandras:// URLs do.": "启动时使用的键空间；导航器会列出所有键空间。主机可以列出多个以逗号分隔的 host:port。TLS 需要 require 及以上的 SSL 模式，与 cassandras:// URL 相同。",
+  "{n} statement runs on the server: a statement the server refuses stops the rest, and the ones before it stay.": "{n} 条语句在服务器上运行：服务器拒绝的语句会终止其余语句，之前的语句保持有效。",
+  "{n} statements run one after the other: a statement the server refuses stops the rest, and the ones before it stay.": "{n} 条语句依次运行：服务器拒绝的语句会终止其余语句，之前的语句保持有效。",
 };
 
 export default zh;

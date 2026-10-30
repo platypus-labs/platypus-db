@@ -187,6 +187,10 @@ fn sample_sql(driver: DriverKind, schema: &str, table: &str, rows: u64) -> Strin
     if driver == DriverKind::Elasticsearch {
         return platypus_driver_search::command::browse_limited(table, Some(rows));
     }
+    if driver == DriverKind::Cassandra {
+        let name = platypus_driver_cassandra::cql::qualified(schema, table);
+        return format!("SELECT * FROM {name} LIMIT {rows}");
+    }
     let dialect = Dialect::from(driver);
     let name = dialect.qualified(Some(schema), table);
     dialect.limited(&format!("SELECT * FROM {name}"), rows)
@@ -709,6 +713,8 @@ impl Agent {
             access::check_redis(&args.sql, access, unfiltered, &saved.name)
         } else if saved.driver == DriverKind::Elasticsearch {
             access::check_search(&args.sql, access, unfiltered, &saved.name)
+        } else if saved.driver == DriverKind::Cassandra {
+            access::check_cql(&args.sql, access, unfiltered, &saved.name)
         } else {
             let dialect = Dialect::from(saved.driver);
             access::check(&args.sql, dialect, access, unfiltered, &saved.name)
@@ -811,7 +817,10 @@ impl Agent {
         let (store, saved) = self.find(&args.connection)?;
         if matches!(
             saved.driver,
-            DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+            DriverKind::Mongo
+                | DriverKind::Redis
+                | DriverKind::Elasticsearch
+                | DriverKind::Cassandra
         ) {
             return Err(AgentError::Invalid(format!(
                 "explain works on SQL databases: {} has no query plans here",

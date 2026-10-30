@@ -68,6 +68,9 @@ pub fn minimum_version(product: &str) -> Option<ServerVersion> {
         // The SQL endpoint, `_search` with PIT and the cancellable tasks API.
         "Elasticsearch" => ServerVersion::new(7, 10, 0),
         "OpenSearch" => ServerVersion::new(1, 0, 0),
+        // `system_schema` (3.0) and protocol v4 (2.2); 4.0 is the oldest still maintained.
+        "Cassandra" => ServerVersion::new(4, 0, 0),
+        "ScyllaDB" => ServerVersion::new(5, 4, 0),
         _ => return None,
     })
 }

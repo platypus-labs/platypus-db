@@ -2540,6 +2540,11 @@ const fr: Record<string, string> = {
   "The registry cannot be reached: {message}": "Le registre est inaccessible : {message}",
   "In use": "Utilisée",
   "Use this version": "Utiliser cette version",
+  // Group G: Cassandra and ScyllaDB
+  "Keyspace (optional)": "Keyspace (facultatif)",
+  "The keyspace to start in; the navigator lists all of them. The host may list several host:port pairs separated by commas. TLS needs an SSL mode from require up, as cassandras:// URLs do.": "Le keyspace de départ ; le navigateur les liste tous. L'hôte peut lister plusieurs paires hôte:port séparées par des virgules. Le TLS demande un mode SSL à partir de require, comme les URL cassandras://.",
+  "{n} statement runs on the server: a statement the server refuses stops the rest, and the ones before it stay.": "{n} instruction s'exécute sur le serveur : une instruction refusée par le serveur arrête les suivantes, et celles d'avant restent.",
+  "{n} statements run one after the other: a statement the server refuses stops the rest, and the ones before it stay.": "{n} instructions s'exécutent l'une après l'autre : une instruction refusée par le serveur arrête les suivantes, et celles d'avant restent.",
 };
 
 export default fr;

@@ -131,6 +131,17 @@ pub(super) fn read_all(driver: DriverKind, at: (Option<&str>, &str), limit: Opti
     if driver == DriverKind::Elasticsearch {
         return platypus_driver_search::command::browse_limited(at.1, limit);
     }
+    // CQL has no `OFFSET`, and the `LIMIT` of the standard dialects is not its own.
+    if driver == DriverKind::Cassandra {
+        let table = match at.0 {
+            Some(schema) => platypus_driver_cassandra::cql::qualified(schema, at.1),
+            None => platypus_driver_cassandra::cql::quote_ident(at.1),
+        };
+        return match limit {
+            Some(limit) => format!("SELECT * FROM {table} LIMIT {limit}"),
+            None => format!("SELECT * FROM {table}"),
+        };
+    }
     select_all(driver, at, limit)
 }
 
@@ -199,7 +210,7 @@ pub async fn preview_transfer(
     .await?;
     if !matches!(
         config.driver,
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
     ) {
         let at = (schema.as_deref(), table.as_str());
         let source = (&*source, Dialect::from(config.driver));
@@ -309,10 +320,14 @@ fn start(
             };
             let target = (&*target, dialect);
             // MongoDB reads its collection with `find`, Redis a key type with `BROWSE`,
-            // Elasticsearch an index with a search.
+            // Elasticsearch an index with a search, Cassandra a table with a `SELECT` that has
+            // no catalog to read the table's definition from.
             if matches!(
                 driver,
-                DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+                DriverKind::Mongo
+                    | DriverKind::Redis
+                    | DriverKind::Elasticsearch
+                    | DriverKind::Cassandra
             ) {
                 let at = (plan.source_schema.as_deref(), plan.source_table.as_str());
                 let query = read_all(driver, at, None);

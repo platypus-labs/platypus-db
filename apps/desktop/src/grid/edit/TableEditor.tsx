@@ -6,6 +6,7 @@ import {
   type ColumnInfo,
   type Generated,
   type GeneratedColumn,
+  isCassandra,
   isRedis,
   isSearch,
   type SavedConnection,
@@ -769,7 +770,15 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
             statements={preview}
             busy={busy}
             production={!!target && needsProductionConfirm(target.connection)}
-            commands={target && isRedis(target.connection.driver) ? "multi" : target && isSearch(target.connection.driver) ? "requests" : undefined}
+            commands={
+              target && isRedis(target.connection.driver)
+                ? "multi"
+                : target && isSearch(target.connection.driver)
+                  ? "requests"
+                  : target && isCassandra(target.connection.driver)
+                    ? "statements"
+                    : undefined
+            }
             onSave={() => void edit.save(true)}
             onClose={() => setPreview(null)}
           />

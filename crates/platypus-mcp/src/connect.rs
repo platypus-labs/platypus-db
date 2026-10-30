@@ -6,6 +6,7 @@ use platypus_core::{
     Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, Secret, SshAuth,
 };
 use platypus_driver_adbc::AdbcDriver;
+use platypus_driver_cassandra::CassandraDriver;
 use platypus_driver_clickhouse::ClickHouseDriver;
 use platypus_driver_duckdb::DuckDbDriver;
 use platypus_driver_libsql::LibsqlDriver;
@@ -42,6 +43,7 @@ pub async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connection>, E
             DriverKind::Mongo => MongoDriver.connect(&config).await,
             DriverKind::Redis => RedisDriver.connect(&config).await,
             DriverKind::Elasticsearch => SearchDriver.connect(&config).await,
+            DriverKind::Cassandra => CassandraDriver.connect(&config).await,
             DriverKind::Snowflake
             | DriverKind::BigQuery
             | DriverKind::Databricks
