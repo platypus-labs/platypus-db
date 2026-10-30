@@ -1181,7 +1181,13 @@ senza installarla (marker `share/platypusdb/package-manager`). Immagine di antep
 1280×640 (`docs/brand/social-preview.png`, da `social-preview.html` con
 `scripts/social-preview.mjs`) e testi della vetrina (descrizione, topic, Discussions, `good
 first issue`) in RELEASING.md. La pubblicazione dei pacchetti e le impostazioni del
-repository aspettano che diventi pubblico.
+repository aspettano che diventi pubblico. Sempre dal 30 ottobre: otto scenari E2E del banner di
+aggiornamento (`update-banner*`, con un `latest.json` servito in locale tramite
+`PLATYPUS_UPDATE_URL`, accettato solo su HTTP verso 127.0.0.1, ::1 o localhost); Redis e
+PgBouncer spostati su 46379 e 46432, fuori dai blocchi di porte che Windows riserva;
+`scripts/bench-windows.ps1` per avvio e memoria dei client su Windows (profilo temporaneo,
+finestra stabile, memoria privata). Il benchmark con DBeaver CE 26.2.3 resta da misurare: serve
+la macchina ferma e lo schermo non toccato per una decina di minuti.
 
 | Attività | Prio |
 |---|---|
