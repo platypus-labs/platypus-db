@@ -986,8 +986,12 @@ scritti ma non ancora eseguiti (runner Windows).
 tool su script e cronologia: `platypus-sql::sensitive` (le regole sui nomi come le impostazioni
 dell'app, `DEFAULT_NAMES` tenuto uguale a `maskRules.ts` da un test, e `mask_literals`, che
 scrive `'••••••'` al posto dei valori legati a una colonna sensibile: confronti, `IN`, `SET`,
-le posizioni di `INSERT … VALUES`), usato da `read_script` e `search_history` con i segni di
-`catalog.db` della connessione (di tutte quelle visibili per uno script senza connessione). Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
+le posizioni di `INSERT … VALUES` e `INSERT … SELECT`, attraverso cast, chiamate e `BETWEEN`; e
+`mask_error` per gli errori di PostgreSQL, MySQL e SQL Server che citano un valore), usato da
+`read_script` e `search_history` coi segni "sensibile" di `catalog.db` delle connessioni dello
+script (di tutte quelle visibili per uno script senza connessione). Nel testo una colonna si
+conosce solo per nome: un segno "non sensibile" non toglie le regole, e le regole sui tipi non
+servono; se `catalog.db` non si legge il tool fallisce invece di mostrare i valori. Il crate `platypus-mcp` ha la libreria degli strumenti (`Agent`) e
 il binario `platypus-mcp`, server MCP su stdio con `rmcp`: legge il profilo dell'app (o
 `PLATYPUS_DATA_DIR`) e apre le connessioni come l'app (profili di rete, tunnel SSH, password
 da keychain, comando o `.pgpass`); con la master password i segreti restano bloccati e la

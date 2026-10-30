@@ -98,8 +98,11 @@ the statements run, newest first (50, up to 500), by connection, text and origin
 are left out as if they did not exist; errors in the history are cleaned of the passwords
 the connection's URL or password command would show. The values a script or a statement ties
 to a sensitive column (`email = '…'`, `SET phone = '…'`, the positions of `INSERT … VALUES`)
-read `'••••••'`: the sensitive columns are those the user marked in the app, else the names of
-Settings › Safety (emails, phones, passwords…).
+read `'••••••'`, and so do the values a history error quotes (`Key (email)=(…)`). In text a
+column is known by its name only: the names of Settings › Safety (emails, phones, passwords…)
+count, and so do the columns the user marked sensitive in the app; a column marked not
+sensitive is still masked where the rules name it, since the text does not say which table it
+is. When the app's catalog cannot be read, the tools fail rather than show the values.
 
 Clients that read MCP resources find the schema there too: `resources/list` has one resource
 per connection agents may use (`platypus://<connection>`, its schemas), and two templates,

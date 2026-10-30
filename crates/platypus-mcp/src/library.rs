@@ -143,56 +143,75 @@ impl Visible {
     }
 }
 
-/// Which column names are sensitive, as the app tells them: the user's marks on columns of the
-/// connection, else the rules of the settings (Safety, "Sensitive columns, by name").
+/// Which column names are sensitive in text: the rules of the settings (Safety, "Sensitive
+/// columns, by name"), and the names of the columns the user marked sensitive. In text a name
+/// is not tied to a table, so a mark "not sensitive" on one column does not lift the rules for
+/// the others of that name: it is not used here. The type rules need types, which text lacks.
 struct SensitiveNames {
     rules: NameRules,
-    /// Lower-case name → whether some column of that name is marked sensitive, and whether
-    /// one is marked not sensitive.
-    marks: HashMap<String, (bool, bool)>,
+    /// Lower case.
+    marked: std::collections::HashSet<String>,
 }
 
 impl SensitiveNames {
     fn is(&self, name: &str) -> bool {
-        match self.marks.get(&name.to_lowercase()) {
-            Some((true, _)) => true,
-            // Marked not sensitive wherever it is marked.
-            Some((false, true)) => false,
-            _ => self.rules.matches(name),
-        }
+        self.marked.contains(&name.to_lowercase()) || self.rules.matches(name)
     }
 
     /// `sql` with the values of sensitive columns masked.
     fn mask(&self, sql: &str, dialect: Dialect) -> String {
         mask_literals(sql, dialect, &|c| self.is(c))
     }
+
+    /// A database error with the values it quotes of sensitive columns masked.
+    fn mask_error(&self, text: &str) -> String {
+        platypus_sql::sensitive::mask_error(text, &|c| self.is(c))
+    }
+}
+
+/// What tells the sensitive columns, read once for a call: the rules and the user's marks.
+struct Sensitivity {
+    rules: NameRules,
+    catalog: Option<platypus_store::CatalogStore>,
+}
+
+impl Sensitivity {
+    /// The sensitive names of `connections`.
+    fn names(&self, connections: &[Uuid]) -> Result<SensitiveNames> {
+        let mut marked = std::collections::HashSet::new();
+        if let Some(catalog) = &self.catalog {
+            for id in connections {
+                // Marks that cannot be read would let values through: the call fails instead.
+                let marks = catalog.sensitive_columns(*id).map_err(|e| {
+                    AgentError::Store(format!("cannot read the sensitive columns: {e}"))
+                })?;
+                marked.extend(
+                    marks
+                        .into_iter()
+                        .filter(|m| m.sensitive)
+                        .map(|m| m.key.column.to_lowercase()),
+                );
+            }
+        }
+        Ok(SensitiveNames {
+            rules: self.rules.clone(),
+            marked,
+        })
+    }
 }
 
 impl Agent {
-    /// The sensitive column names of `connections`.
-    fn sensitive_names(&self, connections: &[Uuid]) -> SensitiveNames {
+    /// The rules of the settings and the catalog of the user's marks.
+    fn sensitivity(&self) -> Result<Sensitivity> {
         let names = self
             .profile()
             .settings()
             .and_then(|s| s.get::<String>("safety.mask_names"))
             .unwrap_or_else(|| DEFAULT_NAMES.to_owned());
-        let mut marks: HashMap<String, (bool, bool)> = HashMap::new();
-        if let Some(catalog) = self.profile().catalog() {
-            for id in connections {
-                for m in catalog.sensitive_columns(*id).unwrap_or_default() {
-                    let entry = marks.entry(m.key.column.to_lowercase()).or_default();
-                    if m.sensitive {
-                        entry.0 = true;
-                    } else {
-                        entry.1 = true;
-                    }
-                }
-            }
-        }
-        SensitiveNames {
+        Ok(Sensitivity {
             rules: NameRules::new(&names),
-            marks,
-        }
+            catalog: self.profile().catalog()?,
+        })
     }
 
     fn visible(&self) -> Result<Visible> {
@@ -292,23 +311,22 @@ impl Agent {
             // The message names the profile's path, which agents have no use for.
             _ => AgentError::Store(format!("cannot read `{}`", args.path)),
         })?;
-        // The values of sensitive columns: those of the script's connection, or of every
+        // The values of sensitive columns: those of the script's connections, or of every
         // connection agents may use when it opens on none.
-        let ids: Vec<Uuid> = match linked.first() {
-            Some(id) => vec![*id],
-            None => visible.0.keys().copied().collect(),
+        let ids: Vec<Uuid> = if linked.is_empty() {
+            visible.0.keys().copied().collect()
+        } else {
+            linked.clone()
         };
-        let dialect = linked
-            .first()
-            .and_then(|id| {
-                self.profile()
-                    .connections()
-                    .ok()?
-                    .get(*id)
-                    .map(|c| Dialect::from(c.driver))
-            })
-            .unwrap_or(Dialect::Postgres);
-        let text = self.sensitive_names(&ids).mask(&read.text, dialect);
+        let dialect = match linked.first() {
+            Some(id) => self
+                .profile()
+                .connections()?
+                .get(*id)
+                .map_or(Dialect::Postgres, |c| Dialect::from(c.driver)),
+            None => Dialect::Postgres,
+        };
+        let text = self.sensitivity()?.names(&ids)?.mask(&read.text, dialect);
         let note = read
             .truncated
             .then(|| format!("cut at {SCRIPT_BYTES} bytes: the script goes on"));
@@ -342,42 +360,50 @@ impl Agent {
             limit,
         };
         let entries = self.profile().history()?.search(&query)?;
+        let sensitivity = self.sensitivity()?;
         // Per connection, not per entry: the name, the secrets to mask, the dialect and the
         // sensitive columns.
         let mut known: HashMap<Uuid, Option<(String, Redactor, Dialect, SensitiveNames)>> =
             HashMap::new();
-        Ok(entries
-            .into_iter()
-            .filter_map(|e| {
-                let (name, redactor, dialect, sensitive) = known
-                    .entry(e.connection_id)
-                    .or_insert_with(|| {
-                        let saved = store.get(e.connection_id)?;
+        let mut items = Vec::new();
+        for e in entries {
+            if let std::collections::hash_map::Entry::Vacant(slot) = known.entry(e.connection_id) {
+                let entry = match store.get(e.connection_id) {
+                    Some(saved) => {
                         // Only what needs no secret lookup: a URL's password, and a password
                         // command that an error may echo.
                         let mut redactor = Redactor::default();
                         if let Some(command) = &store.effective(saved).password_command {
                             redactor.add(command);
                         }
-                        let sensitive = self.sensitive_names(&[e.connection_id]);
+                        let sensitive = sensitivity.names(&[e.connection_id])?;
                         Some((
                             saved.name.clone(),
                             redactor,
                             Dialect::from(saved.driver),
                             sensitive,
                         ))
-                    })
-                    .as_ref()?;
+                    }
+                    None => None,
+                };
+                slot.insert(entry);
+            }
+            items.push(e);
+        }
+        Ok(items
+            .into_iter()
+            .filter_map(|e| {
+                let (name, redactor, dialect, sensitive) = known.get(&e.connection_id)?.as_ref()?;
                 Some(HistoryItem {
                     connection: name.clone(),
                     // A statement may carry a password too, e.g. `CREATE USER ... PASSWORD`,
-                    // and the values of sensitive columns.
+                    // and the values of sensitive columns, which its error may quote.
                     sql: sensitive.mask(&redactor.apply(&e.sql), *dialect),
                     started_at: rfc3339(e.started_at),
                     duration_ms: e.duration_ms,
                     rows: e.rows,
                     status: e.status,
-                    error: e.error.map(|m| redactor.apply(&m)),
+                    error: e.error.map(|m| sensitive.mask_error(&redactor.apply(&m))),
                     origin: e.origin.unwrap_or_else(|| "app".to_owned()),
                 })
             })
@@ -442,10 +468,11 @@ mod tests {
                 project: None,
             })
             .unwrap();
-        // The rules say email, the marks private_note and not phone_model.
+        // The rules say email and phone_model (a mark "not sensitive" on one table's column
+        // does not lift them in text, where the table is not known), the marks private_note.
         assert_eq!(
             read.text,
-            "SELECT * FROM users\nWHERE email = '••••••' AND phone_model = 'Pixel'\n  AND private_note LIKE '••••••' AND name = 'Ann';"
+            "SELECT * FROM users\nWHERE email = '••••••' AND phone_model = '••••••'\n  AND private_note LIKE '••••••' AND name = 'Ann';"
         );
 
         let history = HistoryStore::open(&dir.path().join("history.db")).unwrap();
@@ -461,6 +488,18 @@ mod tests {
                 origin: None,
             })
             .unwrap();
+        history
+            .record(&NewHistoryEntry {
+                connection_id: Uuid::parse_str(ID).unwrap(),
+                sql: "INSERT INTO users (email) VALUES ('giulia@x.it')".to_owned(),
+                started_at: SystemTime::now(),
+                duration: Duration::from_millis(1),
+                rows: None,
+                status: HistoryStatus::Error,
+                error: Some("Key (email)=(giulia@x.it) already exists".to_owned()),
+                origin: None,
+            })
+            .unwrap();
         let found = agent
             .search_history(&HistoryArgs {
                 connection: None,
@@ -469,6 +508,16 @@ mod tests {
                 limit: None,
             })
             .unwrap();
+        let failed = found.iter().find(|h| h.sql.starts_with("INSERT")).unwrap();
+        assert_eq!(failed.sql, "INSERT INTO users (email) VALUES ('••••••')");
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("Key (email)=(••••••) already exists")
+        );
+        let found: Vec<_> = found
+            .into_iter()
+            .filter(|h| h.sql.starts_with("UPDATE"))
+            .collect();
         assert_eq!(
             found[0].sql,
             "UPDATE users SET email = '••••••', name = 'N' WHERE id = 1"
