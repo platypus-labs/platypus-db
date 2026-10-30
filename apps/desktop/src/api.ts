@@ -255,6 +255,8 @@ export interface Capabilities {
   server_statistics: boolean;
   /** What "Maintenance" runs on a table; empty for none. */
   maintenance: Maintenance[];
+  /** The users, roles and privileges of the server can be read and changed. */
+  security: boolean;
   /** The driver loads rows natively (PostgreSQL `COPY`, MySQL `LOAD DATA LOCAL`). */
   bulk_load: boolean;
 }
@@ -448,6 +450,108 @@ export interface ScheduleView extends Schedule {
   next: string | null;
   runs: ScheduleRun[];
   running: boolean;
+}
+
+/** Whether a principal logs in or only groups privileges; see `platypus_core::PrincipalKind`. */
+export type PrincipalKind = "user" | "role";
+
+/** A yes/no attribute of a user or role; see `platypus_core::PrincipalFlag`. */
+export type PrincipalFlag =
+  | "login"
+  | "superuser"
+  | "create_db"
+  | "create_role"
+  | "inherit"
+  | "replication"
+  | "bypass_rls"
+  | "locked"
+  | "password_expired";
+
+/** A user or role of the server; see `platypus_core::Principal`. */
+export interface Principal {
+  name: string;
+  /** The host of a MySQL account. */
+  host: string | null;
+  kind: PrincipalKind;
+  flags: PrincipalFlag[];
+  connection_limit: number | null;
+  valid_until: string | null;
+  authentication: string | null;
+  member_of: string[];
+}
+
+export type GrantKind = "server" | "database" | "schema" | "table" | "column" | "routine";
+
+/** A privilege given to a principal; see `platypus_core::PrivilegeGrant`. */
+export interface PrivilegeGrant {
+  kind: GrantKind;
+  schema: string | null;
+  object: string | null;
+  column: string | null;
+  privilege: string;
+  grantable: boolean;
+}
+
+export interface Grantee {
+  name: string;
+  host?: string | null;
+}
+
+/** What a grant or revoke is on; see `platypus_core::GrantTarget`. */
+export type GrantTarget =
+  | { kind: "server" }
+  | { kind: "database"; name: string }
+  | { kind: "schema"; name: string }
+  | { kind: "table"; schema: string; name: string }
+  | { kind: "all_tables"; schema: string }
+  | { kind: "all_routines"; schema: string };
+
+export type TargetClass = GrantTarget["kind"];
+
+/** A user or role to create or alter; see `platypus_core::PrincipalSpec`. */
+export interface PrincipalSpec {
+  name: string;
+  host?: string | null;
+  kind: PrincipalKind;
+  flags_on?: PrincipalFlag[];
+  flags_off?: PrincipalFlag[];
+  /** `-1` removes the limit; `null` leaves it. */
+  connection_limit?: number | null;
+  /** Empty removes the date; `null` leaves it. */
+  valid_until?: string | null;
+  /** Never shown: previews and the query log mask it. */
+  password?: string | null;
+  rename_to?: string | null;
+}
+
+export interface DropOptions {
+  reassign_to?: string | null;
+  drop_owned?: boolean;
+  drop_login?: boolean;
+}
+
+/** A change to the users, roles and privileges of the server; see
+ *  `platypus_core::SecurityChange`. */
+export type SecurityChange =
+  | { change: "create"; spec: PrincipalSpec }
+  | { change: "alter"; spec: PrincipalSpec }
+  | { change: "drop"; name: string; host?: string | null; kind: PrincipalKind; options: DropOptions }
+  | {
+      change: "privileges";
+      action: "grant" | "revoke";
+      grantees: Grantee[];
+      target: GrantTarget;
+      privileges: string[];
+      grant_option: boolean;
+      cascade: boolean;
+    }
+  | { change: "membership"; action: "grant" | "revoke"; role: string; members: Grantee[]; admin_option: boolean };
+
+/** What the form of a database offers: its attributes, and the privileges on each kind of
+ *  object (a kind with none cannot be granted on). */
+export interface SecurityOptions {
+  flags: PrincipalFlag[];
+  targets: { target: TargetClass; privileges: string[] }[];
 }
 
 /** The upkeep of a table; see `platypus_core::Maintenance`. */
@@ -2338,6 +2442,16 @@ export const api = {
   /** Runs `operation` on table `schema.table`; returns what the server said, a line each. */
   maintainTable: (sessionId: number, schema: string, table: string, operation: Maintenance) =>
     invoke<string[]>("maintain_table", { sessionId, schema, table, operation }),
+  listPrincipals: (sessionId: number) => invoke<Principal[]>("list_principals", { sessionId }),
+  principalPrivileges: (sessionId: number, name: string, host: string | null) =>
+    invoke<PrivilegeGrant[]>("principal_privileges", { sessionId, name, host }),
+  securityOptions: (sessionId: number) => invoke<SecurityOptions>("security_options", { sessionId }),
+  /** The statements of `change`, a password masked. */
+  securityPreview: (sessionId: number, change: SecurityChange) =>
+    invoke<string[]>("security_preview", { sessionId, change }),
+  /** Runs `change` and returns its statements as shown (a password masked). */
+  applySecurity: (sessionId: number, change: SecurityChange) =>
+    invoke<string[]>("apply_security", { sessionId, change }),
   endServerSession: (sessionId: number, id: string, how: EndSession) =>
     invoke<void>("end_server_session", { sessionId, id, how }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),

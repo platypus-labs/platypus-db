@@ -220,9 +220,12 @@ impl Logged {
 #[async_trait]
 impl Connection for Logged {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
-        let id = self
-            .log
-            .start(&self.connection, LogKind::Query, sql.to_owned());
+        // A password in a `CREATE USER` is not for the log.
+        let id = self.log.start(
+            &self.connection,
+            LogKind::Query,
+            platypus_sql::security::mask_secrets(sql).into_owned(),
+        );
         let started = Instant::now();
         let result = self.inner.execute(sql, options).await;
         let first = millis_since(started);
@@ -263,9 +266,11 @@ impl Connection for Logged {
 
     /// One entry for all of them, as they reach the server together.
     async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
-        let id = self
-            .log
-            .start(&self.connection, LogKind::Query, statements.join(";\n"));
+        let id = self.log.start(
+            &self.connection,
+            LogKind::Query,
+            platypus_sql::security::mask_secrets(&statements.join(";\n")).into_owned(),
+        );
         let started = Instant::now();
         let mut executed = self.inner.execute_all(statements, expected).await;
         executed.error = executed.error.map(|e| self.tag(e));
@@ -471,6 +476,29 @@ impl Connection for Logged {
         .await
     }
 
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        self.track(
+            LogKind::Metadata,
+            "users and roles",
+            self.inner.principals(),
+        )
+        .await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        let text = format!("privileges of {name}");
+        self.track(
+            LogKind::Metadata,
+            text,
+            self.inner.principal_privileges(name, host),
+        )
+        .await
+    }
+
     async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
         let text = format!("bulk load of {} rows into {}", rows.rows.len(), rows.table);
         self.track(LogKind::Query, text, self.inner.bulk_load(rows))
@@ -610,6 +638,35 @@ mod tests {
             assert!(error.ends_with(&tag), "{error}");
             let logged = log.page(0).entries.into_iter().last().unwrap();
             assert!(logged.error.unwrap().ends_with(&tag), "the log says it too");
+        });
+    }
+
+    #[test]
+    fn a_password_does_not_reach_the_log() {
+        use platypus_core::{ConnectionConfig, Driver, DriverKind};
+
+        tauri::async_runtime::block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+            config.database = dir.path().join("p.db").to_string_lossy().into_owned();
+            let log = Arc::new(QueryLog::default());
+            let raw = platypus_driver_sqlite::SqliteDriver
+                .connect(&config)
+                .await
+                .unwrap();
+            let conn = Logged::wrap(Arc::from(raw), &log, "local");
+            // SQLite has no users: the statement fails, and is logged all the same.
+            let create = "CREATE USER app WITH PASSWORD 'hunter2'";
+            let _ = conn.execute(create, &ExecOptions::default()).await;
+            let _ = conn
+                .execute_all(&["SELECT 1", "ALTER ROLE app PASSWORD 'hunter2'"], &[0, 0])
+                .await;
+            let entries = log.page(0).entries;
+            assert!(
+                entries.iter().all(|e| !e.text.contains("hunter2")),
+                "{entries:?}"
+            );
+            assert!(entries.iter().any(|e| e.text.contains("'********'")));
         });
     }
 

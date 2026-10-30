@@ -17,8 +17,9 @@ import { Icon } from "../ui/Icon";
 import { msg, t } from "../i18n";
 import { type Activity, activity, blockingChains, type Chain, matches, seconds } from "./sessions";
 import { ObjectsView, TopQueries } from "./Statistics";
+import { Users } from "./Users";
 
-export type AdminView = "sessions" | "locks" | "statements" | "objects";
+export type AdminView = "sessions" | "locks" | "statements" | "objects" | "users";
 
 /** Views read on demand, not every few seconds: the server sums their numbers over hours. */
 const ON_DEMAND = new Set<AdminView>(["statements", "objects"]);
@@ -106,6 +107,12 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         if (sid === null) return;
         const capabilities = workbench().capabilities(sid) ?? null;
         setCaps(capabilities);
+        // The users and roles read themselves; a server that lists no sessions opens there.
+        if (!capabilities?.server_sessions && capabilities?.security && viewNow.current === "sessions") {
+          onChange({ view: "users" });
+          return;
+        }
+        if (viewNow.current === "users") return;
         if (ON_DEMAND.has(viewNow.current)) {
           await loadStatistics(sid, viewNow.current, capabilities);
           continue;
@@ -161,7 +168,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   useEffect(() => {
     if (!active) return;
     void load();
-    if (interval <= 0 || ON_DEMAND.has(view)) return;
+    if (interval <= 0 || ON_DEMAND.has(view) || view === "users") return;
     const timer = window.setInterval(() => void load(), interval * 1000);
     return () => window.clearInterval(timer);
   }, [active, interval, view, version]);
@@ -195,7 +202,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   const shown = sessions.filter((s) => (only === null || activity(s) === only) && matches(s, filter));
   const chosen = sessions.find((s) => s.id === selected) ?? null;
   const waiting = counts.get("waiting") ?? 0;
-  const unsupported = caps !== null && !caps.server_sessions;
+  const unsupported = caps !== null && !caps.server_sessions && view !== "users";
   const show = (id: string) => {
     setSelected(id);
     onChange({ view: "sessions" });
@@ -248,6 +255,11 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             </span>
           )}
         </button>
+        {caps?.security && (
+          <button className={view === "users" ? "active" : ""} onClick={() => onChange({ view: "users" })}>
+            {t("Users and roles")}
+          </button>
+        )}
         {caps?.server_statistics && (
           <>
             <button className={view === "statements" ? "active" : ""} onClick={() => onChange({ view: "statements" })}>
@@ -329,6 +341,9 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             <p className="muted small">{loading ? t("Reading the statistics…") : ""}</p>
           )}
         </div>
+      )}
+      {view === "users" && caps?.security && (
+        <Users connection={connection} active={active} refresh={version} sideSession={sideSession} />
       )}
       {!unsupported && view === "locks" && (
         <div className="object-body admin-body">
