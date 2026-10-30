@@ -16,18 +16,23 @@ export function setup({ dir }) {
 
 export default async function (page) {
   const holder = background(DB, "BEGIN TRAN; UPDATE dbo.e2e_admin_lock SET v = 1 WHERE id = 1; WAITFOR DELAY '00:05:00' /* e2e_holder */;\nGO\n");
-  const waiter = background(DB, "UPDATE dbo.e2e_admin_lock SET v = 2 WHERE id = 1;\nGO\n");
+  let waiter;
   try {
     await openAdmin(page, NAME, DB);
     await page.waitFor(`${rowWith("e2e_holder")} !== undefined`, 30_000);
     const holderId = await idOf(page, "e2e_holder");
-    await waitBlocked(page, "SET v = 2", holderId);
-    const waiterId = await idOf(page, "SET v = 2");
+    // The waiter starts only once the holder is listed, so its transaction holds the lock:
+    // started together, the waiter could update first and finish without ever waiting.
+    // A lone statement is shown as the server parameterizes it (no marker, SET [v] = @1): a
+    // batch with a variable is shown whole, with its marker comment.
+    waiter = background(DB, "DECLARE @n INT = 2; UPDATE dbo.e2e_admin_lock SET v = @n WHERE id = 1; /* e2e_waiter */\nGO\n");
+    await waitBlocked(page, "e2e_waiter", holderId);
+    const waiterId = await idOf(page, "e2e_waiter");
     // The wait type of a waiting key lock.
     assert.match(await page.eval(field("wait")), /^LCK_M_/);
     await checkChain(page, holderId, waiterId);
 
-    await select(page, "SET v = 2");
+    await select(page, "e2e_waiter");
     assert.equal(await page.eval(`${adminButton("Cancel statement")}`), undefined, "no Cancel statement on SQL Server");
     await page.eval(`${adminButton("End session")}.click()`);
     await confirmDanger(page);
@@ -40,7 +45,7 @@ export default async function (page) {
     assert.equal(sh(DB, "SET NOCOUNT ON; SELECT v FROM dbo.e2e_admin_lock WHERE id = 1"), "0", "the holder's update was rolled back");
   } finally {
     holder.child.kill();
-    waiter.child.kill();
+    waiter?.child.kill();
     sh(DB, "IF OBJECT_ID('dbo.e2e_admin_lock') IS NOT NULL DROP TABLE dbo.e2e_admin_lock");
   }
 }
