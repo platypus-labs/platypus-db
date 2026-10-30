@@ -66,50 +66,38 @@ fn statement(sql: &str) -> String {
     }
 }
 
-/// The kinds whose DDL is read for many objects at once.
-fn batched(kind: ObjectKind) -> bool {
-    matches!(
-        kind,
-        ObjectKind::Table
-            | ObjectKind::ForeignTable
-            | ObjectKind::View
-            | ObjectKind::MaterializedView
-    )
-}
-
 /// The DDL of `objects`: tables and views with a few catalog queries for all of them, the
 /// other kinds one at a time.
 pub async fn objects_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
-    let (many, one): (Vec<usize>, Vec<usize>) =
-        (0..objects.len()).partition(|&i| batched(objects[i].kind));
-    let mut out: Vec<Option<Result<String>>> = objects.iter().map(|_| None).collect();
-    let tables: Vec<usize> = many
-        .iter()
-        .copied()
-        .filter(|&i| is_table(objects[i].kind))
-        .collect();
-    let views: Vec<usize> = many
-        .iter()
-        .copied()
-        .filter(|&i| !is_table(objects[i].kind))
-        .collect();
-    let picked = |at: &[usize]| at.iter().map(|&i| objects[i]).collect::<Vec<_>>();
-    for (at, ddl) in tables.iter().zip(tables_ddl(conn, &picked(&tables)).await) {
-        out[*at] = Some(ddl);
+    let of_kind = |pick: fn(ObjectKind) -> bool| -> Vec<ObjectRef<'_>> {
+        objects.iter().filter(|o| pick(o.kind)).copied().collect()
+    };
+    let mut tables = tables_ddl(conn, &of_kind(is_table)).await.into_iter();
+    let mut views = views_ddl(conn, &of_kind(is_view)).await.into_iter();
+    let mut out = Vec::with_capacity(objects.len());
+    for o in objects {
+        let ddl = if is_table(o.kind) {
+            tables.next()
+        } else if is_view(o.kind) {
+            views.next()
+        } else {
+            Some(object_ddl(conn, o).await)
+        };
+        out.push(ddl.unwrap_or_else(no_ddl));
     }
-    for (at, ddl) in views.iter().zip(views_ddl(conn, &picked(&views)).await) {
-        out[*at] = Some(ddl);
-    }
-    for i in one {
-        out[i] = Some(object_ddl(conn, &objects[i]).await);
-    }
-    out.into_iter()
-        .map(|r| r.unwrap_or_else(|| Err(Error::Other("no DDL read".to_owned()))))
-        .collect()
+    out
 }
 
 fn is_table(kind: ObjectKind) -> bool {
     matches!(kind, ObjectKind::Table | ObjectKind::ForeignTable)
+}
+
+fn is_view(kind: ObjectKind) -> bool {
+    matches!(kind, ObjectKind::View | ObjectKind::MaterializedView)
+}
+
+fn no_ddl() -> Result<String> {
+    Err(Error::Other("no DDL read".to_owned()))
 }
 
 pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
@@ -309,9 +297,7 @@ async fn yugabyte_sharding(
 
 /// The one result of a reader called with one object.
 fn single(mut results: Vec<Result<String>>) -> Result<String> {
-    results
-        .pop()
-        .unwrap_or_else(|| Err(Error::Other("no DDL read".to_owned())))
+    results.pop().unwrap_or_else(no_ddl)
 }
 
 /// `(schema, name) IN (…)` of `objects`, for `pg_namespace n` and `pg_class c`.

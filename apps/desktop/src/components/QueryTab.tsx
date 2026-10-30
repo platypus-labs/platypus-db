@@ -43,6 +43,7 @@ import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
+import { appended } from "../objects/ddlBlocks";
 import { useDdlFill } from "../objects/useDdlFill";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
 import { AcrossBar } from "../analysis/CrossQueryDialog";
@@ -1623,23 +1624,17 @@ export function QueryTab({
     }
   }, [running]);
 
-  const ddl = useDdlFill(
-    tab.ddlOf,
-    sideId,
-    (text) => {
-      const current = editor.current?.getText() ?? "";
-      if (current.trim() === "") editor.current?.setText(text);
-      else editor.current?.replace(current.length, current.length, `\n\n${text}`);
-    },
-    (stopped) => {
-      if (stopped) {
-        const current = editor.current?.getText() ?? "";
-        const note = `-- ${t("Stopped: the DDL of {done} of {total} objects was read", { done: stopped.done, total: stopped.total })}`;
-        editor.current?.replace(current.length, current.length, current ? `\n\n${note}` : note);
-      }
-      onChange({ ddlOf: null });
-    },
-  );
+  const appendToEditor = (text: string) => {
+    const current = editor.current?.getText() ?? "";
+    if (current.trim() === "") editor.current?.setText(text);
+    else editor.current?.replace(current.length, current.length, appended(current, text));
+  };
+  const ddl = useDdlFill(tab.ddlOf, sideId, appendToEditor, (stopped) => {
+    if (stopped) {
+      appendToEditor(`-- ${t("Stopped: the DDL of {done} of {total} objects was read", { done: stopped.done, total: stopped.total })}`);
+    }
+    onChange({ ddlOf: null });
+  });
   const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();
   // ClickHouse, MongoDB and Redis have no transactions (`capabilities.transactions` is false):
