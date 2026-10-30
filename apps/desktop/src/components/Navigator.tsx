@@ -35,6 +35,7 @@ import { testConnections } from "./TestConnectionsDialog";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
+import { openObjectTab } from "../objects/open";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -418,25 +419,16 @@ export function Navigator(props: Props) {
   }
 
   function openObject(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta) {
-    const showing = (t: TabModel) =>
-      t.kind === "object" &&
-      t.connectionId === c.id &&
-      (t.database ?? null) === db &&
-      t.schema === schema.name &&
-      t.name === object.name &&
-      t.objectKind === object.kind &&
-      (t.parent ?? null) === (object.parent ?? null);
-    if (workbench().focusTab(showing)) return;
-    workbench().openTab("object", c.id, {
+    openObjectTab(c.id, {
       database: db,
       schema: schema.name,
       currentSchema: schema.current,
       name: object.name,
-      objectKind: object.kind,
-      parent: object.parent,
-      title: object.name,
+      kind: object.kind,
+      parent: object.parent ?? null,
     });
   }
+
 
   // What the navigator's own actions need, refreshed every render.
   const nav = useRef<NavigatorApi>(null!);
