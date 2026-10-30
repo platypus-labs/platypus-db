@@ -12,7 +12,8 @@ import { answerSave } from "../qa-xfer.mjs";
 
 const NAME = "E2E Vim";
 const content = `${visibleTab}.querySelector('.cm-content')`;
-const text = `[...${visibleTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n')`;
+// The script's lines, not those of the SQL line over the results.
+const text = `[...${visibleTab}.querySelectorAll('.cm-line')].filter(l => !l.closest('.sql-line')).map(l => l.textContent).join('\\n')`;
 const mode = `(${visibleTab}.querySelector('.cm-vim-panel')?.textContent ?? '')`;
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
 
