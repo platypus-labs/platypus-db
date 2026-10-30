@@ -156,7 +156,7 @@ interface Opening {
 }
 
 // Translucent, so they read on light and dark grids alike.
-const CHANGED_FALLBACK = "rgba(250, 176, 5, 0.24)";
+const CHANGED_FALLBACK = "rgba(177, 151, 252, 0.3)";
 // The canvas cannot use a CSS variable, so the theme's value is read again when the theme changes.
 const readChanged = () =>
   getComputedStyle(document.documentElement).getPropertyValue("--modified-bg").trim() || CHANGED_FALLBACK;
@@ -727,6 +727,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
           >
             <Icon name="delete" />
           </button>
+          <span className="divider" />
           {dirty ? (
             <>
               <span className="edit-count">
@@ -738,6 +739,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
               <button className="square" onClick={() => void edit.preview()} disabled={busy} title={t("Preview SQL")} aria-label={t("Preview SQL")}>
                 <Icon name="sql" />
               </button>
+              <span className="divider" />
               <button className="square" onClick={edit.undo} disabled={busy || !edit.canUndo} title={t("Undo (Ctrl+Z)")} aria-label={t("Undo")}>
                 <Icon name="rollback" />
               </button>
@@ -755,6 +757,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
           )}
         </>
       )}
+      {extra && <span className="divider" />}
       {extra}
       {error && (
         <span className="error-text small edit-error" title={error}>

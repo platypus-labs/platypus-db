@@ -1713,6 +1713,7 @@ export function QueryTab({
               {toolbar.label("cancel", t("Cancel"))}
             </button>
           )}
+          <span className="divider" />
           <ConnectionChip connection={connection} database={tab.database ?? null} schema={schemaShown ?? catalog?.default_schema ?? null} />
           <button
             className={connection.read_only ? "toggled" : ""}
@@ -1827,6 +1828,7 @@ export function QueryTab({
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
           {toolbar.visible.panels && (
             <>
+              <span className="divider" />
               <button
                 className={tab.terminal ? "toggled" : ""}
                 onClick={() => (tab.terminal ? onChange({ terminal: false }) : leavingEdits(() => onChange({ terminal: true })))}
@@ -1854,9 +1856,12 @@ export function QueryTab({
             </>
           )}
           {toolbar.visible.history && (
+            <>
+            <span className="divider" />
             <button className={panel === "history" ? "toggled" : ""} onClick={() => togglePanel("history")} title={t("History")} aria-label={t("History")}>
               {toolbar.label("history", t("History"))}
             </button>
+            </>
           )}
         </div>
         {viewerBar && (
