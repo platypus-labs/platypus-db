@@ -1128,6 +1128,14 @@ dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri
 `scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
 distribuzione;
 la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
+Dal 30 ottobre 2026: manifest per winget, Homebrew, AUR e Flathub in `packaging/`, riempiti
+con versione e SHA-256 degli installer da `scripts/packaging.mjs` (test in
+`scripts/packaging.test.mjs`); installata da Flatpak o AUR, l'app annuncia la nuova versione
+senza installarla (marker `share/platypusdb/package-manager`). Immagine di anteprima social
+1280×640 (`docs/brand/social-preview.png`, da `social-preview.html` con
+`scripts/social-preview.mjs`) e testi della vetrina (descrizione, topic, Discussions, `good
+first issue`) in RELEASING.md. La pubblicazione dei pacchetti e le impostazioni del
+repository aspettano che diventi pubblico.
 
 | Attività | Prio |
 |---|---|
@@ -1144,11 +1152,11 @@ la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Prog
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
-| Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
+| Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
-| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
+| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire (pronti l'immagine `docs/brand/social-preview.png` e i testi in [RELEASING.md](RELEASING.md), "Repository showcase"; restano le impostazioni su GitHub, da fare quando il repository è pubblico) | P2 |
 | ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
 | ✅ 🆕 Le stesse GIF nel sito (`site/`) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
