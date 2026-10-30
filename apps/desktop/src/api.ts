@@ -1892,6 +1892,8 @@ export interface AppInfo {
   /** A portable copy: its data is in the `data` folder next to it, and it updates by
    *  replacing its executable. */
   portable: boolean;
+  /** The package manager that installed the app (Flatpak, AUR) and updates it. */
+  package_manager: string | null;
   os: string;
   arch: string;
 }

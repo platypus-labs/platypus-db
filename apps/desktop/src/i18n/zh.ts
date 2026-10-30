@@ -344,6 +344,7 @@ const zh: Record<string, string> = {
   "Try the sample database": "试用示例数据库",
   "portable": "便携版",
   "Replace this portable copy's executable with the new one.": "用新的可执行文件替换此便携版的可执行文件。",
+  "Update it with {manager}.": "请使用 {manager} 更新。",
   "A SQLite field survey of platypuses: linked tables, a view and a few saved scripts, no server needed.":
     "一份关于鸭嘴兽的 SQLite 野外调查：关联的表、一个视图和几个已保存的脚本，无需服务器。",
   "OK": "确定",

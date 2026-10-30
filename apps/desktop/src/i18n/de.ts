@@ -344,6 +344,7 @@ const de: Record<string, string> = {
   "Try the sample database": "Beispieldatenbank ausprobieren",
   "portable": "portabel",
   "Replace this portable copy's executable with the new one.": "Die ausführbare Datei dieser portablen Kopie durch die neue ersetzen.",
+  "Update it with {manager}.": "Mit {manager} aktualisieren.",
   "A SQLite field survey of platypuses: linked tables, a view and a few saved scripts, no server needed.":
     "Eine SQLite-Felderhebung über Schnabeltiere: verknüpfte Tabellen, eine View und einige gespeicherte Skripte, kein Server nötig.",
   "OK": "OK",

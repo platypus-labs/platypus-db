@@ -518,6 +518,9 @@ pub struct AppInfo {
     /// A portable copy: everything it keeps is in the `data` folder next to it, and it
     /// updates by replacing its executable, not with the installer.
     portable: bool,
+    /// The package manager that installed the app (Flatpak, AUR), which also
+    /// updates it: the built-in updater must not replace its files.
+    package_manager: Option<String>,
 }
 
 #[tauri::command]
@@ -530,7 +533,20 @@ pub fn app_info() -> AppInfo {
         arch: std::env::consts::ARCH,
         devtools: std::env::var_os("PLATYPUS_DEVTOOLS_PORT").is_some(),
         portable: platypus_mcp::profile::portable_dir().is_some(),
+        package_manager: std::env::current_exe()
+            .ok()
+            .and_then(|exe| package_manager(&exe)),
     }
+}
+
+/// The marker the packages in `packaging/` install next to the executable
+/// (`<prefix>/bin/platypus-db` and `<prefix>/share/platypusdb/package-manager`), holding the
+/// name of the package manager that updates the app.
+fn package_manager(exe: &std::path::Path) -> Option<String> {
+    let prefix = exe.parent()?.parent()?;
+    let name = std::fs::read_to_string(prefix.join("share/platypusdb/package-manager")).ok()?;
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_owned())
 }
 
 #[cfg(test)]
@@ -557,6 +573,19 @@ mod tests {
     use platypus_store::{MemorySecrets, PasswordUpdate, Restrictions, SavedConnection};
 
     use crate::commands::analysis::error_kind as kind;
+
+    #[test]
+    fn package_manager_reads_the_marker_next_to_the_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("bin/platypus-db");
+        assert_eq!(package_manager(&exe), None);
+        let marker = dir.path().join("share/platypusdb/package-manager");
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "  \n").unwrap();
+        assert_eq!(package_manager(&exe), None);
+        std::fs::write(&marker, "Flatpak\n").unwrap();
+        assert_eq!(package_manager(&exe).as_deref(), Some("Flatpak"));
+    }
 
     /// A state whose one saved SQLite connection, with `restrictions` and `read_only`, has
     /// a session open: its id.
