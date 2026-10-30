@@ -178,8 +178,8 @@ export const theme = EditorView.theme({
   // Beside the list it would blur nothing (its backdrop is the list's own box): solid.
   ".cm-tooltip.cm-completionInfo": { backgroundColor: "var(--bg-sidebar)", backdropFilter: "none", WebkitBackdropFilter: "none" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-fg)",
+    backgroundColor: "color-mix(in srgb, var(--accent) 18%, transparent)",
+    color: "var(--fg-strong)",
   },
   ".cm-panels": { backgroundColor: "var(--bg-sidebar)", color: "var(--fg)" },
   // CodeMirror's own lines are light gray, also in the dark themes.
