@@ -154,7 +154,10 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
       return match ? [{ item, match }] : [];
     });
     if (query.trim()) scored.sort((a, b) => b.match.score - a.match.score);
-    return scored.slice(0, LIMIT);
+    const top = scored.slice(0, LIMIT);
+    // Grouped by kind, the group with the best match first; the order inside a group is kept.
+    const kinds = [...new Set(top.map((r) => r.item.kind))];
+    return kinds.flatMap((kind) => top.filter((r) => r.item.kind === kind));
   }, [items, query]);
 
   useEffect(() => setSelected(0), [query]);
@@ -200,14 +203,14 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
               role="option"
               aria-selected={i === selected}
               aria-disabled={item.disabled || undefined}
-              className={i === selected ? "selected" : undefined}
+              className={[i === selected ? "selected" : "", item.kind !== results[i - 1]?.item.kind ? "group-start" : ""].join(" ").trim() || undefined}
+              data-group={item.kind}
               onMouseMove={() => setSelected(i)}
               onMouseDown={(e) => {
                 e.preventDefault();
                 choose(i);
               }}
             >
-              <span className="palette-kind">{item.kind}</span>
               <span className="palette-label">
                 <Highlight text={item.label} match={match} />
               </span>
@@ -217,6 +220,21 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
           ))}
           {results.length === 0 && <li className="palette-empty muted">{t("Nothing matches.")}</li>}
         </ul>
+        <div className="palette-hint">
+          <span>
+            <kbd>↑↓</kbd>
+            {t("to choose")}
+          </span>
+          <span>
+            <kbd>↵</kbd>
+            {t("open")}
+          </span>
+          <span>
+            <kbd>Esc</kbd>
+            {t("close")}
+          </span>
+          <span className="palette-count">{t("{n} results", { n: results.length })}</span>
+        </div>
       </div>
     </div>
   );

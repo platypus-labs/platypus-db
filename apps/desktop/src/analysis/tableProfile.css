@@ -5,19 +5,87 @@
 .tp-body {
   overflow: auto;
 }
-.tp-cards {
+/* The figures of the table: a row of cards. */
+.tp-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-12);
-  align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-10);
+  margin-bottom: var(--space-16);
+}
+.tp-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+}
+.tp-kpi-label {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tp-kpi-value {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tp-section {
+  margin-bottom: var(--space-6);
+  font-weight: 600;
+  font-size: var(--text-lg);
+}
+/* One dense row per column, in a single bordered list: name and type, the figures, the chart,
+ * then whatever else the column has (frequent values, patterns, outliers). */
+.tp-cards {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 .tp-card {
   box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 180px 220px minmax(120px, 1fr) minmax(160px, 240px);
+  column-gap: var(--space-16);
+  align-items: start;
   min-width: 0;
-  padding: var(--space-8) var(--space-10);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  min-height: 64px;
+  padding: var(--space-8) var(--space-12);
+  border-top: 1px solid var(--border);
   font-size: var(--text-sm);
+}
+.tp-card:first-child {
+  border-top: 0;
+}
+.tp-card > * {
+  grid-column: 4;
+  min-width: 0;
+}
+.tp-card > .column-profile-head,
+.tp-card > dl,
+.tp-card > .column-profile-bars {
+  grid-row: 1 / span 20;
+}
+.tp-card > .column-profile-head {
+  grid-column: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+.tp-card > dl {
+  grid-column: 2;
+}
+.tp-card > .column-profile-bars {
+  grid-column: 3;
+  align-self: center;
+  margin: 0;
+}
+.tp-card .column-profile-label {
+  margin-top: 0;
+}
+.tp-card .tp-kind {
+  margin-left: 0;
 }
 .tp-card dl {
   display: grid;
@@ -37,6 +105,15 @@
 }
 .tp-kind {
   margin-left: auto;
+}
+@media (max-width: 900px) {
+  .tp-card {
+    grid-template-columns: 1fr;
+  }
+  .tp-card > * {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
 }
 .tp-top {
   grid-template-columns: 1fr auto;

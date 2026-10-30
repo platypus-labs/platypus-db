@@ -67,6 +67,9 @@ export function WidgetView(props: Props) {
         <span className="dashboard-widget-title" title={widget.script}>
           {widgetTitle(widget)}
         </span>
+        <span className="dashboard-widget-source" title={widget.script}>
+          {widget.script.split(/[/\\]/).pop()}
+        </span>
         <span className="spacer" />
         {widget.view === "chart" && (
           <button

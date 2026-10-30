@@ -713,11 +713,42 @@ button.primary.danger:hover:not(:disabled) {
   opacity: 0.5;
 }
 
-.palette-kind {
-  flex: none;
-  width: 92px;
-  font-size: var(--text-sm);
+/* The group title above the first row of each kind. */
+.palette li.group-start {
+  position: relative;
+  margin-top: var(--space-20);
+}
+
+.palette li.group-start::before {
+  content: attr(data-group);
+  position: absolute;
+  top: calc(-1 * var(--space-16));
+  left: var(--space-10);
   color: var(--fg-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.palette-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-6) var(--space-12);
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}
+
+.palette-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.palette-hint .palette-count {
+  margin-left: auto;
 }
 
 .palette-label {

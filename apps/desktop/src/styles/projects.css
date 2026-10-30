@@ -56,10 +56,10 @@
 .project-square.tx::after {
   content: "";
   position: absolute;
-  top: -3px;
   right: -3px;
-  width: 9px;
-  height: 9px;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--type-test);
   box-shadow: 0 0 0 2px var(--frame);
@@ -106,10 +106,10 @@
 .project-folder.tx::after {
   content: "";
   position: absolute;
-  top: -3px;
   right: -3px;
-  width: 9px;
-  height: 9px;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--type-test);
   box-shadow: 0 0 0 2px var(--frame);
@@ -151,12 +151,56 @@
   border-color: var(--fg-muted);
 }
 
+.project-dialog-icon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.conn-pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.conn-pick-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.conn-pick-bar input {
+  flex: 1;
+}
+
+.conn-pick-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 188px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.conn-pick-list .check {
+  min-height: var(--control-lg);
+  padding: 0 var(--space-10);
+  gap: var(--space-8);
+}
+
+.conn-pick-list .check:hover {
+  background: var(--hover);
+}
+
+.conn-pick-empty {
+  padding: var(--space-8) var(--space-10);
+}
+
 .project-dialog-preview {
-  align-self: center;
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-sheet);
   color: #fff;
   font-size: var(--text-xl);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, type Project, type SavedConnection, toCommandError } from "../api";
 import { workbench } from "../workbench";
-import { toggled } from "../sets";
+import { ConnectionPicker } from "./ConnectionPicker";
 import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
 
@@ -37,14 +37,7 @@ export function AddConnectionsDialog({ project, connections, onSaved, onClose }:
         {outside.length === 0 ? (
           <p className="muted small">{t("Every saved connection is in this project already.")}</p>
         ) : (
-          <div className="import-list">
-            {outside.map((c) => (
-              <label key={c.id} className="check">
-                <input type="checkbox" checked={picked.has(c.id)} onChange={() => setPicked((p) => toggled(p, c.id))} />
-                {c.name}
-              </label>
-            ))}
-          </div>
+          <ConnectionPicker connections={outside} picked={picked} onChange={setPicked} />
         )}
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">

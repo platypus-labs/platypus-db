@@ -182,6 +182,8 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
       {note && <div className="notice ok tp-note">{note}</div>}
       <div className="object-body tp-body">
         {profile && columns.length === 0 && filter.trim() !== "" && <div className="muted tp-none">{t("No column matches.")}</div>}
+        {profile && profile.rows > 0 && <Kpis profile={profile} />}
+        {profile && columns.length > 0 && <div className="tp-section">{t("Columns")}</div>}
         <div className="tp-cards">
           {columns.map((c) => (
             <ColumnCard
@@ -194,6 +196,27 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The figures of the whole table, above its columns. */
+function Kpis({ profile }: { profile: TableProfile }) {
+  const cells = profile.columns.reduce((n, c) => n + c.rows, 0);
+  const nulls = profile.columns.reduce((n, c) => n + c.nulls, 0);
+  const cards: [string, string][] = [
+    [t("Rows"), count(profile.rows)],
+    [t("Columns"), count(profile.columns.length)],
+    [t("NULL values"), percent(cells > 0 ? nulls / cells : 0)],
+  ];
+  return (
+    <div className="tp-kpis">
+      {cards.map(([label, value]) => (
+        <div key={label} className="tp-kpi">
+          <span className="tp-kpi-label">{label}</span>
+          <span className="tp-kpi-value">{value}</span>
+        </div>
+      ))}
     </div>
   );
 }

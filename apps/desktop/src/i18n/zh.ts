@@ -2935,6 +2935,12 @@ const zh: Record<string, string> = {
   "Interface": "界面",
   "Data and safety": "数据与安全",
   "Tools": "工具",
+  "Filter connections…": "筛选连接…",
+  "{n} selected": "已选 {n} 个",
+  "to choose": "选择",
+  "open": "打开",
+  "close": "关闭",
+  "{n} results": "{n} 个结果",
 };
 
 export default zh;

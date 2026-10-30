@@ -2935,6 +2935,12 @@ const de: Record<string, string> = {
   "Interface": "Oberfläche",
   "Data and safety": "Daten und Sicherheit",
   "Tools": "Werkzeuge",
+  "Filter connections…": "Verbindungen filtern…",
+  "{n} selected": "{n} ausgewählt",
+  "to choose": "zum Auswählen",
+  "open": "öffnen",
+  "close": "schließen",
+  "{n} results": "{n} Ergebnisse",
 };
 
 export default de;
