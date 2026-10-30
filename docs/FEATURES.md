@@ -332,8 +332,9 @@ created again with its rows copied.
 ## ER diagrams, schema check, comparison and history
 
 - **ER diagram**: right-click a schema, *ER diagram*, or some selected tables, *Show in ER
-  diagram*. Tables are laid out from their foreign keys, right of the tables they reference;
-  drag them where you want them, choose the tables with *Tables…*, add notes. The diagram is
+  diagram*. Tables are laid out from their foreign keys, right of the tables they reference,
+  each group of linked tables in its own block, in an order that keeps lines from crossing,
+  with the lines running between the tables rather than over them; drag them where you want them, choose the tables with *Tables…*, add notes. The diagram is
   kept with its tab and exports to SVG or PNG. A schema of more than 100 tables asks which
   ones to show first. *Full screen* gives the diagram the whole window (Esc leaves it);
   *Refresh* reads the schema again and keeps every table where it is, new tables below.
