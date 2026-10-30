@@ -10,6 +10,7 @@ import { WidgetView } from "./WidgetView";
 import { dashboardFile, moveWidget, REFRESH_CHOICES, type Widget } from "./model";
 import { idle, runWidget, type WidgetRun, WidgetSessions } from "./run";
 import { EmptyState } from "../ui/State";
+import { Icon } from "../ui/Icon";
 
 export interface DashboardTabModel extends TabBase {
   kind: "dashboard";
@@ -167,21 +168,28 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
 
   return (
     <div className="object-tab dashboard-tab" style={{ display: active ? "flex" : "none" }}>
-      <div className="toolbar dashboard-toolbar">
-        <input
+      <header className="object-header dashboard-toolbar">
+        <span className="object-icon" data-kind="schema">
+          <Icon name="activity" size={16} />
+        </span>
+        <div className="object-title">
+          <input
           className="dashboard-title"
           data-field="title"
           aria-label={t("Dashboard name")}
           placeholder={t("Dashboard")}
           value={tab.title ?? ""}
           onChange={(e) => edit({ title: e.target.value })}
-        />
-        <span className="muted small">{connection.name}</span>
+          />
+          <span className="muted small">{connection.name}</span>
+        </div>
         <span className="spacer" />
-        <button type="button" onClick={() => openForm(null)} data-action="add">
+        <button type="button" className="primary" onClick={() => openForm(null)} data-action="add">
+          <Icon name="plus" />
           {t("Add widget")}
         </button>
         <button type="button" onClick={() => void refreshAll()} data-action="refresh_all">
+          <Icon name="refresh" />
           {t("Refresh all")}
         </button>
         <select
@@ -197,9 +205,10 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
           ))}
         </select>
         <button type="button" onClick={() => void save()} data-action="save">
+          <Icon name="save" />
           {t("Save")}
         </button>
-      </div>
+      </header>
       <div className="dashboard-grid">
         {tab.widgets.map((widget, i) => (
           <WidgetView
@@ -217,7 +226,21 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
             onRemove={() => remove(widget.id)}
           />
         ))}
-        {tab.widgets.length === 0 && <EmptyState className="dashboard-empty" title={t("An empty dashboard: add a widget.")} />}
+        {tab.widgets.length === 0 && (
+          <EmptyState
+            className="dashboard-empty"
+            icon="activity"
+            title={t("An empty dashboard: add a widget.")}
+            actions={
+              <button type="button" className="primary" onClick={() => openForm(null)}>
+                <Icon name="plus" />
+                {t("Add widget")}
+              </button>
+            }
+          >
+            {t("Charts, tables and numbers from a query, side by side.")}
+          </EmptyState>
+        )}
       </div>
     </div>
   );

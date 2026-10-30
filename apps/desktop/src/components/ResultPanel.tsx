@@ -8,6 +8,8 @@ import { ChartView } from "../analysis/ChartView";
 import type { ChartConfig } from "../analysis/chartConfig";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { formatCount, t, plural } from "../i18n";
+import { Icon } from "../ui/Icon";
+import { ErrorState } from "../ui/State";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -115,6 +117,11 @@ export function ResultPanel(props: PanelProps) {
   );
 }
 
+/** The error as plain text, for the clipboard. */
+function errorText(e: CommandError): string {
+  return [`${e.code ? `${e.code}: ` : ""}${e.message}`, e.detail, e.hint].filter(Boolean).join("\n");
+}
+
 function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart, toolbar }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
@@ -136,14 +143,18 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
   if (status.kind === "error") {
     const e = status.error;
     return (
-      <div className="notice error result-error">
-        <div>
-          <strong>{e.code ? `${e.code}: ` : ""}</strong>
-          {e.message}
-        </div>
-        {e.detail && <div>{t("DETAIL: {text}", { text: e.detail })}</div>}
-        {e.hint && <div>{t("HINT: {text}", { text: e.hint })}</div>}
-      </div>
+      <ErrorState
+        className="result-error"
+        title={`${e.code ? `${e.code}: ` : ""}${e.message}`}
+        actions={
+          <button type="button" onClick={() => void navigator.clipboard.writeText(errorText(e))}>
+            <Icon name="copy" size={14} /> {t("Copy error")}
+          </button>
+        }
+      >
+        {e.detail && <span className="state-line">{t("DETAIL: {text}", { text: e.detail })}</span>}
+        {e.hint && <span className="state-line">{t("HINT: {text}", { text: e.hint })}</span>}
+      </ErrorState>
     );
   }
   if (status.kind === "affected") {
@@ -204,6 +215,7 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
           edit={edit}
           notes={notes}
           toolbar={toolbar}
+          empty={status.kind === "rows" && status.finished && result.rows === 0}
         />
       )}
     </>

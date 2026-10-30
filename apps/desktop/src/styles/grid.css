@@ -240,6 +240,19 @@
   padding: var(--space-2) var(--space-8);
 }
 
+/* The hint gives way to the buttons: cut short with an ellipsis, never over them. */
+.edit-bar > .muted.small {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.edit-bar .divider {
+  align-self: center;
+  height: var(--icon-lg);
+}
+
 .edit-count {
   font-size: var(--text-sm);
   color: var(--modified-fg);
@@ -396,10 +409,32 @@
 }
 
 .result-error {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  white-space: pre-wrap;
+  margin: var(--space-24) auto;
+  max-width: 640px;
   user-select: text;
+}
+
+.result-error .state-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 500;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.result-error .state-text {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The empty result: the grid keeps its header, the state fills the body under it. */
+.result-empty {
+  position: absolute;
+  inset: 40px 0 0;
+  max-width: none;
+  padding: 0;
+  pointer-events: none;
 }
 
 /* Grid: totals, record view, grouping and references panels, columns dialog */

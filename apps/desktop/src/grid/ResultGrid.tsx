@@ -29,6 +29,7 @@ import "./features/copy";
 import "./features/filters";
 import { useReferences } from "./features/references";
 import { useGridSearch } from "./features/search";
+import { EmptyState } from "../ui/State";
 import { useSelectionStats } from "./features/stats";
 import { useColumnProfile } from "../analysis/ColumnProfile";
 import { type ColumnLayout, EMPTY_LAYOUT, loadLayout, saveLayout } from "./layout";
@@ -132,10 +133,12 @@ interface Props {
   notes?: NotesScope | null;
   /** At the end of the bar above the grid: the result's SQL field. */
   toolbar?: ReactNode;
+  /** The statement finished and returned no rows: the grid says so over its empty body. */
+  empty?: boolean;
 }
 
 /** A result's grid with its features: editing, search, column layout, totals and panels. */
-export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes, toolbar }: Props) {
+export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes, toolbar, empty }: Props) {
   const notesVersion = useCatalogVersion();
   const noteOf = (col: number) =>
     notes && columns[col]
@@ -292,6 +295,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               onLayoutChange={changeLayout}
             />
             {search.box}
+            {empty && total === 0 && (
+              <EmptyState className="result-empty" title={t("No rows")}>
+                {t("The statement ran and returned no rows.")}
+              </EmptyState>
+            )}
             {recordView && total > 0 && (
               <RecordView
                 jobId={jobId}

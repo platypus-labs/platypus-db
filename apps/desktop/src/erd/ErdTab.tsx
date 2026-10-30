@@ -511,25 +511,29 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         <span className="object-icon" data-kind="schema">
           <Icon name="schema" size={16} />
         </span>
-        <span>
-          <strong>{t("ER diagram of {schema}", { schema: tab.schema })}</strong>{" "}
+        <div className="object-title">
+          <strong>{t("ER diagram of {schema}", { schema: tab.schema })}</strong>
           <span className="muted small">
             {tab.tables === null ? t("all tables") : plural(tab.tables.length, "{n} table", "{n} tables")}
           </span>
-        </span>
+        </div>
         <span className="spacer" />
         {!connection.read_only && (
           <button type="button" aria-pressed={edits !== null} className={edits ? "primary" : ""} onClick={() => void toggleEdit()} title={t("Draw the schema and generate the script")}>
+            <Icon name="edit" />
             {t("Edit")}
           </button>
         )}
         <button type="button" disabled={!all} onClick={() => setChoosing(true)}>
+          <Icon name="table" />
           {t("Tables…")}
         </button>
         <button type="button" onClick={addNote}>
+          <Icon name="plus" />
           {t("Add note")}
         </button>
         <button type="button" onClick={() => setFull(!full)} aria-pressed={full}>
+          <Icon name={full ? "minimize" : "maximize"} />
           {full ? t("Exit full screen") : t("Full screen")}
         </button>
         <button className="square" type="button" onClick={refresh} aria-label={t("Refresh")} title={t("Refresh")}>
@@ -570,13 +574,16 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
           </button>
           <span className="erd-sep" />
           <button type="button" onClick={() => onChange({ positions: {} })} title={t("Place every table again from the foreign keys")}>
+            <Icon name="schema" />
             {t("Auto layout")}
           </button>
           <span className="erd-sep" />
-          <button type="button" onClick={() => save("svg")}>
+          <button type="button" onClick={() => save("svg")} title={t("Save the diagram as an SVG image")}>
+            <Icon name="download" />
             SVG…
           </button>
-          <button type="button" onClick={() => save("png")}>
+          <button type="button" onClick={() => save("png")} title={t("Save the diagram as a PNG image")}>
+            <Icon name="download" />
             PNG…
           </button>
         </div>
