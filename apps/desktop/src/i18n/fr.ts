@@ -2867,6 +2867,11 @@ const fr: Record<string, string> = {
   "The shared project file of {name} cannot be read, so it is left as it is: {detail}": "Le fichier du projet partagé de {name} est illisible, il est donc laissé tel quel : {detail}",
   // Group O: removing a shared project
   "Remove the shared project \"{name}\" from the app? The shared folder and its files are not deleted; its connections stay in All connections.": "Retirer le projet partagé \"{name}\" de l'application ? Le dossier partagé et ses fichiers ne sont pas supprimés ; ses connexions restent dans Toutes les connexions.",
+  // Group O: approving the init statements of a shared connection
+  "Run the init statements of {name}?": "Exécuter les instructions d'initialisation de {name} ?",
+  "This shared project sets SQL to run every time {name} connects. Read it before you allow it; if it changes, you are asked again.": "Ce projet partagé définit du SQL exécuté à chaque connexion à {name}. Lisez-le avant de l'autoriser ; s'il change, la question sera reposée.",
+  "Connect without them": "Se connecter sans elles",
+  "Run them and remember": "Les exécuter et s'en souvenir",
   // Group O: WebAssembly plugins
   "Plugin driver": "Pilote de plugin",
   "Plugins": "Plugins",

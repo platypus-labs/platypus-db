@@ -37,6 +37,7 @@ import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } fr
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import type { IconName } from "./ui/Icon";
 import { ask, choose, isAsking } from "./ui/ask";
+import { withInitApproval } from "./ui/initApproval";
 import { type PersistedTab, basename, flushWorkspace, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { forgetCatalog } from "./catalog/catalog";
@@ -615,7 +616,7 @@ export function App() {
     const target = database ? `${connection.name}/${database}` : connection.name;
     for (;;) {
       const typed = password;
-      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, typed, database, side)));
+      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => withInitApproval(connection, (init) => api.openSession(connection.id, typed, database, side, init))));
       try {
         let session;
         try {
