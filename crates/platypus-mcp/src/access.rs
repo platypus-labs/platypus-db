@@ -358,6 +358,47 @@ pub fn check<'a>(
             )));
         }
     };
+    check_statement(statement, dialect, access, unfiltered, connection)
+}
+
+/// [`check`] for CQL (Cassandra, `ScyllaDB`): the script is split as CQL splits it, a
+/// `BEGIN BATCH ... APPLY BATCH` being one statement, and the statement is read with the
+/// standard SQL analysis, which finds `TRUNCATE` and the writes that name no row. A batch is
+/// refused: its statements would escape the check one by one.
+pub fn check_cql<'a>(
+    sql: &'a str,
+    access: AgentAccess,
+    unfiltered: UnfilteredRule,
+    connection: &str,
+) -> Result<&'a str> {
+    use platypus_driver_cassandra::cql;
+
+    let statement = match cql::split(sql).as_slice() {
+        [] => return Err(AgentError::Invalid("there is no CQL to run".to_owned())),
+        [one] => &sql[one.clone()],
+        many => {
+            return Err(AgentError::Invalid(format!(
+                "each call runs one statement at a time and this CQL has {}: send them in separate calls",
+                many.len()
+            )));
+        }
+    };
+    if access != AgentAccess::Off && cql::first_word(statement) == "BEGIN" {
+        return Err(AgentError::Denied(
+            "batches are not available to agents: run the statements one at a time".to_owned(),
+        ));
+    }
+    check_statement(statement, Dialect::Ansi, access, unfiltered, connection)
+}
+
+/// [`check`] for the one `statement` it found.
+fn check_statement<'a>(
+    statement: &'a str,
+    dialect: Dialect,
+    access: AgentAccess,
+    unfiltered: UnfilteredRule,
+    connection: &str,
+) -> Result<&'a str> {
     let analysis = platypus_sql::analyze(statement, dialect);
     match (access, analysis.kind) {
         (AgentAccess::Off, _) => Err(AgentError::NotFound(format!(
@@ -591,6 +632,56 @@ mod tests {
     use super::*;
 
     const PG: Dialect = Dialect::Postgres;
+
+    #[test]
+    fn checks_cql_statements() {
+        let ro = |sql| check_cql(sql, AgentAccess::ReadOnly, UnfilteredRule::Refuse, "c");
+        let rw = |sql| check_cql(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "c");
+        assert_eq!(
+            ro(" SELECT * FROM shop.orders WHERE id = 'a;b'; ").unwrap(),
+            "SELECT * FROM shop.orders WHERE id = 'a;b'"
+        );
+        assert!(matches!(
+            ro("INSERT INTO t (id) VALUES (1)"),
+            Err(AgentError::Denied(_))
+        ));
+        assert!(matches!(ro("TRUNCATE t"), Err(AgentError::Denied(_))));
+        assert!(matches!(ro("DROP TABLE t"), Err(AgentError::Denied(_))));
+        assert!(matches!(ro("USE other"), Err(AgentError::Denied(_))));
+        assert!(matches!(
+            ro("SELECT 1; SELECT 2"),
+            Err(AgentError::Invalid(_))
+        ));
+        assert!(matches!(ro("  -- nothing\n"), Err(AgentError::Invalid(_))));
+        // A batch hides its statements from the check, so it is refused.
+        let batch =
+            "BEGIN BATCH INSERT INTO t (id) VALUES (1); DELETE FROM t WHERE id = 2; APPLY BATCH";
+        assert!(matches!(ro(batch), Err(AgentError::Denied(_))));
+        assert!(matches!(rw(batch), Err(AgentError::Denied(_))));
+        // Writes with a key may run; a TRUNCATE is what the Safety setting asks about.
+        assert!(rw("UPDATE t SET v = 1 WHERE id = 2").is_ok());
+        assert!(rw("DELETE FROM t WHERE id = 2").is_ok());
+        assert!(rw("DROP TABLE t").is_ok());
+        assert!(matches!(rw("TRUNCATE t"), Err(AgentError::Denied(_))));
+        assert!(
+            check_cql(
+                "TRUNCATE t",
+                AgentAccess::ReadWrite,
+                UnfilteredRule::Allow,
+                "c"
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            check_cql("SELECT 1", AgentAccess::Off, UnfilteredRule::Allow, "c"),
+            Err(AgentError::NotFound(_))
+        ));
+        assert!(changes(
+            "INSERT INTO t (id) VALUES (1)",
+            DriverKind::Cassandra
+        ));
+        assert!(!changes("SELECT * FROM t", DriverKind::Cassandra));
+    }
 
     #[test]
     fn checks_mongosh_statements() {

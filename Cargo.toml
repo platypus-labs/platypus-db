@@ -25,6 +25,7 @@ platypus-driver-mysql = { path = "crates/platypus-driver-mysql" }
 platypus-driver-mongo = { path = "crates/platypus-driver-mongo" }
 platypus-driver-redis = { path = "crates/platypus-driver-redis" }
 platypus-driver-search = { path = "crates/platypus-driver-search" }
+platypus-driver-cassandra = { path = "crates/platypus-driver-cassandra" }
 platypus-driver-mssql = { path = "crates/platypus-driver-mssql" }
 platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-transfer = { path = "crates/platypus-transfer" }

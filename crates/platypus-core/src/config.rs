@@ -48,6 +48,11 @@ pub enum DriverKind {
     /// authentication; a password alone is an API key (`Authorization: ApiKey`). TLS
     /// (`elasticsearchs://`) is any mode from `require` up.
     Elasticsearch,
+    /// Apache Cassandra and `ScyllaDB` (one driver; the server says which it is): CQL over the
+    /// native protocol. `host` is the contact point, or several `host:port` pairs separated by
+    /// commas; `database` is the keyspace to start in. A user and password log in with the
+    /// server's password authenticator. TLS (`cassandras://`) is any mode from `require` up.
+    Cassandra,
     /// Snowflake through its ADBC driver: `host` is the account, `options` hold
     /// `warehouse`, `role` and `schema`.
     Snowflake,
@@ -92,6 +97,7 @@ impl DriverKind {
             Self::Mongo => Some(27017),
             Self::Redis => Some(6379),
             Self::Elasticsearch => Some(9200),
+            Self::Cassandra => Some(9042),
             Self::Trino => Some(8080),
             Self::Oracle => Some(1521),
             Self::Db2 => Some(50000),
@@ -132,6 +138,7 @@ impl DriverKind {
             Self::Mongo => "MongoDB",
             Self::Redis => "Redis",
             Self::Elasticsearch => "Elasticsearch",
+            Self::Cassandra => "Cassandra",
             Self::Snowflake => "Snowflake",
             Self::BigQuery => "BigQuery",
             Self::Databricks => "Databricks",
@@ -448,7 +455,10 @@ impl ConnectionConfig {
             DriverKind::Libsql => SslMode::VerifyFull,
             // Redis takes TLS on a port of its own: `redis://` is plaintext, `rediss://` TLS.
             // Likewise `elasticsearch://` (plaintext) and `elasticsearchs://` (TLS).
-            DriverKind::Redis | DriverKind::Elasticsearch => SslMode::Disable,
+            // Likewise `cassandra://` (plaintext) and `cassandras://` (TLS).
+            DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra => {
+                SslMode::Disable
+            }
             _ => SslMode::Prefer,
         }
     }
@@ -484,6 +494,7 @@ impl ConnectionConfig {
             "elasticsearch" | "elasticsearchs" | "opensearch" | "opensearchs" => {
                 DriverKind::Elasticsearch
             }
+            "cassandra" | "cassandras" | "scylla" | "scyllas" => DriverKind::Cassandra,
             // libSQL clients take Hrana over WebSocket too; the app speaks HTTP to the same
             // server.
             "libsql" | "ws" | "wss" => DriverKind::Libsql,
@@ -497,7 +508,8 @@ impl ConnectionConfig {
         let mut config = Self::new(driver);
         config.ssl_mode = match url.scheme() {
             "ws" | "http" => SslMode::Disable,
-            "wss" | "https" | "rediss" | "elasticsearchs" | "opensearchs" => SslMode::VerifyFull,
+            "wss" | "https" | "rediss" | "elasticsearchs" | "opensearchs" | "cassandras"
+            | "scyllas" => SslMode::VerifyFull,
             _ => Self::url_ssl_mode(driver),
         };
 
@@ -1136,6 +1148,31 @@ mod tests {
         assert_eq!((c.user.as_str(), c.ssl_mode), ("", SslMode::VerifyFull));
         assert!(c.es_tls());
         assert_eq!(DriverKind::Elasticsearch.default_port(), Some(9200));
+    }
+
+    #[test]
+    fn parses_cassandra_urls() {
+        let c =
+            ConnectionConfig::from_url("cassandra://cassandra:s%40cret@node1:9043/shop").unwrap();
+        assert_eq!(c.driver, DriverKind::Cassandra);
+        assert_eq!(
+            (
+                c.host.as_str(),
+                c.port,
+                c.database.as_str(),
+                c.user.as_str()
+            ),
+            ("node1", Some(9043), "shop", "cassandra")
+        );
+        assert_eq!(c.password.as_ref().map(Secret::expose), Some("s@cret"));
+        assert_eq!(c.ssl_mode, SslMode::Disable);
+        assert!(!c.cql_tls());
+        let c = ConnectionConfig::from_url("scyllas://node1").unwrap();
+        assert_eq!(c.driver, DriverKind::Cassandra);
+        assert_eq!(c.ssl_mode, SslMode::VerifyFull);
+        assert!(c.cql_tls());
+        assert_eq!(DriverKind::Cassandra.default_port(), Some(9042));
+        assert_eq!(DriverKind::Cassandra.name(), "Cassandra");
     }
 
     #[test]
