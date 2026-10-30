@@ -15,6 +15,7 @@ import { WINDOW_EVENTS, WINDOW_TAB_KEY } from "./windows";
 import { LockScreen } from "../guards/AppLock";
 import { track } from "./activity";
 import { t } from "../i18n";
+import { withInitApproval } from "../ui/initApproval";
 
 /** The connection the quick query used last. */
 const QUICK_KEY = "platypus.quick.connection";
@@ -164,7 +165,7 @@ export function WindowApp({ label }: { label: string }) {
     for (;;) {
       try {
         const typed = password;
-        const opened = await track(t("Connect to {name}", { name: c.name }), withDriver(() => api.openSession(c.id, typed, database, sideSession)));
+        const opened = await track(t("Connect to {name}", { name: c.name }), withDriver(() => withInitApproval(c, (init) => api.openSession(c.id, typed, database, sideSession, init))));
         if (password !== undefined) passwords.current.set(c.id, password);
         capabilities.current.set(opened.session_id, opened.capabilities);
         return opened.session_id;

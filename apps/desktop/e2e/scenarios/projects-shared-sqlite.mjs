@@ -2,7 +2,9 @@
 // a repository or on a shared drive) is opened as a project, and the app and the folder follow
 // each other. The folder never holds a credential, a project is shared to a folder with or
 // without the user names, an unreadable file is never overwritten, a missing folder is told and
-// not created, and removing the project never touches the folder.
+// not created, and removing the project never touches the folder. The init statements a teammate
+// writes into a connection are shown and run only once approved here, and asked again when the
+// text changes; ones the user writes locally never ask.
 //
 // The teammate is played by the scenario writing files into the folder; the second computer is
 // not driven (one app runs per scenario).
@@ -34,7 +36,7 @@ const labels = `[...document.querySelectorAll('.tree-row .tree-label')].map(l =>
 const invoke = (command, args) => `window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`;
 
 /** A shared project file as a teammate wrote it, with a secret hand-edited into it. */
-function teamFile(dir, { name = "Team analytics", color = "#2f9e6e", extra = "" } = {}) {
+function teamFile(dir, { name = "Team analytics", color = "#2f9e6e", extra = "", salesInit = "" } = {}) {
   return `version = 1
 id = "${SHARED}"
 name = "${name}"
@@ -54,7 +56,7 @@ folder = "${FOLDER}"
 [connections.options]
 warehouse = "WH"
 password = "${CANARY}"
-
+${salesInit ? `\n[connections.init]\nstatements = "${salesInit}"\n` : ""}
 [[connections]]
 id = "${C.ops}"
 name = "Ops"
@@ -283,6 +285,81 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(`[...document.querySelectorAll('.context-menu button')].some(b => b.textContent.includes('Share project'))`), false);
   assert.equal(await page.eval(`[...document.querySelectorAll('.context-menu button')].some(b => b.textContent.includes('Read the shared folder again'))`), true);
   await page.key("Escape", "Escape", 27);
+
+  // The init statements of a shared connection run only after this machine's user read them.
+  await page.eval(`window.__platypus.switchProject(${JSON.stringify(SHARED)})`);
+  await page.waitFor(`${row("Sales")} !== undefined`);
+  const tables = () => {
+    const db = new DatabaseSync(join(dir, "sales.db"));
+    const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
+    db.close();
+    return names;
+  };
+  const dialog = `document.querySelector('[data-testid="init-approval"]')`;
+  const sqlShown = `(document.querySelector('[data-testid="init-approval-sql"]')?.textContent ?? '')`;
+  const answerInit = async (label) => {
+    await page.waitFor(`${dialog} !== null`, 15_000);
+    await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
+    await page.waitFor(`${dialog} === null`);
+  };
+  /** A new SQL editor on Sales, which connects; returns how many tabs there were before. */
+  const openEditor = async () => {
+    const tabs = await page.eval(`document.querySelectorAll('.query-tab').length`);
+    await page.eval(`${row("Sales")}.querySelector('button[title="Open SQL editor"]').click()`);
+    return tabs;
+  };
+  const connect = `${invoke("open_session", { connectionId: C.sales, password: null, database: null, side: false, init: null })}.then(() => 'connected', (e) => e)`;
+  const setInit = async (statements) => {
+    writeFileSync(projectFile(team(dir)), teamFile(dir, { name: "Team analytics 3", color: "#e05a5a", salesInit: statements }));
+    await focus(page);
+    await fileWith(page, join(dir, "connections.toml"), (t) => t.includes(statements), "init not read");
+  };
+  await setInit("CREATE TABLE marker_one (id INTEGER)");
+  // The backend refuses to connect and hands over the text; nothing ran.
+  const refused = await page.eval(connect);
+  assert.equal(refused.kind, "init_approval");
+  assert.match(refused.message, /marker_one/);
+  assert.equal(tables().includes("marker_one"), false);
+  // In the app the dialog shows the whole text, read-only; connecting without it runs nothing.
+  await openEditor();
+  await page.waitFor(`${dialog} !== null`, 15_000);
+  assert.match(await page.eval(sqlShown), /CREATE TABLE marker_one \(id INTEGER\)/);
+  assert.equal(await page.eval(`document.querySelector('[data-testid="init-approval-sql"]').matches('pre')`), true);
+  await answerInit("Connect without them");
+  await page.sleep(1000);
+  assert.equal(tables().includes("marker_one"), false, "skipped, so not run");
+  // Skipping remembers nothing: the next connection asks again; approving runs the text.
+  await page.sleep(2500);
+  await openEditor();
+  await answerInit("Run them and remember");
+  const until = Date.now() + 15_000;
+  while (!tables().includes("marker_one")) {
+    assert.ok(Date.now() < until, "approved statements did not run");
+    await page.sleep(100);
+  }
+  // Approved text does not ask again.
+  await page.sleep(2500);
+  const tabsBefore = await openEditor();
+  await page.waitFor(`document.querySelectorAll('.query-tab').length > ${tabsBefore}`);
+  await page.sleep(500);
+  assert.equal(await page.eval(`${dialog} === null`), true, "approved text asks no more");
+  assert.equal(await page.eval(connect), "connected");
+  // The approval stays on this machine: the shared file has nothing of it.
+  assert.doesNotMatch(readFileSync(projectFile(team(dir)), "utf8"), /approved/);
+  // Changed text asks again, and "without" skips it.
+  await setInit("CREATE TABLE marker_two (id INTEGER)");
+  await page.sleep(2500);
+  await openEditor();
+  await page.waitFor(`/marker_two/.test(${sqlShown})`, 15_000);
+  await answerInit("Connect without them");
+  await page.sleep(500);
+  assert.equal(tables().includes("marker_two"), false);
+  // Statements the user wrote here never ask: saving the connection with new text approves it.
+  const sales = (await page.eval(invoke("list_connections", {}))).find((c) => c.id === C.sales);
+  sales.init.statements = "CREATE TABLE marker_local (id INTEGER)";
+  await page.eval(invoke("save_connection", { connection: sales, password: { action: "keep" }, sshSecrets: null, projects: null }));
+  assert.equal(await page.eval(connect), "connected");
+  assert.equal(tables().includes("marker_local"), true);
 
   // Removing a shared project from the app leaves its folder and files alone, and the
   // connections stay saved.

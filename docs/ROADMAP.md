@@ -89,7 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| Progetti condivisi (gruppo O): il file `platypus-project.toml` di un collega può ancora impostare le istruzioni di init di una connessione (SQL eseguito a ogni collegamento), applicate senza chiedere. Decidere se non farle viaggiare, tenerle in sola lettura o chiederne conferma la prima volta, in `crates/platypus-sync/src/portable.rs` (`guard`) | gruppo O, 2026-10-30 |
 | Debugger PL/pgSQL del gruppo J: l'immagine e i test di conformance sono verificati su un server vero (30 ottobre 2026, corretto lo sfasamento di una riga delle posizioni). Resta da lanciare su Windows lo scenario `admin-debugger-postgres` (serve l'eseguibile di release e il container `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`), poi eliminare questa riga | gruppo J, 2026-10-30 |
 | Scenari E2E del gruppo O scritti in un container Linux e mai eseguiti: `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
 | Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
@@ -1125,7 +1124,12 @@ un'installazione vera. In un progetto condiviso, un file cambiato fuori dall'app
 connessione (driver, host, porta, database, SSH, proxy) ne fa dimenticare password e segreti, che
 si chiedono di nuovo al collegamento; accesso degli agenti, restrizioni, sola lettura e tipo Prod
 tengono sempre il valore più restrittivo. Le opzioni che possono eseguire comandi
-(`before_connect`, `after_disconnect`) e i percorsi locali non viaggiano mai. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
+(`before_connect`, `after_disconnect`) e i percorsi locali non viaggiano mai.
+Le istruzioni di init di una connessione arrivate dal file condiviso non girano finché l'utente non ha
+letto quel testo: al collegamento un dialogo mostra l'SQL (sola lettura) e chiede se eseguirlo
+(`platypus-sync/src/init_approval.rs`, `check_init` in `commands/connections.rs`); l'approvazione resta
+solo su questa macchina (impostazione `shared.init_approved.<id>`, hash del testo) e un testo cambiato
+chiede di nuovo, mentre quello scritto dall'utente in locale non chiede mai. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
 
 | Funzionalità | Prio | Origine |
 |---|---|---|

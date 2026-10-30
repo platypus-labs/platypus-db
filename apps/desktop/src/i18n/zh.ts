@@ -2867,6 +2867,11 @@ const zh: Record<string, string> = {
   "The shared project file of {name} cannot be read, so it is left as it is: {detail}": "无法读取 {name} 的共享项目文件，因此保持原样：{detail}",
   // Group O: removing a shared project
   "Remove the shared project \"{name}\" from the app? The shared folder and its files are not deleted; its connections stay in All connections.": "要从应用中移除共享项目“{name}”吗？共享文件夹及其文件不会被删除；其连接仍保留在“所有连接”中。",
+  // Group O: approving the init statements of a shared connection
+  "Run the init statements of {name}?": "运行 {name} 的初始化语句？",
+  "This shared project sets SQL to run every time {name} connects. Read it before you allow it; if it changes, you are asked again.": "此共享项目设置了每次连接 {name} 时运行的 SQL。请先阅读再允许；如果内容更改，会再次询问。",
+  "Connect without them": "不运行并连接",
+  "Run them and remember": "运行并记住",
   // Group O: WebAssembly plugins
   "Plugin driver": "插件驱动",
   "Plugins": "插件",
