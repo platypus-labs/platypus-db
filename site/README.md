@@ -17,7 +17,8 @@ site.js         tour as tabs (without it every screenshot shows, one under the o
 fonts/          Inter and JetBrains Mono, copied from apps/desktop/src/assets/fonts
 img/            icon, the platypus (mark.png, from docs/brand/logo-only-1024.png), database
                 logos (databases.svg, from simple-icons as in the app's DriverPicker) and
-                the logos of other SQL clients for Compare (clients.svg, from simple-icons) and
+                the logos of other SQL clients for Compare (clients.svg, from simple-icons; the
+                app icons in clients/ from tableplus.com, heidisql.com and the pgAdmin repository) and
                 the screenshots and GIFs from docs/screenshots that the page shows
 .nojekyll       tells GitHub Pages to serve the folder as it is
 ```

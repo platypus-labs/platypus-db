@@ -2071,6 +2071,17 @@ svg.i.sm {
   height: 20px;
 }
 
+/* Logos that are app icons in color: shown as they are, without the tinted tile. */
+.cl-logo.img {
+  background: none;
+  border: 0;
+}
+
+.cl-logo.img img {
+  width: 100%;
+  height: 100%;
+}
+
 .cl-logo.lg + h3 {
   margin-top: 16px;
 }
