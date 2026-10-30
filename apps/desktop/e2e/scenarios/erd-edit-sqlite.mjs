@@ -42,10 +42,10 @@ const dialog = `document.querySelector('.modal.design-dialog')`;
 const confirmBox = `document.querySelector('.modal.confirm')`;
 const tabs = `[...document.querySelectorAll('.tab')]`;
 const g = (name) => `[...${erd}.querySelectorAll('.erd-table')].find(g => g.querySelector('text').textContent === ${JSON.stringify(name)})`;
-const stateOf = (name) => `${g(name)}?.getAttribute('data-state') ?? null`;
-const pendingText = `${erd}.querySelector('.erd-pending')?.textContent ?? null`;
-const messageText = `${erd}.querySelector('.erd-message')?.textContent ?? null`;
-const dialogError = `${dialog}?.querySelector('.notice.error')?.textContent ?? null`;
+const stateOf = (name) => `(${g(name)}?.getAttribute('data-state') ?? null)`;
+const pendingText = `(${erd}.querySelector('.erd-pending')?.textContent ?? null)`;
+const messageText = `(${erd}.querySelector('.erd-message')?.textContent ?? null)`;
+const dialogError = `(${dialog}?.querySelector('.notice.error')?.textContent ?? null)`;
 const line = (table, column, target) => `${erd}.querySelector('path[data-fk=${JSON.stringify(`${table}.${column}->${target}`)}]') != null`;
 const count = (state) => `${erd}.querySelectorAll('.erd-table[data-state=${JSON.stringify(state)}]').length`;
 
@@ -96,15 +96,22 @@ async function dragKey(page, table, column, target) {
   })()`);
   assert.ok(p.ty > 0 && p.ty < p.h && p.tx > 0 && p.tx < p.w, `the table ${target} is out of the window: ${JSON.stringify(p)}`);
   await page.mouse("mousePressed", p.sx, p.sy);
-  await page.mouse("mouseMoved", (p.sx + p.tx) / 2, (p.sy + p.ty) / 2, { buttons: 1 });
-  await page.mouse("mouseMoved", p.tx, p.ty, { buttons: 1 });
-  await page.mouse("mouseReleased", p.tx, p.ty);
+  // The press clears a message of the diagram, and the canvas moves up: the target is measured again.
+  await page.sleep(150);
+  const t = await page.eval(`(() => { const r = ${g(target)}.querySelector('rect').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  await page.mouse("mouseMoved", (p.sx + t.x) / 2, (p.sy + t.y) / 2, { buttons: 1 });
+  await page.mouse("mouseMoved", t.x, t.y, { buttons: 1 });
+  await page.mouse("mouseReleased", t.x, t.y);
 }
 
 /** A drag that adds nothing: the message the diagram shows says why. */
 async function refusedDrag(page, table, column, target, why) {
   await dragKey(page, table, column, target);
-  await page.waitFor(`(${messageText}) !== null && (${messageText}).includes(${JSON.stringify(why)})`);
+  try {
+    await page.waitFor(`${messageText} !== null && ${messageText}.includes(${JSON.stringify(why)})`);
+  } catch (e) {
+    throw new Error(`${e.message}; message: ${await page.eval(messageText)}; drag ${table}.${column} -> ${target}; ${JSON.stringify(await page.eval(`[...${erd}.querySelectorAll('.erd-table')].map(g => [g.querySelector('text').textContent, JSON.stringify(g.querySelector('rect').getBoundingClientRect())])`))}`);
+  }
 }
 
 export default async function (page, { dir }) {

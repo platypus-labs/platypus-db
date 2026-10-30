@@ -44,11 +44,13 @@ export const skip = needs(DB);
 /** What the app's user needs to read and change accounts. */
 const GRANT_APP = `GRANT CREATE USER, CREATE ROLE, DROP ROLE, ROLE_ADMIN ON *.* TO 'platypus'@'%';
 GRANT SELECT ON mysql.* TO 'platypus'@'%';
-GRANT ALL ON platypus.* TO 'platypus'@'%' WITH GRANT OPTION;`;
+GRANT ALL ON platypus.* TO 'platypus'@'%' WITH GRANT OPTION;
+GRANT PROCESS ON *.* TO 'platypus'@'%' WITH GRANT OPTION;`;
 
 const REVOKE_APP = `REVOKE CREATE USER, CREATE ROLE, DROP ROLE, ROLE_ADMIN ON *.* FROM 'platypus'@'%';
 REVOKE SELECT ON mysql.* FROM 'platypus'@'%';
-REVOKE GRANT OPTION ON platypus.* FROM 'platypus'@'%';`;
+REVOKE GRANT OPTION ON platypus.* FROM 'platypus'@'%';
+REVOKE GRANT OPTION ON *.* FROM 'platypus'@'%';`;
 
 const DROP_ALL = `${ACCOUNTS.map((a) => `DROP USER IF EXISTS ${a};`).join("\n")}
 ${ROLES.map((r) => `DROP ROLE IF EXISTS '${r}';`).join("\n")}`;
@@ -268,7 +270,7 @@ async function drops(page) {
   await waitPreview(page, "DROP ROLE 'e2e_u_readers'");
   await runDialog(page);
   await page.waitFor(`${principalRow("e2e_u_readers")} === null`, 15_000);
-  assert.notEqual(await page.eval(principalRow("e2e_u_app")), null);
+  assert.equal(await page.eval(`${principalRow("e2e_u_app")} !== null`), true);
 }
 
 export default async function (page) {

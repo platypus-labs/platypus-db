@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piano di esecuzione</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .sum { display: flex; align-items: center; gap: var(--sp-6); padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--border); }
+  .sum .q { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg-muted); }
+  .sum .m .lb { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .sum .m .v { font-size: var(--fs-xl); font-weight: var(--fw-semi); color: var(--fg-strong); font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .sum .m .v small { font-size: var(--fs-sm); color: var(--fg-muted); font-weight: var(--fw-reg); }
+  .wrap { flex: 1; display: flex; min-height: 0; }
+  .plan { flex: 1; min-width: 0; overflow: auto; }
+  .ph { display: grid; grid-template-columns: 1fr 200px 72px 84px; gap: var(--sp-4); align-items: center; height: var(--ctl-sm); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; background: var(--grid-head); }
+  .pr { display: grid; grid-template-columns: 1fr 200px 72px 84px; gap: var(--sp-4); align-items: center; height: var(--row-tree); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+  .pr.sel { background: var(--selected); }
+  .pr .n { display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; color: var(--fg-strong); }
+  .pr .n .o { color: var(--fg-muted); }
+  .pr .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .pr .progress { height: 6px; }
+  .pr .progress i.hot { background: var(--warn); }
+  .d1 { padding-left: 0; } .d2 { padding-left: var(--sp-5); } .d3 { padding-left: var(--sp-7); } .d4 { padding-left: calc(var(--sp-7) + var(--sp-5)); }
+  .editor-note { padding: var(--sp-3) var(--sp-4); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="zap" class="sm"></i>Piano · revenue_by_city<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="refresh" class="sm"></i>Rianalizza</button>
+    <label class="check on"><i></i>Esegui davvero (ANALYZE)</label>
+    <span class="sep"></span>
+    <div class="seg"><span class="on"><i data-i="list" class="sm"></i>Albero</span><span><i data-i="erd" class="sm"></i>Grafico</span><span><i data-i="code" class="sm"></i>Testo</span></div>
+    <span class="grow"></span>
+    <button class="btn sm ghost"><i data-i="copy" class="sm"></i>Copia piano</button>
+    <button class="btn sm ghost"><i data-i="code" class="sm"></i>Apri la query</button>
+  </div>
+
+  <div class="sum">
+    <div class="q mono">SELECT c.city, count(*) AS orders, sum(o.total) AS revenue FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.placed_at &gt; now() - interval '30 days' GROUP BY c.city ORDER BY revenue DESC;</div>
+    <div class="m"><div class="lb">Costo</div><div class="v">1 284</div></div>
+    <div class="m"><div class="lb">Tempo</div><div class="v">38,4 <small>ms</small></div></div>
+    <div class="m"><div class="lb">Righe</div><div class="v">2 980 <small>stimate 3 100</small></div></div>
+  </div>
+
+  <div class="editor-note">
+    <div class="banner warn">
+      <i data-i="alert"></i>
+      <div class="grow"><span class="strong">Seq Scan su orders: manca un indice su placed_at.</span> <span class="muted">Il filtro scarta 2 640 righe su 2 980 dopo averle lette tutte.</span></div>
+      <div class="acts"><button class="btn sm">Crea indice…</button><button class="btn sm ghost">Ignora</button></div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="plan">
+      <div class="ph"><span>Nodo</span><span>Tempo</span><span style="text-align:right">%</span><span style="text-align:right">Righe</span></div>
+      <div class="pr"><div class="n d1"><i data-i="down" class="sm muted"></i>Sort <span class="o">revenue DESC</span></div><div class="progress"><i style="width:4%"></i></div><span class="num">4,1</span><span class="num">9</span></div>
+      <div class="pr"><div class="n d2"><i data-i="down" class="sm muted"></i>HashAggregate <span class="o">city</span></div><div class="progress"><i style="width:12%"></i></div><span class="num">12,3</span><span class="num">9</span></div>
+      <div class="pr"><div class="n d3"><i data-i="down" class="sm muted"></i>Hash Join <span class="o">c.id = o.customer_id</span></div><div class="progress"><i style="width:21%"></i></div><span class="num">21,0</span><span class="num">340</span></div>
+      <div class="pr sel"><div class="n d4"><i data-i="alert" class="sm" style="color:var(--warn)"></i>Seq Scan <span class="o">on orders</span></div><div class="progress"><i class="hot" style="width:59%"></i></div><span class="num">58,7</span><span class="num">340</span></div>
+      <div class="pr"><div class="n d4"><i data-i="down" class="sm muted"></i>Hash</div><div class="progress"><i style="width:3%"></i></div><span class="num">3,1</span><span class="num">1 874</span></div>
+      <div class="pr"><div class="n d4" style="padding-left:calc(var(--sp-7) + var(--sp-7))"><i data-i="table" class="sm" style="color:var(--obj-table)"></i>Seq Scan <span class="o">on customers</span></div><div class="progress"><i style="width:1%"></i></div><span class="num">0,8</span><span class="num">1 874</span></div>
+    </div>
+
+    <aside class="panel-r" style="width:300px">
+      <header><i data-i="alert" class="sm" style="color:var(--warn)"></i><span class="strong grow">Seq Scan su orders</span><button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button></header>
+      <div class="pb">
+        <dl class="kv" style="margin:0">
+          <dt>Tempo</dt><dd>22,5 ms (58,7%)</dd>
+          <dt>Costo</dt><dd>0.00..64.80</dd>
+          <dt>Righe</dt><dd>340 su 2 980 lette</dd>
+          <dt>Scartate</dt><dd>2 640 dal filtro</dd>
+          <dt>Buffer</dt><dd>41 pagine in cache</dd>
+          <dt>Filtro</dt><dd class="mono">placed_at &gt; (now() - '30 days')</dd>
+        </dl>
+        <div class="banner info"><i data-i="info"></i><div>Un indice su <span class="mono">orders(placed_at)</span> permetterebbe di leggere solo le 340 righe utili.</div></div>
+        <div class="col" style="gap:var(--sp-2)">
+          <button class="btn primary"><i data-i="plus" class="sm"></i>Crea indice…</button>
+          <button class="btn ghost"><i data-i="table" class="sm"></i>Apri la tabella orders</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="status"><span>6 nodi</span><span>Planning 0,4 ms</span><span class="r"><span>PostgreSQL 16 · EXPLAIN (ANALYZE, BUFFERS)</span></span></div>
+</div>
+
+<div class="mk-note" style="left:560px;top:106px"><b>Riepilogo in testa</b>Costo, tempo e righe sempre visibili; la vista (Albero, Grafico, Testo) è un controllo segmentato come altrove.</div>
+<div class="mk-note" style="left:96px;top:240px"><b>Avviso con azione</b>Il problema e la correzione stanno insieme: Crea indice… apre il dialogo già compilato.</div>
+<div class="mk-note" style="left:96px;top:600px"><b>Colore solo per il caso</b>Le barre usano l'accento; il giallo marca il nodo che merita attenzione.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

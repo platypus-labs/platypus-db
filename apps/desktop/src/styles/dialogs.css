@@ -1771,3 +1771,17 @@ label.multi-run-row:hover {
   font-size: 12px;
   width: 100%;
 }
+
+/* The init statements a shared project brought, read-only (ui/initApproval.tsx). */
+.init-approval-sql {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  user-select: text;
+}

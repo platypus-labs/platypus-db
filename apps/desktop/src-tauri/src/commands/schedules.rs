@@ -19,7 +19,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::backup::{BackupEvent, BackupFormat, BackupRequest, backup};
-use super::connections::{SavedConfig, saved_config};
+use super::connections::{InitChoice, SavedConfig, saved_config};
 use super::profiles::start as start_profile;
 use super::schema_history::{SchemaRef, take};
 use super::{AppState, connect, lock, read_only_error, sql};
@@ -164,7 +164,7 @@ pub(crate) async fn with_saved_password(
     database: Option<String>,
     scheduled: bool,
 ) -> CommandResult<SavedConfig> {
-    let saved = saved_config(state, connection_id, None, database).await?;
+    let saved = saved_config(state, connection_id, None, database, InitChoice::Skip).await?;
     if saved.none_saved {
         return Err(password_missing(&saved.label, scheduled));
     }
@@ -667,7 +667,9 @@ mod tests {
         let db = dir.path().join("tasks.db");
         let (state, connection) = sqlite_state(dir.path(), &db);
         let profiles = Profiles::open(None);
-        let saved = saved_config(&state, connection, None, None).await.unwrap();
+        let saved = saved_config(&state, connection, None, None, InitChoice::Skip)
+            .await
+            .unwrap();
         let conn = connect(&saved.config).await.unwrap();
         for sql in [
             "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)",
@@ -735,7 +737,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("profiles.db");
         let (state, connection) = sqlite_state(dir.path(), &db);
-        let saved = saved_config(&state, connection, None, None).await.unwrap();
+        let saved = saved_config(&state, connection, None, None, InitChoice::Skip)
+            .await
+            .unwrap();
         let conn = connect(&saved.config).await.unwrap();
         for sql in [
             "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)",
@@ -842,7 +846,9 @@ mod tests {
         let db = dir.path().join("snap.db");
         let (state, connection) = sqlite_state(dir.path(), &db);
         let profiles = Profiles::open(None);
-        let saved = saved_config(&state, connection, None, None).await.unwrap();
+        let saved = saved_config(&state, connection, None, None, InitChoice::Skip)
+            .await
+            .unwrap();
         let conn = connect(&saved.config).await.unwrap();
         conn.execute(
             "CREATE TABLE t (id INTEGER PRIMARY KEY)",

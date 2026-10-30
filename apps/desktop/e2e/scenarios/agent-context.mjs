@@ -67,11 +67,12 @@ async function selectStart(page, n) {
   for (let i = 0; i < n; i++) await page.key("ArrowRight", "ArrowRight", 39, SHIFT);
 }
 
-/** Calls get_user_context and waits for the app's dialog. */
+/** Calls get_user_context and waits for the app's dialog. Returns the pending answer in a pair:
+ *  a promise returned as is would make the caller wait for the answer too. */
 async function asked(page, mcp, args = {}) {
   const result = mcp.call("get_user_context", args);
   await page.waitFor(`${dialog} !== null`, 20_000);
-  return result;
+  return [result];
 }
 
 /** The bridge's file, once the app wrote it. */
@@ -85,7 +86,7 @@ const SQL = "SELECT id, note FROM orders ORDER BY id";
 
 /** The dialog lists what would be shared; share once returns it, within the limits. */
 async function shareOnce(page, mcp) {
-  const result = await asked(page, mcp);
+  const [result] = await asked(page, mcp);
   assert.match(await page.eval(`${dialog}.querySelector('h2').textContent`), /e2e-context wants to see what you are working on/);
   assert.match(await page.eval(field("tab")), /Shop/);
   assert.match(await page.eval(item("editor")), /The editor's text: 39 characters/);
@@ -115,7 +116,7 @@ async function shareOnce(page, mcp) {
 
 /** A refusal carries the reason typed; asking only for some parts shows only those. */
 async function refuse(page, mcp) {
-  const result = await asked(page, mcp, { parts: ["selection"] });
+  const [result] = await asked(page, mcp, { parts: ["selection"] });
   assert.equal(await page.eval(`${dialog}.querySelector('[data-part=editor]') === null`), true, "only what is asked is listed");
   assert.match(await page.eval(item("selection")), /The selection: 6 characters/);
   await setField(page, ".agent-context [data-field=reason]", "not this one");
@@ -124,7 +125,7 @@ async function refuse(page, mcp) {
   assert.ok(r.error && /did not share what they are working on: not this one/.test(r.text), r.text);
   await page.waitFor(`${dialog} === null`);
   // The reason typed is gone for the next request.
-  const next = await asked(page, mcp, { parts: ["editor"] });
+  const [next] = await asked(page, mcp, { parts: ["editor"] });
   assert.equal(await page.eval(`${dialog}.querySelector('[data-field=reason]').value`), "");
   await page.eval(answer("deny"));
   const denied = await next;
@@ -135,7 +136,7 @@ async function refuse(page, mcp) {
 /** Allowed for the session: the next requests of this agent are answered without a dialog,
  *  with the editor and the grid as they are then; another agent is asked. */
 async function shareSession(page, dir, mcp) {
-  const first = await asked(page, mcp, { parts: ["editor", "selection"] });
+  const [first] = await asked(page, mcp, { parts: ["editor", "selection"] });
   await page.eval(answer("session"));
   const r = await first;
   assert.equal(r.error, false, r.text);
@@ -158,7 +159,7 @@ async function shareSession(page, dir, mcp) {
   // Another agent has its own answer to give.
   const other = await startMcp(dir, "e2e-other");
   try {
-    const result = await asked(page, other);
+    const [result] = await asked(page, other);
     assert.match(await page.eval(`${dialog}.querySelector('h2').textContent`), /e2e-other wants to see/);
     await page.eval(answer("deny"));
     assert.equal((await result).error, true);
@@ -181,7 +182,7 @@ async function closedConnection(page, dir, mcp) {
   // An agent not yet allowed is asked, but the dialog only offers to refuse.
   const other = await startMcp(dir, "e2e-closed");
   try {
-    const result = await asked(page, other);
+    const [result] = await asked(page, other);
     assert.match(await page.eval(field("tab")), /closed to agents/);
     assert.equal(await page.eval(`${dialog}.querySelector('[data-answer=once]') === null`), true, "no Share once");
     assert.equal(await page.eval(`${dialog}.querySelector('[data-answer=session]') === null`), true, "no Share for this session");

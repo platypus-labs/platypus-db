@@ -1,0 +1,140 @@
+<title>Revisione grafica PlatypusDB</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  /* Index of the group R mockups: one column, a list per area, the inventory at the end. */
+  html, body { height: auto; }
+  body { overflow: auto; background: var(--bg); color: var(--fg); }
+  .page { max-width: 1040px; margin: 0 auto; padding-block: var(--sp-9) var(--sp-10);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .hd { display: flex; gap: var(--sp-4); align-items: center; }
+  .hd img { width: 36px; height: 36px; }
+  h1 { margin: 0; font-size: var(--fs-2xl); letter-spacing: -.015em; color: var(--fg-strong); text-wrap: balance; }
+  .intro { color: var(--fg-muted); max-width: 68ch; line-height: 1.6; margin: var(--sp-4) 0 0; }
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-2) var(--sp-6); margin: var(--sp-6) 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+  .rules li { display: flex; gap: var(--sp-2); align-items: flex-start; }
+  .rules svg { color: var(--accent); margin-top: 2px; }
+  h2 { font-size: var(--fs-lg); color: var(--fg-strong); margin: var(--sp-9) 0 var(--sp-3); display: flex; align-items: baseline; gap: var(--sp-3); }
+  h2 small { font-size: var(--fs-sm); color: var(--fg-muted); font-weight: var(--fw-reg); }
+  .pages { border: 1px solid var(--border); border-radius: var(--r-2); overflow: hidden; }
+  .pg { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: var(--sp-4); align-items: start; padding: var(--sp-4); border-top: 1px solid var(--border); text-decoration: none; color: inherit; }
+  .pg:first-child { border-top: 0; }
+  a.pg:hover { background: var(--hover); }
+  .pg .no { font: var(--fs-sm) var(--font-mono); color: var(--fg-muted); padding-top: 1px; }
+  .pg .t { color: var(--fg-strong); font-weight: var(--fw-semi); }
+  .pg .d { color: var(--fg-muted); font-size: var(--fs-sm); margin-top: var(--sp-0); line-height: 1.5; }
+  .pg .fb { margin-top: var(--sp-2); font-size: var(--fs-sm); border-left: 2px solid var(--accent); padding-left: var(--sp-3); color: var(--fg); }
+  .pg .fb:empty { display: none; }
+  .pg.todo { opacity: .55; }
+  .inv { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  .inv th { text-align: left; color: var(--fg-muted); font-weight: var(--fw-med); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border-strong); }
+  .inv td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); vertical-align: top; }
+  .inv td:first-child { color: var(--fg-strong); white-space: nowrap; }
+  .inv .mono { font-size: var(--fs-xs); color: var(--fg-muted); }
+  .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-2); }
+  .legend { display: flex; gap: var(--sp-4); flex-wrap: wrap; font-size: var(--fs-sm); color: var(--fg-muted); margin-top: var(--sp-3); }
+  @media (max-width: 640px) { .pg { grid-template-columns: 1fr; gap: var(--sp-2); } .pg .no { display: none; } }
+</style>
+
+<main class="page">
+  <div class="hd"><img src="assets/img/platypus-mark.png" alt=""><h1>Revisione grafica PlatypusDB</h1></div>
+  <p class="intro">Mockup del gruppo R: tutte le pagine dell'app desktop e del sito, da approvare prima di scrivere codice.
+    Sono pagine statiche, non l'app: i dati sono di esempio (database "Shop"). In ogni pagina il riquadro in basso a destra
+    cambia tema (scuro o chiaro) e nasconde le note gialle, che spiegano le scelte.
+    Per confronto, la prima versione (prima dei commenti) è in un Artifact a parte:
+    <a href="https://claude.ai/artifact/FurUr1uGm3Cnb3HitTCs5h" style="color:var(--accent)">prima versione</a>.
+    30/10: dopo il confronto l'utente preferisce questa versione, quella nuova.</p>
+  <ul class="rules">
+    <li><i data-i="check" class="sm"></i>Colori attuali (Platypus Dark e Light), una sola scala di spazi, raggi, font e controlli</li>
+    <li><i data-i="check" class="sm"></i>Rail dei progetti in stile Discord, tab in alto, interfaccia minimale</li>
+    <li><i data-i="check" class="sm"></i>Dialog con la stessa struttura: titolo, corpo, pulsanti; Esc e Invio</li>
+    <li><i data-i="check" class="sm"></i>Stati vuoti, di caricamento e di errore uguali ovunque, con un'azione utile</li>
+    <li><i data-i="check" class="sm"></i>Azioni principali visibili sulla pagina, non solo nei menu</li>
+    <li><i data-i="check" class="sm"></i>Icone dei driver nel navigator, con colore e stato della connessione</li>
+  </ul>
+
+  <h2>App desktop <small id="app-count"></small></h2>
+  <div class="pages" id="app-pages"></div>
+
+  <h2>Sito <small id="site-count"></small></h2>
+  <div class="pages" id="site-pages"></div>
+
+  <h2>Inventario <small>ogni schermata e dialog dell'app, e il mockup che ne fissa il modello</small></h2>
+  <div class="scroll"><table class="inv"><thead><tr><th>Schermata</th><th>File</th><th>Modello</th></tr></thead><tbody id="inv"></tbody></table></div>
+  <div class="legend"><span>Le schermate senza un mockup proprio seguono il modello indicato: stessa struttura, stessi componenti.</span></div>
+</main>
+
+<script>
+// Pages and the user's comments on each. fb: the comment, empty until the user has seen the page.
+const APP = [
+  ["00", "app/00-foundations.html", "Fondamenta", "Token, pulsanti, campi, badge, icone dei driver, anatomia del dialog, stati vuoto/caricamento/errore, menu, notifiche.", ""],
+  ["01", "app/01-workspace.html", "Area di lavoro", "Rail, navigator con icone dei driver, tab in alto, editor SQL, griglia con modifiche in sospeso, pannello del valore.", "30/10 · Tutte le pagine dell'app rifatte sulla struttura di oggi: cornice unica, foglio arrotondato, schede con il pallino della connessione, cornice tinta in produzione."],
+  ["02", "app/02-welcome.html", "Primo avvio e progetto vuoto", "Navigator vuoto con le azioni per iniziare, pagina di avvio con recenti e scorciatoie.", "30/10 · Logo come oggi (banner logo + scritta). Poi: la prima versione non piaceva, rifatta come il Welcome attuale (due colonne, tre schede). Poi: rimesse sotto le informazioni della prima versione (Recenti, Scorciatoie). Poi: troppo piccolo, ingrandita. Poi: logo a sinistra, allineato al testo. Il blocco tutto a sinistra era brutto: di nuovo centrato, logo allineato al testo, tolta la variante Senza cronologia."],
+  ["03", "app/03-connection-picker.html", "Nuova connessione: il database", "Ricerca, gruppi di driver, incolla un URL; passo 1 di 2.", ""],
+  ["04", "app/04-connection-form.html", "Finestra di connessione", "Sezioni Connessione, Autenticazione, Aspetto e sicurezza su una griglia sola; test in basso.", ""],
+  ["05", "app/05-object-table.html", "Pagina di una tabella", "Intestazione con le azioni (dati, struttura, DDL, diagramma) e sotto-schede.", ""],
+  ["06", "app/06-table-editor.html", "Editor grafico della tabella", "Colonne aggiunte, modificate e rimosse; anteprima SQL prima di applicare.", ""],
+  ["07", "app/07-erd.html", "Diagramma ER", "Tela con tabelle e relazioni, barra degli strumenti, minimappa, ispettore.", ""],
+  ["08", "app/08-explain.html", "Piano di esecuzione", "Albero con i tempi, suggerimento di indice, dettaglio del nodo.", ""],
+  ["09", "app/09-analysis.html", "Profilo di una tabella", "Indicatori, distribuzione per colonna, stati di caricamento e di errore.", ""],
+  ["10", "app/10-dashboard.html", "Dashboard", "Riquadri di grafici da query salvate, intervallo di aggiornamento, modifica della disposizione.", ""],
+  ["11", "app/11-transfer.html", "Importa ed esporta", "Procedura a passi: origine, colonne, opzioni, avanzamento.", ""],
+  ["12", "app/12-settings.html", "Impostazioni", "La finestra di oggi, con ogni pagina che ha intestazione e sotto-schede.", "30/10 · App più vicina a oggi: le impostazioni restano una finestra."],
+  ["13", "app/13-agents.html", "Agenti e MCP", "Una pagina della finestra Impostazioni: elenco delle connessioni con l'accesso a destra, dettaglio a fianco.", "30/10 · Come oggi, dentro le Impostazioni."],
+  ["14", "app/14-admin.html", "Amministrazione del server", "Sessioni, blocchi, utenti e ruoli, statistiche.", ""],
+  ["15", "app/15-projects.html", "Progetti", "Rail con cartelle, finestra del progetto, aggiungere connessioni.", ""],
+  ["16", "app/16-dialogs.html", "Dialog e conferme", "Conferma distruttiva, scrittura in produzione, nome, modifica di massa, notifiche.", ""],
+  ["17", "app/17-palette.html", "Palette, ricerca e cronologia", "Ctrl K, ricerca negli oggetti e nei dati, cronologia delle query.", ""],
+];
+const SITE = [
+  ["S1", "site/home.html", "Home", "Il sito di oggi (ornitorinco nel cerchio dei database, finestra animata, tour con le GIF, confronto con gli altri client) con le correzioni del gruppo R.", "30/10 · Il sito deve restare simile a quello attuale, con GIF, confronti e il cerchio. Rifatto partendo dal sito di oggi. Poi: tutte le pagine interne rifatte con i pezzi della home (hero col cerchio, sezioni, card, barre). Le GIF del tour vanno rifatte con l'app ridisegnata, dopo l'implementazione di R. 30/10 · Il sito così piace molto: direzione approvata."],
+  ["S2", "site/features.html", "Funzionalità", "Indice per area e sezioni con un pezzo di interfaccia reale.", ""],
+  ["S3", "site/databases.html", "Database", "Tutti i database, come si collegano e cosa supportano.", ""],
+  ["S6", "site/compare.html", "Confronti", "Testa a testa con ogni client, dimensioni, avvio e memoria, tabella delle funzioni, importare le connessioni.", "30/10 · Richiesti più confronti con gli altri client SQL. Nuova pagina; i valori degli altri client sono da verificare prima di pubblicare. Poi: rifatta con i pezzi del sito di oggi (hero, barre, numeri, card)."],
+  ["S4", "site/download.html", "Download", "Sistema rilevato, file per piattaforma, installazione da riga di comando.", ""],
+  ["S5", "site/docs.html", "Documentazione", "Indice a sinistra, articolo, indice della pagina a destra.", ""],
+];
+// Inventory: screen, source, the mockup that sets its model.
+const INV = [
+  ["Navigator, editor SQL, griglia, pannelli dei risultati", "components/QueryTab, grid/, panels/", "01"],
+  ["Script, note, outline, variabili", "scripts/ScriptsPanel, catalog/NotesPanel, editor/OutlinePanel, editor/VariablesPanel", "01"],
+  ["Benvenuto, scorciatoie", "shell/Welcome, shell/ShortcutsPanel", "02"],
+  ["Nuova connessione, test delle connessioni", "components/ConnectionDialog, components/TestConnectionsDialog", "03 · 04"],
+  ["Profilo di rete, gestori di credenziali", "components/NetworkProfileDialog", "04"],
+  ["Importa connessioni (DBeaver, DataGrip…)", "components/ImportDialog", "11"],
+  ["Pagina oggetto, azioni SQL, documentazione", "objects/ObjectTab, objects/SqlActionDialog, catalog/DocsDialog", "05"],
+  ["Editor della tabella, form degli oggetti", "grid/edit/TableEditor, schema/ObjectFormDialog", "06"],
+  ["Diagramma ER, progetto ER, tabelle", "erd/ErdTab, erd/DesignDialog, erd/TablesDialog", "07"],
+  ["Piano di esecuzione", "explain/ExplainTab, explain/PlanDialog", "08"],
+  ["Profilo, confronto risultati, pivot, query incrociate", "analysis/TableProfileTab, DiffTab, PivotDialog, CrossQueryDialog", "09"],
+  ["Dashboard, elenco dashboard, notebook", "dashboard/DashboardTab, DashboardsDialog, notebook/NotebookTab", "10"],
+  ["Export, import, tabelle, migrazione, profili, file SQL, dati di test", "transfer/*, components/ExportDialog", "11"],
+  ["Impostazioni, temi, driver", "components/SettingsDialog, themes/ThemesPanel, drivers/DriversPanel, drivers/CompatDialog", "12"],
+  ["Agenti, contesto, scrittura degli agenti", "agents/AgentsPanel, AgentContextDialog, AgentWriteDialog", "13"],
+  ["Amministrazione, utenti, backup, manutenzione, pianificazioni", "admin/AdminTab, UserDialogs, BackupDialog, MaintenanceDialog, SchedulesDialog", "14"],
+  ["Progetti, aggiungi connessioni", "projects/ProjectDialog, projects/AddConnectionsDialog", "15"],
+  ["Protezioni, modifiche in sospeso, snapshot, log delle transazioni", "guards/*", "16"],
+  ["Modifica di massa, anteprima, chiave virtuale, colonne, calcolate, formattazione", "grid/edit/*, grid/ColumnsDialog, ComputedDialog, FormattingDialog", "16"],
+  ["Parametri, esecuzione multipla, snippet, debug", "editor/ParamsDialog, MultiRunDialog, SnippetsDialog, debugger/*", "16"],
+  ["Confronto schemi e dati, lint, migrazioni, cronologia", "schema/*", "06 · 09"],
+  ["Filtro del navigator, colonna di visualizzazione, nome", "navigator/FilterDialog, catalog/DisplayColumnDialog, ui/NameDialog", "16"],
+  ["Palette dei comandi, ricerca, cronologia, attività", "shell/CommandPalette, search/SearchTab, components/HistoryPanel, shell/ActivityDialog", "17"],
+];
+
+document.body.dataset.index = "index.html";
+
+// Pages already drawn; the others are listed so the plan is visible.
+const READY = new Set(["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "S1", "S2", "S3", "S4", "S5", "S6"]);
+
+function rows(list, el, count) {
+  document.getElementById(count).textContent = `${list.filter(([no]) => READY.has(no)).length} di ${list.length} pronte`;
+  document.getElementById(el).innerHTML = list.map(([no, href, t, d, fb]) => !READY.has(no)
+    ? `<div class="pg todo"><span class="no">${no}</span><span><div class="t">${t}</div><div class="d">${d}</div></span><span class="muted" style="font-size:var(--fs-xs)">in preparazione</span></div>`
+    : `<a class="pg" href="${href}"><span class="no">${no}</span><span><div class="t">${t}</div><div class="d">${d}</div><div class="fb">${fb}</div></span><i data-i="right" class="sm muted"></i></a>`).join("");
+}
+rows(APP, "app-pages", "app-count");
+rows(SITE, "site-pages", "site-count");
+document.getElementById("inv").innerHTML = INV.map(([s, f, m]) => `<tr><td>${s}</td><td class="mono">${f}</td><td>${m}</td></tr>`).join("");
+</script>
+<script src="assets/mock.js"></script>

@@ -1,5 +1,5 @@
 // Regression guard (passes): Compare with… when the target connection picked does not answer:
-// the connection error is shown (as a notice of the window), Schema stays empty, Compare is
+// the connection error is shown (as a notice of the window, not of the dialog), Schema stays empty, Compare is
 // disabled and Close is not; picking a working connection again lists its schemas, with no
 // error left in the dialog, and compares ("nothing to change"); leaving it for the one down
 // again, its schema does not stay and Compare is disabled.
@@ -52,8 +52,11 @@ export default async function (page) {
     await page.waitFor(`${compareDialog}.querySelector('.notice') !== null`, 20_000);
     assert.match(await page.eval(`${compareDialog}.querySelector('.notice').textContent`), /nothing to change/);
     // Leaving a target whose schema was chosen: the schema does not stay, Compare waits.
+    // The first error is still on screen: dismiss it, so the next one is a new attempt failing.
+    await page.eval(`document.querySelector('.toast')?.click()`);
+    await page.waitFor(`document.querySelector('.toast') === null`);
     await pickConnection(page, "QA3 PG down");
-    await page.waitFor(`${compareDialog}.querySelector('.notice.error')?.textContent.includes('QA3 PG down') ?? false`, 30_000);
+    await page.waitFor(`[...document.querySelectorAll('.toast')].some(n => n.textContent.includes('QA3 PG down'))`, 30_000);
     assert.equal(await page.eval(`${compareDialog}.querySelectorAll('select')[1].value`), "", "the other connection's schema stays");
     assert.equal(await page.eval(`${buttonIn(compareDialog, "Compare")}.disabled`), true, "Compare enabled on a schema never chosen");
   } finally {

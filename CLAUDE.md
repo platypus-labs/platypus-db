@@ -143,7 +143,7 @@ sono finiti in meno di un giorno, soprattutto per i push della roadmap e per mac
 - Quando il branch del gruppo è unito in `main` (o il lavoro previsto è finito), aggiornare la riga
   con un commit `chore(roadmap): rilascio gruppo <X>`:
   - `✅ completato` solo se **tutte** le funzionalità P1, P2 e P3 della tabella del gruppo sono
-    fatte. Anche la riga "Stato" della sezione del gruppo diventa `**Stato: completato**`. Un gruppo
+    fatte, tranne le righe `⏭ serve un Mac`, che si saltano finché non c'è un Mac. Anche la riga "Stato" della sezione del gruppo diventa `**Stato: completato**`. Un gruppo
     completato non si riprende: è il segno che lì non c'è più niente da fare.
   - `✅ fatto (<priorità completate>)` se resta qualcosa (es. `✅ fatto (P1, P2)`, o
     `✅ fatto (P1; P2 in parte)`): il gruppo resta disponibile per il resto, come un gruppo libero.

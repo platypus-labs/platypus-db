@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Area di lavoro</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .editor-pane { height: 34%; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
+  .res-bar { display: flex; align-items: center; gap: var(--sp-2); height: var(--bar-tool); padding: 0 var(--sp-3); border-bottom: 1px solid var(--border); }
+  .res { flex: 1; display: flex; min-height: 0; }
+  .detail { width: 280px; border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+  .detail header { display: flex; align-items: center; gap: var(--sp-2); height: var(--bar-tool); padding: 0 var(--sp-2) 0 var(--sp-4); border-bottom: 1px solid var(--border); }
+  .detail pre { margin: 0; padding: var(--sp-3) var(--sp-4); font: var(--fs-sm)/1.6 var(--font-mono); }
+  .edits { display: inline-flex; gap: var(--sp-2); align-items: center; padding: 0 var(--sp-2) 0 var(--sp-3); height: var(--ctl-sm); border-radius: var(--r-pill); background: var(--warn-bg); font-size: var(--fs-sm); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--error)"></span><i data-i="code" class="sm"></i>Shop prod<i data-i="x" class="sm x"></i></div>
+    <div class="new" title="Nuova scheda (Ctrl T)"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <button class="btn sm"><i data-i="play" class="sm"></i>Script<kbd>Alt X</kbd></button>
+    <button class="btn icon sm" disabled title="Ferma"><i data-i="stop" class="sm"></i></button>
+    <span class="sep"></span>
+    <span class="ctx"><span class="drv pg" style="width:14px;height:14px;font-size:7px">Pg</span>Shop dev · public<i data-i="down" class="sm"></i></span>
+    <span class="ctx"><i data-i="lock" class="sm"></i>Auto-commit<i data-i="down" class="sm"></i></span>
+    <span class="sep"></span>
+    <button class="btn icon sm" title="Formatta"><i data-i="wand" class="sm"></i></button>
+    <button class="btn icon sm" title="Piano di esecuzione"><i data-i="zap" class="sm"></i></button>
+    <button class="btn icon sm" title="Salva script"><i data-i="save" class="sm"></i></button>
+    <span class="grow"></span>
+    <button class="btn icon sm" title="Struttura"><i data-i="list" class="sm"></i></button>
+    <button class="btn icon sm" title="Cronologia"><i data-i="history" class="sm"></i></button>
+  </div>
+
+  <div class="editor-pane">
+    <div class="editor">
+      <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+      <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">count</span>(*) <span class="kw">AS</span> orders, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+      <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o</span></div>
+      <div class="ln"><b>4</b><span><span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+      <div class="ln cur"><b>5</b><span><span class="kw">WHERE</span> o.placed_at &gt; now() - <span class="kw">interval</span> <span class="st">'30 days'</span></span></div>
+      <div class="ln"><b>6</b><span><span class="kw">GROUP BY</span> c.city <span class="kw">ORDER BY</span> revenue <span class="kw">DESC</span>;</span></div>
+    </div>
+  </div>
+
+  <div class="res-bar">
+    <div class="seg"><span class="on"><i data-i="table" class="sm"></i>Griglia</span><span><i data-i="chart" class="sm"></i>Grafico</span><span><i data-i="code" class="sm"></i>Testo</span></div>
+    <span class="sep"></span>
+    <button class="btn icon sm" title="Aggiungi riga"><i data-i="plus" class="sm"></i></button>
+    <button class="btn icon sm" title="Elimina righe"><i data-i="trash" class="sm"></i></button>
+    <button class="btn icon sm" title="Filtra"><i data-i="filter" class="sm"></i></button>
+    <span class="edits"><i data-i="edit" class="sm"></i>2 modifiche<button class="btn sm ghost">Annulla</button><button class="btn sm primary">Salva</button></span>
+    <span class="grow"></span>
+    <button class="btn sm ghost"><i data-i="upload" class="sm"></i>Esporta</button>
+    <button class="btn icon sm" title="Pannello valore"><i data-i="panelr" class="sm"></i></button>
+  </div>
+
+  <div class="res">
+    <div class="grid-wrap">
+      <table class="grid">
+        <thead><tr><th></th><th>city<small>text</small></th><th>orders<small>bigint</small></th><th>revenue<small>numeric</small></th><th>last_order<small>timestamptz</small></th><th>details<small>jsonb</small></th></tr></thead>
+        <tbody>
+          <tr><td class="rn">1</td><td>Roma</td><td class="num">42</td><td class="num">8 412.50</td><td>2026-10-29 18:21</td><td>{"channel":"web","items":3}</td></tr>
+          <tr><td class="rn">2</td><td>Milano</td><td class="num">39</td><td class="num edit">7 950.00</td><td>2026-10-29 11:04</td><td>{"channel":"store","items":1}</td></tr>
+          <tr class="sel"><td class="rn">3</td><td>Napoli</td><td class="num">31</td><td class="num">5 120.75</td><td>2026-10-28 20:30</td><td class="cur">{"channel":"web","items":[{"product":3,"qty":3}]}</td></tr>
+          <tr><td class="rn">4</td><td>Torino</td><td class="num">27</td><td class="num">4 809.00</td><td>2026-10-28 09:12</td><td>{"channel":"web","items":2}</td></tr>
+          <tr><td class="rn">5</td><td class="null">NULL</td><td class="num">12</td><td class="num">1 233.10</td><td>2026-10-27 16:47</td><td>{"channel":"phone","items":1}</td></tr>
+          <tr><td class="rn">6</td><td>Bologna</td><td class="num">11</td><td class="num">1 190.00</td><td>2026-10-26 13:55</td><td>{"channel":"web","items":4}</td></tr>
+          <tr><td class="rn">7</td><td class="edit">Verona</td><td class="num">9</td><td class="num">980.40</td><td>2026-10-26 08:22</td><td>{"channel":"store","items":2}</td></tr>
+          <tr><td class="rn">8</td><td>Padova</td><td class="num">8</td><td class="num">811.00</td><td>2026-10-25 19:14</td><td>{"channel":"web","items":1}</td></tr>
+          <tr><td class="rn">9</td><td>Genova</td><td class="num">6</td><td class="num">502.90</td><td>2026-10-24 12:57</td><td>{"channel":"web","items":2}</td></tr>
+          <tr class="new"><td class="rn">+</td><td>Trieste</td><td class="num">0</td><td class="num">0.00</td><td class="null">NULL</td><td class="null">NULL</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <aside class="detail">
+      <header><span class="strong grow">details</span><span class="select" style="height:var(--ctl-sm);font-size:var(--fs-sm)">JSON</span><button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button></header>
+      <pre>{
+  <span class="kw">"channel"</span>: <span class="st">"web"</span>,
+  <span class="kw">"items"</span>: [
+    {
+      <span class="kw">"product"</span>: <span class="nu">3</span>,
+      <span class="kw">"qty"</span>: <span class="nu">3</span>
+    }
+  ]
+}</pre>
+    </aside>
+  </div>
+
+  <div class="status">
+    <span>10 righe</span><span>27 ms</span><span>Riga 3, colonna details</span>
+    <span class="r"><span>Ctrl ↵ istruzione · Alt X script</span><span>UTF-8</span><span>PostgreSQL 16</span></span>
+  </div>
+</div>
+
+<div class="mk-note" style="left:340px;top:52px"><b>Tab in alto</b>Barra colorata a sinistra = ambiente della connessione (verde dev, rosso prod). Riga d'accento sopra la scheda attiva.</div>
+<div class="mk-note" style="left:640px;top:84px"><b>Azioni visibili</b>Esegui è il pulsante principale, con la scorciatoia scritta. Connessione, schema e modalità transazione come "chip" cliccabili.</div>
+<div class="mk-note" style="left:96px;top:150px"><b>Icone dei driver</b>Al posto del pallino: quadratino colorato = colore connessione, puntino in basso = stato (verde connessa, rosso errore).</div>
+<div class="mk-note" style="left:760px;top:430px"><b>Modifiche in sospeso</b>Contatore sempre visibile con Annulla/Salva, al posto della sola scorciatoia.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

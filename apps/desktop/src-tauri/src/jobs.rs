@@ -158,16 +158,17 @@ impl Buffer {
         self.batches.push(batch);
     }
 
-    /// Drops rows beyond `cap` from the last batch.
-    fn truncate(&mut self, cap: usize) {
+    /// Drops rows beyond `cap` from the last batch; whether there were any.
+    fn truncate(&mut self, cap: usize) -> bool {
         if self.rows <= cap {
-            return;
+            return false;
         }
         let (Some(last), Some(&start)) = (self.batches.last_mut(), self.starts.last()) else {
-            return;
+            return false;
         };
         *last = last.slice(0, cap - start);
         self.rows = cap;
+        true
     }
 
     /// Zero-copy slices covering rows `offset..offset + limit` (clamped to what is buffered).
@@ -441,13 +442,15 @@ impl Job {
         let progress = |rows, fetching| send(QueryEvent::Progress { rows, fetching });
         let mut demand = self.target.subscribe();
         let mut last_report = Instant::now();
+        // Rows of the last batch that were beyond the cap and dropped.
+        let mut cut = false;
         let ending = loop {
             let rows = lock(&self.buffer).rows;
             if rows >= cap {
                 // Complete only if the server had nothing beyond the limit.
                 break match stream.next().await {
-                    None => Ending::Complete,
-                    Some(_) => Ending::RowLimit,
+                    None if !cut => Ending::Complete,
+                    _ => Ending::RowLimit,
                 };
             }
             if (*demand.borrow()).min(cap) <= rows {
@@ -473,7 +476,7 @@ impl Job {
                 Some(Ok(batch)) => {
                     let mut buffer = lock(&self.buffer);
                     buffer.push(batch);
-                    buffer.truncate(cap);
+                    cut = buffer.truncate(cap);
                     if buffer.bytes > MEMORY_LIMIT_BYTES {
                         break Ending::MemoryLimit;
                     }
@@ -646,10 +649,10 @@ mod tests {
     #[test]
     fn truncates_the_last_batch_to_a_cap() {
         let mut b = buffer(&[3, 4]);
-        b.truncate(5);
+        assert!(b.truncate(5), "rows were dropped");
         assert_eq!(b.rows, 5);
         assert_eq!(values(&b.window(0, 100)), [0, 1, 2, 3, 4]);
-        b.truncate(10);
+        assert!(!b.truncate(10), "nothing to drop");
         assert_eq!(b.rows, 5, "a larger cap changes nothing");
     }
 

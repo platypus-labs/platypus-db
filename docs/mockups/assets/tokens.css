@@ -1,0 +1,228 @@
+/* Group R mockups: one token scale for the app and the site.
+   Colors are the current Platypus Dark / Platypus Light from theme.ts; everything else
+   (space, radius, type, control sizes, shadows) is the single scale the redesign proposes. */
+
+@font-face {
+  font-family: "Inter";
+  font-weight: 100 900;
+  font-display: block;
+  src: url("fonts/inter-latin-wght-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-weight: 100 800;
+  font-display: block;
+  src: url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+}
+
+:root {
+  /* Space: 4px base, with 2 and 6 for dense rows. */
+  --sp-0: 2px;
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 20px;
+  --sp-7: 24px;
+  --sp-8: 32px;
+  --sp-9: 48px;
+  --sp-10: 72px;
+
+  /* Radius: controls, cards, floating surfaces. */
+  --r-1: 4px;
+  --r-2: 6px;
+  --r-3: 10px;
+  --r-pill: 999px;
+
+  /* Type: one scale, 13px body like today. */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 24px;
+  --fs-3xl: 40px;
+  --lh: 1.45;
+  --fw-reg: 400;
+  --fw-med: 500;
+  --fw-semi: 600;
+
+  /* Controls and rows. */
+  --ctl-sm: 24px;
+  --ctl-md: 28px;
+  --ctl-lg: 32px;
+  --row-grid: 24px;
+  --row-tree: 26px;
+  --bar-top: 40px;
+  --bar-tabs: 36px;
+  --bar-tool: 36px;
+  --bar-status: 24px;
+  --rail-w: 56px;
+  --side-w: 264px;
+  --icon: 16px;
+  --icon-sm: 14px;
+
+  /* Motion: short, ease-out, off with reduced motion. */
+  --t-fast: 120ms;
+  --t-med: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  --font-ui: "Inter", "Segoe UI Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+
+/* Platypus Dark (theme.ts). */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16191b;
+  --bg-side: #1b1f22;
+  --bg-rail: #111416;
+  --bg-tabbar: #1b1f22;
+  --bg-input: #20262a;
+  --bg-raised: #1f2427;
+  --fg: #d5dadd;
+  --fg-strong: #f1f3f4;
+  --fg-muted: #8d969b;
+  --border: #262c30;
+  --border-strong: #343b40;
+  --hover: rgba(255, 255, 255, 0.045);
+  --active: #20262a;
+  --selected: #2a2219;
+  --accent: #ff8d28;
+  --accent-fg: #141519;
+  --accent-soft: rgba(255, 141, 40, 0.14);
+  --focus: #ffb36b;
+  --error: #ff8a8a;
+  --error-bg: #2e1416;
+  --ok: #7ed3a0;
+  --ok-bg: #16281d;
+  --warn: #e9c46a;
+  --warn-bg: #2a2119;
+  --info: #8fb8ff;
+  --info-bg: #17223a;
+  --grid-bg: #16191b;
+  --grid-alt: #181c1e;
+  --grid-head: #1b1f22;
+  --edited: rgba(233, 196, 106, 0.16);
+  --syn-kw: #7fc8db;
+  --syn-str: #7ed3a0;
+  --syn-num: #f2b16d;
+  --syn-com: #80898f;
+  --syn-type: #c3a6ff;
+  --obj-table: #8fb8ff;
+  --obj-view: #c3a6ff;
+  --obj-routine: #f2b16d;
+  --obj-trigger: #e9c46a;
+  --frame-prod: #1d1012;
+  --scrim: rgba(5, 7, 8, 0.62);
+  --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Platypus Light (theme.ts). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-side: #f6f8f9;
+  --bg-rail: #eef1f3;
+  --bg-tabbar: #f6f8f9;
+  --bg-input: #ffffff;
+  --bg-raised: #ffffff;
+  --fg: #2a2e31;
+  --fg-strong: #131416;
+  --fg-muted: #5d6266;
+  --border: #e3e6e8;
+  --border-strong: #cdd2d5;
+  --hover: rgba(16, 24, 32, 0.045);
+  --active: #e2e8ea;
+  --selected: #fbeee2;
+  --accent: #b85600;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(184, 86, 0, 0.1);
+  --focus: #b85600;
+  --error: #b42318;
+  --error-bg: #fdecea;
+  --ok: #1e7b4f;
+  --ok-bg: #e3f4ea;
+  --warn: #854d0e;
+  --warn-bg: #fbf0e1;
+  --info: #2f5fb3;
+  --info-bg: #e6eefa;
+  --grid-bg: #ffffff;
+  --grid-alt: #f8fafa;
+  --grid-head: #f6f8f9;
+  --edited: rgba(233, 176, 40, 0.18);
+  --syn-kw: #155e75;
+  --syn-str: #1e7b4f;
+  --syn-num: #a15c07;
+  --syn-com: #6b7176;
+  --syn-type: #6d3fc0;
+  --obj-table: #2f5fb3;
+  --obj-view: #6d3fc0;
+  --obj-routine: #a15c07;
+  --obj-trigger: #854d0e;
+  --frame-prod: #f9ecea;
+  --scrim: rgba(16, 24, 32, 0.32);
+  --shadow-float: 0 18px 44px rgba(16, 24, 32, 0.16), 0 2px 6px rgba(16, 24, 32, 0.08);
+  --shadow-pop: 0 8px 22px rgba(16, 24, 32, 0.14);
+}
+
+/* Pages without an explicit theme (the index) follow the system. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --bg-side: #f6f8f9;
+    --bg-rail: #eef1f3;
+    --bg-tabbar: #f6f8f9;
+    --bg-input: #ffffff;
+    --bg-raised: #ffffff;
+    --fg: #2a2e31;
+    --fg-strong: #131416;
+    --fg-muted: #5d6266;
+    --border: #e3e6e8;
+    --border-strong: #cdd2d5;
+    --hover: rgba(16, 24, 32, 0.045);
+    --active: #e2e8ea;
+    --selected: #fbeee2;
+    --accent: #b85600;
+    --accent-fg: #ffffff;
+    --accent-soft: rgba(184, 86, 0, 0.1);
+    --focus: #b85600;
+    --error: #b42318;
+    --error-bg: #fdecea;
+    --ok: #1e7b4f;
+    --ok-bg: #e3f4ea;
+    --warn: #854d0e;
+    --warn-bg: #fbf0e1;
+    --info: #2f5fb3;
+    --info-bg: #e6eefa;
+    --grid-bg: #ffffff;
+    --grid-alt: #f8fafa;
+    --grid-head: #f6f8f9;
+    --edited: rgba(233, 176, 40, 0.18);
+    --syn-kw: #155e75;
+    --syn-str: #1e7b4f;
+    --syn-num: #a15c07;
+    --syn-com: #6b7176;
+    --syn-type: #6d3fc0;
+    --obj-table: #2f5fb3;
+    --obj-view: #6d3fc0;
+    --obj-routine: #a15c07;
+    --obj-trigger: #854d0e;
+    --frame-prod: #f9ecea;
+    --scrim: rgba(16, 24, 32, 0.32);
+    --shadow-float: 0 18px 44px rgba(16, 24, 32, 0.16), 0 2px 6px rgba(16, 24, 32, 0.08);
+    --shadow-pop: 0 8px 22px rgba(16, 24, 32, 0.14);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0ms;
+    --t-med: 0ms;
+  }
+}

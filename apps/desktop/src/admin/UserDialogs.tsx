@@ -31,7 +31,7 @@ import {
   principalLabel,
   privilegesOn,
   type TargetChoice,
-} from "./users";
+} from "./usersModel";
 
 /** What every dialog needs from the view that opens it. */
 export interface DialogEnv {

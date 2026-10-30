@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Impostazioni</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .editor-pane { height: 34%; border-bottom: 1px solid var(--border); }
+  .dialog.settings-dlg { width: 1000px; height: calc(100vh - 64px); max-height: calc(100vh - 64px); }
+  .settings-dlg > header { align-items: center; }
+  .settings-dlg > header .input.search { margin-left: auto; width: 280px; }
+  .sbody { flex: 1; display: flex; min-height: 0; padding: 0 var(--sp-6); gap: var(--sp-4); }
+  .sbody .subnav { width: 200px; padding-bottom: var(--sp-4); overflow: auto; }
+  .spane { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; }
+  .spane .phead { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  .spane .subtabs { padding: 0 var(--sp-2); }
+  .spane .pbody { flex: none; overflow: visible; padding: var(--sp-5) var(--sp-2); }
+  .desc { padding: var(--sp-3) var(--sp-2) 0; color: var(--fg-muted); font-size: var(--fs-sm); max-width: 640px; }
+  .themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-6); }
+  .theme { border: 1px solid var(--border); border-radius: var(--r-2); padding: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); background: var(--bg-side); cursor: pointer; }
+  .theme.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .theme .pv { height: 56px; border-radius: var(--r-1); display: grid; grid-template-columns: 14px 26px 1fr; overflow: hidden; border: 1px solid rgba(128,128,128,.25); }
+  .theme .pv i { display: block; }
+  .theme .pv .ed { padding: 6px 7px; display: flex; flex-direction: column; gap: 4px; }
+  .theme .pv .ed b { display: block; height: 4px; border-radius: 2px; }
+  .theme .nm { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-1) var(--sp-0); }
+  .theme .nm .ck { margin-left: auto; color: var(--accent); }
+  .setting .ctl { display: flex; align-items: center; gap: var(--sp-3); }
+  .setting .ctl .btn { visibility: hidden; }
+  .setting.changed .ctl .btn { visibility: visible; }
+  .setting.changed .t::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: var(--sp-2); border-radius: 50%; background: var(--accent); vertical-align: middle; }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+  </div>
+  <div class="editor-pane"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+    <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+    <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o <span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+  </div></div>
+  <div class="grid-wrap">
+    <table class="grid">
+      <thead><tr><th></th><th>city<small>text</small></th><th>revenue<small>numeric</small></th></tr></thead>
+      <tbody>
+        <tr><td class="rn">1</td><td>Roma</td><td class="num">8 412.50</td></tr>
+        <tr><td class="rn">2</td><td>Milano</td><td class="num">7 950.00</td></tr>
+        <tr><td class="rn">3</td><td>Napoli</td><td class="num">5 120.75</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="status"><span>3 righe</span><span>27 ms</span></div>
+</div>
+
+<div class="scrim">
+  <div class="dialog settings-dlg">
+    <header>
+      <h2>Impostazioni</h2>
+      <div class="input search"><i data-i="search" class="sm"></i>Cerca nelle impostazioni…</div>
+      <button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button>
+    </header>
+    <div class="sbody">
+      <nav class="subnav" aria-label="Pagine delle impostazioni">
+        <span class="on"><i data-i="palette" class="sm"></i>Aspetto</span>
+        <span><i data-i="panel" class="sm"></i>Navigator</span>
+        <span><i data-i="code" class="sm"></i>Editor SQL</span>
+        <span><i data-i="table" class="sm"></i>Risultati</span>
+        <span><i data-i="shield" class="sm"></i>Sicurezza</span>
+        <span><i data-i="plug" class="sm"></i>Connessioni</span>
+        <span><i data-i="sliders" class="sm"></i>Barra degli strumenti</span>
+        <span><i data-i="cpu" class="sm"></i>Prestazioni</span>
+        <span><i data-i="layers" class="sm"></i>Schede</span>
+        <span><i data-i="key" class="sm"></i>Password principale</span>
+        <span><i data-i="bot" class="sm"></i>Agenti</span>
+        <span><i data-i="database" class="sm"></i>Driver</span>
+        <span><i data-i="keyboard" class="sm"></i>Scorciatoie</span>
+      </nav>
+
+      <div class="spane">
+        <div class="phead">
+          <div class="pic" style="color:var(--accent)"><i data-i="palette"></i></div>
+          <div>
+            <h1>Aspetto</h1>
+            <div class="sub">Tema, lingua, dimensioni dell'interfaccia</div>
+          </div>
+          <div class="acts"><button class="btn"><i data-i="refresh" class="sm"></i>Ripristina la pagina</button></div>
+        </div>
+        <div class="desc">Cambia l'aspetto di tutta l'app. Le modifiche valgono subito e si salvano da sole; ogni valore diverso da quello predefinito ha il suo pulsante Ripristina.</div>
+        <div class="subtabs">
+          <span class="on">Tema</span><span>Lingua e testo</span><span>Densità</span><span>Barra del titolo</span>
+        </div>
+
+        <div class="pbody">
+          <div class="h2">Tema</div>
+          <div class="themes">
+            <div class="theme on"><div class="pv" style="background:#16191b"><i style="background:#111416"></i><i style="background:#1b1f22"></i><span class="ed"><b style="background:#ff8d28;width:40%"></b><b style="background:#7fc8db;width:70%"></b><b style="background:#7ed3a0;width:55%"></b></span></div><div class="nm"><span class="strong">Platypus Dark</span><i data-i="check" class="sm ck"></i></div></div>
+            <div class="theme"><div class="pv" style="background:#ffffff"><i style="background:#eef1f3"></i><i style="background:#f6f8f9"></i><span class="ed"><b style="background:#b85600;width:40%"></b><b style="background:#155e75;width:70%"></b><b style="background:#1e7b4f;width:55%"></b></span></div><div class="nm"><span>Platypus Light</span></div></div>
+            <div class="theme"><div class="pv" style="background:#2e3440"><i style="background:#242933"></i><i style="background:#2b303b"></i><span class="ed"><b style="background:#88c0d0;width:40%"></b><b style="background:#81a1c1;width:70%"></b><b style="background:#a3be8c;width:55%"></b></span></div><div class="nm"><span>Nord</span></div></div>
+            <div class="theme"><div class="pv" style="background:#282a36"><i style="background:#1e1f29"></i><i style="background:#21222c"></i><span class="ed"><b style="background:#bd93f9;width:40%"></b><b style="background:#ff79c6;width:70%"></b><b style="background:#50fa7b;width:55%"></b></span></div><div class="nm"><span>Dracula</span></div></div>
+            <div class="theme"><div class="pv" style="background:#fdf6e3"><i style="background:#eee8d5"></i><i style="background:#f5efdc"></i><span class="ed"><b style="background:#b58900;width:40%"></b><b style="background:#268bd2;width:70%"></b><b style="background:#859900;width:55%"></b></span></div><div class="nm"><span>Solarized Light</span></div></div>
+            <div class="theme"><div class="pv" style="background:#000000"><i style="background:#000000"></i><i style="background:#0a0a0a"></i><span class="ed"><b style="background:#ffd400;width:40%"></b><b style="background:#ffffff;width:70%"></b><b style="background:#00ff7f;width:55%"></b></span></div><div class="nm"><span>Contrasto alto</span></div></div>
+          </div>
+
+          <div class="h2">Interfaccia</div>
+          <div class="settings">
+            <div class="setting changed">
+              <div><div class="t">Colore d'accento</div><div class="d">Usato per il pulsante principale, la scheda attiva e la selezione. Predefinito: arancio.</div></div>
+              <div class="ctl"><button class="btn sm ghost">Ripristina</button><span class="swatch-row"><i style="background:#ff8d28"></i><i style="background:#1d7f74"></i><i style="background:#4b5bb8" class="on"></i><i style="background:#c46a14"></i><i style="background:#a1382f"></i></span></div>
+            </div>
+            <div class="setting">
+              <div><div class="t">Dimensione dell'interfaccia</div><div class="d">Ingrandisce testo e controlli insieme. Il testo dell'editor ha la sua dimensione in Editor SQL.</div></div>
+              <div class="ctl"><button class="btn sm ghost">Ripristina</button><span class="select" style="width:120px">100 %</span></div>
+            </div>
+            <div class="setting changed">
+              <div><div class="t">Righe della griglia</div><div class="d">Altezza delle righe nei risultati e nelle tabelle. Compatta ne mostra di più, Comoda è più leggibile.</div></div>
+              <div class="ctl"><button class="btn sm ghost">Ripristina</button><span class="seg"><span>Compatta</span><span class="on">Normale</span><span>Comoda</span></span></div>
+            </div>
+            <div class="setting">
+              <div><div class="t">Angoli</div><div class="d">Raggio dei controlli, dei riquadri e dei dialog.</div></div>
+              <div class="ctl"><button class="btn sm ghost">Ripristina</button><span class="select" style="width:120px">Arrotondati</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span class="l"><i data-i="check" class="sm" style="color:var(--ok)"></i>Salvato in settings.toml</span>
+      <button class="btn primary">Fatto<kbd>Esc</kbd></button>
+    </footer>
+  </div>
+</div>
+
+<div class="mk-note" style="left:96px;top:690px"><b>Come l'app di oggi: le impostazioni restano una finestra</b>Titolo e ricerca in alto, elenco delle pagine a sinistra, Fatto in basso.</div>
+<div class="mk-note" style="left:1060px;top:90px"><b>Ogni pagina con intestazione e sotto-schede</b>Icona, titolo, sottotitolo e descrizione, poi le sotto-schede (stesso modello di Agenti, vedi 13).</div>
+<div class="mk-note" style="left:1060px;top:600px"><b>Ripristina solo se serve</b>Compare soltanto sulle impostazioni cambiate, segnalate con un puntino accanto al nome.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

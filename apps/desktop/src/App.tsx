@@ -37,6 +37,7 @@ import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } fr
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import type { IconName } from "./ui/Icon";
 import { ask, choose, isAsking } from "./ui/ask";
+import { withInitApproval } from "./ui/initApproval";
 import { type PersistedTab, basename, flushWorkspace, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { forgetCatalog } from "./catalog/catalog";
@@ -386,7 +387,7 @@ export function App() {
 
   /** Shows another project with the tab that was active there. Nothing closes. */
   function switchProject(id: string | null) {
-    if (id === activeProject || (id !== null && !projects?.some((p) => p.id === id))) return;
+    if (id === activeProject || (id !== null && !knownProjects.current.some((p) => p.id === id))) return;
     rememberActiveTab();
     showProject(id);
   }
@@ -462,7 +463,13 @@ export function App() {
     return () => void off.then((unlisten) => unlisten());
   }, [workspaceReady]);
 
+  /** The projects as last set, even before the render that shows them: a project that was
+   *  just added can be switched to in the same tick. */
+  const knownProjects = useRef<Project[]>([]);
+  knownProjects.current = projects ?? knownProjects.current;
+
   function setWorkspace(w: Workspace) {
+    knownProjects.current = w.projects;
     setConnections(w.connections);
     setProjects(w.projects);
     setProjectFolders(w.project_folders);
@@ -615,7 +622,7 @@ export function App() {
     const target = database ? `${connection.name}/${database}` : connection.name;
     for (;;) {
       const typed = password;
-      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => api.openSession(connection.id, typed, database, side)));
+      const open = () => track(t("Connect to {name}", { name: target }), withDriver(() => withInitApproval(connection, (init) => api.openSession(connection.id, typed, database, side, init))));
       try {
         let session;
         try {

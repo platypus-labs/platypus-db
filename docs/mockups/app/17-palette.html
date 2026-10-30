@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palette dei comandi</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .scrim { align-content: start; padding-top: 72px; }
+  .pal { width: 640px; display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: var(--r-3); box-shadow: var(--shadow-float); overflow: hidden; }
+  .pal .q { display: flex; align-items: center; gap: var(--sp-3); height: 44px; padding: 0 var(--sp-5); border-bottom: 1px solid var(--border); font-size: var(--fs-lg); color: var(--fg-strong); }
+  .pal .q svg.i { color: var(--fg-muted); }
+  .pal .q .caret { width: 1.5px; height: 18px; background: var(--accent); margin-left: -8px; }
+  .pal .q kbd { margin-left: auto; }
+  .pal .res { padding: var(--sp-2); overflow: auto; max-height: 420px; display: block; flex: none; }
+  .pal .gh { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; padding: var(--sp-3) var(--sp-3) var(--sp-1); }
+  .pal .r { display: flex; align-items: center; gap: var(--sp-3); height: var(--ctl-lg); padding: 0 var(--sp-3); border-radius: var(--r-1); }
+  .pal .r.on { background: var(--active); color: var(--fg-strong); }
+  .pal .r .ctxt { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); color: var(--fg-muted); font-size: var(--fs-xs); }
+  .pal .r b { color: var(--accent); font-weight: var(--fw-semi); }
+  .pal .r > kbd { margin-left: auto; }
+  .pal .hint { display: flex; align-items: center; gap: var(--sp-5); height: var(--bar-status); padding: 0 var(--sp-4); border-top: 1px solid var(--border); background: var(--bg-side); color: var(--fg-muted); font-size: var(--fs-xs); }
+  .pal .hint span { display: inline-flex; gap: var(--sp-2); align-items: center; }
+  .wk { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .hist .pb { padding: 0; gap: 0; }
+  .hist .tools { padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); border-bottom: 1px solid var(--border); }
+  .hi { padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--sp-1); }
+  .hi .sqlq { font: var(--fs-sm) var(--font-mono); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hi .meta { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-xs); color: var(--fg-muted); }
+  .hi .meta .dot { width: 6px; height: 6px; }
+  .hi.errh .sqlq { color: var(--error); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <button class="btn sm"><i data-i="play" class="sm"></i>Script<kbd>Alt X</kbd></button>
+    <span class="sep"></span>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+    <span class="grow"></span>
+    <button class="btn icon sm" title="Struttura"><i data-i="list" class="sm"></i></button>
+    <button class="btn icon sm" title="Cronologia" style="color:var(--accent)"><i data-i="history" class="sm"></i></button>
+  </div>
+  <div class="obj-split">
+    <div class="wk">
+      <div style="height:34%;border-bottom:1px solid var(--border)"><div class="editor">
+        <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+        <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">count</span>(*) <span class="kw">AS</span> orders, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+        <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o</span></div>
+        <div class="ln"><b>4</b><span><span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+        <div class="ln"><b>5</b><span><span class="kw">GROUP BY</span> c.city <span class="kw">ORDER BY</span> revenue <span class="kw">DESC</span>;</span></div>
+      </div></div>
+      <div class="grid-wrap">
+        <table class="grid">
+          <thead><tr><th></th><th>city<small>text</small></th><th>orders<small>bigint</small></th><th>revenue<small>numeric</small></th></tr></thead>
+          <tbody>
+            <tr><td class="rn">1</td><td>Roma</td><td class="num">42</td><td class="num">8 412.50</td></tr>
+            <tr><td class="rn">2</td><td>Milano</td><td class="num">39</td><td class="num">7 950.00</td></tr>
+            <tr><td class="rn">3</td><td>Napoli</td><td class="num">31</td><td class="num">5 120.75</td></tr>
+            <tr><td class="rn">4</td><td>Torino</td><td class="num">27</td><td class="num">4 809.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <aside class="panel-r hist" style="width:320px">
+      <header><i data-i="history" class="sm muted"></i><span class="strong grow">Cronologia</span><button class="btn icon sm" title="Svuota"><i data-i="trash" class="sm"></i></button><button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button></header>
+      <div class="pb">
+        <div class="tools">
+          <div class="input search"><i data-i="search" class="sm"></i>Filtra la cronologia…</div>
+          <div class="seg" style="align-self:flex-start"><span class="on">Tutte</span><span>Riuscite</span><span>Con errore</span></div>
+        </div>
+        <div class="hi"><div class="sqlq"><span class="kw">SELECT</span> c.city, <span class="kw">count</span>(*) … <span class="kw">GROUP BY</span> c.city</div><div class="meta"><span class="dot ok"></span><span>18:24</span><span>27 ms</span><span>10 righe</span><span class="grow"></span><button class="btn icon sm" title="Apri nell'editor"><i data-i="external" class="sm"></i></button></div></div>
+        <div class="hi"><div class="sqlq"><span class="kw">SELECT</span> * <span class="kw">FROM</span> orders <span class="kw">WHERE</span> status = <span class="st">'paid'</span></div><div class="meta"><span class="dot ok"></span><span>18:19</span><span>41 ms</span><span>702 righe</span><span class="grow"></span><button class="btn icon sm" title="Apri nell'editor"><i data-i="external" class="sm"></i></button></div></div>
+        <div class="hi errh"><div class="sqlq"><span class="kw">SELECT</span> region, <span class="kw">sum</span>(total) <span class="kw">FROM</span> orders …</div><div class="meta"><span class="dot err"></span><span>18:11</span><span>4 ms</span><span>errore: column "region"</span><span class="grow"></span><button class="btn icon sm" title="Apri nell'editor"><i data-i="external" class="sm"></i></button></div></div>
+        <div class="hi"><div class="sqlq"><span class="kw">UPDATE</span> orders <span class="kw">SET</span> status = <span class="st">'shipped'</span> …</div><div class="meta"><span class="dot ok"></span><span>17:58</span><span>12 ms</span><span>2 righe</span><span class="grow"></span><button class="btn icon sm" title="Apri nell'editor"><i data-i="external" class="sm"></i></button></div></div>
+        <div class="hi"><div class="sqlq"><span class="kw">SELECT</span> count(*) <span class="kw">FROM</span> customers</div><div class="meta"><span class="dot ok"></span><span>17:40</span><span>8 ms</span><span>1 riga</span><span class="grow"></span><button class="btn icon sm" title="Apri nell'editor"><i data-i="external" class="sm"></i></button></div></div>
+      </div>
+    </aside>
+  </div>
+  <div class="status"><span>10 righe</span><span>27 ms</span></div>
+</div>
+
+<div class="scrim">
+  <div class="pal" role="dialog" aria-label="Palette dei comandi">
+    <div class="q"><i data-i="search"></i><span>ord</span><span class="caret"></span><kbd>Esc</kbd></div>
+    <div class="res">
+      <div class="gh">Tabelle</div>
+      <div class="r on"><i data-i="table" class="sm" style="color:var(--obj-table)"></i><span><b>ord</b>ers</span><span class="ctxt"><span class="drv pg" style="width:14px;height:14px;font-size:7px">Pg</span>Shop dev · public</span></div>
+      <div class="r"><i data-i="table" class="sm" style="color:var(--obj-table)"></i><span><b>ord</b>er_items</span><span class="ctxt"><span class="drv pg" style="width:14px;height:14px;font-size:7px">Pg</span>Shop dev · public</span></div>
+      <div class="r"><i data-i="table" class="sm" style="color:var(--obj-table)"></i><span><b>ord</b>ers</span><span class="ctxt"><span class="drv pg" style="width:14px;height:14px;font-size:7px">Pg</span>Shop prod · public<span class="badge prod">PROD</span></span></div>
+      <div class="gh">Script</div>
+      <div class="r"><i data-i="file" class="sm muted"></i><span>cleanup_<b>ord</b>ers.sql</span><span class="ctxt">Shop dev</span></div>
+      <div class="gh">Comandi</div>
+      <div class="r"><i data-i="code" class="sm muted"></i><span>Apri <b>ord</b>ini in un nuovo editor</span><kbd>Ctrl Shift N</kbd></div>
+      <div class="r"><i data-i="upload" class="sm muted"></i><span>Esporta <b>ord</b>ers…</span><kbd>Ctrl Shift E</kbd></div>
+      <div class="gh">Impostazioni</div>
+      <div class="r"><i data-i="settings" class="sm muted"></i><span>Righe della griglia · <b>ord</b>inamento predefinito</span><span class="ctxt">Risultati</span></div>
+    </div>
+    <div class="hint"><span><kbd>↑↓</kbd>per scegliere</span><span><kbd>↵</kbd>apri</span><span><kbd>Tab</kbd>azioni</span><span style="margin-left:auto">8 risultati</span></div>
+  </div>
+</div>
+
+<div class="mk-note" style="left:96px;top:160px"><b>Ctrl K ovunque</b>Un solo punto d'accesso a oggetti, script, comandi e impostazioni; il contesto (driver, connessione, ambiente) è a destra di ogni riga.</div>
+<div class="mk-note" style="left:96px;top:480px"><b>Suggerimenti in piede</b>Le tre scorciatoie della palette sono scritte; i comandi mostrano la loro scorciatoia.</div>
+<div class="mk-note" style="left:880px;top:660px"><b>Cronologia agganciata</b>Pannello a destra con filtro, durata, righe ed esito; il pulsante nella barra lo apre e lo chiude.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

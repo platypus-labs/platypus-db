@@ -134,7 +134,7 @@ export async function statisticsFlow(page, { db, name, table, slow, path, operat
   await page.eval(`${statementRow(slow)}.click()`);
   await page.waitFor(`${adminTab}.querySelector('.admin-details .admin-statement')?.textContent.includes(${JSON.stringify(slow)})`);
   assert.ok(Number((await page.eval(field("calls"))).replace(/\D/g, "")) >= 2, "run twice");
-  assert.notEqual(await page.eval(`${adminButton("Explain")}`), undefined);
+  assert.equal(await page.eval(`${adminButton("Explain")} !== undefined`), true);
   await setSearch("no statement is like this one");
   await page.waitFor(`${adminTab}.querySelector('.admin-empty')?.textContent === 'No statements match.'`);
   await setSearch("");
@@ -268,8 +268,8 @@ export const parameterCell = (page, name, column) => page.eval(`${parameterRow(n
 
 /** A tile of the dashboard: its figure, as shown, and the tooltip it has when it shows "—". */
 export const tile = (id) => `${adminTab}?.querySelector('.dash-tile[data-tile="${id}"]')`;
-export const tileValue = (id) => `${tile(id)}?.querySelector('[data-field="value"]')?.textContent ?? null`;
-export const tileTitle = (id) => `${tile(id)}?.querySelector('[data-field="value"]')?.title ?? null`;
+export const tileValue = (id) => `(${tile(id)}?.querySelector('[data-field="value"]')?.textContent ?? null)`;
+export const tileTitle = (id) => `(${tile(id)}?.querySelector('[data-field="value"]')?.title ?? null)`;
 
 /** How many readings the sparkline of tile `id` draws. */
 export const sparkPoints = (id) =>

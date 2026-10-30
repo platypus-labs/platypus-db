@@ -89,12 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| Progetti condivisi (gruppo O): il file `platypus-project.toml` di un collega può ancora impostare le istruzioni di init di una connessione (SQL eseguito a ogni collegamento), applicate senza chiedere. Decidere se non farle viaggiare, tenerle in sola lettura o chiederne conferma la prima volta, in `crates/platypus-sync/src/portable.rs` (`guard`) | gruppo O, 2026-10-30 |
-| Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
-| Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
-| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`, e quelli del gruppo O `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
-| Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
-| Scenari E2E del gruppo Q (P3) scritti in un container Linux e mai eseguiti: `sensitive-columns-sqlite` (segni, mascheramento, intestazioni, export), `column-usage-sqlite` (Used by: viste, trigger, script, Refresh). Eseguirli su Windows dopo la build di release e correggere scenari o codice | gruppo Q, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -104,6 +98,10 @@ scaduto. `✅ completato` vuol dire che P1, P2 e P3 sono tutte fatte; `✅ fatto
 priorità finite, e il resto del gruppo si può ancora prendere, come un gruppo libero. Non si
 prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 [CLAUDE.md](../CLAUDE.md).
+
+**Righe `⏭ serve un Mac`.** Non abbiamo un Mac: le attività segnate così (verifica, firma,
+scenari e distribuzione su macOS) si saltano finché non ce n'è uno. Non si prendono, non contano
+per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva un Mac.
 
 | Gruppo | Lock |
 |---|---|
@@ -698,7 +696,7 @@ storico; stati applicata, pendente, divergente, fallita, mancante. Gli scenari E
 ### Gruppo J — Amministrazione del server
 
 **Stato: P2 completati, P3 in parte** (fatti utenti e ruoli, dashboard e parametri del server;
-il debugger PL/pgSQL è scritto ma mai provato su un server con `pldebugger`, vedi "Correzioni
+il debugger PL/pgSQL è provato su un server con `pldebugger`, lo scenario E2E resta da lanciare, vedi "Correzioni
 aperte"). Dal 30 ottobre 2026: **parametri del server** (`server_parameters`, capacità omonima:
 `pg_settings`, variabili di MySQL con la loro origine, `information_schema.SYSTEM_VARIABLES` di
 MariaDB, `sys.configurations` di SQL Server con un elenco dei default, `system.settings` e
@@ -719,7 +717,7 @@ PL/pgSQL** (`Connection::debugger`, capacità `debugger`, `platypus-driver-pg/sr
 (`pldbg_oid_debug`, `pldbg_attach_to_port`), passi dentro e sopra, continua, breakpoint nella
 colonna del sorgente, stack, variabili modificabili, risultato e messaggi alla fine, Stop che
 non lascia la sessione bloccata; profilo `pldebug` di `docker/compose.yml` con l'immagine che
-installa `pldebugger` (non costruibile nel container cloud: apt bloccato). Limiti: niente
+installa `pldebugger`. Limiti: niente
 breakpoint globali né funzioni trigger; serve `plugin_debugger` in `shared_preload_libraries`.
 Dal 29 ottobre 2026: query più costose e statistiche di tabelle e
 indici (`top_queries` e `object_statistics`, capacità `server_statistics`; PostgreSQL da
@@ -761,7 +759,7 @@ solo i lock coinvolti in un'attesa.
 | ✅ Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
 | ✅ Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
 | ✅ **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
-| Debugger PL/pgSQL (scritto, da provare con il profilo `pldebug`) | P3 | D+ |
+| ✅ Debugger PL/pgSQL (conformance provata sul profilo `pldebug`; lo scenario E2E resta da lanciare) | P3 | D+ |
 | ✅ 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
 | ✅ 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
 | ✅ 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
@@ -1123,7 +1121,12 @@ un'installazione vera. In un progetto condiviso, un file cambiato fuori dall'app
 connessione (driver, host, porta, database, SSH, proxy) ne fa dimenticare password e segreti, che
 si chiedono di nuovo al collegamento; accesso degli agenti, restrizioni, sola lettura e tipo Prod
 tengono sempre il valore più restrittivo. Le opzioni che possono eseguire comandi
-(`before_connect`, `after_disconnect`) e i percorsi locali non viaggiano mai. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
+(`before_connect`, `after_disconnect`) e i percorsi locali non viaggiano mai.
+Le istruzioni di init di una connessione arrivate dal file condiviso non girano finché l'utente non ha
+letto quel testo: al collegamento un dialogo mostra l'SQL (sola lettura) e chiede se eseguirlo
+(`platypus-sync/src/init_approval.rs`, `check_init` in `commands/connections.rs`); l'approvazione resta
+solo su questa macchina (impostazione `shared.init_approved.<id>`, hash del testo) e un testo cambiato
+chiede di nuovo, mentre quello scritto dall'utente in locale non chiede mai. Scenari E2E scritti ma non eseguiti (vedi "Correzioni aperte").
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
@@ -1169,7 +1172,8 @@ prestazioni e il confronto. Restano la verifica su un desktop Linux con GPU, il 
 dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri (li misura
 `scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
 distribuzione;
-la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
+la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program) e sono
+segnate `⏭ serve un Mac`: si saltano finché non ce n'è uno.
 Dal 30 ottobre 2026: manifest per winget, Homebrew, AUR e Flathub in `packaging/`, riempiti
 con versione e SHA-256 degli installer da `scripts/packaging.mjs` (test in
 `scripts/packaging.test.mjs`); installata da Flatpak o AUR, l'app annuncia la nuova versione
@@ -1182,11 +1186,11 @@ repository aspettano che diventi pubblico.
 | Attività | Prio |
 |---|---|
 | Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
-| Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma (serve un Mac) | P3 |
+| ⏭ serve un Mac — Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma | P3 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0; v0.2.1 solo Windows, compilata in locale perché i minuti di Actions erano finiti) | P1 |
 | Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
-| Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
+| ⏭ serve un Mac — Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
 | Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
@@ -1195,6 +1199,8 @@ repository aspettano che diventi pubblico.
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
+| ⏭ serve un Mac — Prova del cask Homebrew su macOS (il manifest è pronto in `packaging/`) | P3 |
+| 🆕 Scenario E2E del banner di aggiornamento (oggi `UpdateBanner.tsx` non ha copertura E2E; serve un `latest.json` finto servito in locale) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
@@ -1270,13 +1276,20 @@ le differenze, senza cambiare il comportamento. Restano le scelte di fondo già 
 attuali, rail dei progetti in stile Discord, tab in alto, interfaccia minimale che non sembri
 generata.
 
+**Prima i mockup.** Il gruppo rifà anche le pagine dell'app e il sito (`site/`). Prima di
+scrivere codice si preparano i mockup delle pagine (app e sito), si fanno vedere all'utente e si
+procede solo con i mockup approvati; una pagina senza mockup approvato non si tocca.
+
 **Area:** `apps/desktop/src/styles/`, i componenti di tutte le aree (solo CSS, markup e testi),
-`apps/desktop/src/assets/`; nessuna modifica a backend, driver o formati dei file
+`apps/desktop/src/assets/`, `site/`; nessuna modifica a backend, driver o formati dei file
 **Dipende da:** tutti gli altri gruppi completati
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | 🆕 **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
+| 🆕 **Mockup delle pagine** dell'app e del sito, partendo dall'inventario: si fanno vedere all'utente e si implementa solo dopo la sua approvazione | P1 | N |
+| 🆕 **Rifacimento delle pagine dell'app** secondo i mockup approvati | P1 | N |
+| 🆕 **Rifacimento del sito** (`site/`) secondo i mockup approvati, con lo stesso stile dell'app | P1 | N |
 | 🆕 **Tutto a portata di mano e comprensibile**: ogni pagina studiata perché l'utente capisca da sola cosa può fare lì; le azioni principali visibili sulla pagina stessa (pulsanti, intestazioni, stati vuoti con l'azione utile), non solo nei menu contestuali o nelle scorciatoie; dalla pagina di un oggetto si arriva a tutto ciò che lo riguarda (dati, struttura, editor grafico, DDL, diagramma). Esempio: l'editor grafico della tabella oggi si apre solo dal menu del navigator o con F4 | P1 | N |
 | 🆕 **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
 | 🆕 Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
@@ -1307,7 +1320,8 @@ poi le correzioni e un secondo giro con occhi nuovi; un agente o una persona all
 rilascio) è meglio non farlo in una sessione di un agente in cloud: lì gli E2E non girano (solo
 Windows, WebView2), non c'è GPU né macOS, i download dei driver e degli altri client sono
 bloccati dalla rete del container, e il disco è un'allowance fissa che i database di test
-riempiono. Va fatto su macchine vere: Windows, poi macOS e un desktop Linux.
+riempiono. Va fatto su macchine vere: Windows, poi un desktop Linux; macOS quando ci sarà un Mac
+(`⏭ serve un Mac`).
 
 **Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/BENCHMARKS.md`; le correzioni
 nei file delle aree toccate, in commit piccoli e separati
@@ -1320,7 +1334,8 @@ nei file delle aree toccate, in commit piccoli e separati
 | 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
 | 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
 | 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano | P1 | N |
-| 🆕 **macOS e Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
+| 🆕 **Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
+| ⏭ serve un Mac — 🆕 **macOS**: gli scenari E2E o un collaudo a mano con la stessa lista | P2 | N |
 | 🆕 **Prestazioni e memoria**: tabelle da milioni di righe, schemi con migliaia di oggetti, una sessione di ore senza che la memoria cresca, database remoto lento; i numeri in BENCHMARKS.md | P2 | N |
 | 🆕 **Revisione di sicurezza** del codice: credenziali, MCP, sola lettura, SQL generato, file letti e scritti | P2 | N |
 | 🆕 Secondo giro con tester nuovi che non hanno visto i rapporti del primo, poi la verifica completa (fmt, clippy, test, E2E, conformance) tutta verde prima della v1.0 | P1 | N |

@@ -74,6 +74,9 @@ function remembered(dir) {
 /** Clicks Sync now and waits for the run to finish: the time of the last sync moves on. A
  *  message that is the same as the one before cannot tell, so the state file does. */
 async function syncNow(page, dir) {
+  // A click on a button that is still disabled (the sync at start, or the page loading its
+  // status) does nothing, so wait for it first.
+  await page.waitFor(`${action("sync-now")} && !${action("sync-now")}.disabled`);
   const before = lastSync(dir);
   await page.eval(`${action("sync-now")}.click()`);
   const until = Date.now() + 20_000;

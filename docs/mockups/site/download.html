@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site · Download</title>
+<link rel="stylesheet" href="base/style.css">
+<link rel="stylesheet" href="../assets/site-r.css">
+</head>
+<body data-page="download">
+<main>
+  <section class="section" style="padding-top:72px">
+    <div class="cta">
+      <img src="base/img/mark.png" alt="" width="88" height="88">
+      <h2>Free and open source.<br>No trial, no account.</h2>
+      <p>We found <b style="color:var(--hi)">Windows 11, 64-bit</b>. The app updates itself.</p>
+      <ul class="platforms">
+        <li><b>Windows</b><code>.exe</code><code>.msi</code></li>
+        <li><b>macOS</b><code>.dmg</code></li>
+        <li><b>Linux</b><code>.AppImage</code><code>.deb</code><code>.rpm</code></li>
+      </ul>
+      <div class="actions" style="justify-content:center">
+        <a class="button primary large" href="#">Download for Windows</a>
+        <a class="button ghost large" href="#other">Other systems</a>
+      </div>
+      <p style="font-size:14px;margin-top:16px">Version 0.9.0 · installer · 21.8 MiB</p>
+    </div>
+  </section>
+
+  <section class="section" id="other" style="padding-top:120px">
+    <header class="head"><p class="eyebrow">Every system</p><h2>Pick your file.</h2><p>Or install from the command line.</p></header>
+    <div class="os-cards">
+      <div class="card rec">
+        <span class="badge-rec">Your system</span>
+        <h3><i data-i="windows"></i>Windows</h3>
+        <div class="files"><a href="#">Installer (.exe)<span>21.8 MiB</span></a><a href="#">For IT deployment (.msi)<span>22.1 MiB</span></a></div>
+        <pre class="term"><b>&gt;</b> winget install <u>PlatypusDB</u></pre>
+      </div>
+      <div class="card">
+        <h3><i data-i="apple"></i>macOS</h3>
+        <div class="files"><a href="#">Apple silicon (.dmg)<span>24.0 MiB</span></a><a href="#">Intel (.dmg)<span>24.6 MiB</span></a></div>
+        <pre class="term"><b>$</b> brew install --cask <u>platypus-db</u></pre>
+      </div>
+      <div class="card">
+        <h3><i data-i="linux"></i>Linux</h3>
+        <div class="files"><a href="#">AppImage<span>19.5 MiB</span></a><a href="#">.deb<span>19.6 MiB</span></a><a href="#">.rpm<span>19.7 MiB</span></a></div>
+        <pre class="term"><b>$</b> sudo apt install <u>./platypus-db.deb</u></pre>
+      </div>
+    </div>
+    <p class="note"><a href="#">Changelog</a> · <a href="#">SHA-256 checksums</a> · <a href="#">All releases</a></p>
+  </section>
+
+  <section class="section perf">
+    <div class="perf-text">
+      <p class="eyebrow">From source</p>
+      <h2>Build it yourself.</h2>
+      <p>Rust stable, Node and npm. The full guide is in DEVELOPMENT.md.</p>
+    </div>
+    <pre class="term"><b>$</b> git clone <u>https://github.com/PaoloCisly/platypus-db</u>
+<b>$</b> npm --prefix apps/desktop install
+<b>$</b> npm --prefix apps/desktop run tauri build</pre>
+  </section>
+</main>
+
+<div class="mk-note" style="right:24px;top:96px"><b>Come il sito di oggi</b>Il riquadro "Free and open source" della home, con il sistema rilevato e un solo pulsante principale.</div>
+<div class="mk-note" style="left:24px;top:760px"><b>Valori di esempio</b>Versioni, dimensioni e comandi winget/brew/apt sono segnaposto.</div>
+<script src="../assets/site-shell.js"></script>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

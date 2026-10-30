@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modifica struttura orders</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .grid td.t { color: var(--syn-type); }
+  .grid td.nm { color: var(--fg-strong); font-family: var(--font-ui); font-weight: var(--fw-med); }
+  .grid td.ctr, .grid th.ctr { text-align: center; }
+  .grid td.cm { font-family: var(--font-ui); color: var(--fg-muted); }
+  .pane-sql { height: 220px; flex: none; display: flex; flex-direction: column; border-top: 1px solid var(--border-strong); }
+  .pane-sql > header { display: flex; align-items: center; gap: var(--sp-3); height: var(--bar-tool); padding: 0 var(--sp-3) 0 var(--sp-4); border-bottom: 1px solid var(--border); }
+  .pane-sql .editor { flex: 1; background: var(--bg-side); }
+  .pane-sql > footer { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); }
+  .pane-sql > footer .l { margin-right: auto; color: var(--fg-muted); font-size: var(--fs-sm); display: flex; gap: var(--sp-3); align-items: center; }
+  .chg { display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--ctl-sm); padding: 0 var(--sp-3); border-radius: var(--r-pill); background: var(--warn-bg); font-size: var(--fs-sm); }
+  .cell-in { box-shadow: inset 0 0 0 1px var(--accent); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="edit" class="sm"></i>orders · struttura<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn sm"><i data-i="plus" class="sm"></i>Aggiungi colonna</button>
+    <button class="btn sm"><i data-i="list" class="sm"></i>Indice</button>
+    <button class="btn sm"><i data-i="link" class="sm"></i>Chiave esterna</button>
+    <span class="sep"></span>
+    <div class="seg"><span class="on">Colonne</span><span>Indici</span><span>Chiavi esterne</span><span>Vincoli</span></div>
+    <span class="grow"></span>
+    <span class="chg"><i data-i="edit" class="sm"></i>3 modifiche</span>
+    <button class="btn sm ghost"><i data-i="left" class="sm"></i>Torna alla tabella</button>
+  </div>
+
+  <div class="grid-wrap">
+    <table class="grid">
+      <thead><tr><th></th><th>Nome</th><th>Tipo</th><th class="ctr">Null</th><th>Default</th><th class="ctr">PK</th><th>Commento</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="rn">1</td><td class="nm">id</td><td class="t">bigint</td><td class="ctr muted">no</td><td class="muted">nextval('orders_id_seq')</td><td class="ctr"><span class="badge pk">PK</span></td><td class="cm">Identificativo ordine</td><td></td></tr>
+        <tr><td class="rn">2</td><td class="nm">customer_id</td><td class="t">bigint</td><td class="ctr muted">no</td><td class="null">—</td><td class="ctr"></td><td class="cm">Cliente che ha ordinato</td><td></td></tr>
+        <tr><td class="rn">3</td><td class="nm">status</td><td class="t edit cur">varchar(20)</td><td class="ctr muted">no</td><td>'pending'</td><td class="ctr"></td><td class="cm">pending, paid, shipped, cancelled</td><td><span class="badge accent">modificata</span></td></tr>
+        <tr><td class="rn">4</td><td class="nm">total</td><td class="t">numeric(12,2)</td><td class="ctr muted">no</td><td>0</td><td class="ctr"></td><td class="cm">Totale IVA inclusa</td><td></td></tr>
+        <tr><td class="rn">5</td><td class="nm">currency</td><td class="t">char(3)</td><td class="ctr muted">no</td><td>'EUR'</td><td class="ctr"></td><td class="cm"></td><td></td></tr>
+        <tr><td class="rn">6</td><td class="nm">placed_at</td><td class="t">timestamptz</td><td class="ctr muted">no</td><td>now()</td><td class="ctr"></td><td class="cm">Data e ora dell'ordine</td><td></td></tr>
+        <tr class="del"><td class="rn">7</td><td class="nm">shipped_at</td><td class="t">timestamptz</td><td class="ctr">sì</td><td class="null">—</td><td class="ctr"></td><td class="cm"></td><td><span class="badge prod" style="text-decoration:none">rimossa</span></td></tr>
+        <tr><td class="rn">8</td><td class="nm">note</td><td class="t">text</td><td class="ctr">sì</td><td class="null">—</td><td class="ctr"></td><td class="cm">Note del cliente</td><td></td></tr>
+        <tr class="new"><td class="rn">+</td><td class="nm">coupon_code</td><td class="t">varchar(32)</td><td class="ctr">sì</td><td class="null">—</td><td class="ctr"></td><td class="cm">Codice sconto applicato</td><td><span class="badge dev">nuova</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pane-sql">
+    <header>
+      <span class="strong">Anteprima SQL</span>
+      <span class="badge neutral">PostgreSQL</span>
+      <span class="grow"></span>
+      <button class="btn icon sm" title="Copia"><i data-i="copy" class="sm"></i></button>
+    </header>
+    <div class="editor">
+      <div class="ln"><b>1</b><span><span class="kw">ALTER TABLE</span> public.orders</span></div>
+      <div class="ln"><b>2</b><span>  <span class="kw">DROP COLUMN</span> shipped_at,</span></div>
+      <div class="ln"><b>3</b><span>  <span class="kw">ALTER COLUMN</span> status <span class="kw">TYPE</span> <span class="ty">varchar</span>(<span class="nu">20</span>),</span></div>
+      <div class="ln"><b>4</b><span>  <span class="kw">ADD COLUMN</span> coupon_code <span class="ty">varchar</span>(<span class="nu">32</span>);</span></div>
+      <div class="ln"><b>5</b><span><span class="kw">COMMENT ON COLUMN</span> public.orders.coupon_code <span class="kw">IS</span> <span class="st">'Codice sconto applicato'</span>;</span></div>
+    </div>
+    <footer>
+      <span class="l"><i data-i="alert" class="sm" style="color:var(--warn)"></i>Rimuovere shipped_at elimina i dati di 2 980 righe.</span>
+      <span class="check on"><i></i>Apri nell'editor invece di applicare</span>
+      <button class="btn">Annulla modifiche</button>
+      <button class="btn primary"><i data-i="check" class="sm"></i>Applica<kbd>Ctrl ↵</kbd></button>
+    </footer>
+  </div>
+
+  <div class="status"><span>orders · Shop dev</span><span class="r"><span>PostgreSQL 16</span></span></div>
+</div>
+
+<div class="mk-note" style="left:880px;top:90px"><b>Stato delle righe</b>Verde = nuova, giallo = cella modificata, barrato = rimossa. Lo stesso linguaggio della griglia dati.</div>
+<div class="mk-note" style="left:96px;top:420px"><b>Azioni sulla pagina</b>Aggiungi colonna, indice e chiave esterna sono pulsanti in barra, non voci nascoste.</div>
+<div class="mk-note" style="left:700px;top:500px"><b>Anteprima sempre visibile</b>L'SQL si aggiorna a ogni modifica; Applica è l'azione primaria, il segnale di cosa è distruttivo sta nel piè.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

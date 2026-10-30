@@ -24,11 +24,11 @@ const group = (table) => `${tab}.querySelector('.history-table[data-table=${JSON
 const form = `document.querySelector('.schedule-form')`;
 
 export function setup({ dir }) {
-  const db = new DatabaseSync(join(dir, "history.db"));
+  const db = new DatabaseSync(join(dir, "schema-snapshots.db"));
   db.exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT NOT NULL);
            CREATE TABLE orders (id INTEGER PRIMARY KEY, total REAL);`);
   db.close();
-  saveConnections(dir, sqliteEntry(NAME, join(dir, "history.db")));
+  saveConnections(dir, sqliteEntry(NAME, join(dir, "schema-snapshots.db")));
 }
 
 /** Ticks or unticks the checkbox of the row `id` (a snapshot's, or "now"). */
@@ -64,7 +64,7 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(`${rows}.length`), 1);
 
   // DDL outside the app: a table added, a column added, and a column's type changed.
-  const db = new DatabaseSync(join(dir, "history.db"));
+  const db = new DatabaseSync(join(dir, "schema-snapshots.db"));
   db.exec(`CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT);
            ALTER TABLE customers ADD COLUMN phone TEXT;
            DROP TABLE orders;

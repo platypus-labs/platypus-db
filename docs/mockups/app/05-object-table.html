@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabella orders</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .obj { flex: 1; display: flex; min-height: 0; }
+  .obj .pbody { padding: var(--sp-4) var(--sp-6); }
+  .grid td.t { color: var(--syn-type); }
+  .grid td.nm { color: var(--fg-strong); font-family: var(--font-ui); font-weight: var(--fw-med); }
+  .grid td.cm { font-family: var(--font-ui); color: var(--fg-muted); max-width: 260px; }
+  .grid td.ctr { text-align: center; }
+  .grid th.ctr { text-align: center; }
+  .tools { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+  .grid-box { border: 1px solid var(--border); border-radius: var(--r-2); overflow: hidden; }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="phead">
+    <div class="pic"><i data-i="table"></i></div>
+    <div>
+      <h1>orders <span class="badge dev" style="vertical-align:middle">DEV</span></h1>
+      <div class="sub">public · Shop dev · 2 980 righe · 1,2 MB</div>
+    </div>
+    <div class="acts">
+      <button class="btn primary"><i data-i="table" class="sm"></i>Apri dati<kbd>↵</kbd></button>
+      <button class="btn"><i data-i="edit" class="sm"></i>Modifica struttura</button>
+      <button class="btn"><i data-i="code" class="sm"></i>DDL</button>
+      <button class="btn"><i data-i="erd" class="sm"></i>Diagramma</button>
+      <button class="btn icon" title="Altro"><i data-i="more"></i></button>
+    </div>
+  </div>
+  <div class="subtabs">
+    <span class="on">Colonne <span class="n">8</span></span>
+    <span>Dati</span>
+    <span>Chiavi e indici <span class="n">3</span></span>
+    <span>Riferimenti <span class="n">2</span></span>
+    <span>Usata da <span class="n">1</span></span>
+    <span>DDL</span>
+    <span>Statistiche</span>
+    <span>Note</span>
+  </div>
+
+  <div class="obj">
+    <div class="pbody">
+      <div class="tools">
+        <div class="input search" style="width:220px"><i data-i="search" class="sm"></i>Filtra colonne…</div>
+        <span class="grow"></span>
+        <button class="btn sm"><i data-i="plus" class="sm"></i>Aggiungi colonna</button>
+        <button class="btn sm ghost"><i data-i="copy" class="sm"></i>Copia nomi</button>
+      </div>
+      <div class="grid-box">
+        <table class="grid">
+          <thead><tr><th></th><th>Nome</th><th>Tipo</th><th class="ctr">Null</th><th>Default</th><th>Chiavi</th><th>Commento</th></tr></thead>
+          <tbody>
+            <tr><td class="rn">1</td><td class="nm">id</td><td class="t">bigint</td><td class="ctr muted">no</td><td class="muted">nextval('orders_id_seq')</td><td><span class="badge pk">PK</span></td><td class="cm">Identificativo ordine</td></tr>
+            <tr class="sel"><td class="rn">2</td><td class="nm">customer_id</td><td class="t">bigint</td><td class="ctr muted">no</td><td class="null">—</td><td><span class="badge fk">FK</span></td><td class="cm">Cliente che ha ordinato</td></tr>
+            <tr><td class="rn">3</td><td class="nm">status</td><td class="t">text</td><td class="ctr muted">no</td><td>'pending'</td><td></td><td class="cm">pending, paid, shipped, cancelled</td></tr>
+            <tr><td class="rn">4</td><td class="nm">total</td><td class="t">numeric(12,2)</td><td class="ctr muted">no</td><td>0</td><td></td><td class="cm">Totale IVA inclusa</td></tr>
+            <tr><td class="rn">5</td><td class="nm">currency</td><td class="t">char(3)</td><td class="ctr muted">no</td><td>'EUR'</td><td></td><td class="cm"></td></tr>
+            <tr><td class="rn">6</td><td class="nm">placed_at</td><td class="t">timestamptz</td><td class="ctr muted">no</td><td>now()</td><td></td><td class="cm">Data e ora dell'ordine</td></tr>
+            <tr><td class="rn">7</td><td class="nm">shipped_at</td><td class="t">timestamptz</td><td class="ctr">sì</td><td class="null">—</td><td></td><td class="cm"></td></tr>
+            <tr><td class="rn">8</td><td class="nm">note</td><td class="t">text</td><td class="ctr">sì</td><td class="null">—</td><td></td><td class="cm">Note del cliente</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <aside class="panel-r">
+      <header><span class="strong grow">customer_id</span><button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button></header>
+      <div class="pb">
+        <dl class="kv" style="margin:0">
+          <dt>Tipo</dt><dd class="mono">bigint</dd>
+          <dt>Null</dt><dd>Non ammesso</dd>
+          <dt>Default</dt><dd class="muted">nessuno</dd>
+          <dt>Posizione</dt><dd>2 di 8</dd>
+          <dt>Valori distinti</dt><dd>1 874</dd>
+          <dt>Commento</dt><dd>Cliente che ha ordinato</dd>
+        </dl>
+        <div>
+          <div class="h2">Riferimento</div>
+          <div class="item" style="padding:var(--sp-2) 0;border:0"><span class="badge fk">FK</span><span class="mono grow">customers.id</span><span class="muted" style="font-size:var(--fs-xs)">ON DELETE RESTRICT</span></div>
+          <div class="item" style="padding:var(--sp-2) 0;border:0"><i data-i="list" class="sm muted"></i><span class="mono grow">orders_customer_id_idx</span><span class="muted" style="font-size:var(--fs-xs)">btree</span></div>
+        </div>
+        <div class="col" style="gap:var(--sp-2)">
+          <button class="btn"><i data-i="edit" class="sm"></i>Modifica colonna</button>
+          <button class="btn ghost"><i data-i="chart" class="sm"></i>Profilo della colonna</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="status"><span>8 colonne</span><span>3 indici</span><span class="r"><span>PostgreSQL 16</span></span></div>
+</div>
+
+<div class="mk-note" style="left:770px;top:104px"><b>Tutto dalla pagina</b>Dati, struttura grafica, DDL e diagramma sono pulsanti nell'intestazione, non solo nel menu contestuale.</div>
+<div class="mk-note" style="left:560px;top:176px"><b>Pagina oggetto</b>Le sotto-schede coprono ogni aspetto della tabella; i numeri dicono cosa c'è dentro.</div>
+<div class="mk-note" style="left:96px;top:600px"><b>Una scala sola</b>Righe da 24px, controlli da 28px, pannello laterale da 280px come in 01.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

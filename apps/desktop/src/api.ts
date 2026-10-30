@@ -2404,13 +2404,14 @@ export const api = {
     invoke<ServerInfo>("test_connection", { connection, password, sshSecrets }),
   /** `database` opens another database of the same server instead of the saved one. A `side`
    *  session (the navigator's) stays in autocommit mode on production too. */
-  openSession: (connectionId: string, password?: string, database?: string | null, side = false) =>
+  openSession: (connectionId: string, password?: string, database?: string | null, side = false, init?: "run" | "skip") =>
     /** `minimum`: the oldest version tested, when the server is older. */
     invoke<{ session_id: number; server: ServerInfo; capabilities: Capabilities; minimum: string | null }>("open_session", {
       connectionId,
       password: password ?? null,
       database: database ?? null,
       side,
+      init: init ?? null,
     }),
   closeSession: (sessionId: number) => invoke<void>("close_session", { sessionId }),
   /** Checks an idle session, reopening it if the server dropped it. */

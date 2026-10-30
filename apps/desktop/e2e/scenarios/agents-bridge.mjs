@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { noMcp, startMcp } from "../mcp.mjs";
 import { setField } from "../plans.mjs";
+import { openQueryTab, run } from "../conn-helpers.mjs";
 import { expand } from "../qa-nav-helpers.mjs";
 
 const RO = "00000000-0000-4000-8000-000000000041";
@@ -75,11 +76,12 @@ const post = (bridge, path, body, token = bridge.token) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
-/** Runs `sql` on Scratch through the agent and waits for the app's question. */
+/** Runs `sql` on Scratch through the agent and waits for the app's question. Returns the pending
+ *  answer in a pair: a promise returned as is would make the caller wait for the answer too. */
 async function asked(page, mcp, sql) {
   const result = mcp.call("run_query", { connection: "Scratch", sql });
   await page.waitFor(`${dialog} !== null && ${field("statement")} === ${JSON.stringify(sql)}`, 20_000);
-  return result;
+  return [result];
 }
 
 /** The token and the bridge's switch, in Settings › Agents. */
@@ -97,7 +99,7 @@ async function closeSettings(page) {
 
 async function questions(page, dir, mcp) {
   // Refused: the agent reads the reason; nothing changed.
-  let result = await asked(page, mcp, "UPDATE orders SET status = 'closed' WHERE id <= 5");
+  let [result] = await asked(page, mcp, "UPDATE orders SET status = 'closed' WHERE id <= 5");
   assert.match(await page.eval(field("rows")), /row|estimate/);
   assert.match(await page.eval(`${dialog}.querySelector('h2').textContent`), /e2e-bridge wants to change data on Scratch/);
   await setField(page, ".agent-write [data-field=reason]", "not before the release");
@@ -108,12 +110,12 @@ async function questions(page, dir, mcp) {
   await page.waitFor(`${dialog} === null`);
 
   // Allowed once: it runs, and the next change asks again; the reason typed is gone.
-  result = await asked(page, mcp, "UPDATE orders SET status = 'closed' WHERE id <= 5");
+  [result] = await asked(page, mcp, "UPDATE orders SET status = 'closed' WHERE id <= 5");
   await page.eval(answer("once"));
   r = await result;
   assert.equal(r.error, false, r.text);
   assert.equal(count(dir, "status = 'closed'"), 5);
-  result = await asked(page, mcp, "DELETE FROM orders WHERE id = 20");
+  [result] = await asked(page, mcp, "DELETE FROM orders WHERE id = 20");
   assert.equal(await page.eval(`${dialog}.querySelector('[data-field=reason]').value`), "");
   // Allowed for the session: the next changes of this agent on Scratch run unasked.
   await page.eval(answer("session"));
@@ -152,7 +154,7 @@ export default async function (page, { dir }) {
   assert.equal((await post(bridge, "/v1/sessions", undefined, "nope")).status, 401);
   await expand(page, "Scratch", "main");
   const sessions = await (await post(bridge, "/v1/sessions")).json();
-  assert.ok(sessions.some((s) => s.connection === "Scratch" && s.purpose === "main"), JSON.stringify(sessions));
+  assert.ok(sessions.some((s) => s.connection === "Scratch" && s.purpose === "side"), JSON.stringify(sessions));
 
   // An agent shows in the top bar and sees the sessions open in the app.
   const mcp = await startMcp(dir, "e2e-bridge");
@@ -165,8 +167,15 @@ export default async function (page, { dir }) {
     await questions(page, dir, mcp);
     await agentGoesAway(page);
 
+    // The navigator browses on a side session; running a script in a tab opens the main one.
+    await openQueryTab(page, "Scratch");
+    await run(page, "SELECT 1");
+    const withTab = await (await post(bridge, "/v1/sessions")).json();
+    assert.ok(withTab.some((s) => s.connection === "Scratch" && s.purpose === "main"), JSON.stringify(withTab));
+
     // Settings › Agents: the address and the token, as the file has them.
     await openBridgeSettings(page);
+    await page.waitFor(`${bridgeField("bridge_url")} !== null && ${bridgeField("bridge_token")} !== null`, 10_000);
     assert.match(await page.eval(`${bridgeField("bridge_url")}.textContent`), new RegExp(`127\\.0\\.0\\.1:${bridge.port}/mcp`));
     assert.equal(await page.eval(`${bridgeField("bridge_token")}.textContent`), bridge.token);
     assert.match(await page.eval(`${bridgeField("claude_http_command")}.textContent`), /claude mcp add --transport http platypus/);
@@ -176,7 +185,12 @@ export default async function (page, { dir }) {
     await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
     await page.eval(`document.querySelector('.modal.confirm button.primary').click()`);
     await page.waitFor(`${bridgeField("bridge_token")}?.textContent !== ${JSON.stringify(bridge.token)}`);
-    const renewed = JSON.parse(readFileSync(join(dir, "agent-bridge.json"), "utf8"));
+    // The bridge restarts with the new token: the file is rewritten a moment after the screen shows it.
+    let renewed = bridge;
+    for (let i = 0; i < 100 && renewed.token === bridge.token; i++) {
+      await page.sleep(100);
+      renewed = await bridgeFile(page, dir);
+    }
     assert.notEqual(renewed.token, bridge.token);
     assert.equal((await post(bridge, "/v1/sessions")).status, 401);
     assert.equal((await post(renewed, "/v1/sessions")).status, 200);
@@ -216,8 +230,14 @@ export default async function (page, { dir }) {
     await page.waitFor(`document.querySelector('.topbar-agents') === null`);
     let r = await mcp.call("list_open_sessions");
     assert.ok(r.error && /not open/.test(r.text), r.text);
-    r = await mcp.call("run_query", { connection: "Scratch", sql: "DELETE FROM orders WHERE id = 2" });
-    assert.ok(r.error && /cannot ask: PlatypusDB is not open/.test(r.text), r.text);
+    // The agent above was allowed for its session earlier, and stays so; one that starts now was not.
+    const late = await startMcp(dir, "e2e-late");
+    try {
+      r = await late.call("run_query", { connection: "Scratch", sql: "DELETE FROM orders WHERE id = 2" });
+      assert.ok(r.error && /cannot ask: PlatypusDB is not open/.test(r.text), r.text);
+    } finally {
+      late.close();
+    }
     assert.equal(count(dir), 18);
   } finally {
     mcp.close();

@@ -317,3 +317,14 @@ async fn agents_ask_to_see_what_the_user_works_on_through_the_bridge() {
     assert_eq!(told(CONTEXT_SETTLED_EVENT), 3);
     bridge.stop();
 }
+
+#[tokio::test]
+async fn restarting_on_the_same_port_takes_it_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let (bridge, _) = bridge(dir.path()).await;
+    let port = BridgeFile::read(dir.path()).unwrap().port;
+    let agent = Arc::new(Agent::new(Profile::at(dir.path())));
+    bridge.start(true, port, Ok(agent)).await;
+    assert_eq!(bridge.status(true, port).error, None);
+    assert_eq!(BridgeFile::read(dir.path()).unwrap().port, port);
+}

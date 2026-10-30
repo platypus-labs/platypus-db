@@ -17,6 +17,7 @@ pub mod collect;
 pub mod crypto;
 pub mod file;
 pub mod git;
+pub mod init_approval;
 pub mod merge;
 pub mod model;
 pub mod portable;

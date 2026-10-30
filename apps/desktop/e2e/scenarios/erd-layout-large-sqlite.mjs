@@ -143,11 +143,18 @@ async function check(page, what, count = TABLES.length, keys = KEYS) {
   return drawn;
 }
 
+/** Drags the table `name` by about (dx, dy), less when the diagram does not fit the window. */
 async function drag(page, name, dx, dy) {
   const before = (await page.eval(boxes)).find((b) => b.name === name).transform;
   await page.eval(`[...${visibleErd}.querySelectorAll('.erd-table')].find(g => g.querySelector('text').textContent === ${JSON.stringify(name)}).querySelector('rect').id = 'erd-drag'`);
+  // The diagram is larger than the window: bring the table into view and keep the drag inside.
+  await page.eval(`document.getElementById('erd-drag').scrollIntoView({ block: 'center', inline: 'center' })`);
   const r = await page.rect("#erd-drag");
   await page.eval(`document.getElementById('erd-drag').removeAttribute('id')`);
+  const win = await page.eval(`({ w: innerWidth, h: innerHeight })`);
+  const fit = (from, by, size) => Math.max(20 - from, Math.min(size - 20 - from, by));
+  dx = fit(r.x + 20, dx, win.w);
+  dy = fit(r.y + 10, dy, win.h);
   await page.mouse("mousePressed", r.x + 20, r.y + 10);
   await page.mouse("mouseMoved", r.x + 20 + dx / 2, r.y + 10 + dy / 2, { buttons: 1 });
   await page.mouse("mouseMoved", r.x + 20 + dx, r.y + 10 + dy, { buttons: 1 });
@@ -167,7 +174,7 @@ export default async function (page, { dir, shots }) {
   const linkedBottom = Math.max(...first.filter((b) => !ALONE.includes(b.name)).map((b) => b.y + b.h));
   for (const name of ALONE) assert.ok(first.find((b) => b.name === name).y >= linkedBottom, `${name} is below the linked tables`);
 
-  // A table dragged onto the hub, then Auto layout: everything is placed again, the same way.
+  // A table dragged towards the hub, then Auto layout: everything is placed again, the same way.
   const users = first.find((b) => b.name === "users");
   const dragged = first.find((b) => b.name === "m3_d2");
   await drag(page, "m3_d2", users.x - dragged.x + 10, users.y - dragged.y + 10);
@@ -191,12 +198,21 @@ export default async function (page, { dir, shots }) {
   await page.eval(`${buttonIn(visibleErd, "Exit full screen")}.click()`);
   await page.waitFor(`!${visibleErd}.classList.contains('erd-full')`);
 
-  // A table referencing both hubs added outside the app, then Refresh: with nothing placed by
-  // hand, the whole diagram is laid out again, still without an overlap or a line through a box.
+  // A table referencing both hubs added outside the app, then Refresh: every table stays where
+  // it is and the new one goes below them without an overlap; Auto layout then places the whole
+  // diagram again, without an overlap or a line through a box.
   ENGINES.sqlite.exec(dir, SRC, `CREATE TABLE late (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), study_id INTEGER REFERENCES studies(id));`);
+  const before = Object.fromEntries((await page.eval(boxes)).map((b) => [b.name, b.transform]));
   await page.eval(`${buttonIn(visibleErd, "Refresh")}.click()`);
   await page.waitFor(`${visibleErd}.querySelectorAll('.erd-table').length === ${TABLES.length + 1}`, 15_000);
   await page.waitFor(`${visibleErd}.querySelectorAll('path[marker-start]').length === ${KEYS + 2}`, 10_000);
+  const refreshed = await page.eval(boxes);
+  assertDisjoint(refreshed, "after Refresh");
+  for (const b of refreshed.filter((o) => o.name !== "late")) assert.equal(b.transform, before[b.name], `Refresh keeps ${b.name} where it is`);
+  const late = refreshed.find((b) => b.name === "late");
+  assert.ok(late.y >= Math.max(...refreshed.filter((o) => o.name !== "late").map((o) => o.y + o.h)), "the new table goes below the others");
+  await page.eval(`${buttonIn(visibleErd, "Auto layout")}.click()`);
+  await page.waitFor(`${boxes}.find(b => b.name === 'late').transform !== ${JSON.stringify(late.transform)}`, 5000);
   await check(page, "after a table is added", TABLES.length + 1, KEYS + 2);
   assert.equal(await page.eval(`${visibleErd}.querySelectorAll('.notice.error').length`), 0);
 }

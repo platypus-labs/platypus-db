@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { menu, row, saveConnections } from "../qa-nav-helpers.mjs";
+import { openPath } from "../qa3-schema.mjs";
 import { editor } from "../qa-nav-table-editor.mjs";
 
 const NAME = "Fix Lite";
@@ -64,7 +65,8 @@ async function showTab(page, key) {
 export default async function (page) {
   await page.waitFor(`${row(NAME)} !== undefined`);
   await page.eval(`${row(NAME)}.querySelector('.twisty').click()`);
-  await page.waitFor(`${row("customers")} !== undefined && ${row("v_customers")} !== undefined`, 15_000);
+  await openPath(page, [NAME, "main", "Tables", "customers"]);
+  await openPath(page, [NAME, "main", "Views", "v_customers"]);
 
   // The table's tab: "Edit table…" beside "Open data", opening the editor on its columns.
   await menu(page, "customers", "Open details");

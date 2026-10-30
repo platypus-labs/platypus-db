@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site · Features</title>
+<link rel="stylesheet" href="base/style.css">
+<link rel="stylesheet" href="../assets/site-r.css">
+</head>
+<body data-page="features">
+<main>
+  <section class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">Features</p>
+      <h1>The whole toolbox,<br><span class="gradient">none of the weight.</span></h1>
+      <p class="lead">Write and run SQL, edit data, read query plans, design schemas and move data between databases, from one small window.</p>
+      <div class="actions">
+        <a class="button primary large" href="download.html">Download for free</a>
+        <a class="button ghost large" href="#tour">See it work</a>
+      </div>
+    </div>
+    <div class="mascot" aria-hidden="true">
+      <div class="ring"></div>
+      <img src="base/img/mark.png" alt="" width="1024" height="1024">
+      <span class="chip c1" style="--c:#7fc8db">SQL editor</span>
+      <span class="chip c2" style="--c:#ff8d28">Explain</span>
+      <span class="chip c3" style="--c:#c3a6ff">ER diagram</span>
+      <span class="chip c4" style="--c:#7ed3a0">Import / export</span>
+      <span class="chip c5" style="--c:#8fb8ff">MCP</span>
+    </div>
+  </section>
+
+  <nav class="pill-nav" aria-label="Areas"><div>
+    <a class="on" href="#tour">Tour</a><a href="#editor">SQL editor</a><a href="#data">Data</a><a href="#schema">Schema</a>
+    <a href="#perf">Performance</a><a href="#safety">Safety</a><a href="#move">Import and export</a><a href="#agents">Agents and CLI</a>
+  </div></nav>
+
+  <!-- Tour: the GIFs, as on the home page -->
+  <section class="section" id="tour" style="padding-top:96px">
+    <header class="head"><p class="eyebrow">See it work</p><h2>From the first query to production.</h2></header>
+    <div class="tour">
+      <div class="tabs" role="tablist" aria-label="Tour" hidden>
+        <button type="button" role="tab" id="tab-rows" aria-controls="shot-rows"><b>A million rows</b><span>Open, scroll and sort from the header.</span></button>
+        <button type="button" role="tab" id="tab-editor" aria-controls="shot-editor"><b>SQL editor</b><span>JOINs completed from the foreign keys.</span></button>
+        <button type="button" role="tab" id="tab-edit" aria-controls="shot-edit"><b>Data editor</b><span>Edit in place, preview the SQL, save.</span></button>
+        <button type="button" role="tab" id="tab-explain" aria-controls="shot-explain"><b>Query plans</b><span>Explain analyze with a heatmap.</span></button>
+        <button type="button" role="tab" id="tab-docs" aria-controls="shot-docs"><b>Notes and tags</b><span>Comments, notes and tags on every column.</span></button>
+        <button type="button" role="tab" id="tab-palette" aria-controls="shot-palette"><b>Command palette</b><span>Everything one Ctrl+K away.</span></button>
+      </div>
+      <div class="screens">
+        <figure class="panel" id="shot-rows" role="tabpanel" aria-labelledby="tab-rows"><img src="base/img/screenshots/hero.gif" width="1600" height="960" alt="A table with a million rows opened and sorted from its header."></figure>
+        <figure class="panel" id="shot-editor" role="tabpanel" aria-labelledby="tab-editor"><img src="base/img/screenshots/editor.gif" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys."></figure>
+        <figure class="panel" id="shot-edit" role="tabpanel" aria-labelledby="tab-edit"><img src="base/img/screenshots/data-editor.gif" width="1600" height="960" loading="lazy" alt="Edited cells and a new row, the SQL previewed before saving."></figure>
+        <figure class="panel" id="shot-explain" role="tabpanel" aria-labelledby="tab-explain"><img src="base/img/screenshots/explain.gif" width="1600" height="960" loading="lazy" alt="An explain analyze plan tinted by time, with an index suggestion."></figure>
+        <figure class="panel" id="shot-docs" role="tabpanel" aria-labelledby="tab-docs"><img src="base/img/screenshots/catalog.png" width="1600" height="960" loading="lazy" alt="A table's comment, notes and tags, and those of each column."></figure>
+        <figure class="panel" id="shot-palette" role="tabpanel" aria-labelledby="tab-palette"><img src="base/img/screenshots/palette.png" width="1600" height="960" loading="lazy" alt="The command palette listing tables and queries that match orders."></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="editor">
+    <header class="head"><p class="eyebrow">SQL editor</p><h2>Write it once, run it anywhere.</h2><p>An editor that knows your schema and remembers what you ran.</p></header>
+    <ul class="bento">
+      <li class="card w4"><h3>Completion from the schema</h3><p>Tables, columns and whole JOINs, completed from the foreign keys with the alias and the ON condition.</p>
+        <pre class="term" aria-hidden="true"><b>SELECT</b> o.id, c.name <b>FROM</b> orders o
+<b>JOIN</b> <u>customers c ON c.id = o.customer_id</u>  <i># completed</i></pre></li>
+      <li class="card w2"><h3>Statement or script</h3><p>Ctrl+Enter runs the statement under the cursor, Alt+X the whole script.</p><p class="big">2<small>keys</small></p></li>
+      <li class="card w2"><h3>Parameters</h3><p>:name and ? placeholders, asked before running and remembered.</p><div class="formats" aria-hidden="true"><span>:city</span><span>:from</span><span>?</span></div></li>
+      <li class="card w2"><h3>History</h3><p>Every query you ran, with its time, rows and errors, searchable.</p></li>
+      <li class="card w2"><h3>Notebooks</h3><p>Queries and notes in one document; results are kept with it.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="data">
+    <header class="head"><p class="eyebrow">Data</p><h2>See and change rows without writing SQL.</h2></header>
+    <ul class="bento">
+      <li class="card w2"><h3>A million rows, no wait</h3><p>A canvas grid that reads a page at a time.</p><p class="big">178<small>fps</small></p></li>
+      <li class="card w4"><h3>Edit, then save all or nothing</h3><p>Changes are collected in the grid, shown as SQL and saved in one transaction. Every save leaves an undo script.</p>
+        <div class="diff" aria-hidden="true"><code class="del">- status = 'pending'</code><code class="add">+ status = 'shipped'</code><code class="add">+ INSERT 1 row</code></div></li>
+      <li class="card w3"><h3>The value, in full</h3><p>JSON, XML, images and points on a map in a panel beside the grid.</p><div class="formats" aria-hidden="true"><span>JSON</span><span>XML</span><span>Image</span><span>Map</span></div></li>
+      <li class="card w3"><h3>Charts and pivots</h3><p>From any result, without leaving the tab.</p><div class="formats" aria-hidden="true"><span>Bar</span><span>Line</span><span>Pie</span><span>Pivot</span></div></li>
+    </ul>
+  </section>
+
+  <section class="section" id="schema">
+    <header class="head"><p class="eyebrow">Schema</p><h2>Know the schema, change it safely.</h2></header>
+    <ul class="bento">
+      <li class="card w3"><h3>A table editor that shows its SQL</h3><p>Add and change columns, indexes and keys; the ALTER TABLE is shown before it runs.</p>
+        <div class="diff" aria-hidden="true"><code class="add">+ ADD COLUMN coupon_code varchar(32)</code><code class="del">- DROP COLUMN shipped_at</code></div></li>
+      <li class="card w3"><h3>Notes and tags</h3><p>The database's own comments, your notes and tags on every table and column.</p><div class="formats" aria-hidden="true"><span>#pii</span><span>#core</span><span>Markdown</span></div></li>
+      <li class="card w2"><h3>ER diagram</h3><p>Drawn from the foreign keys, laid out for you, exported to PNG or SVG.</p></li>
+      <li class="card w2"><h3>Docs in one file</h3><p>The whole schema as one HTML page with its diagram.</p></li>
+      <li class="card w2"><h3>Compare and migrate</h3><p>Two schemas side by side, and the script that makes one like the other.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="perf">
+    <header class="head"><p class="eyebrow">Performance</p><h2>See why a query is slow.</h2></header>
+    <ul class="bento">
+      <li class="card w4"><h3>Explain analyze, rolled back</h3><p>Runs the statement for real times, rolls back what it changed, tints each step by its share of the time and suggests an index.</p>
+        <div class="heat" aria-hidden="true">
+          <div><span>Seq Scan on orders</span><s style="--w:92%"></s><em>412 ms</em></div>
+          <div><span>Hash Join</span><s style="--w:38%"></s><em>96 ms</em></div>
+          <div><span>Index Scan customers</span><s style="--w:12%"></s><em>21 ms</em></div>
+        </div></li>
+      <li class="card w2"><h3>Server activity</h3><p>Sessions, locks and the chain of who waits for whom; cancel a statement from there.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="safety">
+    <header class="head"><p class="eyebrow">Safety</p><h2>Production stays production.</h2></header>
+    <ul class="bento">
+      <li class="card w2"><h3>Colors you can't miss</h3><p>The window frame and the tab take the connection's color.</p>
+        <div class="envs" aria-hidden="true"><span style="--c:#7ed3a0">development</span><span style="--c:#8fb8ff">test</span><span style="--c:#ff8a8a">production</span></div></li>
+      <li class="card w2"><h3>Manual commit on production</h3><p>Production opens in manual commit and confirms every change before it runs.</p></li>
+      <li class="card w2"><h3>Read only, for real</h3><p>Writes are blocked by the client, not only by the grants. Passwords stay in the keychain.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="move">
+    <header class="head"><p class="eyebrow">Import and export</p><h2>Move data anywhere.</h2></header>
+    <ul class="bento">
+      <li class="card w3"><h3>Files in and out</h3><p>CSV, JSON, Parquet and Excel, streamed to disk or to S3.</p><div class="formats" aria-hidden="true"><span>CSV</span><span>JSON</span><span>Parquet</span><span>Excel</span><span>SQL</span><span>S3</span></div></li>
+      <li class="card w3"><h3>Between databases</h3><p>Copy a table or a whole schema from any database to any other.</p>
+        <div class="formats" aria-hidden="true"><span>PostgreSQL → DuckDB</span><span>MySQL → PostgreSQL</span><span>SQL Server → SQLite</span></div></li>
+    </ul>
+  </section>
+
+  <section class="section" id="agents">
+    <header class="head"><p class="eyebrow">Agents and CLI</p><h2>Ready for agents, read only by default.</h2></header>
+    <ul class="bento">
+      <li class="card w4"><h3>An MCP server and a command line</h3><p>Every MCP client can use your saved connections. Each connection says what agents may do, and every call is logged in the app.</p>
+        <pre class="term" aria-hidden="true"><b>$</b> platypus-db <u>--mcp</u>
+<i># or the CLI, one JSON document</i>
+<b>$</b> platypus query <u>"select 1"</u></pre></li>
+      <li class="card w2"><h3>You approve the writes</h3><p>Writes wait for your confirmation in the app, per connection.</p></li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <div class="cta">
+      <img src="base/img/mark.png" alt="" width="88" height="88">
+      <h2>All of this in 19.5 MiB.</h2>
+      <p>Free and open source. No trial, no account.</p>
+      <div class="actions" style="justify-content:center"><a class="button primary large" href="download.html">Download</a><a class="button ghost large" href="compare.html">Compare with other clients</a></div>
+    </div>
+  </section>
+</main>
+
+<div class="mk-note" style="right:24px;top:96px"><b>Come il sito di oggi</b>Hero con l'ornitorinco nel cerchio (qui con le aree invece dei database), tour con le GIF, card del bento con i loro mini-esempi.</div>
+<div class="mk-note" style="left:24px;top:900px"><b>Una sezione per area</b>Eyebrow, titolo grande e card, come le sezioni della home; la barra delle aree resta in alto mentre si scorre.</div>
+<script src="../assets/site-shell.js"></script>
+<script src="base/site.js"></script>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

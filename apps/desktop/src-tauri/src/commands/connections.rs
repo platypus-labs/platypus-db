@@ -13,6 +13,7 @@ use platypus_store::{
     ConnectionStore, ConnectionType, ImportFile, ImportRequest, ImportSource, ImportedProject,
     NetworkProfile, PasswordUpdate, SavedConnection, SavedSsh,
 };
+use platypus_sync::init_approval::{approval_key, init_hash, needs_approval};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
@@ -247,6 +248,22 @@ pub fn save_connection(
         PasswordInput::Set(p) => PasswordUpdate::Set(Secret::new(p)),
         PasswordInput::Clear => PasswordUpdate::Clear,
     };
+    // Statements the user typed here are theirs: they never ask. Those a shared file brought
+    // and the form left as they were still wait for approval.
+    let written = state.with_store(|s| {
+        let before = s.get(id).map(|c| c.init.statements.as_str());
+        Ok(before != Some(connection.init.statements.as_str())
+            && !connection.init.statements.trim().is_empty())
+    })?;
+    if written {
+        let hash = init_hash(&connection.init.statements);
+        state.with_settings(|s| {
+            s.set(
+                &approval_key(id),
+                Some(platypus_store::toml::Value::String(hash)),
+            )
+        })?;
+    }
     state.with_store(|s| {
         let old = s.get(connection.id).and_then(|c| c.ssh.clone());
         let new = connection.ssh.clone();
@@ -432,6 +449,7 @@ pub async fn open_session(
     password: Option<String>,
     database: Option<String>,
     side: Option<bool>,
+    init: Option<InitChoice>,
 ) -> CommandResult<SessionInfo> {
     // "Query with SQL" reaches its in-memory database through a connection that is not saved.
     if let Some((config, label)) = state.result_db_config(connection_id) {
@@ -444,7 +462,14 @@ pub async fn open_session(
         none_saved,
         production,
         ..
-    } = saved_config(&state, connection_id, password, database).await?;
+    } = saved_config(
+        &state,
+        connection_id,
+        password,
+        database,
+        init.unwrap_or(InitChoice::Ask),
+    )
+    .await?;
     let side = side == Some(true);
     let production = production && !side;
     // `auth`: the UI asks for the password (again), with the server's answer.
@@ -457,6 +482,20 @@ pub async fn open_session(
                 e
             }
         })
+}
+
+/// What to do with the init statements a shared project's file brought, which this machine's
+/// user has not approved yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InitChoice {
+    /// Refuse to connect with an `init_approval` error holding the statements, so the UI
+    /// shows them.
+    Ask,
+    /// The user read them: run them, and remember that exact text.
+    Run,
+    /// Connect without them.
+    Skip,
 }
 
 /// A saved connection ready to connect: its settings with the password, and its name.
@@ -474,6 +513,41 @@ pub(crate) struct SavedConfig {
     pub restrictions: platypus_store::Restrictions,
 }
 
+/// Applies the user's say over the init statements of a connection in a shared project: text
+/// this machine has not approved is dropped from `saved`, unless `init` is `Run` (which
+/// remembers the approval) or asks (`Ask`, an error carrying the text).
+fn check_init(
+    state: &AppState,
+    saved: &mut SavedConnection,
+    init: InitChoice,
+) -> CommandResult<()> {
+    let shared = state.with_store(|s| {
+        Ok(s.projects()
+            .iter()
+            .any(|p| p.shared.is_some() && p.connections.contains(&saved.id)))
+    })?;
+    let key = approval_key(saved.id);
+    let approved: Option<String> = state.setting(&key);
+    if !needs_approval(shared, &saved.init.statements, approved.as_deref()) {
+        return Ok(());
+    }
+    match init {
+        InitChoice::Ask => {
+            return Err(CommandError::new(
+                "init_approval",
+                saved.init.statements.clone(),
+            ));
+        }
+        InitChoice::Run => {
+            let hash = init_hash(&saved.init.statements);
+            state
+                .with_settings(|s| s.set(&key, Some(platypus_store::toml::Value::String(hash))))?;
+        }
+        InitChoice::Skip => saved.init.statements.clear(),
+    }
+    Ok(())
+}
+
 /// The settings of saved connection `connection_id`, on `database` when given, with
 /// `password`, or the one its password command prints, or the saved one; environment
 /// variables replaced.
@@ -482,12 +556,14 @@ pub(crate) async fn saved_config(
     connection_id: Uuid,
     password: Option<String>,
     database: Option<String>,
+    init: InitChoice,
 ) -> CommandResult<SavedConfig> {
-    let saved = state.with_store(|s| {
+    let mut saved = state.with_store(|s| {
         s.get(connection_id)
             .cloned()
             .ok_or(platypus_store::StoreError::NotFound(connection_id))
     })?;
+    check_init(state, &mut saved, init)?;
     // A password command may take a while: it runs without holding the store.
     let secret = match password {
         Some(p) => Some(Secret::new(p)),
@@ -598,4 +674,86 @@ pub fn delete_network_profile(
 pub fn close_session(state: State<'_, AppState>, session_id: u64) {
     lock(&state.sessions).remove(&session_id);
     super::analysis::diff::forget(&state, session_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use platypus_store::{MemorySecrets, Project, SettingsStore, SharedLink};
+
+    use crate::commands::analysis::error_kind;
+
+    use super::*;
+
+    fn none<T>() -> Result<T, String> {
+        Err("not opened in tests".to_owned())
+    }
+
+    /// A state with one connection holding `statements`, in a shared project or not.
+    fn state_with(
+        statements: &str,
+        shared: bool,
+    ) -> (AppState, SavedConnection, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConnectionStore::open(
+            dir.path().join("connections.toml"),
+            Arc::new(MemorySecrets::default()),
+        )
+        .unwrap();
+        let mut saved = SavedConnection::new("Ledger", DriverKind::Sqlite);
+        saved.init.statements = statements.to_owned();
+        store.save(saved.clone(), PasswordUpdate::Keep).unwrap();
+        let mut project = Project::new("Team", "#112233");
+        project.connections = vec![saved.id];
+        project.shared = shared.then(|| SharedLink {
+            path: dir.path().join("shared"),
+            share_user: false,
+        });
+        store.save_project(project).unwrap();
+        let state = AppState::new(
+            (Ok(store), None),
+            none(),
+            none(),
+            none(),
+            none(),
+            Ok(SettingsStore::open(dir.path().join("settings.toml")).unwrap()),
+            none(),
+        );
+        (state, saved, dir)
+    }
+
+    #[test]
+    fn shared_init_statements_ask_until_approved_and_ask_again_when_changed() {
+        let (state, saved, _dir) = state_with("SET x = 1;", true);
+
+        let err = check_init(&state, &mut saved.clone(), InitChoice::Ask).unwrap_err();
+        assert_eq!(
+            (error_kind(&err).as_str(), err.message()),
+            ("init_approval", "SET x = 1;")
+        );
+
+        let mut skipped = saved.clone();
+        check_init(&state, &mut skipped, InitChoice::Skip).unwrap();
+        assert_eq!(skipped.init.statements, "");
+        // Skipping remembers nothing.
+        assert!(check_init(&state, &mut saved.clone(), InitChoice::Ask).is_err());
+
+        let mut run = saved.clone();
+        check_init(&state, &mut run, InitChoice::Run).unwrap();
+        assert_eq!(run.init.statements, "SET x = 1;");
+        let mut again = saved.clone();
+        check_init(&state, &mut again, InitChoice::Ask).unwrap();
+        assert_eq!(again.init.statements, "SET x = 1;");
+
+        let mut changed = saved;
+        changed.init.statements = "SET x = 2;".to_owned();
+        assert!(check_init(&state, &mut changed, InitChoice::Ask).is_err());
+    }
+
+    #[test]
+    fn statements_outside_a_shared_project_never_ask() {
+        let (state, saved, _dir) = state_with("SET x = 1;", false);
+        let mut c = saved;
+        check_init(&state, &mut c, InitChoice::Ask).unwrap();
+        assert_eq!(c.init.statements, "SET x = 1;");
+    }
 }

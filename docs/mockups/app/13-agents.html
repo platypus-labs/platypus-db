@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agenti</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .editor-pane { height: 34%; border-bottom: 1px solid var(--border); }
+  .dialog.settings-dlg { width: 1180px; max-width: calc(100vw - 32px); height: calc(100vh - 64px); max-height: calc(100vh - 64px); }
+  .settings-dlg > header { align-items: center; }
+  .settings-dlg > header .input.search { margin-left: auto; width: 280px; }
+  .sbody { flex: 1; display: flex; min-height: 0; padding: 0 var(--sp-6); gap: var(--sp-4); }
+  .sbody .subnav { width: 200px; padding-bottom: var(--sp-4); overflow: auto; }
+  .spane { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; }
+  .spane .phead { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  .spane .subtabs { padding: 0 var(--sp-2); }
+  .spane .obj-split { flex: none; }
+  .spane .pbody { flex: 1; overflow: visible; padding: var(--sp-5) var(--sp-2); }
+  .desc { padding: var(--sp-3) var(--sp-2) 0; color: var(--fg-muted); font-size: var(--fs-sm); max-width: 640px; }
+  .tools { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+  .item { cursor: default; }
+  .item .nm { display: flex; align-items: center; gap: var(--sp-2); }
+  .item .lvl { color: var(--fg-muted); font-size: var(--fs-sm); display: flex; align-items: center; gap: var(--sp-2); }
+  .item.sel { box-shadow: inset 2px 0 0 var(--accent); }
+  .lvl-opt { display: flex; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-2); align-items: flex-start; }
+  .lvl-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+  .lvl-opt .rd { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border-strong); margin-top: 2px; flex: none; }
+  .lvl-opt.on .rd { border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--bg), inset 0 0 0 8px var(--accent); }
+  .lvl-opt .t { color: var(--fg-strong); font-weight: var(--fw-med); }
+  .lvl-opt .d { color: var(--fg-muted); font-size: var(--fs-xs); }
+  .act { display: grid; grid-template-columns: 8px 1fr auto; gap: var(--sp-3); align-items: start; font-size: var(--fs-sm); }
+  .act .dot { margin-top: 6px; }
+  .act .m { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--fg-muted); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+  </div>
+  <div class="editor-pane"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+    <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+    <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o <span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+  </div></div>
+  <div class="grid-wrap">
+    <table class="grid">
+      <thead><tr><th></th><th>city<small>text</small></th><th>revenue<small>numeric</small></th></tr></thead>
+      <tbody>
+        <tr><td class="rn">1</td><td>Roma</td><td class="num">8 412.50</td></tr>
+        <tr><td class="rn">2</td><td>Milano</td><td class="num">7 950.00</td></tr>
+        <tr><td class="rn">3</td><td>Napoli</td><td class="num">5 120.75</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="status"><span>3 righe</span><span>27 ms</span></div>
+</div>
+
+<div class="scrim">
+  <div class="dialog settings-dlg">
+    <header>
+      <h2>Impostazioni</h2>
+      <div class="input search"><i data-i="search" class="sm"></i>Cerca nelle impostazioni…</div>
+      <button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button>
+    </header>
+    <div class="sbody">
+      <nav class="subnav" aria-label="Pagine delle impostazioni">
+        <span><i data-i="palette" class="sm"></i>Aspetto</span>
+        <span><i data-i="panel" class="sm"></i>Navigator</span>
+        <span><i data-i="code" class="sm"></i>Editor SQL</span>
+        <span><i data-i="table" class="sm"></i>Risultati</span>
+        <span><i data-i="shield" class="sm"></i>Sicurezza</span>
+        <span><i data-i="plug" class="sm"></i>Connessioni</span>
+        <span><i data-i="sliders" class="sm"></i>Barra degli strumenti</span>
+        <span><i data-i="cpu" class="sm"></i>Prestazioni</span>
+        <span><i data-i="layers" class="sm"></i>Schede</span>
+        <span><i data-i="key" class="sm"></i>Password principale</span>
+        <span class="on"><i data-i="bot" class="sm"></i>Agenti</span>
+        <span><i data-i="database" class="sm"></i>Driver</span>
+        <span><i data-i="keyboard" class="sm"></i>Scorciatoie</span>
+      </nav>
+
+      <div class="spane">
+        <div class="phead">
+          <div class="pic" style="color:var(--accent)"><i data-i="bot"></i></div>
+          <div>
+            <h1>Agenti</h1>
+            <div class="sub">Client MCP che usano le connessioni salvate</div>
+          </div>
+          <div class="acts"><button class="btn primary"><i data-i="plus" class="sm"></i>Configura un client</button></div>
+        </div>
+        <div class="desc">Un client MCP può leggere e, se lo permetti, modificare i dati delle tue connessioni. Qui scegli per ogni connessione che cosa può fare e controlli cosa ha fatto.</div>
+        <div class="subtabs">
+          <span>Configurazione</span><span class="on">Accesso per connessione</span><span>Attività <span class="n">38</span></span><span>Sicurezza</span>
+        </div>
+
+        <div class="obj-split">
+          <div class="pbody">
+            <div class="tools">
+              <div class="input search" style="width:240px"><i data-i="search" class="sm"></i>Filtra connessioni…</div>
+              <span class="grow"></span>
+              <span class="muted" style="font-size:var(--fs-sm)">5 connessioni · 2 con accesso</span>
+            </div>
+            <div class="list">
+              <div class="item sel">
+                <span class="drv lg pg">Pg<span class="ping ok"></span></span>
+                <div class="grow"><div class="nm"><span class="t">Shop dev</span><span class="badge dev">DEV</span></div><div class="d">db-dev.shop.internal · shop</div></div>
+                <span class="lvl"><span class="dot warn"></span>Lettura e scrittura con conferma</span>
+                <span class="select" style="width:130px">Modifica</span>
+              </div>
+              <div class="item">
+                <span class="drv lg pg">Pg<span class="ping off"></span></span>
+                <div class="grow"><div class="nm"><span class="t">Shop prod</span><span class="badge prod">PROD</span></div><div class="d">db.shop.internal · shop</div></div>
+                <span class="lvl"><span class="dot ok"></span>Solo lettura</span>
+                <span class="select" style="width:130px">Modifica</span>
+              </div>
+              <div class="item">
+                <span class="drv lg duck">Dk</span>
+                <div class="grow"><div class="nm"><span class="t">analytics.duckdb</span></div><div class="d">File locale · 412 MB</div></div>
+                <span class="lvl"><span class="dot ok"></span>Solo lettura</span>
+                <span class="select" style="width:130px">Modifica</span>
+              </div>
+              <div class="item">
+                <span class="drv lg my">My<span class="ping err"></span></span>
+                <div class="grow"><div class="nm"><span class="t">Legacy CRM</span></div><div class="d">Non raggiungibile · errore di connessione</div></div>
+                <span class="lvl"><span class="dot"></span>Nessuno</span>
+                <span class="select" style="width:130px">Modifica</span>
+              </div>
+              <div class="item">
+                <span class="drv lg lite">Sq</span>
+                <div class="grow"><div class="nm"><span class="t">cache.sqlite</span></div><div class="d">File locale · 8 MB</div></div>
+                <span class="lvl"><span class="dot"></span>Nessuno</span>
+                <span class="select" style="width:130px">Modifica</span>
+              </div>
+            </div>
+          </div>
+
+          <aside class="panel-r" style="width:320px">
+            <header><span class="drv pg">Pg</span><span class="strong grow">Shop dev</span><span class="badge dev">DEV</span><button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button></header>
+            <div class="pb">
+              <div class="col" style="gap:var(--sp-2)">
+                <div class="h2" style="margin:0">Livello di accesso</div>
+                <div class="lvl-opt"><span class="rd"></span><div><div class="t">Nessuno</div><div class="d">Gli agenti non vedono questa connessione.</div></div></div>
+                <div class="lvl-opt"><span class="rd"></span><div><div class="t">Solo lettura</div><div class="d">Possono eseguire SELECT e leggere lo schema.</div></div></div>
+                <div class="lvl-opt on"><span class="rd"></span><div><div class="t">Lettura e scrittura con conferma</div><div class="d">Ogni modifica attende il tuo consenso nell'app.</div></div></div>
+              </div>
+              <dl class="kv" style="margin:0">
+                <dt>Tabelle escluse</dt><dd><span class="badge neutral">customers.email</span> <span class="badge neutral">payments</span></dd>
+                <dt>Limite righe</dt><dd>1 000 per query</dd>
+                <dt>Conferma</dt><dd class="row"><span class="toggle on"></span><span>Richiesta per ogni scrittura</span></dd>
+              </dl>
+              <button class="btn sm"><i data-i="edit" class="sm"></i>Modifica le esclusioni</button>
+              <div>
+                <div class="h2">Ultime attività</div>
+                <div class="col" style="gap:var(--sp-3)">
+                  <div class="act"><span class="dot ok"></span><div><div>SELECT su orders</div><div class="m">client-1 · 142 righe</div></div><span class="muted" style="font-size:var(--fs-xs)">2 min fa</span></div>
+                  <div class="act"><span class="dot warn"></span><div><div>UPDATE orders · in attesa di conferma</div><div class="m">client-1 · 1 riga</div></div><span class="muted" style="font-size:var(--fs-xs)">9 min fa</span></div>
+                  <div class="act"><span class="dot err"></span><div><div>SELECT su payments · negato</div><div class="m">client-2 · tabella esclusa</div></div><span class="muted" style="font-size:var(--fs-xs)">1 h fa</span></div>
+                </div>
+                <button class="btn sm ghost" style="margin-top:var(--sp-2)">Vedi tutta l'attività<i data-i="right" class="sm"></i></button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span class="l"><i data-i="check" class="sm" style="color:var(--ok)"></i>Salvato in settings.toml</span>
+      <button class="btn primary">Fatto<kbd>Esc</kbd></button>
+    </footer>
+  </div>
+</div>
+
+<div class="mk-note" style="left:96px;top:690px"><b>Come l'app di oggi: le impostazioni restano una finestra</b>Agenti è una delle pagine dell'elenco a sinistra.</div>
+<div class="mk-note" style="left:96px;top:120px"><b>Ogni pagina con intestazione e sotto-schede</b>Icona, titolo, sottotitolo, descrizione e quattro sotto-schede.</div>
+<div class="mk-note" style="left:1100px;top:600px"><b>Elenco con azione a destra, dettaglio a fianco</b>Il pannello spiega livelli, esclusioni e limite righe della connessione selezionata.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

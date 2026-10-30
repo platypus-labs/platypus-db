@@ -222,7 +222,10 @@ export default async function (page) {
   // The navigator: the connection's keyspace opens by itself with its tables.
   await page.waitFor(`${treeRow(NAME)} !== undefined`, 30_000);
   await page.eval(`${treeRow(NAME)}.querySelector('.twisty').click()`);
-  await page.waitFor(`${treeRow("items")} !== undefined && ${treeRow("address")} !== undefined`, 40_000);
+  // The tables show at once; the user-defined types are in the Types folder, closed.
+  await page.waitFor(`${treeRow("items")} !== undefined && ${treeRow("Types")} !== undefined`, 40_000);
+  await page.eval(`${treeRow("Types")}.querySelector('.twisty').click()`);
+  await page.waitFor(`${treeRow("address")} !== undefined`, 15_000);
   await page.eval(`${treeRow("items")}.id = 'e2e-items'`);
   const items = await menu(page, "#e2e-items");
   for (const item of ["Open data", "Generate SELECT", "Generate INSERT", "Generate UPDATE", "Generate DELETE", "Truncate…", "Drop…"]) {
@@ -231,7 +234,8 @@ export default async function (page) {
   for (const item of ["Visual query builder", "Rename…"]) assert.ok(!items.some((i) => i.startsWith(item)), `${item} in ${items}`);
   await menuItem(page, "Open data");
   await page.waitFor(`${editorText}.startsWith('SELECT *') && ${status} === '3 rows'`, 30_000);
-  assert.deepEqual(table(await gridTsv(page))[0].slice(0, 3), ["id", "day", "name"]);
+  // Partition and clustering keys come first, then the other columns by name.
+  assert.deepEqual(table(await gridTsv(page))[0].slice(0, 3), ["id", "day", "addr"]);
 
   // Collections and user-defined types are JSON text, keys first.
   const rows = table(await gridTsv(page));
@@ -311,7 +315,8 @@ async function editing(page) {
   await editCell(page, g.row(1), g.col("name"), "Alpha's");
   await editCell(page, g.row(1), g.col("qty"), "41");
   assert.match(await page.eval(editBar), /1 row changed/);
-  assert.equal(await preview(page), `UPDATE ${KS}.items2 SET name = 'Alpha''s', qty = 41 WHERE id = 1 AND day = '2024-01-01';`);
+  // The statements run one after the other as they are: the preview adds no semicolon.
+  assert.equal(await preview(page), `UPDATE ${KS}.items2 SET name = 'Alpha''s', qty = 41 WHERE id = 1 AND day = '2024-01-01'`);
   await save(page, "3 rows");
   const changed = (rowsOf(`* FROM ${KS}.items2`)).find((r) => r.id === 1);
   assert.deepEqual([changed.name, changed.qty], ["Alpha's", 41]);
@@ -337,9 +342,9 @@ async function editing(page) {
   await editCell(page, 0, g.col("name"), "Zed");
   assert.match(await page.eval(editBar), /3 rows changed/);
   assert.deepEqual((await preview(page)).split("\n"), [
-    `DELETE FROM ${KS}.items2 WHERE id = 3 AND day = '2024-01-03';`,
-    `UPDATE ${KS}.items2 SET qty = 20 WHERE id = 2 AND day = '2024-01-02';`,
-    `INSERT INTO ${KS}.items2 (id, day, name) VALUES (9, '2024-09-09', 'Zed');`,
+    `DELETE FROM ${KS}.items2 WHERE id = 3 AND day = '2024-01-03'`,
+    `UPDATE ${KS}.items2 SET qty = 20 WHERE id = 2 AND day = '2024-01-02'`,
+    `INSERT INTO ${KS}.items2 (id, day, name) VALUES (9, '2024-09-09', 'Zed')`,
   ]);
   await save(page, "3 rows");
   const now = rowsOf(`* FROM ${KS}.items2`);

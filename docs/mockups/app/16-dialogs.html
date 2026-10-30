@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalogo dei dialog</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .scrim { align-content: start; padding-top: var(--sp-8); }
+  .cat { display: grid; grid-template-columns: repeat(2, 440px); gap: var(--sp-5); zoom: .8; }
+  .cat .dialog { width: 440px; }
+  .cat .cap { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: var(--sp-2); }
+  .dialog > .body { padding-top: var(--sp-1); }
+  .btn.danger.solid { background: var(--error-bg); border-color: var(--error); font-weight: var(--fw-semi); }
+  .stm { margin: 0; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-1); background: var(--bg-input); font: var(--fs-sm)/1.7 var(--font-mono); }
+  .stm div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: var(--sp-6); display: flex; gap: var(--sp-4); z-index: 30; }
+  .toasts .toast { position: static; }
+  .menu.fixed { position: fixed; left: var(--sp-6); top: 120px; }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+  </div>
+  <div style="height:34%;border-bottom:1px solid var(--border)"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+    <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+    <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o <span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+    <div class="ln"><b>4</b><span><span class="kw">GROUP BY</span> c.city <span class="kw">ORDER BY</span> revenue <span class="kw">DESC</span>;</span></div>
+  </div></div>
+  <div class="grid-wrap">
+    <table class="grid">
+      <thead><tr><th></th><th>city<small>text</small></th><th>orders<small>bigint</small></th><th>revenue<small>numeric</small></th></tr></thead>
+      <tbody>
+        <tr><td class="rn">1</td><td>Roma</td><td class="num">42</td><td class="num">8 412.50</td></tr>
+        <tr><td class="rn">2</td><td>Milano</td><td class="num">39</td><td class="num">7 950.00</td></tr>
+        <tr><td class="rn">3</td><td>Napoli</td><td class="num">31</td><td class="num">5 120.75</td></tr>
+        <tr><td class="rn">4</td><td>Torino</td><td class="num">27</td><td class="num">4 809.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<div class="scrim">
+  <div class="cat">
+    <div>
+      <div class="cap" style="color:#fff">a · Conferma distruttiva</div>
+      <div class="dialog">
+        <header><i data-i="alert" style="color:var(--error);margin-top:2px"></i><div><h2>Eliminare la tabella orders?</h2><p>public · Shop dev</p></div><button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button></header>
+        <div class="body">
+          <div class="banner err" style="margin-bottom:var(--sp-4)"><i data-i="error"></i><div>La tabella e le sue <b>2 980 righe</b> verranno eliminate. L'operazione non si può annullare. La vista <span class="mono">v_revenue</span> smetterà di funzionare.</div></div>
+          <div class="form"><label>Conferma</label><div class="input focus"><span class="mono">ord</span></div><div class="help">Scrivi <span class="mono strong">orders</span> per abilitare il pulsante.</div></div>
+        </div>
+        <footer><span class="l"><i data-i="code" class="sm"></i>Mostra SQL</span><button class="btn">Annulla<kbd>Esc</kbd></button><button class="btn danger solid" disabled>Elimina tabella</button></footer>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap" style="color:#fff">b · Scrittura su produzione</div>
+      <div class="dialog">
+        <header><i data-i="shield" style="color:var(--error);margin-top:2px"></i><div><h2>Stai per modificare Shop prod</h2><p>3 istruzioni · <span class="badge prod">PROD</span></p></div><button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button></header>
+        <div class="body">
+          <div class="stm">
+            <div><span class="kw">UPDATE</span> orders <span class="kw">SET</span> status = <span class="st">'shipped'</span> <span class="kw">WHERE</span> id = <span class="nu">2931</span>;</div>
+            <div><span class="kw">DELETE FROM</span> order_items <span class="kw">WHERE</span> order_id = <span class="nu">2931</span>;</div>
+            <div><span class="kw">UPDATE</span> products <span class="kw">SET</span> stock = stock - <span class="nu">1</span> <span class="kw">WHERE</span> id = <span class="nu">17</span>;</div>
+          </div>
+          <div class="row" style="margin-top:var(--sp-4)"><span class="check on"><i></i>Ho controllato le istruzioni e la connessione</span></div>
+        </div>
+        <footer><span class="l"><i data-i="lock" class="sm"></i>Auto-commit</span><button class="btn">Annulla<kbd>Esc</kbd></button><button class="btn danger solid">Esegui su produzione<kbd>↵</kbd></button></footer>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap" style="color:#fff">c · Modifica di massa</div>
+      <div class="dialog">
+        <header><div><h2>Modifica 24 righe</h2><p>orders · selezione dalla griglia</p></div><button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button></header>
+        <div class="body">
+          <div class="form">
+            <label>Colonna</label><div class="select">status</div>
+            <label>Operazione</label><div class="select">Imposta il valore</div>
+            <label>Valore</label><div class="input focus"><span class="mono">'shipped'</span></div>
+          </div>
+          <div class="banner info" style="margin-top:var(--sp-4)"><i data-i="info"></i><div><b>24 righe</b> verranno modificate, 3 hanno già questo valore. Le modifiche restano in sospeso finché non premi Salva.</div></div>
+        </div>
+        <footer><span class="l"><i data-i="code" class="sm"></i>Mostra SQL</span><button class="btn">Annulla<kbd>Esc</kbd></button><button class="btn primary">Applica a 24 righe<kbd>↵</kbd></button></footer>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap" style="color:#fff">d · Parametri</div>
+      <div class="dialog">
+        <header><div><h2>Valori dei parametri</h2><p>revenue_by_city.sql · 2 parametri</p></div><button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button></header>
+        <div class="body">
+          <div class="form">
+            <label class="mono">:city</label><div class="input focus"><span class="mono">'Roma'</span></div>
+            <div class="help">text · usato alla riga 5</div>
+            <label class="mono">:from</label><div class="input"><span class="mono">2026-10-01</span><span class="grow"></span><i data-i="clock" class="sm muted"></i></div>
+            <div class="help">date · usato alla riga 6</div>
+          </div>
+        </div>
+        <footer><span class="l"><span class="check on"><i></i>Ricorda i valori</span></span><button class="btn">Annulla<kbd>Esc</kbd></button><button class="btn primary"><i data-i="play" class="sm"></i>Esegui<kbd>↵</kbd></button></footer>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="menu fixed">
+  <div class="mh">orders</div>
+  <div class="mi on"><i data-i="table" class="sm"></i>Apri i dati<kbd>↵</kbd></div>
+  <div class="mi"><i data-i="edit" class="sm"></i>Modifica struttura<kbd>F4</kbd></div>
+  <div class="mi"><i data-i="upload" class="sm"></i>Esporta…</div>
+  <div class="mi"><i data-i="code" class="sm"></i>Genera DDL</div>
+  <div class="ms"></div>
+  <div class="mi danger"><i data-i="trash" class="sm"></i>Elimina tabella…</div>
+</div>
+
+<div class="toasts">
+  <div class="toast">
+    <i data-i="check"></i>
+    <div class="tbody"><div class="t">2 righe aggiornate</div><div class="d">UPDATE orders · 12 ms</div>
+      <div class="acts"><button class="btn sm">Annulla</button></div></div>
+    <button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button>
+  </div>
+  <div class="toast err">
+    <i data-i="error"></i>
+    <div class="tbody"><div class="t">Esecuzione non riuscita</div><div class="d">relation "order" does not exist</div>
+      <div class="acts"><button class="btn sm">Dettagli</button><button class="btn sm ghost">Riprova</button></div></div>
+    <button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button>
+  </div>
+</div>
+
+<div class="mk-note" style="left:24px;top:60px"><b>Menu contestuale</b>Stessa struttura dei dialog: intestazione dell'oggetto, voci con icona e scorciatoia, la voce distruttiva in fondo e in rosso.</div>
+<div class="mk-note" style="left:24px;top:360px"><b>Una struttura sola</b>Titolo e sottotitolo, corpo, piede: info a sinistra, Annulla, primario a destra. Esc e Invio ovunque.</div>
+<div class="mk-note" style="left:24px;top:520px"><b>Pericolo = rosso pieno solo qui</b>L'azione distruttiva ha il bordo rosso e il nome dell'effetto ("Elimina tabella"), mai un generico "OK".</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>
