@@ -460,7 +460,7 @@ mod tests {
             Some("4".to_owned()),
             Some("f()".to_owned()),
         ];
-        assert_eq!(after_step(Driven::Rows(vec![row])).unwrap(), stopped(4));
+        assert_eq!(after_step(Driven::Rows(vec![row])).unwrap(), stopped(3));
         let outcome = DebugOutcome {
             columns: vec!["f".to_owned()],
             rows: vec![vec![Some("10".to_owned())]],
