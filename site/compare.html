@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Compare</title>
+  <meta name="description" content="PlatypusDB next to other SQL clients: download size, disk size, license and features.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="img/icon.png">
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="index.html" aria-label="PlatypusDB, home">
+        <img src="img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="index.html#tour">Tour</a>
+        <a href="features.html">Features</a>
+        <a href="databases.html">Databases</a>
+        <a href="compare.html" aria-current="page">Compare</a>
+        <a href="docs.html">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+  <section class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">Compare</p>
+      <h1>The same work,<br><span class="gradient">a fraction of the size.</span></h1>
+      <p class="lead">PlatypusDB next to the SQL clients people already use: size, price, what each one can do, and how to move your connections over.</p>
+      <dl class="meta">
+        <div><dt>smaller than DBeaver CE</dt><dd>6×</dd></div>
+        <div><dt>smaller than DataGrip</dt><dd>54×</dd></div>
+        <div><dt>to a window</dt><dd>&lt; 0.5 s</dd></div>
+      </dl>
+    </div>
+    <div class="bars hero-bars" role="img" aria-label="Linux download size: PlatypusDB 19.5 MiB, TablePlus 60 MiB, DBeaver CE 122 MiB, Beekeeper Studio 346 MiB, DataGrip 1,047 MiB.">
+      <div class="bars-h">Linux download</div>
+      <div class="bar me" style="--w:1.9%"><span><img class="cl-me" src="img/mark.png" alt="" width="20" height="20">PlatypusDB</span><i><s></s></i><em>19.5 MiB</em></div>
+      <div class="bar" style="--w:5.7%"><span><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</span><i><s></s></i><em>60 MiB</em></div>
+      <div class="bar" style="--w:11.7%"><span><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</span><i><s></s></i><em>122 MiB</em></div>
+      <div class="bar" style="--w:33%"><span><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper Studio</span><i><s></s></i><em>346 MiB</em></div>
+      <div class="bar" style="--w:100%"><span><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</span><i><s></s></i><em>1,047 MiB</em></div>
+    </div>
+  </section>
+
+  <!-- Head to head -->
+  <section class="section deep">
+    <header class="head"><p class="eyebrow">Head to head</p><h2>One client at a time.</h2></header>
+    <div class="seg-pills vs-pick" role="tablist" aria-label="Compare with">
+      <button type="button" role="tab" aria-selected="true" aria-controls="vs-panel" data-client="dbeaver">DBeaver CE</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="vs-panel" data-client="datagrip">DataGrip</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="vs-panel" data-client="tableplus">TablePlus</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="vs-panel" data-client="beekeeper">Beekeeper Studio</button>
+    </div>
+    <div class="vs" id="vs-panel" role="tabpanel" aria-live="polite">
+      <div class="vs-col me">
+        <div class="vs-name"><img src="img/mark.png" alt="" width="34" height="34">PlatypusDB</div>
+        <dl>
+          <div><dt>Linux download</dt><dd>19.5 MiB</dd></div>
+          <div><dt>On disk</dt><dd>46 MiB</dd></div>
+          <div><dt>Runtime</dt><dd>Rust, the system's web view</dd></div>
+          <div><dt>License</dt><dd>AGPL-3.0, free</dd></div>
+        </dl>
+      </div>
+      <div class="vs-mid"><span>vs</span><b data-vs="ratio">6×</b><small>smaller download</small></div>
+      <div class="vs-col">
+        <div class="vs-name"><span data-vs="tile" class="cl-logo lg" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span><span data-vs="name">DBeaver CE</span></div>
+        <dl>
+          <div><dt>Linux download</dt><dd data-vs="download">122 MiB</dd></div>
+          <div><dt>On disk</dt><dd data-vs="disk">206 MiB</dd></div>
+          <div><dt>Runtime</dt><dd data-vs="runtime">Java, JRE bundled</dd></div>
+          <div><dt>License</dt><dd data-vs="license">Apache 2.0, free</dd></div>
+        </dl>
+      </div>
+    </div>
+    <ul class="bento after-bars">
+      <li class="card w2"><h3>Opens in half a second</h3><p>No JVM to start: Rust and the system's web view. Start and memory side by side are still to be measured.</p><p class="big">430<small>ms</small></p></li>
+      <li class="card w2"><h3 data-vs="point">Your DBeaver connections</h3><p data-vs="pointText">Import a workspace or a .dbp project export, with its folders, projects and saved user names.</p></li>
+      <li class="card w2"><h3>Safer on production</h3><p>Every save shows its SQL first and leaves an undo script.</p>
+        <div class="diff" aria-hidden="true"><code class="del">- status = 'pending'</code><code class="add">+ status = 'shipped'</code></div></li>
+    </ul>
+  </section>
+
+  <!-- Sizes -->
+  <section class="section">
+    <header class="head"><p class="eyebrow">Size</p><h2>Measured the same way.</h2><p>Official Linux downloads and the installed size, measured on 29 October 2026.</p></header>
+    <div class="size-two">
+      <div class="bars">
+        <div class="bars-h">Download</div>
+        <div class="bar me" style="--w:1.9%"><span><img class="cl-me" src="img/mark.png" alt="" width="20" height="20">PlatypusDB</span><i><s></s></i><em>19.5 MiB</em></div>
+        <div class="bar" style="--w:5.7%"><span><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</span><i><s></s></i><em>60 MiB</em></div>
+        <div class="bar" style="--w:11.7%"><span><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</span><i><s></s></i><em>122 MiB</em></div>
+        <div class="bar" style="--w:33%"><span><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper Studio</span><i><s></s></i><em>346 MiB</em></div>
+        <div class="bar" style="--w:100%"><span><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</span><i><s></s></i><em>1,047 MiB</em></div>
+      </div>
+      <div class="bars">
+        <div class="bars-h">On disk</div>
+        <div class="bar me" style="--w:4.2%"><span><img class="cl-me" src="img/mark.png" alt="" width="20" height="20">PlatypusDB</span><i><s></s></i><em>46 MiB</em></div>
+        <div class="bar" style="--w:16.3%"><span><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</span><i><s></s></i><em>180 MiB</em></div>
+        <div class="bar" style="--w:18.6%"><span><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</span><i><s></s></i><em>206 MiB</em></div>
+        <div class="bar" style="--w:100%"><span><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper Studio</span><i><s></s></i><em>1,105 MiB</em></div>
+        <div class="bar todo"><span><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</span><i><s></s></i><em>not measured</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Start and memory -->
+  <section class="section perf">
+    <div class="perf-text">
+      <p class="eyebrow">Start and memory</p>
+      <h2>Light enough to leave open all day.</h2>
+      <p>Rust and the system's web view: no JVM, no bundled browser. The other clients have not been measured on the same machine yet.</p>
+    </div>
+    <dl class="numbers">
+      <div><dt>from start to an interactive window</dt><dd>430<small>ms</small></dd></div>
+      <div><dt>memory at rest with one connection</dt><dd>130<small>MB</small></dd></div>
+      <div><dt>scrolling a million rows</dt><dd>178<small>fps</small></dd></div>
+      <div><dt>5 million rows to Parquet, 31 MB peak</dt><dd>3.2<small>s</small></dd></div>
+    </dl>
+  </section>
+
+  <!-- Feature matrix -->
+  <section class="section">
+    <header class="head"><p class="eyebrow">Features</p><h2>What each client can do.</h2><p>The free edition of each client. ● yes · ◐ partly or paid only · — no.</p></header>
+    <div class="table-wrap compare matrix price">
+      <table class="grid">
+        <thead><tr><th><span class="sr">Feature</span></th><th class="me"><img class="cl-me" src="img/mark.png" alt="" width="20" height="20">PlatypusDB</th><th><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</th><th><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</th><th><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</th><th><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper</th><th><span class="cl-logo img"><img src="img/clients/heidisql.png" alt="" width="20" height="20"></span>HeidiSQL</th><th><span class="cl-logo img"><img src="img/clients/pgadmin.png" alt="" width="20" height="20"></span>pgAdmin 4</th></tr></thead>
+        <tbody>
+          <tr class="grp"><th colspan="8">The basics</th></tr>
+          <tr><th>Price</th><td class="me">Free</td><td>Free</td><td>Paid; free for non-commercial use</td><td>Free tier, paid license</td><td>Free for small teams; paid edition</td><td>Free</td><td>Free</td></tr>
+          <tr><th>Open source</th><td class="me y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="p">◐</td><td class="y">●</td><td class="y">●</td></tr>
+          <tr><th>Windows, macOS, Linux</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td></tr>
+          <tr><th>No account to use it</th><td class="me y">●</td><td class="y">●</td><td class="x">—</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td></tr>
+          <tr class="grp"><th colspan="8">Databases</th></tr>
+          <tr><th>PostgreSQL, MySQL, SQL Server, SQLite</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td></tr>
+          <tr><th>Oracle</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>DuckDB and data files</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>MongoDB</th><td class="me y">●</td><td class="p">◐</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>Snowflake, BigQuery, Trino</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr class="grp"><th colspan="8">Everyday work</th></tr>
+          <tr><th>Undo script after every save</th><td class="me y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>Visual query plan</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="y">●</td></tr>
+          <tr><th>ER diagram</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="y">●</td></tr>
+          <tr><th>Production colors and confirmations</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr class="grp"><th colspan="8">Agents and automation</th></tr>
+          <tr><th>Built-in MCP server</th><td class="me y">●</td><td class="p">◐</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>Command line with JSON output</th><td class="me y">●</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">From each client's website and documentation, checked on 30 October 2026: <a href="https://dbeaver.io/about/">DBeaver</a>, <a href="https://www.jetbrains.com/help/datagrip/mcp-server.html">DataGrip</a>, <a href="https://tableplus.com/docs/">TablePlus</a>, <a href="https://docs.beekeeperstudio.io/docs/first-page">Beekeeper Studio</a>, <a href="https://www.heidisql.com/">HeidiSQL</a>. Something out of date? <a href="https://github.com/PaoloCisly/platypus-db/issues">Open an issue</a> and we fix the table.</p>
+  </section>
+
+  <!-- Switching -->
+  <section class="section">
+    <header class="head"><p class="eyebrow">Switching</p><h2>Bring your connections.</h2><p>Import connections from DBeaver, DataGrip, pgAdmin and <code>pg_service.conf</code>, with their folders.</p></header>
+    <ul class="bento">
+      <li class="card w2"><span class="cl-logo lg" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span><h3>From DBeaver</h3><p>A workspace or a <code>.dbp</code> project export, with its folders and projects.</p></li>
+      <li class="card w2"><span class="cl-logo lg" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span><h3>From DataGrip</h3><p>Its connections, with their folders.</p></li>
+      <li class="card w2"><span class="cl-logo lg img"><img src="img/clients/pgadmin.png" alt="" width="34" height="34"></span><h3>From pgAdmin</h3><p>Its connections, and your <code>pg_service.conf</code>.</p></li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <div class="cta">
+      <img src="img/mark.png" alt="" width="88" height="88">
+      <h2>Try it next to your current client.</h2>
+      <p>Free, no account. Import your connections and see the difference.</p>
+      <div class="actions center"><a class="button primary large" href="download.html">Download</a><a class="button ghost large" href="features.html">All features</a></div>
+    </div>
+  </section>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="index.html"><img src="img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">Features</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Shortcuts</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="site.js" defer></script>
+</body>
+</html>

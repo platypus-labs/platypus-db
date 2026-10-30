@@ -1,16 +1,24 @@
 # PlatypusDB site
 
-A static, single-page presentation of PlatypusDB: plain HTML and CSS with one small script for
-the tour tabs and the fade-in of a few blocks. No build step, nothing loaded from other
+A static presentation of PlatypusDB, a home page and five pages (features, databases, compare,
+download, docs): plain HTML and CSS with one small script for the tour tabs, the fade-in of a few
+blocks and the name of the visitor's system on the download button. No build step, nothing loaded from other
 sites.
 
 ```
-index.html      the page
+index.html      the home page
+features.html   every feature, area by area
+databases.html  the supported databases and how each connects
+compare.html    size, license and features next to other SQL clients
+download.html   installers per system and building from source
+docs.html       getting started, and an index of the Markdown docs on GitHub
 style.css       styles; dark only, colors from apps/desktop/src/theme.ts (Platypus Dark)
 site.js         tour as tabs (without it every screenshot shows, one under the other)
 fonts/          Inter and JetBrains Mono, copied from apps/desktop/src/assets/fonts
 img/            icon, the platypus (mark.png, from docs/brand/logo-only-1024.png), database
                 logos (databases.svg, from simple-icons as in the app's DriverPicker) and
+                the logos of other SQL clients for Compare (clients.svg, from simple-icons; the
+                app icons in clients/ from tableplus.com, heidisql.com and the pgAdmin repository) and
                 the screenshots and GIFs from docs/screenshots that the page shows
 .nojekyll       tells GitHub Pages to serve the folder as it is
 ```
