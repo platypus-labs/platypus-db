@@ -110,14 +110,16 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
           </div>
         </label>
         <label className="field">
-          <span>{t("Initials — on the project's square")}</span>
+          <span>{t("Initials")}</span>
           <div className="project-dialog-icon">
             <div className="project-dialog-preview" style={{ background: color }} aria-hidden>
               {initials}
             </div>
             <input
               className="project-initials"
-              value={initials}
+              // Until typed over, the initials that follow the name show as the placeholder.
+              value={ownInitials ? initials : ""}
+              placeholder={initials || "AB"}
               maxLength={2}
               onChange={(e) => {
                 setInitials(e.target.value);

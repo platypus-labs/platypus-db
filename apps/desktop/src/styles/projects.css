@@ -151,6 +151,33 @@
   border-color: var(--fg-muted);
 }
 
+/* The same grid as the connection form: labels at the left, controls in one column. */
+.modal.project-dialog {
+  --label-w: 120px;
+  width: min(480px, calc(100vw - 32px));
+}
+
+.project-dialog .field {
+  display: grid;
+  grid-template-columns: var(--label-w) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4) var(--space-10);
+}
+
+.project-dialog .field > span:first-child {
+  font-weight: 400;
+  color: var(--fg-muted);
+  text-align: right;
+}
+
+.project-dialog .field:has(.conn-pick) {
+  align-items: start;
+}
+
+.project-dialog .field:has(.conn-pick) > span:first-child {
+  padding-top: var(--space-6);
+}
+
 .project-dialog-icon {
   display: flex;
   align-items: center;
