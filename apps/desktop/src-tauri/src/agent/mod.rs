@@ -383,7 +383,7 @@ impl Bridge {
     async fn serve(&self, port: u16, agent: Arc<platypus_mcp::Agent>) -> Result<(), String> {
         let dir = self.data_dir()?;
         let token = self.token()?;
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        let listener = bind(port)
             .await
             .map_err(|e| format!("cannot listen on port {port}: {e}"))?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
@@ -447,6 +447,21 @@ impl Bridge {
             url: running.map(|port| format!("http://127.0.0.1:{port}/mcp")),
             token,
             error: lock(&self.error).clone().or(token_error),
+        }
+    }
+}
+
+/// Listens on `port`. The server stopped a moment ago may still hold it (its task ends
+/// after the cancel), so a port in use is tried again for a short while.
+async fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    let mut tries = 0;
+    loop {
+        match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && port != 0 && tries < 20 => {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            other => return other,
         }
     }
 }
