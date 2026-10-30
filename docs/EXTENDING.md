@@ -35,7 +35,10 @@ Existing optional methods are `explain`, `object_ddl`, `databases`, `server_sess
 `bulk_load`. `object_properties`
 and `catalog_foreign_keys` are optional too, but need no flag: their default is an empty
 list. `object_comment` has a default too: it takes the comment from the object list, and a
-driver whose list is expensive overrides it with a direct query. To add one:
+driver whose list is expensive overrides it with a direct query. `objects_ddl` (the DDL of
+several objects, each with its own result) calls `object_ddl` one object at a time by
+default; a driver that reads many objects with a few catalog queries overrides it, as
+PostgreSQL does, and a wrapping connection forwards it. To add one:
 1. Add the method, with a default that calls `unsupported("…")`.
 2. Add a flag in `Capabilities`, defaulting to `false`, and the same field in
    `Capabilities` in `api.ts`.

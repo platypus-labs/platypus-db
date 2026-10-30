@@ -431,6 +431,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::querylog::query_log,
         commands::querylog::clear_query_log,
         commands::objects::object_ddl,
+        commands::objects::objects_ddl,
         commands::objects::object_properties,
         commands::objects::list_databases,
         commands::objects::execute_statement,

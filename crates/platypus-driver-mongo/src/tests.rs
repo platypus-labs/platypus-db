@@ -319,7 +319,7 @@ async fn navigates_metadata() {
     let view = platypus_core::ObjectRef {
         name: "customer_totals",
         kind: platypus_core::ObjectKind::View,
-        ..object.clone()
+        ..object
     };
     assert!(
         conn.object_ddl(&view)

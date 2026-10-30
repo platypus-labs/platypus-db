@@ -112,21 +112,16 @@ registerAction({
   order: 29,
   multiple: true,
   when: ({ connection }) => !isRedis(connection.driver),
+  // The tab opens at once and fills as the DDL is read, a block of objects at a time.
   run: async (arg) => {
-    const sid = await workbench().sideSession(arg.connection, arg.database);
-    if (sid === null) return;
+    // The session first: a password asked and cancelled opens no tab.
+    if ((await workbench().sideSession(arg.connection, arg.database)) === null) return;
     const objects = arg.selection ?? [arg];
-    const ddl: string[] = [];
-    // One at a time: they share the navigator's session.
-    for (const { schema, object } of objects) {
-      ddl.push(
-        await api.objectDdl(sid, { schema: schema.name, name: object.name, kind: object.kind, parent: object.parent }),
-      );
-    }
     workbench().openTab("query", arg.connection.id, {
-      sql: ddl.join("\n\n"),
+      sql: "",
       title: objects.length > 1 ? t("DDL of {n} objects", { n: objects.length }) : t("{name} DDL", { name: arg.object.name }),
       database: arg.database,
+      ddlOf: objects.map(({ schema, object }) => ({ schema: schema.name, name: object.name, kind: object.kind, parent: object.parent })),
     });
   },
 });

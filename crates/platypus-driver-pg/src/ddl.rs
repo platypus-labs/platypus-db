@@ -3,6 +3,7 @@
 //! are rebuilt from the catalog.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::Write as _;
 
 use platypus_core::{
@@ -65,23 +66,44 @@ fn statement(sql: &str) -> String {
     }
 }
 
+/// The DDL of `objects`: tables and views with a few catalog queries for all of them, the
+/// other kinds one at a time.
+pub async fn objects_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
+    let of_kind = |pick: fn(ObjectKind) -> bool| -> Vec<ObjectRef<'_>> {
+        objects.iter().filter(|o| pick(o.kind)).copied().collect()
+    };
+    let mut tables = tables_ddl(conn, &of_kind(is_table)).await.into_iter();
+    let mut views = views_ddl(conn, &of_kind(is_view)).await.into_iter();
+    let mut out = Vec::with_capacity(objects.len());
+    for o in objects {
+        let ddl = if is_table(o.kind) {
+            tables.next()
+        } else if is_view(o.kind) {
+            views.next()
+        } else {
+            Some(object_ddl(conn, o).await)
+        };
+        out.push(ddl.unwrap_or_else(no_ddl));
+    }
+    out
+}
+
+fn is_table(kind: ObjectKind) -> bool {
+    matches!(kind, ObjectKind::Table | ObjectKind::ForeignTable)
+}
+
+fn is_view(kind: ObjectKind) -> bool {
+    matches!(kind, ObjectKind::View | ObjectKind::MaterializedView)
+}
+
+fn no_ddl() -> Result<String> {
+    Err(Error::Other("no DDL read".to_owned()))
+}
+
 pub async fn object_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
-    let name = qualified(o.schema, o.name);
     match o.kind {
-        ObjectKind::Table | ObjectKind::ForeignTable => table(conn, o).await,
-        ObjectKind::View | ObjectKind::MaterializedView => {
-            let rel = relation(o.schema, o.name);
-            let body = value(conn, &format!("SELECT pg_get_viewdef({rel}, true)"), o).await?;
-            let create = if o.kind == ObjectKind::View {
-                "CREATE OR REPLACE VIEW"
-            } else {
-                "CREATE MATERIALIZED VIEW"
-            };
-            Ok(statement(&format!(
-                "{create} {name} AS\n{}",
-                body.trim_start()
-            )))
-        }
+        ObjectKind::Table | ObjectKind::ForeignTable => single(tables_ddl(conn, &[*o]).await),
+        ObjectKind::View | ObjectKind::MaterializedView => single(views_ddl(conn, &[*o]).await),
         ObjectKind::Sequence => sequence(conn, o).await,
         ObjectKind::Function | ObjectKind::Procedure => {
             let sql = format!(
@@ -161,11 +183,8 @@ async fn hypertable_sizes(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Op
 }
 
 /// The statements that make table `name` the `TimescaleDB` hypertable it is: its dimensions
-/// and compression. Empty for any other table.
+/// and compression. Empty for any other table. The caller checks that `TimescaleDB` is installed.
 async fn hypertable(conn: &dyn Connection, o: &ObjectRef<'_>, name: &str) -> Result<String> {
-    if crate::is_cockroach(conn) || !has_timescale(conn).await? {
-        return Ok(String::new());
-    }
     let (schema, table) = (literal(o.schema), literal(o.name));
     let dimensions = query_text(
         conn,
@@ -276,77 +295,288 @@ async fn yugabyte_sharding(
     Ok((key, split))
 }
 
-async fn table(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
-    let rel = relation(o.schema, o.name);
-    let name = qualified(o.schema, o.name);
-    let info = row(
+/// The one result of a reader called with one object.
+fn single(mut results: Vec<Result<String>>) -> Result<String> {
+    results.pop().unwrap_or_else(no_ddl)
+}
+
+/// `(schema, name) IN (…)` of `objects`, for `pg_namespace n` and `pg_class c`.
+fn named(objects: &[ObjectRef<'_>]) -> String {
+    let pairs: Vec<String> = objects
+        .iter()
+        .map(|o| format!("({}, {})", literal(o.schema), literal(o.name)))
+        .collect();
+    // Names compared as `name`, without a cast, so the catalog's index on them serves.
+    format!("(n.nspname, c.relname) IN ({})", pairs.join(", "))
+}
+
+/// The oids of the relations `objects`, by schema and name.
+async fn relation_oids(
+    conn: &dyn Connection,
+    objects: &[ObjectRef<'_>],
+) -> Result<HashMap<(String, String), String>> {
+    let rows = query_text(
         conn,
         &format!(
-            "SELECT c.relkind::text, c.relpersistence::text, pg_get_partkeydef(c.oid),
+            "SELECT c.oid::text, n.nspname, c.relname FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace WHERE {}",
+            named(objects)
+        ),
+    )
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| ((r.text(1), r.text(2)), r.text(0)))
+        .collect())
+}
+
+/// The rows of `sql`, whose first column is a relation's oid, by that oid and without it.
+async fn by_relation(conn: &dyn Connection, sql: &str) -> Result<HashMap<String, Vec<TextRow>>> {
+    let mut out: HashMap<String, Vec<TextRow>> = HashMap::new();
+    for mut row in query_text(conn, sql).await? {
+        let oid = row.remove(0).unwrap_or_default();
+        out.entry(oid).or_default().push(row);
+    }
+    Ok(out)
+}
+
+/// What to do when a query shared by `objects` failed with `e`: the failure of each, when it
+/// is the connection's (or there is one object); `None` to read them again one at a time, so
+/// that one object's error is not every object's.
+fn shared_failure(objects: &[ObjectRef<'_>], e: Error) -> Option<Vec<Result<String>>> {
+    if objects.len() == 1 {
+        return Some(vec![Err(e)]);
+    }
+    if matches!(e, Error::Closed | Error::Cancelled) {
+        return Some(
+            objects
+                .iter()
+                .map(|_| Err(Error::Other(e.to_string())))
+                .collect(),
+        );
+    }
+    None
+}
+
+fn not_found(o: &ObjectRef<'_>) -> Error {
+    Error::Other(format!("{} not found", qualified(o.schema, o.name)))
+}
+
+/// The DDL of views and materialized views, read with two queries for all of them.
+async fn views_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
+    if objects.is_empty() {
+        return Vec::new();
+    }
+    match read_views(conn, objects).await {
+        Ok(out) => out,
+        Err(e) => {
+            if let Some(out) = shared_failure(objects, e) {
+                return out;
+            }
+            let mut out = Vec::with_capacity(objects.len());
+            for o in objects {
+                out.push(read_views(conn, &[*o]).await.map_or_else(Err, single));
+            }
+            out
+        }
+    }
+}
+
+async fn read_views(
+    conn: &dyn Connection,
+    objects: &[ObjectRef<'_>],
+) -> Result<Vec<Result<String>>> {
+    let oids = relation_oids(conn, objects).await?;
+    let bodies = if oids.is_empty() {
+        HashMap::new()
+    } else {
+        let list: Vec<&str> = oids.values().map(String::as_str).collect();
+        by_relation(
+            conn,
+            &format!(
+                "SELECT c.oid::text, pg_get_viewdef(c.oid, true) FROM pg_class c
+                 WHERE c.oid IN ({})",
+                list.join(", ")
+            ),
+        )
+        .await?
+    };
+    Ok(objects
+        .iter()
+        .map(|o| {
+            let body = oids
+                .get(&(o.schema.to_owned(), o.name.to_owned()))
+                .and_then(|oid| of(&bodies, oid).first())
+                .ok_or_else(|| not_found(o))?
+                .text(0);
+            let create = if o.kind == ObjectKind::View {
+                "CREATE OR REPLACE VIEW"
+            } else {
+                "CREATE MATERIALIZED VIEW"
+            };
+            Ok(statement(&format!(
+                "{create} {} AS\n{}",
+                qualified(o.schema, o.name),
+                body.trim_start()
+            )))
+        })
+        .collect())
+}
+
+/// What the catalog queries read about tables, by oid.
+struct TableRows {
+    info: HashMap<String, Vec<TextRow>>,
+    columns: HashMap<String, Vec<TextRow>>,
+    constraints: HashMap<String, Vec<TextRow>>,
+    indexes: HashMap<String, Vec<TextRow>>,
+}
+
+/// The table, columns, constraints and indexes queries, for the relations `oids` together.
+async fn table_rows(conn: &dyn Connection, oids: &str) -> Result<TableRows> {
+    let info = by_relation(
+        conn,
+        &format!(
+            "SELECT c.oid::text, c.relkind::text, c.relpersistence::text, pg_get_partkeydef(c.oid),
                     (SELECT i.inhparent::regclass::text FROM pg_inherits i
                      WHERE i.inhrelid = c.oid AND c.relispartition),
                     pg_get_expr(c.relpartbound, c.oid),
                     obj_description(c.oid, 'pg_class'),
                     (SELECT s.srvname FROM pg_foreign_table ft
                      JOIN pg_foreign_server s ON s.oid = ft.ftserver WHERE ft.ftrelid = c.oid)
-             FROM pg_class c WHERE c.oid = {rel}"
+             FROM pg_class c WHERE c.oid IN ({oids})"
         ),
-        o,
     )
     .await?;
-
-    let columns = query_text(
+    let columns = by_relation(
         conn,
         &format!(
-            "SELECT a.attname, {COLUMN_TYPE}, a.attnotnull,
+            "SELECT a.attrelid::text, a.attname, {COLUMN_TYPE}, a.attnotnull,
                     pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text,
                     col_description(a.attrelid, a.attnum)
              FROM pg_attribute a
              LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-             WHERE a.attrelid = {rel} AND a.attnum > 0 AND NOT a.attisdropped
-             ORDER BY a.attnum"
+             WHERE a.attrelid IN ({oids}) AND a.attnum > 0 AND NOT a.attisdropped
+             ORDER BY a.attrelid, a.attnum"
         ),
     )
     .await?;
-    let constraints = query_text(
+    let constraints = by_relation(
         conn,
         &format!(
-            "SELECT con.conname, pg_get_constraintdef(con.oid, true)
+            "SELECT con.conrelid::text, con.conname, pg_get_constraintdef(con.oid, true)
              FROM pg_constraint con
-             WHERE con.conrelid = {rel} AND con.contype IN ('p', 'u', 'c', 'x', 'f')
-             ORDER BY con.contype = 'p' DESC, con.contype = 'f', con.conname"
+             WHERE con.conrelid IN ({oids}) AND con.contype IN ('p', 'u', 'c', 'x', 'f')
+             ORDER BY con.conrelid, con.contype = 'p' DESC, con.contype = 'f', con.conname"
         ),
     )
     .await?;
     // Indexes that back a constraint are created by it.
-    let indexes = query_text(
+    let indexes = by_relation(
         conn,
         &format!(
-            "SELECT pg_get_indexdef(i.indexrelid)
+            "SELECT i.indrelid::text, pg_get_indexdef(i.indexrelid)
              FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
-             WHERE i.indrelid = {rel} AND NOT EXISTS (
+             WHERE i.indrelid IN ({oids}) AND NOT EXISTS (
                  SELECT 1 FROM pg_constraint con
                  WHERE con.conindid = i.indexrelid AND con.conrelid = i.indrelid)
-             ORDER BY ic.relname"
+             ORDER BY i.indrelid, ic.relname"
         ),
     )
     .await?;
+    Ok(TableRows {
+        info,
+        columns,
+        constraints,
+        indexes,
+    })
+}
 
-    let indexes: Vec<String> = indexes.iter().map(|i| format!("{};", i.text(0))).collect();
-    let mut create = create_table(&name, &info, &columns, &constraints);
+/// The DDL of tables and foreign tables, with the same four catalog queries for all of them
+/// (and, on `TimescaleDB` and YugabyteDB, a few more a table).
+async fn tables_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
+    if objects.is_empty() {
+        return Vec::new();
+    }
+    match read_tables(conn, objects).await {
+        Ok(out) => out,
+        Err(e) => {
+            if let Some(out) = shared_failure(objects, e) {
+                return out;
+            }
+            let mut out = Vec::with_capacity(objects.len());
+            for o in objects {
+                out.push(read_tables(conn, &[*o]).await.map_or_else(Err, single));
+            }
+            out
+        }
+    }
+}
+
+async fn read_tables(
+    conn: &dyn Connection,
+    objects: &[ObjectRef<'_>],
+) -> Result<Vec<Result<String>>> {
+    let oids = relation_oids(conn, objects).await?;
+    let list: Vec<&str> = oids.values().map(String::as_str).collect();
+    let rows = if list.is_empty() {
+        None
+    } else {
+        Some(table_rows(conn, &list.join(", ")).await?)
+    };
+    // Without the TimescaleDB catalog, tables are plain ones.
+    let timescale = !crate::is_cockroach(conn) && has_timescale(conn).await.unwrap_or(false);
+    let mut out = Vec::with_capacity(objects.len());
+    for o in objects {
+        let found = oids
+            .get(&(o.schema.to_owned(), o.name.to_owned()))
+            .zip(rows.as_ref());
+        out.push(match found {
+            Some((oid, rows)) => table(conn, o, (oid, rows), timescale).await,
+            None => Err(not_found(o)),
+        });
+    }
+    Ok(out)
+}
+
+/// The rows of relation `oid` in `map`, none when it has none.
+fn of<'a>(map: &'a HashMap<String, Vec<TextRow>>, oid: &str) -> &'a [TextRow] {
+    map.get(oid).map_or(&[], Vec::as_slice)
+}
+
+/// The DDL of table `o` from the rows read about it.
+async fn table(
+    conn: &dyn Connection,
+    o: &ObjectRef<'_>,
+    (oid, rows): (&str, &TableRows),
+    timescale: bool,
+) -> Result<String> {
+    let name = qualified(o.schema, o.name);
+    let info = of(&rows.info, oid).first().ok_or_else(|| not_found(o))?;
+    let columns = of(&rows.columns, oid);
+    let indexes: Vec<String> = of(&rows.indexes, oid)
+        .iter()
+        .map(|i| format!("{};", i.text(0)))
+        .collect();
+    let mut create = create_table(&name, info, columns, of(&rows.constraints, oid));
     if crate::is_yugabyte(conn) && info.opt(3).is_none() {
+        let rel = relation(o.schema, o.name);
         let sharding = yugabyte_sharding(conn, &rel).await.unwrap_or((None, None));
         create = with_sharding(create, sharding);
     }
+    let hypertable = if timescale {
+        // What the TimescaleDB catalog cannot tell is left out, not the whole DDL.
+        hypertable(conn, o, &name).await.unwrap_or_default()
+    } else {
+        String::new()
+    };
     let sections = [
         create,
-        // What the TimescaleDB catalog cannot tell is left out, not the whole DDL.
-        hypertable(conn, o, &name).await.unwrap_or_default(),
+        hypertable,
         indexes.join(
             "
 ",
         ),
-        comments(&name, &info, &columns),
+        comments(&name, info, columns),
     ];
     Ok(sections
         .into_iter()

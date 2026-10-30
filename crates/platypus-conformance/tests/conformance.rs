@@ -2812,6 +2812,25 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
         .unwrap();
     assert!(ddl.contains("customer_totals"), "{}: {ddl}", b.name);
 
+    // Several at once: each the same as alone, a missing one failing on its own.
+    let many = [
+        object("orders", ObjectKind::Table),
+        object("conf_no_such_table", ObjectKind::Table),
+        object("customer_totals", ObjectKind::View),
+        object("customers", ObjectKind::Table),
+    ];
+    let batch = conn.objects_ddl(&many).await;
+    assert_eq!(batch.len(), many.len(), "{}", b.name);
+    for (o, got) in many.iter().zip(&batch) {
+        let alone = conn.object_ddl(o).await;
+        match (got, &alone) {
+            (Ok(got), Ok(alone)) => assert_eq!(got, alone, "{}: {}", b.name, o.name),
+            (Err(_), Err(_)) => {}
+            _ => panic!("{}: {}: {got:?} together, {alone:?} alone", b.name, o.name),
+        }
+    }
+    assert!(batch[1].is_err(), "{}: a missing table has no DDL", b.name);
+
     let customers = conn.table_details(&b.schema, "customers").await.unwrap();
     let incoming = customers.referenced_by.iter().find(|r| r.table == "orders");
     assert!(
@@ -6700,5 +6719,66 @@ async fn compares_table_data() {
         for t in [&src, &dst] {
             let _ = run(conn, &format!("DROP TABLE {}", q(t))).await;
         }
+    }
+}
+
+/// "Generate DDL" on a schema of hundreds of tables: the DDL read together is the one read a
+/// table at a time, in far fewer queries. Prints both times (`-- --nocapture`).
+#[tokio::test]
+async fn reads_the_ddl_of_many_tables_together() {
+    const TABLES: usize = 300;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        run(&*conn, "DROP SCHEMA IF EXISTS conf_many_ddl CASCADE")
+            .await
+            .unwrap();
+        run(&*conn, "CREATE SCHEMA conf_many_ddl").await.unwrap();
+        // One statement a call: the driver prepares what it runs.
+        for i in 0..TABLES {
+            for sql in [
+                format!(
+                    "CREATE TABLE conf_many_ddl.t{i} (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                     code text NOT NULL UNIQUE, qty integer DEFAULT 0 CHECK (qty >= 0),
+                     parent bigint REFERENCES conf_many_ddl.t{i} (id))"
+                ),
+                format!("CREATE INDEX t{i}_qty ON conf_many_ddl.t{i} (qty)"),
+                format!("COMMENT ON TABLE conf_many_ddl.t{i} IS 'table {i}'"),
+            ] {
+                run(&*conn, &sql).await.unwrap();
+            }
+        }
+        let names: Vec<String> = (0..TABLES).map(|i| format!("t{i}")).collect();
+        let objects: Vec<ObjectRef<'_>> = names
+            .iter()
+            .map(|name| ObjectRef {
+                schema: "conf_many_ddl",
+                name,
+                kind: ObjectKind::Table,
+                parent: None,
+            })
+            .collect();
+
+        let started = std::time::Instant::now();
+        let mut alone = Vec::new();
+        for o in &objects {
+            alone.push(conn.object_ddl(o).await.unwrap());
+        }
+        let one_by_one = started.elapsed();
+        let started = std::time::Instant::now();
+        let together = conn.objects_ddl(&objects).await;
+        let batched = started.elapsed();
+        println!(
+            "{}: DDL of {TABLES} tables, one at a time {one_by_one:?}, together {batched:?}",
+            b.name
+        );
+        for (alone, together) in alone.iter().zip(together) {
+            assert_eq!(&together.unwrap(), alone, "{}", b.name);
+        }
+        run(&*conn, "DROP SCHEMA conf_many_ddl CASCADE")
+            .await
+            .unwrap();
     }
 }

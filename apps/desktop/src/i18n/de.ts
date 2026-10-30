@@ -2372,6 +2372,9 @@ const de: Record<string, string> = {
   "Edit the columns, keys, indexes and constraints of the table": "Spalten, Schlüssel, Indizes und Constraints der Tabelle bearbeiten",
   "Open the details: properties, columns, keys and DDL": "Details öffnen: Eigenschaften, Spalten, Schlüssel und DDL",
   "Read-only: the table cannot be changed from here": "Schreibgeschützt: die Tabelle kann von hier nicht geändert werden",
+  "Stopped: the DDL of {done} of {total} objects was read": "Angehalten: DDL von {done} von {total} Objekten gelesen",
+  "DDL: {done} of {total} objects": "DDL: {done} von {total} Objekten",
+  "Stop reading the DDL; what was read stays in the editor": "DDL-Lesen anhalten; das bereits Gelesene bleibt im Editor",
 
 // Group M: pivot
   "Count distinct": "Eindeutige Anzahl",

@@ -127,7 +127,10 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   you open it; a green dot marks the connections with an open session.
 - Generate SELECT, INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a
   preview of the statement. `Ctrl`/`Shift`+click selects several objects, for example to get
-  the DDL of many tables at once.
+  the DDL of many tables at once: the tab opens at once and fills a block of objects at a
+  time, with how far it is ("DDL: 30 of 300 objects") and *Stop*; an object whose DDL cannot
+  be read becomes a comment saying why. PostgreSQL reads the tables and views of a block with
+  a few catalog queries for all of them.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
   references and the DDL of any object.
 - **Search** object names, columns and the source of views, routines and triggers across a

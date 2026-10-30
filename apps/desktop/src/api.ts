@@ -932,6 +932,9 @@ export interface ObjectTarget {
   parent: string | null;
 }
 
+/** The DDL of one object of `objectsDdl`, or why it could not be read. */
+export type ObjectDdl = { ddl: string } | { error: string };
+
 /** What to generate SQL for; columns and keys apply to DML. */
 export interface GenerateTarget {
   /** `null` for the session's current schema. */
@@ -2277,6 +2280,7 @@ export const api = {
   endServerSession: (sessionId: number, id: string, how: EndSession) =>
     invoke<void>("end_server_session", { sessionId, id, how }),
   objectDdl: (sessionId: number, object: ObjectTarget) => invoke<string>("object_ddl", { sessionId, object }),
+  objectsDdl: (sessionId: number, objects: ObjectTarget[]) => invoke<ObjectDdl[]>("objects_ddl", { sessionId, objects }),
   objectProperties: (sessionId: number, object: ObjectTarget) =>
     invoke<Property[]>("object_properties", { sessionId, object }),
   listDatabases: (sessionId: number) => invoke<string[]>("list_databases", { sessionId }),

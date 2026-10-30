@@ -405,6 +405,10 @@ impl Connection for PgConnection {
         ddl::object_ddl(self, object).await
     }
 
+    async fn objects_ddl(&self, objects: &[platypus_core::ObjectRef<'_>]) -> Vec<Result<String>> {
+        ddl::objects_ddl(self, objects).await
+    }
+
     async fn object_properties(
         &self,
         object: &platypus_core::ObjectRef<'_>,

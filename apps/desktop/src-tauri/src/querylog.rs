@@ -382,6 +382,23 @@ impl Connection for Logged {
             .await
     }
 
+    async fn objects_ddl(&self, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
+        let text = format!("DDL of {} objects", objects.len());
+        let id = self.log.start(&self.connection, LogKind::Metadata, text);
+        let started = Instant::now();
+        let results: Vec<Result<String>> = self
+            .inner
+            .objects_ddl(objects)
+            .await
+            .into_iter()
+            .map(|r| r.map_err(|e| self.tag(e)))
+            .collect();
+        let failed = results.iter().filter(|r| r.is_err()).count();
+        let error = (failed > 0).then(|| format!("{failed} of {} failed", objects.len()));
+        self.log.finish(id, started, error);
+        results
+    }
+
     async fn object_properties(&self, object: &ObjectRef<'_>) -> Result<Vec<Property>> {
         let text = format!("properties of {}.{}", object.schema, object.name);
         self.track(

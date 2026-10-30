@@ -55,7 +55,7 @@ pub fn unsupported(feature: &str) -> Error {
 }
 
 /// Which object [`Connection::object_ddl`](crate::Connection::object_ddl) describes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectRef<'a> {
     pub schema: &'a str,
     pub name: &'a str,

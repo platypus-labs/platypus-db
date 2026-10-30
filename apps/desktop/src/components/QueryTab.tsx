@@ -22,6 +22,7 @@ import {
   isRedis,
   isSearch,
   keepsDataIn,
+  type ObjectTarget,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
 import type { NotesScope } from "../grid/ResultGrid";
@@ -42,6 +43,7 @@ import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
+import { useDdlFill } from "../objects/useDdlFill";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
 import { AcrossBar } from "../analysis/CrossQueryDialog";
 import type { AcrossOrigin } from "../analysis/acrossModel";
@@ -138,6 +140,11 @@ export interface QueryTabModel extends TabBase {
    *  sort or a quick filter. Its rows are the table's rows; another query typed in the tab is
    *  not the viewer's. */
   viewerQuery?: string | null;
+  /** "Generate DDL": the objects whose DDL the tab is still reading into the editor; not
+   *  persisted. */
+  ddlOf?: ObjectTarget[] | null;
+  /** "Generate DDL": how many objects were read already; not persisted. */
+  ddlDone?: number;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
@@ -1618,6 +1625,19 @@ export function QueryTab({
     }
   }, [running]);
 
+  /** `text` after what the editor holds, a blank line between them. */
+  const appendToEditor = (text: string) => {
+    const current = editor.current?.getText() ?? "";
+    if (current.trim() === "") editor.current?.setText(text);
+    else editor.current?.replace(current.length, current.length, `\n\n${text}`);
+  };
+  const ddl = useDdlFill(tab.ddlOf, tab.ddlDone ?? 0, sideId, appendToEditor, (rest, done, stopped) => {
+    if (stopped) {
+      const total = (tab.ddlDone ?? 0) + (tab.ddlOf?.length ?? 0);
+      appendToEditor(`-- ${t("Stopped: the DDL of {done} of {total} objects was read", { done, total })}`);
+    }
+    onChange({ ddlOf: rest, ddlDone: done });
+  });
   const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();
   // ClickHouse, MongoDB and Redis have no transactions (`capabilities.transactions` is false):
@@ -1770,6 +1790,14 @@ export function QueryTab({
             </label>
           )}
           <span className="spacer" />
+          {ddl.progress && (
+            <span className="ddl-progress muted small" role="status">
+              {t("DDL: {done} of {total} objects", { ...ddl.progress })}
+              <button type="button" onClick={ddl.stop} title={t("Stop reading the DDL; what was read stays in the editor")}>
+                {t("Stop")}
+              </button>
+            </span>
+          )}
           {tab.filePath && <span className="muted small">{basename(tab.filePath)}</span>}
           {toolbar.visible.panels && (
             <>

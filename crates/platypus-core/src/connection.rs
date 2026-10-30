@@ -115,6 +115,17 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("object DDL"))
     }
 
+    /// The `CREATE` statements of several objects, each with its own result, in their order.
+    /// One at a time by default; a driver that reads the catalog of many objects in a few
+    /// queries overrides it, which saves a round trip per object on a remote database.
+    async fn objects_ddl(&self, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
+        let mut out = Vec::with_capacity(objects.len());
+        for object in objects {
+            out.push(self.object_ddl(object).await);
+        }
+        out
+    }
+
     /// Descriptive properties of an object (owner, size, row estimate, ...), in display
     /// order. Empty when the driver has none to show.
     async fn object_properties(&self, object: &ObjectRef<'_>) -> Result<Vec<Property>> {

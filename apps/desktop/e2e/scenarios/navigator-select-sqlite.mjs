@@ -78,6 +78,8 @@ export default async function (page) {
   assert.ok(!items.some((i) => i.startsWith("Drop")), `no Drop in ${items}`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate DDL')).click()`);
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('DDL of 2 objects')`, 10_000);
+  // The tab opens at once and fills as the DDL is read.
+  await page.waitFor(`${queryTab}?.querySelector('.ddl-progress') == null && ${queryTab}.querySelectorAll('.editor .cm-line').length > 1`, 10_000);
   const ddl = await page.eval(`[...${queryTab}.querySelectorAll('.editor .cm-line')].map(l => l.textContent).join('\\n')`);
   assert.match(ddl, /CREATE TABLE .*\ba\b/i);
   assert.match(ddl, /CREATE TABLE .*\bc\b/i);

@@ -41,6 +41,32 @@ pub async fn object_ddl(
     Ok(conn.object_ddl(&object.as_ref()).await?)
 }
 
+/// The DDL of one object of `objects_ddl`, or why it could not be read.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectDdl {
+    Ddl(String),
+    Error(String),
+}
+
+/// The DDL of several objects, each with its own result: the driver reads them with fewer
+/// queries than one call a object.
+#[tauri::command]
+pub async fn objects_ddl(
+    state: State<'_, AppState>,
+    session_id: u64,
+    objects: Vec<ObjectTarget>,
+) -> CommandResult<Vec<ObjectDdl>> {
+    let conn = state.live(session_id).await?;
+    let refs: Vec<ObjectRef<'_>> = objects.iter().map(ObjectTarget::as_ref).collect();
+    Ok(conn
+        .objects_ddl(&refs)
+        .await
+        .into_iter()
+        .map(|r| r.map_or_else(|e| ObjectDdl::Error(e.to_string()), ObjectDdl::Ddl))
+        .collect())
+}
+
 #[tauri::command]
 pub async fn object_properties(
     state: State<'_, AppState>,
