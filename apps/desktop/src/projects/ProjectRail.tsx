@@ -5,7 +5,8 @@ import { workbench } from "../workbench";
 import { type RailChange, type RailSpot, railDrop, railItems } from "./state";
 import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
-import { edgeZone, markedTarget, type Point, pointerDrag } from "../ui/pointerDrag";
+import { edgeZone, markedTarget, type Point } from "../ui/pointerDrag";
+import { useDrag } from "../ui/useDrag";
 
 interface Props {
   projects: Project[];
@@ -32,11 +33,20 @@ function change(run: () => Promise<Workspace>) {
   );
 }
 
-/** Makes a drop's changes in the store, in order. */
+/** Makes a drop's changes in the store, in order. When one fails, the rail is read again
+ *  from the store, so it never shows a drop made only in part. */
 async function apply(dragged: string, c: RailChange): Promise<Workspace> {
-  if (c.group) await api.groupProjects(c.group, dragged);
-  if (c.folder) await api.setProjectFolder(dragged, c.folder.id, c.folder.index);
-  return api.reorderProjects(c.order);
+  try {
+    if (c.group) await api.groupProjects(c.group, dragged);
+    if (c.folder) await api.setProjectFolder(dragged, c.folder.id, c.folder.index);
+    return await api.reorderProjects(c.order);
+  } catch (e) {
+    await Promise.all([api.listProjects(), api.listProjectFolders()]).then(
+      ([projects, folders]) => workbench().setWorkspace({ connections: workbench().connections(), projects, project_folders: folders }),
+      () => {},
+    );
+    throw e;
+  }
 }
 
 /** A drop the rail would take: its change, and where it shows: a line at `line` pixels from
@@ -104,6 +114,7 @@ function spotAt(el: Element | null, at: Point): { spot: RailSpot; element: Eleme
  *  folder, inside it), and to the end of the rail, out of its folder, last. */
 export function ProjectRail({ projects, folders, active, txProjects, onSwitch, onNew, onMenu, onFolderMenu }: Props) {
   const nav = useRef<HTMLElement>(null);
+  const startDrag = useDrag();
   const [shown, setShown] = useState<RailTarget | null>(null);
   // The drop is read at each move from the rail as it is then.
   const latest = useRef({ projects, folders });
@@ -119,8 +130,9 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
     if (!rail || !hit) return null;
     const c = railDrop(latest.current.projects, latest.current.folders, dragged, hit.spot);
     if (!c) return null;
-    const zone = "zone" in hit.spot ? hit.spot.zone : "after";
-    const element = hit.element ?? rail.querySelector(`[${DROP}="all"]`);
+    // The end of a rail with no projects: above the square that adds one.
+    const zone = "zone" in hit.spot ? hit.spot.zone : hit.element ? "after" : "before";
+    const element = hit.element ?? rail.querySelector(".project-add");
     if (!element) return { change: c };
     if (zone === "inside") return { change: c, into: keyOf(element) };
     // Halfway into the gap above or below the element, in the rail's scrolled content.
@@ -130,7 +142,7 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
   }
 
   const drag = (p: Project) => (e: React.PointerEvent) =>
-    pointerDrag<RailTarget>(e, {
+    startDrag<RailTarget>(e, {
       label: p.name,
       target: (el, at) => targetAt(p.id, el, at),
       show: setShown,

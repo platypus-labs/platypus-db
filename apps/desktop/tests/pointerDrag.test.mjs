@@ -1,7 +1,7 @@
 // Unit tests of the pure parts of the pointer drags inside the page (src/ui/pointerDrag.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DRAG_THRESHOLD, edgeZone, markedTarget, pastThreshold } from "../src/ui/pointerDrag.ts";
+import { DRAG_THRESHOLD, edgeZone, markedTarget, pastThreshold, startsDrag } from "../src/ui/pointerDrag.ts";
 
 test("a press drags only once the pointer moves the threshold away", () => {
   const from = { x: 100, y: 100 };
@@ -40,4 +40,29 @@ test("the drop target is the nearest marked element at or above the one under th
   // An empty value marks a target too: the top of the scripts.
   const header = el({ "data-script-folder": "" });
   assert.deepEqual(markedTarget(el({}, header), "data-script-folder"), { element: header, value: "" });
+});
+
+/** A fake element `tag` with attributes, under `parentElement`. */
+const node = (tagName, attrs = {}, parentElement = null) => ({ tagName, parentElement, getAttribute: (name) => attrs[name] ?? null });
+
+test("a press on a control or an editable part inside the dragged element does not drag", () => {
+  const row = node("LI");
+  assert.equal(startsDrag(row, row), true);
+  assert.equal(startsDrag(node("SPAN", {}, node("SPAN", {}, row)), row), true);
+  assert.equal(startsDrag(node("BUTTON", {}, row), row), false);
+  assert.equal(startsDrag(node("svg", {}, node("button", {}, row)), row), false, "inside a button");
+  assert.equal(startsDrag(node("INPUT", {}, row), row), false);
+  assert.equal(startsDrag(node("TEXTAREA", {}, row), row), false);
+  assert.equal(startsDrag(node("SELECT", {}, row), row), false);
+  assert.equal(startsDrag(node("DIV", { contenteditable: "true" }, row), row), false);
+  assert.equal(startsDrag(node("DIV", { contenteditable: "false" }, row), row), true);
+  assert.equal(startsDrag(node("SPAN", { "data-no-drag": "" }, row), row), false, "a twisty");
+});
+
+test("the dragged element may itself be a button, unless marked", () => {
+  const square = node("BUTTON");
+  assert.equal(startsDrag(node("I", {}, square), square), true);
+  assert.equal(startsDrag(square, square), true);
+  const marked = node("BUTTON", { "data-no-drag": "" });
+  assert.equal(startsDrag(marked, marked), false);
 });

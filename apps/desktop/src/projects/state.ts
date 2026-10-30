@@ -130,7 +130,9 @@ export function railDrop(projects: Project[], folders: ProjectFolder[], dragged:
         if (folder === from) return null;
         change = { folder: { id: folder.id, index: null }, order: placed(after(inner.at(-1))) };
       } else {
-        // A folder of the dragged project alone: out of it, where it is.
+        // A folder of the dragged project alone: out of it, where it is. An empty one (no
+        // project of it in the rail) takes nothing.
+        if (inner.length === 0 && folder !== from) return null;
         const at = inner.length === 0 ? flat.indexOf(dragged) : spot.zone === "before" ? others.indexOf(inner[0]!) : after(inner.at(-1));
         change = { ...out, order: placed(at) };
       }
@@ -139,5 +141,8 @@ export function railDrop(projects: Project[], folders: ProjectFolder[], dragged:
   }
   const moved = change.order.some((id, i) => id !== flat[i]);
   const target = change.group ? folderOf(change.group) : change.folder ? folders.find((f) => f.id === change.folder!.id) ?? null : from;
-  return moved || target !== from || change.group ? change : null;
+  // Moved within its folder: the store takes it out, then puts it back at `index`.
+  const index = from ? from.projects.filter((id) => id === dragged || others.includes(id)).indexOf(dragged) : -1;
+  const reindexed = target === from && change.folder?.index != null && change.folder.index !== index;
+  return moved || reindexed || target !== from || change.group ? change : null;
 }

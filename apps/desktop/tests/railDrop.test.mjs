@@ -75,3 +75,22 @@ test("the rail's order lists every project once, also those placed after their f
   const fs = [{ id: "F", projects: ["b", "e"] }];
   assert.deepEqual(drop("d", spot("project", "a", "before"), fs), { order: ["d", "a", "b", "e", "c"] });
 });
+
+test("an empty folder takes nothing before or after it", () => {
+  const empty = [...folders, { id: "E", projects: [] }];
+  assert.equal(drop("e", spot("folder", "E", "before"), empty), null);
+  assert.equal(drop("e", spot("folder", "E", "after"), empty), null);
+});
+
+test("a move to another place inside its own folder changes its index", () => {
+  const three = [{ id: "F", projects: ["b", "c", "d"] }];
+  assert.deepEqual(drop("d", spot("project", "b", "before"), three), { folder: { id: "F", index: 0 }, order: ["a", "d", "b", "c", "e"] });
+  assert.deepEqual(drop("b", spot("project", "d", "after"), three), { folder: { id: "F", index: 2 }, order: ["a", "c", "d", "b", "e"] });
+  assert.equal(drop("c", spot("project", "d", "before"), three), null);
+  assert.equal(drop("c", spot("project", "b", "after"), three), null);
+});
+
+test("onto a project of another folder: out of its own into that one", () => {
+  const two = [{ id: "F", projects: ["b", "c"] }, { id: "G", projects: ["d", "e"] }];
+  assert.deepEqual(drop("b", spot("project", "e", "inside"), two), { group: "e", order: ["a", "c", "d", "e", "b"] });
+});

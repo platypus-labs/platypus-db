@@ -8,6 +8,9 @@
  * becomes a drag once the pointer moves a few pixels with the button held, a label follows
  * the pointer, the target under it is read with `elementFromPoint`, and Escape cancels.
  * A press that does not move stays a click.
+ *
+ * Mouse only: a touch or pen press is left to the browser (scrolling, tapping), as the
+ * draggable parts do not take `touch-action: none`.
  */
 
 /** How far, in pixels, the pointer moves with the button held before a press drags. */
@@ -46,6 +49,27 @@ export function markedTarget<E extends ElementLike>(el: E | null, attr: string):
   return null;
 }
 
+/** What `startsDrag` reads of an element. */
+export interface PressedLike extends ElementLike {
+  readonly tagName: string;
+  readonly parentElement: PressedLike | null;
+}
+
+/** Controls a press on which never drags: it stays theirs (typing, choosing, clicking). */
+const CONTROLS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON"]);
+
+/** Whether a press on `target` may drag `source`, the element it is inside: not when it
+ *  lands on a control inside the source, an editable part, or an element marked
+ *  `data-no-drag` (e.g. a row's twisty). The source itself may be a button. */
+export function startsDrag(target: PressedLike | null, source: PressedLike | null): boolean {
+  for (let at = target; at && at !== source; at = at.parentElement) {
+    if (CONTROLS.has(at.tagName.toUpperCase()) || at.getAttribute("data-no-drag") !== null) return false;
+    const editable = at.getAttribute("contenteditable");
+    if (editable !== null && editable !== "false") return false;
+  }
+  return source === null || source.getAttribute("data-no-drag") === null;
+}
+
 export interface PointerDragOptions<T> {
   /** The text of the label that follows the pointer. */
   label: string;
@@ -58,35 +82,66 @@ export interface PointerDragOptions<T> {
 }
 
 /** The press that may start a drag: a React or DOM pointer event. */
-interface Press {
+export interface Press {
   button: number;
   isPrimary: boolean;
   pointerId: number;
+  pointerType: string;
   clientX: number;
   clientY: number;
+  target: EventTarget | null;
   currentTarget: EventTarget | null;
 }
 
-/** Swallows the click the release of a drag would make on what was pressed. */
+/** How long, in milliseconds, a swallowed click may take to come after the release. */
+const CLICK_WAIT = 300;
+
+/** Swallows the click the release of a drag makes on what was pressed: the first one, if
+ *  it comes soon. */
 function swallowClick() {
-  const stop = (e: Event) => {
+  const swallow = (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
+    done();
   };
-  window.addEventListener("click", stop, true);
-  setTimeout(() => window.removeEventListener("click", stop, true), 0);
+  const done = () => {
+    window.removeEventListener("click", swallow, true);
+    clearTimeout(timer);
+  };
+  const timer = setTimeout(done, CLICK_WAIT);
+  window.addEventListener("click", swallow, true);
 }
 
-/** Follows a press of the main button (call it from `onPointerDown`): once the pointer
- *  moves with the button held, it is a drag of `options`; otherwise nothing happens and the
- *  press stays a click. */
-export function pointerDrag<T>(press: Press, options: PointerDragOptions<T>) {
-  if (press.button !== 0 || !press.isPrimary) return;
+/** Swallows the click of the release still to come of a drag cancelled while the button is
+ *  held; a new press or leaving the window means that release will not come. */
+function swallowReleaseClick() {
+  const release = () => {
+    forget();
+    swallowClick();
+  };
+  const forget = () => {
+    window.removeEventListener("pointerup", release, true);
+    window.removeEventListener("pointerdown", forget, true);
+    window.removeEventListener("blur", forget);
+  };
+  window.addEventListener("pointerup", release, true);
+  window.addEventListener("pointerdown", forget, true);
+  window.addEventListener("blur", forget);
+}
+
+const asElement = (t: EventTarget | null) => (t instanceof Element ? t : null);
+
+/** Follows a mouse press of the main button (call it from `onPointerDown`): once the
+ *  pointer moves with the button held, it is a drag of `options`; otherwise nothing happens
+ *  and the press stays a click. Returns what cancels it, e.g. when its owner unmounts. */
+export function pointerDrag<T>(press: Press, options: PointerDragOptions<T>): () => void {
+  const source = asElement(press.currentTarget);
+  if (press.button !== 0 || !press.isPrimary || press.pointerType !== "mouse" || !startsDrag(asElement(press.target), source)) {
+    return () => {};
+  }
   const from = { x: press.clientX, y: press.clientY };
-  const source = press.currentTarget instanceof Element ? press.currentTarget : null;
   let ghost: HTMLElement | null = null;
-  // Cancelled with Escape: the release still to come must not click.
-  let cancelled = false;
+  let stopped = false;
 
   const targetAt = (at: Point) => options.target(document.elementFromPoint(at.x, at.y), at);
 
@@ -104,8 +159,12 @@ export function pointerDrag<T>(press: Press, options: PointerDragOptions<T>) {
     }
   }
 
-  /** Ends what the drag shows. */
-  function hide() {
+  /** Ends the drag, without a drop: removes what it shows and stops following the pointer. */
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    for (const [type, listener] of listeners) window.removeEventListener(type, listener, true);
+    document.removeEventListener("visibilitychange", onHidden, true);
     if (!ghost) return;
     ghost.remove();
     ghost = null;
@@ -113,16 +172,8 @@ export function pointerDrag<T>(press: Press, options: PointerDragOptions<T>) {
     options.show?.(null);
   }
 
-  function stop() {
-    window.removeEventListener("pointermove", onMove, true);
-    window.removeEventListener("pointerup", onUp, true);
-    window.removeEventListener("pointercancel", onCancel, true);
-    window.removeEventListener("keydown", onKey, true);
-    hide();
-  }
-
   function onMove(e: PointerEvent) {
-    if (e.pointerId !== press.pointerId || cancelled) return;
+    if (e.pointerId !== press.pointerId) return;
     // Released where the page could not see it, e.g. outside the window.
     if ((e.buttons & 1) === 0) return stop();
     const at = { x: e.clientX, y: e.clientY };
@@ -138,15 +189,16 @@ export function pointerDrag<T>(press: Press, options: PointerDragOptions<T>) {
   function onUp(e: PointerEvent) {
     if (e.pointerId !== press.pointerId) return;
     const dragged = ghost !== null;
-    if (dragged || cancelled) swallowClick();
     stop();
     if (!dragged) return;
+    swallowClick();
     const at = { x: e.clientX, y: e.clientY };
     const target = targetAt(at);
     if (target !== null) options.drop(target, at, e);
   }
 
-  function onCancel(e: PointerEvent) {
+  /** The pointer is no longer the drag's: cancelled by the browser, or capture taken away. */
+  function onLost(e: PointerEvent) {
     if (e.pointerId === press.pointerId) stop();
   }
 
@@ -154,13 +206,37 @@ export function pointerDrag<T>(press: Press, options: PointerDragOptions<T>) {
     if (e.key !== "Escape" || !ghost) return;
     e.preventDefault();
     e.stopPropagation();
-    cancelled = true;
-    // Only the release is left to follow, to swallow its click.
-    hide();
+    stop();
+    swallowReleaseClick();
   }
 
-  window.addEventListener("pointermove", onMove, true);
-  window.addEventListener("pointerup", onUp, true);
-  window.addEventListener("pointercancel", onCancel, true);
-  window.addEventListener("keydown", onKey, true);
+  /** No menu while dragging: the right button does nothing then. */
+  function onMenu(e: Event) {
+    if (!ghost) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  /** Alt+Tab and the like: the release may never reach the page. Only the window's own
+   *  blur: those of the page's elements pass the window's capture too. */
+  function onBlur(e: Event) {
+    if (e.target === window) stop();
+  }
+
+  function onHidden() {
+    if (document.visibilityState === "hidden") stop();
+  }
+
+  const listeners: [string, EventListener][] = [
+    ["pointermove", onMove as EventListener],
+    ["pointerup", onUp as EventListener],
+    ["pointercancel", onLost as EventListener],
+    ["lostpointercapture", onLost as EventListener],
+    ["keydown", onKey as EventListener],
+    ["contextmenu", onMenu],
+    ["blur", onBlur],
+  ];
+  for (const [type, listener] of listeners) window.addEventListener(type, listener, true);
+  document.addEventListener("visibilitychange", onHidden, true);
+  return stop;
 }

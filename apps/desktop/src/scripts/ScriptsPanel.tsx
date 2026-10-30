@@ -10,7 +10,8 @@ import { changedInFolder, statusByPath } from "./gitModel";
 import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, scriptsChanged } from "./scripts";
 import { t } from "../i18n";
 import { EmptyState } from "../ui/State";
-import { markedTarget, pointerDrag } from "../ui/pointerDrag";
+import { markedTarget } from "../ui/pointerDrag";
+import { useDrag } from "../ui/useDrag";
 
 /** Marks the folder a dragged script or folder drops into: `""` is the top. */
 const DROP = "data-script-folder";
@@ -35,6 +36,10 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   /** The folder a dragged script would move into. */
   const [dropInto, setDropInto] = useState<string | null>(null);
+  const startDrag = useDrag();
+  // A drop moves the script in the project shown then.
+  const latestProject = useRef(projectId);
+  latestProject.current = projectId;
   const closeMenu = useCallback(() => setMenu(null), []);
   const fail = (e: unknown) => onError(toCommandError(e).message);
 
@@ -117,7 +122,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
   const hidden = (path: string) => [...collapsed].some((f) => path.startsWith(`${f}/`));
   /** Drags a script or folder into another folder, or (on the header) to the top. */
   const drag = (path: string) => (e: React.PointerEvent) =>
-    pointerDrag<string>(e, {
+    startDrag<string>(e, {
       label: nameOf(path),
       target: (el) => {
         const folder = markedTarget(el, DROP)?.value;
@@ -125,7 +130,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
         return moves ? folder : null;
       },
       show: setDropInto,
-      drop: (folder) => moveScript(projectId, path, folder).catch(fail),
+      drop: (folder) => moveScript(latestProject.current, path, folder).catch(fail),
     });
 
   return (

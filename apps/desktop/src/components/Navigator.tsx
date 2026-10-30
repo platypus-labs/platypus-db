@@ -39,7 +39,8 @@ import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listL
 import { t, msg, plural } from "../i18n";
 import { openObjectTab, showsData } from "../objects/open";
 import { EmptyState } from "../ui/State";
-import { type Point, pointerDrag } from "../ui/pointerDrag";
+import type { Point } from "../ui/pointerDrag";
+import { useDrag } from "../ui/useDrag";
 import { dropSql, type SqlDropTarget, sqlDropTarget } from "../editor/dropSql";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
@@ -184,6 +185,9 @@ interface Row {
 /** Where a dragged row drops: a place in the list, or an editor or text field. */
 type NavDrop = { kind: "arrange"; change: Arrange; key: string | null; zone: DropZone } | { kind: "sql"; target: SqlDropTarget };
 
+/** What a row gives an editor it is dropped in. */
+const sqlOf = (row: Row) => (typeof row.sql === "function" ? row.sql() : row.sql);
+
 export function Navigator(props: Props) {
   const { connections, project, onAddExisting, error, onNew, onImport, onEdit, onOpenTab, session, disconnect, active, onError } = props;
   // The ref is the source of truth, so a load sees what was merged just before it.
@@ -217,8 +221,12 @@ export function Navigator(props: Props) {
   const signatures = useRef(new Map<string, string>());
   /** The row and zone a dragged connection or folder would land in. */
   const [dropAt, setDropAt] = useState<{ key: string; zone: DropZone } | null>(null);
-  /** Where a drag of a row drops under the pointer, from the tree of the last render. */
-  const dropFinder = useRef<(row: Row, el: Element | null, at: Point) => NavDrop | null>(() => null);
+  /** Where a drag of a row drops under the pointer, and its drop, from the last render. */
+  const navDrag = useRef<{
+    find: (row: Row, el: Element | null, at: Point) => NavDrop | null;
+    drop: (row: Row, drop: NavDrop, at: Point, shift: boolean) => void;
+  }>({ find: () => null, drop: () => {} });
+  const drag = useDrag();
   /** The step of rows the tree is scrolled to: see rowWindow.ts. */
   const [step, setStep] = useState(0);
 
@@ -585,12 +593,15 @@ export function Navigator(props: Props) {
 
   /** Where the connection or folder `item` lands under the pointer at `at`, on `el`, and
    *  the change it makes there; `null` where it cannot go or would not move. A row that
-   *  takes nothing refuses it; below the rows it goes last at the root. */
+   *  takes nothing refuses it; below the last row it goes last at the root. */
   function arrangeAt(item: DragItem, el: Element | null, at: Point): NavDrop | null {
     const tree = treeRef.current;
     if (!tree || !el || !tree.contains(el)) return null;
     const li = el.closest<HTMLElement>("li.tree-row[data-row]");
     if (!li) {
+      // The list's own space below its last row, not a spacer standing for rows not shown.
+      const last = tree.querySelector(`li[data-row="${rows.length - 1}"]`);
+      if (el !== tree || !last || at.y < last.getBoundingClientRect().bottom) return null;
       const change = dropChange(layout, item, null, "into");
       return change && { kind: "arrange", change, key: null, zone: "into" };
     }
@@ -602,28 +613,37 @@ export function Navigator(props: Props) {
     return change && { kind: "arrange", change, key: row.key, zone };
   }
 
-  // A drag reads where it would drop from the tree as it is at each move.
-  dropFinder.current = (row, el, at) => {
-    if (row.item && el && treeRef.current?.contains(el)) return arrangeAt(row.item, el, at);
-    const target = row.sql ? sqlDropTarget(el) : null;
-    return target && { kind: "sql", target };
+  // A drag reads where it drops, and drops, with the tree and props of the last render.
+  let byKey: Map<string, Row> | undefined;
+  const latestRow = (row: Row) => (byKey ??= new Map(rows.map((r) => [r.key, r]))).get(row.key) ?? row;
+  navDrag.current = {
+    find: (pressed, el, at) => {
+      const row = latestRow(pressed);
+      if (row.item && el && treeRef.current?.contains(el)) return arrangeAt(row.item, el, at);
+      const target = row.sql ? sqlDropTarget(el) : null;
+      return target && { kind: "sql", target };
+    },
+    drop: (pressed, drop, at, shift) => {
+      if (drop.kind === "arrange") {
+        applyArrange(project, drop.change).catch((err: unknown) => onError(toCommandError(err).message));
+        return;
+      }
+      const sql = sqlOf(latestRow(pressed));
+      if (sql) dropSql(drop.target, sql, at, shift);
+    },
   };
 
   /** Drags `row` (a connection or folder to arrange, or a table or column for an editor). */
   function startDrag(row: Row, e: React.PointerEvent) {
-    const sql = typeof row.sql === "function" ? row.sql() : row.sql;
-    pointerDrag<NavDrop>(e, {
-      label: sql?.name ?? row.label,
-      target: (el, at) => dropFinder.current(row, el, at),
+    drag<NavDrop>(e, {
+      label: sqlOf(row)?.name ?? row.label,
+      target: (el, at) => navDrag.current.find(row, el, at),
       show: (drop) => {
         const key = drop?.kind === "arrange" ? drop.key : null;
         const zone = drop?.kind === "arrange" ? drop.zone : "into";
         setDropAt((was) => (key === null ? null : was?.key === key && was.zone === zone ? was : { key, zone }));
       },
-      drop: (drop, at, up) => {
-        if (drop.kind === "arrange") applyArrange(project, drop.change).catch((err: unknown) => onError(toCommandError(err).message));
-        else if (sql) dropSql(drop.target, sql, at, up.shiftKey);
-      },
+      drop: (drop, at, up) => navDrag.current.drop(row, drop, at, up.shiftKey),
     });
   }
 
@@ -1175,6 +1195,7 @@ export function Navigator(props: Props) {
           >
             <span
               className="twisty"
+              data-no-drag
               onClick={(e) => {
                 if (!row.onToggle) return;
                 e.stopPropagation();
