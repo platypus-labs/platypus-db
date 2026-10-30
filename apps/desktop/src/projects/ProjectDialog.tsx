@@ -117,9 +117,8 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
             </div>
             <input
               className="project-initials"
-              // Until typed over, the initials that follow the name show as the placeholder.
-              value={ownInitials ? initials : ""}
-              placeholder={initials || "AB"}
+              value={initials}
+              placeholder="AB"
               maxLength={2}
               onChange={(e) => {
                 setInitials(e.target.value);
