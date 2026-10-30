@@ -529,7 +529,13 @@ async fn command_script(
     Ok(match state.session(job.session_id)?.config.driver {
         platypus_core::DriverKind::Cassandra => {
             let script = cassandra_script(state, job, changes).await?;
-            Some((script.commands, script.undo))
+            // The undo goes to a CQL editor, which splits a script at the `;`.
+            let undo = script
+                .undo
+                .into_iter()
+                .map(|l| if l.starts_with("--") { l } else { format!("{l};") })
+                .collect();
+            Some((script.commands, undo))
         }
         platypus_core::DriverKind::Redis => {
             let script = redis_script(job, changes)?;
