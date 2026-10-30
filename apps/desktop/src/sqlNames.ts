@@ -78,10 +78,8 @@ export function viewerSql(driver: DriverKind, table: string, filter = ""): strin
   return `SELECT *\nFROM ${table}${filter.trim() ? `\nWHERE ${filter.trim()}` : ""}`;
 }
 
-/** The drag type of a table or column dragged from the navigator: `{ name, select? }`, the
- *  quoted name and, for a table, a query of it. */
-export const SQL_DRAG = "application/x-platypus-sql";
-
+/** A table or column dragged from the navigator: the quoted name and, for a table, a
+ *  query of it. */
 export interface SqlDrag {
   name: string;
   select?: string;

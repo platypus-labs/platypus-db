@@ -122,20 +122,36 @@ export default async function (page, { dir, shots }) {
     await page.eval(`${row("main")}.querySelector('.twisty').click()`);
     await page.waitFor(`${row("orders")} !== undefined`, 15_000);
   }
-  const drop = `(() => {
-    const dt = new DataTransfer();
-    ${row("orders")}.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
-    const target = ${shownEditors}[0].querySelector('.cm-content');
-    const r = target.getBoundingClientRect();
-    const at = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 40, clientY: r.top + 8 };
-    target.dispatchEvent(new DragEvent('dragover', at));
-    target.dispatchEvent(new DragEvent('drop', at));
-  })()`;
-  await page.eval(drop);
-  await page.waitFor(`${editorText(`${shownEditors}[0]`)}.startsWith('SELECT')`);
-  assert.match(await page.eval(editorText(`${shownEditors}[0]`)), /FROM .*orders/);
-  await page.eval(drop);
-  await page.waitFor(`(${editorText(`${shownEditors}[0]`)}.match(/orders/g) ?? []).length === 2`);
+  // Real pointer input: press on the row, move with the button held, release in the editor.
+  const editor = `${shownEditors}[0]`;
+  const content = `${editor}.querySelector('.cm-content')`;
+  const drop = async (options = {}) => {
+    const from = await page.rectOf(`${row("orders")}.querySelector('.tree-label')`);
+    const to = await page.rectOf(content);
+    await page.drag(from.x + from.w / 2, from.y + from.h / 2, to.x + 40, to.y + 8, options);
+  };
+  let ghost = null;
+  await drop({ before: async () => (ghost = await page.eval(`document.querySelector('.drag-ghost')?.textContent`)) });
+  assert.match(ghost ?? "", /orders/);
+  await page.waitFor(`${editorText(editor)}.startsWith('SELECT')`);
+  assert.match(await page.eval(editorText(editor)), /FROM .*orders/);
+  assert.equal(await page.eval(`document.querySelector('.drag-ghost') === null`), true);
+  // Into text: the name, where it is dropped.
+  await drop();
+  await page.waitFor(`(${editorText(editor)}.match(/orders/g) ?? []).length === 2`);
+  // With Shift held: a query of it, even into text.
+  await drop({ modifiers: SHIFT });
+  await page.waitFor(`(${editorText(editor)}.match(/FROM/g) ?? []).length === 2`);
+  // Escape cancels: nothing is dropped.
+  const text = await page.eval(editorText(editor));
+  await drop({ before: () => page.key("Escape", "Escape", 27) });
+  await page.sleep(300);
+  assert.equal(await page.eval(editorText(editor)), text);
+  // Released outside any editor: nothing either, and the row is not dragged anywhere.
+  const r = await page.rectOf(`${row("orders")}.querySelector('.tree-label')`);
+  await page.drag(r.x + r.w / 2, r.y + r.h / 2, r.x + r.w / 2, r.y + r.h / 2 + 60);
+  await page.sleep(300);
+  assert.equal(await page.eval(editorText(editor)), text);
 
   // The tree from the keyboard: the arrows move the selection and the focus.
   await page.eval(`${row(NAME)}.focus()`);

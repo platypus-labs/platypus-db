@@ -64,3 +64,85 @@ export function railItems(projects: Project[], folders: ProjectFolder[]): RailIt
 export function railOrder(projects: Project[], folders: ProjectFolder[]): Project[] {
   return railItems(projects, folders).flatMap((i) => (i.kind === "project" ? [i.project] : i.projects));
 }
+
+/** Where in the rail a dragged project is dropped. `inside` a project makes a folder of the
+ *  two (or joins its folder); inside a folder puts it last there; before or after a project
+ *  in an open folder puts it there in the folder; `start` and `end` are the two ends of the
+ *  rail, out of any folder. */
+export type RailSpot =
+  | { kind: "project" | "folder"; id: string; zone: "before" | "inside" | "after" }
+  | { kind: "start" | "end" };
+
+/** The store changes of a drop in the rail, made in this order: grouped with the project
+ *  `group`, moved into (or out of, `id` `null`) a folder at `index`, then the projects put
+ *  in `order` so the rail shows them where they were dropped. */
+export interface RailChange {
+  group?: string;
+  folder?: { id: string | null; index: number | null };
+  order: string[];
+}
+
+/** The change a drop of the project `dragged` on `spot` makes; `null` when it changes
+ *  nothing. */
+export function railDrop(projects: Project[], folders: ProjectFolder[], dragged: string, spot: RailSpot): RailChange | null {
+  const flat = railOrder(projects, folders).map((p) => p.id);
+  const folderOf = (id: string) => folders.find((f) => f.projects.includes(id)) ?? null;
+  const from = folderOf(dragged);
+  const others = flat.filter((id) => id !== dragged);
+  /** The folder's projects other than the dragged one, in its order. */
+  const members = (f: ProjectFolder) => f.projects.filter((id) => id !== dragged && others.includes(id));
+  /** `others` with the dragged project at `at`. */
+  const placed = (at: number) => [...others.slice(0, at), dragged, ...others.slice(at)];
+  const after = (id: string | undefined) => (id === undefined ? others.length : others.indexOf(id) + 1);
+  const out = from ? { folder: { id: null, index: null } } : {};
+
+  let change: RailChange;
+  switch (spot.kind) {
+    case "start":
+      change = { ...out, order: placed(0) };
+      break;
+    case "end":
+      change = { ...out, order: placed(others.length) };
+      break;
+    case "project": {
+      if (spot.id === dragged) return null;
+      const target = folderOf(spot.id);
+      if (spot.zone === "inside") {
+        if (target && target === from) return null;
+        const last = target ? members(target).at(-1) : spot.id;
+        change = { group: spot.id, order: placed(after(last)) };
+      } else {
+        const at = others.indexOf(spot.id) + (spot.zone === "after" ? 1 : 0);
+        if (target) {
+          const index = members(target).indexOf(spot.id) + (spot.zone === "after" ? 1 : 0);
+          change = { folder: { id: target.id, index }, order: placed(at) };
+        } else {
+          change = { ...out, order: placed(at) };
+        }
+      }
+      break;
+    }
+    case "folder": {
+      const folder = folders.find((f) => f.id === spot.id);
+      if (!folder) return null;
+      const inner = members(folder);
+      if (spot.zone === "inside") {
+        if (folder === from) return null;
+        change = { folder: { id: folder.id, index: null }, order: placed(after(inner.at(-1))) };
+      } else {
+        // A folder of the dragged project alone: out of it, where it is. An empty one (no
+        // project of it in the rail) takes nothing.
+        if (inner.length === 0 && folder !== from) return null;
+        const at = inner.length === 0 ? flat.indexOf(dragged) : spot.zone === "before" ? others.indexOf(inner[0]!) : after(inner.at(-1));
+        change = { ...out, order: placed(at) };
+      }
+      break;
+    }
+  }
+  const moved = change.order.some((id, i) => id !== flat[i]);
+  const target = change.group ? folderOf(change.group) : change.folder ? folders.find((f) => f.id === change.folder!.id) ?? null : from;
+  // Moved within its folder: the store takes it out, then puts it back at `index`.
+  const index = from ? from.projects.filter((id) => id === dragged || others.includes(id)).indexOf(dragged) : -1;
+  const reindexed = target === from && change.folder?.index != null && change.folder.index !== index;
+  return moved || reindexed || target !== from || change.group ? change : null;
+}
