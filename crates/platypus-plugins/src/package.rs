@@ -190,8 +190,9 @@ impl Plugins {
                 .map(|_| ())
                 .ok_or_else(|| PluginError::NotInstalled(id.to_owned()))
         })?;
+        // The state holds checked ids only (see `Manifest::parse`): a plain folder name.
         let home = self.dir.join(id);
-        if !id.is_empty() && !id.contains(['/', '\\']) && home.exists() {
+        if home.exists() {
             std::fs::remove_dir_all(&home).map_err(PluginError::io(&home))?;
         }
         Ok(())
