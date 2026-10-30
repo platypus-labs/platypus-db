@@ -46,7 +46,10 @@ export async function openPicker(page) {
 /** Opens the form of a new connection for the picker's tile `label`. */
 export async function newConnection(page, label) {
   await openPicker(page);
-  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
+  const tile = `[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)})`;
+  // The picker fills in while the drivers are read: wait for the tile.
+  await page.waitFor(`${tile} !== undefined`, 15_000);
+  await page.eval(`${tile}.click()`);
   await page.waitFor(`${dialog} !== null`);
 }
 

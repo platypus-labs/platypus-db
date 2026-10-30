@@ -100,7 +100,7 @@ save_password = false
 export async function openEditor(page, name) {
   await page.waitFor(`${treeRow(name)} !== undefined`, 30_000);
   const before = await page.eval(`document.querySelectorAll('.query-tab').length`);
-  await page.eval(`${treeRow(name)}.id = 'e2e-conn'`);
+  await page.eval(`${treeRow(name)}.scrollIntoView({ block: 'center' }); ${treeRow(name)}.id = 'e2e-conn'`);
   await page.clickSel("#e2e-conn", { clickCount: 2 });
   await page.eval(`document.getElementById('e2e-conn')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelectorAll('.query-tab').length > ${before} && ${visibleTab} !== undefined`, 30_000);
