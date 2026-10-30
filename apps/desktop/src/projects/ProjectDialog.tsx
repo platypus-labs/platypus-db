@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Project, type SavedConnection, toCommandError } from "../api";
 import { ConnectionPicker } from "./ConnectionPicker";
 import { t } from "../i18n";
@@ -27,6 +27,8 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   const folders = workbench().projectFolders();
   const currentFolder = folders.find((f) => project && f.projects.includes(project.id))?.id ?? "";
   const [folder, setFolder] = useState(currentFolder);
+  // A new project gets its id once, so saving again after an error does not make a second one.
+  const newId = useRef(crypto.randomUUID());
   const [picked, setPicked] = useState(new Set(project?.connections ?? []));
 
   useEffect(() => {
@@ -46,25 +48,32 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const saved: Project = {
-      id: project?.id ?? crypto.randomUUID(),
+      id: project?.id ?? newId.current,
       name,
       color,
       initials,
       // The ones kept keep their order; the newly picked follow.
       connections: [...(project?.connections ?? []).filter((id) => picked.has(id)), ...[...picked].filter((id) => !project?.connections.includes(id))],
     };
+    let all: Project[];
     try {
-      let all = await api.saveProject(saved);
-      // The rail's folders are read in the same call as the drag to a folder.
-      if (folder !== currentFolder) {
+      all = await api.saveProject(saved);
+    } catch (err) {
+      setError(storeMessage(toCommandError(err).message));
+      return;
+    }
+    // The rail's folders are read in the same call as the drag to a folder. A folder that cannot
+    // be set does not lose the project, which is saved by now.
+    if (folder !== currentFolder) {
+      try {
         const w = await api.setProjectFolder(saved.id, folder || null);
         workbench().setWorkspace(w);
         all = w.projects;
+      } catch (err) {
+        workbench().showError(storeMessage(toCommandError(err).message));
       }
-      onSaved(all, all.find((p) => p.id === saved.id) ?? saved);
-    } catch (err) {
-      setError(storeMessage(toCommandError(err).message));
     }
+    onSaved(all, all.find((p) => p.id === saved.id) ?? saved);
   }
 
   return (
