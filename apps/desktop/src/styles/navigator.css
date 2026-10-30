@@ -366,3 +366,47 @@
 .git-badge.folder {
   color: var(--fg-muted);
 }
+
+/* A connection: its driver's logo, the connection's color as a mark on its top left corner and
+   its state (open session, failure) as a dot on the bottom right. */
+.conn-logo {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+
+.conn-logo .driver-logo {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border-radius: var(--radius);
+}
+
+.conn-logo .driver-logo svg {
+  width: 12px;
+  height: 12px;
+}
+
+.conn-color {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1.5px var(--frame, var(--bg-rail));
+}
+
+.conn-logo .connected-mark,
+.conn-failed {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--frame, var(--bg-rail));
+}
+
+.conn-failed {
+  background: var(--error);
+}

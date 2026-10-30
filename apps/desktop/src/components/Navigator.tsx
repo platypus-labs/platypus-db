@@ -3,6 +3,7 @@ import { formatBytes } from "../format";
 import {
   api,
   type Capabilities,
+  type DriverKind,
   isEmbedded,
   isNoSql,
   toCommandError,
@@ -31,6 +32,7 @@ import { connectionColor, typeBadge } from "../connections";
 import { hasUrl } from "../connectionUrl";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
+import { DriverIcon } from "./DriverPicker";
 import { testConnections } from "./TestConnectionsDialog";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
@@ -149,6 +151,8 @@ interface Row {
   label: string;
   icon?: IconName;
   color?: string | null;
+  /** A connection: its driver's logo, with the color and the state as marks on it. */
+  driver?: DriverKind;
   /** A short tag after the label, e.g. PROD. */
   badge?: string | null;
   detail?: string;
@@ -486,6 +490,7 @@ export function Navigator(props: Props) {
       depth: 0,
       label: c.name,
       color: connectionColor(c),
+      driver: c.driver,
       badge: typeBadge(c),
       detail: [isOffline && t("offline"), filtered && t("filtered")].filter(Boolean).join(" · ") || undefined,
       title: isOffline
@@ -1210,7 +1215,14 @@ export function Navigator(props: Props) {
             >
               {row.expanded !== undefined && <Icon name={row.expanded ? "chevron-down" : "chevron-right"} size={12} />}
             </span>
-            {row.color !== undefined ? (
+            {row.driver ? (
+              <span className="conn-logo">
+                <DriverIcon driver={row.driver} />
+                {row.color && <span className="conn-color" style={{ background: row.color }} />}
+                {row.connected && <span className="connected-mark" role="img" aria-label={t("Connected")} />}
+                {row.status === "error" && <span className="conn-failed" />}
+              </span>
+            ) : row.color !== undefined ? (
               <span className="dot" style={{ background: row.color ?? "var(--border)" }} />
             ) : (
               row.icon && (
@@ -1221,7 +1233,7 @@ export function Navigator(props: Props) {
             )}
             <span className="tree-label">{row.label}</span>
             {row.marked && <span className="catalog-mark" aria-label={t("Has notes")} />}
-            {row.connected && <span className="connected-mark" role="img" aria-label={t("Connected")} />}
+            {row.connected && !row.driver && <span className="connected-mark" role="img" aria-label={t("Connected")} />}
             {row.badge && <span className={`type-badge ${row.badge.toLowerCase()}`}>{row.badge}</span>}
             {row.detail && <span className="tree-detail">{row.detail}</span>}
             {row.count && <span className="tree-count">{row.count}</span>}
