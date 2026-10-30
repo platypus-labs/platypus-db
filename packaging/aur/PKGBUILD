@@ -1,4 +1,5 @@
 # Maintainer: PlatypusDB <https://github.com/PaoloCisly/platypus-db>
+# After changing a field, change .SRCINFO too (`makepkg --printsrcinfo > .SRCINFO` on Arch).
 pkgname=platypusdb-bin
 pkgver=@VERSION@
 pkgrel=1
@@ -16,6 +17,6 @@ sha256sums=('@SHA256_LINUX_DEB@')
 package() {
   bsdtar -xf data.tar.gz -C "${pkgdir}"
   # Updates come from the AUR: the app then only says a new version is out.
-  install -Dm644 /dev/null "${pkgdir}/usr/share/platypusdb/package-manager"
+  install -d "${pkgdir}/usr/share/platypusdb"
   echo AUR > "${pkgdir}/usr/share/platypusdb/package-manager"
 }

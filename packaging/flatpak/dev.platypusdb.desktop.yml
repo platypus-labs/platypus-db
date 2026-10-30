@@ -20,6 +20,9 @@ finish-args:
   # The system keyring, for saved passwords.
   - --talk-name=org.freedesktop.secrets
 modules:
+  # The tray icon's library, which the GNOME runtime lacks: Flathub's shared module (add
+  # https://github.com/flathub/shared-modules as the `shared-modules` git submodule).
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
   - name: platypusdb
     buildsystem: simple
     sources:
@@ -43,4 +46,4 @@ modules:
         done
       - install -Dm644 dev.platypusdb.desktop.metainfo.xml /app/share/metainfo/dev.platypusdb.desktop.metainfo.xml
       # Updates come from Flathub: the app then only says a new version is out.
-      - install -Dm644 /dev/null /app/share/platypusdb/package-manager && echo Flatpak > /app/share/platypusdb/package-manager
+      - install -d /app/share/platypusdb && echo Flatpak > /app/share/platypusdb/package-manager

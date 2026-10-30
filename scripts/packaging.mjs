@@ -79,13 +79,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     return at < 0 ? undefined : args.splice(at, 2)[1];
   };
   const date = option("--date") ?? new Date().toISOString().slice(0, 10);
+  const out = option("--out");
   const [version, dir] = args;
-  const out = option("--out") ?? join(root, "target", "packaging", version ?? "");
-  if (!version || !dir || !/^\d+\.\d+\.\d+/.test(version) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (args.length !== 2 || !/^\d+\.\d+\.\d+/.test(version) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     console.error("usage: node scripts/packaging.mjs <version> <release files folder> [--date YYYY-MM-DD] [--out folder]");
     process.exit(2);
   }
-  for (const { manager, missing } of generate(join(root, "packaging"), out, values(version, date, dir))) {
-    console.log(missing ? `${manager}: skipped, missing ${missing.join(", ")}` : `${manager}: ${relative(process.cwd(), join(out, manager))}`);
+  if (!existsSync(dir)) {
+    console.error(`no folder ${dir}`);
+    process.exit(2);
+  }
+  const to = out ?? join(root, "target", "packaging", version);
+  for (const { manager, missing } of generate(join(root, "packaging"), to, values(version, date, dir))) {
+    console.log(missing ? `${manager}: skipped, missing ${missing.join(", ")}` : `${manager}: ${relative(process.cwd(), join(to, manager))}`);
   }
 }

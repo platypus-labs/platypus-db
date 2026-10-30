@@ -43,7 +43,7 @@ export function UpdateBanner({ portable, packageManager }: { portable: boolean; 
       </span>
       <span className="spacer" />
       {portable && !progress && <span className="muted">{t("Replace this portable copy's executable with the new one.")}</span>}
-      {packageManager && <span className="muted">{t("Update it with {manager}.", { manager: packageManager })}</span>}
+      {packageManager && <span className="muted">{t("Update it with {manager} once the new version reaches it.", { manager: packageManager })}</span>}
       {progress ? (
         <span className="muted">{progress}</span>
       ) : (

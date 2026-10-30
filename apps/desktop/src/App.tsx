@@ -153,7 +153,9 @@ export function App() {
   const capabilities = useRef(new Map<number, Capabilities>());
   const [version, setVersion] = useState("");
   const [portable, setPortable] = useState(false);
-  const [packageManager, setPackageManager] = useState<string | null>(null);
+  // Undefined until the app info arrives: the update banner waits for it, so that a copy a
+  // package manager installed never offers the installer.
+  const [packageManager, setPackageManager] = useState<string | null>();
   /** Open sessions by tab key; opened on a tab's first run. */
   const sessions = useRef(new Map<number, Promise<number | null>>());
   /** Connections that are not saved (the DuckDB of "Query with SQL"), by id, with what to do
@@ -1081,7 +1083,7 @@ export function App() {
       </div>
       <main className="workspace">
         <CrashBanner />
-        <UpdateBanner portable={portable} packageManager={packageManager} />
+        {packageManager !== undefined && <UpdateBanner portable={portable} packageManager={packageManager} />}
         {visibleTabs.length > 0 && (
           <TabBar
             ref={tabBar}

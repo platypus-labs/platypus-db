@@ -344,7 +344,7 @@ const es: Record<string, string> = {
   "Try the sample database": "Probar la base de datos de ejemplo",
   "portable": "portable",
   "Replace this portable copy's executable with the new one.": "Reemplazar el ejecutable de esta copia portable por el nuevo.",
-  "Update it with {manager}.": "Actualízalo con {manager}.",
+  "Update it with {manager} once the new version reaches it.": "Actualízalo con {manager} cuando la nueva versión llegue allí.",
   "A SQLite field survey of platypuses: linked tables, a view and a few saved scripts, no server needed.":
     "Un censo de ornitorrincos en SQLite: tablas relacionadas, una vista y algunos scripts guardados, sin servidor.",
   "OK": "Aceptar",
