@@ -1,0 +1,38 @@
+[package]
+name = "platypus-plugins"
+description = "WebAssembly plugins for PlatypusDB: installed packages, a sandboxed runtime, actions and custom drivers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+platypus-core.workspace = true
+platypus-drivers.workspace = true
+platypus-tls.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+toml.workspace = true
+url.workspace = true
+uuid.workspace = true
+# A pure-Rust interpreter: small, portable, with fuel metering and memory limits.
+# `auto-dispatch` falls back to a loop where tail calls are not guaranteed (debug builds),
+# instead of recursing until the stack overflows.
+wasmi = { version = "2", default-features = false, features = ["std", "validate", "auto-dispatch"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
+wat = "1"
+
+[lints]
+workspace = true

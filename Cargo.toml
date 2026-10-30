@@ -31,6 +31,7 @@ platypus-driver-sqlite = { path = "crates/platypus-driver-sqlite" }
 platypus-transfer = { path = "crates/platypus-transfer" }
 platypus-mcp = { path = "crates/platypus-mcp" }
 platypus-net = { path = "crates/platypus-net" }
+platypus-plugins = { path = "crates/platypus-plugins" }
 platypus-sql = { path = "crates/platypus-sql" }
 platypus-schema = { path = "crates/platypus-schema" }
 platypus-store = { path = "crates/platypus-store" }

@@ -75,6 +75,9 @@ pub enum DriverKind {
     /// Any ODBC driver or data source: `options` hold `dsn`, `driver` or
     /// `connection_string`.
     Odbc,
+    /// A driver provided by an installed WebAssembly plugin, whose id is the `plugin`
+    /// option; it reaches its database over HTTP only.
+    Plugin,
 }
 
 /// How the app reaches a database whose driver is not built in.
@@ -108,7 +111,8 @@ impl DriverKind {
             | Self::BigQuery
             | Self::Databricks
             | Self::Adbc
-            | Self::Odbc => None,
+            | Self::Odbc
+            | Self::Plugin => None,
         }
     }
 
@@ -147,6 +151,7 @@ impl DriverKind {
             Self::Oracle => "Oracle",
             Self::Db2 => "Db2",
             Self::Odbc => "ODBC",
+            Self::Plugin => "Plugin",
         }
     }
 
@@ -956,6 +961,7 @@ mod tests {
             (DriverKind::Oracle, "oracle"),
             (DriverKind::Db2, "db2"),
             (DriverKind::Odbc, "odbc"),
+            (DriverKind::Plugin, "plugin"),
         ] {
             let json = serde_json::to_string(&kind).unwrap();
             assert_eq!(json, format!("\"{name}\""));

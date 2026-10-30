@@ -1,0 +1,24 @@
+[package]
+name = "toy-http-driver"
+description = "Example PlatypusDB driver plugin for a database with a small HTTP JSON API"
+version = "1.0.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+platypus-plugin-sdk = { path = "../sdk" }
+serde_json = "1"
+
+# Small modules: size over speed, nothing to unwind.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[workspace]
