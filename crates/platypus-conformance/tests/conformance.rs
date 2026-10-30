@@ -2820,8 +2820,8 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
         .unwrap();
     assert!(ddl.contains("customer_totals"), "{}: {ddl}", b.name);
     // "Where a column is used": the view's DDL, as the database prints it, uses the key column
-    // of orders and none of its other columns.
-    let columns = ["customer_id".to_owned(), "total".to_owned()];
+    // of orders, and not a column it does not name.
+    let columns = ["customer_id".to_owned(), "conf_not_a_column".to_owned()];
     let uses = platypus_sql::usage::column_uses(
         &ddl,
         platypus_sql::Dialect::from(b.config.driver),
