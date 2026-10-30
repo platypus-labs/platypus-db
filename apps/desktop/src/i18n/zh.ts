@@ -2941,6 +2941,9 @@ const zh: Record<string, string> = {
   "open": "打开",
   "close": "关闭",
   "{n} results": "{n} 个结果",
+  "Agents do not see this connection.": "代理看不到此连接。",
+  "They can read the data and the schema, and change nothing.": "可以读取数据和结构，不能做任何更改。",
+  "They can also change data, within the connection's safety settings.": "也可以修改数据，但受连接的安全设置限制。",
 };
 
 export default zh;

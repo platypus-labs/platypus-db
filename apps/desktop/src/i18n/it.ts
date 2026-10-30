@@ -2941,6 +2941,9 @@ const it: Record<string, string> = {
   "open": "apri",
   "close": "chiudi",
   "{n} results": "{n} risultati",
+  "Agents do not see this connection.": "Gli agenti non vedono questa connessione.",
+  "They can read the data and the schema, and change nothing.": "Possono leggere i dati e lo schema, senza cambiare niente.",
+  "They can also change data, within the connection's safety settings.": "Possono anche modificare i dati, entro le impostazioni di sicurezza della connessione.",
 };
 
 export default it;

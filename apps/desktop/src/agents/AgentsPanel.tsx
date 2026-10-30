@@ -15,7 +15,7 @@ import { AgentActivity } from "./AgentActivity";
 import { AgentBridge } from "./AgentBridge";
 import { AgentClients } from "./AgentClients";
 import { CopyBlock } from "./CopyBlock";
-import { t, tNodes } from "../i18n";
+import { msg, t, tNodes } from "../i18n";
 
 type Page = "setup" | "activity" | "security";
 
@@ -52,9 +52,9 @@ function StaleNotice({ stale }: { stale: StaleRegistration }) {
 
 /** What each access level lets agents do, as the detail panel explains it. */
 const LEVEL_NOTES: Record<AgentAccess, string> = {
-  off: "Agents do not see this connection.",
-  read_only: "They can run SELECT and read the schema.",
-  read_write: "Every change waits for your consent in the app.",
+  off: msg("Agents do not see this connection."),
+  read_only: msg("They can read the data and the schema, and change nothing."),
+  read_write: msg("They can also change data, within the connection's safety settings."),
 };
 
 /** The three levels of a connection, the one it has marked. */

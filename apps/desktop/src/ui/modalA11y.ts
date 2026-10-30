@@ -90,6 +90,8 @@ function enterToPrimary(e: KeyboardEvent) {
   const top = [...document.querySelectorAll<HTMLElement>(".modal")].filter((m) => m.getClientRects().length > 0).at(-1);
   if (!top || !target || !top.contains(target)) return;
   if (target.closest("form") || target.closest(OWN_ENTER) || target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) return;
+  // A choice (checkbox, radio) is not a field to confirm from.
+  if (target instanceof HTMLInputElement && (target.type === "checkbox" || target.type === "radio")) return;
   const buttons = [...top.querySelectorAll<HTMLButtonElement>(".actions button")].filter((b) => b.getClientRects().length > 0);
   const primaries = buttons.filter((b) => b.classList.contains("primary") && !b.disabled && !b.classList.contains("danger"));
   // A dialog with one button only closes (Settings' Done, a Close): Enter belongs to its fields.
