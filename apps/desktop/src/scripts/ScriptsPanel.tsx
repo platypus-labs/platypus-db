@@ -9,6 +9,7 @@ import { badgeTitle } from "./GitDialogs";
 import { changedInFolder, statusByPath } from "./gitModel";
 import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, scriptsChanged } from "./scripts";
 import { t } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   project: Project | null;
@@ -216,7 +217,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
               </li>
             );
           })}
-          {list && entries.length === 0 && <li className="muted small scripts-empty">{t("No saved scripts")}</li>}
+          {list && entries.length === 0 && <li className="scripts-empty"><EmptyState compact title={t("No saved scripts")} /></li>}
         </ul>
       )}
       {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={fail} />}

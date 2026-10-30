@@ -22,6 +22,7 @@ import { Parameters } from "./Parameters";
 import { type Activity, activity, blockingChains, type Chain, matches, seconds } from "./sessions";
 import { ObjectsView, TopQueries } from "./Statistics";
 import { Users } from "./Users";
+import { EmptyState, LoadingState } from "../ui/State";
 
 export type AdminView = "sessions" | "locks" | "statements" | "objects" | "parameters" | "dashboard" | "users";
 
@@ -342,7 +343,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             />
           )}
           {!parameters.error && !parameters.list && (
-            <p className="muted small">{loading ? t("Reading the parameters…") : ""}</p>
+            loading && <LoadingState compact title={t("Reading the parameters…")} />
           )}
         </div>
       )}
@@ -407,7 +408,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             />
           )}
           {!statistics.error && (view === "statements" ? !statistics.queries : !statistics.objects) && (
-            <p className="muted small">{loading ? t("Reading the statistics…") : ""}</p>
+            loading && <LoadingState compact title={t("Reading the statistics…")} />
           )}
         </div>
       )}
@@ -493,7 +494,7 @@ function SessionTable({
           ))}
         </tbody>
       </table>
-      {sessions.length === 0 && <p className="muted small admin-empty">{t("No sessions match.")}</p>}
+      {sessions.length === 0 && <EmptyState compact className="admin-empty" title={t("No sessions match.")} />}
     </div>
   );
 }

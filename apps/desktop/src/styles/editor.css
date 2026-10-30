@@ -19,7 +19,7 @@
   width: 1px;
   align-self: stretch;
   background: var(--border);
-  margin: 0 4px;
+  margin: 0 var(--space-4);
 }
 
 button.toggled {
@@ -42,17 +42,17 @@ button.toggled {
 .history-header {
   display: flex;
   align-items: center;
-  padding: 8px 8px 4px 12px;
+  padding: var(--space-8) var(--space-8) var(--space-4) var(--space-12);
 }
 
 .history-search {
-  margin: 4px 8px;
+  margin: var(--space-4) var(--space-8);
 }
 
 .history-list {
   list-style: none;
   margin: 0;
-  padding: 4px 8px;
+  padding: var(--space-4) var(--space-8);
   overflow: auto;
   flex: 1;
 }
@@ -62,8 +62,8 @@ button.toggled {
   border-left: 3px solid var(--ok);
   border-radius: var(--radius);
   background: var(--bg);
-  padding: 6px 8px 2px;
-  margin-bottom: 6px;
+  padding: var(--space-6) var(--space-8) var(--space-2);
+  margin-bottom: var(--space-6);
   cursor: default;
 }
 
@@ -78,7 +78,7 @@ button.toggled {
 .history-entry pre {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 7.5em;
@@ -88,8 +88,8 @@ button.toggled {
 .history-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
+  gap: var(--space-8);
+  font-size: var(--text-xs);
   color: var(--fg-muted);
 }
 
@@ -103,16 +103,12 @@ button.toggled {
 }
 
 .history-origin {
-  margin-right: 4px;
-  font-size: 12px;
-}
-
-.history-empty {
-  padding: 8px 4px;
+  margin-right: var(--space-4);
+  font-size: var(--text-sm);
 }
 
 .history-more {
-  margin: 4px 12px 8px;
+  margin: var(--space-4) var(--space-12) var(--space-8);
   align-self: flex-start;
 }
 
@@ -120,8 +116,8 @@ button.toggled {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-10);
   background: var(--bg-tabbar);
   /* Its buttons wrap in a narrow window, and its row never shrinks below them. */
   min-height: max-content;
@@ -130,8 +126,8 @@ button.toggled {
 .toolbar button {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 10px;
+  gap: var(--space-6);
+  padding: 0 var(--space-10);
 }
 
 /* Secondary actions: no box until hovered, so Run stands out. */
@@ -146,8 +142,8 @@ button.toggled {
 .auto-refresh {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding-left: 6px;
+  gap: var(--space-4);
+  padding-left: var(--space-6);
   border-radius: var(--radius);
   color: var(--fg-muted);
 }
@@ -160,11 +156,11 @@ button.toggled {
 .conn-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-left: 4px;
-  padding: 2px 9px;
+  gap: var(--space-6);
+  margin-left: var(--space-4);
+  padding: var(--space-2) var(--space-10);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   color: var(--fg-muted);
   background: var(--bg-input);
@@ -195,8 +191,8 @@ button.toggled {
 .viewer-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-8);
   border-bottom: 1px solid var(--border);
   background: var(--bg-sidebar);
 }
@@ -210,7 +206,7 @@ button.toggled {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--warn, #e8590c);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -243,13 +239,13 @@ button.toggled {
 .object-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: var(--space-10);
+  padding: var(--space-10) var(--space-12);
   border-bottom: 1px solid var(--border);
 }
 
 .object-icon {
-  font-size: 20px;
+  font-size: var(--text-2xl);
   color: var(--fg-muted);
 }
 
@@ -261,8 +257,8 @@ button.toggled {
 
 .object-sections {
   display: flex;
-  gap: 2px;
-  padding: 4px 10px 0;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-10) 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -271,7 +267,7 @@ button.toggled {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: none;
-  padding: 6px 10px;
+  padding: var(--space-6) var(--space-10);
 }
 
 .object-sections button.active {
@@ -280,16 +276,16 @@ button.toggled {
 }
 
 .object-sections .count {
-  margin-left: 6px;
+  margin-left: var(--space-6);
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .object-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 10px 14px;
+  padding: var(--space-10) var(--space-12);
   display: flex;
   flex-direction: column;
 }
@@ -298,13 +294,13 @@ button.toggled {
   flex: 1;
   min-height: 200px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
 .meta-table {
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
   align-self: flex-start;
   min-width: 50%;
 }
@@ -312,7 +308,7 @@ button.toggled {
 .meta-table th,
 .meta-table td {
   text-align: left;
-  padding: 4px 12px 4px 0;
+  padding: var(--space-4) var(--space-12) var(--space-4) 0;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
@@ -347,7 +343,7 @@ button.toggled {
 .search-form {
   flex: 1;
   display: flex;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .search-input {
@@ -368,20 +364,20 @@ button.toggled {
 .search-results .tree-icon {
   display: inline-flex;
   vertical-align: -2px;
-  margin-right: 6px;
+  margin-right: var(--space-6);
 }
 
 /* Side panels next to the editor: variables and outline reuse the history panel's frame. */
 
 .side-panel-hint {
-  margin: 0 12px 4px;
+  margin: 0 var(--space-12) var(--space-4);
 }
 
 .variable-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 
 .variable-name {
@@ -389,7 +385,7 @@ button.toggled {
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .variable-row input {
@@ -400,8 +396,8 @@ button.toggled {
 
 .variable-add {
   display: flex;
-  gap: 6px;
-  padding: 6px 8px 10px;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-8) var(--space-10);
 }
 
 .variable-add input {
@@ -412,11 +408,11 @@ button.toggled {
 .outline-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-6);
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .outline-row:hover {
@@ -427,7 +423,7 @@ button.toggled {
   flex: none;
   width: 44px;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .outline-kind.dml,
@@ -447,12 +443,12 @@ button.toggled {
 .params-sql {
   max-height: 8em;
   overflow: auto;
-  margin: 0 0 8px;
-  padding: 6px 8px;
+  margin: 0 0 var(--space-8);
+  padding: var(--space-6) var(--space-8);
   border-radius: var(--radius);
   background: var(--bg-input);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
 }
 
@@ -474,8 +470,8 @@ button.toggled {
 .snippet-row {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
 }
 
 .snippet-row input {
@@ -486,15 +482,15 @@ button.toggled {
 .snippet-row textarea {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   resize: vertical;
 }
 
 /* Result tabs can be closed; messages of client commands and command-line clients. */
 
 .result-tab-close {
-  margin-left: 6px;
-  padding: 0 3px;
+  margin-left: var(--space-6);
+  padding: 0 var(--space-4);
   border-radius: var(--radius);
   color: var(--fg-muted);
 }
@@ -506,11 +502,11 @@ button.toggled {
 
 .message-output {
   margin: 0;
-  padding: 8px 12px;
+  padding: var(--space-8) var(--space-12);
   overflow: auto;
   height: 100%;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
 }
 
@@ -521,13 +517,13 @@ button.toggled {
 /* Server messages (notices, PRINT, warnings) above a result. */
 .server-messages {
   margin: 0;
-  padding: 4px 12px;
+  padding: var(--space-4) var(--space-12);
   max-height: 7.5em;
   flex-shrink: 0;
   overflow: auto;
   border-bottom: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
 }
 
@@ -543,7 +539,7 @@ button.toggled {
 .terminal-bar {
   display: flex;
   align-items: center;
-  padding: 2px 10px;
+  padding: var(--space-2) var(--space-10);
   border-bottom: 1px solid var(--border);
 }
 
@@ -551,10 +547,10 @@ button.toggled {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 8px 12px;
+  padding: var(--space-8) var(--space-12);
   overflow: auto;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   white-space: pre;
   background: var(--bg);
@@ -580,8 +576,8 @@ button.toggled {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--space-6);
+  padding: var(--space-8);
   border-right: 1px solid var(--border);
   background: var(--bg-sidebar);
   min-height: 0;
@@ -607,10 +603,6 @@ button.toggled {
   background-size: 16px 16px;
 }
 
-.builder-empty {
-  margin: 24px;
-}
-
 .builder-lines {
   position: absolute;
   inset: 0;
@@ -628,8 +620,8 @@ button.toggled {
   position: absolute;
   background: var(--bg);
   transform: translate(-50%, -50%);
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: var(--space-2) var(--space-6);
+  font-size: var(--text-xs);
   z-index: 1;
 }
 
@@ -645,8 +637,8 @@ button.toggled {
 .builder-box-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 4px 4px 8px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-8);
   border-bottom: 1px solid var(--border);
   background: var(--bg-sidebar);
   cursor: move;
@@ -660,30 +652,30 @@ button.toggled {
 .builder-columns {
   list-style: none;
   margin: 0;
-  padding: 4px 8px;
+  padding: var(--space-4) var(--space-8);
   max-height: 220px;
   overflow: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .builder-columns label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .builder-bottom {
   border-top: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: var(--space-6) var(--space-10);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .builder-where {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .builder-where input {
@@ -695,17 +687,17 @@ button.toggled {
   margin: 0;
   max-height: 160px;
   overflow: auto;
-  padding: 6px 8px;
+  padding: var(--space-6) var(--space-8);
   border-radius: var(--radius);
   background: var(--bg-input);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 /* "Generate DDL" still reading: how far, and Stop. */
 .ddl-progress {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   white-space: nowrap;
 }

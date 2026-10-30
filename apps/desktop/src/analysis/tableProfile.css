@@ -8,21 +8,21 @@
 .tp-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  gap: var(--space-12);
   align-items: start;
 }
 .tp-card {
   box-sizing: border-box;
   min-width: 0;
-  padding: 8px 10px;
+  padding: var(--space-8) var(--space-10);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .tp-card dl {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 2px 10px;
+  gap: var(--space-2) var(--space-10);
   margin: 0;
 }
 .tp-card dt {
@@ -48,35 +48,35 @@
   white-space: nowrap;
   text-align: left;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .tp-pattern-list {
-  margin: 2px 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
   list-style: none;
 }
 .tp-pattern {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
 }
 .tp-dominant {
   font-weight: 600;
 }
 .tp-exceptions-label,
 .tp-outlier-summary {
-  margin-top: 4px;
+  margin-top: var(--space-4);
 }
 .tp-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 10px;
-  margin-top: 2px;
+  gap: var(--space-2) var(--space-10);
+  margin-top: var(--space-2);
 }
 .tp-outliers,
 .tp-patterns {
-  margin-top: 4px;
+  margin-top: var(--space-4);
 }
 .tp-none {
-  padding: 12px 0;
+  padding: var(--space-12) 0;
 }

@@ -15,6 +15,7 @@ import { workbench } from "../workbench";
 import { loadAll, openTemporaryQuery } from "./QueryWithSql";
 import { type ResultHost, hostOfJob } from "./resultHosts";
 import { defaultName, filterSaved } from "./savedResultsModel";
+import { EmptyState } from "../ui/State";
 
 const listeners = new Set<() => void>();
 
@@ -154,9 +155,9 @@ export function SavedResultsPanel({ onError }: { onError: (message: string) => v
               </button>
             </li>
           ))}
-          {list && list.length === 0 && <li className="muted small scripts-empty">{t("No saved results")}</li>}
+          {list && list.length === 0 && <li className="scripts-empty"><EmptyState compact title={t("No saved results")} /></li>}
           {list && list.length > 0 && shown.length === 0 && (
-            <li className="muted small scripts-empty">{t("No saved result matches")}</li>
+            <li className="scripts-empty"><EmptyState compact title={t("No saved result matches")} /></li>
           )}
         </ul>
       )}

@@ -7,9 +7,9 @@
 }
 .diff-summary {
   display: flex;
-  gap: 12px;
+  gap: var(--space-12);
   align-items: center;
-  padding: 8px 12px;
+  padding: var(--space-8) var(--space-12);
   border-bottom: 1px solid var(--border);
 }
 .diff-counts {
@@ -17,7 +17,7 @@
   font-weight: 600;
 }
 .diff-partial {
-  margin: 8px 12px 0;
+  margin: var(--space-8) var(--space-12) 0;
 }
 .diff-truncated {
   color: var(--warn);
@@ -31,12 +31,12 @@
 .diff-table {
   border-collapse: collapse;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .diff-table th,
 .diff-table td {
   max-width: 320px;
-  padding: 2px 8px;
+  padding: var(--space-2) var(--space-8);
   overflow: hidden;
   border-bottom: 1px solid var(--border);
   text-align: left;

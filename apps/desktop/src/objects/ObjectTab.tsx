@@ -25,6 +25,7 @@ import { editsTables, openObjectTab, openTableEditor, showsData } from "./open";
 import { openScriptFile, scriptFile } from "../scripts/scripts";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
+import { LoadingState } from "../ui/State";
 
 export type ObjectSection =
   | "properties"
@@ -304,7 +305,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
       </nav>
       <div className="object-body">
         {error && <div className="notice error">{error}</div>}
-        {!data && !error && <div className="muted small">{t("Loading…")}</div>}
+        {!data && !error && <LoadingState compact title={t("Loading…")} />}
         {data && section === "properties" && (
           <MetaTable
             head={[t("Property"), t("Value")]}
@@ -499,7 +500,7 @@ function ColumnUsageSection(props: {
   }, [props.version, columns.join("\n")]);
 
   if (error) return <div className="notice error">{error}</div>;
-  if (!usage) return <div className="muted small">{t("Loading…")}</div>;
+  if (!usage) return <LoadingState compact title={t("Loading…")} />;
   const unused = columns.filter((c) => !usage.uses.some((u) => u.column === c));
   const open = (u: ColumnUse) =>
     u.kind

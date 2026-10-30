@@ -9,6 +9,7 @@ import { WidgetForm } from "./WidgetForm";
 import { WidgetView } from "./WidgetView";
 import { dashboardFile, moveWidget, REFRESH_CHOICES, type Widget } from "./model";
 import { idle, runWidget, type WidgetRun, WidgetSessions } from "./run";
+import { EmptyState } from "../ui/State";
 
 export interface DashboardTabModel extends TabBase {
   kind: "dashboard";
@@ -216,7 +217,7 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
             onRemove={() => remove(widget.id)}
           />
         ))}
-        {tab.widgets.length === 0 && <p className="muted dashboard-empty">{t("An empty dashboard: add a widget.")}</p>}
+        {tab.widgets.length === 0 && <EmptyState className="dashboard-empty" title={t("An empty dashboard: add a widget.")} />}
       </div>
     </div>
   );

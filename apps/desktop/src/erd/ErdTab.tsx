@@ -29,6 +29,7 @@ import {
 import { type Box, type Point, placeTables } from "./layout";
 import { pathThrough, quickWire, routeWires } from "./route";
 import { TablesDialog } from "./TablesDialog";
+import { LoadingState } from "../ui/State";
 
 export type { ErdEdits };
 
@@ -571,7 +572,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         </div>
       )}
       <div className="erd-canvas">
-        {tables === null && !error && <p className="muted small erd-loading">{t("Reading the tables…")}</p>}
+        {tables === null && !error && <LoadingState className="erd-loading" title={t("Reading the tables…")} />}
         <svg
           ref={svg}
           width={size.w * tab.zoom}

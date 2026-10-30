@@ -4,6 +4,7 @@ import { api, type ColumnInfo, toCommandError } from "../api";
 import { formatCount, t, plural } from "../i18n";
 import { MASK, useMask } from "../guards/mask";
 import { JSON_TYPE, formatJson, isJsonDocument } from "../jsonText";
+import { EmptyState, LoadingState } from "../ui/State";
 
 /** The focused cell of a result. */
 export interface ValueTarget {
@@ -153,12 +154,12 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
   }
 
   const body = (() => {
-    if (!target) return <div className="muted small value-empty">{t("Select a cell to see its value.")}</div>;
+    if (!target) return <EmptyState compact className="value-empty" title={t("Select a cell to see its value.")} />;
     if (error) return <div className="error-text small value-empty">{error}</div>;
-    if (!bytes) return <div className="muted small value-empty">{t("Loading…")}</div>;
-    if (target.isNull) return <div className="muted small value-empty">NULL</div>;
-    if (mask?.(target.column)) return <div className="muted small value-empty">{t("{dots} Masked while the screen may be shared.", { dots: MASK })}</div>;
-    if (bytes.length === 0) return <div className="muted small value-empty">{t("Empty")}</div>;
+    if (!bytes) return <LoadingState compact className="value-empty" title={t("Loading…")} />;
+    if (target.isNull) return <EmptyState compact className="value-empty" title="NULL" />;
+    if (mask?.(target.column)) return <EmptyState compact className="value-empty" title={t("{dots} Masked while the screen may be shared.", { dots: MASK })} />;
+    if (bytes.length === 0) return <EmptyState compact className="value-empty" title={t("Empty")} />;
     switch (shown) {
       case "image":
         return url && <img className="value-image" src={url} alt={target.column.name} />;

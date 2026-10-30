@@ -10,6 +10,7 @@ import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 export interface BuilderTable {
   id: number;
@@ -262,7 +263,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
             add(name, Math.max(0, e.clientX - r.left + el.scrollLeft - BOX / 2), Math.max(0, e.clientY - r.top + el.scrollTop - 12));
           }}
         >
-          {tab.tables.length === 0 && <p className="muted builder-empty">{t("Drag tables here from the list. Their foreign keys join them.")}</p>}
+          {tab.tables.length === 0 && <EmptyState className="builder-empty" title={t("Drag tables here from the list. Their foreign keys join them.")} />}
           <svg className="builder-lines">
             {joins.map((j) => {
               const a = center(j.left);

@@ -14,6 +14,7 @@ import type { JobStatus } from "./jobStatus";
 import { openProfile } from "./profileActions";
 import { profileConnections, profilesOf } from "./profiles";
 import { runTracked } from "./ProfileSave";
+import { EmptyState } from "../ui/State";
 
 const KINDS: Record<ProfileTask["kind"], string> = {
   export_query: msg("Export a query"),
@@ -82,7 +83,7 @@ export function ProfilesDialog({ connectionId, onClose }: { connectionId?: strin
         <h2>{connectionId ? t("Transfer profiles of {name}", { name: nameOf(connectionId) }) : t("Transfer profiles")}</h2>
         <p className="muted small">{t("Save a profile from the export, import, copy and migration dialogs.")}</p>
         {error && <div className="notice error small">{error}</div>}
-        {shown && shown.length === 0 && <p className="muted small schedules-empty">{t("No profiles saved yet.")}</p>}
+        {shown && shown.length === 0 && <EmptyState compact className="schedules-empty" title={t("No profiles saved yet.")} />}
         {shown && shown.length > 0 && (
           <div className="schedules-list">
             <table className="meta-table admin-table">

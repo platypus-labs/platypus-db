@@ -36,6 +36,7 @@ import { applyArrange, type FolderNode, folderTree, newFolder } from "../project
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
 import { openObjectTab, showsData } from "../objects/open";
+import { EmptyState } from "../ui/State";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -1087,12 +1088,18 @@ export function Navigator(props: Props) {
       )}
       {error && <div className="notice error small">{error}</div>}
       {project && connections.length === 0 && !error && (
-        <div className="project-empty">
-          <p className="muted small">{t("No connections in this project.")}</p>
-          <button onClick={onNew}>{t("New connection")}</button>
-          <button onClick={onAddExisting}>{t("Add existing…")}</button>
-          <button onClick={onImport}>{t("Import…")}</button>
-        </div>
+        <EmptyState
+          className="project-empty"
+          icon="database"
+          title={t("No connections in this project.")}
+          actions={
+            <>
+              <button onClick={onNew}>{t("New connection")}</button>
+              <button onClick={onAddExisting}>{t("Add existing…")}</button>
+              <button onClick={onImport}>{t("Import…")}</button>
+            </>
+          }
+        />
       )}
       {!project && connections.length === 0 && !error && (
         <>

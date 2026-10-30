@@ -13,6 +13,7 @@ import {
   moveRule,
   scaleColor,
 } from "./formatting";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   columns: ColumnInfo[];
@@ -114,7 +115,7 @@ export function FormattingDialog({ columns, rules, column, saved, onChange, onCl
           {t(saved ? "Rules color cells or rows; the first that matches wins. They are kept for this table." : "Rules color cells or rows; the first that matches wins. They last while this result is open.")}
         </p>
         <div className="formatting-rules" data-count={rules.length}>
-          {rules.length === 0 && <p className="muted small formatting-empty">{t("No rules yet.")}</p>}
+          {rules.length === 0 && <EmptyState compact className="formatting-empty" title={t("No rules yet.")} />}
           {rules.map((rule, i) => (
             <div key={rule.id} className={`formatting-rule${rule.id === draft.id ? " selected" : ""}`}>
               <span

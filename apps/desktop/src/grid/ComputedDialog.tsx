@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ColumnInfo } from "../api";
 import { t } from "../i18n";
 import { type ComputedColumn, compile, ExpressionError, FUNCTION_NAMES } from "./computed";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   /** The result's columns, which expressions can use. */
@@ -84,7 +85,7 @@ export function ComputedDialog({ columns, computed, saved, onChange, onClose }: 
           )}
         </p>
         <div className="formatting-rules" data-count={computed.length}>
-          {computed.length === 0 && <p className="muted small formatting-empty">{t("No computed columns yet.")}</p>}
+          {computed.length === 0 && <EmptyState compact className="formatting-empty" title={t("No computed columns yet.")} />}
           {computed.map((c, i) => (
             <div key={c.name} className={`formatting-rule${i === editing ? " selected" : ""}`} data-computed={c.name}>
               <button type="button" className="link formatting-text" onClick={() => edit(i)} title={t("Edit")}>

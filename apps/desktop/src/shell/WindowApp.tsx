@@ -16,6 +16,7 @@ import { LockScreen } from "../guards/AppLock";
 import { track } from "./activity";
 import { t } from "../i18n";
 import { withInitApproval } from "../ui/initApproval";
+import { EmptyState } from "../ui/State";
 
 /** The connection the quick query used last. */
 const QUICK_KEY = "platypus.quick.connection";
@@ -274,7 +275,7 @@ export function WindowApp({ label }: { label: string }) {
         </div>
       )}
       <div className="panes">
-        {connections && connections.length === 0 && <p className="muted window-empty">{t("No connection is saved yet.")}</p>}
+        {connections && connections.length === 0 && <EmptyState className="window-empty" title={t("No connection is saved yet.")} />}
         {tab && connection && Component && (
           <div className="pane">
             <Component

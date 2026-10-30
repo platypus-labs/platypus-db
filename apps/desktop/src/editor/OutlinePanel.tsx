@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type DriverKind, type StatementSpan } from "../api";
 import { t } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 interface Props {
   text: string;
@@ -49,7 +50,7 @@ export function OutlinePanel({ text, driver, onSelect, onClose }: Props) {
             </span>
           </li>
         ))}
-        {statements.length === 0 && <li className="muted history-empty">{t("No statements")}</li>}
+        {statements.length === 0 && <li className="history-empty"><EmptyState compact title={t("No statements")} /></li>}
       </ul>
     </aside>
   );

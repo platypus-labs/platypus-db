@@ -13,6 +13,7 @@ import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { Histogram, count, percent } from "./ColumnProfile";
 import { equalsCondition, matchingColumns, outlierCondition } from "./tableProfileModel";
+import { EmptyState } from "../ui/State";
 
 export interface TableProfileTabModel extends TabBase {
   kind: "table-profile";
@@ -177,7 +178,7 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
           )}
         </div>
       )}
-      {profile && profile.rows === 0 && <div className="notice tp-empty">{t("The table has no rows.")}</div>}
+      {profile && profile.rows === 0 && <EmptyState compact className="tp-empty" title={t("The table has no rows.")} />}
       {note && <div className="notice ok tp-note">{note}</div>}
       <div className="object-body tp-body">
         {profile && columns.length === 0 && filter.trim() !== "" && <div className="muted tp-none">{t("No column matches.")}</div>}

@@ -7,6 +7,7 @@ import { defineSetting, getSetting } from "../settings";
 import { workbench } from "../workbench";
 import { preview } from "./GuardDialog";
 import { t, plural } from "../i18n";
+import { LoadingState } from "../ui/State";
 
 export const snapshotSetting = defineSetting<boolean>({
   key: "safety.snapshots",
@@ -67,9 +68,9 @@ export function SnapshotsDialog({ onClose }: { onClose: () => void }) {
         </p>
         {error && <div className="notice error small">{error}</div>}
         {list === null ? (
-          <p className="muted small">{t("Loading…")}</p>
+          <LoadingState compact title={t("Loading…")} />
         ) : list.length === 0 ? (
-          <p className="muted small">{t("No snapshot yet.")}</p>
+          <LoadingState compact title={t("No snapshot yet.")} />
         ) : (
           <ul className="snapshot-list">
             {list.map((s) => (

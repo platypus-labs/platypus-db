@@ -7,8 +7,8 @@
 .debug-arguments {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 8px 0;
+  gap: var(--space-6);
+  margin: var(--space-8) 0;
   max-height: 50vh;
   overflow: auto;
 }
@@ -17,7 +17,7 @@
   display: grid;
   grid-template-columns: minmax(120px, 1fr) 2fr auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .debug-argument-name {
@@ -33,7 +33,7 @@
 
 .debug-toolbar {
   display: flex;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .debug-toolbar .debug-stop:not(:disabled) {
@@ -44,10 +44,10 @@
 .debug-status {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 1px 8px;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--space-8);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   color: var(--fg-muted);
   background: var(--bg-input);
@@ -83,7 +83,7 @@
 }
 
 .debug-error {
-  margin: 8px 14px 0;
+  margin: var(--space-8) var(--space-12) 0;
 }
 
 /* The source beside the stack and the variables. */
@@ -91,8 +91,8 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: var(--space-12);
+  padding: var(--space-10) var(--space-12);
 }
 
 .debug-source-pane {
@@ -100,7 +100,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .debug-source {
@@ -145,7 +145,7 @@
   max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
   overflow: auto;
 }
 
@@ -155,7 +155,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
 }
 
 .debug-frame {
@@ -163,11 +163,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-6);
   text-align: left;
   border: 1px solid transparent;
   background: none;
-  padding: 4px 6px;
+  padding: var(--space-4) var(--space-6);
 }
 
 .debug-frame.selected {
@@ -177,12 +177,12 @@
 
 .debug-frame-name {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .debug-frame-args {
   flex-basis: 100%;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -190,7 +190,7 @@
 }
 
 .debug-variables {
-  font-size: 12px;
+  font-size: var(--text-sm);
   width: 100%;
 }
 
@@ -219,16 +219,16 @@
 .debug-outcome {
   max-height: 40%;
   overflow: auto;
-  padding: 0 14px 12px;
+  padding: 0 var(--space-12) var(--space-12);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   border-top: 1px solid var(--border);
-  padding-top: 10px;
+  padding-top: var(--space-10);
 }
 
 .debug-result-rows {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .debug-messages {

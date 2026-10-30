@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, toCommandError, type HistoryEntry, type HistoryOrigin } from "../api";
 import { formatMs } from "./ResultPanel";
 import { t, plural } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 const PAGE = 100;
 
@@ -113,7 +114,7 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
             </div>
           </li>
         ))}
-        {entries.length === 0 && !error && <li className="muted history-empty">{t("No history yet")}</li>}
+        {entries.length === 0 && !error && <li className="history-empty"><EmptyState compact title={t("No history yet")} /></li>}
       </ul>
       {more && (
         <button className="link history-more" onClick={() => void load(entries.at(-1)?.id)}>

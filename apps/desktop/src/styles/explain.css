@@ -12,21 +12,21 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 14px;
+  gap: var(--space-12);
 }
 
 .explain-tree {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .explain-node {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 4px;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-4);
   border-radius: var(--radius);
   cursor: default;
 }
@@ -42,7 +42,7 @@
 .explain-toggle {
   border: none;
   background: none;
-  padding: 0 2px;
+  padding: 0 var(--space-2);
   width: 16px;
   color: var(--fg-muted);
 }
@@ -63,7 +63,7 @@
 
 .explain-figures {
   display: flex;
-  gap: 10px;
+  gap: var(--space-10);
   color: var(--fg-muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -84,11 +84,11 @@
 
 .explain-misestimate {
   flex: none;
-  padding: 0 6px;
+  padding: 0 var(--space-6);
   border-radius: var(--radius);
   background: var(--warn-bg);
   color: var(--warn);
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -104,7 +104,7 @@
 .explain-text {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre;
 }
 
@@ -123,7 +123,7 @@
 .query-manager-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .query-manager-bar input:not([type="checkbox"]) {
@@ -188,8 +188,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 14px;
-  font-size: 12px;
+  gap: var(--space-4) var(--space-12);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -223,7 +223,7 @@
   display: inline-block;
   width: 8px;
   height: 8px;
-  margin-right: 5px;
+  margin-right: var(--space-6);
   border-radius: 2px;
   background: var(--part);
 }
@@ -238,17 +238,17 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .explain-graph-zoom {
   display: flex;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .explain-graph-zoom button {
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: var(--text-xs);
+  padding: var(--space-2) var(--space-8);
 }
 
 .explain-graph-zoom button.active {
@@ -289,7 +289,7 @@
 
 .explain-box text {
   fill: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .explain-box-op {
@@ -315,14 +315,14 @@
 .explain-compare-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
 }
 
 .explain-compare {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   min-height: 0;
   overflow: auto;
 }
@@ -330,14 +330,14 @@
 .explain-compare-summary {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-24);
   flex-wrap: wrap;
 }
 
 .explain-compare-summary > div {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
 }
 
 .explain-compare-summary strong {
@@ -349,7 +349,7 @@
 }
 
 .explain-compare-table {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .explain-compare-table .num {
@@ -376,9 +376,9 @@
 .explain-change {
   display: inline-block;
   min-width: 52px;
-  padding: 0 6px;
+  padding: 0 var(--space-6);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-align: center;
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
@@ -405,7 +405,7 @@
   min-height: 260px;
   resize: vertical;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre;
 }
 
