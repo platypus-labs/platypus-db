@@ -2,6 +2,8 @@ import { createElement, useEffect, useState } from "react";
 import {
   api,
   type CatalogKey,
+  type ColumnUsage,
+  type ColumnUse,
   type DriverKind,
   type ObjectKind,
   type ObjectTarget,
@@ -20,6 +22,7 @@ import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor, showsData } from "./open";
+import { openScriptFile, scriptFile } from "../scripts/scripts";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 
@@ -30,6 +33,7 @@ export type ObjectSection =
   | "constraints"
   | "foreign_keys"
   | "references"
+  | "usage"
   | "ddl";
 
 const NO_COMMENTS: DriverKind[] = ["sqlite", "libsql", "mongo", "redis", "elasticsearch", "cassandra"];
@@ -78,12 +82,13 @@ const SECTION_LABELS: Record<ObjectSection, string> = {
   constraints: msg("Constraints"),
   foreign_keys: msg("Foreign keys"),
   references: msg("References"),
+  usage: msg("Used by"),
   ddl: "DDL",
 };
 
 function sectionsFor(kind: ObjectKind): ObjectSection[] {
   if (kind === "table" || kind === "foreign_table") {
-    return ["properties", "columns", "indexes", "constraints", "foreign_keys", "references", "ddl"];
+    return ["properties", "columns", "indexes", "constraints", "foreign_keys", "references", "usage", "ddl"];
   }
   if (kind === "view" || kind === "materialized_view" || kind === "dictionary") {
     return ["properties", "columns", "ddl"];
@@ -390,6 +395,18 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             ])}
           />
         )}
+        {d && section === "usage" && (
+          <ColumnUsageSection
+            connectionId={connection.id}
+            schema={tab.schema}
+            currentSchema={tab.currentSchema}
+            database={tab.database}
+            table={tab.name}
+            columns={d.columns.map((c) => c.name)}
+            version={version}
+            sideSession={sideSession}
+          />
+        )}
         {data && section === "ddl" &&
           (data.ddl === null ? (
             <div className="notice muted">{t("This driver cannot show the DDL of objects.")}</div>
@@ -441,6 +458,71 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** Where the columns of a table are used: views, routines and triggers of its schema, and the
+ *  saved scripts of the active project. Read when shown, and again on Refresh. */
+function ColumnUsageSection(props: {
+  connectionId: string;
+  schema: string;
+  currentSchema: boolean;
+  database: string | null | undefined;
+  table: string;
+  columns: string[];
+  version: number;
+  sideSession: () => Promise<number | null>;
+}) {
+  const { connectionId, schema, table, columns } = props;
+  const [usage, setUsage] = useState<ColumnUsage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setUsage(null);
+    setError(null);
+    void (async () => {
+      try {
+        const sid = await props.sideSession();
+        if (sid === null) return;
+        const read = await api.columnUsage(sid, schema, table, columns, workbench().activeProject()?.id ?? null);
+        if (live) setUsage(read);
+      } catch (e) {
+        if (live) setError(toCommandError(e).message);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [props.version, columns.join("\n")]);
+
+  if (error) return <div className="notice error">{error}</div>;
+  if (!usage) return <div className="muted small">{t("Loading…")}</div>;
+  const unused = columns.filter((c) => !usage.uses.some((u) => u.column === c));
+  const open = (u: ColumnUse) =>
+    u.kind
+      ? openObjectTab(connectionId, { database: props.database, schema, currentSchema: props.currentSchema, name: u.name, kind: u.kind, parent: u.parent })
+      : void openScriptFile(scriptFile(usage.scripts_root, u.name), connectionId).catch((e: unknown) => workbench().showError(toCommandError(e).message));
+  return (
+    <>
+      <MetaTable
+        head={[t("Column"), t("Used by"), t("Kind"), t("Line")]}
+        rows={usage.uses.map((u) => [
+          u.column,
+          <button key="use" className="link" onClick={() => open(u)} title={u.excerpt}>
+            {u.kind === "trigger" && u.parent ? `${u.name} (${u.parent})` : u.name}
+          </button>,
+          u.kind ? t(KIND_LABELS[u.kind]) : t("Saved script"),
+          <span key="line" title={u.excerpt}>
+            {u.line}: <code>{u.excerpt}</code>
+          </span>,
+        ])}
+      />
+      {unused.length > 0 && (
+        <p className="muted small" data-field="unused">
+          {t("Not named by any view, routine, trigger or saved script: {columns}", { columns: unused.join(", ") })}
+        </p>
+      )}
+    </>
   );
 }
 

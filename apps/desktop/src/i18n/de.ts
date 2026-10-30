@@ -2555,6 +2555,9 @@ const de: Record<string, string> = {
   "Mask their values": "Werte maskieren",
   "Leave them out": "Weglassen",
   "Sensitive column": "Sensible Spalte",
+  "Used by": "Verwendet von",
+  "Line": "Zeile",
+  "Not named by any view, routine, trigger or saved script: {columns}": "Von keiner View, Routine, keinem Trigger oder gespeicherten Skript genannt: {columns}",
 };
 
 export default de;

@@ -405,6 +405,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::catalog::set_catalog_display_column,
         commands::catalog::catalog_sensitive_columns,
         commands::catalog::set_catalog_sensitive,
+        commands::catalog::column_usage,
         commands::catalog::export_docs,
         commands::catalog::cancel_docs,
         commands::history::search_history,

@@ -157,6 +157,13 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   MongoDB, Redis and Elasticsearch have none.
 - **Row label**: the column that names a table's rows where foreign keys point to it, picked in
   the object tab or from a header's menu in the grid.
+- **Sensitive columns** (personal data, secrets): the rules of Settings › Safety name them by
+  name or type (emails, phones, passwords…), and the *Sensitive* column of the object tab marks
+  a column sensitive or not over the rules, kept with the notes. Masking hides them, the data
+  viewer's headers say which they are, and an export can keep, mask or leave them out.
+- **Used by**, in a table's tab: for each column, the views, routines and triggers of its schema
+  and the saved scripts of the project that name it, with the line, and the columns named
+  nowhere. Comments and strings do not count; a PostgreSQL routine's `$$` body does.
 - **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
   or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes,
   tags and an ER diagram of each schema of up to 100 tables.
@@ -600,8 +607,9 @@ through the MCP server.
   *Snapshots before changes…* in the palette, opens that script. On by default.
 - A connection can forbid **exports** (no file, other database or agent gets its data) and
   **data editing** (rows change only by SQL: no grid edits, imports or generated rows).
-- **Mask sensitive data** (Ctrl+Alt+M) shows the columns named in Settings › Safety (emails,
-  phones, passwords… by name or type) as dots while the screen is shared; copies keep the values.
+- **Mask sensitive data** (Ctrl+Alt+M) shows the sensitive columns (named in Settings › Safety
+  by name or type, or marked in the table's tab) as dots while the screen is shared; copies keep
+  the values.
 - With a master password, the app can **lock** after some idle minutes, closing the production
   connections; *Lock PlatypusDB* in the palette locks it at once.
 

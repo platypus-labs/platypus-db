@@ -2555,6 +2555,9 @@ const zh: Record<string, string> = {
   "Mask their values": "遮盖其值",
   "Leave them out": "排除这些列",
   "Sensitive column": "敏感列",
+  "Used by": "使用者",
+  "Line": "行",
+  "Not named by any view, routine, trigger or saved script: {columns}": "没有任何视图、例程、触发器或已保存脚本引用：{columns}",
 };
 
 export default zh;

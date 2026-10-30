@@ -2555,6 +2555,9 @@ const pt: Record<string, string> = {
   "Mask their values": "Mascarar os valores",
   "Leave them out": "Deixá-las de fora",
   "Sensitive column": "Coluna sensível",
+  "Used by": "Usado por",
+  "Line": "Linha",
+  "Not named by any view, routine, trigger or saved script: {columns}": "Não nomeadas por nenhuma view, rotina, trigger ou script salvo: {columns}",
 };
 
 export default pt;

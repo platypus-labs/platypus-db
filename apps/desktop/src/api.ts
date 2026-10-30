@@ -1507,6 +1507,23 @@ export interface DisplayColumn {
   column: string;
 }
 
+/** Where a column of a table is used: an object of its schema (`kind` set), or a saved script
+ *  (`name` its path in `ColumnUsage.scripts_root`). */
+export interface ColumnUse {
+  column: string;
+  kind: ObjectKind | null;
+  name: string;
+  parent: string | null;
+  /** The first line naming the column, from 1, and its text. */
+  line: number;
+  excerpt: string;
+}
+
+export interface ColumnUsage {
+  scripts_root: string;
+  uses: ColumnUse[];
+}
+
 /** A column the user marked sensitive or not, over the rules on names and types. */
 export interface SensitiveColumn {
   key: CatalogKey;
@@ -2481,6 +2498,10 @@ export const api = {
     invoke<DisplayColumn[]>("catalog_display_columns", { connectionId }),
   setCatalogDisplayColumn: (connectionId: string, key: CatalogKey, column: string | null) =>
     invoke<void>("set_catalog_display_column", { connectionId, key, column }),
+  /** Where the `columns` of `schema.table` are used: views, routines and triggers of the schema,
+   *  and the saved scripts of `project` on this connection or on none. */
+  columnUsage: (sessionId: number, schema: string, table: string, columns: string[], project: string | null) =>
+    invoke<ColumnUsage>("column_usage", { sessionId, schema, table, columns, project }),
   catalogSensitiveColumns: (connectionId: string) =>
     invoke<SensitiveColumn[]>("catalog_sensitive_columns", { connectionId }),
   setCatalogSensitive: (connectionId: string, key: CatalogKey, sensitive: boolean | null) =>

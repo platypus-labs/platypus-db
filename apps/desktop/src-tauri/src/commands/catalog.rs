@@ -129,6 +129,106 @@ pub fn set_catalog_sensitive(
     state.with_catalog(|c| c.set_sensitive(connection_id, &key, sensitive))
 }
 
+/// Where a column of a table is used: an object of its schema, or a saved script.
+#[derive(Debug, Serialize)]
+pub struct ColumnUse {
+    pub column: String,
+    /// The object's kind; `None` for a script.
+    pub kind: Option<ObjectKind>,
+    /// The object's name, or the script's path in its project.
+    pub name: String,
+    /// The table of a trigger.
+    pub parent: Option<String>,
+    /// The first line naming the column, from 1, and its text.
+    pub line: usize,
+    pub excerpt: String,
+}
+
+/// Where a table's columns are used, with the folder the scripts' paths start from.
+#[derive(Debug, Serialize)]
+pub struct ColumnUsage {
+    pub scripts_root: PathBuf,
+    pub uses: Vec<ColumnUse>,
+}
+
+/// The kinds whose SQL may use the columns of a table.
+const USERS: [ObjectKind; 5] = [
+    ObjectKind::View,
+    ObjectKind::MaterializedView,
+    ObjectKind::Function,
+    ObjectKind::Procedure,
+    ObjectKind::Trigger,
+];
+
+/// Where the columns `columns` of `schema.table` are used: in the views, routines and
+/// triggers of the schema (their DDL read together), and in the saved scripts of `project`
+/// that open on the session's connection or on none.
+#[tauri::command]
+pub async fn column_usage(
+    state: State<'_, AppState>,
+    session_id: u64,
+    schema: String,
+    table: String,
+    columns: Vec<String>,
+    project: Option<Uuid>,
+) -> CommandResult<ColumnUsage> {
+    let session = state.session(session_id)?;
+    let dialect = platypus_sql::Dialect::from(session.config.driver);
+    let conn = state.live(session_id).await?;
+    let objects: Vec<ObjectMeta> = conn
+        .objects(&schema)
+        .await?
+        .into_iter()
+        .filter(|o| USERS.contains(&o.kind))
+        .collect();
+    let refs: Vec<platypus_core::ObjectRef<'_>> = objects
+        .iter()
+        .map(|o| platypus_core::ObjectRef {
+            schema: &schema,
+            name: &o.name,
+            kind: o.kind,
+            parent: o.parent.as_deref(),
+        })
+        .collect();
+    let mut out = Vec::new();
+    let found = |sql: &str, out: &mut Vec<ColumnUse>, name: &str, kind, parent: Option<&str>| {
+        for (i, line) in platypus_sql::usage::column_uses(sql, dialect, &table, &columns) {
+            out.push(ColumnUse {
+                column: columns[i].clone(),
+                kind,
+                name: name.to_owned(),
+                parent: parent.map(str::to_owned),
+                line,
+                excerpt: platypus_sql::usage::excerpt(sql, line, 120),
+            });
+        }
+    };
+    // An object whose DDL cannot be read uses nothing that can be told.
+    for (o, ddl) in objects.iter().zip(conn.objects_ddl(&refs).await) {
+        if let Ok(ddl) = ddl {
+            found(&ddl, &mut out, &o.name, Some(o.kind), o.parent.as_deref());
+        }
+    }
+    let root = super::scripts::root(&state, project)?;
+    let links = platypus_store::read_script_links(&root);
+    for entry in platypus_store::list_scripts(&root) {
+        let linked = links.get(&entry.path);
+        if entry.folder || linked.is_some_and(|c| *c != session.connection_id) {
+            continue;
+        }
+        if let Ok(script) = platypus_store::read_script(&root, &entry.path, SCRIPT_BYTES) {
+            found(&script.text, &mut out, &entry.path, None, None);
+        }
+    }
+    Ok(ColumnUsage {
+        scripts_root: root,
+        uses: out,
+    })
+}
+
+/// How much of a saved script is searched for the columns it uses.
+const SCRIPT_BYTES: usize = 4 << 20;
+
 /// Drops the notes of a deleted connection; a catalog that cannot be opened has none.
 pub(super) fn forget_connection(catalog: &mut Result<CatalogStore, String>, id: Uuid) {
     if let Ok(c) = catalog {
