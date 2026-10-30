@@ -1184,6 +1184,7 @@ export function QueryTab({
             workbench().openDialog((close) => <MultiRunDialog script={script} origin={connection} onClose={close} />);
           },
     explain: isNoSql(connection.driver) ? undefined : (analyze) => void explain(analyze),
+    openSql: (sql) => workbench().openTab("query", connection.id, { sql, database: tab.database }),
   };
 
   /** Closes a result tab and frees its rows; the shown one asks first if it has edits. */

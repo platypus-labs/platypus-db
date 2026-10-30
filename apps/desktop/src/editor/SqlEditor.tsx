@@ -76,6 +76,8 @@ export interface EditorHost {
   runOnConnections?: () => void;
   /** Opens the plan of the statement under the cursor; `analyze` runs it. */
   explain?: (analyze: boolean) => void;
+  /** Opens a new SQL tab with `sql` on the editor's connection and database. */
+  openSql?: (sql: string) => void;
 }
 
 export interface SqlEditorHandle {
@@ -219,6 +221,8 @@ const dialects = {
   oracle: PLSQL,
   db2: StandardSQL,
   odbc: StandardSQL,
+  // A plugin's database is unknown: standard SQL.
+  plugin: StandardSQL,
   // Backtick names, like MySQL.
   bigquery: MySQL,
   databricks: MySQL,
