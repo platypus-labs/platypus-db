@@ -5779,6 +5779,7 @@ dependencies = [
  "platypus-schema",
  "platypus-sql",
  "platypus-store",
+ "platypus-sync",
  "platypus-transfer",
  "rmcp",
  "rusqlite",

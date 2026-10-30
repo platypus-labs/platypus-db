@@ -2,11 +2,13 @@
 // rail order), the menu of a project's square, and adding a connection to a project from
 // the navigator.
 import { registerAction } from "../actions";
-import { api, type Project, type ProjectFolder } from "../api";
+import { api, type Project, type ProjectFolder, toCommandError } from "../api";
 import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
 import { PROJECT_COLORS } from "./ProjectDialog";
 import { testConnections } from "../components/TestConnectionsDialog";
+import { refreshShared } from "../sync/background";
+import { openSharedProject, shareProject } from "./shared";
 import { railOrder } from "./state";
 import { t, msg } from "../i18n";
 
@@ -107,6 +109,38 @@ registerAction({
   title: "Test connections",
   order: 12,
   run: (project) => testConnections(project),
+});
+
+registerAction({
+  id: "project.share",
+  scope: "project",
+  title: "Share project…",
+  order: 13,
+  when: (project) => !project.shared,
+  run: (project) => shareProject(project),
+});
+
+registerAction({
+  id: "project.refresh_shared",
+  scope: "project",
+  title: "Read the shared folder again",
+  order: 13,
+  when: (project) => project.shared !== undefined,
+  run: () => {
+    refreshShared().then(
+      (notices) => {
+        if (notices.length === 0) workbench().notify(t("The project is up to date with its shared folder."));
+      },
+      (e: unknown) => workbench().showError(toCommandError(e).message),
+    );
+  },
+});
+
+registerAction({
+  id: "project.open_shared",
+  scope: "global",
+  title: "Open shared project…",
+  run: () => void openSharedProject(),
 });
 
 registerAction({

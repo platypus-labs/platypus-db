@@ -50,6 +50,8 @@ export interface Workbench {
   /** What an open session's driver supports. */
   capabilities(sessionId: number): Capabilities | undefined;
   showError(message: string): void;
+  /** Shows a message that is not an error (it is not kept in the Activity log). */
+  notify(message: string): void;
   openSettings(): void;
   /** Shows a dialog; `render` gets the function that closes it. */
   openDialog(render: (close: () => void) => ReactNode): void;

@@ -205,6 +205,7 @@ export function WindowApp({ label }: { label: string }) {
     closeSession: (id) => void api.closeSession(id),
     capabilities: (id) => capabilities.current.get(id),
     showError: setToast,
+    notify: setToast,
     openSettings: () => setToast(t("The settings are in the main window.")),
     openDialog: (render) => {
       const id = nextDialog.current++;

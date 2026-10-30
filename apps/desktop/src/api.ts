@@ -972,6 +972,56 @@ export interface ScriptEntry {
   connection: string | null;
 }
 
+// Group O: encrypted folder sync and shared team projects
+
+/** A change found on both sides of the sync, as the Sync page lists it. */
+export interface SyncConflict {
+  at: number;
+  /** `script`, `connection`, `setting`, `project`… */
+  what: string;
+  name: string;
+  kind: "both_edited" | "deleted_and_edited";
+  /** The name of the copy that keeps the other version, when there is one. */
+  copy: string | null;
+  machine: string;
+}
+
+export interface SyncStatus {
+  folder: string | null;
+  has_passphrase: boolean;
+  interval_minutes: number;
+  on_start: boolean;
+  last_sync: number | null;
+  machine: string;
+  conflicts: SyncConflict[];
+}
+
+export interface SyncReport {
+  /** Items taken into this computer. */
+  applied: number;
+  /** Whether the file in the folder was written. */
+  written: boolean;
+  skipped: number;
+  conflicts: SyncConflict[];
+  at: number;
+}
+
+/** What reading a shared project's folder found. */
+export interface SharedNotice {
+  project: string;
+  name: string;
+  kind: "changed" | "missing" | "invalid";
+  added: number;
+  removed: number;
+  changed: number;
+  message: string | null;
+}
+
+export interface OpenedShared {
+  workspace: Workspace;
+  project: string;
+}
+
 export interface ScriptList {
   /** The project's scripts folder, absolute. */
   root: string;
@@ -1733,6 +1783,9 @@ export interface Project {
   folders?: ConnectionFolder[];
   /** The folder of each connection not at the root, by connection id. */
   placement?: Record<string, string>;
+  /** The folder the project is shared through, when it is a shared project (the app reads
+   *  and writes `platypus-project.toml` and `scripts/` there). */
+  shared?: { path: string; share_user: boolean };
 }
 
 /** A folder of connections inside a project. */
@@ -2196,6 +2249,18 @@ export const api = {
   /** Drops the passwords `readImport` keeps for `saveImported`. */
   forgetImport: () => invoke<void>("forget_import"),
   listProjects: () => invoke<Project[]>("list_projects"),
+  // Group O: encrypted folder sync and shared team projects
+  syncStatus: () => invoke<SyncStatus>("sync_status"),
+  /** Chooses the sync folder and passphrase (`null`: keep the saved one) and when it runs. */
+  syncConfigure: (folder: string, passphrase: string | null, intervalMinutes: number, onStart: boolean) =>
+    invoke<SyncStatus>("sync_configure", { folder, passphrase, intervalMinutes, onStart }),
+  syncDisconnect: () => invoke<SyncStatus>("sync_disconnect"),
+  syncClearConflicts: () => invoke<SyncStatus>("sync_clear_conflicts"),
+  syncNow: () => invoke<SyncReport>("sync_now"),
+  shareProject: (projectId: string, folder: string, shareUser: boolean) =>
+    invoke<Workspace>("share_project", { projectId, folder, shareUser }),
+  openSharedProject: (folder: string) => invoke<OpenedShared>("open_shared_project", { folder }),
+  refreshSharedProjects: () => invoke<SharedNotice[]>("refresh_shared_projects"),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
   deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),

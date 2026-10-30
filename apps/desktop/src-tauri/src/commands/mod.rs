@@ -41,6 +41,7 @@ pub mod settings;
 pub mod snapshots;
 pub mod sql;
 pub mod summary;
+pub mod sync;
 pub mod transactions;
 pub mod transfer;
 pub mod vault;

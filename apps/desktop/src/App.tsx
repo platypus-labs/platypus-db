@@ -66,6 +66,7 @@ import { LockScreen, useIdleLock } from "./guards/AppLock";
 import { PanelResizer, useStoredSize } from "./shell/PanelResizer";
 import { takeLeftWindowTabs, useTray, useWindowEvents, WINDOW_EVENTS } from "./shell/windows";
 import { emit } from "@tauri-apps/api/event";
+import { startBackground } from "./sync/background";
 
 declare module "./actions" {
   interface ActionScopes {
@@ -125,6 +126,8 @@ export function App() {
   useEffect(() => {
     loadLanguage().then(() => setLanguageLoaded((n) => n + 1), console.error);
   }, [chosenLanguage]);
+  // The encrypted folder sync, and the folders of shared projects when the window gets focus.
+  useEffect(() => startBackground(), []);
   // Downloaded drivers: once a day at most, and only when the setting is on.
   useEffect(() => {
     void startupDriverCheck();
@@ -329,7 +332,10 @@ export function App() {
   /** Deletes a project once confirmed: its tabs close (those with changes ask first, and a
    *  refusal keeps the project), its connections stay. */
   async function deleteProject(p: Project) {
-    if (!(await ask(t('Delete the project "{name}"? Its connections stay, in All connections and other projects.', { name: p.name }), { confirm: t("Delete"), danger: true }))) {
+    const question = p.shared
+      ? t('Remove the shared project "{name}" from the app? The shared folder and its files are not deleted; its connections stay in All connections.', { name: p.name })
+      : t('Delete the project "{name}"? Its connections stay, in All connections and other projects.', { name: p.name });
+    if (!(await ask(question, { confirm: p.shared ? t("Remove") : t("Delete"), danger: true }))) {
       return;
     }
     const own = tabs.filter((t) => t.project === p.id);
@@ -945,6 +951,7 @@ export function App() {
     duplicateConnection: (connection) => duplicateConnection(connection),
     capabilities: (sessionId) => capabilities.current.get(sessionId),
     showError: setToast,
+    notify: (message) => showToast(message),
     openSettings: () => setSettingsOpen(true),
     openDialog: (render) => {
       const id = nextDialog.current++;
