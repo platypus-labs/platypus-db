@@ -1,0 +1,46 @@
+# Repackages the Linux .deb of a release. Build and try it:
+#   flatpak-builder --user --install --force-clean build dev.platypusdb.desktop.yml
+#   flatpak run dev.platypusdb.desktop
+id: dev.platypusdb.desktop
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: platypus-db
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # Database servers, SSH tunnels, the DuckDB download and the update check.
+  - --share=network
+  # SQLite and DuckDB files, CSV and Parquet, scripts and exports wherever the user keeps them.
+  - --filesystem=home
+  # The tray icon.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # The system keyring, for saved passwords.
+  - --talk-name=org.freedesktop.secrets
+modules:
+  - name: platypusdb
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://github.com/PaoloCisly/platypus-db/releases/download/v@VERSION@/PlatypusDB_@VERSION@_amd64.deb
+        sha256: @SHA256_LINUX_DEB@
+        dest-filename: platypusdb.deb
+        only-arches: [x86_64]
+      - type: file
+        path: dev.platypusdb.desktop.metainfo.xml
+    build-commands:
+      - ar -x platypusdb.deb
+      - tar -xf data.tar.gz
+      - install -Dm755 usr/bin/platypus-db /app/bin/platypus-db
+      - install -Dm644 usr/share/applications/PlatypusDB.desktop /app/share/applications/dev.platypusdb.desktop.desktop
+      - desktop-file-edit --set-icon=dev.platypusdb.desktop /app/share/applications/dev.platypusdb.desktop.desktop
+      - |
+        for icon in usr/share/icons/hicolor/*/apps/platypus-db.png; do
+          size=$(basename "$(dirname "$(dirname "$icon")")")
+          install -Dm644 "$icon" "/app/share/icons/hicolor/$size/apps/dev.platypusdb.desktop.png"
+        done
+      - install -Dm644 dev.platypusdb.desktop.metainfo.xml /app/share/metainfo/dev.platypusdb.desktop.metainfo.xml
+      # Updates come from Flathub: the app then only says a new version is out.
+      - install -Dm644 /dev/null /app/share/platypusdb/package-manager && echo Flatpak > /app/share/platypusdb/package-manager
