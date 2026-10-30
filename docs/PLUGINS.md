@@ -1,0 +1,226 @@
+# Plugins
+
+PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for
+`wasm32-unknown-unknown`, AssemblyScript, TinyGo, C, Zig…). A plugin can add **actions**
+(commands in the editor, the result grid and the navigator) and a **driver** for a database
+that speaks HTTP. Plugins run in a sandbox: an interpreter (`wasmi`) with no access to files,
+programs, sockets or the clock, only to the JSON messages the app gives them and the host
+functions their permissions open.
+
+The host side is the crate `platypus-plugins`; the examples are in
+[`examples/plugins`](../examples/plugins) with their built modules.
+
+## Package
+
+A package is a folder, or a `.zip` with the files at its root or in one folder:
+
+```
+plugin.toml    the manifest
+plugin.wasm    the module
+```
+
+```toml
+id = "sql-tools"                # lowercase letters, digits, - _ . ; stable
+name = "SQL tools"
+version = "1.0.0"
+author = "Jane Doe"             # optional
+description = "What it does."   # optional
+api = 1                         # the ABI version below
+kinds = ["actions"]             # "actions" and/or "driver"
+
+[permissions]                   # optional; nothing is allowed by default
+http = ["api.example.com", "*.example.org"]   # hosts for the http function
+clipboard = true                # an action may put text on the clipboard
+```
+
+Settings › Plugins installs a package from a folder or a `.zip`. Before installing, the app
+loads the module, asks it what it provides (`platypus_describe`) and shows that with the
+permissions; installing approves them. A module whose description does not match `kinds`, or
+that does not load, is refused. Packages are kept in `<data>/plugins/<id>/<version>/`; a new
+version replaces the old one (and its permissions must be approved again).
+`<data>/plugins/plugins.json` records which plugins are on, the approved permissions and the
+description. A plugin turned off offers no action and no driver; removing it deletes its folder.
+
+## ABI, version 1
+
+Messages are UTF-8 JSON in the module's linear memory. The module exports:
+
+| Export | Signature | |
+|---|---|---|
+| `memory` | memory | its linear memory |
+| `platypus_alloc` | `(len: i32) -> i32` | a buffer of `len` bytes; 0 on failure |
+| `platypus_dealloc` | `(ptr: i32, len: i32)` | frees a buffer from `platypus_alloc` or an answer |
+| `platypus_describe` | `(ptr: i32, len: i32) -> i64` | what it provides |
+| `platypus_action` | `(ptr: i32, len: i32) -> i64` | runs an action (kind `actions`) |
+| `platypus_driver` | `(ptr: i32, len: i32) -> i64` | one driver operation (kind `driver`) |
+
+A call: the host allocates a buffer with `platypus_alloc`, writes the request, calls the entry
+point with its pointer and length (0, 0 for an empty request), and reads the answer at the
+pointer in the high 32 bits of the result, of the length in the low 32 bits. Then the host
+frees both the request and the answer with `platypus_dealloc`: the module must not keep
+either. Every answer is an object:
+
+```json
+{"ok": <value>}            or            {"error": "a message for the user"}
+```
+
+The module may import only these functions, from the module `platypus`:
+
+| Import | Signature | |
+|---|---|---|
+| `log` | `(level: i32, ptr: i32, len: i32)` | a line in the app's log: 0 error, 1 warning, 2 information |
+| `http` | `(ptr: i32, len: i32) -> i32` | sends a request; returns the length of the answer |
+| `take` | `(ptr: i32)` | copies the answer of the last `http` into a buffer of that length |
+
+A module that imports anything else (WASI, for example) does not load: build Rust plugins for
+`wasm32-unknown-unknown`, not `wasm32-wasip1`.
+
+`http` takes `{"method": "GET", "url": "https://…", "headers": {…}, "body": "text"}` (only
+`url` is required) and answers `{"ok": {"status": 200, "headers": {…}, "body": "text"}}` or
+`{"error": "…"}`. It goes only to the hosts of the approved permissions (and, for a driver,
+the host of its connection); any other host, a scheme other than `http`/`https`, or a plugin
+without the permission gets an error, and the call goes on. Redirects are followed only to
+allowed hosts. Requests go through the app's network stack: verified TLS, the system's proxy
+(`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and the system settings on Windows and macOS), or
+the connection's `http://` proxy for a driver. Bodies are text (invalid UTF-8 is replaced).
+
+### Limits
+
+Each call has:
+
+- **fuel**: about 3 billion units, roughly one per WebAssembly instruction (a few seconds of
+  the interpreter). An endless loop stops there with "the plugin used up its time for this
+  call";
+- **memory**: the module's memory may not grow past 64 MB; a module that asks for more at
+  start does not load, and a growth past it fails (`memory.grow` returns -1);
+- **messages**: 16 MB each way, an HTTP answer included;
+- **time**: 60 s for the call, checked by the host functions; one HTTP request at most 30 s;
+- **log**: 100 lines, 4 KB each.
+
+A trap (`unreachable`, an access outside memory, a failed allocation), running out of fuel or
+time, or an answer that points outside memory ends the call with an error and never takes the
+app down. After that the module's state may be inconsistent: an action starts from a fresh
+instance anyway, and a driver connection is closed.
+
+### Describe
+
+`platypus_describe` gets an empty request and answers:
+
+```json
+{"ok": {
+  "actions": [
+    {"id": "uppercase", "title": "Uppercase SQL keywords", "scope": "editor", "shortcut": "Mod+Alt+U"},
+    {"id": "markdown", "title": "Copy rows as Markdown table", "scope": "grid"},
+    {"id": "count", "title": "Count rows", "scope": "navigator.object"}
+  ],
+  "driver": {"name": "Toy HTTP database", "metadata": true}
+}}
+```
+
+Titles are shown as written (plugins are not translated). Shortcuts use the app's notation
+(`Mod` is Ctrl, or Cmd on macOS) and can be changed in Settings › Keyboard shortcuts.
+
+### Actions
+
+Actions appear under a **Plugins** submenu of the context menu of their scope, and run with
+their shortcut where that scope has the focus. Each call to `platypus_action` starts a new instance of the
+module, so actions keep nothing between calls. The request is
+`{"action": id, "scope": scope, "context": {…}}`, with the context of the scope:
+
+- `editor`: `{"text": "…", "selection": {"from", "to", "text"} | null, "driver": "postgres"}`;
+- `grid`: `{"columns": [{"name", "type"}], "rows": [[…], …], "truncated": false}`: the
+  selected rows and columns, values as "Copy as JSON" writes them (numbers and booleans bare,
+  the rest as text, `null`), at most 1000 rows (`truncated` says there were more);
+- `navigator.object`: `{"connection": {"name", "driver", "host", "port", "database", "user"},
+  "database", "schema", "object": {"name", "kind"}, "target": "\"main\".\"items\""}`: never a
+  password; `target` is the quoted, qualified name.
+
+The answer is one of:
+
+```json
+{"kind": "replace", "text": "…"}   the editor's selection, or its whole text without one
+{"kind": "new_tab", "text": "…"}   a new SQL tab on the same connection
+{"kind": "copy", "text": "…"}      the clipboard: only with the clipboard permission
+{"kind": "message", "text": "…"}   a message
+{"kind": "none"}
+```
+
+### Drivers
+
+A connection whose driver is a plugin (`driver = "plugin"`, the plugin's id in the `plugin`
+option) has its own instance of the module for as long as it is open, so the module can keep
+its session in memory. Calls on one connection run one at a time. `platypus_driver` receives:
+
+| Request | Answer |
+|---|---|
+| `{"op": "connect", "config": {"host", "port", "database", "user", "ssl_mode", "options"}, "secrets": {"password"}}` | `{"product", "version"}` (both optional) |
+| `{"op": "execute", "sql": "…"}` | `{"columns": [{"name", "type"}], "rows": [[…]]}`, or `{"affected": n}` |
+| `{"op": "schemas"}` | `[{"name", "current"}]` |
+| `{"op": "objects", "schema": "…"}` | `[{"name", "kind", "comment"}]`, `kind` as the app names them (`table`, `view`, …; `table` by default) |
+| `{"op": "table", "schema": "…", "table": "…"}` | `{"columns": [{"name", "type", "nullable", "primary_key", "comment"}]}` |
+| `{"op": "close"}` | anything; sent when the connection is dropped |
+
+The password is only in the `connect` request, in memory; the `options` sent leave out the
+app's own (`plugin`, `proxy`, the connect and disconnect commands). The navigator calls
+`schemas`, `objects` and `table` only when the description says `"metadata": true`; without
+it the navigator stays empty and the editor still runs statements.
+
+The host turns rows into Arrow batches. A column takes its declared `type` when every value
+fits it (`bool`/`boolean`, `int`/`integer`/`bigint`, `float`/`double`/`real`/`number`/
+`numeric`/`decimal`, `text`/`string`/`varchar`), otherwise the narrowest type all its values
+fit (boolean, 64-bit integer, double), otherwise text, where objects and arrays are written as
+JSON. The declared type is shown as the column's type.
+
+A driver reaches its database **only through `http`**: the host of the connection, as the user
+typed it, is allowed without a permission; other hosts (a login service) must be listed in
+`permissions.http`. Raw TCP, UDP and local files are not possible, so databases with an HTTP
+API only. Plugin drivers have no transactions (autocommit only), no cancel (the call's fuel
+and deadline stop it), no SSH tunnel (the tunnel's local address is not passed to the
+plugin) and no terminal mode. They use the standard SQL dialect in the editor.
+
+## Writing a plugin in Rust
+
+`examples/plugins/sdk` is a small guest library: `export_allocator!()` exports
+`platypus_alloc` and `platypus_dealloc`, `entry(ptr, len, |request| …)` reads a request and
+writes the answer, `http` and `log` wrap the host functions.
+
+```rust
+use platypus_plugin_sdk::entry;
+use serde_json::json;
+
+platypus_plugin_sdk::export_allocator!();
+
+#[unsafe(no_mangle)]
+pub extern "C" fn platypus_describe(ptr: i32, len: i32) -> i64 {
+    entry(ptr, len, |_| Ok(json!({ "actions": [
+        { "id": "hello", "title": "Say hello", "scope": "editor" }
+    ] })))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn platypus_action(ptr: i32, len: i32) -> i64 {
+    entry(ptr, len, |_| Ok(json!({ "kind": "message", "text": "Hello!" })))
+}
+```
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo build --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/<name>.wasm plugin.wasm
+```
+
+The examples build with `opt-level = "z"`, LTO and `panic = "abort"`: about 90 KB each.
+
+- `examples/plugins/sql-tools`: an action per scope (uppercase keywords in the editor, copy rows
+  as a Markdown table, count a table's rows in a new tab).
+- `examples/plugins/toy-http-driver`: a driver for a database answering `GET /hello`,
+  `POST /query`, `GET /tables` and `GET /tables/<name>` with JSON, the password sent as a bearer
+  token. The tests of `platypus-plugins` (`tests/examples.rs`) run it against a local server.
+
+After changing an example, build it again and copy its module next to its `plugin.toml`: the
+tests use the committed `plugin.wasm`.
+
+Other languages export the same functions: `memory`, an allocator under the names
+`platypus_alloc` and `platypus_dealloc` (for actions a bump allocator is enough, since each
+runs in a new instance; a driver keeps its instance and needs a real one), and the entry points; and import `log`, `http` and `take` from the
+module `platypus` (in AssemblyScript, `@external("platypus", "http")`).
