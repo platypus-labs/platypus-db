@@ -31,6 +31,8 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  /* The diagram starts below the floating toolbar, which would cover the first row of tables. */
+  padding-top: calc(var(--control-md) + var(--space-16) + var(--space-4));
   overflow: auto;
   background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
   background-size: 20px 20px;
