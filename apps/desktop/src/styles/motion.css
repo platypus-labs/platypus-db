@@ -95,20 +95,29 @@
   transition-property: color, background-color, border-color, box-shadow, opacity !important;
 }
 
+/* Whatever else animates or transitions lasts at most 100 ms (what the system's own request for
+   less motion used to guarantee), except the loaders, which keep turning so that a wait shows. */
+:root[data-motion="reduced"] *:not(:is(.state.loading .state-icon, .activity-button .busy)),
+:root[data-motion="reduced"] *::before:not(:is(.state.loading .state-icon, .activity-button .busy)),
+:root[data-motion="reduced"] *::after:not(:is(.state.loading .state-icon, .activity-button .busy)) {
+  transition-duration: 100ms !important;
+  animation-duration: 100ms !important;
+}
+
 :root[data-motion="reduced"] .modal.settings .dialog-tabs button::after {
   transform: none;
   transition: opacity 100ms ease-out;
 }
 
-/* What loops (a spinner, a pulse) stands still with reduced motion. */
-:root[data-motion="reduced"] :is(.state.loading .state-icon, .activity-button .busy, .tx-open.long) {
+/* A pulse that only decorates stands still with reduced motion. */
+:root[data-motion="reduced"] .tx-open.long {
   animation: none;
 }
 
-/* None: no animation and no transition anywhere. */
-:root[data-motion="none"] *,
-:root[data-motion="none"] *::before,
-:root[data-motion="none"] *::after {
+/* None: no animation and no transition anywhere, except the loaders. */
+:root[data-motion="none"] *:not(:is(.state.loading .state-icon, .activity-button .busy)),
+:root[data-motion="none"] *::before:not(:is(.state.loading .state-icon, .activity-button .busy)),
+:root[data-motion="none"] *::after:not(:is(.state.loading .state-icon, .activity-button .busy)) {
   transition-duration: 0s !important;
   animation-duration: 0s !important;
 }
