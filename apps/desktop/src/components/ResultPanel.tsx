@@ -91,7 +91,7 @@ interface PanelProps {
   edit?: TableEditTarget | null;
   notes?: NotesScope | null;
   /** Shown as a chart instead of the grid: what it draws, and where a change of it goes. */
-  chart?: { config: ChartConfig | null; onConfig: (config: ChartConfig) => void } | null;
+  chart?: { config: ChartConfig | null; onConfig: (config: ChartConfig) => void; bare?: boolean } | null;
   /** Above the grid or the chart: the result's SQL field. */
   toolbar?: ReactNode;
 }
@@ -188,6 +188,7 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
           complete={status.kind === "rows" && status.finished && status.complete}
           config={chart.config}
           onConfig={chart.onConfig}
+          bare={chart.bare}
         />
       ) : (
         <ResultGrid

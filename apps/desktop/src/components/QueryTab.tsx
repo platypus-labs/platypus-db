@@ -14,6 +14,7 @@ import {
   type SqlAnalysis,
   type QueryEvent,
   type SavedConnection,
+  type SavedResult,
   type TableDetails,
   type TransactionState,
   isMongo,
@@ -41,6 +42,9 @@ import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { AcrossBar } from "../analysis/CrossQueryDialog";
+import type { AcrossOrigin } from "../analysis/acrossModel";
+import { SavedResultBar } from "../analysis/SavedResults";
 import { useResultSql } from "../analysis/ResultSql";
 import { provideContext } from "../agents/context";
 import { type TabParts, tabSnapshot } from "../agents/contextTab";
@@ -138,6 +142,12 @@ export interface QueryTabModel extends TabBase {
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
    *  connection does not outlive the app. */
   resultSource?: ResultSource;
+  /** "Query across databases": the tables copied into this tab's temporary connection.
+   *  Not persisted, like `resultSource`. */
+  across?: AcrossOrigin;
+  /** A saved result opened offline: its tables are the file's rows, not a result's. Not
+   *  persisted, like the temporary connection. */
+  savedResult?: SavedResult;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
   /** Charts of the statements, each shown in place of the grid when chosen. */
@@ -322,8 +332,8 @@ export function QueryTab({
   /** The rows on screen: the shown result, or the output of its SQL field. */
   const view = resultSql.output ?? shown;
   // "Query with SQL" reads this tab's results with rows and which one is shown.
-  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus });
-  resultsNow.current = { results, shown, active, focusSql: resultSql.focus };
+  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database });
+  resultsNow.current = { results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database };
   // An agent the user allows reads the editor and the grid as they are when it asks.
   const sharedNow = useRef<Omit<TabParts, "editor">>({ connection, title: null, result: view });
   sharedNow.current = { connection, title: tab.filePath ? basename(tab.filePath) : (tab.title ?? null), result: view };
@@ -344,6 +354,8 @@ export function QueryTab({
         results: () => resultsWithRows(resultsNow.current.results),
         activeJob: () => resultsNow.current.shown?.jobId ?? null,
         querySql: () => resultsNow.current.focusSql(),
+        pivot: () => resultsNow.current.pivot(),
+        database: () => resultsNow.current.database ?? null,
       }),
     [],
   );
@@ -1151,7 +1163,7 @@ export function QueryTab({
     runAppend: () => void run("append"),
     // Not on a temporary connection ("Query with SQL"), nor MongoDB's and Redis's scripts.
     runOnConnections:
-      tab.resultSource || isNoSql(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
+      tab.resultSource || tab.across || isNoSql(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
         ? undefined
         : () => {
             const { from, to } = editor.current!.getSelection();
@@ -1856,6 +1868,20 @@ export function QueryTab({
           className="splitter"
         />
         <div className="results">
+          {tab.across && (
+            <AcrossBar
+              origin={tab.across}
+              connection={connection}
+              onReloaded={(across) => {
+                onChange({ across });
+                onNeedCatalog(true);
+                // The last statements run again on the new rows, if they only read.
+                const again = memory.current.lastReads();
+                if (again) void run("statement", false, again);
+              }}
+            />
+          )}
+          {tab.savedResult && <SavedResultBar saved={tab.savedResult} />}
           {tab.resultSource && (
             <ResultSourceBar
               source={tab.resultSource}

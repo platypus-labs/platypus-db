@@ -104,6 +104,7 @@ export default async function (page, { dir }) {
     "Calculate",
     "Show on map",
     "Query with SQL",
+    "Save result…",
     "Columns",
   ]);
   // The page may not read the clipboard back: record what is written instead.

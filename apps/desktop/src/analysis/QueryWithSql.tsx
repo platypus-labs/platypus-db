@@ -2,13 +2,14 @@
  *  become tables of an in-memory DuckDB. The field above a result's grid queries them in place
  *  (`ResultSql.tsx`); "Open in a tab" queries them in a new SQL editor on a temporary
  *  connection, a copy that "Reload from result" copies again. */
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { registerAction } from "../actions";
 import { api, isMongo, type ResultTable, type SavedConnection, toCommandError } from "../api";
 import { fmt } from "../components/ResultPanel";
 import { msg, t } from "../i18n";
 import { workbench } from "../workbench";
 import { withDriver } from "../drivers/DriverPopup";
+import type { TabInit } from "../tabs/registry";
 import { type ResultHost, type ResultSource, hostOfJob, hostOfTab, initialSql, resultTables, shownHost } from "./resultHosts";
 
 /** Loads every row of the results, showing how many with Cancel; false when cancelled or
@@ -73,6 +74,12 @@ function LoadDialog({ jobIds, onDone }: { jobIds: number[]; onDone: (ok: boolean
 
 const tableNames = (tables: ResultTable[]) => [...new Set(tables.map((x) => x.table))];
 
+/** Opens a SQL editor tab on the temporary DuckDB connection `connection`; closing the tab
+ *  forgets the database. */
+export function openTemporaryQuery(connection: SavedConnection, init: TabInit<"query">) {
+  workbench().openTemporaryTab("query", connection, init, () => void api.closeResultDb(connection.id));
+}
+
 /** Opens a SQL editor on the results of `host`: `jobId` (else the shown one) is `result`;
  *  `sql` is the editor's text, else a query of `result`. */
 export async function queryWithSql(host: ResultHost, jobId?: number, sql?: string) {
@@ -82,12 +89,7 @@ export async function queryWithSql(host: ResultHost, jobId?: number, sql?: strin
   // DuckDB holds the results: downloaded first if it is not yet.
   const opened = await withDriver(() => api.openResultDb(t("Results of {name}", { name: host.connection.name }), tables));
   const source: ResultSource = { tabKey: host.tabKey, tables: tableNames(tables), partial: opened.partial };
-  workbench().openTemporaryTab(
-    "query",
-    opened.connection,
-    { sql: sql ?? initialSql(tables), title: t("SQL on results"), resultSource: source },
-    () => void api.closeResultDb(opened.connection.id),
-  );
+  openTemporaryQuery(opened.connection, { sql: sql ?? initialSql(tables), title: t("SQL on results"), resultSource: source });
 }
 
 /** Copies the source tab's results again into the tables of `connection`; `null` when
@@ -108,6 +110,47 @@ async function reload(source: ResultSource, connection: SavedConnection): Promis
   return { ...source, tables: tableNames(tables), partial };
 }
 
+/** A bar above the results of a tab on a temporary connection: `children` tell where its
+ *  tables come from, and the button copies them again with `reload` (`null` when cancelled). */
+export function ReloadBar<T>({
+  warn,
+  className,
+  label,
+  action,
+  reload,
+  onReloaded,
+  children,
+}: {
+  warn: boolean;
+  className?: string;
+  label: string;
+  action?: string;
+  reload: () => Promise<T | null>;
+  onReloaded: (next: T) => void;
+  children: ReactNode;
+}) {
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    try {
+      const next = await reload();
+      if (next) onReloaded(next);
+    } catch (e) {
+      workbench().showError(toCommandError(e).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={`notice ${warn ? "warn" : "muted"} result-source${className ? ` ${className}` : ""}`}>
+      {children}
+      <button type="button" data-action={action} disabled={busy} onClick={() => void go()}>
+        {label}
+      </button>
+    </div>
+  );
+}
+
 /** Above the results of a "Query with SQL" tab: its tables, a warning when they lack rows,
  *  and Reload from result. */
 export function ResultSourceBar({
@@ -119,20 +162,8 @@ export function ResultSourceBar({
   connection: SavedConnection;
   onReloaded: (source: ResultSource) => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const go = async () => {
-    setBusy(true);
-    try {
-      const next = await reload(source, connection);
-      if (next) onReloaded(next);
-    } catch (e) {
-      workbench().showError(toCommandError(e).message);
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
-    <div className={`notice ${source.partial ? "warn" : "muted"} result-source`}>
+    <ReloadBar warn={source.partial !== null} label={t("Reload from result")} reload={() => reload(source, connection)} onReloaded={onReloaded}>
       <span>{t("Tables of the results of another tab: {tables}", { tables: source.tables.join(", ") })}</span>
       {source.partial && (
         <strong>
@@ -141,10 +172,7 @@ export function ResultSourceBar({
             : t("Partial: reading stopped before the end of the rows.")}
         </strong>
       )}
-      <button type="button" disabled={busy} onClick={() => void go()}>
-        {t("Reload from result")}
-      </button>
-    </div>
+    </ReloadBar>
   );
 }
 
@@ -168,4 +196,26 @@ registerAction({
   order: 70,
   when: ({ source }) => source?.jobId != null && !isMongo(source.connection.driver) && hostOfJob(source.jobId) !== null,
   run: ({ source }) => (source?.jobId == null ? undefined : hostOfJob(source.jobId)?.querySql()),
+});
+
+registerAction({
+  id: "analysis.pivot",
+  scope: "global",
+  title: "Pivot the result",
+  disabled: () => {
+    const host = shownHost();
+    if (!host || host.results().length === 0) return msg("No result with rows in the tab shown");
+    return isMongo(host.connection.driver) ? msg("MongoDB results cannot be queried with SQL") : null;
+  },
+  run: () => shownHost()?.pivot(),
+});
+
+registerAction({
+  id: "grid.pivot",
+  scope: "grid",
+  title: "Pivot…",
+  group: "analysis",
+  order: 71,
+  when: ({ source }) => source?.jobId != null && !isMongo(source.connection.driver) && hostOfJob(source.jobId) !== null,
+  run: ({ source }) => (source?.jobId == null ? undefined : hostOfJob(source.jobId)?.pivot()),
 });

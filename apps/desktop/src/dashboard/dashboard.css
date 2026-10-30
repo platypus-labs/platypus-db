@@ -1,0 +1,129 @@
+/* Dashboards: a grid of widgets, each with its tools, its body and the state of its run. */
+
+.dashboard-tab {
+  background: var(--bg);
+}
+
+.dashboard-title {
+  width: 220px;
+  font-weight: 600;
+}
+
+.dashboard-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 48px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* A widget of one row is this tall; one of two rows takes two and the gap between. */
+  grid-auto-rows: 250px;
+  gap: 12px;
+  align-content: start;
+}
+
+.dashboard-widget {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.dashboard-widget.running {
+  border-color: var(--accent);
+}
+
+.dashboard-widget-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-widget-title {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-widget-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.dashboard-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  font-size: 42px;
+  font-weight: 600;
+  color: var(--fg-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-wait {
+  margin: auto;
+}
+
+.dashboard-error {
+  margin: 8px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.dashboard-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 24px;
+}
+
+.dashboard-form {
+  min-width: 420px;
+}
+
+.dashboards-dialog {
+  min-width: 460px;
+}
+
+.dashboards-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.dashboards-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboards-name {
+  font-weight: 600;
+}

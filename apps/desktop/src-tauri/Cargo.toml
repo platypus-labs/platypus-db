@@ -48,6 +48,7 @@ platypus-driver-mysql.workspace = true
 platypus-driver-pg.workspace = true
 platypus-driver-sqlite.workspace = true
 platypus-mcp = { workspace = true, features = ["http"] }
+parquet.workspace = true
 platypus-transfer.workspace = true
 platypus-net.workspace = true
 platypus-schema.workspace = true

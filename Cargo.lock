@@ -5706,6 +5706,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "parquet",
  "platypus-core",
  "platypus-docs",
  "platypus-driver-adbc",
@@ -6012,7 +6013,9 @@ dependencies = [
  "duckdb",
  "platypus-core",
  "platypus-driver-duckdb",
+ "regex",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 
