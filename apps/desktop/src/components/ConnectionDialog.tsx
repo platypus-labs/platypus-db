@@ -844,7 +844,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
                 <section className="form-section">
                 <h3>{t("Authentication")}</h3>
-                {!urlMode && (!libsql || conn.driver === "oracle") && (
+                {/* In URL mode too: the URL field prints the user typed here, and a URL fills it. */}
+                {(!libsql || conn.driver === "oracle") && (
                 <div className="field-grid">
                   {!libsql && (
                     <label className="field">
