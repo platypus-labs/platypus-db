@@ -187,9 +187,19 @@ export async function editCell(page, row, col, value) {
     await page.waitFor(`document.querySelector('.cell-editor') === null`);
     return;
   }
-  await page.eval(`document.querySelector('.cell-editor').select?.()`);
-  await page.key("a", "KeyA", 65, 2);
-  if (value) await page.type(value);
+  // A date column edits through a date input, which takes no typed text: set its value.
+  const date = await page.eval(`(() => {
+    const el = document.querySelector('.cell-editor');
+    if (el.type !== 'date') return false;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)});
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  if (!date) {
+    await page.eval(`document.querySelector('.cell-editor').select?.()`);
+    await page.key("a", "KeyA", 65, 2);
+    if (value) await page.type(value);
+  }
   await page.key("Enter", "Enter", 13);
   await page.waitFor(`document.querySelector('.cell-editor') === null`);
 }
