@@ -240,8 +240,12 @@ function appearanceDefault(dir, key, value) {
 
 /** Scenarios read the English interface whatever the language of the machine, unless one
  *  sets the language itself. */
-const englishInterface = (dir) => appearanceDefault(dir, "language", '"en"');
+function englishInterface(dir) {
+  appearanceDefault(dir, "language", '"en"');
+}
 
 /** Animations are off, so a scenario never waits for a transition, except the one that tests
  *  motion (or any that sets the key itself). */
-const quietAnimations = (dir, file) => file === "customize-motion-sqlite.mjs" || appearanceDefault(dir, "animations", '"off"');
+function quietAnimations(dir, file) {
+  if (file !== "customize-motion-sqlite.mjs") appearanceDefault(dir, "animations", '"off"');
+}
