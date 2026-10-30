@@ -38,7 +38,9 @@ async function runScript(page, sql) {
   await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
-  await page.waitFor(`${visibleTab}.querySelector('.cm-content').textContent.includes(${JSON.stringify(sql.slice(-20))})`);
+  // The script's lines joined (the content's own text has no line breaks), not those of the
+  // SQL line over the results.
+  await page.waitFor(`[...${visibleTab}.querySelectorAll('.cm-line')].filter(l => !l.closest('.sql-line')).map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
   await page.eval(`(() => { const s = ${visibleTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
   await page.key("x", "KeyX", 88, ALT);
   await page.waitFor(`${toolbarButton("Cancel")}?.disabled && ${status} !== '' && !${status}.includes('Executing')`, 30_000);
