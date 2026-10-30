@@ -71,6 +71,8 @@ tokio-util.workspace = true
 toml_edit = "0.25"
 uuid.workspace = true
 zip = { version = "9", default-features = false, features = ["deflate"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-deep-link = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }

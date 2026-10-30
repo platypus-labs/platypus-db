@@ -6,6 +6,7 @@ import bannerOnDark from "../assets/brand/platypus-db-on-dark.png";
 import bannerOnLight from "../assets/brand/platypus-db-on-light.png";
 import { Icon } from "../ui/Icon";
 import { t } from "../i18n";
+import { SHARE_EXTENSION } from "../share/shareQuery";
 
 interface Props {
   /** No connection saved yet: the first start. */
@@ -25,7 +26,13 @@ const SHORTCUTS = ["app.palette", "tab.new", "tab.reopen", "app.settings"];
 
 /** Asks for a data file to open; `null` when none is chosen. */
 export async function pickDataFile(): Promise<string | null> {
-  const path = await open({ multiple: false, filters: [{ name: t("Data files"), extensions: DATA_FILE_EXTENSIONS }] });
+  const path = await open({
+    multiple: false,
+    filters: [
+      { name: t("Data files"), extensions: DATA_FILE_EXTENSIONS },
+      { name: t("Shared queries"), extensions: [SHARE_EXTENSION] },
+    ],
+  });
   return typeof path === "string" ? path : null;
 }
 

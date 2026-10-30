@@ -13,6 +13,12 @@ export const MAX_SHARE_BYTES = 1024 * 1024;
  *  offered instead. */
 export const MAX_LINK_CHARS = 8 * 1024;
 
+/** The extension of a shared query's file. */
+export const SHARE_EXTENSION = "platypus";
+
+/** Whether `path` names a shared query's file. */
+export const isShareFile = (path: string) => /\.platypus$/i.test(path);
+
 const LINK_PREFIX = "platypus://query";
 const MAX_TEXT = 512;
 

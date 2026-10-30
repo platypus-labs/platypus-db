@@ -159,6 +159,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         dir(app, false).map(|d| d.join("dashboards")),
     ));
     app.manage(windows::Detached::default());
+    app.manage(commands::share::PendingShares::default());
     app.manage(commands::debugger::Debugs::default());
     // Downloaded drivers live with the data; removals that Windows refused are finished.
     if let Ok(data) = dir(app, false) {
@@ -181,7 +182,43 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     commands::schedules::start(app.handle().clone());
     agent::start(app.handle(), dir(app, false).ok());
     open_main_window(app, system_title_bar)?;
+    // After the window: the page asks for what is queued when it starts.
+    commands::share::offer_launch(app.handle());
+    watch_open_urls(app.handle());
     Ok(())
+}
+
+/// A link or a file the OS opens in the running app (macOS delivers both as URLs, never as
+/// arguments).
+fn watch_open_urls(app: &tauri::AppHandle) {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    let handle = app.clone();
+    app.deep_link().on_open_url(move |event| {
+        let items = event.urls().into_iter().map(|url| {
+            let text = if url.scheme() == "file" {
+                url.to_file_path()
+                    .map_or_else(|()| url.to_string(), |p| p.to_string_lossy().into_owned())
+            } else {
+                url.to_string()
+            };
+            std::ffi::OsString::from(text)
+        });
+        commands::share::offer(&handle, commands::share::shared_args(items, None));
+        commands::share::show_main(&handle);
+    });
+}
+
+/// A second launch with a file or link hands it to the running app instead of opening
+/// another one.
+fn single_instance() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri_plugin_single_instance::init(|app, argv, cwd| {
+        let shared = commands::share::shared_args(
+            argv.into_iter().skip(1).map(std::ffi::OsString::from),
+            Some(Path::new(&cwd)),
+        );
+        commands::share::offer(app, shared);
+        commands::share::show_main(app);
+    })
 }
 
 /// Builds and runs the Tauri application.
@@ -192,7 +229,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 pub fn run() {
     applog::install_panic_hook();
     migrate_legacy_dirs();
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // Not with `PLATYPUS_DATA_DIR`: a run on its own profile (the end-to-end tests, a portable
+    // copy beside the installed app) is meant to be an app of its own. First among the
+    // plugins, as its documentation asks: a second launch must stop early.
+    if std::env::var_os("PLATYPUS_DATA_DIR").is_none() {
+        builder = builder.plugin(single_instance());
+    }
+    builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
@@ -346,6 +391,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::analysis::table_profile::table_profile,
         commands::summary::group_counts,
         commands::geometry::geometries,
+        commands::share::take_pending_shares,
         commands::analysis::chart::chart_data,
         commands::export::export_query,
         commands::export::export_rows,

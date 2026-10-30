@@ -65,7 +65,9 @@ import { openActivity } from "./shell/ActivityDialog";
 import { LockScreen, useIdleLock } from "./guards/AppLock";
 import { PanelResizer, useStoredSize } from "./shell/PanelResizer";
 import { takeLeftWindowTabs, useTray, useWindowEvents, WINDOW_EVENTS } from "./shell/windows";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
+import { openPendingShares, openSharedItem, registerShareActions } from "./share/actions";
+import { isShareFile } from "./share/shareQuery";
 
 declare module "./actions" {
   interface ActionScopes {
@@ -83,6 +85,8 @@ type Dialog =
       driverChosen?: boolean;
       /** The folder of the active project the new connection goes into. */
       folder?: string | null;
+      /** Runs with the connection once it is saved. */
+      afterSave?: (saved: SavedConnection) => void;
     }
   | { kind: "add-connections" }
   | { kind: "import" }
@@ -199,6 +203,8 @@ export function App() {
           switchProject: (id: string | null) => shell.current.switchProject(id),
           // What a file dropped on the window does; CDP cannot drop files.
           openDroppedFile: (path: string) => openDroppedFile(path),
+          // What the OS does with a shared query: a link or a `.platypus` file opened with the app.
+          openShared: (item: string) => openSharedItem(item),
           // The folder picker and the clipboard.
           answer: setAnswer,
         };
@@ -391,6 +397,8 @@ export function App() {
   /** A data file dropped on the window opens as a DuckDB database: a saved connection to it
    *  gets a new script, otherwise the new connection dialog starts filled in. */
   async function openDroppedFile(path: string) {
+    // A shared query is not a data file: it opens as a query, after choosing its connection.
+    if (isShareFile(path)) return openSharedItem(path);
     // Windows paths ignore case and take either slash.
     const key = (p: string) => (/^[a-z]:/i.test(p) ? p.replace(/\//g, "\\").toLowerCase() : p);
     const saved = shell.current.connections?.find((c) => c.driver === "duckdb" && key(c.database) === key(path));
@@ -426,11 +434,22 @@ export function App() {
       const dropped = payload.type === "drop" ? payload.paths : [];
       const script = dropped.find((p) => /\.sql$/i.test(p));
       if (script) return void openDroppedScript(script).catch((e: unknown) => setToast(toCommandError(e).message));
+      const shared = dropped.find(isShareFile);
+      if (shared) return void openSharedItem(shared);
       const path = dropped.find(isDataFile);
       if (path) void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message));
     });
     return () => void off.then((unlisten) => unlisten());
   }, []);
+
+  // Shared queries the app was started with (a file or link given by the OS), and those a
+  // second launch hands over; only the main window opens them.
+  useEffect(() => {
+    if (!workspaceReady || getCurrentWebview().label !== "main") return;
+    void openPendingShares();
+    const off = listen("share-open", () => void openPendingShares());
+    return () => void off.then((unlisten) => unlisten());
+  }, [workspaceReady]);
 
   function setWorkspace(w: Workspace) {
     setConnections(w.connections);
@@ -928,6 +947,15 @@ export function App() {
     switchProject: (id) => shell.current.switchProject(id),
     editProject: (project) => setDialog({ kind: "project", project }),
     newConnection: (folder) => void shell.current.newConnection(folder ?? null),
+    newConnectionFrom: (connection, afterSave) =>
+      setDialog({
+        kind: "connection",
+        connection,
+        existing: false,
+        memberOf: shell.current.activeProject ? [shell.current.activeProject] : [],
+        driverChosen: true,
+        afterSave,
+      }),
     deleteProject: (project) => shell.current.deleteProject(project),
     openTab: (kind, connectionId, init) => shell.current.addTab(createTab(kind, connectionId, init)),
     openTemporaryTab: (kind, connection, init, onClosed) => {
@@ -954,6 +982,14 @@ export function App() {
   });
 
   useLayoutEffect(() => registerShellActions(shell), []);
+  useLayoutEffect(
+    () =>
+      registerShareActions(() => {
+        const tab = shell.current.tabs.find((t) => t.key === shell.current.activeTab);
+        return tab?.kind === "query" && !tab.table ? tab : null;
+      }),
+    [],
+  );
   // In a connection's menu, beside Copy as URL; the palette lists it for each connection.
   useEffect(
     () =>
@@ -1189,6 +1225,7 @@ export function App() {
             // A new connection is selected in the navigator, with the focus, as the next step.
             if (!before && saved) revealConnection(saved.id);
             if (before && saved && sessionSettingsChanged(before, saved)) void followEdit(saved);
+            if (saved) dialog.afterSave?.(saved);
             if (dialog.folder && activeProject && saved) {
               api.placeConnection(activeProject, saved.id, dialog.folder).then(setProjects, (e: unknown) => setToast(toCommandError(e).message));
             }

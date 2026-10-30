@@ -24,6 +24,9 @@ export interface Workbench {
   /** Opens the new connection dialog; the connection goes into `folder` of the active
    *  project when given. */
   newConnection(folder?: string | null): void;
+  /** Opens the new connection dialog filled in from `connection`; `saved` runs with the
+   *  connection once the user saves it. */
+  newConnectionFrom(connection: SavedConnection, saved: (connection: SavedConnection) => void): void;
   /** Saves a copy of the connection, with its passwords, and opens it for editing. */
   duplicateConnection(connection: SavedConnection): Promise<void>;
   /** Opens the project dialog; `null` makes a new project. */

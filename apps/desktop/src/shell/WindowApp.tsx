@@ -193,6 +193,7 @@ export function WindowApp({ label }: { label: string }) {
     activeProject: () => null,
     switchProject: () => {},
     newConnection: () => {},
+    newConnectionFrom: () => {},
     duplicateConnection: async () => {},
     editProject: () => {},
     deleteProject: async () => {},
