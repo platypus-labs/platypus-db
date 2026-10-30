@@ -50,7 +50,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Page = "general" | "network" | "init";
+type Page = "general" | "safety" | "network" | "init";
 
 /** Where the password comes from; stored as `save_password`, `pgpass` and `password_command`,
  *  which a password manager's source writes for its CLI. */
@@ -565,7 +565,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           // A required field left empty on another tab: show that tab.
           onInvalidCapture={(e) => {
             const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-page]")?.dataset.page;
-            if (tab === "general" || tab === "network" || tab === "init") setPage(tab);
+            if (tab === "general" || tab === "safety" || tab === "network" || tab === "init") setPage(tab);
           }}
         >
           <div className="dialog-header">
@@ -586,6 +586,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           <div className="dialog-split">
           <div className="dialog-tabs" role="tablist" aria-orientation="vertical">
             {tab("general", t("General"))}
+            {tab("safety", t("Appearance and safety"))}
             {server && !adbcProfile && tab("network", `${t("Network")}${networkSet ? " ●" : ""}`)}
             {tab("init", `${t("Init")}${initSet ? " ●" : ""}`)}
           </div>
@@ -979,35 +980,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               </>
             )}
 
-            <div className="field">
-              <span>{t("Variables file (.env)")}</span>
-              <div className="row tight">
-                <input
-                  className="grow"
-                  value={conn.options?.env_file ?? ""}
-                  onChange={(e) => setOption("env_file", e.target.value)}
-                  placeholder={t("None: the environment's variables only")}
-                  data-field="env_file"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const path = await open({ multiple: false, directory: false });
-                    if (typeof path === "string") setOption("env_file", path);
-                  }}
-                >
-                  {t("Browse…")}
-                </button>
-              </div>
-              <small className="muted">
-                {tNodes("Any field, the password too, can read {example}: from the environment, then from this file.", {
-                  example: <code key="example">{"${env:NAME}"}</code>,
-                })}
-              </small>
-            </div>
 
+          </div>
+
+          <div data-page="safety" hidden={page !== "safety"} className="dialog-page">
             <section className="form-section">
-            <h3>{t("Appearance and safety")}</h3>
             <div className="row">
               <label className="field">
                 <span>{t("Type")}</span>
@@ -1194,6 +1171,32 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
           <div data-page="init" hidden={page !== "init"} className="dialog-page">
             <p className="muted small">{t("Runs after every connection, and again when a lost connection is reopened.")}</p>
+            <div className="field">
+              <span>{t("Variables file (.env)")}</span>
+              <div className="row tight">
+                <input
+                  className="grow"
+                  value={conn.options?.env_file ?? ""}
+                  onChange={(e) => setOption("env_file", e.target.value)}
+                  placeholder={t("None: the environment's variables only")}
+                  data-field="env_file"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const path = await open({ multiple: false, directory: false });
+                    if (typeof path === "string") setOption("env_file", path);
+                  }}
+                >
+                  {t("Browse…")}
+                </button>
+              </div>
+              <small className="muted">
+                {tNodes("Any field, the password too, can read {example}: from the environment, then from this file.", {
+                  example: <code key="example">{"${env:NAME}"}</code>,
+                })}
+              </small>
+            </div>
             {server && !libsql && (conn.driver === "postgres" || hasSessionTimeZone(conn.driver)) && (
               <div className="row">
                 {conn.driver === "postgres" && (
