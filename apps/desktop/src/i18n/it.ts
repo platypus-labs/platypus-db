@@ -2968,6 +2968,7 @@ const it: Record<string, string> = {
   "Duplicates": "Duplicati",
   "Rows identical to another row": "Righe identiche a un'altra riga",
   "Counting identical rows…": "Conteggio delle righe identiche…",
+  "Not counted on tables above {n} rows": "Non conteggiate su tabelle con più di {n} righe",
   "Layout": "Disposizione",
   "The tree of the connections, on the left or on the right.": "L'albero delle connessioni, a sinistra o a destra.",
   "Left": "Sinistra",

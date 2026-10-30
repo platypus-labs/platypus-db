@@ -2968,6 +2968,7 @@ const zh: Record<string, string> = {
   "Duplicates": "重复项",
   "Rows identical to another row": "与其他行相同的行",
   "Counting identical rows…": "正在统计相同的行…",
+  "Not counted on tables above {n} rows": "超过 {n} 行的表不统计",
   "Layout": "布局",
   "The tree of the connections, on the left or on the right.": "连接树，在左侧或右侧。",
   "Left": "左侧",

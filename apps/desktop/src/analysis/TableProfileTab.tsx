@@ -73,6 +73,9 @@ interface Duplicates {
   why: string | null;
 }
 
+/** Tables with more rows than this are not searched for identical rows. */
+const COUNT_LIMIT = 1_000_000;
+
 const unavailable = (why: string): Duplicates => ({ value: "—", why });
 
 /** A figure of the spread of numbers, with the decimals that tell something. */
@@ -128,6 +131,10 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
       try {
         const sid = await sideSession();
         if (sid === null || !live) return;
+        // A table known to be large is not counted: the count reads all of it, and cannot be cancelled.
+        const known = await api.estimateRows(sid, tab.schema, tab.name).catch(() => null);
+        if (!live) return;
+        if (known !== null && known > COUNT_LIMIT) return setDuplicates(unavailable(t("Not counted on tables above {n} rows", { n: count(COUNT_LIMIT) })));
         const sql = `SELECT COUNT(*) - (SELECT COUNT(*) FROM (SELECT DISTINCT * FROM ${target}) d) FROM ${target}`;
         const value = await api.queryValue(sid, sql);
         if (!live) return;

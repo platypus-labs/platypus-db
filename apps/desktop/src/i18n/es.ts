@@ -2968,6 +2968,7 @@ const es: Record<string, string> = {
   "Duplicates": "Duplicados",
   "Rows identical to another row": "Filas idénticas a otra fila",
   "Counting identical rows…": "Contando filas idénticas…",
+  "Not counted on tables above {n} rows": "No se cuenta en tablas de más de {n} filas",
   "Layout": "Disposición",
   "The tree of the connections, on the left or on the right.": "El árbol de las conexiones, a la izquierda o a la derecha.",
   "Left": "Izquierda",
