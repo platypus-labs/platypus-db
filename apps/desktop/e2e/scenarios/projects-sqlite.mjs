@@ -318,13 +318,14 @@ async function members(page, dir, shots) {
     await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
     await page.waitFor(`document.querySelector('.project-chips') !== null`);
   };
-  // The PostgreSQL form is laid out in rows of two and fits a 1366x768 window without scrolling.
+  // The PostgreSQL form is laid out in rows of two (the user now opens Authentication, the pooler sits
+  // beside the database) and fits a 1366x768 window without scrolling.
   await backTo("PostgreSQL");
   await page.waitFor(fieldNamed("Host"));
   const layout = await page.eval(`(() => {
     const top = (label) => [...document.querySelectorAll('.modal .field')].find(f => f.querySelector('span')?.textContent === label).getBoundingClientRect().top;
     const modal = document.querySelector('.modal');
-    return { host: top('Host') === top('Port'), database: top('Database') === top('User'), password: top('Password from') === top('Password'),
+    return { host: top('Host') === top('Port'), database: top('Database') === top('Connection pooler'), password: top('Password from') === top('Password'),
       height: modal.offsetHeight, scrolls: modal.scrollHeight > modal.clientHeight };
   })()`);
   assert.deepEqual([layout.host, layout.database, layout.password, layout.scrolls], [true, true, true, false]);
