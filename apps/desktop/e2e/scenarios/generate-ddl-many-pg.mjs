@@ -49,8 +49,17 @@ async function generateAll(page) {
     `${row(name(TABLES))}?.classList.contains('selected') && [...document.querySelectorAll('.tree-row')].filter(r => /^t\d{4}$/.test(r.querySelector('.tree-label')?.textContent ?? '')).every(r => r.classList.contains('selected'))`,
     10_000,
   );
-  await clickRow(page, name(TABLES), { button: "right" });
-  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  // The menu of the selection: a right click the tree redraws under is repeated.
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    await clickRow(page, name(TABLES), { button: "right" });
+    try {
+      await page.waitFor(`document.querySelector('.context-menu') !== null`, 2_000);
+      break;
+    } catch (e) {
+      if (Date.now() > deadline) throw e;
+    }
+  }
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate DDL')).click()`);
 }
 
@@ -83,7 +92,15 @@ export default async function (page) {
     30_000,
   );
   await page.waitFor(`${progress} == null`, 30_000);
-  const stopped = await page.eval(queryText);
+  // A block asked for before Stop is still added, and the editor takes it a moment after the
+  // progress goes: read the text once it has not changed for a while.
+  let stopped = await page.eval(queryText);
+  for (let same = 0; same < 3; ) {
+    await page.sleep(300);
+    const text = await page.eval(queryText);
+    same = text === stopped ? same + 1 : 0;
+    stopped = text;
+  }
   const note = /-- Stopped: the DDL of (\d+) of (\d+) objects was read/.exec(stopped);
   assert.ok(note, `a note says where it stopped: ${stopped.slice(-300)}`);
   assert.equal(Number(note[2]), TABLES);
