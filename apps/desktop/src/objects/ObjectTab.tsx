@@ -349,7 +349,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
               c.data_type,
               t(c.nullable ? "yes" : "no"),
               c.default ?? "",
-              c.primary_key ? "PK" : "",
+              c.primary_key ? <span key="pk" className="key-badge pk">PK</span> : "",
               editable ? (
                 <button key="comment" className="link" onClick={() => editComment(c.name, c.comment)}>
                   {c.comment || t("Edit")}

@@ -42,9 +42,11 @@
 .notes-panel {
   display: grid;
   grid-template-columns: 1fr minmax(160px, 30%);
+  align-items: center;
   gap: var(--space-8);
-  padding: var(--space-6) var(--space-12);
+  padding: var(--space-4) var(--space-20);
   border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
 }
 
 .notes-panel.with-label {
@@ -60,7 +62,9 @@
 
 .notes-panel textarea {
   resize: vertical;
-  min-height: var(--control-md);
+  min-height: var(--control-sm);
+  border-color: transparent;
+  background: transparent;
 }
 
 .cell-input {
