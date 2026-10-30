@@ -35,6 +35,7 @@ pub mod schema;
 pub mod schema_history;
 pub mod scripts;
 pub mod search;
+pub mod security;
 pub mod settings;
 pub mod snapshots;
 pub mod sql;

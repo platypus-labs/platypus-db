@@ -16,6 +16,7 @@ mod init;
 mod metadata;
 mod metrics;
 mod parameters;
+mod security;
 pub mod special;
 mod transaction;
 mod version;
@@ -53,6 +54,10 @@ pub use metrics::{
 };
 pub use parameters::{
     ServerParameter, differs_from, same_value, set_value, sort_parameters, string_literal,
+};
+pub use security::{
+    DropOptions, GrantAction, GrantKind, GrantTarget, Grantee, Principal, PrincipalFlag,
+    PrincipalKind, PrincipalSpec, PrivilegeGrant, SecurityChange, TargetClass,
 };
 pub use transaction::{
     TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,

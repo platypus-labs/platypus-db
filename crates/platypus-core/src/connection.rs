@@ -221,6 +221,24 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("table maintenance"))
     }
 
+    /// The users and roles of the server, sorted by name, with the roles each belongs to.
+    /// Optional: see [`Capabilities::security`].
+    async fn principals(&self) -> Result<Vec<crate::Principal>> {
+        Err(unsupported("users and roles"))
+    }
+
+    /// The privileges given to the user or role `name` (with `host`, for a MySQL account)
+    /// itself: not those it has through the roles it belongs to. Optional: see
+    /// [`Capabilities::security`].
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        host: Option<&str>,
+    ) -> Result<Vec<crate::PrivilegeGrant>> {
+        let _ = (name, host);
+        Err(unsupported("privileges"))
+    }
+
     /// Objects of the user schemas whose name, column names or source contain `needle`,
     /// ignoring case; at most [`SEARCH_LIMIT`](crate::SEARCH_LIMIT) of them.
     /// Optional: see [`Capabilities::metadata_search`].

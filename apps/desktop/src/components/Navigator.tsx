@@ -1372,7 +1372,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Server activity…",
       group: "open",
       order: 25,
-      // The databases whose drivers list sessions, locks, parameters or metrics (not
+      // The databases whose drivers list sessions, locks, parameters, metrics or users (not
       // CockroachDB nor YugabyteDB, which the tab tells once connected).
       when: ({ connection }) =>
         ["postgres", "mysql", "sqlserver", "clickhouse", "sqlite", "duckdb"].includes(connection.driver),

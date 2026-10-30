@@ -21,8 +21,9 @@ import { pushSample, type Sample } from "./dashboardModel";
 import { Parameters } from "./Parameters";
 import { type Activity, activity, blockingChains, type Chain, matches, seconds } from "./sessions";
 import { ObjectsView, TopQueries } from "./Statistics";
+import { Users } from "./Users";
 
-export type AdminView = "sessions" | "locks" | "statements" | "objects" | "parameters" | "dashboard";
+export type AdminView = "sessions" | "locks" | "statements" | "objects" | "parameters" | "dashboard" | "users";
 
 /** Views read on demand, not every few seconds: the server sums their numbers over hours, or
  *  they do not change while the tab is open. */
@@ -36,6 +37,7 @@ export function availableViews(caps: Capabilities): AdminView[] {
   if (caps.server_metrics) views.push("dashboard");
   if (caps.server_statistics) views.push("statements", "objects");
   if (caps.server_parameters) views.push("parameters");
+  if (caps.security) views.push("users");
   return views;
 }
 
@@ -139,6 +141,8 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
           await loadParameters(sid, capabilities);
           continue;
         }
+        // The users and roles read themselves.
+        if (viewNow.current === "users") return;
         if (ON_DEMAND.has(viewNow.current)) {
           await loadStatistics(sid, viewNow.current, capabilities);
           continue;
@@ -218,7 +222,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   useEffect(() => {
     if (!active) return;
     void load();
-    if (interval <= 0 || ON_DEMAND.has(view)) return;
+    if (interval <= 0 || ON_DEMAND.has(view) || view === "users") return;
     const timer = window.setInterval(() => void load(), interval * 1000);
     return () => window.clearInterval(timer);
   }, [active, interval, view, version]);
@@ -312,6 +316,11 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         {caps?.server_metrics && (
           <button className={view === "dashboard" ? "active" : ""} onClick={() => onChange({ view: "dashboard" })}>
             {t("Dashboard")}
+          </button>
+        )}
+        {caps?.security && (
+          <button className={view === "users" ? "active" : ""} onClick={() => onChange({ view: "users" })}>
+            {t("Users and roles")}
           </button>
         )}
         {caps?.server_statistics && (
@@ -419,6 +428,9 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
             <p className="muted small">{loading ? t("Reading the statistics…") : ""}</p>
           )}
         </div>
+      )}
+      {view === "users" && caps?.security && (
+        <Users connection={connection} active={active} refresh={version} sideSession={sideSession} />
       )}
       {!unsupported && view === "locks" && (
         <div className="object-body admin-body">

@@ -20,6 +20,7 @@ pub mod columns;
 mod ddl;
 mod meta;
 mod monitor;
+mod security;
 #[doc(hidden)]
 pub mod tsql;
 
@@ -427,6 +428,18 @@ impl Connection for MssqlConnection {
         admin::maintain(self, schema, table, operation).await
     }
 
+    async fn principals(&self) -> Result<Vec<platypus_core::Principal>> {
+        security::principals(self).await
+    }
+
+    async fn principal_privileges(
+        &self,
+        name: &str,
+        _host: Option<&str>,
+    ) -> Result<Vec<platypus_core::PrivilegeGrant>> {
+        security::privileges(self, name).await
+    }
+
     fn transaction(&self) -> TransactionState {
         self.tx.state()
     }
@@ -459,6 +472,7 @@ impl Connection for MssqlConnection {
             cancel_server_queries: false,
             server_statistics: true,
             maintenance: admin::MAINTENANCE,
+            security: true,
             bulk_load: true,
             server_parameters: true,
             server_metrics: true,
