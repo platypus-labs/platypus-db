@@ -1266,7 +1266,7 @@ rispettate da tutta l'app.
 
 ### Gruppo R — Revisione grafica
 
-**Stato: in attesa.** Si prende solo quando tutti gli altri gruppi sono `✅ completato`: rivede
+**Stato: in corso.** Fatti i mockup (`docs/mockups/`, approvati la direzione del sito e la versione dell'app vicina a oggi) e il rifacimento del sito; le pagine dell'app si implementano dopo averle riviste con l'utente. In origine si prendeva solo quando tutti gli altri gruppi erano `✅ completato`: rivede
 l'aspetto dell'app finita, non quello di funzionalità ancora in movimento.
 
 Una passata unica su tutta l'interfaccia perché sembri un prodotto solo, fatto con cura: oggi ogni
@@ -1287,9 +1287,9 @@ procede solo con i mockup approvati; una pagina senza mockup approvato non si to
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | 🆕 **Inventario visivo**: una scheda per schermata e dialog con screenshot (chiaro/scuro, it/en) e i problemi trovati | P1 | N |
-| 🆕 **Mockup delle pagine** dell'app e del sito, partendo dall'inventario: si fanno vedere all'utente e si implementa solo dopo la sua approvazione | P1 | N |
+| ✅ **Mockup delle pagine** dell'app e del sito, partendo dall'inventario: si fanno vedere all'utente e si implementa solo dopo la sua approvazione | P1 | N |
 | 🆕 **Rifacimento delle pagine dell'app** secondo i mockup approvati | P1 | N |
-| 🆕 **Rifacimento del sito** (`site/`) secondo i mockup approvati, con lo stesso stile dell'app | P1 | N |
+| ✅ **Rifacimento del sito** (`site/`) secondo i mockup approvati: pagine Features, Databases, Compare (con i loghi degli altri client e la tabella verificata sulle loro documentazioni), Download e Docs; da rifare le GIF del tour con l'app ridisegnata | P1 | N |
 | 🆕 **Tutto a portata di mano e comprensibile**: ogni pagina studiata perché l'utente capisca da sola cosa può fare lì; le azioni principali visibili sulla pagina stessa (pulsanti, intestazioni, stati vuoti con l'azione utile), non solo nei menu contestuali o nelle scorciatoie; dalla pagina di un oggetto si arriva a tutto ciò che lo riguarda (dati, struttura, editor grafico, DDL, diagramma). Esempio: l'editor grafico della tabella oggi si apre solo dal menu del navigator o con F4 | P1 | N |
 | 🆕 **Design token unici**: spaziature, raggi, ombre, dimensioni dei font e dei controlli da una scala sola; via i valori scritti a mano nei singoli componenti | P1 | N |
 | 🆕 Dialog, menu, tooltip, notifiche e pannelli con la stessa struttura (titolo, corpo, pulsanti, focus, Esc/Invio) | P1 | N |
