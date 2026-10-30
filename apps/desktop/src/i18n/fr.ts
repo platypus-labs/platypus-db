@@ -2955,7 +2955,6 @@ const fr: Record<string, string> = {
   "Before changes": "Avant les modifications",
   "Masking": "Masquage",
   "Lock and backups": "Verrouillage et copies",
-  "Overview of the diagram": "Aperçu du diagramme",
   "Widget actions": "Actions du widget",
   "Already first": "Déjà en premier",
   "Already last": "Déjà en dernier",

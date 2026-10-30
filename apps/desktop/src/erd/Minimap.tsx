@@ -1,5 +1,4 @@
 import { type PointerEvent, type RefObject, useEffect, useState } from "react";
-import { t } from "../i18n";
 
 export interface MinimapRect {
   name: string;
@@ -75,7 +74,7 @@ export function Minimap({ canvas, rects, zoom, version }: { canvas: RefObject<HT
   };
 
   return (
-    <div className="erd-minimap" aria-label={t("Overview of the diagram")} style={{ width, height }} onPointerDown={onDown} onPointerMove={onMove}>
+    <div className="erd-minimap" aria-hidden="true" style={{ width, height }} onPointerDown={onDown} onPointerMove={onMove}>
       {rects.map((r) => (
         <i
           key={r.name}
