@@ -230,8 +230,14 @@ export default async function (page, { dir }) {
     await page.waitFor(`document.querySelector('.topbar-agents') === null`);
     let r = await mcp.call("list_open_sessions");
     assert.ok(r.error && /not open/.test(r.text), r.text);
-    r = await mcp.call("run_query", { connection: "Scratch", sql: "DELETE FROM orders WHERE id = 2" });
-    assert.ok(r.error && /cannot ask: PlatypusDB is not open/.test(r.text), r.text);
+    // The agent above was allowed for its session earlier, and stays so; one that starts now was not.
+    const late = await startMcp(dir, "e2e-late");
+    try {
+      r = await late.call("run_query", { connection: "Scratch", sql: "DELETE FROM orders WHERE id = 2" });
+      assert.ok(r.error && /cannot ask: PlatypusDB is not open/.test(r.text), r.text);
+    } finally {
+      late.close();
+    }
     assert.equal(count(dir), 18);
   } finally {
     mcp.close();
