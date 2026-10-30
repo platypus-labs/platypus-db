@@ -120,7 +120,9 @@ to the package manager.
 - **Test connections**: *Test connections* in a project's menu, in the navigator's menu or in
   the command palette tries every connection of the project, four at a time, and lists how each
   went.
-- **Connection types** Development, Test and Production, with colors and a read-only flag.
+- **Connection types** Development, Test and Production, with colors and a read-only flag. The
+  connection form groups its fields under *Connection* and *Authentication*; type, color,
+  read-only and agents' access are on the *Appearance and safety* page.
   Production shows a red PROD badge and opens in manual commit.
 - After connecting, a default schema, a time zone and bootstrap statements run on every
   connection and reconnection.
@@ -138,7 +140,8 @@ to the package manager.
 - Large schemas stay quick: with 10,000 tables the tree opens in a fraction of a second and
   renders only the rows in view.
 - The tree is cached on disk: it shows at once on start, and offline. Nothing connects until
-  you open it; a green dot marks the connections with an open session.
+  you open it. Each connection shows its database's logo, with its color and its state (an open
+  session, a failed connection) as small marks on the logo.
 - Generate SELECT, INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a
   preview of the statement. `Ctrl`/`Shift`+click selects several objects, for example to get
   the DDL of many tables at once: the tab opens at once and fills a block of objects at a
@@ -146,7 +149,8 @@ to the package manager.
   be read becomes a comment saying why. PostgreSQL reads the tables and views of a block with
   a few catalog queries for all of them.
 - **Object details**: properties, columns, indexes, constraints, foreign keys, incoming
-  references and the DDL of any object.
+  references and the DDL of any object. The page leads to everything about the object: its data,
+  the table editor, the DDL and *Show in ER diagram*.
 - **Search** object names, columns and the source of views, routines and triggers across a
   database; or the text of every row of a schema's tables, opening the matching rows.
 
@@ -677,7 +681,8 @@ through the MCP server.
   A query that runs longer than 10 seconds (Settings › SQL editor) ends with a system
   notification when the window is in the background.
 - From the keyboard: arrows, Enter and the menu key in the navigator, the tab bar and the
-  context menus; dialogs keep the focus inside them and give it back when they close.
+  context menus; dialogs keep the focus inside them and give it back when they close, and Enter
+  confirms a dialog's main action (never a destructive one, which takes a click).
 
 ## Sharing and sync
 
