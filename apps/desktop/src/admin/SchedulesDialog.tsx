@@ -331,6 +331,13 @@ function ScheduleForm({
     api.listTransferProfiles().then((all) => setProfiles(profilesOf(all).filter((p) => !createsTables(p.task))), () => setProfiles([]));
   }, []);
 
+  // A profile task picked before the profiles arrived names none: it takes the first one, as
+  // picking the kind with the profiles there does.
+  useEffect(() => {
+    const first = profiles[0];
+    if (task.kind === "profile" && !task.profile_id && first) pickProfile(first);
+  }, [profiles, task]);
+
   async function choose(what: "script" | "folder") {
     const path = await answerFor(what === "script" ? "file" : "folder", () =>
       what === "script"
@@ -669,7 +676,7 @@ function ScheduleForm({
         <button type="button" onClick={onCancel}>
           {t("Cancel")}
         </button>
-        <button type="submit" className="primary" disabled={saving}>
+        <button type="submit" className="primary" disabled={saving || (task.kind === "profile" && !task.profile_id)}>
           {t("Save")}
         </button>
       </div>
