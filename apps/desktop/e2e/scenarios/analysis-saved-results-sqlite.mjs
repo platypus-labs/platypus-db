@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
-import { chart, gridTsv, inField, liteConnection, newEditor, profileOf, runQuery, showChart, status, toggle, treeRow, visibleTab } from "../qa-ana.mjs";
+import { chart, gridTsv, inField, liteConnection, markTitles, newEditor, profileOf, runQuery, showChart, status, toggle, treeRow, visibleTab } from "../qa-ana.mjs";
 
 const NAME = "E2E saved results";
 const QUERY = "SELECT region, amount, note FROM sales ORDER BY id";
@@ -194,13 +194,15 @@ export default async function (page, { dir }) {
   assert.deepEqual(files.index.map((r) => r.name), ["Sales 2026"]);
 
   // Offline: the connection is closed and its database file deleted, then the saved result
-  // opens all the same. (Windows keeps a file open under its session: the connection goes
-  // first, and the delete waits for the handle to go.)
+  // opens all the same. (Windows keeps a file open under its sessions: Disconnect ends the
+  // navigator's, the editor tab keeps its own until it is closed; the delete waits for the handles.)
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
   const at = await page.eval(`(() => { const b = ${treeRow(NAME)}.getBoundingClientRect(); return { x: b.x, y: b.y, h: b.height }; })()`);
   await page.click(at.x + 30, at.y + at.h / 2, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.trim().startsWith('Disconnect')).click()`);
+  await page.eval(`document.querySelector('.tab [aria-label="Close tab"]').click()`);
+  await page.waitFor(`document.querySelectorAll('.query-tab').length === 0`, 15_000);
   const database = join(dir, "qa_ana.db");
   for (let i = 0; i < 100 && existsSync(database); i++) {
     try {
@@ -229,12 +231,16 @@ export default async function (page, { dir }) {
   const run = await inField(page, "SELECT count(*) AS n, count(note) AS notes, sum(amount) AS total FROM result");
   assert.equal(run.error, "");
   assert.equal(await gridTsv(page), "n\tnotes\ttotal\n5\t3\t33");
+  // Escape in the field (reading the grid moved the focus to it) returns to the result.
+  await page.eval(`${visibleTab}.querySelector('.result-sql .cm-content').focus()`);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`${status} === '5 rows'`);
 
-  // A chart of it: one bar per row of the number column.
+  // A chart of it: one bar per region, the amounts summed (north has two rows: 10 + 7).
   await showChart(page, "rect.chart-bar");
-  assert.equal(await page.eval(`${chart}.querySelectorAll('rect.chart-bar').length`), 5);
+  const bars = await markTitles(page, 'rect.chart-bar');
+  assert.equal(bars.length, 4, JSON.stringify(bars));
+  assert.ok(bars.includes('north · amount: 17'), JSON.stringify(bars));
   await page.eval(`${toggle("Grid")}.click()`);
   await page.waitFor(`${chart} == null && ${visibleTab}.querySelector('.grid-scroll') != null`);
 
