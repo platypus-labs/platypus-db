@@ -276,6 +276,10 @@ async function members(page, dir, shots) {
     "DuckDB",
     "Turso / libSQL",
     "MongoDB",
+    "Redis",
+    "Elasticsearch / OpenSearch",
+    "Apache Cassandra",
+    "ScyllaDB",
     "Snowflake",
     "BigQuery",
     "Databricks",
@@ -299,7 +303,7 @@ async function members(page, dir, shots) {
   await page.type("SQL");
   await page.waitFor(`${tiles}.join() === 'PostgreSQL,MySQL,MariaDB,SQL Server,SQLite,Turso / libSQL'`);
   await page.key("Escape", "Escape", 27);
-  await page.waitFor(`${search}.value === '' && ${tiles}.length === 23`);
+  await page.waitFor(`${search}.value === '' && ${tiles}.length === 27`);
   await page.type("sqlite");
   await page.waitFor(`${tiles}.join() === 'SQLite'`);
   await page.key("Enter", "Enter", 13);
@@ -310,7 +314,7 @@ async function members(page, dir, shots) {
   const backTo = async (label) => {
     assert.equal(await page.eval(fieldNamed("Driver")), false);
     await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Back').click()`);
-    await page.waitFor(`${tiles}.length === 23`);
+    await page.waitFor(`${tiles}.length === 27`);
     await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
     await page.waitFor(`document.querySelector('.project-chips') !== null`);
   };
