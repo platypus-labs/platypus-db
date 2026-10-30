@@ -109,11 +109,12 @@ export default async function (page, { dir, shots }) {
   await page.key("ArrowDown", "ArrowDown", 40);
   await page.waitFor(`${selectedTab}?.dataset.section === ${JSON.stringify(nextSection)} && document.activeElement === ${selectedTab}`);
   await page.key("End", "End", 35);
-  await page.waitFor(`${selectedTab}?.dataset.section === 'Keyboard shortcuts' && document.querySelector('.shortcuts') !== null`);
+  // The last page is the last of the Tools group.
+  await page.waitFor(`${selectedTab}?.dataset.section === 'Diagnostics' && document.activeElement === ${selectedTab}`);
   await page.key("Home", "Home", 36);
   await page.waitFor(`${selectedTab}?.dataset.section === 'Appearance'`);
   await page.key("ArrowUp", "ArrowUp", 38);
-  await page.waitFor(`${selectedTab}?.dataset.section === 'Keyboard shortcuts'`);
+  await page.waitFor(`${selectedTab}?.dataset.section === 'Diagnostics'`);
   await page.settingsTab("Toolbar");
   await page.eval(`${settingRow("History")}.querySelector('input').click()`);
   await page.eval(`(() => {
