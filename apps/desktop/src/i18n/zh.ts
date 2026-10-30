@@ -9,7 +9,6 @@ const zh: Record<string, string> = {
   "Pin tab": "固定标签页",
   "Unpin tab": "取消固定标签页",
   "Close": "关闭",
-  "Please confirm": "请确认",
   "Copy error": "复制错误",
   "The statement ran and returned no rows.": "语句已执行,未返回任何行。",
   "Charts, tables and numbers from a query, side by side.": "并排显示查询的图表、表格和数字。",

@@ -9,7 +9,6 @@ const es: Record<string, string> = {
   "Pin tab": "Fijar la pestaña",
   "Unpin tab": "Desfijar la pestaña",
   "Close": "Cerrar",
-  "Please confirm": "Confirma",
   "Copy error": "Copiar el error",
   "The statement ran and returned no rows.": "La sentencia se ejecutó y no devolvió filas.",
   "Charts, tables and numbers from a query, side by side.": "Gráficos, tablas y números de una consulta, lado a lado.",

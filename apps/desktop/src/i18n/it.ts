@@ -9,7 +9,6 @@ const it: Record<string, string> = {
   "Pin tab": "Fissa la scheda",
   "Unpin tab": "Sblocca la scheda",
   "Close": "Chiudi",
-  "Please confirm": "Conferma",
   "Copy error": "Copia l'errore",
   "The statement ran and returned no rows.": "L'istruzione è stata eseguita e non ha restituito righe.",
   "Charts, tables and numbers from a query, side by side.": "Grafici, tabelle e numeri di una query, affiancati.",

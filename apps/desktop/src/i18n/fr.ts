@@ -9,7 +9,6 @@ const fr: Record<string, string> = {
   "Pin tab": "Épingler l'onglet",
   "Unpin tab": "Désépingler l'onglet",
   "Close": "Fermer",
-  "Please confirm": "Confirmer",
   "Copy error": "Copier l'erreur",
   "The statement ran and returned no rows.": "L'instruction s'est exécutée et n'a renvoyé aucune ligne.",
   "Charts, tables and numbers from a query, side by side.": "Graphiques, tableaux et chiffres d'une requête, côte à côte.",

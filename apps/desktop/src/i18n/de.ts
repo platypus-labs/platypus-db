@@ -9,7 +9,6 @@ const de: Record<string, string> = {
   "Pin tab": "Tab anheften",
   "Unpin tab": "Tab lösen",
   "Close": "Schließen",
-  "Please confirm": "Bitte bestätigen",
   "Copy error": "Fehler kopieren",
   "The statement ran and returned no rows.": "Die Anweisung wurde ausgeführt und lieferte keine Zeilen.",
   "Charts, tables and numbers from a query, side by side.": "Diagramme, Tabellen und Zahlen aus einer Abfrage, nebeneinander.",
