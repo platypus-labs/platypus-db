@@ -28,6 +28,8 @@ registerAction({
   title: "Chart settings",
   group: "view",
   order: 1,
+  menuOnly: true,
+  checked: ({ configuring }) => configuring,
   when: ({ widget }) => widget.view === "chart",
   run: ({ onConfigure }) => onConfigure(),
 });

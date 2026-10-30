@@ -257,6 +257,7 @@ button:focus-visible {
 /* Rows and items the arrows move through: a ring inside, so a list's edge does not clip it. */
 [role="treeitem"]:focus-visible,
 [role="menuitem"]:focus-visible,
+[role="menuitemcheckbox"]:focus-visible,
 [role="option"]:focus-visible,
 .modal:focus-visible {
   outline: 2px solid var(--accent);

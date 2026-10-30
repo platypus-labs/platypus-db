@@ -90,7 +90,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   // From the keyboard: the focus goes to the first item, and back where it was on closing.
   useEffect(() => {
     const opener = document.activeElement;
-    ref.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    ref.current?.querySelector<HTMLElement>("[role^=menuitem]")?.focus();
     return () => {
       // Not when what the menu ran took the focus, e.g. a dialog it opened.
       const lost = document.activeElement === document.body || document.activeElement === null;
@@ -104,7 +104,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     const item = e.target as HTMLElement;
     const list = item.closest(".context-menu");
     if (!list) return;
-    const items = [...list.querySelectorAll<HTMLElement>(":scope > [role=menuitem], :scope > .submenu-anchor > [role=menuitem]")];
+    const items = [...list.querySelectorAll<HTMLElement>(":scope > [role^=menuitem], :scope > .submenu-anchor > [role^=menuitem]")];
     const at = items.indexOf(item);
     if (e.key === "ArrowDown") items[(at + 1) % items.length]?.focus();
     else if (e.key === "ArrowUp") items[(at - 1 + items.length) % items.length]?.focus();
@@ -112,9 +112,9 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     else if (e.key === "End") items.at(-1)?.focus();
     else if (e.key === "ArrowRight" && item.getAttribute("aria-haspopup")) {
       item.click();
-      requestAnimationFrame(() => item.parentElement?.querySelector<HTMLElement>(".submenu [role=menuitem]")?.focus());
+      requestAnimationFrame(() => item.parentElement?.querySelector<HTMLElement>(".submenu [role^=menuitem]")?.focus());
     } else if (e.key === "ArrowLeft" && list.classList.contains("submenu")) {
-      const anchor = list.parentElement?.querySelector<HTMLElement>(":scope > [role=menuitem]");
+      const anchor = list.parentElement?.querySelector<HTMLElement>(":scope > [role^=menuitem]");
       setOpen(null);
       anchor?.focus();
     } else return;
@@ -133,11 +133,13 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
    *  description for screen readers. */
   function item(action: Action, props?: React.ButtonHTMLAttributes<HTMLButtonElement>) {
     const reason = action.disabled?.(arg) ?? null;
+    const checked = action.checked?.(arg);
     const hint = `${id}${action.id}`;
     return (
       <button
         key={action.id}
-        role="menuitem"
+        role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
+        aria-checked={checked}
         data-action={action.id}
         aria-disabled={reason ? true : undefined}
         aria-describedby={reason ? hint : undefined}

@@ -1,5 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { allActions } from "../actions";
+import { bindableActions } from "../actions";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { ThemesPanel } from "../themes/ThemesPanel";
 import { toCommandError } from "../api";
@@ -36,7 +36,7 @@ const PANELS: {
   {
     title: msg("Keyboard shortcuts"),
     keywords: "keys keyboard",
-    contains: (needle) => allActions().some((a) => actionMatches(a, needle)),
+    contains: (needle) => bindableActions().some((a) => actionMatches(a, needle)),
     render: (search) => <ShortcutsPanel search={search} />,
   },
 ];
@@ -137,6 +137,17 @@ function moveTab(
   const name = names[to % names.length]!;
   select(name);
   e.currentTarget.closest('[role="tablist"]')?.querySelector<HTMLElement>(`[data-${attr}="${CSS.escape(name)}"]`)?.focus();
+}
+
+/** Arrow keys in a radio group: select the previous or next option (wrapping) and focus it. */
+function moveRadio(e: KeyboardEvent<HTMLElement>, values: string[], select: (value: string) => void) {
+  const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+  if (step === undefined) return;
+  e.preventDefault();
+  const at = values.indexOf(e.currentTarget.dataset.value ?? "");
+  const value = values[(at + step + values.length) % values.length]!;
+  select(value);
+  e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-value="${CSS.escape(value)}"]`)?.focus();
 }
 
 function PageHeader({ page }: { page: string }) {
@@ -485,7 +496,9 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
               data-value={o.value}
               aria-checked={value === o.value}
               className={`picture-choice${value === o.value ? " selected" : ""}`}
+              tabIndex={value === o.value ? 0 : -1}
               onClick={() => onSave(o.value)}
+              onKeyDown={(e) => moveRadio(e, c.options.map((x) => x.value), onSave)}
             >
               <Picture picture={o.picture} />
               <span className="picture-choice-name">{t(o.label)}</span>

@@ -3,6 +3,7 @@ import {
   type Action,
   type ActionScope,
   allActions,
+  bindableActions,
   keyCapture,
   setShortcut,
   shortcutChanged,
@@ -56,7 +57,7 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const needle = filter.trim();
-  const actions = allActions()
+  const actions = bindableActions()
     .filter((a) => actionMatches(a, needle) && actionMatches(a, search))
     .sort((a, b) => a.scope.localeCompare(b.scope) || t(a.title).localeCompare(t(b.title)));
 
