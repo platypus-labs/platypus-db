@@ -91,7 +91,7 @@ export default async function (page, { dir }) {
   const fSql = fLines.filter((l) => !l.startsWith("--"));
   assert.equal(fSql[0], "PRAGMA foreign_keys = OFF;", f);
   assert.equal(fSql.at(-1), "PRAGMA foreign_keys = ON;", f);
-  assert.ok(/CREATE TABLE "?orders"?/i.test(f), `the new table is created: ${f}`);
+  assert.ok(/CREATE TABLE (main.)?"?orders"?/i.test(f), `the new table is created: ${f}`);
   assert.ok(/customers/.test(f), f);
   assert.ok(!/^(BEGIN|COMMIT)\b/im.test(f), `no transaction wrapper in a Flyway migration: ${f}`);
   // The PRAGMAs work only outside Flyway's transaction: its script configuration says so.
