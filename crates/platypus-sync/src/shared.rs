@@ -370,6 +370,32 @@ mod tests {
     }
 
     #[test]
+    fn a_hand_written_file_with_a_secret_in_it_is_taken_in_without_the_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        let id = Uuid::new_v4();
+        let text = format!(
+            "version = 1\nid = \"{}\"\nname = \"Hand made\"\ncolor = \"#2f9e6e\"\n\n[[connections]]\nid = \"{id}\"\nname = \"Sales\"\ndriver = \"sqlite\"\ndatabase = 'sales.db'\n\n[connections.options]\nwarehouse = \"WH\"\npassword = \"CANARY\"\nconnection_string = \"Server=h;PWD=CANARY\"\n",
+            Uuid::new_v4()
+        );
+        let file = parse(&text).unwrap();
+        let link = SharedLink {
+            path: dir.path().join("team"),
+            share_user: false,
+        };
+        apply(&mut s, None, &file, link).unwrap();
+        let saved = s.get(id).unwrap();
+        assert_eq!(
+            saved.options.get("warehouse").map(String::as_str),
+            Some("WH")
+        );
+        assert!(!saved.options.contains_key("password"));
+        assert_eq!(saved.options["connection_string"], "Server=h");
+        let stored = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        assert!(!stored.contains("CANARY"), "{stored}");
+    }
+
+    #[test]
     fn bad_and_newer_files_are_refused() {
         assert!(parse("this is = not [valid").is_err());
         assert!(parse("name = \"x\"\n").is_err(), "no version");

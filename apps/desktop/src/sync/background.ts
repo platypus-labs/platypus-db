@@ -142,6 +142,8 @@ const shown = new Set<string>();
 export async function refreshShared(): Promise<SharedNotice[]> {
   const notices = await api.refreshSharedProjects();
   if (notices.some((n) => n.kind === "changed")) await reloadWorkspace();
+  // Scripts live in the shared folder and may have changed without the project file doing so.
+  else if (workbench().projects().some((p) => p.shared)) scriptsChanged();
   const current = new Set<string>();
   for (const n of notices) {
     const key = `${n.project}/${n.kind}/${n.message ?? ""}`;
