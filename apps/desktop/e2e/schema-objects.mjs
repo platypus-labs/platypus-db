@@ -74,7 +74,11 @@ export const options = (page, name) => page.eval(`[...${field(name)}.options].ma
 /** Waits until the preview shows `text` and Create is allowed (the statements are for the
  *  fields as they are now, not for an earlier keystroke). */
 export async function previewHas(page, text) {
-  await page.waitFor(`${preview}.includes(${JSON.stringify(text)}) && ${createEnabled}`, 15_000);
+  try {
+    await page.waitFor(`${preview}.includes(${JSON.stringify(text)}) && ${createEnabled}`, 15_000);
+  } catch (e) {
+    throw new Error(`${e.message}; preview: ${JSON.stringify(await page.eval(preview))}; notice: ${JSON.stringify(await page.eval(notice))}`);
+  }
 }
 
 /** Waits until the dialog says `message` (the preview is regenerated after a pause). */

@@ -70,6 +70,11 @@ export default async function (page) {
 }
 
 async function forms(page) {
+  // The double click that opened the editor may have collapsed the connection.
+  if (await page.eval(`${row("demo")} === undefined`)) {
+    await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
+    await page.waitFor(`${row("demo")} !== undefined`, 15_000);
+  }
   // The new table shows once the schema is read again.
   if (await page.eval(`${row("demo")}.getAttribute('aria-expanded') === 'true'`)) {
     await rightClick(page, "demo");
@@ -86,6 +91,8 @@ async function forms(page) {
 
   // A function with two parameters; an empty parameter is refused.
   await fill(page, "name", "e2e_add");
+  await fill(page, "returns", "integer");
+  await fill(page, "body", "RETURN a + b;");
   await page.eval(`${form}.querySelector('[name=add-param]').click()`);
   await errorIs(page, "Every parameter needs a name.");
   await page.eval(`${form}.querySelector('[name=add-param]').click()`);
@@ -93,11 +100,9 @@ async function forms(page) {
   await fill(page, "param-type-0", "integer");
   await fill(page, "param-name-1", "b");
   await fill(page, "param-type-1", "integer");
-  await fill(page, "returns", "integer");
-  await fill(page, "body", "RETURN a + b;");
   await previewHas(page, "CREATE FUNCTION demo.e2e_add(a integer, b integer) RETURNS integer LANGUAGE plpgsql AS $body$");
   await create(page);
-  await reveal(page, "Functions", "e2e_add");
+  await reveal(page, "Functions", "e2e_add(a integer, b integer)");
   assert.equal(psql("SELECT demo.e2e_add(2, 3)"), "5");
 
   // A trigger from the table's menu: a function and the trigger on it, two statements.
@@ -109,7 +114,7 @@ async function forms(page) {
   await tick(page, "event-update", true);
   await fill(page, "when", "NEW.note IS NULL");
   await fill(page, "body", "NEW.note := 'filled';");
-  await previewHas(page, "CREATE OR REPLACE FUNCTION demo.e2e_trg_fn() RETURNS trigger LANGUAGE plpgsql");
+  await previewHas(page, "CREATE FUNCTION demo.e2e_trg_fn() RETURNS trigger LANGUAGE plpgsql");
   await previewHas(page, "CREATE TRIGGER e2e_trg BEFORE INSERT OR UPDATE ON demo.e2e_objects FOR EACH ROW WHEN (NEW.note IS NULL) EXECUTE FUNCTION demo.e2e_trg_fn()");
   assert.ok((await page.eval(preview)).includes("RETURN NEW;"));
   // No event, no trigger.
@@ -119,6 +124,9 @@ async function forms(page) {
   await tick(page, "event-insert", true);
   await tick(page, "event-update", true);
   await previewHas(page, "BEFORE INSERT OR UPDATE");
+  await tick(page, "replace", true);
+  await previewHas(page, "CREATE OR REPLACE FUNCTION demo.e2e_trg_fn() RETURNS trigger LANGUAGE plpgsql");
+  await previewHas(page, "CREATE OR REPLACE TRIGGER e2e_trg BEFORE");
   await create(page);
   psql("INSERT INTO demo.e2e_objects (id) VALUES (1)");
   assert.equal(psql("SELECT note FROM demo.e2e_objects WHERE id = 1"), "filled");
