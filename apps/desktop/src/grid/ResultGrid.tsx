@@ -10,7 +10,7 @@ import { MetadataPanel } from "../panels/MetadataPanel";
 import { RecordView } from "../panels/RecordView";
 import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
 import { defineSetting, setSetting, useSetting } from "../settings";
-import { MASK, useMask } from "../guards/mask";
+import { MASK, SensitiveScope, useMask, useSensitive } from "../guards/mask";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
@@ -175,7 +175,8 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const formatting = useFormatting(layoutKey, jobId, columns, rowCount, editor.topRows, cache, editor.edit?.pending);
   const computed = useComputed(layoutKey, columns, cache, editor.topRows, editor.edit?.pending);
   // While the screen may be shared, the values of sensitive columns show as dots.
-  const mask = useMask();
+  const mask = useMask(notes);
+  const sensitive = useSensitive(notes);
   const masked = useMemo(() => {
     const own = columns.map((c) => !!mask?.(c));
     // A computed column shows dots when it reads a masked one.
@@ -238,134 +239,145 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const total = rowCount + editor.topRows;
 
   return (
-    <div className="result-grid">
-      {editor.bar}
-      <div className="result-grid-body" ref={body} style={{ "--side-panel-width": `${panelWidth}px` } as React.CSSProperties}>
-        <div className="result-grid-main" ref={box} onKeyDown={editor.onKeyDown}>
-          <DataGrid
-            ref={grid}
-            columns={computed.columns}
-            resultColumns={columns.length}
-            headerTitle={
-              notes || headerHint
-                ? (col) => [notes ? annotation(noteOf(col)) : undefined, headerHint].filter(Boolean).join("\n") || undefined
-                : undefined
-            }
-            headerVersion={notesVersion}
-            headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
-            onHeaderHover={(hover) => profile.onHeaderHover(hover && hover.col < columns.length ? hover : null)}
-            rowCount={rowCount}
-            topRows={editor.topRows}
-            cache={computed.rows}
-            version={version}
-            sort={sort}
-            onHeaderClick={onHeaderClick && ((col) => col < columns.length && onHeaderClick(col))}
-            source={source ? { ...source, edit: editor.edit, features, references: refs.references } : null}
-            decorate={decorate}
-            overlay={
-              <>
-                {editor.overlay}
-                {profile.popover}
-              </>
-            }
-            onCellDoubleClick={editor.onCellDoubleClick && ((cell) => cell.col < columns.length && editor.onCellDoubleClick!(cell))}
-            onScroll={editor.onScroll}
-            onFocusChange={setFocused}
-            onSelectionChange={() => {
-              stats.onSelectionChange();
-              if (calcOpen || mapOpen) setSelection((n) => n + 1);
-            }}
-            layout={layout}
-            onLayoutChange={changeLayout}
-          />
-          {search.box}
-          {recordView && total > 0 && (
-            <RecordView
-              jobId={jobId}
-              columns={columns}
-              shown={grid.current?.visibleColumns() ?? columns.map((_, i) => i)}
-              row={Math.min(focused?.row ?? 0, total - 1)}
-              rowCount={total}
+    // The panels beside the grid mask with the marks of the viewer's table too.
+    <SensitiveScope.Provider value={notes ?? null}>
+      <div className="result-grid">
+        {editor.bar}
+        <div className="result-grid-body" ref={body} style={{ "--side-panel-width": `${panelWidth}px` } as React.CSSProperties}>
+          <div className="result-grid-main" ref={box} onKeyDown={editor.onKeyDown}>
+            <DataGrid
+              ref={grid}
+              columns={computed.columns}
+              resultColumns={columns.length}
+              headerTitle={
+                // Sensitive columns are told apart where their marks are known or masking is on.
+                notes || headerHint || mask
+                  ? (col) =>
+                      [
+                        notes ? annotation(noteOf(col)) : undefined,
+                        columns[col] && sensitive(columns[col]) ? t("Sensitive column") : undefined,
+                        headerHint,
+                      ]
+                        .filter(Boolean)
+                        .join("\n") || undefined
+                  : undefined
+              }
+              headerVersion={notesVersion}
+              headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
+              onHeaderHover={(hover) => profile.onHeaderHover(hover && hover.col < columns.length ? hover : null)}
+              rowCount={rowCount}
               topRows={editor.topRows}
+              cache={computed.rows}
               version={version}
-              pending={editor.pending}
-              onMove={(row) => grid.current?.select({ row, col: focused?.col ?? 0 })}
-              onClose={features.toggleRecordView}
+              sort={sort}
+              onHeaderClick={onHeaderClick && ((col) => col < columns.length && onHeaderClick(col))}
+              source={source ? { ...source, edit: editor.edit, features, references: refs.references } : null}
+              decorate={decorate}
+              overlay={
+                <>
+                  {editor.overlay}
+                  {profile.popover}
+                </>
+              }
+              onCellDoubleClick={editor.onCellDoubleClick && ((cell) => cell.col < columns.length && editor.onCellDoubleClick!(cell))}
+              onScroll={editor.onScroll}
+              onFocusChange={setFocused}
+              onSelectionChange={() => {
+                stats.onSelectionChange();
+                if (calcOpen || mapOpen) setSelection((n) => n + 1);
+              }}
+              layout={layout}
+              onLayoutChange={changeLayout}
+            />
+            {search.box}
+            {recordView && total > 0 && (
+              <RecordView
+                jobId={jobId}
+                columns={columns}
+                shown={grid.current?.visibleColumns() ?? columns.map((_, i) => i)}
+                row={Math.min(focused?.row ?? 0, total - 1)}
+                rowCount={total}
+                topRows={editor.topRows}
+                version={version}
+                pending={editor.pending}
+                onMove={(row) => grid.current?.select({ row, col: focused?.col ?? 0 })}
+                onClose={features.toggleRecordView}
+              />
+            )}
+          </div>
+          {sideOpen && (
+            <PanelResizer
+              storeKey="layout.side_panel_width"
+              size={panelWidth}
+              fallback={340}
+              min={200}
+              max={() => (body.current?.clientWidth ?? window.innerWidth) - 240}
+              direction="column"
+              after
+              onDrag={(w) => body.current?.style.setProperty("--side-panel-width", `${w}px`)}
+              onResize={setPanelWidth}
+              label={t("Resize the side panels")}
             />
           )}
-        </div>
-        {sideOpen && (
-          <PanelResizer
-            storeKey="layout.side_panel_width"
-            size={panelWidth}
-            fallback={340}
-            min={200}
-            max={() => (body.current?.clientWidth ?? window.innerWidth) - 240}
-            direction="column"
-            after
-            onDrag={(w) => body.current?.style.setProperty("--side-panel-width", `${w}px`)}
-            onResize={setPanelWidth}
-            label={t("Resize the side panels")}
-          />
-        )}
-        {panelOpen &&
-          (documents ? (
-            <DocumentPanel
+          {panelOpen &&
+            (documents ? (
+              <DocumentPanel
+                jobId={jobId}
+                columns={columns}
+                row={dataRow ?? null}
+                field={column?.name ?? null}
+                version={version}
+                onClose={features.toggleValuePanel}
+              />
+            ) : (
+              <ValuePanel target={valueTarget} onClose={features.toggleValuePanel} />
+            ))}
+          {metadataOpen && (
+            <MetadataPanel
+              column={column}
+              table={editor.catalog?.table ?? null}
+              meta={focused ? editor.catalog?.columns[focused.col] : undefined}
+              inKey={!!focused && !!editor.catalog?.key.includes(focused.col)}
+              onClose={features.toggleMetadata}
+            />
+          )}
+          {calcOpen && (
+            <CalcPanel jobId={jobId} columns={columns} grid={grid} selection={selection} onClose={features.toggleCalc} />
+          )}
+          {mapOpen && (
+            <MapPanel
               jobId={jobId}
               columns={columns}
-              row={dataRow ?? null}
-              field={column?.name ?? null}
+              grid={grid}
+              selection={selection}
+              rows={rowCount}
               version={version}
-              onClose={features.toggleValuePanel}
+              focusedRow={dataRow ?? null}
+              onPick={(row, col) => grid.current?.select({ row: row + editor.topRows, col })}
+              onClose={features.toggleMap}
             />
-          ) : (
-            <ValuePanel target={valueTarget} onClose={features.toggleValuePanel} />
-          ))}
-        {metadataOpen && (
-          <MetadataPanel
-            column={column}
-            table={editor.catalog?.table ?? null}
-            meta={focused ? editor.catalog?.columns[focused.col] : undefined}
-            inKey={!!focused && !!editor.catalog?.key.includes(focused.col)}
-            onClose={features.toggleMetadata}
-          />
+          )}
+          {grouping && (
+            <GroupingPanel
+              jobId={jobId}
+              cols={grouping}
+              columns={columns}
+              rows={rowCount}
+              onClose={() => setGrouping(null)}
+            />
+          )}
+          {refs.panel}
+        </div>
+        {stats.summary}
+        {editor.dialog}
+        {compared && <CompareRows jobId={jobId} columns={columns} rows={compared} onClose={() => setCompared(null)} />}
+        {formatting.dialog}
+        {computed.dialog}
+        {columnsOpen && (
+          <ColumnsDialog columns={computed.columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
         )}
-        {calcOpen && (
-          <CalcPanel jobId={jobId} columns={columns} grid={grid} selection={selection} onClose={features.toggleCalc} />
-        )}
-        {mapOpen && (
-          <MapPanel
-            jobId={jobId}
-            columns={columns}
-            grid={grid}
-            selection={selection}
-            rows={rowCount}
-            version={version}
-            focusedRow={dataRow ?? null}
-            onPick={(row, col) => grid.current?.select({ row: row + editor.topRows, col })}
-            onClose={features.toggleMap}
-          />
-        )}
-        {grouping && (
-          <GroupingPanel
-            jobId={jobId}
-            cols={grouping}
-            columns={columns}
-            rows={rowCount}
-            onClose={() => setGrouping(null)}
-          />
-        )}
-        {refs.panel}
       </div>
-      {stats.summary}
-      {editor.dialog}
-      {compared && <CompareRows jobId={jobId} columns={columns} rows={compared} onClose={() => setCompared(null)} />}
-      {formatting.dialog}
-      {computed.dialog}
-      {columnsOpen && (
-        <ColumnsDialog columns={computed.columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
-      )}
-    </div>
+    </SensitiveScope.Provider>
   );
 }
 
