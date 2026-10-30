@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";
 import { clearStatus, gridTsv, openEditor, runStatement, setEditor, status, waitDone } from "../qa-sql.mjs";
 import { runOrGuard } from "../qa-safe-db.mjs";
-import { connection, drop, es, saveConnections, seed, skip as skipSearch, sources } from "../search-helpers.mjs";
+import { connection, countRow, drop, es, saveConnections, seed, skip as skipSearch, sources } from "../search-helpers.mjs";
 
 const NAME = "E2E ES guards";
 const DOCS = () => [1, 2, 3, 4, 5].map((n) => [`g${n}`, { n, name: `doc ${n}` }]);
@@ -67,8 +67,9 @@ export default async function (page) {
   assert.equal(await runStatement(page, "SELECT n FROM e2e_guard ORDER BY n"), "2 rows");
   assert.equal(await count("e2e_guard"), 2);
 
-  // Run goes on: the documents of the throwaway index are deleted after the question.
-  await setEditor(page, "POST /e2e_guard_tmp/_delete_by_query?refresh=true");
+  // Run goes on: the documents of the throwaway index are deleted after the question. (The
+  // server wants a query in the body, so the unfiltered one is a match_all.)
+  await setEditor(page, 'POST /e2e_guard_tmp/_delete_by_query?refresh=true\n{"query":{"match_all":{}}}');
   await clearStatus(page);
   await page.key("Enter", "Enter", 13, CTRL);
   await page.waitFor(`document.querySelector('.modal.guard') !== null`, 10_000);
@@ -78,6 +79,6 @@ export default async function (page) {
   assert.equal(await count("e2e_guard_tmp"), 0);
   assert.match(await page.eval(status), /^3 rows? affected/);
   assert.equal(await runStatement(page, "GET /e2e_guard_tmp/_count"), "1 row");
-  assert.equal(await gridTsv(page), "count\n0");
+  assert.equal(await countRow(page), "0");
   await drop("e2e_guard", "e2e_guard_tmp");
 }

@@ -15,7 +15,7 @@ const NARROW = "E2E ES pattern";
 
 export const skip = skipSearch;
 export const setup = async ({ dir }) => {
-  saveConnections(dir, connection(10, NAME), connection(11, NARROW, "", { database: "e2e_nav_o*" }));
+  saveConnections(dir, connection(10, NAME), connection(11, NARROW, "", { database: "e2e_nav_or*" }));
   await cleanup();
   await seed(
     "e2e_nav_orders",

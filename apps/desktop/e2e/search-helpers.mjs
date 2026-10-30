@@ -4,7 +4,7 @@
 // data viewer's grid editing.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { editorText, status, treeRow, visibleTab } from "./qa-sql.mjs";
+import { editorText, gridTsv, status, treeRow, visibleTab } from "./qa-sql.mjs";
 
 export const PORT = 59200;
 /** The OpenSearch of the same profile (no login). */
@@ -125,6 +125,7 @@ export async function expandCluster(page, name, index) {
 
 /** Right-clicks the tree row `label` and returns the context menu's entries. */
 export async function rowMenu(page, label) {
+  await page.eval(`${treeRow(label)}.querySelector('.tree-label').scrollIntoView({ block: 'center' })`);
   await page.eval(`${treeRow(label)}.querySelector('.tree-label').id = 'e2e-row'`);
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
@@ -148,6 +149,14 @@ export async function openIndex(page, name, rows, timeout = 20_000) {
   await page.waitFor(`${status} === ${JSON.stringify(rows)}`, timeout);
 }
 
+/** The count a `_count` request left in the grid: its first column (the reply has the shards
+ *  object beside it). */
+export async function countRow(page) {
+  const [header, row] = table(await gridTsv(page));
+  if (header[0] !== "count") throw new Error(`not a count: ${header}`);
+  return row[0];
+}
+
 /** The shown grid as rows of cells, the header first, from the copy with headers. */
 export function table(tsv) {
   return tsv.split("\n").map((line) => line.split("\t"));
@@ -166,6 +175,18 @@ export async function editCell(page, row, col, value) {
   await goTo(page, row, col);
   await page.key("F2", "F2", 113);
   await page.waitFor(`document.querySelector('.cell-editor') !== null`);
+  // A boolean column edits through a select: pick the option, which applies it.
+  const picked = await page.eval(`(() => {
+    const el = document.querySelector('.cell-editor');
+    if (el.tagName !== 'SELECT') return false;
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, ${JSON.stringify(value)});
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  if (picked) {
+    await page.waitFor(`document.querySelector('.cell-editor') === null`);
+    return;
+  }
   await page.eval(`document.querySelector('.cell-editor').select?.()`);
   await page.key("a", "KeyA", 65, 2);
   if (value) await page.type(value);

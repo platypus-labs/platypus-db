@@ -24,7 +24,7 @@ import {
   status,
   visibleTab,
 } from "../qa-sql.mjs";
-import { connection, drop, es, saveConnections, seed, skip as skipSearch, sources, table } from "../search-helpers.mjs";
+import { connection, countRow, drop, es, saveConnections, seed, skip as skipSearch, sources, table } from "../search-helpers.mjs";
 
 const NAME = "E2E ES editor";
 
@@ -91,9 +91,14 @@ export default async function (page) {
   assert.deepEqual(rows[0].slice(0, 2), ["_id", "n"]);
   assert.deepEqual(rows.slice(1).map((r) => r[0]), ["s1", "s2"]);
   assert.equal(await runStatement(page, "GET /e2e_ed/_search?q=status:closed"), "3 rows");
-  // The slash of the path is optional; a count is one row of one column.
+  // The slash of the path is optional; a count is one row: the count, and the shards object
+  // of the reply as JSON in its own column.
   assert.equal(await runStatement(page, "GET e2e_ed/_count"), "1 row");
-  assert.equal(await gridTsv(page), "count\n5");
+  rows = table(await gridTsv(page));
+  assert.deepEqual(rows[0], ["count", "_shards"]);
+  assert.equal(rows[1][0], "5");
+  // The copied grid quotes a cell with quotes in it, CSV style.
+  assert.deepEqual(JSON.parse(rows[1][1].slice(1, -1).replaceAll('""', '"')), { total: 1, successful: 1, skipped: 0, failed: 0 });
   // HEAD tells whether an index exists, as a row.
   assert.equal(await runStatement(page, "HEAD /e2e_ed"), "1 row");
   assert.equal(await gridTsv(page), "exists\tstatus\ntrue\t200");
@@ -140,11 +145,13 @@ export default async function (page) {
 
   // Comments before a request are skipped; the statement under the cursor runs.
   assert.equal(await runStatement(page, "# the count\n// again\nGET /e2e_ed/_count"), "1 row");
-  assert.equal(await gridTsv(page), "count\n5");
+  assert.equal(await countRow(page), "5");
   await setEditor(page, "GET /e2e_ed/_count\n\nGET /e2e_ed/_search?size=2\n\nSELECT COUNT(*) AS total FROM e2e_ed");
   await page.key("Home", "Home", 36, CTRL);
   assert.equal(await runStatement(page), "1 row");
-  assert.equal(await gridTsv(page), "count\n5");
+  assert.equal(await countRow(page), "5");
+  // A run leaves the focus where it was pressed; the keys that move the cursor go to the editor.
+  await page.eval(`${visibleTab}.querySelector('.cm-content').focus()`);
   await page.key("ArrowDown", "ArrowDown", 40, 0);
   await page.key("ArrowDown", "ArrowDown", 40, 0);
   assert.equal(await runStatement(page), "2 rows");
@@ -185,15 +192,18 @@ export default async function (page) {
   await fails(page, 'POST /e2e_ed/_doc\n{"n": }', /invalid JSON body/);
   assert.equal(Object.keys(await sources("e2e_ed")).length, 5, "a refused document was written");
   assert.equal(await runStatement(page, "GET /e2e_ed/_count"), "1 row");
-  assert.equal(await gridTsv(page), "count\n5");
+  assert.equal(await countRow(page), "5");
 
   // Highlighting follows the kind of statement: comments, the method and path of a request, the
   // JSON of its body, the keywords of SQL.
   await setEditor(page, '# note\nGET /e2e_ed/_search\n{"size":1,"query":{"term":{"name":"x"}}}\n\nSELECT COUNT(*) FROM e2e_ed');
+  // The highlighter works after the text is in: wait for the comment line to be coloured.
+  await page.waitFor(`${visibleTab}.querySelector('.cm-content').querySelectorAll('.cm-line')[0]?.querySelector('span') != null`, 10_000);
   const [comment, request, body, , sql] = await Promise.all([0, 1, 2, 3, 4].map((n) => colors(page, n)));
   assert.ok(comment.spans.some(([, c]) => c !== comment.base), `comment line: ${JSON.stringify(comment)}`);
   assert.ok(request.spans.some(([text, c]) => text.includes("GET") && c !== request.base), `request line: ${JSON.stringify(request)}`);
-  assert.ok(body.spans.length >= 3 && body.spans.some(([, c]) => c !== body.base), `body line: ${JSON.stringify(body)}`);
+  // (Property names keep the editor's colour; the strings and numbers are coloured.)
+  assert.ok(body.spans.length >= 2 && body.spans.some(([, c]) => c !== body.base), `body line: ${JSON.stringify(body)}`);
   assert.ok(new Set(body.spans.map(([, c]) => c)).size >= 2, `body colours: ${JSON.stringify(body)}`);
   assert.ok(sql.spans.some(([text, c]) => /SELECT|COUNT|FROM/.test(text) && c !== sql.base), `sql line: ${JSON.stringify(sql)}`);
 
@@ -217,6 +227,6 @@ export default async function (page) {
   await page.waitFor(`${idle} && ${status} !== '' && !${status}.includes('Executing')`, 30_000);
   assert.match(`${await page.eval(status)} ${await page.eval(resultError)}`, /cancel/i);
   assert.equal(await runStatement(page, "GET /e2e_slow/_count"), "1 row");
-  assert.equal(await gridTsv(page), "count\n4000");
+  assert.equal(await countRow(page), "4000");
   await drop("e2e_ed", "e2e_sqlbig", "e2e_slow");
 }

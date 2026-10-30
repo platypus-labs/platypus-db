@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { gridTsv, runStatement, treeRow, visibleTab } from "../qa-sql.mjs";
 import { openEditor, runOrGuard } from "../qa-safe-db.mjs";
-import { connection, drop, editBar, es, saveConnections, seed, skip as skipSearch, sources } from "../search-helpers.mjs";
+import { connection, countRow, drop, editBar, es, saveConnections, seed, skip as skipSearch, sources } from "../search-helpers.mjs";
 
 const NAME = "E2E ES read-only";
 
@@ -54,11 +54,13 @@ export default async function (page) {
     ["GET /_cluster/health", "1 row"],
     ["SELECT n FROM e2e_ro ORDER BY n", "3 rows"],
     ["SHOW TABLES LIKE 'e2e_ro'", "1 row"],
-    ['POST /_sql?format=json\n{"query":"SELECT n FROM e2e_ro ORDER BY n"}', "3 rows"],
+    // A raw request to the SQL endpoint is a REST call: its reply is one row (the typed rows
+    // are those of an SQL statement, run above).
+    ['POST /_sql?format=json\n{"query":"SELECT n FROM e2e_ro ORDER BY n"}', "1 row"],
   ];
   for (const [request, rows] of reads) assert.equal(await runStatement(page, request), rows, request);
   assert.equal(await runStatement(page, "POST /e2e_ro/_count"), "1 row");
-  assert.equal(await gridTsv(page), "count\n3");
+  assert.equal(await countRow(page), "3");
 
   // Nothing changed on the server.
   assert.deepEqual(await sources("e2e_ro"), before);
