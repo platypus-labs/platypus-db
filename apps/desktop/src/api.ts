@@ -972,6 +972,60 @@ export interface ScriptEntry {
   connection: string | null;
 }
 
+// Group O: Git for the saved scripts
+
+export interface GitBranch {
+  /** `null` when HEAD is detached. */
+  name: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  has_commits: boolean;
+}
+
+/** A changed script; `badge` is M odified, A dded, D eleted, R enamed, ? untracked, U nmerged. */
+export interface GitFileStatus {
+  path: string;
+  orig_path: string | null;
+  badge: "M" | "A" | "D" | "R" | "?" | "U";
+}
+
+export interface GitStatus {
+  /** False when the scripts folder is not a repository yet. */
+  is_repo: boolean;
+  branch: GitBranch;
+  files: GitFileStatus[];
+  /** A merge stopped on conflicts and waits to be resolved or aborted. */
+  merging: boolean;
+}
+
+export type GitPullOutcome =
+  | { kind: "up_to_date" | "fast_forwarded" | "merged" | "diverged" }
+  | { kind: "conflicts"; files: string[] };
+
+export interface GitDiffLine {
+  kind: "context" | "added" | "removed";
+  old_no: number | null;
+  new_no: number | null;
+  text: string;
+}
+
+export interface GitHunk {
+  header: string;
+  lines: GitDiffLine[];
+}
+
+export interface GitFileDiff {
+  binary: boolean;
+  hunks: GitHunk[];
+}
+
+/** The author of commits, set in the repository when Git has none. */
+export interface GitIdentity {
+  name: string;
+  email: string;
+}
+
 export interface ScriptList {
   /** The project's scripts folder, absolute. */
   root: string;
@@ -2510,6 +2564,20 @@ export const api = {
   deleteScript: (project: string | null, path: string) => invoke<void>("delete_script", { project, path }),
   linkScript: (project: string | null, path: string, connection: string | null) =>
     invoke<void>("link_script", { project, path, connection }),
+  // Git for the saved scripts (group O)
+  gitStatus: (project: string | null) => invoke<GitStatus>("git_status", { project }),
+  gitInit: (project: string | null) => invoke<void>("git_init", { project }),
+  gitDiff: (project: string | null, path: string) => invoke<GitFileDiff>("git_diff", { project, path }),
+  /** Commits `paths`; returns the short id. Fails with kind `git_identity_missing` when Git
+   *  does not know the author and no `identity` is given. */
+  gitCommit: (project: string | null, paths: string[], message: string, identity: GitIdentity | null) =>
+    invoke<string>("git_commit", { project, paths, message, identity }),
+  gitFetch: (project: string | null) => invoke<void>("git_fetch", { project }),
+  gitPull: (project: string | null) => invoke<GitPullOutcome>("git_pull", { project }),
+  gitPullMerge: (project: string | null, identity: GitIdentity | null) =>
+    invoke<GitPullOutcome>("git_pull_merge", { project, identity }),
+  gitMergeAbort: (project: string | null) => invoke<void>("git_merge_abort", { project }),
+  gitPush: (project: string | null) => invoke<void>("git_push", { project }),
   // Dashboards (group M): files in the data folder, per project
   listDashboards: (project: string | null) => invoke<DashboardEntry[]>("list_dashboards", { project }),
   /** The JSON text of a saved dashboard. */

@@ -1,6 +1,7 @@
 // The menu of a script or folder in the Scripts panel, and "New script" on a connection.
 import { registerAction } from "../actions";
-import { api, type SavedConnection, type ScriptEntry } from "../api";
+import { api, type GitFileStatus, type SavedConnection, type ScriptEntry } from "../api";
+import { openDiff } from "./GitDialogs";
 import { workbench } from "../workbench";
 import { ask } from "../ui/ask";
 import { connectionFor, nameOf, openScript, parentOf, scriptFile, scriptsChanged } from "./scripts";
@@ -17,6 +18,8 @@ declare module "../actions" {
       connections: SavedConnection[];
       /** Puts the entry's name in edit mode. */
       rename: (path: string) => void;
+      /** Its change in the Git repository, when it has one. */
+      git?: GitFileStatus;
     };
   }
 }
@@ -31,6 +34,16 @@ registerAction({
   order: 1,
   when: (a) => isFile(a) && a.connections.length > 0,
   run: ({ entry, root, connections }) => openScript(root, entry, connectionFor(entry, connections)!),
+});
+
+registerAction({
+  id: "script.git_diff",
+  scope: "script",
+  title: "Show changes (Git diff)",
+  group: "open",
+  order: 3,
+  when: (a) => isFile(a) && a.git !== undefined,
+  run: ({ entry, project }) => openDiff(project, entry.path),
 });
 
 registerAction({

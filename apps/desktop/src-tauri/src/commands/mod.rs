@@ -20,6 +20,7 @@ pub mod explain;
 pub mod export;
 pub mod files;
 pub mod geometry;
+pub mod git;
 pub mod grid;
 pub mod health;
 pub mod history;

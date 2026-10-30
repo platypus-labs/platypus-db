@@ -327,3 +327,57 @@
 .saved-result-row:focus-within > button.icon {
   display: inline-flex;
 }
+
+/* Git for the scripts: the bar under the panel's header, the badge of a changed script. */
+.git-bar {
+  padding: 2px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.git-bar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.git-branch {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-merging {
+  margin: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.git-badge {
+  flex: none;
+  min-width: 12px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.git-badge.A,
+.git-badge.untracked {
+  color: var(--ok);
+}
+
+.git-badge.D,
+.git-badge.U {
+  color: var(--error);
+}
+
+.git-badge.folder {
+  color: var(--fg-muted);
+}
