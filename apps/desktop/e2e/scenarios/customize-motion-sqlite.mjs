@@ -86,8 +86,8 @@ export default async function (page, { dir, shots }) {
   const chosen = `document.querySelector('.modal.settings .dialog-tabs [aria-selected="true"]')`;
   const other = `document.querySelector('.modal.settings .dialog-tabs [aria-selected="false"]')`;
   assert.match(await page.eval(style(chosen, "transitionProperty", "::after")), /transform/);
-  assert.equal(await page.eval(style(chosen, "opacity", "::after")), "1");
-  assert.equal(await page.eval(style(other, "opacity", "::after")), "0");
+  // The underline fades in: wait for the end of the transition.
+  await page.waitFor(`${style(chosen, "opacity", "::after")} === "1" && ${style(other, "opacity", "::after")} === "0"`);
   // Short: none over 200 ms.
   const ms = (s) => parseFloat(s) * (s.endsWith("ms") ? 1 : 1000);
   assert.ok(ms(await page.eval(style(`document.querySelector('.modal.settings')`, "animationDuration"))) <= 200);

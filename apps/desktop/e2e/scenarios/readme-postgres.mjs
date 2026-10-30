@@ -42,7 +42,7 @@ async function setEditor(page, sql) {
   await page.eval(`${queryTab}.querySelector('.cm-content').focus()`);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
-  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
+  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].filter(l => !l.closest('.sql-line')).map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
   await page.key("Escape", "Escape", 27);
 }
 
