@@ -435,3 +435,49 @@ services:
       timeout: 5s
       retries: 60
       start_period: 10s
+
+  # Apache Cassandra 5, not started by default (the JVM takes memory and a node needs about a
+  # minute to open its CQL port): `docker compose --profile cassandra up -d --wait cassandra`.
+  # Test-only login `cassandra` / `cassandra` (the password authenticator's default user).
+  # Materialized views and user-defined functions, off by default, are turned on for the
+  # catalog tests. The heap is capped at 512 MB.
+  cassandra:
+    image: cassandra:5
+    profiles: [cassandra]
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        sed -i
+        -e 's/^authenticator:.*/authenticator: PasswordAuthenticator/'
+        -e 's/^materialized_views_enabled:.*/materialized_views_enabled: true/'
+        -e 's/^user_defined_functions_enabled:.*/user_defined_functions_enabled: true/'
+        /etc/cassandra/cassandra.yaml
+        && exec docker-entrypoint.sh cassandra -f
+    environment:
+      MAX_HEAP_SIZE: 512M
+      HEAP_NEWSIZE: 128M
+    ports:
+      - "59042:9042"
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'describe keyspaces'"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 20s
+
+  # ScyllaDB (CQL-compatible), one shard and a small memory budget, user-defined functions on
+  # (Lua), started with
+  # `docker compose --profile scylla up -d --wait scylla`.
+  scylla:
+    image: scylladb/scylla:2025.1
+    profiles: [scylla]
+    command: --smp 1 --memory 750M --overprovisioned 1 --developer-mode 1 --enable-user-defined-functions 1 --experimental-features udf
+    ports:
+      - "59043:9042"
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces'"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 20s
