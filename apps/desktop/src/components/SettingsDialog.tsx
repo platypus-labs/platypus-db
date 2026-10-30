@@ -45,6 +45,7 @@ const PANELS: {
 const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
   "Appearance": { icon: "theme", about: msg("Language, theme, colors and the size of the interface.") },
   "Navigator": { icon: "sidebar", about: msg("How the navigator lists your databases and objects.") },
+  "Driver updates": { icon: "refresh", about: msg("When PlatypusDB looks for newer versions of the downloaded drivers.") },
   "SQL editor": { icon: "sql", about: msg("Editing, completion and checking of SQL.") },
   "Results": { icon: "table", about: msg("How results are shown, formatted and exported.") },
   "Safety": { icon: "lock", about: msg("What PlatypusDB asks before changes, and what it blocks.") },

@@ -2931,6 +2931,7 @@ const pt: Record<string, string> = {
   "Logs and reports to help find and fix problems.": "Logs e relatórios para encontrar e resolver problemas.",
   "Every command and its key combination.": "Cada comando e sua combinação de teclas.",
   "Recent": "Recentes",
+  "When PlatypusDB looks for newer versions of the downloaded drivers.": "Quando o PlatypusDB procura versões mais recentes dos drivers baixados.",
 };
 
 export default pt;

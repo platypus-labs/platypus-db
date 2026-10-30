@@ -2931,6 +2931,7 @@ const zh: Record<string, string> = {
   "Logs and reports to help find and fix problems.": "用于查找和解决问题的日志与报告。",
   "Every command and its key combination.": "每个命令及其快捷键。",
   "Recent": "最近使用",
+  "When PlatypusDB looks for newer versions of the downloaded drivers.": "PlatypusDB 何时检查已下载驱动的新版本。",
 };
 
 export default zh;
