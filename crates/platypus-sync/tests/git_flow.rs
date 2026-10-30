@@ -142,6 +142,8 @@ fn remote_flow() {
     fs::create_dir(&one_dir).unwrap();
     git::init(&one_dir).unwrap();
     git_ok(&one_dir, &["checkout", "-q", "-b", "main"]);
+    // Line endings as written, whatever the machine's `core.autocrlf` (true on Windows).
+    git_ok(&one_dir, &["config", "core.autocrlf", "false"]);
     git_ok(&one_dir, &["remote", "add", "origin", url]);
     fs::write(one_dir.join("a.sql"), "select 1;\n").unwrap();
     git::commit(&one_dir, &one("a.sql"), "first", Some(&id())).unwrap();
@@ -154,7 +156,10 @@ fn remote_flow() {
 
     // A second clone changes the file and pushes.
     let two_dir = root.join("two");
-    git_ok(root, &["clone", "-q", url, "two"]);
+    git_ok(
+        root,
+        &["clone", "-q", "-c", "core.autocrlf=false", url, "two"],
+    );
     git_ok(&two_dir, &["config", "user.name", "Two"]);
     git_ok(&two_dir, &["config", "user.email", "two@example.com"]);
     fs::write(two_dir.join("a.sql"), "select 1;\nselect 2;\n").unwrap();
