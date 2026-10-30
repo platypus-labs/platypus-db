@@ -125,8 +125,7 @@ async function dragScripts(page, dir) {
   await page.waitFor(`${scriptRow("lib")} !== undefined`);
 
   let lit = null;
-  await page.dragEl(scriptRow("report"), scriptRow("lib"), {
-    fromAt: [0.3, 0.5],
+  await page.dragEl(`${scriptRow("report")}.querySelector('.tree-label')`, scriptRow("lib"), {
     toAt: [0.3, 0.5],
     before: async () => (lit = await page.eval(`document.querySelector('.script-row.drop-into')?.dataset.path`)),
   });
@@ -137,8 +136,7 @@ async function dragScripts(page, dir) {
   assert.equal(await page.eval(`document.querySelector('.drop-into') === null`), true);
 
   // Onto the folder it is in: nothing moves, nothing is outlined.
-  await page.dragEl(scriptRow("report"), scriptRow("lib"), {
-    fromAt: [0.3, 0.5],
+  await page.dragEl(`${scriptRow("report")}.querySelector('.tree-label')`, scriptRow("lib"), {
     toAt: [0.3, 0.5],
     before: async () => (lit = await page.eval(`document.querySelector('.drop-into') !== null`)),
   });
@@ -147,8 +145,7 @@ async function dragScripts(page, dir) {
   assert.ok(existsSync(moved), moved);
 
   // Onto the header: back to the top of the scripts.
-  await page.dragEl(scriptRow("report"), `document.querySelector('.scripts-header .sidebar-title')`, {
-    fromAt: [0.3, 0.5],
+  await page.dragEl(`${scriptRow("report")}.querySelector('.tree-label')`, `document.querySelector('.scripts-header .sidebar-title')`, {
     before: async () => (lit = await page.eval(`document.querySelector('.scripts-header')?.classList.contains('drop-into')`)),
   });
   assert.equal(lit, true);

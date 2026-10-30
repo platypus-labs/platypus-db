@@ -126,9 +126,9 @@ export default async function (page, { dir, shots }) {
   const editor = `${shownEditors}[0]`;
   const content = `${editor}.querySelector('.cm-content')`;
   const drop = async (options = {}) => {
-    const from = await page.rectOf(row("orders"));
+    const from = await page.rectOf(`${row("orders")}.querySelector('.tree-label')`);
     const to = await page.rectOf(content);
-    await page.drag(from.x + 40, from.y + from.h / 2, to.x + 40, to.y + 8, options);
+    await page.drag(from.x + from.w / 2, from.y + from.h / 2, to.x + 40, to.y + 8, options);
   };
   let ghost = null;
   await drop({ before: async () => (ghost = await page.eval(`document.querySelector('.drag-ghost')?.textContent`)) });
@@ -148,8 +148,8 @@ export default async function (page, { dir, shots }) {
   await page.sleep(300);
   assert.equal(await page.eval(editorText(editor)), text);
   // Released outside any editor: nothing either, and the row is not dragged anywhere.
-  const r = await page.rectOf(row("orders"));
-  await page.drag(r.x + 40, r.y + r.h / 2, r.x + 40, r.y + r.h / 2 + 60);
+  const r = await page.rectOf(`${row("orders")}.querySelector('.tree-label')`);
+  await page.drag(r.x + r.w / 2, r.y + r.h / 2, r.x + r.w / 2, r.y + r.h / 2 + 60);
   await page.sleep(300);
   assert.equal(await page.eval(editorText(editor)), text);
 

@@ -80,7 +80,7 @@ async function answerName(page, name) {
 const EDGE = { before: 0.1, into: 0.5, after: 0.9 };
 
 /** Drags the row `from` onto the row `to`, at `where` of it. */
-const drag = (page, from, to, where) => page.dragEl(treeRow(from), treeRow(to), { fromAt: [0.3, 0.5], toAt: [0.3, EDGE[where]] });
+const drag = (page, from, to, where) => page.dragEl(`${treeRow(from)}.querySelector('.tree-label')`, treeRow(to), { toAt: [0.3, EDGE[where]] });
 
 /** The rail's square of the project `name`. */
 const square = (name) => `[...document.querySelectorAll('.project-rail .project-square')].find(s => s.title === ${JSON.stringify(name)})`;
