@@ -28,6 +28,7 @@ import {
 } from "./edits";
 import { type Box, type Point, placeTables } from "./layout";
 import { pathThrough, quickWire, routeWires } from "./route";
+import { Minimap } from "./Minimap";
 import { TablesDialog } from "./TablesDialog";
 import { LoadingState } from "../ui/State";
 
@@ -161,6 +162,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const routed = useRef(new Map<string, Point[]>());
   const lastPress = useRef<{ what: string; at: number } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
   // The tab as the last render saw it, for the actions that wait for the database.
   const latest = useRef(tab);
   latest.current = tab;
@@ -578,7 +580,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
             PNG…
           </button>
         </div>
-      <div className="erd-canvas">
+      <div className="erd-canvas" ref={canvas}>
         {tables === null && !error && <LoadingState className="erd-loading" title={t("Reading the tables…")} />}
         <svg
           ref={svg}
@@ -638,6 +640,12 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
           ))}
         </svg>
       </div>
+      <Minimap
+        canvas={canvas}
+        rects={boxes.map((b) => ({ name: b.name, ...pos(b.name), width: b.width, height: b.height }))}
+        zoom={tab.zoom}
+        version={size}
+      />
       </div>
       {note && (
         <NoteDialog
