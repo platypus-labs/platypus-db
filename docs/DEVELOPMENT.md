@@ -44,7 +44,7 @@ docker/                    dev databases with seed data
 samples/                   the SQLite sample database (wildlife.sql)
 scripts/                   build-windows.ps1 (installers; build-windows.cmd runs it), sample-db.mjs,
                            bench.py (benchmarks with thresholds), clean-target.mjs
-vendor/                    tiberius, patched for the SQL Server driver
+vendor/                    tiberius, tokio-postgres and scylla, patched for their drivers
 site/                      static presentation page
 ```
 
