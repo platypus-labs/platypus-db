@@ -64,6 +64,7 @@ for (const file of scenarios) {
   if (ctx.shots) mkdirSync(ctx.shots, { recursive: true });
   await scenario.setup?.(ctx);
   englishInterface(dir);
+  quietAnimations(dir, file);
   await agentDefaults(dir);
   if (scenario.duckdb !== false) installDuckDb(dir);
   const app = spawn(exe, [], {
@@ -227,12 +228,20 @@ async function agentDefaults(dir) {
   writeFileSync(file, text);
 }
 
-/** Scenarios read the English interface whatever the language of the machine, unless one
- *  sets the language itself. */
-function englishInterface(dir) {
+/** Adds `key = value` to the `[appearance]` table of the scenario's settings.toml, unless the
+ *  scenario sets that key itself. */
+function appearanceDefault(dir, key, value) {
   const file = join(dir, "settings.toml");
   const text = existsSync(file) ? readFileSync(file, "utf8") : "";
-  if (/^language\s*=/m.test(text)) return;
-  const line = 'language = "en"';
+  if (new RegExp(`^${key}\s*=`, "m").test(text)) return;
+  const line = `${key} = ${value}`;
   writeFileSync(file, text.includes("[appearance]") ? text.replace("[appearance]", `[appearance]\n${line}`) : `[appearance]\n${line}\n\n${text}`);
 }
+
+/** Scenarios read the English interface whatever the language of the machine, unless one
+ *  sets the language itself. */
+const englishInterface = (dir) => appearanceDefault(dir, "language", '"en"');
+
+/** Animations are off, so a scenario never waits for a transition, except the one that tests
+ *  motion (or any that sets the key itself). */
+const quietAnimations = (dir, file) => file === "customize-motion-sqlite.mjs" || appearanceDefault(dir, "animations", '"off"');
