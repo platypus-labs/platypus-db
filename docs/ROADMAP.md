@@ -92,6 +92,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 | Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
 | Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
+| Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
 | Scenari E2E del gruppo Q (P3) scritti in un container Linux e mai eseguiti: `sensitive-columns-sqlite` (segni, mascheramento, intestazioni, export), `column-usage-sqlite` (Used by: viste, trigger, script, Refresh). Eseguirli su Windows dopo la build di release e correggere scenari o codice | gruppo Q, 2026-10-30 |
 
 ### Lock dei gruppi
@@ -120,7 +121,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ completato |
 | O — Collaborazione e sync | 🔒 Delfa · group-o-collab · 2026-10-30 |
-| P — Piattaforma, qualità e release | 🔒 Claude · claude/exciting-galileo-ukai8j · 2026-10-30 |
+| P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
@@ -1137,6 +1138,14 @@ dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri
 `scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
 distribuzione;
 la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program).
+Dal 30 ottobre 2026: manifest per winget, Homebrew, AUR e Flathub in `packaging/`, riempiti
+con versione e SHA-256 degli installer da `scripts/packaging.mjs` (test in
+`scripts/packaging.test.mjs`); installata da Flatpak o AUR, l'app annuncia la nuova versione
+senza installarla (marker `share/platypusdb/package-manager`). Immagine di anteprima social
+1280×640 (`docs/brand/social-preview.png`, da `social-preview.html` con
+`scripts/social-preview.mjs`) e testi della vetrina (descrizione, topic, Discussions, `good
+first issue`) in RELEASING.md. La pubblicazione dei pacchetti e le impostazioni del
+repository aspettano che diventi pubblico.
 
 | Attività | Prio |
 |---|---|
@@ -1153,11 +1162,11 @@ la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Prog
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
-| Distribuzione: winget, Homebrew cask, Flatpak, AUR | P3 |
+| Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
-| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire | P2 |
+| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire (pronti l'immagine `docs/brand/social-preview.png` e i testi in [RELEASING.md](RELEASING.md), "Repository showcase"; restano le impostazioni su GitHub, da fare quando il repository è pubblico) | P2 |
 | ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
 | ✅ 🆕 Le stesse GIF nel sito (`site/`) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |

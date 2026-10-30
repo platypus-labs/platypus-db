@@ -50,6 +50,14 @@ live in `data`, and the folder can move to another machine or a USB stick. Saved
 in the system's keychain unless a master password keeps them in the folder too. A portable
 copy updates by replacing its executable; the welcome screen says `portable` beside the version.
 
+## Package managers
+
+Besides the installers of each release, the app can come from winget
+(`winget install PaoloCisly.PlatypusDB`), Homebrew (`brew install --cask platypusdb`), the AUR
+(`platypusdb-bin`) and Flathub (`dev.platypusdb.desktop`), once each package is published.
+Installed from Flatpak or the AUR, the app says when a new version is out but leaves the update
+to the package manager.
+
 ## Connections
 
 ![Choosing the database for a new connection](screenshots/connections.png)
