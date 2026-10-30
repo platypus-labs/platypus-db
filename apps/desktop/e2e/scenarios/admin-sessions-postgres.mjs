@@ -102,7 +102,7 @@ export default async function (page) {
     assert.match(await page.eval(`document.querySelector('.modal.confirm p').textContent`), new RegExp(`End session ${holderId} of platypus`));
     await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Cancel').click()`);
     await page.waitFor(`document.querySelector('.modal.confirm') === null`);
-    assert.notEqual(await page.eval(`${rowWith("e2e_holder")}`), undefined);
+    assert.equal(await page.eval(`${rowWith("e2e_holder")} !== undefined`), true);
 
     // Ending it closes the holder's psql and rolls back its update.
     await page.eval(`${adminButton("End session")}.click()`);
@@ -126,7 +126,7 @@ export default async function (page) {
     const late = background(DB, "SELECT pg_sleep(60) AS e2e_late;\n");
     try {
       await page.sleep(3000);
-      assert.equal(await page.eval(`${rowWith("e2e_late")}`), undefined, "a manual list refreshed by itself");
+      assert.equal(await page.eval(`${rowWith("e2e_late")} === undefined`), true, "a manual list refreshed by itself");
       await page.eval(`${adminTab}.querySelector('button[aria-label="Refresh now"]').click()`);
       await page.waitFor(`${rowWith("e2e_late")} !== undefined`, 10_000);
     } finally {
@@ -134,6 +134,6 @@ export default async function (page) {
     }
   } finally {
     for (const s of [holder, waiter]) s.child.kill();
-    sh(DB, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name LIKE 'e2e-%' OR query LIKE '%e2e_late%'; DROP TABLE IF EXISTS ${TABLE};`);
+    sh(DB, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND (application_name LIKE 'e2e-%' OR query LIKE '%e2e_late%'); DROP TABLE IF EXISTS ${TABLE};`);
   }
 }

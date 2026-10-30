@@ -134,7 +134,7 @@ export async function statisticsFlow(page, { db, name, table, slow, path, operat
   await page.eval(`${statementRow(slow)}.click()`);
   await page.waitFor(`${adminTab}.querySelector('.admin-details .admin-statement')?.textContent.includes(${JSON.stringify(slow)})`);
   assert.ok(Number((await page.eval(field("calls"))).replace(/\D/g, "")) >= 2, "run twice");
-  assert.notEqual(await page.eval(`${adminButton("Explain")}`), undefined);
+  assert.equal(await page.eval(`${adminButton("Explain")} !== undefined`), true);
   await setSearch("no statement is like this one");
   await page.waitFor(`${adminTab}.querySelector('.admin-empty')?.textContent === 'No statements match.'`);
   await setSearch("");
