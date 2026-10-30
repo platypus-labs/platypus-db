@@ -289,8 +289,18 @@ pub(super) fn position(rows: &[TextRow]) -> Result<DebugPosition> {
     Ok(DebugPosition {
         routine: row.text(0),
         name: row.text(2),
-        line: line(row, 1),
+        line: source_line(row, 1),
     })
+}
+
+/// The debugger reports the lines it stops at one more than the lines of `pldbg_get_source`
+/// (which is what breakpoints and the stack's frames use): a stop crosses this offset so that
+/// every line the app sees is a line of the source it shows.
+const SERVER_LINE_OFFSET: i32 = 1;
+
+/// A position's line, as a line of the source.
+fn source_line(row: &TextRow, i: usize) -> i32 {
+    line(row, i) - SERVER_LINE_OFFSET
 }
 
 fn line(row: &TextRow, i: usize) -> i32 {
@@ -623,7 +633,7 @@ mod tests {
             DebugPosition {
                 routine: "16384".to_owned(),
                 name: "f(integer)".to_owned(),
-                line: 7
+                line: 6
             }
         );
         assert!(position(&[]).is_err());

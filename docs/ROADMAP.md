@@ -90,7 +90,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 | Problema | Trovato |
 |---|---|
 | Progetti condivisi (gruppo O): il file `platypus-project.toml` di un collega può ancora impostare le istruzioni di init di una connessione (SQL eseguito a ogni collegamento), applicate senza chiedere. Decidere se non farle viaggiare, tenerle in sola lettura o chiederne conferma la prima volta, in `crates/platypus-sync/src/portable.rs` (`guard`) | gruppo O, 2026-10-30 |
-| Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
+| Debugger PL/pgSQL del gruppo J: l'immagine e i test di conformance sono verificati su un server vero (30 ottobre 2026, corretto lo sfasamento di una riga delle posizioni). Resta da lanciare su Windows lo scenario `admin-debugger-postgres` (serve l'eseguibile di release e il container `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`), poi eliminare questa riga | gruppo J, 2026-10-30 |
 | Scenari E2E del gruppo O scritti in un container Linux e mai eseguiti: `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
 | Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
 
@@ -700,7 +700,7 @@ storico; stati applicata, pendente, divergente, fallita, mancante. Gli scenari E
 ### Gruppo J — Amministrazione del server
 
 **Stato: P2 completati, P3 in parte** (fatti utenti e ruoli, dashboard e parametri del server;
-il debugger PL/pgSQL è scritto ma mai provato su un server con `pldebugger`, vedi "Correzioni
+il debugger PL/pgSQL è provato su un server con `pldebugger`, lo scenario E2E resta da lanciare, vedi "Correzioni
 aperte"). Dal 30 ottobre 2026: **parametri del server** (`server_parameters`, capacità omonima:
 `pg_settings`, variabili di MySQL con la loro origine, `information_schema.SYSTEM_VARIABLES` di
 MariaDB, `sys.configurations` di SQL Server con un elenco dei default, `system.settings` e
@@ -721,7 +721,7 @@ PL/pgSQL** (`Connection::debugger`, capacità `debugger`, `platypus-driver-pg/sr
 (`pldbg_oid_debug`, `pldbg_attach_to_port`), passi dentro e sopra, continua, breakpoint nella
 colonna del sorgente, stack, variabili modificabili, risultato e messaggi alla fine, Stop che
 non lascia la sessione bloccata; profilo `pldebug` di `docker/compose.yml` con l'immagine che
-installa `pldebugger` (non costruibile nel container cloud: apt bloccato). Limiti: niente
+installa `pldebugger`. Limiti: niente
 breakpoint globali né funzioni trigger; serve `plugin_debugger` in `shared_preload_libraries`.
 Dal 29 ottobre 2026: query più costose e statistiche di tabelle e
 indici (`top_queries` e `object_statistics`, capacità `server_statistics`; PostgreSQL da
@@ -763,7 +763,7 @@ solo i lock coinvolti in un'attesa.
 | ✅ Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
 | ✅ Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
 | ✅ **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
-| Debugger PL/pgSQL (scritto, da provare con il profilo `pldebug`) | P3 | D+ |
+| ✅ Debugger PL/pgSQL (conformance provata sul profilo `pldebug`; lo scenario E2E resta da lanciare) | P3 | D+ |
 | ✅ 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
 | ✅ 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
 | ✅ 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
