@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuova connessione, dati</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .split { display: flex; gap: var(--sp-5); }
+  .split .content { flex: 1; min-width: 0; }
+  .envseg span { gap: var(--sp-2); }
+  .sw { display: inline-flex; gap: var(--sp-2); }
+  .sw i { width: 18px; height: 18px; border-radius: var(--r-1); display: block; }
+  .sw i.on { box-shadow: 0 0 0 2px var(--bg-raised), 0 0 0 3.5px var(--fg-strong); }
+  .pair { display: grid; grid-template-columns: 1fr 96px; gap: var(--sp-3); }
+  .dlg-top { margin-bottom: var(--sp-4); }
+  .variant { margin-top: var(--sp-5); }
+  .editor-pane { height: 34%; border-bottom: 1px solid var(--border); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+  </div>
+  <div class="editor-pane"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+    <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+    <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o <span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+  </div></div>
+  <div class="grid-wrap">
+    <table class="grid">
+      <thead><tr><th></th><th>city<small>text</small></th><th>revenue<small>numeric</small></th></tr></thead>
+      <tbody>
+        <tr><td class="rn">1</td><td>Roma</td><td class="num">8 412.50</td></tr>
+        <tr><td class="rn">2</td><td>Milano</td><td class="num">7 950.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="scrim">
+  <div class="dialog xl" style="width:900px">
+    <header>
+      <span class="drv lg pg">Pg</span>
+      <div>
+        <h2>Nuova connessione PostgreSQL</h2>
+        <p>Compila i dati di accesso. Le altre sezioni sono facoltative.</p>
+      </div>
+      <button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button>
+    </header>
+    <div class="body">
+      <div class="dlg-top"><div class="steps"><span class="done"><b>1</b> Database</span><i></i><span class="on"><b>2</b> Connessione</span></div></div>
+      <div class="split">
+        <nav class="subnav">
+          <span class="on"><i data-i="plug" class="sm"></i>Generale</span>
+          <span><i data-i="globe" class="sm"></i>Rete e SSH</span>
+          <span><i data-i="sliders" class="sm"></i>Avanzate</span>
+          <span><i data-i="cpu" class="sm"></i>Driver</span>
+        </nav>
+        <div class="content">
+          <div class="form-section">
+            <div class="form">
+              <label>Nome</label><div class="input"><span class="strong">Shop staging</span></div>
+              <label>Progetto</label><div class="select">Shop</div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Connessione</h4>
+            <div class="form">
+              <label>Modalità</label><div><div class="seg"><span class="on">Host</span><span>URL</span></div></div>
+              <label>Host</label><div class="pair"><div class="input"><span>db-staging.shop.internal</span></div><div class="input"><span class="mono">5432</span></div></div>
+              <div class="help">Host e porta. La porta predefinita di PostgreSQL è 5432.</div>
+              <label>Database</label><div class="input"><span>shop</span></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Autenticazione</h4>
+            <div class="form">
+              <label>Utente</label><div class="input"><span>shop_app</span></div>
+              <label>Password salvata</label><div class="select">Salvata nel portachiavi</div>
+              <div class="help">Alternative: Chiedi ogni volta, oppure Gestore credenziali (1Password, Bitwarden, Vault).</div>
+              <label>Password</label><div class="input"><span>••••••••••••</span><span class="grow"></span><i data-i="view" class="sm muted"></i></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>Aspetto e sicurezza</h4>
+            <div class="form">
+              <label>Ambiente</label><div><div class="seg envseg"><span>Dev</span><span class="on">Test</span><span>Prod</span></div></div>
+              <label>Colore</label><div class="sw"><i style="background:#1d7f74"></i><i style="background:#4b5bb8" class="on"></i><i style="background:#c46a14"></i><i style="background:#a1382f"></i><i style="background:#6b7280"></i></div>
+              <label>Sola lettura</label><div class="row"><span class="toggle"></span><span class="muted">Blocca INSERT, UPDATE, DELETE e modifiche allo schema</span></div>
+              <label>Agenti</label><div class="select" style="width:240px">Solo lettura</div>
+              <div class="help">Cosa possono fare gli agenti collegati a questa connessione.</div>
+            </div>
+          </div>
+          <div class="variant">
+            <div class="h2">Variante: test fallito</div>
+            <div class="banner err" style="border:1px solid var(--border-strong)">
+              <i data-i="error"></i>
+              <div class="grow"><div class="strong">Connessione non riuscita</div><div class="muted">password authentication failed for user "shop_app"</div></div>
+              <div class="acts"><button class="btn sm">Dettagli</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span class="l"><button class="btn"><i data-i="plug" class="sm"></i>Test connessione</button>
+        <span class="row" style="gap:var(--sp-2);color:var(--ok)"><i data-i="check" class="sm"></i>Connesso · PostgreSQL 16.4 · 38 ms</span></span>
+      <button class="btn">Indietro</button>
+      <button class="btn">Annulla<kbd>Esc</kbd></button>
+      <button class="btn primary">Salva e connetti<kbd>↵</kbd></button>
+    </footer>
+  </div>
+</div>
+
+<div class="mk-note" style="left:96px;top:180px"><b>Tre sezioni titolate</b>Connessione, Autenticazione, Aspetto e sicurezza: sempre sulla stessa griglia etichetta / controllo.</div>
+<div class="mk-note" style="left:96px;top:560px"><b>Test nel piè</b>Test connessione a sinistra con il risultato in linea; Salva e connetti è l'unica azione primaria.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

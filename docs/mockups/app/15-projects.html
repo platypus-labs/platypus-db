@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuovo progetto</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  /* Rail folders: the open one groups its projects on one background, the closed one is a 2x2 of their colors. */
+  .rail .folder-open { width: 44px; border-radius: var(--r-3); background: var(--active); padding: var(--sp-1) 0 var(--sp-1); display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+  .rail .folder-open .fh { width: 36px; height: 20px; display: grid; place-items: center; color: var(--fg-muted); }
+  .rail .folder-open .fh svg.i { width: 14px; height: 14px; }
+  .rail .folder-closed { width: 36px; height: 36px; border-radius: var(--r-3); background: var(--active); display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 5px; cursor: pointer; }
+  .rail .folder-closed i { display: block; border-radius: 3px; }
+  .rail .sq .tx { right: -3px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+  .prev { display: flex; align-items: center; gap: var(--sp-4); }
+  .prev .sq { width: 44px; height: 44px; border-radius: var(--r-3); display: grid; place-items: center; font: 700 15px var(--font-ui); color: #fff; }
+  .conns { border: 1px solid var(--border); border-radius: var(--r-2); overflow: hidden; margin-top: var(--sp-3); max-height: 188px; overflow-y: auto; }
+  .conns .item { padding: var(--sp-2) var(--sp-4); }
+  .conns .item .t { font-weight: var(--fw-med); }
+  .dialog > .body { padding-top: var(--sp-1); }
+</style>
+</head>
+<body data-shell="app" data-crumb='<b>Shop</b>'>
+<template id="rail">
+  <div class="sq all" title="Tutte le connessioni"><i data-i="database"></i></div>
+  <div class="div"></div>
+  <div class="folder-open" title="Negozio (aperta)">
+    <div class="fh"><i data-i="open"></i></div>
+    <div class="sq on" style="background:#c46a14" title="Shop">SH<span class="tx"></span></div>
+    <div class="sq" style="background:#a1382f" title="Shop staging">ST</div>
+  </div>
+  <div class="folder-closed" title="Clienti (chiusa)"><i style="background:#4b5bb8"></i><i style="background:#1d7f74"></i><i style="background:#6b7280"></i><i style="background:#c46a14"></i></div>
+  <div class="sq" style="background:#1d7f74" title="Analytics">AN</div>
+  <div class="sq add" title="Nuovo progetto"><i data-i="plus"></i></div>
+  <div class="foot"><button class="btn icon" title="Aiuto"><i data-i="keyboard"></i></button></div>
+</template>
+
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+  </div>
+  <div style="height:34%;border-bottom:1px solid var(--border)"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+    <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+    <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o <span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+    <div class="ln"><b>4</b><span><span class="kw">GROUP BY</span> c.city <span class="kw">ORDER BY</span> revenue <span class="kw">DESC</span>;</span></div>
+  </div></div>
+  <div class="grid-wrap">
+    <table class="grid">
+      <thead><tr><th></th><th>city<small>text</small></th><th>orders<small>bigint</small></th><th>revenue<small>numeric</small></th></tr></thead>
+      <tbody>
+        <tr><td class="rn">1</td><td>Roma</td><td class="num">42</td><td class="num">8 412.50</td></tr>
+        <tr><td class="rn">2</td><td>Milano</td><td class="num">39</td><td class="num">7 950.00</td></tr>
+        <tr><td class="rn">3</td><td>Napoli</td><td class="num">31</td><td class="num">5 120.75</td></tr>
+        <tr><td class="rn">4</td><td>Torino</td><td class="num">27</td><td class="num">4 809.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<div class="scrim">
+  <div class="dialog" style="width:620px">
+    <header>
+      <div>
+        <h2>Nuovo progetto</h2>
+        <p>Un progetto raccoglie connessioni, script e schede che usi insieme.</p>
+      </div>
+      <button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button>
+    </header>
+    <div class="body">
+      <div class="form-section">
+        <div class="form">
+          <label>Nome</label><div class="input focus"><span class="strong">Marketplace</span></div>
+          <label>Colore</label><div class="swatch-row"><i style="background:#c46a14"></i><i style="background:#1d7f74"></i><i style="background:#4b5bb8" class="on"></i><i style="background:#a1382f"></i><i style="background:#6b7280"></i><i style="background:#8c4fff"></i></div>
+          <label>Icona</label><div class="prev"><div class="sq" style="background:#4b5bb8">MA</div><span class="muted" style="font-size:var(--fs-sm)">Le iniziali del nome. Puoi scegliere un'icona al loro posto.</span></div>
+          <label>Cartella</label><div class="select" style="width:240px">Nessuna (livello principale)</div>
+        </div>
+      </div>
+      <div class="form-section">
+        <h4>Connessioni</h4>
+        <div class="row">
+          <div class="input search grow"><i data-i="search" class="sm"></i>Cerca tra le connessioni disponibili…</div>
+          <span class="muted" style="font-size:var(--fs-sm)">2 selezionate</span>
+        </div>
+        <div class="conns">
+          <div class="item"><span class="check on"><i></i></span><span class="drv pg">Pg</span><div class="grow"><div class="t">Shop dev</div><div class="d">db-dev.shop.internal</div></div><span class="badge dev">DEV</span></div>
+          <div class="item"><span class="check on"><i></i></span><span class="drv pg">Pg</span><div class="grow"><div class="t">Shop staging</div><div class="d">db-staging.shop.internal</div></div><span class="badge test">TEST</span></div>
+          <div class="item"><span class="check"><i></i></span><span class="drv pg">Pg</span><div class="grow"><div class="t">Shop prod</div><div class="d">db.shop.internal</div></div><span class="badge prod">PROD</span></div>
+          <div class="item"><span class="check"><i></i></span><span class="drv duck">Dk</span><div class="grow"><div class="t">analytics.duckdb</div><div class="d">File locale</div></div></div>
+          <div class="item"><span class="check"><i></i></span><span class="drv my">My</span><div class="grow"><div class="t">Legacy CRM</div><div class="d">crm.legacy.internal</div></div></div>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span class="l"><i data-i="info" class="sm"></i>Una connessione può stare in più progetti.</span>
+      <button class="btn">Annulla<kbd>Esc</kbd></button>
+      <button class="btn primary">Crea progetto<kbd>↵</kbd></button>
+    </footer>
+  </div>
+</div>
+
+<div class="mk-note" style="left:70px;top:200px"><b>Cartella aperta</b>Testata con l'icona e i suoi progetti sullo stesso sfondo, come i server raggruppati di Discord.</div>
+<div class="mk-note" style="left:70px;top:372px"><b>Cartella chiusa</b>Quadrato con i colori dei progetti in 2x2; un clic la apre.</div>
+<div class="mk-note" style="left:70px;top:480px"><b>Rail</b>Quadrato pieno = progetto, tratto bianco a sinistra = attivo, tratteggiato = Nuovo progetto. Si trascina un progetto su un altro per creare una cartella.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

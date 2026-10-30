@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attività del server</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin: var(--sp-4) 0; }
+  .kpis .card .lb { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .kpis .card .kpi { margin-top: var(--sp-1); }
+  .kpis .card .sub { font-size: var(--fs-xs); color: var(--fg-muted); }
+  .kpis .card.warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+  .tools { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-4) 0 var(--sp-3); }
+  .grid-box { border: 1px solid var(--border); border-radius: var(--r-2); overflow: hidden; }
+  .grid td.q { font-family: var(--font-mono); color: var(--fg-muted); max-width: 300px; }
+  .grid tr.warnrow td { background: var(--warn-bg) !important; }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.act { background: var(--ok-bg); color: var(--ok); }
+  .pre { margin: 0; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-1); background: var(--bg-input); font: var(--fs-sm)/1.6 var(--font-mono); white-space: pre-wrap; }
+</style>
+</head>
+<body data-shell="app" data-env="prod" data-crumb='<b>Shop</b><span>/</span><span class="dot err"></span><span>Shop prod</span><span>/</span><span>Attività</span>'>
+<div class="main">
+  <div class="tabs">
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab on"><span class="env" style="background:var(--error)"></span><i data-i="activity" class="sm"></i>Attività · Shop prod<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="prodtint">
+    <div class="phead">
+      <div class="pic" style="color:var(--error)"><i data-i="activity"></i></div>
+      <div>
+        <h1>Attività del server <span class="badge prod" style="vertical-align:middle">PROD</span></h1>
+        <div class="sub">Shop prod · PostgreSQL 16.4 · aggiornato ogni 5 s</div>
+      </div>
+      <div class="acts">
+        <button class="btn primary"><i data-i="refresh" class="sm"></i>Aggiorna ora</button>
+        <button class="btn"><i data-i="pause" class="sm"></i>Metti in pausa</button>
+        <button class="btn icon" title="Altro"><i data-i="more"></i></button>
+      </div>
+    </div>
+    <div class="subtabs">
+      <span class="on">Sessioni <span class="n">12</span></span><span>Blocchi <span class="n">2</span></span><span>Utenti e ruoli</span><span>Statistiche</span><span>Manutenzione</span>
+    </div>
+  </div>
+
+  <div class="obj-split">
+    <div class="pbody" style="padding-top:0">
+      <div class="kpis">
+        <div class="card"><div class="lb">Connessioni</div><div class="kpi">38 <span class="muted" style="font-size:var(--fs-md);font-weight:400">/ 100</span></div><div class="sub">12 attive, 26 inattive</div></div>
+        <div class="card"><div class="lb">Transazioni al secondo</div><div class="kpi">412</div><div class="sub">commit 409 · rollback 3</div></div>
+        <div class="card"><div class="lb">Cache hit</div><div class="kpi">99,2 %</div><div class="sub">buffer condivisi</div></div>
+        <div class="card warn"><div class="lb">Query lente</div><div class="kpi" style="color:var(--warn)">3</div><div class="sub">oltre 5 s in esecuzione</div></div>
+      </div>
+
+      <div class="banner warn">
+        <i data-i="alert"></i>
+        <div class="grow"><span class="strong">1 sessione in attesa da 42 s</span> bloccata dal PID 4182 (idle in transaction da 8 min).</div>
+        <div class="acts"><button class="btn sm">Mostra catena</button></div>
+      </div>
+
+      <div class="tools">
+        <div class="input search" style="width:240px"><i data-i="search" class="sm"></i>Filtra per utente, query…</div>
+        <div class="seg"><span class="on">Tutte</span><span>Attive</span><span>In attesa</span><span>Idle in transaction</span></div>
+        <span class="grow"></span>
+        <span class="muted" style="font-size:var(--fs-sm)">12 sessioni</span>
+      </div>
+      <div class="grid-box">
+        <table class="grid">
+          <thead><tr><th>PID</th><th>Utente</th><th>Applicazione</th><th>Stato</th><th>Durata</th><th>Ultima istruzione</th></tr></thead>
+          <tbody>
+            <tr><td>4101</td><td>shop_app</td><td>shop-api</td><td><span class="badge act">active</span></td><td class="num">0,4 s</td><td class="q">SELECT * FROM orders WHERE customer_id = $1</td></tr>
+            <tr class="warnrow"><td>4182</td><td>shop_admin</td><td>psql</td><td><span class="badge warn">idle in transaction</span></td><td class="num">8 min</td><td class="q">UPDATE orders SET status = 'paid' WHERE id = 2931</td></tr>
+            <tr class="sel"><td>4310</td><td>shop_app</td><td>shop-api</td><td><span class="badge warn">waiting</span></td><td class="num">42 s</td><td class="q">UPDATE orders SET status = 'shipped' WHERE id = 2931</td></tr>
+            <tr><td>4315</td><td>shop_app</td><td>shop-api</td><td><span class="badge act">active</span></td><td class="num">1,2 s</td><td class="q">SELECT sum(total) FROM orders WHERE placed_at &gt; …</td></tr>
+            <tr><td>4322</td><td>report</td><td>metabase</td><td><span class="badge act">active</span></td><td class="num">7,8 s</td><td class="q">SELECT c.city, count(*) FROM orders o JOIN customers …</td></tr>
+            <tr><td>4330</td><td>shop_app</td><td>shop-api</td><td><span class="badge neutral">idle</span></td><td class="num">12 s</td><td class="q">COMMIT</td></tr>
+            <tr><td>4331</td><td>shop_app</td><td>shop-api</td><td><span class="badge neutral">idle</span></td><td class="num">30 s</td><td class="q">SELECT id FROM products WHERE sku = $1</td></tr>
+            <tr><td>4340</td><td>backup</td><td>pg_dump</td><td><span class="badge act">active</span></td><td class="num">3 min</td><td class="q">COPY public.order_items TO stdout</td></tr>
+            <tr><td>4352</td><td>shop_app</td><td>shop-api</td><td><span class="badge neutral">idle</span></td><td class="num">2 min</td><td class="q">SELECT * FROM customers WHERE id = $1</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <aside class="panel-r" style="width:320px">
+      <header><span class="strong grow">Sessione 4310</span><span class="badge warn">waiting</span><button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button></header>
+      <div class="pb">
+        <dl class="kv" style="margin:0">
+          <dt>Utente</dt><dd>shop_app</dd>
+          <dt>Applicazione</dt><dd>shop-api</dd>
+          <dt>Client</dt><dd class="mono">10.0.4.21:51822</dd>
+          <dt>In attesa di</dt><dd>blocco su orders (riga 2931)</dd>
+          <dt>Bloccata da</dt><dd><span class="mono">PID 4182</span></dd>
+          <dt>Iniziata</dt><dd>42 s fa</dd>
+        </dl>
+        <div>
+          <div class="h2">Istruzione in esecuzione</div>
+          <pre class="pre"><span class="kw">UPDATE</span> orders
+<span class="kw">SET</span> status = <span class="st">'shipped'</span>,
+    shipped_at = now()
+<span class="kw">WHERE</span> id = <span class="nu">2931</span>;</pre>
+          <button class="btn sm ghost" style="margin-top:var(--sp-2)"><i data-i="copy" class="sm"></i>Copia</button>
+        </div>
+        <div class="col" style="gap:var(--sp-2)">
+          <button class="btn"><i data-i="stop" class="sm"></i>Annulla istruzione</button>
+          <button class="btn danger"><i data-i="ban" class="sm"></i>Termina sessione</button>
+          <span class="muted" style="font-size:var(--fs-xs)">Termina chiude la connessione e annulla la transazione aperta. Su Shop prod chiede conferma.</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="status"><span>Shop prod</span><span>12 sessioni</span><span class="r"><span>Aggiornato 3 s fa</span></span></div>
+</div>
+
+<div class="mk-note" style="left:96px;top:96px"><b>Ambiente produzione</b>Come oggi: la cornice della finestra prende la tinta della produzione; in più il badge PROD e il pallino rosso della scheda.</div>
+<div class="mk-note" style="left:96px;top:690px"><b>Azioni pericolose separate</b>Annulla istruzione è neutro; Termina sessione è rosso e chiede conferma. Entrambi nel pannello, non solo nel menu.</div>
+<div class="mk-note" style="left:640px;top:690px"><b>Avviso con azione</b>Il problema è scritto in una frase e Mostra catena porta alla causa.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

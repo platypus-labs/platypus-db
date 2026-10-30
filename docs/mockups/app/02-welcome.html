@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Benvenuto</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  /* The app's Welcome today, two columns, on the shared tokens. */
+  .welcome { margin: 0 auto; width: 100%; max-width: 1180px; padding: var(--sp-9) var(--sp-8); font-size: 14px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-9); }
+  .intro { flex: 1 1 420px; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-5); }
+  /* The banner art is 4:1 with its own margins; one version per background. */
+  .intro h1 { margin: 0 0 0 -76px; }
+  .banner { display: block; width: min(560px, 100%); height: auto; }
+  :root[data-theme="dark"] .banner.on-light, :root[data-theme="light"] .banner.on-dark { display: none; }
+  .lead { margin: 0; max-width: 46ch; font-size: 18px; line-height: 1.55; color: var(--fg); }
+  .cta { height: 44px; padding: 0 var(--sp-7); border-radius: var(--r-2); font-size: 15px; }
+  .actions { flex: 1 1 400px; display: flex; flex-direction: column; gap: var(--sp-3); }
+  .wcard { display: flex; align-items: flex-start; gap: var(--sp-4); padding: var(--sp-5) var(--sp-6); border-radius: var(--r-3); background: var(--bg-side); cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
+  .wcard:hover { background: var(--active); }
+  .wcard > svg.i { width: 20px; height: 20px; margin-top: 1px; color: var(--fg-muted); }
+  .wcard strong { display: block; margin-bottom: var(--sp-1); font-size: 16px; color: var(--fg-strong); }
+  .wcard span.muted { font-size: 14px; line-height: 1.45; }
+  /* Below the two columns: recent items and shortcuts. */
+  .more { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); }
+  .rec { display: flex; align-items: center; gap: var(--sp-3); height: 42px; padding: 0 var(--sp-4); border-top: 1px solid var(--border); }
+  .rec:first-child, .sc:first-child { border-top: 0; }
+  .rec .when { margin-left: auto; color: var(--fg-muted); font-size: var(--fs-sm); }
+  .more .h2 { font-size: var(--fs-sm); }
+  .more .state h3 { font-size: 15px; } .more .state p { font-size: 14px; }
+  .sc { display: flex; align-items: center; gap: var(--sp-3); height: 38px; padding: 0 var(--sp-4); border-top: 1px solid var(--border); }
+  .sc kbd { margin-left: auto; }
+  .empty-var { border: 1px dashed var(--border-strong); border-radius: var(--r-2); }
+  .empty-var .state { padding: var(--sp-6); }
+  .side-empty { flex: 1; }
+  .side-empty .acts { flex-direction: column; align-items: stretch; width: 100%; }
+</style>
+</head>
+<body data-shell="app" data-crumb="<b>Nuovo progetto</b>">
+<template id="side">
+  <div class="side-head"><span class="title">Nuovo progetto</span>
+    <button class="btn icon sm" title="Nuova connessione"><i data-i="plus" class="sm"></i></button>
+    <button class="btn icon sm" title="Altro"><i data-i="more" class="sm"></i></button></div>
+  <div class="state side-empty">
+    <div class="pic"><i data-i="database"></i></div>
+    <h3>Nessuna connessione</h3>
+    <p>Aggiungi un database per esplorare tabelle, scrivere query e vedere i dati.</p>
+    <div class="acts">
+      <button class="btn primary"><i data-i="plus" class="sm"></i>Nuova connessione</button>
+      <button class="btn"><i data-i="download" class="sm"></i>Importa connessioni</button>
+    </div>
+  </div>
+  <div class="side-sec">
+    <div class="side-head"><span class="title" style="font-weight:600">Script</span>
+      <button class="btn icon sm" title="Nuovo script"><i data-i="plus" class="sm"></i></button></div>
+    <div class="muted" style="padding:0 var(--sp-4) var(--sp-4);font-size:var(--fs-sm)">Gli script salvati compaiono qui.</div>
+  </div>
+</template>
+
+<div class="main">
+  <div class="tabs">
+    <div class="new" title="Nuova scheda (Ctrl T)"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="pbody">
+    <div class="welcome">
+      <div class="intro">
+        <h1>
+          <img class="banner on-dark" src="../assets/img/platypus-db-on-dark.png" alt="PlatypusDB">
+          <img class="banner on-light" src="../assets/img/platypus-db-on-light.png" alt="PlatypusDB">
+        </h1>
+        <p class="lead">Un client SQL per i tuoi database e file di dati. Aggiungi una connessione per iniziare.</p>
+        <button class="btn primary cta"><i data-i="plus" class="sm"></i>Nuova connessione</button>
+        <p class="muted" style="margin:0;font-size:var(--fs-sm)">v0.9.0</p>
+      </div>
+
+      <div class="actions">
+        <div class="wcard"><i data-i="file"></i><span><strong>Apri un file di dati</strong><span class="muted">CSV, Parquet, JSON o un foglio di calcolo, interrogati con DuckDB. Puoi anche trascinarlo sulla finestra.</span></span></div>
+        <div class="wcard"><i data-i="database"></i><span><strong>Prova il database di esempio</strong><span class="muted">Un censimento di ornitorinchi in SQLite: tabelle collegate, una vista e qualche script, senza server.</span></span></div>
+        <div class="wcard"><i data-i="download"></i><span><strong>Importa connessioni</strong><span class="muted">Da DBeaver, DataGrip o pgAdmin.</span></span></div>
+      </div>
+
+      <div class="more">
+        <section>
+          <div class="h2">Recenti</div>
+          <div class="list">
+            <div class="rec"><span class="drv pg">Pg</span><span>Shop dev</span><span class="badge dev">DEV</span><span class="when">ieri</span></div>
+            <div class="rec"><i data-i="file" class="sm muted"></i><span>revenue_by_city.sql</span><span class="when">2 ore fa</span></div>
+            <div class="rec"><i data-i="file" class="sm muted"></i><span>cleanup_orders.sql</span><span class="when">3 giorni fa</span></div>
+            <div class="rec"><span class="drv duck">Dk</span><span>analytics.duckdb</span><span class="when">una settimana fa</span></div>
+          </div>
+        </section>
+        <section>
+          <div class="h2">Scorciatoie</div>
+          <div class="list">
+            <div class="sc"><i data-i="search" class="sm muted"></i>Cerca ovunque<kbd>Ctrl K</kbd></div>
+            <div class="sc"><i data-i="plus" class="sm muted"></i>Nuova connessione<kbd>Ctrl N</kbd></div>
+            <div class="sc"><i data-i="code" class="sm muted"></i>Nuovo editor SQL<kbd>Ctrl T</kbd></div>
+            <div class="sc"><i data-i="play" class="sm muted"></i>Esegui istruzione<kbd>Ctrl ↵</kbd></div>
+            <div class="sc"><i data-i="play" class="sm muted"></i>Esegui script<kbd>Alt X</kbd></div>
+            <div class="sc"><i data-i="panel" class="sm muted"></i>Mostra o nascondi il navigator<kbd>Ctrl B</kbd></div>
+            <div class="sc"><i data-i="keyboard" class="sm muted"></i>Tutte le scorciatoie<kbd>Ctrl /</kbd></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="status"><span>Nessuna connessione attiva</span></div>
+</div>
+
+<div class="mk-note" style="left:96px;top:330px"><b>Stato vuoto unico</b>Il navigator vuoto usa lo stesso schema di ogni stato vuoto: icona, titolo, una frase, azioni. Senza cronologia, Recenti mostra lo stesso schema.</div>
+<div class="mk-note" style="left:1180px;top:640px"><b>Come l'app di oggi</b>Stesse due colonne, stesso banner e stesse tre schede del Welcome attuale; cambiano solo spazi, raggi e font, presi dai token.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

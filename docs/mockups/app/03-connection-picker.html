@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuova connessione</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .grp { margin-top: var(--sp-5); }
+  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-2); }
+  .tile { display: flex; align-items: center; gap: var(--sp-3); height: 52px; padding: 0 var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-2); background: var(--bg-side); }
+  .tile:hover { border-color: var(--border-strong); background: var(--hover); }
+  .tile.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .tile .nm { color: var(--fg-strong); font-weight: var(--fw-med); line-height: 1.2; }
+  .tile .ds { color: var(--fg-muted); font-size: var(--fs-xs); line-height: 1.2; }
+  .dlg-top { display: flex; align-items: center; gap: var(--sp-5); margin-bottom: var(--sp-2); }
+  .dlg-top .steps { flex: none; }
+  .body .scroll { max-height: 420px; overflow: auto; margin: 0 calc(-1 * var(--sp-2)); padding: 0 var(--sp-2); }
+  .editor-pane { height: 34%; border-bottom: 1px solid var(--border); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+  </div>
+  <div class="editor-pane"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città, ultimi 30 giorni</span></div>
+    <div class="ln"><b>2</b><span><span class="kw">SELECT</span> c.city, <span class="kw">sum</span>(o.total) <span class="kw">AS</span> revenue</span></div>
+    <div class="ln"><b>3</b><span><span class="kw">FROM</span> orders o <span class="kw">JOIN</span> customers c <span class="kw">ON</span> c.id = o.customer_id</span></div>
+  </div></div>
+  <div class="grid-wrap">
+    <table class="grid">
+      <thead><tr><th></th><th>city<small>text</small></th><th>revenue<small>numeric</small></th></tr></thead>
+      <tbody>
+        <tr><td class="rn">1</td><td>Roma</td><td class="num">8 412.50</td></tr>
+        <tr><td class="rn">2</td><td>Milano</td><td class="num">7 950.00</td></tr>
+        <tr><td class="rn">3</td><td>Napoli</td><td class="num">5 120.75</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="status"><span>3 righe</span><span>27 ms</span></div>
+</div>
+
+<div class="scrim">
+  <div class="dialog wide">
+    <header>
+      <div>
+        <h2>Nuova connessione</h2>
+        <p>Scegli il tipo di database. Potrai cambiare tutto nel passo successivo.</p>
+      </div>
+      <button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button>
+    </header>
+    <div class="body">
+      <div class="dlg-top">
+        <div class="steps"><span class="on"><b>1</b> Database</span><i></i><span><b>2</b> Connessione</span></div>
+      </div>
+      <div class="row" style="margin-top:var(--sp-3)">
+        <div class="input grow"><i data-i="link" class="sm muted"></i><span class="muted">Incolla un URL di connessione, ad esempio postgresql://utente@host:5432/db</span></div>
+        <button class="btn" disabled>Usa URL</button>
+      </div>
+      <div class="input search focus" style="margin-top:var(--sp-3);width:100%"><i data-i="search" class="sm"></i>Cerca un database o un driver…</div>
+
+      <div class="scroll">
+        <div class="grp"><div class="h2">Più usati</div>
+          <div class="tiles">
+            <div class="tile sel"><span class="drv lg pg">Pg</span><div><div class="nm">PostgreSQL</div><div class="ds">porta 5432</div></div></div>
+            <div class="tile"><span class="drv lg my">My</span><div><div class="nm">MySQL</div><div class="ds">porta 3306</div></div></div>
+            <div class="tile"><span class="drv lg lite">Sq</span><div><div class="nm">SQLite</div><div class="ds">file locale</div></div></div>
+            <div class="tile"><span class="drv lg ms">Ms</span><div><div class="nm">SQL Server</div><div class="ds">porta 1433</div></div></div>
+            <div class="tile"><span class="drv lg duck">Dk</span><div><div class="nm">DuckDB</div><div class="ds">file locale</div></div></div>
+          </div></div>
+        <div class="grp"><div class="h2">Relazionali</div>
+          <div class="tiles">
+            <div class="tile"><span class="drv lg mdb">Mb</span><div><div class="nm">MariaDB</div><div class="ds">porta 3306</div></div></div>
+            <div class="tile"><span class="drv lg ora">Or</span><div><div class="nm">Oracle</div><div class="ds">porta 1521</div></div></div>
+            <div class="tile"><span class="drv lg db2">Db2</span><div><div class="nm">IBM Db2</div><div class="ds">porta 50000</div></div></div>
+            <div class="tile"><span class="drv lg turso">Tu</span><div><div class="nm">Turso</div><div class="ds">libSQL remoto</div></div></div>
+          </div></div>
+        <div class="grp"><div class="h2">Analitici</div>
+          <div class="tiles">
+            <div class="tile"><span class="drv lg ch">Ch</span><div><div class="nm">ClickHouse</div><div class="ds">porta 8123</div></div></div>
+            <div class="tile"><span class="drv lg snow">Sf</span><div><div class="nm">Snowflake</div><div class="ds">account</div></div></div>
+            <div class="tile"><span class="drv lg bq">Bq</span><div><div class="nm">BigQuery</div><div class="ds">progetto Google</div></div></div>
+            <div class="tile"><span class="drv lg trino">Tr</span><div><div class="nm">Trino</div><div class="ds">porta 8080</div></div></div>
+          </div></div>
+        <div class="grp"><div class="h2">Documenti</div>
+          <div class="tiles">
+            <div class="tile"><span class="drv lg mongo">Mg</span><div><div class="nm">MongoDB</div><div class="ds">porta 27017</div></div></div>
+          </div></div>
+        <div class="grp"><div class="h2">Compatibili PostgreSQL</div>
+          <div class="tiles">
+            <div class="tile"><span class="drv lg crdb">Cr</span><div><div class="nm">CockroachDB</div><div class="ds">porta 26257</div></div></div>
+            <div class="tile"><span class="drv lg rs">Yb</span><div><div class="nm">YugabyteDB</div><div class="ds">porta 5433</div></div></div>
+          </div></div>
+        <div class="grp"><div class="h2">Generici</div>
+          <div class="tiles">
+            <div class="tile"><span class="drv lg odbc">Od</span><div><div class="nm">ODBC</div><div class="ds">DSN o stringa</div></div></div>
+            <div class="tile"><span class="drv lg adbc">Ad</span><div><div class="nm">ADBC</div><div class="ds">driver Arrow</div></div></div>
+          </div></div>
+      </div>
+    </div>
+    <footer>
+      <span class="l">PostgreSQL selezionato</span>
+      <button class="btn">Annulla<kbd>Esc</kbd></button>
+      <button class="btn primary">Avanti<kbd>↵</kbd></button>
+    </footer>
+  </div>
+</div>
+
+<div class="mk-note" style="left:96px;top:120px"><b>Stessa struttura</b>Titolo + sottotitolo, corpo, piè con informazione a sinistra, Annulla e azione primaria a destra. Esc chiude, Invio conferma.</div>
+<div class="mk-note" style="left:1040px;top:130px"><b>Due passi</b>Prima il database, poi i dati. L'URL incollato salta il passo 1.</div>
+<div class="mk-note" style="left:96px;top:560px"><b>Icone dei driver</b>Stessa tessera usata nel navigator, in formato grande.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

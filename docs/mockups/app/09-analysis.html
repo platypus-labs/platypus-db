@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profilo tabella orders</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin-bottom: var(--sp-5); }
+  .kpis .card .lb { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .kpis .card .kpi { margin-top: var(--sp-1); }
+  .kpis .card .sub { font-size: var(--fs-xs); color: var(--fg-muted); }
+  .cc { display: grid; grid-template-columns: 180px 150px 1fr 200px; gap: var(--sp-5); align-items: center; min-height: 64px; padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); }
+  .cc:first-child { border-top: 0; }
+  .cc .nm { color: var(--fg-strong); font-weight: var(--fw-med); }
+  .cc .ty { font: var(--fs-xs) var(--font-mono); color: var(--syn-type); }
+  .cc .stats { font-size: var(--fs-xs); color: var(--fg-muted); line-height: 1.5; }
+  .cc .stats b { color: var(--fg); font-weight: var(--fw-med); font-family: var(--font-mono); }
+  .cc .chart svg { display: block; width: 100%; height: 40px; }
+  .cc .chart svg rect { fill: var(--accent); }
+  .cc .top { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--sp-0); }
+  .cc .top div { display: flex; gap: var(--sp-3); }
+  .cc .top span:last-child { margin-left: auto; color: var(--fg-muted); font-family: var(--font-mono); font-size: var(--fs-xs); }
+  .cc .mm { font-size: var(--fs-xs); color: var(--fg-muted); line-height: 1.5; }
+  .cc .mm b { color: var(--fg); font-weight: var(--fw-med); font-family: var(--font-mono); }
+  .cc.load .skel { margin-bottom: var(--sp-2); }
+  .cc.errc { display: block; padding: 0; }
+  .cc.errc .state { padding: var(--sp-4); flex-direction: row; justify-content: flex-start; text-align: left; gap: var(--sp-4); }
+  .cc.errc .state .pic { margin: 0; }
+  .cc.errc .state .acts { margin: 0 0 0 auto; }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="chart" class="sm"></i>Profilo · orders<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="phead">
+    <div class="pic"><i data-i="chart"></i></div>
+    <div>
+      <h1>Profilo di orders</h1>
+      <div class="sub">public · Shop dev · campione di 2 980 righe · calcolato 2 minuti fa</div>
+    </div>
+    <div class="acts">
+      <button class="btn primary"><i data-i="refresh" class="sm"></i>Ricalcola</button>
+      <button class="btn"><i data-i="upload" class="sm"></i>Esporta</button>
+      <button class="btn"><i data-i="table" class="sm"></i>Apri la tabella</button>
+    </div>
+  </div>
+
+  <div class="pbody">
+    <div class="kpis">
+      <div class="card"><div class="lb">Righe</div><div class="kpi">2 980</div><div class="sub">1,2 MB su disco</div></div>
+      <div class="card"><div class="lb">Colonne</div><div class="kpi">8</div><div class="sub">1 chiave primaria, 1 esterna</div></div>
+      <div class="card"><div class="lb">Null</div><div class="kpi">6,8 %</div><div class="sub">su tutte le celle</div></div>
+      <div class="card"><div class="lb">Duplicati</div><div class="kpi">0</div><div class="sub">righe identiche</div></div>
+    </div>
+
+    <div class="h2">Colonne</div>
+    <div class="list">
+      <div class="cc">
+        <div><div class="nm">id</div><span class="ty">bigint</span> <span class="badge pk">PK</span></div>
+        <div class="stats">Null <b>0 %</b><br>Distinti <b>2 980</b></div>
+        <div class="chart"><svg viewBox="0 0 200 40" preserveAspectRatio="none" aria-label="Distribuzione uniforme"><rect x="0" y="6" width="18" height="34"/><rect x="20" y="6" width="18" height="34"/><rect x="40" y="6" width="18" height="34"/><rect x="60" y="6" width="18" height="34"/><rect x="80" y="6" width="18" height="34"/><rect x="100" y="6" width="18" height="34"/><rect x="120" y="6" width="18" height="34"/><rect x="140" y="6" width="18" height="34"/><rect x="160" y="6" width="18" height="34"/><rect x="180" y="6" width="18" height="34"/></svg></div>
+        <div class="mm">Min <b>1</b><br>Max <b>2 980</b></div>
+      </div>
+      <div class="cc">
+        <div><div class="nm">status</div><span class="ty">text</span></div>
+        <div class="stats">Null <b>0 %</b><br>Distinti <b>4</b></div>
+        <div class="top">
+          <div><span>shipped</span><span>1 842 · 61,8 %</span></div>
+          <div><span>paid</span><span>702 · 23,6 %</span></div>
+          <div><span>pending</span><span>301 · 10,1 %</span></div>
+          <div><span>cancelled</span><span>135 · 4,5 %</span></div>
+        </div>
+        <div class="chart"><svg viewBox="0 0 200 40" preserveAspectRatio="none" aria-label="Valori più frequenti"><rect x="0" y="2" width="124" height="7"/><rect x="0" y="12" width="47" height="7"/><rect x="0" y="22" width="20" height="7"/><rect x="0" y="32" width="9" height="7"/></svg></div>
+      </div>
+      <div class="cc">
+        <div><div class="nm">total</div><span class="ty">numeric(12,2)</span></div>
+        <div class="stats">Null <b>0 %</b><br>Distinti <b>2 214</b></div>
+        <div class="chart"><svg viewBox="0 0 200 40" preserveAspectRatio="none" aria-label="Distribuzione dei totali"><rect x="0" y="4" width="18" height="36"/><rect x="20" y="12" width="18" height="28"/><rect x="40" y="22" width="18" height="18"/><rect x="60" y="28" width="18" height="12"/><rect x="80" y="32" width="18" height="8"/><rect x="100" y="35" width="18" height="5"/><rect x="120" y="37" width="18" height="3"/><rect x="140" y="38" width="18" height="2"/><rect x="160" y="39" width="18" height="1"/><rect x="180" y="39" width="18" height="1"/></svg></div>
+        <div class="mm">Min <b>4.90</b><br>Max <b>1 842.00</b><br>Media <b>86.30</b></div>
+      </div>
+      <div class="cc">
+        <div><div class="nm">placed_at</div><span class="ty">timestamptz</span></div>
+        <div class="stats">Null <b>0 %</b><br>Distinti <b>2 951</b></div>
+        <div class="chart"><svg viewBox="0 0 200 40" preserveAspectRatio="none" aria-label="Ordini per mese"><rect x="0" y="26" width="18" height="14"/><rect x="20" y="22" width="18" height="18"/><rect x="40" y="24" width="18" height="16"/><rect x="60" y="18" width="18" height="22"/><rect x="80" y="16" width="18" height="24"/><rect x="100" y="14" width="18" height="26"/><rect x="120" y="12" width="18" height="28"/><rect x="140" y="8" width="18" height="32"/><rect x="160" y="6" width="18" height="34"/><rect x="180" y="3" width="18" height="37"/></svg></div>
+        <div class="mm">Min <b>2025-11-03 09:12</b><br>Max <b>2026-10-29 18:21</b></div>
+      </div>
+
+      <div class="cc load">
+        <div><div class="nm">customer_id</div><span class="ty">bigint</span> <span class="badge fk">FK</span></div>
+        <div><div class="skel" style="width:70%"></div><div class="skel" style="width:50%"></div></div>
+        <div class="row" style="gap:var(--sp-3)"><span class="spin"></span><span class="muted" style="font-size:var(--fs-sm)">Calcolo della distribuzione…</span></div>
+        <div><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div></div>
+      </div>
+
+      <div class="cc errc">
+        <div class="state err">
+          <div class="pic"><i data-i="error"></i></div>
+          <div><h3>Impossibile profilare shipped_at</h3><p>Timeout dopo 30 s sulla lettura del campione. Riprova o riduci il campione.</p></div>
+          <div class="acts"><button class="btn sm">Riprova</button><button class="btn sm ghost">Dettagli</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status"><span>8 colonne · 6 calcolate</span><span class="r"><span>Campione 100 %</span></span></div>
+</div>
+
+<div class="mk-note" style="left:960px;top:96px"><b>Azioni in testa</b>Ricalcola, Esporta e Apri la tabella sono pulsanti dell'intestazione, come in ogni pagina oggetto.</div>
+<div class="mk-note" style="left:960px;top:540px"><b>Caricamento ed errore</b>Stesso schema ovunque: scheletro e spinner con testo; errore con causa e azione Riprova.</div>
+<div class="mk-note" style="left:96px;top:620px"><b>Densità</b>Una riga per colonna: grafico, valori frequenti e intervallo senza schede grandi.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

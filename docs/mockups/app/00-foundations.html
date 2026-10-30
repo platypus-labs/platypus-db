@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fondamenta</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  html, body { height: auto; }
+  body { overflow: auto; }
+  .sheet { max-width: 1180px; margin: 0 auto; padding: var(--sp-8) var(--sp-7) var(--sp-10); display: grid; gap: var(--sp-9); }
+  .sheet > section > h2 { margin: 0 0 var(--sp-2); font-size: var(--fs-lg); color: var(--fg-strong); }
+  .sheet > section > p { margin: 0 0 var(--sp-5); color: var(--fg-muted); font-size: var(--fs-sm); max-width: 70ch; }
+  .sw { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-3); }
+  .sw div { border: 1px solid var(--border); border-radius: var(--r-2); overflow: hidden; font-size: var(--fs-xs); }
+  .sw i { display: block; height: 44px; }
+  .sw span { display: block; padding: var(--sp-2) var(--sp-3); color: var(--fg-muted); font-family: var(--font-mono); }
+  .scale { display: flex; gap: var(--sp-5); align-items: flex-end; flex-wrap: wrap; }
+  .scale div { display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; font: var(--fs-xs) var(--font-mono); color: var(--fg-muted); }
+  .scale b { display: block; background: var(--accent); opacity: .8; }
+  .type div { display: grid; grid-template-columns: 120px 1fr; align-items: baseline; padding: var(--sp-2) 0; border-top: 1px solid var(--border); }
+  .type code { font: var(--fs-xs) var(--font-mono); color: var(--fg-muted); }
+  .demo { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); }
+  .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
+  .box { border: 1px solid var(--border); border-radius: var(--r-2); background: var(--bg); min-height: 200px; display: flex; flex-direction: column; }
+  .box > .cap { font-size: var(--fs-xs); color: var(--fg-muted); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); }
+  .stage { position: relative; height: 230px; border: 1px dashed var(--border-strong); border-radius: var(--r-2); }
+  .anat { position: relative; }
+  .anat .dialog { width: 100%; }
+  .tag { position: absolute; right: -132px; width: 120px; font-size: var(--fs-xs); color: var(--accent); border-top: 1px solid var(--accent); padding-top: var(--sp-1); }
+</style>
+</head>
+<body>
+<main class="sheet">
+  <header class="row" style="gap:var(--sp-4)">
+    <img src="../assets/img/platypus-mark.png" alt="" style="width:36px">
+    <div><h1 style="margin:0;font-size:var(--fs-2xl);color:var(--fg-strong)">Fondamenta</h1>
+      <div class="muted">Una scala sola per tutta l'app e il sito. I colori sono quelli di oggi; il resto sostituisce i valori scritti a mano nei componenti.</div></div>
+  </header>
+
+  <section>
+    <h2>Colori</h2>
+    <p>Platypus Dark e Platypus Light di theme.ts, invariati. Gli altri temi (Nord, Dracula…) definiscono gli stessi nomi.</p>
+    <div class="sw">
+      <div><i style="background:var(--bg)"></i><span>bg</span></div>
+      <div><i style="background:var(--bg-side)"></i><span>bg-side</span></div>
+      <div><i style="background:var(--bg-rail)"></i><span>bg-rail</span></div>
+      <div><i style="background:var(--bg-input)"></i><span>bg-input</span></div>
+      <div><i style="background:var(--active)"></i><span>active</span></div>
+      <div><i style="background:var(--border-strong)"></i><span>border-strong</span></div>
+      <div><i style="background:var(--fg-muted)"></i><span>fg-muted</span></div>
+      <div><i style="background:var(--fg-strong)"></i><span>fg-strong</span></div>
+      <div><i style="background:var(--accent)"></i><span>accent</span></div>
+      <div><i style="background:var(--ok)"></i><span>ok</span></div>
+      <div><i style="background:var(--warn)"></i><span>warn</span></div>
+      <div><i style="background:var(--error)"></i><span>error</span></div>
+      <div><i style="background:var(--info)"></i><span>info</span></div>
+      <div><i style="background:var(--syn-kw)"></i><span>syn-keyword</span></div>
+      <div><i style="background:var(--syn-type)"></i><span>syn-type</span></div>
+      <div><i style="background:var(--edited)"></i><span>edited</span></div>
+    </div>
+  </section>
+
+  <section class="two">
+    <div>
+      <h2>Spazi</h2>
+      <p>Base 4 px, con 2 e 6 per le righe dense. Nessun altro valore.</p>
+      <div class="scale">
+        <div><b style="width:2px;height:2px"></b>sp-0 · 2</div><div><b style="width:4px;height:4px"></b>sp-1 · 4</div>
+        <div><b style="width:6px;height:6px"></b>sp-2 · 6</div><div><b style="width:8px;height:8px"></b>sp-3 · 8</div>
+        <div><b style="width:12px;height:12px"></b>sp-4 · 12</div><div><b style="width:16px;height:16px"></b>sp-5 · 16</div>
+        <div><b style="width:20px;height:20px"></b>sp-6 · 20</div><div><b style="width:24px;height:24px"></b>sp-7 · 24</div>
+        <div><b style="width:32px;height:32px"></b>sp-8 · 32</div><div><b style="width:48px;height:48px"></b>sp-9 · 48</div>
+      </div>
+      <h2 style="margin-top:var(--sp-7)">Raggi e ombre</h2>
+      <p>4 per i controlli, 6 per riquadri e menu, 10 per dialog e quadrati del rail. Ombra solo su ciò che galleggia.</p>
+      <div class="demo">
+        <span class="card" style="border-radius:var(--r-1);padding:var(--sp-3)">r-1 · 4</span>
+        <span class="card" style="border-radius:var(--r-2);padding:var(--sp-3)">r-2 · 6</span>
+        <span class="card" style="border-radius:var(--r-3);padding:var(--sp-3);box-shadow:var(--shadow-float)">r-3 · 10 + ombra</span>
+      </div>
+    </div>
+    <div class="type">
+      <h2>Testo</h2>
+      <p>Inter per l'interfaccia, JetBrains Mono per SQL, dati e valori. Corpo a 13 px come oggi.</p>
+      <div><code>2xl · 24 / 600</code><span style="font-size:var(--fs-2xl);font-weight:600;color:var(--fg-strong)">Titolo di pagina</span></div>
+      <div><code>xl · 18 / 600</code><span style="font-size:var(--fs-xl);font-weight:600;color:var(--fg-strong)">orders</span></div>
+      <div><code>lg · 15 / 600</code><span style="font-size:var(--fs-lg);font-weight:600;color:var(--fg-strong)">Titolo del dialog</span></div>
+      <div><code>md · 13 / 400</code><span>Testo dell'interfaccia, etichette e menu.</span></div>
+      <div><code>sm · 12 / 400</code><span style="font-size:var(--fs-sm);color:var(--fg-muted)">Descrizioni, barra di stato, tab.</span></div>
+      <div><code>xs · 11 / 600</code><span class="h2" style="margin:0">INTESTAZIONE DI SEZIONE</span></div>
+      <div><code>mono · 12</code><span class="mono"><span class="kw">SELECT</span> id, <span class="st">'shipped'</span>, <span class="nu">2979</span></span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Controlli</h2>
+    <p>Tre altezze: 24 (barre degli strumenti), 28 (form e dialog), 32 (sito). Il pulsante principale è uno per vista, sempre a destra nei dialog.</p>
+    <div class="col" style="gap:var(--sp-4)">
+      <div class="demo"><button class="btn primary">Salva</button><button class="btn">Annulla</button><button class="btn ghost">Altro</button><button class="btn danger">Elimina</button><button class="btn" disabled>Disattivato</button>
+        <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button><button class="btn icon" title="Aggiorna"><i data-i="refresh"></i></button></div>
+      <div class="demo"><span class="input" style="width:200px">localhost</span><span class="input focus" style="width:200px">5432</span><span class="input invalid" style="width:200px">porta?</span>
+        <span class="select" style="width:180px">Salvata nel portachiavi</span><span class="input search" style="width:220px"><i data-i="search" class="sm"></i>Filtra oggetti…</span></div>
+      <div class="demo"><span class="check on"><i></i>Sola lettura</span><span class="check"><i></i>Usa SSL</span><span class="toggle on"></span><span class="toggle"></span>
+        <span class="seg"><span class="on">Host</span><span>URL</span></span><span class="seg"><span class="on"><i data-i="table" class="sm"></i>Griglia</span><span><i data-i="chart" class="sm"></i>Grafico</span></span></div>
+      <div class="demo"><span class="badge dev">DEV</span><span class="badge test">TEST</span><span class="badge prod">PROD</span><span class="badge neutral">PK</span><span class="badge accent">FK</span>
+        <span class="ctx"><i data-i="lock" class="sm"></i>Auto-commit<i data-i="down" class="sm"></i></span><kbd>Ctrl K</kbd></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Icone</h2>
+    <p>Una famiglia sola: griglia 24, tratto 1.6, estremi arrotondati, a 16 px (14 nelle righe dense). Le icone dei driver sono quadrati di 18 px; il colore della connessione è il segno in alto a sinistra, lo stato il puntino in basso a destra.</p>
+    <div class="demo" id="icon-list" style="gap:var(--sp-4);color:var(--fg-muted)"></div>
+    <div class="demo" style="margin-top:var(--sp-5)">
+      <span class="drv pg">Pg<span class="mark" style="background:var(--ok)"></span><span class="ping ok"></span></span><span class="muted">connessa, colore verde</span>
+      <span class="drv pg">Pg<span class="mark" style="background:var(--error)"></span><span class="ping off"></span></span><span class="muted">non connessa, colore rosso</span>
+      <span class="drv my">My<span class="ping err"></span></span><span class="muted">errore, nessun colore</span>
+      <span class="drv lg ms">Ms</span><span class="drv lg ch">Ch</span><span class="drv lg duck">Dk</span><span class="drv lg ora">Or</span><span class="drv lg mongo">Mg</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Dialog</h2>
+    <p>Sempre uguale: titolo e sottotitolo, corpo che scorre, piede con un'informazione a sinistra, Annulla e azione principale a destra. Esc chiude, Invio conferma, il focus parte dal primo campo.</p>
+    <div style="display:grid;grid-template-columns:520px 1fr;gap:var(--sp-9)">
+      <div class="anat">
+        <div class="dialog">
+          <header><div><h2>Rinomina la tabella</h2><p>orders · public · Shop dev</p></div><button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button></header>
+          <div class="body"><div class="form"><label>Nome</label><span class="input focus">orders_archive</span><span class="help">Le viste che la usano vengono aggiornate.</span></div></div>
+          <footer><span class="l"><i data-i="code" class="sm"></i>Mostra SQL</span><button class="btn">Annulla</button><button class="btn primary">Rinomina<kbd>↵</kbd></button></footer>
+        </div>
+        <div class="tag" style="top:18px">Titolo + contesto</div>
+        <div class="tag" style="top:88px">Corpo: griglia etichetta/campo</div>
+        <div class="tag" style="top:150px">Piede: info a sinistra, azione a destra</div>
+      </div>
+      <div class="col">
+        <div class="h2">Menu e tooltip</div>
+        <div class="stage">
+          <div class="menu" style="left:12px;top:12px">
+            <div class="mh">orders</div>
+            <div class="mi on"><i data-i="table" class="sm"></i>Apri i dati<kbd>↵</kbd></div>
+            <div class="mi"><i data-i="edit" class="sm"></i>Modifica struttura<kbd>F4</kbd></div>
+            <div class="mi"><i data-i="code" class="sm"></i>Genera DDL</div>
+            <div class="ms"></div>
+            <div class="mi danger"><i data-i="trash" class="sm"></i>Elimina tabella…</div>
+          </div>
+          <div class="tip" style="left:260px;top:40px">Formatta <kbd style="color:inherit;border-color:currentColor;background:transparent">Ctrl Shift F</kbd></div>
+          <div class="toast" style="left:250px;top:110px;width:300px"><i data-i="check" class="sm" style="color:var(--ok)"></i><div class="grow"><div class="strong">Salvate 2 modifiche</div><div class="muted" style="font-size:var(--fs-sm)">Script di annullamento salvato.</div></div><button class="btn sm ghost">Annulla</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Stati</h2>
+    <p>Vuoto, caricamento ed errore hanno la stessa forma in ogni pannello: icona, titolo, una frase, l'azione che serve. Il caricamento tiene la forma del contenuto e compare solo dopo 300 ms.</p>
+    <div class="three">
+      <div class="box"><div class="cap">Vuoto</div><div class="state grow"><div class="pic"><i data-i="table"></i></div><h3>Nessuna riga</h3><p>La query non ha restituito righe. Cambia il filtro o aggiungi la prima riga.</p><div class="acts"><button class="btn sm">Togli il filtro</button><button class="btn sm primary"><i data-i="plus" class="sm"></i>Aggiungi riga</button></div></div></div>
+      <div class="box"><div class="cap">Caricamento</div><div class="col grow" style="padding:var(--sp-5);gap:var(--sp-3)"><div class="row"><span class="spin"></span><span class="muted" style="font-size:var(--fs-sm)">Esecuzione · 2,4 s</span><button class="btn sm" style="margin-left:auto"><i data-i="stop" class="sm"></i>Ferma</button></div><div class="skel" style="width:90%"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:80%"></div><div class="skel" style="width:55%"></div></div></div>
+      <div class="box"><div class="cap">Errore</div><div class="state err grow"><div class="pic"><i data-i="error"></i></div><h3>Connessione rifiutata</h3><p class="mono">localhost:5433 · connection refused</p><div class="acts"><button class="btn sm">Dettagli</button><button class="btn sm primary"><i data-i="refresh" class="sm"></i>Riprova</button></div></div></div>
+    </div>
+    <div class="col" style="margin-top:var(--sp-4)">
+      <div class="banner err"><i data-i="error" class="sm"></i><span><b>ERROR 42P01</b> relation "order" does not exist · riga 3</span><span class="acts"><button class="btn sm">Vai alla riga</button></span></div>
+      <div class="banner warn"><i data-i="alert" class="sm"></i><span>Shop prod è in sola lettura. Le modifiche non si possono salvare.</span></div>
+      <div class="banner info"><i data-i="info" class="sm"></i><span>Il driver Oracle si scarica al primo uso (38 MB).</span><span class="acts"><button class="btn sm">Scarica ora</button></span></div>
+    </div>
+  </section>
+</main>
+<script>
+  document.getElementById("icon-list").innerHTML = ["database","table","view","fn","schema","folder","search","play","stop","save","open","refresh","filter","download","upload","edit","trash","copy","code","erd","chart","zap","history","key","link","lock","shield","bot","users","activity","server","plug","settings","palette","keyboard","bell","clock","compare","wand","note"]
+    .map((n) => `<span title="${n}"><i data-i="${n}"></i></span>`).join("");
+</script>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

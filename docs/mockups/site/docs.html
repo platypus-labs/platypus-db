@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site · Docs</title>
+<link rel="stylesheet" href="base/style.css">
+<link rel="stylesheet" href="../assets/site-r.css">
+</head>
+<body data-page="docs">
+<main class="docs">
+  <nav aria-label="Docs">
+    <span class="search-box" style="width:100%"><i data-i="search" class="sm"></i>Search the docs</span>
+    <h6>Start</h6>
+    <a href="#">Install</a><a class="on" href="#">First connection</a><a href="#">The window</a>
+    <h6>Work</h6>
+    <a href="#">SQL editor</a><a href="#">Editing data</a><a href="#">Import and export</a><a href="#">Query plans</a>
+    <h6>Safety</h6>
+    <a href="#">Environments</a><a href="#">Passwords</a><a href="#">Agents and MCP</a>
+    <h6>Reference</h6>
+    <a href="#">Keyboard shortcuts</a><a href="#">Settings file</a><a href="#">Extending</a>
+  </nav>
+
+  <article>
+    <div class="crumbs">Start / First connection</div>
+    <h1>First connection</h1>
+    <p>Open PlatypusDB and choose <b>New connection</b> on the start page, or press <code>Ctrl N</code>. Pick the database, then fill in the three sections of the form.</p>
+    <h2 id="sections">The three sections</h2>
+    <p><b>Connection</b> is where the database is: host and port, or a URL. <b>Authentication</b> is who you are and where the password comes from: the system keychain, a prompt every time, or a password manager. <b>Appearance and safety</b> sets the environment, the color and whether the connection is read only.</p>
+    <div class="callout"><i data-i="info" class="sm"></i><span>Paste a URL like <code>postgresql://shop_app@db:5432/shop</code> in the first step and the form fills itself.</span></div>
+    <h2 id="test">Test, then save</h2>
+    <p><b>Test connection</b> stays at the bottom left of the window. The result appears next to it; on an error, <b>Details</b> shows the driver's message.</p>
+    <div class="prevnext"><a href="#"><span>Previous</span>Install</a><a href="#"><span>Next</span>The window</a></div>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#sections" style="color:var(--hi)">The three sections</a>
+    <a href="#test">Test, then save</a>
+    <a href="#" style="margin-top:18px">Edit this page on GitHub</a>
+  </aside>
+</main>
+
+<div class="mk-note" style="right:24px;top:520px"><b>Docs nel sito</b>Oggi i link Docs portano ai file Markdown su GitHub; qui diventano pagine del sito con header e colori di oggi.</div>
+<script src="../assets/site-shell.js"></script>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

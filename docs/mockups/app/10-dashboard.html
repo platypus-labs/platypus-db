@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard Vendite</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 232px; gap: var(--sp-4); }
+  .tile { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border); border-radius: var(--r-2); background: var(--bg-side); overflow: hidden; }
+  .tile.w2 { grid-column: span 2; }
+  .tile > header { display: flex; align-items: center; gap: var(--sp-2); height: var(--bar-tool); flex: none; padding: 0 var(--sp-2) 0 var(--sp-4); border-bottom: 1px solid var(--border); }
+  .tile > header .t { color: var(--fg-strong); font-weight: var(--fw-semi); white-space: nowrap; }
+  .tile > header .q { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--fg-muted); font: var(--fs-xs) var(--font-mono); margin-left: var(--sp-2); white-space: nowrap; }
+  .tile > .tb { flex: 1; min-height: 0; padding: var(--sp-4); display: flex; flex-direction: column; }
+  .tile > .tb.flush { padding: 0; overflow: hidden; }
+  .tile .lb { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .tile .delta { color: var(--ok); font-size: var(--fs-sm); }
+  .chart-svg { width: 100%; flex: 1; min-height: 0; display: block; }
+  .chart-svg text { fill: var(--fg-muted); font: 10px var(--font-mono); }
+  .bars { display: flex; flex-direction: column; gap: var(--sp-3); justify-content: center; flex: 1; }
+  .bars .b { display: grid; grid-template-columns: 64px 1fr 64px; gap: var(--sp-3); align-items: center; font-size: var(--fs-sm); }
+  .bars .b i { display: block; height: 10px; border-radius: 2px; background: var(--accent); }
+  .bars .b span:last-child { text-align: right; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--fg-muted); }
+</style>
+</head>
+<body data-shell="app" data-crumb='<b>Shop</b><span>/</span><span class="dot ok"></span><span>Shop dev</span><span>/</span><span>Dashboard</span>'>
+<div class="main">
+  <div class="tabs">
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="grid" class="sm"></i>Vendite<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="phead" style="padding-bottom:var(--sp-4)">
+    <div class="pic"><i data-i="grid"></i></div>
+    <div>
+      <h1>Vendite <span class="badge dev" style="vertical-align:middle">DEV</span></h1>
+      <div class="sub">6 riquadri · aggiornata 1 min fa · Shop dev</div>
+    </div>
+    <div class="acts">
+      <button class="btn primary"><i data-i="plus" class="sm"></i>Aggiungi riquadro</button>
+      <span class="select" style="width:128px" title="Intervallo di aggiornamento"><i data-i="clock" class="sm muted"></i>Ogni 5 min</span>
+      <button class="btn"><i data-i="edit" class="sm"></i>Modifica disposizione</button>
+      <button class="btn icon" title="Altro"><i data-i="more"></i></button>
+    </div>
+  </div>
+
+  <div class="pbody" style="border-top:1px solid var(--border)">
+    <div class="tiles">
+      <div class="tile">
+        <header><span class="t">Fatturato 30 giorni</span><span class="q"><i data-i="code" class="sm"></i>revenue_30d</span><span class="grow"></span><button class="btn icon sm" title="Menu del riquadro"><i data-i="more" class="sm"></i></button></header>
+        <div class="tb">
+          <div class="lb">Totale ordini pagati</div>
+          <div class="kpi" style="font-size:var(--fs-3xl);line-height:1.2;margin-top:var(--sp-2)">48 215 €</div>
+          <div class="delta">+8,4 % rispetto ai 30 giorni precedenti</div>
+          <svg class="chart-svg" viewBox="0 0 200 40" preserveAspectRatio="none" style="margin-top:var(--sp-3)" aria-label="Andamento del fatturato"><polyline points="0,32 20,30 40,33 60,26 80,28 100,22 120,24 140,16 160,18 180,10 200,6" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
+        </div>
+      </div>
+
+      <div class="tile w2">
+        <header><span class="t">Ordini per giorno</span><span class="q"><i data-i="code" class="sm"></i>orders_per_day</span><span class="grow"></span><span class="muted" style="font-size:var(--fs-xs)">ultimi 30 giorni</span><button class="btn icon sm" title="Menu del riquadro"><i data-i="more" class="sm"></i></button></header>
+        <div class="tb" style="padding-bottom:var(--sp-3)">
+          <svg class="chart-svg" viewBox="0 0 540 150" preserveAspectRatio="none" aria-label="Ordini per giorno">
+            <g stroke="var(--border)" stroke-width="1"><line x1="8" x2="532" y1="20" y2="20"/><line x1="8" x2="532" y1="55" y2="55"/><line x1="8" x2="532" y1="90" y2="90"/><line x1="8" x2="532" y1="125" y2="125"/></g>
+            <polyline points="8,126 25,126 43,129 60,126 78,122 95,124 112,126 130,127 147,130 164,126 182,120 199,117 217,118 234,115 251,108 269,100 286,95 303,91 321,89 338,87 356,82 373,79 390,78 408,66 425,60 442,55 460,49 477,45 495,37 512,30" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>
+            <circle cx="512" cy="30" r="4" fill="var(--accent)"/><circle cx="512" cy="30" r="8" fill="var(--accent)" opacity=".18"/>
+            <text x="8" y="146">30 set</text><text x="250" y="146">15 ott</text><text x="470" y="146">29 ott</text>
+            <text x="494" y="22" text-anchor="end" style="fill:var(--fg-strong)">29 ott · 61 ordini</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="tile">
+        <header><span class="t">Fatturato per città</span><span class="q"><i data-i="code" class="sm"></i>revenue_by_city</span><span class="grow"></span><button class="btn icon sm" title="Menu del riquadro"><i data-i="more" class="sm"></i></button></header>
+        <div class="tb">
+          <div class="bars">
+            <div class="b"><span>Roma</span><i style="width:100%"></i><span>8 412 €</span></div>
+            <div class="b"><span>Milano</span><i style="width:94%"></i><span>7 950 €</span></div>
+            <div class="b"><span>Napoli</span><i style="width:61%"></i><span>5 121 €</span></div>
+            <div class="b"><span>Torino</span><i style="width:57%"></i><span>4 809 €</span></div>
+            <div class="b"><span>Bologna</span><i style="width:14%"></i><span>1 190 €</span></div>
+            <div class="b"><span>Padova</span><i style="width:10%"></i><span>811 €</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tile w2">
+        <header><span class="t">Ultimi ordini</span><span class="q"><i data-i="code" class="sm"></i>latest_orders</span><span class="grow"></span><button class="btn sm ghost">Apri tutti</button><button class="btn icon sm" title="Menu del riquadro"><i data-i="more" class="sm"></i></button></header>
+        <div class="tb flush">
+          <table class="grid">
+            <thead><tr><th>id</th><th>cliente</th><th>città</th><th>totale</th><th>stato</th><th>quando</th></tr></thead>
+            <tbody>
+              <tr><td>2980</td><td>Giulia Ferrari</td><td>Roma</td><td class="num">142.00</td><td><span class="badge dev">shipped</span></td><td class="muted">18:21</td></tr>
+              <tr><td>2979</td><td>Marco Bianchi</td><td>Milano</td><td class="num">89.90</td><td><span class="badge test">paid</span></td><td class="muted">17:48</td></tr>
+              <tr><td>2978</td><td>Elena Russo</td><td>Napoli</td><td class="num">23.50</td><td><span class="badge neutral">pending</span></td><td class="muted">17:02</td></tr>
+              <tr><td>2977</td><td>Luca Romano</td><td>Torino</td><td class="num">310.00</td><td><span class="badge test">paid</span></td><td class="muted">16:35</td></tr>
+              <tr><td>2976</td><td>Sara Conti</td><td>Bologna</td><td class="num">58.20</td><td><span class="badge prod">cancelled</span></td><td class="muted">15:12</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tile">
+        <header><span class="t">Clienti nuovi</span><span class="q"><i data-i="code" class="sm"></i>new_customers</span><span class="grow"></span><button class="btn icon sm" title="Menu del riquadro"><i data-i="more" class="sm"></i></button></header>
+        <div class="tb" style="gap:var(--sp-3);justify-content:center">
+          <div class="skel" style="width:40%;height:24px"></div>
+          <div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div><div class="skel" style="width:82%"></div>
+          <div class="row" style="gap:var(--sp-3);margin-top:var(--sp-2)"><span class="spin"></span><span class="muted" style="font-size:var(--fs-sm)">Esecuzione della query…</span></div>
+        </div>
+      </div>
+
+      <div class="tile w2">
+        <header><span class="t">Fatturato per regione</span><span class="q"><i data-i="code" class="sm"></i>revenue_by_region</span><span class="grow"></span><button class="btn icon sm" title="Menu del riquadro"><i data-i="more" class="sm"></i></button></header>
+        <div class="state err" style="flex-direction:row;justify-content:flex-start;text-align:left;gap:var(--sp-4);flex:1">
+          <div class="pic" style="margin:0"><i data-i="error"></i></div>
+          <div><h3>La query non è più valida</h3><p style="max-width:none">column "city" does not exist · ultima esecuzione riuscita ieri alle 09:00</p></div>
+          <div class="acts" style="margin:0 0 0 auto"><button class="btn sm">Modifica query</button><button class="btn sm ghost">Riprova</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status"><span>6 riquadri · 4 aggiornati</span><span class="r"><span>Prossimo aggiornamento tra 4 min</span></span></div>
+</div>
+
+<div class="mk-note" style="left:520px;top:134px"><b>Azioni in testa</b>Aggiungi riquadro è l'unico primario; intervallo e disposizione sono controlli visibili, non voci di menu.</div>
+<div class="mk-note" style="left:96px;top:660px"><b>Stati uguali ovunque</b>Caricamento: scheletro e spinner con testo. Errore: icona, causa, Modifica query e Riprova (come 09).</div>
+<div class="mk-note" style="left:640px;top:420px"><b>Intestazione del riquadro</b>Titolo, nome della query sorgente, menu: stessa struttura per ogni riquadro.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagramma ER</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .wrap { flex: 1; display: flex; min-height: 0; }
+  .canvas { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+  .canvas svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .tb { position: absolute; width: 184px; background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: var(--r-2); font-size: var(--fs-sm); overflow: hidden; }
+  .tb.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .tb h5 { margin: 0; display: flex; align-items: center; gap: var(--sp-2); height: 28px; padding: 0 var(--sp-3); background: var(--bg-side); border-bottom: 1px solid var(--border); font-size: var(--fs-sm); font-weight: var(--fw-semi); color: var(--fg-strong); }
+  .tb h5 svg { color: var(--obj-table); }
+  .tb .c { display: flex; align-items: center; gap: var(--sp-2); height: 22px; padding: 0 var(--sp-3); }
+  .tb .c .ty { margin-left: auto; color: var(--fg-muted); font: var(--fs-xs) var(--font-mono); }
+  .tb .c .badge { height: 14px; padding: 0 var(--sp-1); font-size: 9px; }
+  .float { position: absolute; left: var(--sp-4); top: var(--sp-4); display: flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1); background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: var(--r-2); box-shadow: var(--shadow-pop); }
+  .mini { position: absolute; right: var(--sp-4); bottom: var(--sp-4); width: 132px; height: 92px; background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: var(--r-2); box-shadow: var(--shadow-pop); }
+  .mini i { position: absolute; background: var(--border-strong); border-radius: 1px; }
+  .mini i.sel { background: var(--accent); }
+  .mini b { position: absolute; left: 6px; top: 6px; width: 100px; height: 66px; border: 1.5px solid var(--fg-muted); border-radius: var(--r-1); }
+  .zoom { position: absolute; right: var(--sp-4); top: var(--sp-4); font-size: var(--fs-xs); color: var(--fg-muted); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab"><span class="env" style="background:var(--ok)"></span><i data-i="table" class="sm"></i>orders<i data-i="x" class="sm x"></i></div>
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="erd" class="sm"></i>Diagramma · Shop dev<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+
+  <div class="toolbar">
+    <span class="ctx">Shop dev · public<i data-i="down" class="sm"></i></span>
+    <span class="muted" style="font-size:var(--fs-sm)">4 tabelle · 3 relazioni</span>
+    <span class="grow"></span>
+    <button class="btn sm"><i data-i="plus" class="sm"></i>Aggiungi tabelle</button>
+    <button class="btn sm"><i data-i="upload" class="sm"></i>Esporta</button>
+  </div>
+
+  <div class="wrap">
+    <div class="canvas">
+      <svg class="lines" aria-hidden="true">
+        <defs><pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="var(--border)"/></pattern></defs>
+        <rect width="100%" height="100%" fill="url(#dots)"/>
+        <g fill="none" stroke="var(--fg-muted)" stroke-width="1.4">
+          <path d="M244 129 H275 V151 H306"/>
+          <path d="M490 129 H520 V371 H490" stroke="var(--accent)"/>
+          <path d="M244 349 H275 V393 H306"/>
+        </g>
+        <g font-family="var(--font-mono)" font-size="10" fill="var(--fg-muted)">
+          <text x="248" y="123">1</text><text x="292" y="147">N</text>
+          <text x="494" y="123">1</text><text x="494" y="365">N</text>
+          <text x="248" y="343">1</text><text x="292" y="389">N</text>
+        </g>
+      </svg>
+
+      <div class="tb" style="left:60px;top:90px">
+        <h5><i data-i="table" class="sm"></i>customers</h5>
+        <div class="c"><span class="badge pk">PK</span>id<span class="ty">bigint</span></div>
+        <div class="c"><span style="width:20px"></span>email<span class="ty">text</span></div>
+        <div class="c"><span style="width:20px"></span>full_name<span class="ty">text</span></div>
+        <div class="c"><span style="width:20px"></span>city<span class="ty">text</span></div>
+        <div class="c"><span style="width:20px"></span>created_at<span class="ty">timestamptz</span></div>
+      </div>
+
+      <div class="tb sel" style="left:306px;top:90px">
+        <h5><i data-i="table" class="sm"></i>orders</h5>
+        <div class="c"><span class="badge pk">PK</span>id<span class="ty">bigint</span></div>
+        <div class="c"><span class="badge fk">FK</span>customer_id<span class="ty">bigint</span></div>
+        <div class="c"><span style="width:20px"></span>status<span class="ty">text</span></div>
+        <div class="c"><span style="width:20px"></span>total<span class="ty">numeric</span></div>
+        <div class="c"><span style="width:20px"></span>placed_at<span class="ty">timestamptz</span></div>
+      </div>
+
+      <div class="tb" style="left:60px;top:310px">
+        <h5><i data-i="table" class="sm"></i>products</h5>
+        <div class="c"><span class="badge pk">PK</span>id<span class="ty">bigint</span></div>
+        <div class="c"><span style="width:20px"></span>sku<span class="ty">text</span></div>
+        <div class="c"><span style="width:20px"></span>name<span class="ty">text</span></div>
+        <div class="c"><span style="width:20px"></span>price<span class="ty">numeric</span></div>
+        <div class="c"><span style="width:20px"></span>stock<span class="ty">integer</span></div>
+      </div>
+
+      <div class="tb" style="left:306px;top:332px">
+        <h5><i data-i="table" class="sm"></i>order_items</h5>
+        <div class="c"><span class="badge pk">PK</span>id<span class="ty">bigint</span></div>
+        <div class="c"><span class="badge fk">FK</span>order_id<span class="ty">bigint</span></div>
+        <div class="c"><span class="badge fk">FK</span>product_id<span class="ty">bigint</span></div>
+        <div class="c"><span style="width:20px"></span>qty<span class="ty">integer</span></div>
+        <div class="c"><span style="width:20px"></span>unit_price<span class="ty">numeric</span></div>
+      </div>
+
+      <div class="float">
+        <button class="btn icon sm" title="Riduci"><i data-i="minus" class="sm"></i></button>
+        <span class="mono" style="padding:0 var(--sp-1)">100%</span>
+        <button class="btn icon sm" title="Ingrandisci"><i data-i="plus" class="sm"></i></button>
+        <button class="btn icon sm" title="Adatta alla vista"><i data-i="maximize" class="sm"></i></button>
+        <span class="sep"></span>
+        <button class="btn sm ghost"><i data-i="layers" class="sm"></i>Disponi</button>
+        <span class="sep"></span>
+        <button class="btn sm ghost"><i data-i="download" class="sm"></i>PNG</button>
+        <button class="btn sm ghost"><i data-i="download" class="sm"></i>SVG</button>
+      </div>
+
+      <div class="mini" aria-label="Minimappa">
+        <i style="left:10px;top:20px;width:22px;height:14px"></i>
+        <i class="sel" style="left:44px;top:20px;width:22px;height:14px"></i>
+        <i style="left:10px;top:54px;width:22px;height:14px"></i>
+        <i style="left:44px;top:58px;width:22px;height:14px"></i>
+        <b></b>
+      </div>
+    </div>
+
+    <aside class="panel-r">
+      <header><i data-i="table" class="sm" style="color:var(--obj-table)"></i><span class="strong grow">orders</span><button class="btn icon sm" title="Chiudi"><i data-i="x" class="sm"></i></button></header>
+      <div class="pb">
+        <dl class="kv" style="margin:0">
+          <dt>Schema</dt><dd>public</dd>
+          <dt>Righe</dt><dd>2 980</dd>
+          <dt>Colonne</dt><dd>8</dd>
+          <dt>Colonne mostrate</dt><dd>5 (chiavi e principali)</dd>
+        </dl>
+        <div>
+          <div class="h2">Relazioni</div>
+          <div class="item" style="padding:var(--sp-2) 0;border:0"><span class="badge fk">FK</span><span class="mono grow">customer_id → customers.id</span></div>
+          <div class="item" style="padding:var(--sp-2) 0;border:0"><span class="badge uq">1:N</span><span class="mono grow">order_items.order_id</span></div>
+        </div>
+        <div class="col" style="gap:var(--sp-2)">
+          <button class="btn primary"><i data-i="table" class="sm"></i>Apri pagina tabella</button>
+          <button class="btn"><i data-i="edit" class="sm"></i>Modifica struttura</button>
+          <button class="btn ghost"><i data-i="x" class="sm"></i>Rimuovi dal diagramma</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+  <div class="status"><span>4 tabelle</span><span>Selezionata: orders</span><span class="r"><span>Trascina per spostare · Ctrl + rotella per lo zoom</span></span></div>
+</div>
+
+<div class="mk-note" style="left:380px;top:152px"><b>Barra flottante</b>Zoom, adatta, disposizione automatica ed esportazione sono visibili sul diagramma.</div>
+<div class="mk-note" style="left:96px;top:600px"><b>Dal diagramma all'oggetto</b>Il pannello della tabella selezionata porta a pagina, struttura e dati senza menu.</div>
+<div class="mk-note" style="left:760px;top:520px"><b>Una scala sola</b>Intestazione 28px, righe 22px, raggi dei token.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>
