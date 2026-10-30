@@ -20,8 +20,12 @@ const canvas = `${visibleErd}.querySelector('.erd-canvas')`;
 const scroll = `({ x: ${canvas}.scrollLeft, y: ${canvas}.scrollTop })`;
 
 export default async function (page) {
-  // A diagram that fits has no minimap.
+  // Both connections expanded, the first one first: a row is found as the first "main" after
+  // its connection, which would be the other's if its own were not shown.
+  await openPath(page, ["QA3 SQLite src", "main"]);
   await openPath(page, ["QA3 SQLite dst", "main"]);
+
+  // A diagram that fits has no minimap.
   await rowMenu(page, ["QA3 SQLite dst"], "main", "ER diagram");
   await page.waitFor(`${visibleErd}?.querySelectorAll('.erd-table').length === 1`, 20_000);
   await page.sleep(300);
