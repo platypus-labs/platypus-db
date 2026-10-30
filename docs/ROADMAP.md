@@ -120,7 +120,7 @@ per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ completato |
 | O — Collaborazione e sync | ✅ completato |
-| P — Piattaforma, qualità e release | libero |
+| P — Piattaforma, qualità e release | 🔒 Delfa · group-p-release-2 · 2026-10-30 |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | 🔒 Delfa · group-r-redesign · 2026-10-30 |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
