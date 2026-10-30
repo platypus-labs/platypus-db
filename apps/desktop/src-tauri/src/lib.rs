@@ -166,6 +166,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         applog::init(&data);
         platypus_drivers::set_data_dir(&data);
         platypus_drivers::purge_removed(&data);
+        // Plugins live in the same folder (`platypus_plugins::Plugins::shared`).
+        platypus_plugins::set_log_sink(applog::write);
     }
     // After the log and the drivers' folder: a task due at the start may run at once.
     app.manage(scheduler::Scheduler::open(
@@ -350,6 +352,12 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::query::fetch_all,
         commands::query::cancel_query,
         commands::query::close_query,
+        commands::plugins::plugins_list,
+        commands::plugins::plugin_inspect,
+        commands::plugins::plugin_install,
+        commands::plugins::plugin_set_enabled,
+        commands::plugins::plugin_remove,
+        commands::plugins::plugin_run_action,
         commands::analysis::sql::fetch_whole,
         commands::analysis::sql::stop_fetch,
         commands::analysis::sql::open_result_db,

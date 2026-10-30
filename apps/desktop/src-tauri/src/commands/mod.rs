@@ -26,6 +26,7 @@ pub mod health;
 pub mod history;
 pub mod meta;
 pub mod objects;
+pub mod plugins;
 pub mod profiles;
 pub mod projects;
 pub mod query;
@@ -71,6 +72,7 @@ use platypus_driver_pg::PgDriver;
 use platypus_driver_redis::RedisDriver;
 use platypus_driver_search::SearchDriver;
 use platypus_driver_sqlite::SqliteDriver;
+use platypus_plugins::PluginDriver;
 use platypus_store::{
     CatalogStore, ConnectionStore, HistoryStore, ImportedSecrets, SchemaHistoryStore,
     SettingsStore, VaultSecrets,
@@ -515,6 +517,7 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             | DriverKind::Adbc => AdbcDriver::shared()?.connect(&config).await,
             DriverKind::Oracle => OracleDriver::shared()?.connect(&config).await,
             DriverKind::Db2 | DriverKind::Odbc => OdbcDriver.connect(&config).await,
+            DriverKind::Plugin => PluginDriver::shared()?.connect(&config).await,
         }
     })
     .await
