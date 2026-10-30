@@ -1159,6 +1159,149 @@ button.primary.danger:hover:not(:disabled) {
   background: var(--active);
 }
 
+/* Security: the connections as cards, the selected one explained beside. */
+.agents-split {
+  display: flex;
+  gap: var(--space-12);
+  align-items: flex-start;
+}
+
+.agent-cards {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+
+.agent-cards thead {
+  display: none;
+}
+
+.agent-cards tbody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.agent-cards tr {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-6) var(--space-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.agent-cards tr:hover {
+  background: var(--hover);
+}
+
+.agent-cards tr.selected {
+  border-color: var(--accent);
+  background: var(--active);
+}
+
+.agent-cards td,
+.agent-cards tr.selected td {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.agent-cards td:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-weight: 600;
+}
+
+.agent-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-cards td:last-child {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--fg-muted);
+  text-align: right;
+}
+
+.agent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+}
+
+.agent-dot.read_only {
+  background: var(--type-test);
+}
+
+.agent-dot.read_write {
+  background: var(--accent);
+}
+
+.agent-detail {
+  flex: none;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.agent-detail header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.agent-levels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.agent-level {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.agent-level.on {
+  border-color: var(--accent);
+  background: var(--grid-selection);
+}
+
+.agent-level-radio {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.agent-level.on .agent-level-radio {
+  border-color: var(--accent);
+  background: radial-gradient(var(--accent) 45%, transparent 50%);
+}
+
+.agent-level-title {
+  font-weight: 600;
+}
+
 .agent-client-path code,
 .agent-call-args {
   word-break: break-all;
@@ -1217,7 +1360,7 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .modal.driver-picker {
-  width: min(640px, calc(100vw - 32px));
+  width: min(820px, calc(100vw - 32px));
 }
 
 /* A search field at the top of a dialog: the database picker, the settings. Spaced, like
@@ -1245,7 +1388,7 @@ button.primary.danger:hover:not(:disabled) {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-8);
-  margin: var(--space-4) 0 var(--space-12);
+  margin: var(--space-4) 0 var(--space-8);
 }
 
 .driver-none {
@@ -1255,38 +1398,55 @@ button.primary.danger:hover:not(:disabled) {
 
 .driver-tile {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-8);
-  padding: var(--space-12) var(--space-8) var(--space-10);
+  gap: var(--space-10);
+  min-width: 0;
+  padding: var(--space-8) var(--space-10);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: none;
-  color: var(--fg);
+  border-radius: var(--radius);
+  background: var(--bg-sidebar);
+  color: var(--fg-strong);
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
 }
 
-.driver-tile:hover,
+.driver-tile > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.driver-tile:hover {
+  background: var(--hover);
+}
+
 .driver-tile:focus-visible {
   border-color: var(--accent);
+  background: var(--accent-soft, var(--hover));
 }
 
 .driver-logo {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-lg);
+  flex: none;
+  width: var(--control-xl);
+  height: var(--control-xl);
+  border-radius: var(--radius);
 }
 
 .driver-logo svg {
-  width: 26px;
-  height: 26px;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 
 .driver-section {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-sm);
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-xs);
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--fg-muted);
 }
 
