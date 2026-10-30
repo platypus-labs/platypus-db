@@ -121,7 +121,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | L — Sicurezza operativa | ✅ completato |
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ completato |
-| O — Collaborazione e sync | 🔒 Delfa · group-o-collab · 2026-10-30 |
+| O — Collaborazione e sync | ✅ completato |
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
