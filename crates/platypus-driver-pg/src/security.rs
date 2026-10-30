@@ -2,11 +2,9 @@
 //! to one of them, from the access lists (`aclexplode`) of databases, schemas, tables,
 //! columns and routines.
 
-use std::collections::HashMap;
-
 use platypus_core::{
     Connection, GrantKind, Principal, PrincipalFlag, PrincipalKind, PrivilegeGrant, Result,
-    TextRowExt, query_text,
+    TextRowExt, memberships, query_text,
 };
 use platypus_sql::Dialect;
 
@@ -35,10 +33,7 @@ const MEMBERS: &str = "SELECT DISTINCT m.rolname, r.rolname \
      ORDER BY 1, 2";
 
 pub(crate) async fn principals(conn: &dyn Connection) -> Result<Vec<Principal>> {
-    let mut member_of: HashMap<String, Vec<String>> = HashMap::new();
-    for r in query_text(conn, MEMBERS).await? {
-        member_of.entry(r.text(0)).or_default().push(r.text(1));
-    }
+    let mut member_of = memberships(conn, MEMBERS).await?;
     Ok(query_text(conn, ROLES)
         .await?
         .into_iter()
@@ -56,11 +51,7 @@ pub(crate) async fn principals(conn: &dyn Connection) -> Result<Vec<Principal>> 
             let name = r.text(0);
             Principal {
                 member_of: member_of.remove(&name).unwrap_or_default(),
-                kind: if login {
-                    PrincipalKind::User
-                } else {
-                    PrincipalKind::Role
-                },
+                kind: PrincipalKind::of(!login),
                 flags,
                 connection_limit: r.opt(8).and_then(|n| n.parse().ok()),
                 valid_until: r.opt(9),

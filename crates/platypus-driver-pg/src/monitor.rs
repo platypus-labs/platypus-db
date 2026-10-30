@@ -71,21 +71,16 @@ pub(crate) async fn metrics(conn: &dyn Connection) -> Result<ServerMetrics> {
         .map(|r| float_of(r.first().and_then(Option::as_ref))),
     );
     counters(conn, &mut out).await;
-    match query_sizes(
-        conn,
-        // The databases the session may not connect to cannot be measured.
-        "SELECT datname, pg_database_size(oid)::text FROM pg_database \
+    out.set_databases(
+        query_sizes(
+            conn,
+            // The databases the session may not connect to cannot be measured.
+            "SELECT datname, pg_database_size(oid)::text FROM pg_database \
          WHERE NOT datistemplate AND has_database_privilege(oid, 'CONNECT')",
-    )
-    .await
-    {
-        Ok(sizes) => out.databases = sizes,
-        Err(e) => out.databases_unavailable = Some(e.to_string()),
-    }
-    match replication(conn).await {
-        Ok(rows) => out.replication = rows,
-        Err(e) => out.replication_unavailable = Some(e.to_string()),
-    }
+        )
+        .await,
+    );
+    out.set_replication(replication(conn).await);
     Ok(out)
 }
 

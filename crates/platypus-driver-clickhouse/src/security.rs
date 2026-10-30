@@ -2,10 +2,9 @@
 //! have been granted, from `system.grants` and `system.role_grants`. Users defined in the
 //! server's configuration files are listed too; the server refuses to change them.
 
-use std::collections::HashMap;
-
 use platypus_core::{
-    GrantKind, Principal, PrincipalKind, PrivilegeGrant, Result, TextRowExt, query_text,
+    GrantKind, Principal, PrincipalKind, PrivilegeGrant, Result, TextRowExt, memberships,
+    query_text,
 };
 use platypus_sql::Dialect;
 
@@ -22,10 +21,7 @@ const MEMBERS: &str = "SELECT coalesce(user_name, role_name), granted_role_name 
      FROM system.role_grants ORDER BY 1, 2";
 
 pub(crate) async fn principals(conn: &ClickHouseConnection) -> Result<Vec<Principal>> {
-    let mut member_of: HashMap<String, Vec<String>> = HashMap::new();
-    for r in query_text(conn, MEMBERS).await? {
-        member_of.entry(r.text(0)).or_default().push(r.text(1));
-    }
+    let mut member_of = memberships(conn, MEMBERS).await?;
     let mut list: Vec<Principal> = query_text(conn, ACCOUNTS)
         .await?
         .into_iter()
@@ -33,11 +29,7 @@ pub(crate) async fn principals(conn: &ClickHouseConnection) -> Result<Vec<Princi
             let name = r.text(0);
             Principal {
                 member_of: member_of.remove(&name).unwrap_or_default(),
-                kind: if r.text(1) == "role" {
-                    PrincipalKind::Role
-                } else {
-                    PrincipalKind::User
-                },
+                kind: PrincipalKind::of(r.text(1) == "role"),
                 authentication: r.opt(2).filter(|a| !a.is_empty()),
                 valid_until: r.opt(3),
                 name,

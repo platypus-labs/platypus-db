@@ -66,11 +66,7 @@ pub(crate) async fn principals(conn: &dyn Connection) -> Result<Vec<Principal>> 
                     .remove(&(name.clone(), host.clone()))
                     .unwrap_or_default(),
                 host: Some(host).filter(|h| !h.is_empty()),
-                kind: if role {
-                    PrincipalKind::Role
-                } else {
-                    PrincipalKind::User
-                },
+                kind: PrincipalKind::of(role),
                 flags,
                 connection_limit: r
                     .number(7)

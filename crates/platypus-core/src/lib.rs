@@ -63,7 +63,7 @@ pub use parameters::{
 };
 pub use security::{
     DropOptions, GrantAction, GrantKind, GrantTarget, Grantee, Principal, PrincipalFlag,
-    PrincipalKind, PrincipalSpec, PrivilegeGrant, SecurityChange, TargetClass,
+    PrincipalKind, PrincipalSpec, PrivilegeGrant, SecurityChange, TargetClass, memberships,
 };
 pub use transaction::{
     TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,

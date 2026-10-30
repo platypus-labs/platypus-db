@@ -3,11 +3,9 @@
 //! `sys.database_permissions`. A user that logs in is joined to its server login, whose
 //! state (disabled) it shows. Server-level logins and permissions are not read.
 
-use std::collections::HashMap;
-
 use platypus_core::{
     Connection, GrantKind, Principal, PrincipalFlag, PrincipalKind, PrivilegeGrant, Result,
-    TextRowExt, query_text,
+    TextRowExt, memberships, query_text,
 };
 use platypus_sql::Dialect;
 
@@ -42,10 +40,7 @@ const PERMISSIONS: &str = "SELECT pr.class_desc, s.name, o.name, c.name, pr.perm
      ORDER BY pr.class, s.name, o.name, c.name, pr.permission_name";
 
 pub(crate) async fn principals(conn: &dyn Connection) -> Result<Vec<Principal>> {
-    let mut member_of: HashMap<String, Vec<String>> = HashMap::new();
-    for r in query_text(conn, MEMBERS).await? {
-        member_of.entry(r.text(0)).or_default().push(r.text(1));
-    }
+    let mut member_of = memberships(conn, MEMBERS).await?;
     Ok(query_text(conn, PRINCIPALS)
         .await?
         .into_iter()
@@ -61,11 +56,7 @@ pub(crate) async fn principals(conn: &dyn Connection) -> Result<Vec<Principal>> 
             let name = r.text(0);
             Principal {
                 member_of: member_of.remove(&name).unwrap_or_default(),
-                kind: if role {
-                    PrincipalKind::Role
-                } else {
-                    PrincipalKind::User
-                },
+                kind: PrincipalKind::of(role),
                 flags,
                 authentication: Some(r.text(2)).filter(|a| !a.is_empty() && !role),
                 name,

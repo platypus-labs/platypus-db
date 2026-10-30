@@ -183,21 +183,16 @@ pub(crate) async fn metrics(conn: &dyn Connection) -> Result<ServerMetrics> {
     // the dashboard cannot take a rate of it.
     out.cache_hits = Metric::missing("SQL Server reports a hit ratio, not counters of hits");
     out.cache_reads = out.cache_hits.clone();
-    match query_sizes(
-        conn,
-        "SELECT d.name, CAST(SUM(CAST(f.size AS bigint)) * 8192 AS varchar(30)) \
+    out.set_databases(
+        query_sizes(
+            conn,
+            "SELECT d.name, CAST(SUM(CAST(f.size AS bigint)) * 8192 AS varchar(30)) \
          FROM sys.master_files f JOIN sys.databases d ON d.database_id = f.database_id \
          GROUP BY d.name",
-    )
-    .await
-    {
-        Ok(sizes) => out.databases = sizes,
-        Err(e) => out.databases_unavailable = Some(e.to_string()),
-    }
-    match availability_groups(conn).await {
-        Ok(rows) => out.replication = rows,
-        Err(e) => out.replication_unavailable = Some(e.to_string()),
-    }
+        )
+        .await,
+    );
+    out.set_replication(availability_groups(conn).await);
     Ok(out)
 }
 

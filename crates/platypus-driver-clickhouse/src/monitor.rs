@@ -80,20 +80,15 @@ pub(crate) async fn metrics(conn: &dyn Connection) -> Result<ServerMetrics> {
     .await;
     out.transactions = Metric::missing("ClickHouse has no transactions to count");
     cache(conn, &mut out).await;
-    match query_sizes(
-        conn,
-        "SELECT database, toString(sum(bytes_on_disk)) FROM system.parts \
+    out.set_databases(
+        query_sizes(
+            conn,
+            "SELECT database, toString(sum(bytes_on_disk)) FROM system.parts \
          WHERE active GROUP BY database",
-    )
-    .await
-    {
-        Ok(sizes) => out.databases = sizes,
-        Err(e) => out.databases_unavailable = Some(e.to_string()),
-    }
-    match replicas(conn).await {
-        Ok(rows) => out.replication = rows,
-        Err(e) => out.replication_unavailable = Some(e.to_string()),
-    }
+        )
+        .await,
+    );
+    out.set_replication(replicas(conn).await);
     Ok(out)
 }
 

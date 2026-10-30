@@ -5,7 +5,11 @@
 //! [`Connection::principals`]: crate::Connection::principals
 //! [`Connection::principal_privileges`]: crate::Connection::principal_privileges
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
+
+use crate::{Connection, Result, TextRowExt, query_text};
 
 /// Whether a [`Principal`] logs in or only groups privileges.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -14,6 +18,26 @@ pub enum PrincipalKind {
     #[default]
     User,
     Role,
+}
+
+impl PrincipalKind {
+    /// A role when `is_role`, a user otherwise.
+    #[must_use]
+    pub fn of(is_role: bool) -> Self {
+        if is_role { Self::Role } else { Self::User }
+    }
+}
+
+/// The memberships `sql` lists, one a row (member, role): the roles of each member.
+///
+/// # Errors
+/// When the query fails.
+pub async fn memberships(conn: &dyn Connection, sql: &str) -> Result<HashMap<String, Vec<String>>> {
+    let mut member_of: HashMap<String, Vec<String>> = HashMap::new();
+    for r in query_text(conn, sql).await? {
+        member_of.entry(r.text(0)).or_default().push(r.text(1));
+    }
+    Ok(member_of)
 }
 
 /// A yes/no attribute of a user or a role. Each database has some of them.

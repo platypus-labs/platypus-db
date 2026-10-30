@@ -159,6 +159,22 @@ impl ServerMetrics {
             ..Self::default()
         }
     }
+
+    /// Takes the sizes read, or keeps why they could not be.
+    pub fn set_databases(&mut self, sizes: Result<Vec<DatabaseSize>>) {
+        match sizes {
+            Ok(sizes) => self.databases = sizes,
+            Err(e) => self.databases_unavailable = Some(e.to_string()),
+        }
+    }
+
+    /// Takes the replication links read, or keeps why they could not be.
+    pub fn set_replication(&mut self, rows: Result<Vec<ReplicationRow>>) {
+        match rows {
+            Ok(rows) => self.replication = rows,
+            Err(e) => self.replication_unavailable = Some(e.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

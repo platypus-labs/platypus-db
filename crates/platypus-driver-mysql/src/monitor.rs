@@ -130,20 +130,15 @@ pub(crate) async fn metrics(conn: &dyn Connection) -> Result<ServerMetrics> {
             .await
             .map(|r| platypus_core::float_of(r.first().and_then(Option::as_ref))),
     );
-    match query_sizes(
-        conn,
-        "SELECT table_schema, CAST(SUM(data_length + index_length) AS UNSIGNED) \
+    out.set_databases(
+        query_sizes(
+            conn,
+            "SELECT table_schema, CAST(SUM(data_length + index_length) AS UNSIGNED) \
          FROM information_schema.tables GROUP BY table_schema",
-    )
-    .await
-    {
-        Ok(sizes) => out.databases = sizes,
-        Err(e) => out.databases_unavailable = Some(e.to_string()),
-    }
-    match replication(conn).await {
-        Ok(rows) => out.replication = rows,
-        Err(e) => out.replication_unavailable = Some(e.to_string()),
-    }
+        )
+        .await,
+    );
+    out.set_replication(replication(conn).await);
     Ok(out)
 }
 

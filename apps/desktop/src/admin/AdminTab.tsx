@@ -29,15 +29,26 @@ export type AdminView = "sessions" | "locks" | "statements" | "objects" | "param
  *  they do not change while the tab is open. */
 const ON_DEMAND = new Set<AdminView>(["statements", "objects", "parameters"]);
 
+/** The label of each view's button. */
+const VIEW_LABELS: Record<AdminView, string> = {
+  sessions: msg("Sessions"),
+  locks: msg("Locks"),
+  dashboard: msg("Dashboard"),
+  users: msg("Users and roles"),
+  statements: msg("Costliest statements"),
+  objects: msg("Tables and indexes"),
+  parameters: msg("Parameters"),
+};
+
 /** The views `caps` offers, in the order of the tab's buttons: a database without sessions
  *  (SQLite, DuckDB) still lists its parameters. */
 export function availableViews(caps: Capabilities): AdminView[] {
   const views: AdminView[] = [];
   if (caps.server_sessions) views.push("sessions", "locks");
   if (caps.server_metrics) views.push("dashboard");
+  if (caps.security) views.push("users");
   if (caps.server_statistics) views.push("statements", "objects");
   if (caps.server_parameters) views.push("parameters");
-  if (caps.security) views.push("users");
   return views;
 }
 
@@ -298,46 +309,17 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         </button>
       </header>
       <nav className="object-sections">
-        {caps?.server_sessions && (
-          <>
-            <button className={view === "sessions" ? "active" : ""} onClick={() => onChange({ view: "sessions" })}>
-              {t("Sessions")} <span className="count">{sessions.length}</span>
-            </button>
-            <button className={view === "locks" ? "active" : ""} onClick={() => onChange({ view: "locks" })}>
-              {t("Locks")}
-              {waiting > 0 && (
-                <span className="count admin-blocked-count" title={t("{n} waiting for a lock", { n: waiting })}>
-                  {waiting}
-                </span>
-              )}
-            </button>
-          </>
-        )}
-        {caps?.server_metrics && (
-          <button className={view === "dashboard" ? "active" : ""} onClick={() => onChange({ view: "dashboard" })}>
-            {t("Dashboard")}
+        {offered.map((v) => (
+          <button key={v} className={view === v ? "active" : ""} onClick={() => onChange({ view: v })}>
+            {t(VIEW_LABELS[v])}
+            {v === "sessions" && <span className="count">{sessions.length}</span>}
+            {v === "locks" && waiting > 0 && (
+              <span className="count admin-blocked-count" title={t("{n} waiting for a lock", { n: waiting })}>
+                {waiting}
+              </span>
+            )}
           </button>
-        )}
-        {caps?.security && (
-          <button className={view === "users" ? "active" : ""} onClick={() => onChange({ view: "users" })}>
-            {t("Users and roles")}
-          </button>
-        )}
-        {caps?.server_statistics && (
-          <>
-            <button className={view === "statements" ? "active" : ""} onClick={() => onChange({ view: "statements" })}>
-              {t("Costliest statements")}
-            </button>
-            <button className={view === "objects" ? "active" : ""} onClick={() => onChange({ view: "objects" })}>
-              {t("Tables and indexes")}
-            </button>
-          </>
-        )}
-        {caps?.server_parameters && (
-          <button className={view === "parameters" ? "active" : ""} onClick={() => onChange({ view: "parameters" })}>
-            {t("Parameters")}
-          </button>
-        )}
+        ))}
       </nav>
       {unsupported && (
         <div className="object-body">
