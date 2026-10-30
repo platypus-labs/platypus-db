@@ -4,9 +4,10 @@ import { quoteIdent } from "../sqlIdent.ts";
 /** Words that may stand before an operator in a filter without being a column. */
 const NOT_COLUMNS = new Set(["and", "or", "not", "null", "true", "false", "any", "all", "some", "in", "is", "like", "ilike", "between", "exists", "case", "when", "then", "else", "end", "cast", "as"]);
 
-/** An identifier (bare or quoted, optionally behind `alias.`, optionally cast) followed by a
+/** An identifier (bare or quoted, optionally behind `alias.`, optionally cast; never the type
+ *  after `::` nor a part of a longer name) followed by a
  *  comparison: `status = ...`, `("total")::numeric > ...`, `t.name LIKE ...`, `x IS NULL`. */
-const COMPARED = /(?:[A-Za-z_][\w$]*\.)?("(?:[^"]|"")+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)\)?(?:::[\w. ]+?)?\s*(?:=|<>|!=|<=|>=|<|>|~~\*?|!~~\*?|~\*?|\bnot\s+like\b|\blike\b|\bilike\b|\bin\b|\bis\b|\bbetween\b)/gi;
+const COMPARED = /(?<![\w$:."\]`])(?:(?:[A-Za-z_][\w$]*|"(?:[^"]|"")+"|`[^`]+`)\.)?("(?:[^"]|"")+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)\)?(?:::[\w. ]+?)?\)?\s*(?:=|<>|!=|<=|>=|<|>|~~\*?|!~~\*?|~\*?|\bnot\s+like\b|\blike\b|\bilike\b|\bin\b|\bis\b|\bbetween\b)/gi;
 
 /** The columns a plan's filter condition compares, in order of appearance and without
  *  repeats; empty when none can be read. Literals are not looked into. */

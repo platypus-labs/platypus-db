@@ -10,6 +10,9 @@ test("columns compared in a filter", () => {
   assert.deepEqual(filterColumns("(name ~~ 'a%'::text AND deleted_at IS NULL)"), ["name", "deleted_at"]);
   assert.deepEqual(filterColumns("(a IN (1, 2) OR `b` = 3)"), ["a", "b"]);
   assert.deepEqual(filterColumns("(1 = 1)"), []);
+  assert.deepEqual(filterColumns("(lower((name)::text) = 'bob'::text)"), ["name"]);
+  assert.deepEqual(filterColumns(`(("s"."Name")::text = 'x'::text)`), ["Name"]);
+  assert.deepEqual(filterColumns("(price::numeric > 3)"), ["price"]);
 });
 
 test("CREATE INDEX statement", () => {
