@@ -64,19 +64,54 @@ impl Item {
     }
 }
 
-/// See [`Item::fingerprint`]. `serde_json` keeps object keys sorted, so equal values hash equal.
+/// See [`Item::fingerprint`]. Object keys are sorted whatever order the values were built in
+/// (another crate may switch `serde_json` to insertion order), so equal values hash equal.
 #[must_use]
 pub fn fingerprint(deleted: bool, value: &Value) -> String {
     let text = if deleted {
         "deleted".to_owned()
     } else {
-        format!("live:{value}")
+        let mut canonical = String::from("live:");
+        write_canonical(value, &mut canonical);
+        canonical
     };
     let hash = digest(&SHA256, text.as_bytes());
     hash.as_ref().iter().fold(String::new(), |mut s, b| {
         let _ = write!(s, "{b:02x}");
         s
     })
+}
+
+/// `value` as JSON text with the keys of every object in order.
+fn write_canonical(value: &Value, out: &mut String) {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.push('{');
+            for (i, key) in keys.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                let _ = write!(out, "{}:", Value::String(key.clone()));
+                write_canonical(&map[key], out);
+            }
+            out.push('}');
+        }
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_canonical(item, out);
+            }
+            out.push(']');
+        }
+        other => {
+            let _ = write!(out, "{other}");
+        }
+    }
 }
 
 /// What the encrypted file holds.
@@ -155,6 +190,9 @@ mod tests {
         let a = Item::live(json!({"a": 1, "b": [1, 2]}), 5, "x");
         let b = Item::live(json!({"b": [1, 2], "a": 1}), 99, "y");
         assert_eq!(a.fingerprint(), b.fingerprint());
+        let nested = Item::live(json!({"x": {"b": 1, "a": 2}}), 1, "x");
+        let swapped = Item::live(json!({"x": {"a": 2, "b": 1}}), 1, "x");
+        assert_eq!(nested.fingerprint(), swapped.fingerprint());
         assert_ne!(
             a.fingerprint(),
             Item::live(json!({"a": 2}), 5, "x").fingerprint()
