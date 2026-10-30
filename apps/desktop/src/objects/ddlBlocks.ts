@@ -6,16 +6,8 @@ import type { ObjectDdl, ObjectTarget } from "../api";
 export const FIRST_BLOCK = 5;
 export const BLOCK = 25;
 
-/** The `[from, to)` ranges of the blocks of `total` objects. */
-export function ddlBlocks(total: number): [number, number][] {
-  const out: [number, number][] = [];
-  for (let from = 0; from < total; ) {
-    const to = Math.min(total, from + (from === 0 ? FIRST_BLOCK : BLOCK));
-    out.push([from, to]);
-    from = to;
-  }
-  return out;
-}
+/** How many objects the next block reads, after `done` were read. */
+export const blockSize = (done: number) => (done === 0 ? FIRST_BLOCK : BLOCK);
 
 /** The text of a block: each object's DDL, or a comment saying why it has none. */
 export function ddlText(objects: ObjectTarget[], results: ObjectDdl[]): string {
@@ -28,6 +20,3 @@ export function ddlText(objects: ObjectTarget[], results: ObjectDdl[]): string {
     })
     .join("\n\n");
 }
-
-/** `text` added after what the editor holds, a blank line between them. */
-export const appended = (current: string, text: string) => (current.trim() === "" ? text : `\n\n${text}`);

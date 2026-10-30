@@ -43,7 +43,6 @@ import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
-import { appended } from "../objects/ddlBlocks";
 import { useDdlFill } from "../objects/useDdlFill";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
 import { AcrossBar } from "../analysis/CrossQueryDialog";
@@ -144,6 +143,8 @@ export interface QueryTabModel extends TabBase {
   /** "Generate DDL": the objects whose DDL the tab is still reading into the editor; not
    *  persisted. */
   ddlOf?: ObjectTarget[] | null;
+  /** "Generate DDL": how many objects were read already; not persisted. */
+  ddlDone?: number;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
@@ -1624,16 +1625,18 @@ export function QueryTab({
     }
   }, [running]);
 
+  /** `text` after what the editor holds, a blank line between them. */
   const appendToEditor = (text: string) => {
     const current = editor.current?.getText() ?? "";
     if (current.trim() === "") editor.current?.setText(text);
-    else editor.current?.replace(current.length, current.length, appended(current, text));
+    else editor.current?.replace(current.length, current.length, `\n\n${text}`);
   };
-  const ddl = useDdlFill(tab.ddlOf, sideId, appendToEditor, (stopped) => {
+  const ddl = useDdlFill(tab.ddlOf, tab.ddlDone ?? 0, sideId, appendToEditor, (rest, done, stopped) => {
     if (stopped) {
-      appendToEditor(`-- ${t("Stopped: the DDL of {done} of {total} objects was read", { done: stopped.done, total: stopped.total })}`);
+      const total = (tab.ddlDone ?? 0) + (tab.ddlOf?.length ?? 0);
+      appendToEditor(`-- ${t("Stopped: the DDL of {done} of {total} objects was read", { done, total })}`);
     }
-    onChange({ ddlOf: null });
+    onChange({ ddlOf: rest, ddlDone: done });
   });
   const health = useSessionHealth(currentSession, active && !running && !guard);
   const toolbar = useToolbar();

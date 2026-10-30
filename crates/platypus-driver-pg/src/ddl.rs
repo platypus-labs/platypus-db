@@ -306,10 +306,8 @@ fn named(objects: &[ObjectRef<'_>]) -> String {
         .iter()
         .map(|o| format!("({}, {})", literal(o.schema), literal(o.name)))
         .collect();
-    format!(
-        "(n.nspname::text, c.relname::text) IN ({})",
-        pairs.join(", ")
-    )
+    // Names compared as `name`, without a cast, so the catalog's index on them serves.
+    format!("(n.nspname, c.relname) IN ({})", pairs.join(", "))
 }
 
 /// The oids of the relations `objects`, by schema and name.
@@ -342,38 +340,73 @@ async fn by_relation(conn: &dyn Connection, sql: &str) -> Result<HashMap<String,
     Ok(out)
 }
 
-/// The same failure for every object of a reader whose query failed.
-fn failed(objects: &[ObjectRef<'_>], e: &Error) -> Vec<Result<String>> {
-    objects
-        .iter()
-        .map(|_| Err(Error::Other(e.to_string())))
-        .collect()
+/// What to do when a query shared by `objects` failed with `e`: the failure of each, when it
+/// is the connection's (or there is one object); `None` to read them again one at a time, so
+/// that one object's error is not every object's.
+fn shared_failure(objects: &[ObjectRef<'_>], e: Error) -> Option<Vec<Result<String>>> {
+    if objects.len() == 1 {
+        return Some(vec![Err(e)]);
+    }
+    if matches!(e, Error::Closed | Error::Cancelled) {
+        return Some(
+            objects
+                .iter()
+                .map(|_| Err(Error::Other(e.to_string())))
+                .collect(),
+        );
+    }
+    None
 }
 
 fn not_found(o: &ObjectRef<'_>) -> Error {
     Error::Other(format!("{} not found", qualified(o.schema, o.name)))
 }
 
-/// The DDL of views and materialized views, read with one query.
+/// The DDL of views and materialized views, read with two queries for all of them.
 async fn views_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Result<String>> {
     if objects.is_empty() {
         return Vec::new();
     }
-    let sql = format!(
-        "SELECT n.nspname || chr(1) || c.relname, pg_get_viewdef(c.oid, true) FROM pg_class c
-         JOIN pg_namespace n ON n.oid = c.relnamespace WHERE {}",
-        named(objects)
-    );
-    let bodies = match by_relation(conn, &sql).await {
-        Ok(bodies) => bodies,
-        Err(e) => return failed(objects, &e),
+    match read_views(conn, objects).await {
+        Ok(out) => out,
+        Err(e) => {
+            if let Some(out) = shared_failure(objects, e) {
+                return out;
+            }
+            let mut out = Vec::with_capacity(objects.len());
+            for o in objects {
+                out.push(read_views(conn, &[*o]).await.map_or_else(Err, single));
+            }
+            out
+        }
+    }
+}
+
+async fn read_views(
+    conn: &dyn Connection,
+    objects: &[ObjectRef<'_>],
+) -> Result<Vec<Result<String>>> {
+    let oids = relation_oids(conn, objects).await?;
+    let bodies = if oids.is_empty() {
+        HashMap::new()
+    } else {
+        let list: Vec<&str> = oids.values().map(String::as_str).collect();
+        by_relation(
+            conn,
+            &format!(
+                "SELECT c.oid::text, pg_get_viewdef(c.oid, true) FROM pg_class c
+                 WHERE c.oid IN ({})",
+                list.join(", ")
+            ),
+        )
+        .await?
     };
-    objects
+    Ok(objects
         .iter()
         .map(|o| {
-            let body = bodies
-                .get(&format!("{}\u{1}{}", o.schema, o.name))
-                .and_then(|rows| rows.first())
+            let body = oids
+                .get(&(o.schema.to_owned(), o.name.to_owned()))
+                .and_then(|oid| of(&bodies, oid).first())
                 .ok_or_else(|| not_found(o))?
                 .text(0);
             let create = if o.kind == ObjectKind::View {
@@ -387,7 +420,7 @@ async fn views_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Resu
                 body.trim_start()
             )))
         })
-        .collect()
+        .collect())
 }
 
 /// What the catalog queries read about tables, by oid.
@@ -464,21 +497,34 @@ async fn tables_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Res
     if objects.is_empty() {
         return Vec::new();
     }
-    let read = async {
-        let oids = relation_oids(conn, objects).await?;
-        let list: Vec<&str> = oids.values().map(String::as_str).collect();
-        let rows = if list.is_empty() {
-            None
-        } else {
-            Some(table_rows(conn, &list.join(", ")).await?)
-        };
-        let timescale = !crate::is_cockroach(conn) && has_timescale(conn).await?;
-        Ok::<_, Error>((oids, rows, timescale))
+    match read_tables(conn, objects).await {
+        Ok(out) => out,
+        Err(e) => {
+            if let Some(out) = shared_failure(objects, e) {
+                return out;
+            }
+            let mut out = Vec::with_capacity(objects.len());
+            for o in objects {
+                out.push(read_tables(conn, &[*o]).await.map_or_else(Err, single));
+            }
+            out
+        }
+    }
+}
+
+async fn read_tables(
+    conn: &dyn Connection,
+    objects: &[ObjectRef<'_>],
+) -> Result<Vec<Result<String>>> {
+    let oids = relation_oids(conn, objects).await?;
+    let list: Vec<&str> = oids.values().map(String::as_str).collect();
+    let rows = if list.is_empty() {
+        None
+    } else {
+        Some(table_rows(conn, &list.join(", ")).await?)
     };
-    let (oids, rows, timescale) = match read.await {
-        Ok(read) => read,
-        Err(e) => return failed(objects, &e),
-    };
+    // Without the TimescaleDB catalog, tables are plain ones.
+    let timescale = !crate::is_cockroach(conn) && has_timescale(conn).await.unwrap_or(false);
     let mut out = Vec::with_capacity(objects.len());
     for o in objects {
         let found = oids
@@ -489,7 +535,7 @@ async fn tables_ddl(conn: &dyn Connection, objects: &[ObjectRef<'_>]) -> Vec<Res
             None => Err(not_found(o)),
         });
     }
-    out
+    Ok(out)
 }
 
 /// The rows of relation `oid` in `map`, none when it has none.

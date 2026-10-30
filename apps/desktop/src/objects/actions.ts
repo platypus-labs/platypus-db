@@ -113,7 +113,9 @@ registerAction({
   multiple: true,
   when: ({ connection }) => !isRedis(connection.driver),
   // The tab opens at once and fills as the DDL is read, a block of objects at a time.
-  run: (arg) => {
+  run: async (arg) => {
+    // The session first: a password asked and cancelled opens no tab.
+    if ((await workbench().sideSession(arg.connection, arg.database)) === null) return;
     const objects = arg.selection ?? [arg];
     workbench().openTab("query", arg.connection.id, {
       sql: "",
