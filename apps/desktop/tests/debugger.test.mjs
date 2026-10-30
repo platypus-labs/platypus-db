@@ -8,6 +8,7 @@ import {
   isStopped,
   isTrigger,
   misplacedDefault,
+  nextState,
   parameterName,
   withBreakpoint,
 } from "../src/debugger/model.ts";
@@ -72,4 +73,16 @@ test("commands run only on a stopped call; trigger functions are told apart", ()
   assert.equal(isStopped(null), false);
   assert.equal(isTrigger(routine([], { returns: "trigger" })), true);
   assert.equal(isTrigger(routine([])), false);
+});
+
+test("an ended call stays ended, and a stop's abort wins", () => {
+  const stopped = { state: "stopped", position: { routine: "1", name: "f()", line: 2 } };
+  const outcome = (aborted) => ({ columns: [], rows: [], truncated: false, error: aborted ? "canceled" : null, messages: [], aborted });
+  const done = { state: "finished", outcome: outcome(false) };
+  const aborted = { state: "finished", outcome: outcome(true) };
+  assert.equal(nextState(stopped, { state: "running" }).state, "running");
+  assert.equal(nextState({ state: "running" }, stopped), stopped);
+  assert.equal(nextState(done, { state: "running" }), done);
+  assert.equal(nextState(done, aborted), aborted);
+  assert.equal(nextState(aborted, done), aborted);
 });

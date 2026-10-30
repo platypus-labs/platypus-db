@@ -47,5 +47,13 @@ export function withBreakpoint(breakpoints: ReadonlySet<string>, routine: string
 export const isStopped = (state: DebugState | null): state is Extract<DebugState, { state: "stopped" }> =>
   state?.state === "stopped";
 
+/** The state to show after `current` when `next` arrives (from an event or a command's
+ *  answer, in any order): an ended call stays ended, and a stop's abort wins over the
+ *  cancelled step that saw the call end. */
+export function nextState(current: DebugState, next: DebugState): DebugState {
+  if (current.state !== "finished") return next;
+  return next.state === "finished" && next.outcome.aborted ? next : current;
+}
+
 /** Whether a function cannot be called directly: a trigger function. */
 export const isTrigger = (routine: DebugRoutine) => routine.returns === "trigger" || routine.returns === "event_trigger";

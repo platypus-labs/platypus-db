@@ -17,7 +17,7 @@ import {
 } from "../api";
 import { t } from "../i18n";
 import type { TabBase, TabProps } from "../tabs/registry";
-import { breakpointLines, isStopped, withBreakpoint } from "./model";
+import { breakpointLines, isStopped, nextState, withBreakpoint } from "./model";
 import { SourceView } from "./SourceView";
 
 /** Not kept for the next start: the call ends with the app. */
@@ -68,6 +68,9 @@ function Debugging({ started, active }: { started: DebugStarted; active: boolean
   const stateNow = useRef(state);
   stateNow.current = state;
 
+  // Events and answers may come in any order: see `nextState`.
+  const apply = (next: DebugState) => setState((current) => nextState(current, next));
+
   const fail = (e: unknown) => {
     // A command cut short by the end of the call says less than the end itself.
     if (stateNow.current.state !== "finished") setError(toCommandError(e).message);
@@ -75,7 +78,7 @@ function Debugging({ started, active }: { started: DebugStarted; active: boolean
 
   useEffect(() => {
     const off = listen<DebugStateEvent>("debug-state", ({ payload }) => {
-      if (payload.debug_id === id) setState(payload.state);
+      if (payload.debug_id === id) apply(payload.state);
     });
     return () => {
       void off.then((unlisten) => unlisten());
@@ -126,7 +129,7 @@ function Debugging({ started, active }: { started: DebugStarted; active: boolean
     setBusy(true);
     setError(null);
     try {
-      setState(kind === "continue" ? await api.debugContinue(id) : await api.debugStep(id, kind));
+      apply(kind === "continue" ? await api.debugContinue(id) : await api.debugStep(id, kind));
     } catch (e) {
       fail(e);
     } finally {
@@ -138,7 +141,7 @@ function Debugging({ started, active }: { started: DebugStarted; active: boolean
     if (state.state === "finished") return;
     try {
       const final = await api.debugStop(id);
-      if (final) setState(final);
+      if (final) apply(final);
     } catch (e) {
       fail(e);
     }

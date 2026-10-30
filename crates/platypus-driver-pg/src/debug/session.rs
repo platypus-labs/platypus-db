@@ -197,7 +197,10 @@ impl Inner {
             .clone()
     }
 
+    /// Records `state`, unless the session is over: a step that saw the call end as a stop
+    /// aborted it says less than the stop.
     fn set_state(&self, state: DebugState) {
+        let state = self.ended.get().cloned().unwrap_or(state);
         *self.state.lock().unwrap_or_else(PoisonError::into_inner) = state;
     }
 
