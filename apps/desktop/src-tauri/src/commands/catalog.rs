@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use futures::StreamExt;
 use platypus_core::{Connection, ObjectKind, ObjectMeta, TableDetails};
 use platypus_docs::{DocColumn, DocForeignKey, DocIndex, DocKind, DocModel, DocObject, DocSchema};
-use platypus_store::{CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, TagCount};
+use platypus_store::{
+    CatalogEntry, CatalogKey, CatalogStore, DisplayColumn, SensitiveColumn, TagCount,
+};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
@@ -105,6 +107,26 @@ pub fn set_catalog_display_column(
     column: Option<String>,
 ) -> CommandResult<()> {
     state.with_catalog(|c| c.set_display_column(connection_id, &key, column.as_deref()))
+}
+
+/// The columns of a connection marked sensitive or not by hand.
+#[tauri::command]
+pub fn catalog_sensitive_columns(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+) -> CommandResult<Vec<SensitiveColumn>> {
+    state.with_catalog(|c| c.sensitive_columns(connection_id))
+}
+
+/// Marks the column `key` sensitive or not; `None` leaves it to the rules.
+#[tauri::command]
+pub fn set_catalog_sensitive(
+    state: State<'_, AppState>,
+    connection_id: Uuid,
+    key: CatalogKey,
+    sensitive: Option<bool>,
+) -> CommandResult<()> {
+    state.with_catalog(|c| c.set_sensitive(connection_id, &key, sensitive))
 }
 
 /// Drops the notes of a deleted connection; a catalog that cannot be opened has none.

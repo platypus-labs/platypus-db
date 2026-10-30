@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { firstChoice, type SensitiveChoice, withSensitive } from "../guards/sensitiveExport";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Bucket, Compression, DriverKind, ExportFormat, ExportOptions, TransferProfile } from "../api";
 import { ProfileButtons } from "../transfer/ProfileSave";
@@ -24,6 +25,10 @@ interface Props {
   profile?: TransferProfile;
   /** Only the query can be exported, not rows already loaded. */
   queryOnly?: boolean;
+  /** The result's sensitive columns, which the file can mask or leave out. */
+  sensitive?: string[];
+  /** What happens to them at first: masked while masking is on. */
+  masking?: boolean;
   onExport: (path: string, options: ExportOptions, source: ExportSource) => void;
   onClose: () => void;
 }
@@ -200,7 +205,7 @@ export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; 
   );
 }
 
-export function ExportDialog({ name, driver, loadedRows, complete, transactionOpen, query, profile, queryOnly, onExport, onClose }: Props) {
+export function ExportDialog({ name, driver, loadedRows, complete, transactionOpen, query, profile, queryOnly, sensitive = [], masking = false, onExport, onClose }: Props) {
   const saved = profile?.task.kind === "export_query" ? profile.task : null;
   const [options, setOptions] = useState<ExportOptions>(
     saved?.options ?? {
@@ -212,6 +217,7 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
     },
   );
   const [source, setSource] = useState<ExportSource>(complete && !queryOnly ? "loaded" : "query");
+  const [choice, setChoice] = useState<SensitiveChoice>(firstChoice(saved?.options, masking));
   /** The profile keeps its signed URL apart: it runs from the profiles, not from here. */
   const urlKept = options.upload_url === KEPT_URL;
   const format = FORMATS.find((f) => f.value === options.format)!;
@@ -228,13 +234,13 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (urlKept) return;
-    const chosen = sentOptions(options);
+    const chosen = withSensitive(sentOptions(options), sensitive, choice);
     const path = await askPath(chosen);
     if (path) onExport(path, chosen, source);
   }
 
   async function build() {
-    const chosen = sentOptions(options);
+    const chosen = withSensitive(sentOptions(options), sensitive, choice);
     const path = await askPath(chosen);
     return path && query ? { kind: "export_query" as const, ...query, path, options: chosen } : null;
   }
@@ -267,6 +273,16 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
         <OutputOptions options={options} signedUrl onChange={setOptions} />
         {urlKept && (
           <div className="notice small">{t("The signed URL is saved with the profile. Type a new one to export from here, or run the profile.")}</div>
+        )}
+        {sensitive.length > 0 && (
+          <label className="field">
+            <span title={sensitive.join(", ")}>{t("Sensitive columns ({names})", { names: sensitive.join(", ") })}</span>
+            <select value={choice} data-field="sensitive" onChange={(e) => setChoice(e.target.value as SensitiveChoice)}>
+              <option value="keep">{t("Keep their values")}</option>
+              <option value="mask">{t("Mask their values")}</option>
+              <option value="omit">{t("Leave them out")}</option>
+            </select>
+          </label>
         )}
         {!queryOnly && (
           <fieldset className="choices">

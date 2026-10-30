@@ -40,10 +40,19 @@ const MIGRATIONS: &[&str] = &[
         display       TEXT NOT NULL,
         PRIMARY KEY (connection_id, database, schema, object)
     );",
+    "CREATE TABLE sensitive_columns (
+        connection_id TEXT    NOT NULL,
+        database      TEXT    NOT NULL,
+        schema        TEXT    NOT NULL,
+        object        TEXT    NOT NULL,
+        column_name   TEXT    NOT NULL,
+        sensitive     INTEGER NOT NULL, -- 1 sensitive, 0 not, whatever the rules say
+        PRIMARY KEY (connection_id, database, schema, object, column_name)
+    );",
 ];
 
 /// Every table of the catalog, for what applies to all of them.
-const TABLES: [&str; 3] = ["notes", "tags", "display_columns"];
+const TABLES: [&str; 4] = ["notes", "tags", "display_columns", "sensitive_columns"];
 
 /// What a note or tag is on. `database` is empty for the connection's own database, `schema`
 /// where the database has none, `column` for the table or view itself.
@@ -75,6 +84,14 @@ pub struct TagCount {
 pub struct DisplayColumn {
     pub key: CatalogKey,
     pub column: String,
+}
+
+/// A column the user said is sensitive (personal data, secrets) or is not, over what the
+/// rules on names and types say.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SensitiveColumn {
+    pub key: CatalogKey,
+    pub sensitive: bool,
 }
 
 /// The catalog database.
@@ -306,6 +323,59 @@ impl CatalogStore {
             .map_err(db_error)?;
         }
         tx.commit().map_err(db_error)
+    }
+
+    /// The columns of `connection` the user marked sensitive or not.
+    pub fn sensitive_columns(&self, connection: Uuid) -> Result<Vec<SensitiveColumn>> {
+        let mut q = self
+            .db
+            .prepare("SELECT database, schema, object, column_name, sensitive FROM sensitive_columns WHERE connection_id = ?1")
+            .map_err(db_error)?;
+        let rows = q
+            .query_map(params![connection.to_string()], |r| {
+                Ok(SensitiveColumn {
+                    key: key_of(r)?,
+                    sensitive: r.get(4)?,
+                })
+            })
+            .map_err(db_error)?;
+        rows.collect::<std::result::Result<_, _>>()
+            .map_err(db_error)
+    }
+
+    /// Marks the column `key` sensitive or not; `None` leaves it to the rules again.
+    pub fn set_sensitive(
+        &mut self,
+        connection: Uuid,
+        key: &CatalogKey,
+        sensitive: Option<bool>,
+    ) -> Result<()> {
+        let k = params![
+            connection.to_string(),
+            key.database,
+            key.schema,
+            key.object,
+            key.column
+        ];
+        match sensitive {
+            Some(sensitive) => self.db.execute(
+                "INSERT OR REPLACE INTO sensitive_columns VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    connection.to_string(),
+                    key.database,
+                    key.schema,
+                    key.object,
+                    key.column,
+                    sensitive
+                ],
+            ),
+            None => self.db.execute(
+                "DELETE FROM sensitive_columns WHERE connection_id = ?1 AND database = ?2 AND schema = ?3 AND object = ?4 AND column_name = ?5",
+                k,
+            ),
+        }
+        .map_err(db_error)?;
+        Ok(())
     }
 
     /// Moves notes, tags and display columns after the app renamed an object or a column.
@@ -688,5 +758,39 @@ mod tests {
         assert_eq!(s.display_columns(c).unwrap()[0].key.object, "clients");
         s.retain_connections(&[]).unwrap();
         assert_eq!(s.display_columns(c).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn marks_columns_sensitive_or_not_and_follows_renames() {
+        let mut s = CatalogStore::open_in_memory().unwrap();
+        let c = Uuid::new_v4();
+        s.set_sensitive(c, &key("users", "email"), Some(true))
+            .unwrap();
+        s.set_sensitive(c, &key("users", "phone_model"), Some(false))
+            .unwrap();
+        s.set_sensitive(c, &key("users", "email"), Some(true))
+            .unwrap();
+        let mut all = s.sensitive_columns(c).unwrap();
+        all.sort_by(|a, b| a.key.cmp(&b.key));
+        assert_eq!(
+            all.iter()
+                .map(|m| (m.key.column.as_str(), m.sensitive))
+                .collect::<Vec<_>>(),
+            [("email", true), ("phone_model", false)]
+        );
+        // A column renamed by the app keeps its mark; back to the rules forgets it.
+        s.rename(c, &key("users", "email"), &key("users", "mail"))
+            .unwrap();
+        assert!(
+            s.sensitive_columns(c)
+                .unwrap()
+                .iter()
+                .any(|m| m.key.column == "mail" && m.sensitive)
+        );
+        s.set_sensitive(c, &key("users", "mail"), None).unwrap();
+        assert_eq!(s.sensitive_columns(c).unwrap().len(), 1);
+        assert!(s.sensitive_columns(Uuid::new_v4()).unwrap().is_empty());
+        s.remove_connection(c).unwrap();
+        assert!(s.sensitive_columns(c).unwrap().is_empty());
     }
 }

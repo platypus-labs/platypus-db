@@ -1345,6 +1345,10 @@ export interface ExportOptions {
   upload_url?: string | null;
   /** A bucket the finished file is also sent to, signed with its keys. */
   bucket?: Bucket | null;
+  /** Columns written as dots (a NULL stays NULL): sensitive data. */
+  masked?: string[];
+  /** Columns left out of the file. */
+  omitted?: string[];
 }
 
 /** A bucket of S3 or a service with its API (GCS with HMAC keys, R2, MinIO), as `s3::Bucket`. */
@@ -1501,6 +1505,12 @@ export interface TagCount {
 export interface DisplayColumn {
   key: CatalogKey;
   column: string;
+}
+
+/** A column the user marked sensitive or not, over the rules on names and types. */
+export interface SensitiveColumn {
+  key: CatalogKey;
+  sensitive: boolean;
 }
 
 export type DocsFormat = "markdown" | "html";
@@ -2471,6 +2481,10 @@ export const api = {
     invoke<DisplayColumn[]>("catalog_display_columns", { connectionId }),
   setCatalogDisplayColumn: (connectionId: string, key: CatalogKey, column: string | null) =>
     invoke<void>("set_catalog_display_column", { connectionId, key, column }),
+  catalogSensitiveColumns: (connectionId: string) =>
+    invoke<SensitiveColumn[]>("catalog_sensitive_columns", { connectionId }),
+  setCatalogSensitive: (connectionId: string, key: CatalogKey, sensitive: boolean | null) =>
+    invoke<void>("set_catalog_sensitive", { connectionId, key, sensitive }),
   /** Writes the documentation of `request.schemas`; cancelled with `cancelDocs`. */
   exportDocs: (
     sessionId: number,

@@ -127,7 +127,14 @@ pub struct ExportOptions {
     pub upload_url: Option<String>,
     /// A bucket the finished file is also sent to, with the keys to sign the `PUT`.
     pub bucket: Option<s3::Bucket>,
+    /// Columns whose values are written as [`MASK`] (a NULL stays NULL): sensitive data.
+    pub masked: Vec<String>,
+    /// Columns left out of the file.
+    pub omitted: Vec<String>,
 }
+
+/// What a masked value is written as: the same for every value, so not even its length shows.
+pub const MASK: &str = "••••••";
 
 impl Default for ExportOptions {
     fn default() -> Self {
@@ -140,6 +147,8 @@ impl Default for ExportOptions {
             compression: Compression::None,
             upload_url: None,
             bucket: None,
+            masked: Vec::new(),
+            omitted: Vec::new(),
         }
     }
 }
@@ -172,6 +181,43 @@ enum Sink {
 /// every value from its text, with its type to tell numbers (see [`text::TextSink`]).
 fn as_text(data_type: &DataType, format: Format) -> bool {
     format == Format::Parquet && matches!(data_type, DataType::Interval(_) | DataType::Duration(_))
+}
+
+/// The columns of `schema` the file gets, in order, with whether each is masked: all but
+/// those `options` leaves out.
+fn kept_columns(schema: &Schema, options: &ExportOptions) -> Vec<(usize, bool)> {
+    schema
+        .fields()
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| !options.omitted.iter().any(|o| o == f.name()))
+        .map(|(i, f)| (i, options.masked.iter().any(|m| m == f.name())))
+        .collect()
+}
+
+/// The schema of the `kept` columns of `schema`, masked ones as text.
+fn written_schema(schema: &Schema, kept: &[(usize, bool)]) -> Schema {
+    Schema::new(
+        kept.iter()
+            .map(|&(i, masked)| {
+                let f = schema.field(i);
+                if masked {
+                    Field::new(f.name(), DataType::Utf8, true)
+                } else {
+                    f.clone()
+                }
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// `array` with every value written as [`MASK`], its NULLs kept.
+fn masked_column(array: &dyn Array) -> ArrayRef {
+    Arc::new(
+        (0..array.len())
+            .map(|i| (!array.is_null(i)).then_some(MASK))
+            .collect::<arrow_array::StringArray>(),
+    )
 }
 
 fn output_schema(schema: &Schema, format: Format) -> SchemaRef {
@@ -228,6 +274,8 @@ fn parquet_values(batch: &RecordBatch) -> Result<()> {
 pub struct Exporter {
     sink: Option<Sink>,
     schema: SchemaRef,
+    /// The columns of the result written, in order, each masked or not.
+    kept: Vec<(usize, bool)>,
     format: Format,
     partial: PathBuf,
     target: PathBuf,
@@ -272,7 +320,8 @@ impl Exporter {
         // The error names the file asked for, not the partial one.
         let file = File::create(&partial).map_err(io_error(path))?;
         let out = BufWriter::with_capacity(1 << 20, file);
-        let schema = output_schema(schema, options.format);
+        let kept = kept_columns(schema, options);
+        let schema = output_schema(&written_schema(schema, &kept), options.format);
 
         let sink = match options.format {
             format @ (Format::Csv
@@ -311,6 +360,7 @@ impl Exporter {
         Ok(Self {
             sink: Some(sink),
             schema,
+            kept,
             format: options.format,
             partial,
             target: path.to_owned(),
@@ -323,16 +373,18 @@ impl Exporter {
 
     pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
         let source = batch.schema();
-        let columns = batch
-            .columns()
+        let columns = self
+            .kept
             .iter()
             .zip(self.schema.fields())
-            .zip(source.fields())
-            .map(|((column, field), from)| {
-                if column.data_type() == field.data_type() {
+            .map(|(&(i, masked), field)| {
+                let column = batch.column(i);
+                if masked {
+                    Ok(masked_column(column.as_ref()))
+                } else if column.data_type() == field.data_type() {
                     Ok(Arc::clone(column))
                 } else {
-                    to_text(from, column.as_ref())
+                    to_text(source.field(i), column.as_ref())
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -539,6 +591,47 @@ mod tests {
         );
         assert_eq!(lines[2], "2;;;;");
         assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn masks_and_leaves_out_sensitive_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let options = ExportOptions {
+            masked: vec!["name".to_owned(), "price".to_owned()],
+            omitted: vec!["raw".to_owned()],
+            ..ExportOptions::default()
+        };
+        let text = std::fs::read_to_string(export(dir.path(), "out.csv", &options)).unwrap();
+        let lines: Vec<_> = text.lines().collect();
+        assert_eq!(lines[0], "id,price,name,at");
+        assert_eq!(lines[1], format!("1,{MASK},{MASK},1970-01-01T00:00:01Z"));
+        // A NULL stays NULL: it tells nothing.
+        assert_eq!(lines[2], "2,,,");
+        // Parquet too, with the masked columns as text.
+        let options = ExportOptions {
+            format: Format::Parquet,
+            ..options
+        };
+        let file = File::open(export(dir.path(), "out.parquet", &options)).unwrap();
+        let reader = ParquetRecordBatchReaderBuilder::try_new(file)
+            .unwrap()
+            .build()
+            .unwrap();
+        let batch = reader.into_iter().next().unwrap().unwrap();
+        let names: Vec<_> = batch
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect();
+        assert_eq!(names, ["id", "price", "name", "at"]);
+        let price = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(price.value(0), MASK);
+        assert!(price.is_null(1));
     }
 
     #[test]

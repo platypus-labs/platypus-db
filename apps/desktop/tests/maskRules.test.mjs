@@ -1,7 +1,7 @@
 // Unit tests of the columns masked for screen sharing (src/guards/maskRules.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_NAMES, masksColumn, patterns } from "../src/guards/maskRules.ts";
+import { DEFAULT_NAMES, masksColumn, patterns, isSensitive } from "../src/guards/maskRules.ts";
 
 const masks = (name, db_type, names = DEFAULT_NAMES, types = "") => masksColumn({ name, db_type }, patterns(names), patterns(types));
 
@@ -23,4 +23,14 @@ test("patterns match whole names, with * for any characters, and types without t
 test("an empty list masks nothing", () => {
   assert.deepEqual(patterns(" , "), []);
   assert.ok(!masks("email", "text", "", ""));
+});
+
+test("the user's mark on a column counts over the rules, both ways", () => {
+  const names = patterns(DEFAULT_NAMES);
+  const email = { name: "email", db_type: "text" };
+  const note = { name: "note", db_type: "text" };
+  assert.equal(isSensitive(undefined, email, names, []), true, "the rules say so");
+  assert.equal(isSensitive(null, note, names, []), false);
+  assert.equal(isSensitive(false, email, names, []), false, "marked not sensitive");
+  assert.equal(isSensitive(true, note, names, []), true, "marked sensitive");
 });

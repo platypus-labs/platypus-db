@@ -10,7 +10,8 @@ import {
   toCommandError,
 } from "../api";
 import { isRelation } from "../components/Navigator";
-import { catalogKey, useCatalogVersion } from "../catalog/catalog";
+import { catalogKey, reportCatalogError, sensitiveMark, setSensitiveMark, useCatalogVersion } from "../catalog/catalog";
+import { useSensitive } from "../guards/mask";
 import { CatalogTags, NotesPanel, useNoteDraft } from "../catalog/NotesPanel";
 import { Icon, objectIcon } from "../ui/Icon";
 import { SqlEditor } from "../editor/SqlEditor";
@@ -121,6 +122,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   // Also re-renders the note and tag cells of the columns, which read the catalog as they draw.
   const catalogVersion = useCatalogVersion();
+  // What the rules on names and types say of each column, before the user's marks.
+  const byRules = useSensitive();
   const ckey = (column = "") => catalogKey(tab.database, tab.schema, tab.name, column);
   const sections = sectionsFor(tab.objectKind);
   const section = tab.section && sections.includes(tab.section) ? tab.section : sections[0]!;
@@ -313,7 +316,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         )}
         {d && section === "columns" && (
           <MetaTable
-            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment (database)"), t("Note"), t("Tags")]}
+            head={["#", t("Name"), t("Type"), t("Nullable"), t("Default"), t("Key"), t("Comment (database)"), t("Note"), t("Tags"), t("Sensitive")]}
             rows={d.columns.map((c, i) => [
               String(i + 1),
               c.name,
@@ -339,6 +342,12 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
                 connectionId={connection.id}
                 catalogKey={ckey(c.name)}
                 suggestions={tagSuggestions}
+              />,
+              <SensitiveCell
+                key={`sensitive ${c.name}`}
+                connectionId={connection.id}
+                catalogKey={ckey(c.name)}
+                byRules={byRules({ name: c.name, db_type: c.data_type })}
               />,
             ])}
           />
@@ -432,6 +441,23 @@ function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** Whether a column is sensitive: as the rules say, or the user's mark over them. */
+function SensitiveCell({ connectionId, catalogKey, byRules }: { connectionId: string; catalogKey: CatalogKey; byRules: boolean }) {
+  const mark = sensitiveMark(connectionId, catalogKey);
+  return (
+    <select
+      className="cell-input"
+      aria-label={t("Sensitive: {column}", { column: catalogKey.column })}
+      value={mark === undefined ? "" : mark ? "yes" : "no"}
+      onChange={(e) => setSensitiveMark(connectionId, catalogKey, e.target.value === "" ? null : e.target.value === "yes").catch(reportCatalogError)}
+    >
+      <option value="">{t(byRules ? "Sensitive, by the rules" : "Not sensitive, by the rules")}</option>
+      <option value="yes">{t("Sensitive")}</option>
+      <option value="no">{t("Not sensitive")}</option>
+    </select>
   );
 }
 
