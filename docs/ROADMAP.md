@@ -122,8 +122,8 @@ per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva
 | O — Collaborazione e sync | ✅ completato |
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
-| R — Revisione grafica | 🔒 Delfa · group-r-redesign-2 · 2026-10-30 |
-| S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
+| R — Revisione grafica | ✅ completato |
+| S — Collaudo finale | libero |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
@@ -1314,7 +1314,7 @@ procede solo con i mockup approvati; una pagina senza mockup approvato non si to
 
 ### Gruppo S — Collaudo finale
 
-**Stato: in attesa.** Si prende dopo il gruppo R, sull'app finita e ridisegnata: è il collaudo
+**Stato: da fare.** Si prende ora che il gruppo R è completato, sull'app finita e ridisegnata: è il collaudo
 prima della v1.0, fatto con calma e con metodo, non una passata veloce.
 
 Verificare che tutto funzioni su tutti i database e i sistemi, come lo usa una persona vera, e
