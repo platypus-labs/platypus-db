@@ -266,25 +266,42 @@ fn context() -> tauri::Context {
 }
 
 /// Points the updater at `url`, only when that is a plain-HTTP address on this machine: the
-/// published endpoint stays the only one a release can ever ask.
+/// published endpoint stays the only one a release can ever ask. The update signature check is
+/// untouched.
 fn override_update_endpoint(
     plugins: &mut std::collections::HashMap<String, serde_json::Value>,
     url: &str,
 ) {
-    let local = ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"];
-    if url.contains('@') || !local.iter().any(|prefix| url.starts_with(prefix)) {
+    if !is_local_http(url) {
+        eprintln!("PLATYPUS_UPDATE_URL ignored: not a plain-HTTP address on this machine");
         return;
     }
-    if let Some(updater) = plugins
+    let Some(updater) = plugins
         .get_mut("updater")
         .and_then(serde_json::Value::as_object_mut)
-    {
-        updater.insert("endpoints".to_owned(), serde_json::json!([url]));
-        updater.insert(
-            "dangerousInsecureTransportProtocol".to_owned(),
-            serde_json::json!(true),
-        );
-    }
+    else {
+        eprintln!("PLATYPUS_UPDATE_URL ignored: the updater plugin is not configured");
+        return;
+    };
+    updater.insert("endpoints".to_owned(), serde_json::json!([url]));
+    updater.insert(
+        "dangerousInsecureTransportProtocol".to_owned(),
+        serde_json::json!(true),
+    );
+}
+
+/// `http://` to `127.0.0.1`, `[::1]` or `localhost`, with no credentials.
+fn is_local_http(url: &str) -> bool {
+    let Ok(url) = url::Url::parse(url) else {
+        return false;
+    };
+    let local_host = match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        Some(url::Host::Domain(name)) => name == "localhost",
+        None => false,
+    };
+    url.scheme() == "http" && local_host && url.username().is_empty() && url.password().is_none()
 }
 
 /// Every command the web UI can call.
@@ -612,6 +629,22 @@ mod update_endpoint_tests {
             p["updater"]["dangerousInsecureTransportProtocol"],
             json!(true)
         );
+    }
+
+    #[test]
+    fn ipv6_and_localhost_are_local() {
+        for url in ["http://[::1]:9000/x", "http://localhost:9000/x"] {
+            let mut p = plugins();
+            override_update_endpoint(&mut p, url);
+            assert_eq!(p["updater"]["endpoints"], json!([url]));
+        }
+    }
+
+    #[test]
+    fn a_missing_updater_entry_is_left_alone() {
+        let mut p = HashMap::new();
+        override_update_endpoint(&mut p, "http://127.0.0.1:9000/x");
+        assert!(p.is_empty());
     }
 
     #[test]

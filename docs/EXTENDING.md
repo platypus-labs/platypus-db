@@ -702,7 +702,8 @@ which makes the app open the protocol port itself. With it set, `app_info().devt
 true and the app exposes test hooks on `window.__platypus`, such as `switchProject(id)`.
 `PLATYPUS_UPDATE_URL` replaces the updater endpoint, but only with a plain-HTTP address on
 this machine (`127.0.0.1`, `localhost`, `[::1]`); the `update-banner*` scenarios serve a fake
-`latest.json` there (`e2e/update-helpers.mjs`) and never install anything.
+`latest.json` there (`e2e/update-helpers.mjs`) and never install anything. The update signature check is unchanged, so the hook can never
+install an unsigned build.
 
 ```bash
 npm run tauri build -- --no-bundle
