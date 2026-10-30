@@ -664,6 +664,12 @@ export interface ScriptList {
   entries: ScriptEntry[];
 }
 
+/** A saved dashboard file, by name; `modified` in milliseconds since the Unix epoch. */
+export interface DashboardEntry {
+  name: string;
+  modified: number;
+}
+
 export interface CliOutput {
   command: string;
   status: number | null;
@@ -1610,6 +1616,60 @@ export interface ColumnProfile {
   complete: boolean;
 }
 
+/** What a text value looks like (see `crates/platypus-local/src/patterns.rs`): the first eight
+ *  are formats, the last two properties on top of them. */
+export type ValuePattern =
+  | "email"
+  | "url"
+  | "uuid"
+  | "iso_date"
+  | "date_like"
+  | "integer"
+  | "decimal"
+  | "phone"
+  | "spaces"
+  | "mixed_case";
+
+/** One column of a table profile: the hover statistics plus what a full read tells. */
+export interface TableColumnProfile {
+  name: string;
+  data_type: string;
+  /** The type the database reported, when the driver told it. */
+  db_type: string | null;
+  kind: "number" | "time" | "text" | "other";
+  rows: number;
+  nulls: number;
+  distinct: number;
+  min: string | null;
+  max: string | null;
+  histogram: { from: string; to: string; count: number }[];
+  top: { value: string; count: number }[];
+  /** Text: values that are the empty string. */
+  empty: number;
+  numbers: { mean: number; stddev: number | null; q1: number; median: number; q3: number } | null;
+  /** Text: length in characters. */
+  lengths: { min: number; avg: number; max: number } | null;
+  patterns: {
+    /** Values looked at: not NULL and not empty. */
+    checked: number;
+    /** The format at least half of the values have. */
+    dominant: ValuePattern | null;
+    shares: { pattern: ValuePattern; count: number; share: number }[];
+    /** Values that break the format a column mostly has. */
+    exceptions: string[];
+  } | null;
+  /** Numbers past the IQR fences; `null` when there are none. */
+  outliers: { count: number; share: number; low_fence: number; high_fence: number; examples: string[] } | null;
+}
+
+export interface TableProfile {
+  /** Rows read. */
+  rows: number;
+  columns: TableColumnProfile[];
+  /** Why not every row was read: the row budget or the memory limit. */
+  cut: "rows" | "memory" | null;
+}
+
 // Analysis (group M): charts
 /** What a chart draws, columns by position (`analysis/chartConfig.ts` makes it). */
 export interface ChartRequest {
@@ -1650,6 +1710,71 @@ export type ResultPartial = "memory_limit" | "stopped";
 export interface OpenedResultDb {
   connection: SavedConnection;
   partial: ResultPartial | null;
+}
+
+/** A table to copy into the DuckDB of "Query across databases". */
+export interface AcrossSource {
+  session_id: number;
+  schema: string | null;
+  table: string;
+  /** The condition of a `WHERE`, without the keyword. */
+  filter: string | null;
+  /** The table's name in the DuckDB. */
+  name: string;
+  /** How an error names this source. */
+  label: string;
+}
+
+/** A table of the DuckDB, as loaded; `cut` when the memory limit stopped the reading. */
+export interface AcrossTable {
+  name: string;
+  columns: string[];
+  rows: number;
+  cut: boolean;
+}
+
+export interface OpenedAcross {
+  connection: SavedConnection;
+  tables: AcrossTable[];
+}
+
+// Analysis (group M): saved results
+/** A column of a saved result: the type the database named, else Arrow's. */
+export interface SavedResultColumn {
+  name: string;
+  data_type: string;
+}
+
+/** A result kept as a file, to open without its connection. */
+export interface SavedResult {
+  id: string;
+  name: string;
+  sql: string;
+  /** The connection's name and driver when it was saved. */
+  connection: string;
+  driver: string;
+  database: string | null;
+  /** UTC, ISO 8601. */
+  saved_at: string;
+  rows: number;
+  columns: SavedResultColumn[];
+  /** The result had more rows than were saved. */
+  partial: boolean;
+}
+
+/** What the page tells about a result it saves. */
+export interface SavedResultOrigin {
+  name: string;
+  sql: string;
+  connection: string;
+  driver: string;
+  database: string | null;
+}
+
+/** A saved result read into the temporary DuckDB connection that holds it as `result`. */
+export interface OpenedSavedResult {
+  connection: SavedConnection;
+  result: SavedResult;
 }
 
 // Analysis (group M): compare with the previous run
@@ -2049,6 +2174,16 @@ export const api = {
   deleteScript: (project: string | null, path: string) => invoke<void>("delete_script", { project, path }),
   linkScript: (project: string | null, path: string, connection: string | null) =>
     invoke<void>("link_script", { project, path, connection }),
+  // Dashboards (group M): files in the data folder, per project
+  listDashboards: (project: string | null) => invoke<DashboardEntry[]>("list_dashboards", { project }),
+  /** The JSON text of a saved dashboard. */
+  readDashboard: (project: string | null, name: string) => invoke<string>("read_dashboard", { project, name }),
+  /** Saves `contents` (a JSON object) as the dashboard `name`, replacing it. */
+  saveDashboard: (project: string | null, name: string, contents: string) =>
+    invoke<void>("save_dashboard", { project, name, contents }),
+  renameDashboard: (project: string | null, from: string, to: string) =>
+    invoke<void>("rename_dashboard", { project, from, to }),
+  deleteDashboard: (project: string | null, name: string) => invoke<void>("delete_dashboard", { project, name }),
   /** Runs a script with `psql`, `mysql`, `sqlcmd` or `sqlite3` from the PATH, as the session;
    *  `cancelCli` with the same `runId` stops it. */
   runCli: (sessionId: number, runId: number, script: string) =>
@@ -2282,6 +2417,9 @@ export const api = {
   // Analysis (group M): column statistics
   /** The profile of `column` over the rows the result has loaded. */
   columnProfile: (jobId: number, column: number) => invoke<ColumnProfile>("column_profile", { jobId, column }),
+  /** Profiles the first `maxRows` rows (all with `null`) of a table or view on a session. */
+  tableProfile: (sessionId: number, schema: string, table: string, maxRows: number | null) =>
+    invoke<TableProfile>("table_profile", { sessionId, schema, table, maxRows }),
 
   // Analysis (group M): charts
   /** What `request` draws from the rows the result has loaded. */
@@ -2306,6 +2444,24 @@ export const api = {
   reloadResultDb: (connectionId: string, tables: ResultTable[]) =>
     invoke<ResultPartial | null>("reload_result_db", { connectionId, tables }),
   closeResultDb: (connectionId: string) => invoke<void>("close_result_db", { connectionId }),
+
+  // Analysis (group M): query across databases
+  /** Copies tables of live connections into a new in-memory DuckDB; returns its temporary
+   *  connection and the tables loaded. A failing source fails the call, naming it. */
+  openAcrossDb: (name: string, sources: AcrossSource[]) => invoke<OpenedAcross>("open_across_db", { name, sources }),
+  /** Reads the sources again into the temporary connection's tables. */
+  reloadAcrossDb: (connectionId: string, sources: AcrossSource[]) =>
+    invoke<AcrossTable[]>("reload_across_db", { connectionId, sources }),
+  // Analysis (group M): saved results
+  /** Saves the rows result `jobId` has loaded as a Parquet file of the data folder. */
+  saveResult: (jobId: number, origin: SavedResultOrigin) => invoke<SavedResult>("save_result", { jobId, origin }),
+  /** The saved results, the latest first. */
+  listSavedResults: () => invoke<SavedResult[]>("list_saved_results"),
+  renameSavedResult: (id: string, name: string) => invoke<SavedResult>("rename_saved_result", { id, name }),
+  deleteSavedResult: (id: string) => invoke<void>("delete_saved_result", { id }),
+  /** Reads a saved result into an in-memory DuckDB; no connection to its database needed.
+   *  `name` is the temporary connection's. */
+  openSavedResult: (id: string, name: string) => invoke<OpenedSavedResult>("open_saved_result", { id, name }),
 
   // Analysis (group M): compare with the previous run
   /** Keeps the loaded rows of the result a run of the same statement replaces. */

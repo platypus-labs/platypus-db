@@ -61,11 +61,11 @@ pub enum Partial {
 }
 
 /// The rows a table copies, taken from its result's job.
-struct Source {
-    table: String,
-    schema: SchemaRef,
-    batches: Vec<RecordBatch>,
-    ending: Ending,
+pub(super) struct Source {
+    pub(super) table: String,
+    pub(super) schema: SchemaRef,
+    pub(super) batches: Vec<RecordBatch>,
+    pub(super) ending: Ending,
 }
 
 /// Whether, and why, one of `sources` lacks rows; the memory limit is told first.
@@ -129,25 +129,83 @@ pub async fn open_result_db(
 ) -> CommandResult<OpenedResultDb> {
     let sources = sources(&state, &tables)?;
     let partial = partial(&sources);
+    let connection = fill_new(&state, &name, sources).await?;
+    Ok(OpenedResultDb {
+        connection,
+        partial,
+    })
+}
+
+/// Opens rows that are not a job's, as the table `result` of a new in-memory DuckDB, and
+/// returns the temporary connection to it, called `name`: a saved result read from its file.
+pub(in crate::commands) async fn open_rows(
+    state: &AppState,
+    name: &str,
+    schema: SchemaRef,
+    batches: Vec<RecordBatch>,
+) -> CommandResult<SavedConnection> {
+    let source = Source {
+        table: "result".to_owned(),
+        schema,
+        batches,
+        ending: Ending::Complete,
+    };
+    fill_new(state, name, vec![source]).await
+}
+
+/// Fills a new in-memory database with `sources` and keeps it for a temporary connection.
+pub(super) async fn fill_new(
+    state: &AppState,
+    name: &str,
+    sources: Vec<Source>,
+) -> CommandResult<SavedConnection> {
     let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
     let memory = format!("platypus-result-{}", Uuid::new_v4());
     let filled = memory.clone();
     let database = blocking(move || fill(&filled, &[], &sources)).await?;
-    let saved = temporary(&name, &memory);
+    Ok(register(state, name, memory, names, database))
+}
+
+/// Registers the temporary connection `name` to the in-memory database `memory`, which holds
+/// `tables`, and returns it. The database lives until `close_result_db`.
+fn register(
+    state: &AppState,
+    name: &str,
+    memory: String,
+    tables: Vec<String>,
+    database: MemoryDatabase,
+) -> SavedConnection {
+    let saved = temporary(name, &memory);
     let connection = saved.clone();
     lock(&state.result_dbs).insert(
         saved.id,
         ResultDb {
             saved,
             name: memory,
-            tables: names,
+            tables,
             _database: database,
         },
     );
-    Ok(OpenedResultDb {
-        connection,
-        partial,
-    })
+    connection
+}
+
+/// The in-memory database name and the tables of temporary connection `id`.
+pub(super) fn contents(state: &AppState, id: Uuid) -> CommandResult<(String, Vec<String>)> {
+    lock(&state.result_dbs)
+        .get(&id)
+        .map(|db| (db.name.clone(), db.tables.clone()))
+        .ok_or_else(|| CommandError::not_found("result database", id))
+}
+
+/// Loads `sources` again into the database of temporary connection `id`, replacing its tables.
+pub(super) async fn refill(state: &AppState, id: Uuid, sources: Vec<Source>) -> CommandResult<()> {
+    let (memory, before) = contents(state, id)?;
+    let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
+    blocking(move || fill(&memory, &before, &sources).map(drop)).await?;
+    if let Some(db) = lock(&state.result_dbs).get_mut(&id) {
+        db.tables = names;
+    }
+    Ok(())
 }
 
 /// Copies the results again into the database of temporary connection `connection_id`;
@@ -158,17 +216,11 @@ pub async fn reload_result_db(
     connection_id: Uuid,
     tables: Vec<ResultTable>,
 ) -> CommandResult<Option<Partial>> {
-    let (memory, before) = lock(&state.result_dbs)
-        .get(&connection_id)
-        .map(|db| (db.name.clone(), db.tables.clone()))
-        .ok_or_else(|| CommandError::not_found("result database", connection_id))?;
+    // Fails before reading anything when the database is gone.
+    contents(&state, connection_id)?;
     let sources = sources(&state, &tables)?;
     let partial = partial(&sources);
-    let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
-    blocking(move || fill(&memory, &before, &sources).map(drop)).await?;
-    if let Some(db) = lock(&state.result_dbs).get_mut(&connection_id) {
-        db.tables = names;
-    }
+    refill(&state, connection_id, sources).await?;
     Ok(partial)
 }
 
@@ -332,6 +384,24 @@ mod tests {
         assert_eq!(one(&memory, "SELECT count(*) FROM result"), 1);
         let gone = "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('r1', 'r2')";
         assert_eq!(one(&memory, gone), 0);
+    }
+
+    #[test]
+    fn rows_without_a_job_open_as_the_table_result() {
+        platypus_driver_duckdb::testing::load();
+        let state = AppState::for_tests();
+        let rows = source("result", &[4, 5, 6]);
+        let connection =
+            tauri::async_runtime::block_on(open_rows(&state, "Saved", rows.schema, rows.batches))
+                .unwrap();
+        let (_, label) = state.result_db_config(connection.id).unwrap();
+        assert_eq!(label, "Saved");
+        let memory = {
+            let dbs = lock(&state.result_dbs);
+            assert_eq!(dbs[&connection.id].tables, ["result"]);
+            dbs[&connection.id].name.clone()
+        };
+        assert_eq!(one(&memory, "SELECT sum(n)::BIGINT FROM result"), 15);
     }
 
     #[test]
