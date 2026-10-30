@@ -10,6 +10,7 @@ import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
 import { t, msg, plural } from "../i18n";
 import { blankDesign } from "../table-editor/DesignForm";
+import { openObjectTab } from "../objects/open";
 import { DesignDialog, type DesignKind } from "./DesignDialog";
 import {
   type Drawn,
@@ -307,14 +308,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   const setNote = (noteId: number, text: string | null) =>
     onChange({ notes: text === null ? tab.notes.filter((n) => n.id !== noteId) : tab.notes.map((n) => (n.id === noteId ? { ...n, text } : n)) });
   const openTable = (name: string) =>
-    workbench().openTab("object", connection.id, {
-      database: tab.database,
-      schema: tab.schema,
-      currentSchema: tab.currentSchema,
-      name,
-      objectKind: "table",
-      title: name,
-    });
+    openObjectTab(connection.id, { database: tab.database, schema: tab.schema, currentSchema: tab.currentSchema, name, kind: "table", parent: null });
   const save = (format: "png" | "svg") => {
     if (!svg.current) return;
     void exportChart(svg.current, format, `${tab.schema}-diagram`).catch((e: unknown) =>

@@ -18,7 +18,7 @@ import { onNavigatorRefresh, requestNavigatorRefresh } from "../navigatorEvents"
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
-import { editsTables, openObjectTab, openTableEditor } from "./open";
+import { editsTables, openObjectTab, openTableEditor, showsData } from "./open";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 
@@ -238,6 +238,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
         {relation && (
           <button
             onClick={() =>
+              workbench().focusTab((t) => showsData(t, connection.id, tab.database, qualified)) ||
               workbench().openTab("query", connection.id, {
                 sql: viewerSql(connection.driver, qualified),
                 autorun: true,
@@ -251,7 +252,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             {t("Open data")}
           </button>
         )}
-        {tab.objectKind === "table" && editsTables(connection.driver) && (
+        {/* A partition takes its columns and keys from its table. */}
+        {tab.objectKind === "table" && !tab.parent && editsTables(connection.driver) && (
           <button
             onClick={() => openTableEditor(connection.id, { database: tab.database, schema: tab.schema, name: tab.name })}
             title={t("Edit the columns, keys, indexes and constraints of the table")}

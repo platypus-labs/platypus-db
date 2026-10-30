@@ -24,7 +24,7 @@ import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } 
 import { openDocs } from "../catalog/DocsDialog";
 import { toggled } from "../sets";
 import { SQL_DRAG, type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
-import type { TabInit, TabModel } from "../tabs/registry";
+import type { TabInit } from "../tabs/registry";
 import { dispatchKey, registerAction } from "../actions";
 import { workbench } from "../workbench";
 import { connectionColor, typeBadge } from "../connections";
@@ -35,7 +35,7 @@ import { testConnections } from "./TestConnectionsDialog";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
-import { openObjectTab } from "../objects/open";
+import { openObjectTab, showsData } from "../objects/open";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -405,9 +405,7 @@ export function Navigator(props: Props) {
 
   /** Opens a table's data, or goes back to the tab already showing it. */
   function openData(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta, target: string) {
-    const showing = (t: TabModel) =>
-      t.kind === "query" && t.connectionId === c.id && (t.database ?? null) === db && t.table === target;
-    if (workbench().focusTab(showing)) return;
+    if (workbench().focusTab((t) => showsData(t, c.id, db, target))) return;
     onOpenTab(c, {
       sql: viewerSql(c.driver, target),
       autorun: true,

@@ -105,6 +105,20 @@ export default async function (page) {
   await page.waitFor(`${editor}?.querySelectorAll('tbody tr').length === 3`, 10_000);
   assert.equal(await page.eval(editorTabs), 1, "still one table editor");
 
+  // Open data in the table's tab goes back to the data viewer already open.
+  await showTab(page, details);
+  await page.waitFor(`${button(header, "Open data")} !== undefined`);
+  const queryTabs = await page.eval(`document.querySelectorAll('.query-tab').length`);
+  await click(page, button(header, "Open data"));
+  await page.waitFor(`document.querySelector('.tab.active')?.dataset.tab === ${JSON.stringify(data)}`, 5000);
+  assert.equal(await page.eval(`document.querySelectorAll('.query-tab').length`), queryTabs, "no second data viewer");
+
+  // A data viewer made read-only does not open the editor.
+  await click(page, `[...${dataTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Read-only')`);
+  await page.waitFor(`${button(viewerBar, "Edit table…")}?.disabled === true`, 5000);
+  await click(page, `[...${dataTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Read-only')`);
+  await page.waitFor(`${button(viewerBar, "Edit table…")}?.disabled === false`, 5000);
+
   // The view's data viewer: its structure, no editor.
   await openData(page, "v_customers");
   await page.waitFor(`${button(viewerBar, "Structure")} !== undefined`, 15_000);

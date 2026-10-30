@@ -36,7 +36,7 @@ import { type EditorHost, type RunMode, SqlEditor, type SqlEditorHandle } from "
 import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../editor/terminal";
 import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
-import { viewerSql } from "../sqlNames";
+import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
@@ -1105,14 +1105,13 @@ export function QueryTab({
           o.kind === "function" || o.kind === "procedure" ? o.name.replace(/\(.*$/, "") : o.name;
         const object = objects.find((o) => base(o) === name) ?? objects.find((o) => same(base(o), name));
         if (object) {
-          workbench().openTab("object", connection.id, {
+          openObjectTab(connection.id, {
             database: tab.database,
             schema: s.name,
             currentSchema: s.current,
             name: object.name,
-            objectKind: object.kind,
+            kind: object.kind,
             parent: object.parent,
-            title: object.name,
           });
           return;
         }
@@ -1799,11 +1798,11 @@ export function QueryTab({
                 onClick={() =>
                   openObjectTab(connection.id, {
                     ...viewed,
-                    currentSchema: viewed.schema === catalog?.default_schema,
-                    parent: null,
+                    // Named as the viewer was opened: bare in the session's current schema.
+                    currentSchema: tab.table === qualifiedName(connection.driver, { name: viewed.schema, current: true }, viewed.name),
                   })
                 }
-                title={t("Open the structure of the table: columns, keys, indexes and DDL")}
+                title={t("Open the details: properties, columns, keys and DDL")}
               >
                 {t("Structure")}
               </button>
@@ -1812,7 +1811,8 @@ export function QueryTab({
               <button
                 type="button"
                 onClick={() => openTableEditor(connection.id, viewed)}
-                title={t("Edit the columns, keys, indexes and constraints of the table")}
+                disabled={connection.read_only}
+                title={t(connection.read_only ? "Read-only: the table cannot be changed from here" : "Edit the columns, keys, indexes and constraints of the table")}
               >
                 {t("Edit table…")}
               </button>

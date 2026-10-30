@@ -2361,8 +2361,9 @@ const de: Record<string, string> = {
   "Every column needs a type.": "Jede Spalte braucht einen Typ.",
   "Two columns have the same name.": "Zwei Spalten haben denselben Namen.",
   "Structure": "Struktur",
-  "Open the structure of the table: columns, keys, indexes and DDL": "Struktur der Tabelle öffnen: Spalten, Schlüssel, Indizes und DDL",
   "Edit the columns, keys, indexes and constraints of the table": "Spalten, Schlüssel, Indizes und Constraints der Tabelle bearbeiten",
+  "Open the details: properties, columns, keys and DDL": "Details öffnen: Eigenschaften, Spalten, Schlüssel und DDL",
+  "Read-only: the table cannot be changed from here": "Schreibgeschützt: die Tabelle kann von hier nicht geändert werden",
 };
 
 export default de;
