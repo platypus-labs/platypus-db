@@ -218,3 +218,19 @@
   box-shadow: 0 0 0 2px var(--frame);
   opacity: 0.85;
 }
+
+/* Group O: Settings › Plugins, the review of a package and the installed plugins. */
+.plugin-review {
+  padding: 8px 0;
+}
+
+.plugin-review h4 {
+  margin: 8px 0 2px;
+  font-size: 12px;
+}
+
+.plugin-permissions,
+.plugin-provides {
+  margin: 2px 0 6px;
+  padding-left: 18px;
+}

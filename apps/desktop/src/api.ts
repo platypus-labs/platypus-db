@@ -22,7 +22,9 @@ export type DriverKind =
   | "adbc"
   | "oracle"
   | "db2"
-  | "odbc";
+  | "odbc"
+  /** A driver of an installed WebAssembly plugin, its id in `options.plugin`. */
+  | "plugin";
 
 /** Speaks mongosh instead of SQL (MongoDB): no SQL completion, formatter, linter or data editor. */
 export const isMongo = (driver: DriverKind) => driver === "mongo";
@@ -2977,4 +2979,72 @@ export const api = {
   /** The differences from the kept run to result `jobId`, by the `key` columns when given. */
   diffPrevious: (sessionId: number, jobId: number, key: number[] | null) =>
     invoke<Diff>("diff_previous", { sessionId, jobId, key }),
+
+  // Group O: WebAssembly plugins
+  /** The installed plugins, by id. */
+  pluginsList: () => invoke<InstalledPlugin[]>("plugins_list"),
+  /** Reads a package (a folder or a `.zip`) for the user to review before installing it. */
+  pluginInspect: (path: string) => invoke<InspectedPlugin>("plugin_inspect", { path }),
+  /** Installs a package, approving the permissions of its manifest. */
+  pluginInstall: (path: string) => invoke<InstalledPlugin>("plugin_install", { path }),
+  pluginSetEnabled: (id: string, enabled: boolean) => invoke<void>("plugin_set_enabled", { id, enabled }),
+  pluginRemove: (id: string) => invoke<void>("plugin_remove", { id }),
+  /** Runs a plugin's action on the context of its scope; the page applies the outcome. */
+  pluginRunAction: (plugin: string, action: string, context: unknown) =>
+    invoke<PluginOutcome>("plugin_run_action", { plugin, action, context }),
 };
+
+// Group O: WebAssembly plugins (`platypus-plugins`)
+export interface PluginPermissions {
+  /** Hosts the plugin may send HTTP requests to (`*.example.com` for subdomains). */
+  http: string[];
+  clipboard: boolean;
+}
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  api: number;
+  kinds: ("actions" | "driver")[];
+  permissions: PluginPermissions;
+}
+
+export type PluginActionScope = "editor" | "grid" | "navigator.object";
+
+export interface PluginActionInfo {
+  id: string;
+  /** In the plugin's own language: not translated. */
+  title: string;
+  scope: PluginActionScope;
+  shortcut?: string | null;
+}
+
+export interface PluginDescription {
+  actions: PluginActionInfo[];
+  driver: { name: string; metadata: boolean } | null;
+}
+
+export interface InstalledPlugin {
+  manifest: PluginManifest;
+  enabled: boolean;
+  approved: PluginPermissions;
+  description: PluginDescription;
+}
+
+export interface InspectedPlugin {
+  manifest: PluginManifest;
+  description: PluginDescription;
+  /** The installed version it replaces. */
+  replaces: string | null;
+}
+
+/** What the app does with an action's result. */
+export type PluginOutcome =
+  | { kind: "replace"; text: string }
+  | { kind: "new_tab"; text: string }
+  | { kind: "copy"; text: string }
+  | { kind: "message"; text: string }
+  | { kind: "none" };

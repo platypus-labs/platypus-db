@@ -31,6 +31,7 @@ import "./objects/actions";
 import "./transfer/actions";
 import "./schema/actions";
 import "./querylog/actions";
+import "./plugins/actions";
 import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";

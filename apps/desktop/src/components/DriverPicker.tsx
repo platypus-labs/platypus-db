@@ -27,9 +27,10 @@ import type { DriverKind, SavedConnection } from "../api";
 import { Icon } from "../ui/Icon";
 import { fold } from "../ui/textSearch";
 import { t, msg } from "../i18n";
+import { pluginDrivers, usePlugins } from "../plugins/store";
 
 /** What a profile fills in beyond the driver's defaults. */
-export type Preset = Partial<Pick<SavedConnection, "host" | "port" | "user" | "database" | "ssl_mode">>;
+export type Preset = Partial<Pick<SavedConnection, "host" | "port" | "user" | "database" | "ssl_mode" | "options">>;
 
 /** A generic database cylinder, for SQL Server, YugabyteDB, Oracle, Db2 and ODBC, which
  *  simple-icons lacks. */
@@ -90,6 +91,9 @@ const CHOICES: Choice[] = [
   { driver: "odbc", label: msg("Other ODBC driver"), path: DATABASE_PATH, bg: DARK, fg: "#fff" },
 ];
 
+/** A driver of a WebAssembly plugin: its tile takes the name the plugin gives it. */
+const PLUGIN_CHOICE: Choice = { driver: "plugin", label: msg("Plugin driver"), path: DATABASE_PATH, bg: "#6741d9", fg: "#fff" };
+
 /** Servers and services that speak the PostgreSQL protocol: the PostgreSQL driver, preset. */
 const PG_WIRE: Choice[] = [
   {
@@ -142,7 +146,11 @@ function DriverLogo({ choice }: { choice: Choice }) {
 /** The tile of `driver`: the one named `label` (MariaDB rather than MySQL), else the first. */
 function choiceOf(driver: DriverKind, label?: string): Choice | undefined {
   const all = [...CHOICES, ...PG_WIRE];
-  return all.find((c) => c.driver === driver && c.label === label) ?? all.find((c) => c.driver === driver);
+  return (
+    all.find((c) => c.driver === driver && c.label === label) ??
+    all.find((c) => c.driver === driver) ??
+    (driver === "plugin" ? PLUGIN_CHOICE : undefined)
+  );
 }
 
 /** The name of the database the driver is for, translated. */
@@ -190,7 +198,12 @@ export function DriverPicker({ onPick, onClose }: Props) {
   const needle = fold(filter.trim());
   const main = matching(CHOICES, needle);
   const pgWire = matching(PG_WIRE, needle);
-  const first = main[0] ?? pgWire[0];
+  // The drivers of the installed plugins, the plugin's id in the connection's options.
+  const plugins = matching(
+    pluginDrivers(usePlugins()).map((d) => ({ ...PLUGIN_CHOICE, label: d.name, preset: { options: { plugin: d.id } } })),
+    needle,
+  );
+  const first = main[0] ?? pgWire[0] ?? plugins[0];
   const pick = (c: Choice) => onPick(c.driver, c.preset ?? {}, c.label);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -221,6 +234,12 @@ export function DriverPicker({ onPick, onClose }: Props) {
           <>
             <h3 className="driver-section">{t("PostgreSQL-compatible")}</h3>
             <Tiles choices={pgWire} onPick={pick} />
+          </>
+        )}
+        {plugins.length > 0 && (
+          <>
+            <h3 className="driver-section">{t("Plugins")}</h3>
+            <Tiles choices={plugins} onPick={pick} />
           </>
         )}
         {!first && <p className="muted driver-none">{t("No database matches.")}</p>}
