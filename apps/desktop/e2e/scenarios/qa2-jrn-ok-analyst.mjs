@@ -63,7 +63,7 @@ export default async function (page, ctx) {
     await page.eval(`${toggle("Grid")}.click()`);
 
     // Back to the full result.
-    await page.eval(`[...${visibleTab}.querySelectorAll('.result-sql button')].find(b => b.textContent.trim() === '×').click()`);
+    await page.eval(`[...${visibleTab}.querySelectorAll('.result-sql button')].find(b => b.classList.contains('result-sql-clear')).click()`);
     await page.waitFor(`/^100[.,]?000 rows$/.test(${status})`, 10_000);
 
     // The data changes; the same statement again; the comparison.
