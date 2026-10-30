@@ -15,6 +15,40 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* The results beside the editor (Settings › Appearance › Layout): the toolbars and the status
+   bar span both, the handle between them is a vertical bar (the columns are set by QueryTab). */
+:root[data-results="beside"] .query-main > .toolbar,
+:root[data-results="beside"] .query-main > .viewer-bar,
+:root[data-results="beside"] .query-main > .statusbar {
+  grid-column: 1 / -1;
+}
+
+:root[data-results="beside"] .query-main > .results {
+  min-width: 0;
+}
+
+.query-main > .splitter.column {
+  width: auto;
+  margin: 0;
+  cursor: col-resize;
+  border: none;
+  border-left: 2px solid var(--bg);
+  border-right: 2px solid var(--bg);
+}
+
+/* The side panels on the left of the work: history, variables and outline beside the editor,
+   the value, metadata and other panels beside a grid. */
+:root[data-panels="left"] .query-tab,
+:root[data-panels="left"] .result-grid-body {
+  flex-direction: row-reverse;
+}
+
+:root[data-panels="left"] .query-tab > aside,
+:root[data-panels="left"] .result-grid-body > .value-panel {
+  border-left: none;
+  border-right: 1px solid var(--border);
+}
+
 .divider {
   width: 1px;
   align-self: stretch;

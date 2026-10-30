@@ -22,6 +22,28 @@
   grid-template-columns: 52px 0 minmax(0, 1fr);
 }
 
+/* The navigator on the right (Settings › Appearance › Layout, shell/layout.ts): the rail stays
+   on the left, the sheet moves next to it and the handle to the navigator's left edge. */
+:root[data-navigator="right"] .shell {
+  grid-template-columns: 52px minmax(0, 1fr) var(--sidebar-width, 260px);
+  grid-template-areas:
+    "top top top"
+    "rail main side";
+}
+
+:root[data-navigator="right"] .shell.sidebar-collapsed {
+  grid-template-columns: 52px minmax(0, 1fr) 0;
+}
+
+:root[data-navigator="right"] .shell:not(.sidebar-collapsed) > .workspace {
+  margin-right: 0;
+}
+
+:root[data-navigator="right"] .sidebar-resizer {
+  right: auto;
+  left: -5px;
+}
+
 .shell[data-env="dev"] {
   --frame: var(--frame-dev);
   --env-ink: var(--type-dev);
@@ -656,6 +678,23 @@
   color: var(--fg-muted);
 }
 
+/* The tab bar at the bottom of the sheet: after the panes, its line and the underline of the
+   active tab on the side of the work. */
+:root[data-tabbar="bottom"] .workspace > .tabs {
+  order: 1;
+  align-items: flex-start;
+  border-bottom: none;
+  border-top: 1px solid var(--border);
+}
+
+:root[data-tabbar="bottom"] .tab.active {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+:root[data-tabbar="bottom"] .tab.beside {
+  box-shadow: inset 0 2px 0 var(--border-strong);
+}
+
 /* The tabs' content: one pane, or two side by side when the editor is split. */
 .panes {
   flex: 1;
@@ -727,6 +766,11 @@
   cursor: pointer;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
+}
+
+/* Clear of the tab bar when it is at the bottom. */
+:root[data-tabbar="bottom"] .workspace > .toast {
+  bottom: 50px;
 }
 
 .update-banner {

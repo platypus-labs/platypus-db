@@ -66,6 +66,7 @@ import {
 import { GuardDialog } from "../guards/GuardDialog";
 import { PendingDialog } from "../guards/PendingDialog";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
+import { useResultsBeside } from "../shell/layout";
 import { TransactionLogDialog } from "../guards/TransactionLogDialog";
 import { openRestore, snapshotBefore } from "../guards/SnapshotsDialog";
 import { emptyLog, noteEnd, noteStatement } from "../guards/txLog";
@@ -438,8 +439,12 @@ export function QueryTab({
   } | null>(null);
   const [terminalLog, setTerminalLog] = useState<TerminalBlock[]>([]);
   const [historyVersion, setHistoryVersion] = useState(0);
-  // The editor's height, the same in every tab and kept for the next start.
+  // The editor's height, the same in every tab and kept for the next start; its width when the
+  // results are beside it (Settings › Appearance › Layout).
   const [editorHeight, setEditorHeight] = useStoredSize("layout.editor_height", 200);
+  const [editorWidth, setEditorWidth] = useStoredSize("layout.editor_width", 520);
+  const beside = useResultsBeside();
+  const main = useRef<HTMLDivElement>(null);
   /** The session's schema after the tab changed it (`SET search_path`); `null` for the
    *  catalog's. */
   const [schemaShown, setSchemaShown] = useState<string | null>(null);
@@ -1671,8 +1676,17 @@ export function QueryTab({
     <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
       <div
         className="query-main"
-        // The editor gives up height before the toolbar does in a small window.
-        style={{ gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }}
+        ref={main}
+        // The editor gives up height before the toolbar does in a small window; beside the
+        // results, it gives up width before they go under 240 px.
+        style={
+          beside
+            ? {
+                gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(0, 1fr) auto`,
+                gridTemplateColumns: `minmax(120px, ${editorWidth}px) 6px minmax(240px, 1fr)`,
+              }
+            : { gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }
+        }
       >
         <div className="toolbar">
           <button
@@ -1899,17 +1913,31 @@ export function QueryTab({
           onSave={() => void saveFile()}
           onOpen={() => void openFile()}
         />
-        <PanelResizer
-          storeKey="layout.editor_height"
-          size={editorHeight}
-          fallback={200}
-          min={60}
-          max={() => window.innerHeight - 200}
-          direction="row"
-          onResize={setEditorHeight}
-          label={t("Resize the editor")}
-          className="splitter"
-        />
+        {beside ? (
+          <PanelResizer
+            storeKey="layout.editor_width"
+            size={editorWidth}
+            fallback={520}
+            min={120}
+            max={() => (main.current?.clientWidth ?? window.innerWidth) - 246}
+            direction="column"
+            onResize={setEditorWidth}
+            label={t("Resize the editor")}
+            className="splitter"
+          />
+        ) : (
+          <PanelResizer
+            storeKey="layout.editor_height"
+            size={editorHeight}
+            fallback={200}
+            min={60}
+            max={() => window.innerHeight - 200}
+            direction="row"
+            onResize={setEditorHeight}
+            label={t("Resize the editor")}
+            className="splitter"
+          />
+        )}
         <div className="results">
           {tab.across && (
             <AcrossBar

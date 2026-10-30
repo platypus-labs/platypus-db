@@ -14,7 +14,21 @@ export type SettingControl =
   /** A `#rrggbb` color; empty means none (e.g. the theme's own). */
   | { type: "color" }
   /** Choices shown as cards of colors, e.g. themes. */
-  | { type: "swatches"; options: { value: string; label: string; colors: string[] }[] };
+  | { type: "swatches"; options: { value: string; label: string; colors: string[] }[] }
+  /** Choices shown as small pictures: where a part of the window goes, an icon family. */
+  | { type: "pictures"; options: { value: string; label: string; description?: string; picture: SettingPicture }[] };
+
+/** A part of the small drawing of the window that shows a layout choice. */
+export interface WindowPart {
+  part: "nav" | "tabs" | "editor" | "results" | "panel";
+  /** Its place in the drawing's grid, as `grid-row` and `grid-column` take it. */
+  row?: string;
+  column?: string;
+}
+
+/** The picture of a choice: the window drawn as a grid of its parts, or sample icons of the
+ *  family named. */
+export type SettingPicture = { columns: string; rows: string; parts: WindowPart[] } | { icons: string };
 
 export interface SettingDef<T extends boolean | number | string> {
   /** Dotted, `section.name`, e.g. `editor.script_row_limit`. */

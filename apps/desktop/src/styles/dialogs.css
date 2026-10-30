@@ -580,6 +580,136 @@ button.primary.danger:hover:not(:disabled) {
   margin-top: var(--space-8);
 }
 
+/* Choices shown as pictures: a small drawing of the window for each layout, side by side under
+   the label; the icon families as cards with a row of their icons. */
+.pictures-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: var(--space-4);
+}
+
+.picture-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  white-space: normal;
+}
+
+.picture-choice:hover:not(:disabled) {
+  background: none;
+  color: var(--fg);
+}
+
+.picture-choice.selected {
+  color: var(--fg-strong);
+}
+
+.picture-window {
+  display: grid;
+  gap: 2px;
+  width: 104px;
+  height: 64px;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.picture-choice:hover .picture-window {
+  border-color: var(--fg-muted);
+}
+
+.picture-choice.selected .picture-window,
+.picture-choice.selected:hover .picture-window {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.picture-window > i {
+  display: block;
+  border-radius: 2px;
+  background: var(--active);
+}
+
+.picture-window > .nav {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+}
+
+.picture-window > .tabs {
+  background: var(--border-strong);
+}
+
+.picture-window > .editor {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-input));
+}
+
+.picture-window > .results {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+
+.picture-window > .panel {
+  background: color-mix(in srgb, var(--ok) 20%, var(--bg-input));
+}
+
+.pictures-control.icons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pictures-control.icons .picture-choice {
+  align-items: flex-start;
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+  text-align: left;
+}
+
+.pictures-control.icons .picture-choice:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.pictures-control.icons .picture-choice.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.picture-icons {
+  display: flex;
+  gap: var(--space-10);
+  padding: var(--space-4) 0;
+  color: var(--fg-strong);
+}
+
+.pictures-control.icons .picture-choice-name {
+  color: var(--fg-strong);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+/* The Layout sub-tab: its four choices in two columns. */
+.dialog-page.layout-choices:not([hidden]) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-24);
+}
+
+.dialog-page.layout-choices > .setting {
+  border-top: 0;
+}
+
 .theme-card {
   display: flex;
   flex-direction: column;

@@ -3,9 +3,9 @@ import { allActions } from "../actions";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { ThemesPanel } from "../themes/ThemesPanel";
 import { toCommandError } from "../api";
-import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
+import { type SettingDef, type SettingPicture, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
-import { Icon, type IconName } from "../ui/Icon";
+import { Icon, type IconName, type IconSet } from "../ui/Icon";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
@@ -50,7 +50,7 @@ const NAV_GROUPS: { label: string; pages: string[] }[] = [
 
 /** The icon and one line about each page, shown above its content. */
 const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
-  "Appearance": { icon: "theme", about: msg("Language, theme, colors and the size of the interface.") },
+  "Appearance": { icon: "theme", about: msg("Theme, language, layout and icons.") },
   "Navigator": { icon: "sidebar", about: msg("How the navigator lists your databases and objects.") },
   "Driver updates": { icon: "refresh", about: msg("When PlatypusDB looks for newer versions of the downloaded drivers.") },
   "SQL editor": { icon: "sql", about: msg("Editing, completion and checking of SQL.") },
@@ -70,13 +70,19 @@ const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
   "Keyboard shortcuts": { icon: "terminal", about: msg("Every command and its key combination.") },
 };
 
-/** Pages with enough settings to split: their sub-tabs, in order, each with the keys it holds.
- *  A setting in none of them goes to the last sub-tab. Pages not listed have a single body. */
-const SUB_TABS: Record<string, { label: string; keys: string[] }[]> = {
+/** Pages with enough settings to split: their sub-tabs, in order, each with the keys it holds
+ *  (and a class for its body, laid out its own way). A setting in none of them goes to the last
+ *  sub-tab. Pages not listed have a single body. */
+const SUB_TABS: Record<string, { label: string; keys: string[]; className?: string }[]> = {
   "Appearance": [
     { label: msg("Theme"), keys: ["appearance.theme", "appearance.accent", "appearance.background", "appearance.sidebar", "appearance.text"] },
     { label: msg("Language and text"), keys: ["appearance.language", "appearance.editor_font_size", "appearance.grid_font_size"] },
     { label: msg("Density"), keys: ["appearance.zoom", "appearance.density", "appearance.radius"] },
+    {
+      label: msg("Layout"),
+      keys: ["layout.navigator_side", "layout.results_position", "layout.tab_bar_position", "layout.side_panels_side"],
+      className: "layout-choices",
+    },
     { label: msg("Window"), keys: ["appearance.title_bar", "appearance.tray"] },
   ],
   "SQL editor": [
@@ -105,7 +111,7 @@ const SUB_TABS: Record<string, { label: string; keys: string[] }[]> = {
 function subTabsOf(page: string, defs: SettingDef<Value>[] | undefined) {
   const spec = SUB_TABS[page];
   if (!spec || !defs) return null;
-  const groups = spec.map((g) => ({ label: g.label, defs: defs.filter((d) => g.keys.includes(d.key)) }));
+  const groups = spec.map((g) => ({ label: g.label, className: g.className, defs: defs.filter((d) => g.keys.includes(d.key)) }));
   const rest = defs.filter((d) => !spec.some((g) => g.keys.includes(d.key)));
   groups[groups.length - 1]!.defs.push(...rest);
   const shown = groups.filter((g) => g.defs.length > 0);
@@ -135,10 +141,13 @@ function found(needle: string, ...texts: (string | undefined)[]): boolean {
   return texts.some((s) => !!s && (startsWord(s, needle) || startsWord(t(s), needle)));
 }
 
+/** Whether the setting's name, text, key or choices hold `needle`, or the sub-tab that shows
+ *  it is named so. */
 function settingFound(needle: string, def: SettingDef<Value>): boolean {
   const c = def.control;
-  const options = c.type === "select" || c.type === "swatches" ? c.options.map((o) => o.label) : [];
-  return found(needle, def.label, def.description, def.key, ...options);
+  const options = c.type === "select" || c.type === "swatches" || c.type === "pictures" ? c.options.map((o) => o.label) : [];
+  const subTab = SUB_TABS[def.section]?.find((g) => g.keys.includes(def.key))?.label;
+  return found(needle, def.label, def.description, def.key, subTab, ...options);
 }
 
 /** Every declared setting, by section, then the other pages: one tab each, chosen in the list
@@ -358,7 +367,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     <div
                       key={g.label}
                       id={`settings-subpage-${i}`}
-                      className="dialog-page"
+                      className={`dialog-page${g.className ? ` ${g.className}` : ""}`}
                       role="tabpanel"
                       aria-labelledby={`settings-sub-${i}`}
                       hidden={g.label !== sub}
@@ -459,6 +468,27 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
         </div>
       );
       break;
+    case "pictures":
+      input = (
+        <div className={`pictures-control${c.options.some((o) => "icons" in o.picture) ? " icons" : ""}`} role="radiogroup" aria-label={t(def.label)}>
+          {c.options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              data-value={o.value}
+              aria-checked={value === o.value}
+              className={`picture-choice${value === o.value ? " selected" : ""}`}
+              onClick={() => onSave(o.value)}
+            >
+              <Picture picture={o.picture} />
+              <span className="picture-choice-name">{t(o.label)}</span>
+              {o.description && <span className="muted small">{t(o.description)}</span>}
+            </button>
+          ))}
+        </div>
+      );
+      break;
     case "select":
       input = (
         <select value={value as string} onChange={(e) => onSave(e.target.value)}>
@@ -489,9 +519,9 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
     </span>
   );
   // Cards take a row of their own, under the label.
-  if (c.type === "swatches") {
+  if (c.type === "swatches" || c.type === "pictures") {
     return (
-      <div className="setting">
+      <div className={`setting${c.type === "pictures" ? " pictures" : ""}`} data-key={def.key}>
         {text}
         {reset}
         {input}
@@ -499,7 +529,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
     );
   }
   return (
-    <label className="setting">
+    <label className="setting" data-key={def.key}>
       {text}
       {input}
       {reset}
@@ -510,12 +540,35 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
 /** The default of a setting as its control names it: an option's label, On or Off. */
 function defaultText(def: SettingDef<Value>): string {
   const c = def.control;
-  if (c.type === "select" || c.type === "swatches") {
+  if (c.type === "select" || c.type === "swatches" || c.type === "pictures") {
     const option = (c.options as { value: unknown; label: string }[]).find((o) => o.value === def.default);
     if (option) return t(option.label);
   }
   if (c.type === "boolean") return t(def.default ? "Enabled" : "Disabled");
   return String(def.default);
+}
+
+/** The icons each family shows in its card. */
+const SAMPLE_ICONS: IconName[] = ["database", "table", "folder", "run", "settings"];
+
+/** The picture of a choice: the window drawn with its parts in place, or a row of icons. */
+function Picture({ picture }: { picture: SettingPicture }) {
+  if ("icons" in picture) {
+    return (
+      <span className="picture-icons">
+        {SAMPLE_ICONS.map((name) => (
+          <Icon key={name} name={name} size={16} set={picture.icons as IconSet} />
+        ))}
+      </span>
+    );
+  }
+  return (
+    <span className="picture-window" style={{ gridTemplateColumns: picture.columns, gridTemplateRows: picture.rows }}>
+      {picture.parts.map((p, i) => (
+        <i key={i} className={p.part} style={{ gridRow: p.row, gridColumn: p.column }} />
+      ))}
+    </span>
+  );
 }
 
 /** Saves on blur or Enter, and only valid numbers within bounds (whole ones for a whole

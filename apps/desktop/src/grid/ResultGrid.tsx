@@ -12,6 +12,7 @@ import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
 import { defineSetting, setSetting, useSetting } from "../settings";
 import { MASK, SensitiveScope, useMask, useSensitive } from "../guards/mask";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
+import { useSidePanelsLeft } from "../shell/layout";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
 import { ColumnsDialog } from "./ColumnsDialog";
@@ -223,6 +224,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
   const [panelWidth, setPanelWidth] = useStoredSize("layout.side_panel_width", 340);
   const body = useRef<HTMLDivElement>(null);
   const sideOpen = panelOpen || metadataOpen || calcOpen || mapOpen || grouping !== null || refs.panel != null;
+  const panelsLeft = useSidePanelsLeft();
 
   const column = focused ? columns[focused.col] : undefined;
   const valueTarget: ValueTarget | null =
@@ -313,7 +315,8 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               min={200}
               max={() => (body.current?.clientWidth ?? window.innerWidth) - 240}
               direction="column"
-              after
+              // The panels are after the handle, or before it on the left.
+              after={!panelsLeft}
               onDrag={(w) => body.current?.style.setProperty("--side-panel-width", `${w}px`)}
               onResize={setPanelWidth}
               label={t("Resize the side panels")}

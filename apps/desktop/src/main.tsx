@@ -13,6 +13,7 @@ import { startModalA11y } from "./ui/modalA11y";
 import { startErrorLog } from "./diagnostics/Diagnostics";
 import { startAgentProposals } from "./agents/proposals";
 import { startAgentBridge } from "./agents/bridge";
+import { startLayout } from "./shell/layout";
 import "./styles/index.css";
 
 paintCached();
@@ -27,6 +28,7 @@ void loadSettings()
   .then(() => loadLanguage().catch(console.error))
   .then(() => {
     startAppearance();
+    startLayout();
     startAgentProposals();
     startAgentBridge();
     createRoot(document.getElementById("root")!).render(

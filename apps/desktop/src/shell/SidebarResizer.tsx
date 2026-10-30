@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getStored, setStored } from "../settings";
 import { t } from "../i18n";
+import { useNavigatorRight } from "./layout";
 
 /** Where the width of the connections column is kept, in pixels. */
 const KEY = "layout.sidebar_width";
@@ -43,9 +44,11 @@ function save(width: number) {
 }
 
 /** The handle between the connections and the work: dragged, or the arrows once focused,
- *  set the width; a double-click goes back to the default. Saved when the drag ends. */
+ *  set the width; a double-click goes back to the default. Saved when the drag ends. With the
+ *  navigator on the right, the handle is on its left edge and moving left widens it. */
 export function SidebarResizer({ width, onResize }: { width: number; onResize: (width: number) => void }) {
   const [dragging, setDragging] = useState(false);
+  const outwards = useNavigatorRight() ? -1 : 1;
   const resizeAndSave = (next: number) => {
     onResize(next);
     save(next);
@@ -62,7 +65,7 @@ export function SidebarResizer({ width, onResize }: { width: number; onResize: (
     let last = width;
     handle.setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
-      last = clamp(width + ev.clientX - startX);
+      last = clamp(width + (ev.clientX - startX) * outwards);
       shell?.style.setProperty("--sidebar-width", `${last}px`);
     };
     // Released, cancelled by the system, or the capture lost (e.g. the window left).
@@ -85,7 +88,7 @@ export function SidebarResizer({ width, onResize }: { width: number; onResize: (
     const delta = e.key === "ArrowLeft" ? -STEP : e.key === "ArrowRight" ? STEP : 0;
     if (!delta && e.key !== "Home") return;
     e.preventDefault();
-    resizeAndSave(e.key === "Home" ? DEFAULT : clamp(width + delta));
+    resizeAndSave(e.key === "Home" ? DEFAULT : clamp(width + delta * outwards));
   }
 
   return (
