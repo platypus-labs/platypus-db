@@ -1,0 +1,38 @@
+/* "Query across databases": the dialog's list of sources and the bar above the tab's results. */
+.modal.across {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.across-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.across-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-input);
+}
+
+.across-row .row {
+  align-items: flex-end;
+}
+
+.across-row input.invalid {
+  border-color: var(--danger, #d33);
+}
+
+.across-problem {
+  margin: 0;
+}
+
+.across-remove {
+  flex: none;
+}

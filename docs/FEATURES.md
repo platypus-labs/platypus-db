@@ -17,6 +17,7 @@ Everything PlatypusDB does, area by area. The [README](../README.md) has the sho
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
 | MongoDB 5+ | official driver | mongosh syntax; no transactions, explain or data editing |
 | Redis 6+ | `redis` crate (RESP3, rustls) | Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON |
+| Elasticsearch 8 and OpenSearch 2 | HTTP API (`reqwest`, rustls) | Requests as Kibana's console writes them, and SQL; indices as tables, edited in the grid |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
 | Snowflake, BigQuery, Databricks, Trino | ADBC driver, downloaded on first use | Queries, results, navigator and autocompletion; no data editing, explain or manual commit yet |
 | Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them |
@@ -50,7 +51,7 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
 - A new connection starts from a grid of database logos, with a search on top (`Enter` takes
   the first match); the `+` of the navigator opens it, and so does a right-click on a connection
   or below the list. Or paste a connection under the logos: a URL (`postgres://`,
-  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`, `redis://`, `rediss://`), a JDBC URL or an
+  `mysql://`, `sqlserver://`, `clickhouse://`, `libsql://`, `mongodb://`, `redis://`, `rediss://`, `elasticsearch://`, `opensearch://`), a JDBC URL or an
   ADO.NET / ODBC string (`Server=tcp:db,1433;Database=shop;User Id=sa;…`), and the form opens
   filled in for that database. The driver is set by the choice: *Back* returns to the logos, and a
   URL pasted in the form for another database offers to go back. Windows logins and SQL Server
@@ -147,7 +148,7 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   app.
 - **Database comments** show beside the notes. Those of tables and their columns edit in the
   object tab, with the statement shown first; those of views are read-only. SQLite, libSQL and
-  MongoDB and Redis have none.
+  MongoDB, Redis and Elasticsearch have none.
 - **Row label**: the column that names a table's rows where foreign keys point to it, picked in
   the object tab or from a header's menu in the grid.
 - **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
@@ -266,6 +267,26 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   *Open notebook…* opens again on a connection; *Export HTML…* writes a standalone page with
   the text, the SQL, up to 500 rows of each result, the charts, the plans and the parameters'
   values. Notebooks stay with the workspace; their results run again.
+- **Pivot…**: on a result's *Query with SQL* bar (or the grid menu): rows, a column whose
+  values become columns, a value and its aggregate (count, distinct, sum, average, min, max),
+  totals and sorting. The DuckDB `PIVOT` it writes stays in the SQL field, to edit and run
+  again; up to 200 columns.
+- **Query across databases…**: right-click tables (of any SQL connections, each with an
+  optional `WHERE`) and query them together in one SQL editor: they are copied into an
+  in-memory DuckDB, so a PostgreSQL table joins a MySQL one. *Reload sources* reads them again.
+  Up to 512 MB of rows in all.
+- **Save result…**: keeps a whole result as a Parquet file in the app's data folder. The
+  *Saved results* panel under Scripts lists, renames and deletes them; *Open* shows one with
+  grid, charts, statistics and SQL, without connecting to its database.
+- **Dashboards**: right-click a connection, *New dashboard*: widgets from saved scripts shown
+  as a table, a chart or one big value, side by side in up to three columns, each refreshed on
+  its own, all at once, or every 1 to 60 minutes. Only scripts that just read are run.
+  Dashboards are saved per project and reopened from *Dashboards…*.
+- **Profile data…**: right-click a table or view for a card per column over the first 10,000
+  to 1,000,000 rows (or all of them): NULLs, empty strings, distinct values, range, mean,
+  quartiles, a histogram, the most frequent values, the formats of text values (emails, URLs,
+  UUIDs, dates, numbers stored as text, phone numbers, stray spaces) with the values that do
+  not fit, and outliers. Click a value to see its rows.
 
 ![A result as a bar chart](screenshots/chart.png)
 
@@ -508,6 +529,51 @@ command the server refuses does not undo the others), and Undo script puts the v
 connections commands that change the server (`CONFIG SET`, `SHUTDOWN`) ask like DDL. Read-only connections run only the
 commands that read. `rediss://` URLs and SSL modes from `require` up use TLS; the user and
 password are the ACL's. Terminal mode runs `redis-cli` with the password in its environment.
+
+## Elasticsearch and OpenSearch
+
+One driver for both; the server says which it is, and the connection shows it (`Connected:
+OpenSearch 2.17.1`). Tested on Elasticsearch 8.15 and OpenSearch 2.17, not on Elasticsearch 7.x.
+Log in with a user and password (Basic), or leave the user empty and put an API key (the
+`encoded` value) in the password field. `elasticsearch://user:pass@host:9200/logs-*` and
+`opensearch://` URLs work; `elasticsearchs://` and SSL modes from `require` up use TLS. The
+optional index pattern of the connection (`logs-*`, or several separated by commas) narrows
+what the navigator lists.
+
+The editor takes requests as Kibana's Dev Tools console writes them: a line `GET /orders/_search`
+(the slash is optional; methods `GET`, `POST`, `PUT`, `DELETE`, `HEAD`), then its JSON body, which
+ends where its braces close. The NDJSON bodies of `_bulk` and `_msearch` end at a blank line or the
+next request. Anything else is SQL (`_sql` on Elasticsearch, `_plugins/_sql` on OpenSearch), ended
+by a `;` or a blank line, with typed columns (numbers, booleans, dates) and the cursor of the
+server for long results. `#`, `//` and `--` lines are comments, `Ctrl+Enter` runs the statement
+under the cursor and `Alt+X` the script. Highlighting follows the kind of statement; completion
+offers the methods, the indices, the APIs after an index, the fields of the index where a key of a
+body goes, and the same names in SQL. A search gives documents, laid out as MongoDB's: a column for
+each top-level field, objects and arrays as JSON in the document tree beside the grid (`F7`).
+Aggregations come as results of their own (the metrics in one row, a table per bucket
+aggregation), a `_msearch` gives a result per search, and a `_bulk` with failing items lists the
+items with the server's reason. Errors keep the server's reason (`no such index [x]`), and an SQL
+error points at its place in the statement. Cancel stops a search on the server.
+
+The navigator lists the indices as tables, with their health, shards and replicas in the tooltip
+(system and closed ones say so), and the aliases and data streams as views. Hidden indices stay
+hidden. The columns of an index are the fields of its mapping (`customer.address.zip` for objects,
+`title.raw` for multi-fields). Opening an index runs a search of all its documents and reads them
+a page at a time (1,000 rows, then *Fetch all*) with a point in time and `search_after` (a scroll on
+OpenSearch), so a read does not stop at the first 10,000 hits. The columns are the same on every
+page: a field that no mapped column has goes into a last `_other` column as JSON, and a value that
+does not fit its mapped type shows as text.
+
+The grid edits the documents: a changed cell is an `_update` by `_id`, an object replaces the
+old one, a new row is a `_create` when it has an `_id` (an `_id` that exists is refused by the
+server) and a generated document without one, a deleted row is a `DELETE`. The preview shows the
+requests, which run one after the other and wait for the refresh; a request the server refuses
+stops the rest, and the ones before it stay. Undo script puts the old values back, or the whole
+`_source` of a deleted document (a document with a generated `_id` is left to delete by hand).
+`_delete_by_query` and `_update_by_query` without a query (or with `match_all`), and
+`DELETE /_all`, ask first like a `DELETE` without `WHERE`, and say how many documents the index
+has. Read-only connections run only the requests and the SQL that read. Agents get the same checks
+through the MCP server.
 
 ## Transactions and safety
 

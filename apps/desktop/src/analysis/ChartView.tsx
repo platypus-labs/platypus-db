@@ -35,6 +35,8 @@ interface Props {
   /** `null` until chosen: the first choice is made from the columns. */
   config: ChartConfig | null;
   onConfig: (config: ChartConfig) => void;
+  /** Without the panel of choices: a dashboard's widget, which has its own settings. */
+  bare?: boolean;
 }
 
 /** The size of an element, followed as it changes. */
@@ -50,7 +52,7 @@ function useSize(ref: RefObject<HTMLElement | null>): { width: number; height: n
   return size;
 }
 
-export function ChartView({ jobId, columns, rows, complete, config, onConfig }: Props) {
+export function ChartView({ jobId, columns, rows, complete, config, onConfig, bare = false }: Props) {
   const valid = config ? validConfig(config, columns) : null;
   // A saved chart naming a column that is gone asks for the choice again.
   const stale = config !== null && valid === null;
@@ -111,6 +113,7 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
 
   return (
     <div className="chart-view">
+      {!bare && (
       <div className="chart-side">
         <label>
           {t("Chart type")}
@@ -174,6 +177,7 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig }: 
           </button>
         </div>
       </div>
+      )}
       <div className="chart-main">
         {stale && (
           <div className="notice warn">

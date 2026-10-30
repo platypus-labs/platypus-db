@@ -89,6 +89,8 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
+| `SchedulesDialog`: aperto con "Schedule…" da un profilo, il form si apre prima che la lista dei profili arrivi e il task si salva con `profile_id` vuoto se l'utente non sceglie di nuovo il profilo (lo scenario `profiles-schedule-sqlite` lo aggira scegliendolo esplicitamente) | gruppo G, 2026-10-30 |
 | Diagramma ER, "Disposizione automatica" senza senso su uno schema vero (decine di tabelle, poche tabelle "hub" come utenti e studi riferite da tutte): `erd/layout.ts` mette le tabelle in colonne per profondità delle chiavi esterne e ordina ogni colonna una volta sola, senza ridurre gli incroci, senza raggruppare le tabelle collegate e con linee dritte che attraversano tutto. Rifarla: gruppi connessi separati (un blocco per insieme di tabelle collegate), layout a livelli vero (più passate su e giù col baricentro per ridurre gli incroci, hub al centro del loro gruppo), linee instradate che non passano sopra le tabelle; test unitari che contano gli incroci su schemi di esempio e scenario E2E con screenshot su uno schema di 50+ tabelle | utente, 2026-10-29 |
 
 ### Lock dei gruppi
@@ -108,13 +110,13 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
-| G — Nuovi driver | 🔒 Delfa · group-g-search · 2026-10-29 |
+| G — Nuovi driver | ✅ fatto (P1, P2; P3 in parte) |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ completato |
 | J — Amministrazione del server | ✅ fatto (P2) |
 | K — Shell ed ergonomia | ✅ completato |
 | L — Sicurezza operativa | ✅ completato |
-| M — Analisi dei dati | 🔒 Delfa · group-m-analysis-p3 · 2026-10-30 |
+| M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1, P2; P3 in parte) |
 | O — Collaborazione e sync | libero |
 | P — Piattaforma, qualità e release | libero |
@@ -385,7 +387,7 @@ parallelizzabile: **una persona per driver**.
 **Stato: P1 e P2 completate, P3 in parte** (P2: ClickHouse, i server con protocollo PostgreSQL,
 ADBC con Snowflake, BigQuery, Databricks e Trino, driver scaricati al primo uso, ODBC con Db2 e
 ODBC generico, Redis; P3: libSQL/Turso, MongoDB, Oracle nativo con Instant Client scaricato al primo
-uso. Da fare: aggiornamento automatico dei driver, Elasticsearch/OpenSearch, Cassandra/ScyllaDB). SQL Server usa `tiberius` copiato
+uso, Elasticsearch/OpenSearch. Da fare: aggiornamento automatico dei driver, Cassandra/ScyllaDB). Elasticsearch/OpenSearch (`platypus-driver-search`, un solo driver: il server dice quale è): richieste nella forma della console di Kibana e SQL (`_sql`, `_plugins/_sql`) con colonne tipizzate e cursore, ricerche lette a pagine (point in time e `search_after`, scroll su OpenSearch) con colonne fisse e `_other` per i campi non mappati, indici come tabelle e alias/data stream come viste, modifica in griglia con anteprima e script di annullamento, conferma per `_delete_by_query`/`_update_by_query` senza filtro e `DELETE /_all`, sola lettura, MCP, Cancel sul server, login Basic o chiave API. Provato su Elasticsearch 8.15 e OpenSearch 2.17 (profilo `search` di `docker/compose.yml`, conformance e scenari E2E `search-*`), non su Elasticsearch 7.x. SQL Server usa `tiberius` copiato
 in `vendor/` con le patch per la negoziazione della cifratura; il dialetto Transact-SQL scrive `TOP (n)` e `[nomi]`,
 e la transazione segue `@@TRANCOUNT`. DuckDB è incorporato come SQLite, con risultati Arrow nativi;
 senza l'estensione ICU non ha fuso orario di sessione. Una nuova connessione parte dalla scelta del
@@ -470,7 +472,7 @@ ADBC. Conformance ODBC su SQL Server col driver `SQL Server` di Windows; Db2 sen
 | ✅ **MongoDB** | P3 | Sintassi mongosh, griglia dei campi + albero del documento |
 | ✅ **Redis** | P2 | Il NoSQL più richiesto: chiavi per tipo (string, hash, list, set, zset, JSON) come tabelle virtuali, comandi nell'editor, modifica dei valori; stesso schema di MongoDB (griglia + albero) |
 | ✅ libSQL/Turso; Cloudflare D1 valutato, non fatto | P3 | Varianti di SQLite |
-| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero) |
+| 🆕 Elasticsearch/OpenSearch, Cassandra/ScyllaDB | P3 | Query DSL e CQL; stesso schema di MongoDB (griglia + albero). **Elasticsearch/OpenSearch fatto** (provato su 8.15 e 2.17, non su 7.x); resta Cassandra/ScyllaDB (CQL), per cui la riga resta aperta |
 
 ---
 
@@ -866,7 +868,7 @@ E2E `restrictions-sqlite`, `transaction-log-sqlite`, `mask-sqlite`, `snapshot-sq
 
 ### Gruppo M — Analisi dei dati
 
-**Stato: P2 completate** (grafici dai risultati con export PNG e SVG e configurazione salvata
+**Stato: completato** (grafici dai risultati con export PNG e SVG e configurazione salvata
 nel tab, statistiche della colonna al passaggio del mouse, SQL sui risultati con un DuckDB in
 memoria, diff con l'esecuzione precedente). Il calcolo è nel crate `platypus-local`, sulle
 righe Arrow del lavoro della query (`jobs.rs`); il grafico è un modulo SVG proprio
@@ -886,7 +888,37 @@ DuckDB in memoria di "Query with SQL" (`open_result_db` / `reload_result_db` con
 cambiano i job. Parametri condivisi (`analyze_sql` + `substitute`), controlli di Sicurezza e
 connessioni read-only come nell'editor; sessione del tab in autocommit. File `.pnb` (JSON,
 `format: "platypus-notebook"`), export HTML con al massimo 500 righe per risultato, il grafico
-SVG mostrato e il piano. Le P3 restano da fare.
+SVG mostrato e il piano.
+
+P3 del 30 ottobre 2026. **Pivot** (*Pivot…* nella barra di "SQL sui risultati", nel menu della
+griglia e nella palette): righe, colonna, valore e aggregato (count, count distinct, sum, avg,
+min, max), totali e ordinamento; `analysis/pivot.ts` scrive il `PIVOT` di DuckDB, eseguito e
+modificabile nel campo SQL. Limiti: al massimo 200 colonne; etichette di colonna (e chiavi di
+riga con i totali) come testo, quindi ordinate come testo; un solo totale di riga e di colonna.
+**Query tra database** (*Query across databases…* della tabella o della palette,
+`commands/analysis/across.rs`): tabelle di connessioni diverse, con filtro WHERE opzionale,
+copiate in un DuckDB in memoria (connessione temporanea come "SQL sui risultati") su cui gira un
+normale tab; *Reload sources* le rilegge. Limiti: copie, non federazione; 512 MB in tutto (una
+tabella oltre il limite è tagliata e segnata); niente MongoDB e Redis. **Risultati salvati**
+(*Save result…* della griglia, pannello *Saved results* sotto Scripts, `src-tauri/src/saved_results.rs`):
+il risultato intero (fino al limite di memoria, altrimenti segnato parziale) in
+`saved-results/<id>.parquet` con un indice JSON; si apre senza connessione in un DuckDB in
+memoria, con griglia, grafici e statistiche. Limiti: intervalli salvati come testo; non per
+progetto; serve il driver DuckDB. **Dashboard** (*New dashboard* / *Dashboards…* della
+connessione, tab `dashboard`, file in `dashboards/<progetto>/<nome>.json`): widget da script
+salvati (tabella, grafico o valore singolo, larghezza 1–3, altezza 1–2), eseguiti in parallelo
+ognuno sulla sua sessione, solo se lo script è in sola lettura e senza parametri; Refresh per
+widget e di tutti, aggiornamento automatico (1–60 min) mentre il tab è attivo. Limiti: una
+sessione per widget; si mostra il risultato dell'ultimo statement; niente trascinamento.
+**Profilo della tabella** (*Profile data…* di tabelle e viste, tab `table-profile`,
+`platypus-local` `table_profile.rs` e `patterns.rs`): le prime 10k/100k/1M righe o tutta la
+tabella (con il limite di memoria), per colonna NULL, stringhe vuote, distinti, min/max,
+media, deviazione e quartili, lunghezze, istogramma, valori frequenti, formati del testo
+(email, URL, UUID, date, numeri come testo, telefono, spazi, maiuscole) con gli esempi che non
+li rispettano e outlier con la regola IQR; un clic apre i dati filtrati. Limiti: niente
+campionamento casuale né annullamento; outlier solo per colonne numeriche. Gli scenari E2E di
+queste P3 (`analysis-pivot`, `-across`, `-saved-results`, `-dashboard`, `-table-profile`) sono
+scritti ma non ancora eseguiti (runner Windows).
 
 **Area:** `apps/desktop/src/analysis/`, crate `platypus-local` (DuckDB in-process)
 **Dipende da:** 0.4; DuckDB del gruppo G
@@ -896,13 +928,13 @@ SVG mostrato e il piano. Le P3 restano da fare.
 | ✅ Grafici dai risultati (barre, linee, dispersione, torta), salvabili | P2 | D |
 | ✅ Statistiche della colonna al passaggio del mouse: % NULL, distinti, min/max, mini istogramma | P2 | N |
 | ✅ **SQL sui risultati**: interrogare il result set corrente con DuckDB | P2 | N |
-| Join tra database diversi tramite DuckDB (tabella PG con tabella MySQL) | P3 | D+ |
+| ✅ Join tra database diversi tramite DuckDB (tabella PG con tabella MySQL) | P3 | D+ |
 | ✅ Diff tra due result set (stessa query prima e dopo) | P2 | N |
-| Snapshot dei risultati salvati e consultabili offline | P3 | N |
-| Pivot dei risultati | P3 | N |
+| ✅ Snapshot dei risultati salvati e consultabili offline | P3 | N |
+| ✅ Pivot dei risultati | P3 | N |
 | ✅ **Notebook**: celle SQL e Markdown, grafici e piano per cella, parametri comuni, export HTML. Una cella legge i risultati già caricati delle altre dal DuckDB dell'SQL sui risultati (`c1`, `c2`, …), senza rieseguirle sul server | P2 | N |
-| Dashboard personalizzate dalle query salvate | P3 | D+ |
-| 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
+| ✅ Dashboard personalizzate dalle query salvate | P3 | D+ |
+| ✅ 🆕 Profilo di una tabella intera: per colonna distribuzione, distinti, pattern (email, date, numeri come testo), outlier | P3 | N |
 
 ---
 

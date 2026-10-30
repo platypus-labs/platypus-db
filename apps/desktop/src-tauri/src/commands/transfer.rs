@@ -125,6 +125,15 @@ pub async fn preview_import(
     preview(&*file, (DriverKind::DuckDb, None), tables, table, dialect).await
 }
 
+/// The query of every row of a table of `driver` (`limit` at most): SQL, `find`, `BROWSE`, or
+/// a search of the index.
+pub(super) fn read_all(driver: DriverKind, at: (Option<&str>, &str), limit: Option<u64>) -> String {
+    if driver == DriverKind::Elasticsearch {
+        return platypus_driver_search::command::browse_limited(at.1, limit);
+    }
+    select_all(driver, at, limit)
+}
+
 /// The first rows of `table` (in `schema`) read on `source`, with the column types they would
 /// take in `target`.
 async fn preview(
@@ -134,7 +143,7 @@ async fn preview(
     table: String,
     target: Dialect,
 ) -> CommandResult<ImportPreview> {
-    let sql = select_all(driver, (schema, &table), Some(PREVIEW_ROWS));
+    let sql = read_all(driver, (schema, &table), Some(PREVIEW_ROWS));
     let ExecResult::Rows(stream) = source.execute(&sql, &ExecOptions::default()).await? else {
         return Err(CommandError::new("import", "the source returned no rows"));
     };
@@ -188,7 +197,10 @@ pub async fn preview_transfer(
         target,
     )
     .await?;
-    if !matches!(config.driver, DriverKind::Mongo | DriverKind::Redis) {
+    if !matches!(
+        config.driver,
+        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+    ) {
         let at = (schema.as_deref(), table.as_str());
         let source = (&*source, Dialect::from(config.driver));
         // Without them the copy still works, as a plain table.
@@ -296,10 +308,14 @@ fn start(
                 !job.stopping()
             };
             let target = (&*target, dialect);
-            // MongoDB reads its collection with `find`, Redis a key type with `BROWSE`.
-            if matches!(driver, DriverKind::Mongo | DriverKind::Redis) {
+            // MongoDB reads its collection with `find`, Redis a key type with `BROWSE`,
+            // Elasticsearch an index with a search.
+            if matches!(
+                driver,
+                DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+            ) {
                 let at = (plan.source_schema.as_deref(), plan.source_table.as_str());
-                let query = select_all(driver, at, None);
+                let query = read_all(driver, at, None);
                 import_query(&*source, &query, target, &plan, progress).await
             } else {
                 import((&*source, Dialect::from(driver)), target, &plan, progress).await

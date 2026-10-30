@@ -17,6 +17,8 @@ function changeText(u: UnfilteredChange) {
   // Redis's FLUSHDB and FLUSHALL name no table: they empty whole databases.
   if (u.verb === "FLUSHDB") return t("deletes every key of the session's database");
   if (u.verb === "FLUSHALL") return t("deletes every key of every database");
+  // Elasticsearch's `DELETE /_all` and `DELETE /*` delete every index; the table is the pattern.
+  if (u.verb === "DELETE INDEX") return t("deletes every index of the cluster, as the pattern matches:");
   // MariaDB's DELETE HISTORY leaves the current rows as they are.
   if (u.verb === "DELETE HISTORY") return t("erases every past version of the rows of");
   if (u.documents) return t("with an empty filter changes every document of");

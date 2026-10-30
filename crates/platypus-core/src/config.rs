@@ -42,6 +42,12 @@ pub enum DriverKind {
     /// Redis: commands instead of SQL, one per line. `database` is the database number
     /// (`0` when empty); TLS (`rediss://`) is any mode from `require` up.
     Redis,
+    /// Elasticsearch and `OpenSearch` (one driver; the server says which it is): requests in
+    /// the Kibana console form, or SQL, over HTTP. `database` is an optional index pattern
+    /// (`logs-*`) that narrows the navigator. A user and password log in with Basic
+    /// authentication; a password alone is an API key (`Authorization: ApiKey`). TLS
+    /// (`elasticsearchs://`) is any mode from `require` up.
+    Elasticsearch,
     /// Snowflake through its ADBC driver: `host` is the account, `options` hold
     /// `warehouse`, `role` and `schema`.
     Snowflake,
@@ -85,6 +91,7 @@ impl DriverKind {
             Self::ClickHouse => Some(8123),
             Self::Mongo => Some(27017),
             Self::Redis => Some(6379),
+            Self::Elasticsearch => Some(9200),
             Self::Trino => Some(8080),
             Self::Oracle => Some(1521),
             Self::Db2 => Some(50000),
@@ -124,6 +131,7 @@ impl DriverKind {
             Self::Libsql => "libSQL",
             Self::Mongo => "MongoDB",
             Self::Redis => "Redis",
+            Self::Elasticsearch => "Elasticsearch",
             Self::Snowflake => "Snowflake",
             Self::BigQuery => "BigQuery",
             Self::Databricks => "Databricks",
@@ -303,6 +311,10 @@ pub struct ConnectionConfig {
 /// mode: `transaction` (statements run unnamed: see the driver) or `session`.
 pub const POOLER: &str = "pooler";
 
+/// The option that remembers a connection came from an `opensearch://` URL, so that it
+/// writes one back. The driver itself asks the server which product it is.
+const FLAVOR: &str = "flavor";
+
 /// The options with the shell commands run before connecting and after the connection
 /// closes (run by `platypus-net`). Their `${VAR}` belong to the shell: they are not replaced.
 pub const BEFORE_CONNECT: &str = "before_connect";
@@ -435,7 +447,8 @@ impl ConnectionConfig {
         match driver {
             DriverKind::Libsql => SslMode::VerifyFull,
             // Redis takes TLS on a port of its own: `redis://` is plaintext, `rediss://` TLS.
-            DriverKind::Redis => SslMode::Disable,
+            // Likewise `elasticsearch://` (plaintext) and `elasticsearchs://` (TLS).
+            DriverKind::Redis | DriverKind::Elasticsearch => SslMode::Disable,
             _ => SslMode::Prefer,
         }
     }
@@ -468,6 +481,9 @@ impl ConnectionConfig {
             "sqlserver" | "mssql" => DriverKind::SqlServer,
             "clickhouse" => DriverKind::ClickHouse,
             "redis" | "rediss" => DriverKind::Redis,
+            "elasticsearch" | "elasticsearchs" | "opensearch" | "opensearchs" => {
+                DriverKind::Elasticsearch
+            }
             // libSQL clients take Hrana over WebSocket too; the app speaks HTTP to the same
             // server.
             "libsql" | "ws" | "wss" => DriverKind::Libsql,
@@ -481,7 +497,7 @@ impl ConnectionConfig {
         let mut config = Self::new(driver);
         config.ssl_mode = match url.scheme() {
             "ws" | "http" => SslMode::Disable,
-            "wss" | "https" | "rediss" => SslMode::VerifyFull,
+            "wss" | "https" | "rediss" | "elasticsearchs" | "opensearchs" => SslMode::VerifyFull,
             _ => Self::url_ssl_mode(driver),
         };
 
@@ -504,6 +520,11 @@ impl ConnectionConfig {
         config.user = decode(url.username())?;
         config.password = url.password().map(decode).transpose()?.map(Secret::new);
 
+        if url.scheme().starts_with("opensearch") {
+            config
+                .options
+                .insert(FLAVOR.to_owned(), "opensearch".to_owned());
+        }
         let unknown = config.read_query(&url)?;
         // ClickHouse serves HTTPS on another port than HTTP.
         if driver == DriverKind::ClickHouse
@@ -1096,6 +1117,25 @@ mod tests {
         let c = ConnectionConfig::from_url("libsql://:tok@localhost:8080?sslmode=disable").unwrap();
         assert_eq!((c.port, c.ssl_mode), (Some(8080), SslMode::Disable));
         assert_eq!(c.password, Some(Secret::new("tok")));
+    }
+
+    #[test]
+    fn parses_elasticsearch_urls() {
+        let c = ConnectionConfig::from_url("elasticsearch://elastic:s%40cret@search:9201/logs-*")
+            .unwrap();
+        assert_eq!(c.driver, DriverKind::Elasticsearch);
+        assert_eq!(
+            (c.host.as_str(), c.port, c.database.as_str()),
+            ("search", Some(9201), "logs-*")
+        );
+        assert_eq!(c.password.as_ref().map(Secret::expose), Some("s@cret"));
+        assert_eq!(c.ssl_mode, SslMode::Disable);
+        assert!(!c.es_tls());
+        let c = ConnectionConfig::from_url("opensearchs://:key@search").unwrap();
+        assert_eq!(c.driver, DriverKind::Elasticsearch);
+        assert_eq!((c.user.as_str(), c.ssl_mode), ("", SslMode::VerifyFull));
+        assert!(c.es_tls());
+        assert_eq!(DriverKind::Elasticsearch.default_port(), Some(9200));
     }
 
     #[test]

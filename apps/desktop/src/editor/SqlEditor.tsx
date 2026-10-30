@@ -39,7 +39,7 @@ import {
 import { tags as t } from "@lezer/highlight";
 import { allActions, dispatchKey, isMac } from "../actions";
 import { bindingKey, withoutKeys } from "../shortcutKeys";
-import { type CompletionCatalog, type DriverKind, isMongo, isNoSql, isRedis, toCommandError } from "../api";
+import { type CompletionCatalog, type DriverKind, isMongo, isNoSql, isRedis, isSearch, toCommandError } from "../api";
 import { annotation, catalogEntry, catalogKey } from "../catalog/catalog";
 import { ContextMenu, type MenuState } from "../components/ContextMenu";
 import { useSetting } from "../settings";
@@ -53,6 +53,7 @@ import { joinCompletion } from "./joinCompletion";
 import { lintSql } from "./lint";
 import { mongoLanguage } from "./mongo";
 import { redisLanguage } from "./redis";
+import { searchLanguage } from "./search";
 import { expandSnippet, snippetSource } from "./snippets";
 import { spellcheck, spellcheckSetting } from "./spellcheck";
 
@@ -238,6 +239,7 @@ export function language(
 ) {
   if (isMongo(driver)) return mongoLanguage(catalog);
   if (isRedis(driver)) return redisLanguage(catalog);
+  if (isSearch(driver)) return searchLanguage(catalog);
   const dialect = dialects[driver];
   const data = dialect.language.data;
   return new LanguageSupport(dialect.language, [

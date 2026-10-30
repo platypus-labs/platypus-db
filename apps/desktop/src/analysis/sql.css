@@ -66,3 +66,37 @@
 .result-source button {
   margin-left: auto;
 }
+
+/* Pivot of a result: the form opened from the bar above the grid. */
+.pivot-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 420px;
+  max-height: 85vh;
+  overflow: auto;
+}
+.pivot-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pivot-dialog label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.pivot-dialog fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: auto;
+}
+.pivot-dialog legend {
+  margin-bottom: 4px;
+  padding: 0;
+}

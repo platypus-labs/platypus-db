@@ -14,11 +14,13 @@ import {
   type SqlAnalysis,
   type QueryEvent,
   type SavedConnection,
+  type SavedResult,
   type TableDetails,
   type TransactionState,
   isMongo,
   isNoSql,
   isRedis,
+  isSearch,
   keepsDataIn,
   type ObjectTarget,
 } from "../api";
@@ -43,6 +45,9 @@ import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
 import { useDdlFill } from "../objects/useDdlFill";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
+import { AcrossBar } from "../analysis/CrossQueryDialog";
+import type { AcrossOrigin } from "../analysis/acrossModel";
+import { SavedResultBar } from "../analysis/SavedResults";
 import { useResultSql } from "../analysis/ResultSql";
 import { provideContext } from "../agents/context";
 import { type TabParts, tabSnapshot } from "../agents/contextTab";
@@ -143,6 +148,12 @@ export interface QueryTabModel extends TabBase {
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
    *  connection does not outlive the app. */
   resultSource?: ResultSource;
+  /** "Query across databases": the tables copied into this tab's temporary connection.
+   *  Not persisted, like `resultSource`. */
+  across?: AcrossOrigin;
+  /** A saved result opened offline: its tables are the file's rows, not a result's. Not
+   *  persisted, like the temporary connection. */
+  savedResult?: SavedResult;
   /** Results as text, like a console, instead of the grid. */
   terminal?: boolean;
   /** Charts of the statements, each shown in place of the grid when chosen. */
@@ -327,8 +338,8 @@ export function QueryTab({
   /** The rows on screen: the shown result, or the output of its SQL field. */
   const view = resultSql.output ?? shown;
   // "Query with SQL" reads this tab's results with rows and which one is shown.
-  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus });
-  resultsNow.current = { results, shown, active, focusSql: resultSql.focus };
+  const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database });
+  resultsNow.current = { results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database };
   // An agent the user allows reads the editor and the grid as they are when it asks.
   const sharedNow = useRef<Omit<TabParts, "editor">>({ connection, title: null, result: view });
   sharedNow.current = { connection, title: tab.filePath ? basename(tab.filePath) : (tab.title ?? null), result: view };
@@ -349,6 +360,8 @@ export function QueryTab({
         results: () => resultsWithRows(resultsNow.current.results),
         activeJob: () => resultsNow.current.shown?.jobId ?? null,
         querySql: () => resultsNow.current.focusSql(),
+        pivot: () => resultsNow.current.pivot(),
+        database: () => resultsNow.current.database ?? null,
       }),
     [],
   );
@@ -1156,7 +1169,7 @@ export function QueryTab({
     runAppend: () => void run("append"),
     // Not on a temporary connection ("Query with SQL"), nor MongoDB's and Redis's scripts.
     runOnConnections:
-      tab.resultSource || isNoSql(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
+      tab.resultSource || tab.across || isNoSql(connection.driver) || !workbench().connections().some((c) => c.id === connection.id)
         ? undefined
         : () => {
             const { from, to } = editor.current!.getSelection();
@@ -1495,7 +1508,8 @@ export function QueryTab({
    * editor that reads one table. Results of scripts stay read-only.
    */
   function editTarget(result: Result): TableEditTarget | null {
-    // The data editor writes SQL, or Redis commands: MongoDB results stay read-only.
+    // The data editor writes SQL, Redis commands or Elasticsearch requests: MongoDB results
+    // stay read-only.
     if (isMongo(connection.driver)) return null;
     const ref = tab.tableRef;
     const viewer = !!tab.table && !!ref && viewerOwn.has(result.sql);
@@ -1630,8 +1644,9 @@ export function QueryTab({
   const toolbar = useToolbar();
   // ClickHouse, MongoDB and Redis have no transactions (`capabilities.transactions` is false):
   // no commit mode.
-  // The data viewer's bar, with its row count: not on Redis, whose rows are read as shown.
-  const viewerBar = !!tab.table && !isRedis(connection.driver);
+  // The data viewer's bar, with its row count: not on Redis and Elasticsearch, whose rows are
+  // read as shown.
+  const viewerBar = !!tab.table && !isRedis(connection.driver) && !isSearch(connection.driver);
   /** The table the data viewer browses, for its structure and its editor. */
   const viewed = tab.table && tab.tableRef ? { ...tab.tableRef, database: tab.database } : null;
   const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isNoSql(connection.driver);
@@ -1886,6 +1901,20 @@ export function QueryTab({
           className="splitter"
         />
         <div className="results">
+          {tab.across && (
+            <AcrossBar
+              origin={tab.across}
+              connection={connection}
+              onReloaded={(across) => {
+                onChange({ across });
+                onNeedCatalog(true);
+                // The last statements run again on the new rows, if they only read.
+                const again = memory.current.lastReads();
+                if (again) void run("statement", false, again);
+              }}
+            />
+          )}
+          {tab.savedResult && <SavedResultBar saved={tab.savedResult} />}
           {tab.resultSource && (
             <ResultSourceBar
               source={tab.resultSource}

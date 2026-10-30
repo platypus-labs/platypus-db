@@ -11,6 +11,7 @@ export const DRIVER_NAMES: Record<DriverKind, string> = {
   libsql: "libSQL",
   mongo: "MongoDB",
   redis: "Redis",
+  elasticsearch: "Elasticsearch",
   snowflake: "Snowflake",
   bigquery: "BigQuery",
   databricks: "Databricks",

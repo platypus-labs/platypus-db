@@ -11,6 +11,7 @@ pub mod backup;
 pub mod catalog;
 pub mod cli;
 pub mod connections;
+pub mod dashboards;
 pub mod data;
 pub mod diagnostics;
 pub mod drivers;
@@ -28,6 +29,7 @@ pub mod projects;
 pub mod query;
 pub mod querylog;
 pub mod sample;
+pub mod saved_results;
 pub mod schedules;
 pub mod schema;
 pub mod schema_history;
@@ -60,6 +62,7 @@ use platypus_driver_odbc::OdbcDriver;
 use platypus_driver_oracle::OracleDriver;
 use platypus_driver_pg::PgDriver;
 use platypus_driver_redis::RedisDriver;
+use platypus_driver_search::SearchDriver;
 use platypus_driver_sqlite::SqliteDriver;
 use platypus_store::{
     CatalogStore, ConnectionStore, HistoryStore, ImportedSecrets, SchemaHistoryStore,
@@ -484,6 +487,7 @@ pub(crate) async fn connect(config: &ConnectionConfig) -> Result<Box<dyn Connect
             DriverKind::ClickHouse => ClickHouseDriver.connect(&config).await,
             DriverKind::Mongo => MongoDriver.connect(&config).await,
             DriverKind::Redis => RedisDriver.connect(&config).await,
+            DriverKind::Elasticsearch => SearchDriver.connect(&config).await,
             DriverKind::Snowflake
             | DriverKind::BigQuery
             | DriverKind::Databricks

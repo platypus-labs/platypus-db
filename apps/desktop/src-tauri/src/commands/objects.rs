@@ -160,6 +160,18 @@ pub fn generate_sql(
             _ => None,
         };
     }
+    // An index is read with a search and deleted with a request; its documents change in
+    // the grid or the editor.
+    if driver == DriverKind::Elasticsearch {
+        use platypus_driver_search::{command, meta};
+        return match request {
+            GenerateRequest::Select { limit } => Some(command::browse_limited(&target.name, limit)),
+            GenerateRequest::Drop { .. } => {
+                Some(format!("DELETE /{}", meta::segment(&target.name)))
+            }
+            _ => None,
+        };
+    }
     let d = Dialect::from(driver);
     let name = ObjectName {
         schema: target.schema.as_deref(),
@@ -236,6 +248,13 @@ pub fn dialect_support(driver: DriverKind) -> DialectSupport {
             cascade: false,
             droppable: vec![ObjectKind::Table, ObjectKind::View],
             renamable: vec![ObjectKind::Table],
+        };
+    }
+    if driver == DriverKind::Elasticsearch {
+        return DialectSupport {
+            cascade: false,
+            droppable: vec![ObjectKind::Table],
+            renamable: Vec::new(),
         };
     }
     if driver == DriverKind::Redis {
