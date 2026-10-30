@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Docs</title>
+  <meta name="description" content="Getting started with PlatypusDB, and an index of its documentation.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="img/icon.png">
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="index.html" aria-label="PlatypusDB, home">
+        <img src="img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="index.html#tour">Tour</a>
+        <a href="features.html">Features</a>
+        <a href="databases.html">Databases</a>
+        <a href="compare.html">Compare</a>
+        <a href="docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <h6>Start</h6>
+    <a href="#getting-started" class="on">Getting started</a><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a>
+    <h6>Use</h6>
+    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#databases">Databases</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#sql-editor">SQL editor</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#data-editor">Data editor</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#query-plans-and-performance">Query plans</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#import-export-and-transfer">Import and export</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">All features</a>
+    <h6>Safety and agents</h6>
+    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#transactions-and-safety">Transactions and safety</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a>
+    <h6>Reference</h6>
+    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Keyboard shortcuts</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/PLUGINS.md">Plugins</a>
+    <h6>Project</h6>
+    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+  </nav>
+
+  <article>
+    <div class="crumbs">Start / Getting started</div>
+    <h1 id="getting-started">Getting started</h1>
+    <p>Install PlatypusDB, open a connection and learn the few keys that do most of the work. Every feature, area by area, is in <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">FEATURES.md</a>.</p>
+    <h2 id="install">Install</h2>
+    <p>Download the installer for your system from the <a href="https://github.com/PaoloCisly/platypus-db/releases/latest">releases page</a>: <code>.exe</code> or <code>.msi</code> for Windows, <code>.dmg</code> for macOS, <code>.AppImage</code>, <code>.deb</code> or <code>.rpm</code> for Linux. The app updates itself.</p>
+    <p><b>Portable copy</b>: put the executable in a folder with an empty <code>data</code> folder beside it. Connections, settings, history and scripts then live in <code>data</code>, and the folder can move to another machine or a USB stick.</p>
+    <h2 id="first-connection">First connection</h2>
+    <p>Open PlatypusDB and click <b>New connection</b>, or paste a connection URL (<code>postgres://…</code>, <code>mysql://…</code>, a JDBC URL or an ADO.NET string).</p>
+    <p>No database at hand? <b>Try the sample database</b> on the welcome screen: a SQLite field survey of platypuses, with linked tables, a view and saved scripts.</p>
+    <h2 id="shortcuts">Keys to learn first</h2>
+    <p>Every action, connection and table is a few letters away in the command palette.</p>
+    <div class="table-wrap" role="region" aria-label="Main keyboard shortcuts" tabindex="0">
+      <table class="grid">
+        <thead><tr><th scope="col">Keys</th><th scope="col">Action</th></tr></thead>
+        <tbody>
+          <tr><td><code>Ctrl+K</code></td><td>Command palette</td></tr>
+          <tr><td><code>Ctrl+Enter</code></td><td>Run the statement under the cursor (or the selection)</td></tr>
+          <tr><td><code>Alt+X</code></td><td>Run the script</td></tr>
+          <tr><td><code>Ctrl+Space</code></td><td>Autocomplete</td></tr>
+          <tr><td><code>Ctrl+Shift+F</code></td><td>Format the script (or the selection)</td></tr>
+          <tr><td><code>Ctrl+Shift+E</code></td><td>Explain the statement under the cursor</td></tr>
+          <tr><td><code>Ctrl+T</code></td><td>New tab</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg><span>On macOS use <code>Cmd</code> instead of <code>Ctrl</code>. Every shortcut can be changed in Settings › Keyboard shortcuts; the full list is in <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">SHORTCUTS.md</a>.</span></div>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#install">Install</a>
+    <a href="#first-connection">First connection</a>
+    <a href="#shortcuts">Keys to learn first</a>
+    <a href="https://github.com/PaoloCisly/platypus-db#readme" style="margin-top:18px">Read the README on GitHub</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="index.html"><img src="img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">Features</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Shortcuts</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="site.js" defer></script>
+</body>
+</html>

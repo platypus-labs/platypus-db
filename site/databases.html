@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Databases</title>
+  <meta name="description" content="The databases PlatypusDB connects to, how each one connects and what to know about it.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="img/icon.png">
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="index.html" aria-label="PlatypusDB, home">
+        <img src="img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="index.html#tour">Tour</a>
+        <a href="features.html">Features</a>
+        <a href="databases.html" aria-current="page">Databases</a>
+        <a href="compare.html">Compare</a>
+        <a href="docs.html">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+  <section class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">Databases</p>
+      <h1>Twenty databases,<br><span class="gradient">one client.</span></h1>
+      <p class="lead">Native drivers in Rust, plus ADBC and ODBC for the rest. Large drivers download on first use, checked against their SHA-256.</p>
+      <dl class="meta">
+        <div><dt>databases and variants</dt><dd>20+</dd></div>
+        <div><dt>large drivers, checked</dt><dd>SHA-256</dd></div>
+        <div><dt>plus any</dt><dd>ADBC · ODBC</dd></div>
+      </dl>
+    </div>
+    <div class="mascot" aria-hidden="true">
+      <div class="ring"></div>
+      <img src="img/mark.png" alt="" width="1024" height="1024">
+      <span class="chip c1" style="--c:#4169E1">PostgreSQL</span>
+      <span class="chip c2" style="--c:#FFF000">DuckDB</span>
+      <span class="chip c3" style="--c:#cc2927">SQL Server</span>
+      <span class="chip c4" style="--c:#47A248">MongoDB</span>
+      <span class="chip c5" style="--c:#29B5E8">Snowflake</span>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:110px">
+    <header class="head"><p class="eyebrow">Supported</p><h2>Pick yours.</h2><p>Hover a database to see its color; each connects the way the table below says.</p></header>
+    <ul class="logos">
+      <li style="--c:#4169E1"><svg aria-hidden="true"><use href="img/databases.svg#postgresql"/></svg>PostgreSQL</li>
+      <li style="--c:#4479A1"><svg aria-hidden="true"><use href="img/databases.svg#mysql"/></svg>MySQL</li>
+      <li style="--c:#c0765a"><svg aria-hidden="true"><use href="img/databases.svg#mariadb"/></svg>MariaDB</li>
+      <li style="--c:#cc2927"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>SQL Server</li>
+      <li style="--c:#c74634"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>Oracle</li>
+      <li style="--c:#FFCC01"><svg aria-hidden="true"><use href="img/databases.svg#clickhouse"/></svg>ClickHouse</li>
+      <li style="--c:#3d8fc6"><svg aria-hidden="true"><use href="img/databases.svg#sqlite"/></svg>SQLite</li>
+      <li style="--c:#FFF000"><svg aria-hidden="true"><use href="img/databases.svg#duckdb"/></svg>DuckDB</li>
+      <li style="--c:#4FF8D2"><svg aria-hidden="true"><use href="img/databases.svg#turso"/></svg>Turso / libSQL</li>
+      <li style="--c:#47A248"><svg aria-hidden="true"><use href="img/databases.svg#mongodb"/></svg>MongoDB</li>
+      <li style="--c:#29B5E8"><svg aria-hidden="true"><use href="img/databases.svg#snowflake"/></svg>Snowflake</li>
+      <li style="--c:#669DF6"><svg aria-hidden="true"><use href="img/databases.svg#bigquery"/></svg>BigQuery</li>
+      <li style="--c:#FF3621"><svg aria-hidden="true"><use href="img/databases.svg#databricks"/></svg>Databricks</li>
+      <li style="--c:#DD00A1"><svg aria-hidden="true"><use href="img/databases.svg#trino"/></svg>Trino</li>
+      <li style="--c:#8f6bff"><svg aria-hidden="true"><use href="img/databases.svg#cockroachdb"/></svg>CockroachDB</li>
+      <li style="--c:#ff5f3b"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>YugabyteDB</li>
+      <li style="--c:#FDB515"><svg aria-hidden="true"><use href="img/databases.svg#timescale"/></svg>TimescaleDB</li>
+      <li style="--c:#3FCF8E"><svg aria-hidden="true"><use href="img/databases.svg#supabase"/></svg>Supabase</li>
+      <li style="--c:#34D59A"><svg aria-hidden="true"><use href="img/databases.svg#neon"/></svg>Neon</li>
+      <li style="--c:#0f62fe"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>IBM Db2</li>
+      <li style="--c:#e8e8e8"><svg aria-hidden="true"><use href="img/databases.svg#arrow"/></svg>ADBC drivers</li>
+      <li style="--c:#a0a8ae"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>ODBC sources</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <header class="head"><p class="eyebrow">How they connect</p><h2>What each one needs.</h2><p>Every database gets the editor, the grid and the navigator. The notes say what differs; the oldest server versions are in <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#databases">FEATURES.md</a>.</p></header>
+    <div class="table-wrap" role="region" aria-label="How each database connects" tabindex="0">
+      <table class="grid">
+        <thead><tr><th scope="col">Database</th><th scope="col">Connects through</th><th scope="col">Notes</th></tr></thead>
+        <tbody>
+          <tr><td>PostgreSQL</td><td>native protocol</td><td>Several databases per connection, partitions, PostGIS, arrays and composite types</td></tr>
+          <tr><td>MySQL, MariaDB</td><td>native protocol</td><td><code>EXPLAIN ANALYZE</code> needs MySQL 8.0.18</td></tr>
+          <tr><td>SQL Server, Azure SQL</td><td>TDS</td><td><code>TOP (n)</code>, <code>[names]</code>, several result sets</td></tr>
+          <tr><td>Oracle</td><td>Oracle Instant Client, downloaded on first use</td><td>PL/SQL blocks, real cancel, navigator, DDL</td></tr>
+          <tr><td>ClickHouse</td><td>HTTP interface, Arrow results</td><td>Browsed, queried and designed; no data editing in the grid</td></tr>
+          <tr><td>SQLite</td><td>embedded</td><td></td></tr>
+          <tr><td>DuckDB</td><td>embedded, Arrow results</td><td>Also opens CSV, JSON, Parquet and Excel files as databases</td></tr>
+          <tr><td>libSQL / Turso</td><td>Hrana over HTTP</td><td>Token in the password or in <code>authToken</code></td></tr>
+          <tr><td>MongoDB</td><td>official driver</td><td>mongosh syntax; no transactions, explain or data editing</td></tr>
+          <tr><td>Redis</td><td><code>redis</code> crate (RESP3, rustls)</td><td>Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON</td></tr>
+          <tr><td>Elasticsearch, OpenSearch</td><td>HTTP API</td><td>Requests as Kibana's console writes them, and SQL; indices as tables, edited in the grid</td></tr>
+          <tr><td>Apache Cassandra, ScyllaDB</td><td><code>scylla</code> crate (rustls)</td><td>CQL; keyspaces, tables, views, types and functions in the navigator; edited in the grid by primary key</td></tr>
+          <tr><td>CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB</td><td>PostgreSQL driver</td><td>Profiles with their default port, user, database and SSL</td></tr>
+          <tr><td>Snowflake, BigQuery, Databricks, Trino</td><td>ADBC driver, downloaded on first use</td><td>Queries, results, navigator and completion; no data editing, explain or manual commit yet</td></tr>
+          <tr><td>Any database with an ADBC driver</td><td>the ADBC driver library you choose</td><td>Its URI and options as the driver documents them</td></tr>
+          <tr><td>IBM Db2</td><td>IBM's ODBC driver, installed on first use</td><td>Windows</td></tr>
+          <tr><td>Any ODBC driver or DSN</td><td>the system's ODBC driver manager</td><td>Windows</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="cta">
+      <img src="img/mark.png" alt="" width="88" height="88">
+      <h2>Missing a database?</h2>
+      <p>Any database with an ADBC driver works today, and on Windows any ODBC driver or DSN. Ask for a native driver on GitHub.</p>
+      <div class="actions" style="justify-content:center"><a class="button primary large" href="download.html">Download</a><a class="button ghost large" href="https://github.com/PaoloCisly/platypus-db/issues">Request a driver</a></div>
+    </div>
+  </section>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="index.html"><img src="img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">Features</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Shortcuts</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="site.js" defer></script>
+</body>
+</html>

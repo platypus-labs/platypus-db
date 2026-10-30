@@ -23,16 +23,16 @@
       </a>
       <nav class="nav-links" aria-label="Sections">
         <a href="#tour">Tour</a>
-        <a href="#features">Features</a>
-        <a href="#databases">Databases</a>
-        <a href="#compare">Compare</a>
-        <a href="#docs">Docs</a>
+        <a href="features.html">Features</a>
+        <a href="databases.html">Databases</a>
+        <a href="compare.html">Compare</a>
+        <a href="docs.html">Docs</a>
       </nav>
       <div class="nav-actions">
         <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
         </a>
-        <a class="button primary" href="#download">Download</a>
+        <a class="button primary" href="download.html">Download</a>
       </div>
     </div>
   </header>
@@ -45,7 +45,7 @@
         <h1 id="hero-title">Small app.<br><span class="gradient">Every database.</span></h1>
         <p class="lead">PlatypusDB queries, browses and edits PostgreSQL, MySQL, SQL Server, Oracle, SQLite, DuckDB and a dozen more, from a window that opens in half a second.</p>
         <div class="actions">
-          <a class="button primary large" id="download-os" href="#download">Download for free</a>
+          <a class="button primary large" id="download-os" href="download.html">Download for free</a>
           <a class="button ghost large" href="https://github.com/PaoloCisly/platypus-db">
             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>Star on GitHub</span>
           </a>
@@ -78,7 +78,7 @@
         <div class="app-body">
           <div class="app-side">
             <div class="filter">Filter objects…</div>
-            <div class="t">▾ Shop dev <span class="env">DEV</span></div>
+            <div class="t">▾ <span class="drv pg">Pg<i class="ping ok"></i></span>Shop dev <span class="env">DEV</span></div>
             <div class="t l1">▾ main</div>
             <div class="t l1">▾ Tables</div>
             <div class="t l2">customers <small>48</small></div>
@@ -206,7 +206,7 @@
         </li>
         <li class="card w2" id="agents">
           <h3>Ready for AI agents</h3>
-          <p>Claude and every MCP client use your saved connections, read only by default. Passwords stay in the keychain.</p>
+          <p>Every MCP client can use your saved connections, read only by default. Passwords stay in the keychain.</p>
           <pre class="term" aria-hidden="true"><b>$</b> platypus-db <u>--mcp</u>
 <i># or the CLI, one JSON document</i>
 <b>$</b> platypus query <u>"select 1"</u></pre>
@@ -279,6 +279,7 @@
           </table>
         </div>
       </details>
+      <p class="more-link"><a class="button ghost large" href="databases.html">Every database and what works on it</a></p>
     </section>
 
     <!-- Performance -->
@@ -324,6 +325,7 @@
         </table>
       </div>
       <p class="note">PlatypusDB 0.2.0, DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0, Beekeeper Studio 6.2.0. Start and memory side by side are still to be measured.</p>
+      <p class="more-link"><a class="button ghost large" href="compare.html">Full comparison: features, prices, start and memory</a></p>
     </section>
 
     <!-- Download -->

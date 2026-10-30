@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Features</title>
+  <meta name="description" content="Everything PlatypusDB does: SQL editor, data editor, schema tools, query plans, import and export, MCP server and CLI.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="img/icon.png">
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="index.html" aria-label="PlatypusDB, home">
+        <img src="img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="index.html#tour">Tour</a>
+        <a href="features.html" aria-current="page">Features</a>
+        <a href="databases.html">Databases</a>
+        <a href="compare.html">Compare</a>
+        <a href="docs.html">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+  <section class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">Features</p>
+      <h1>The whole toolbox,<br><span class="gradient">none of the weight.</span></h1>
+      <p class="lead">Write and run SQL, edit data, read query plans, design schemas and move data between databases, from one small window.</p>
+      <div class="actions">
+        <a class="button primary large" href="download.html">Download for free</a>
+        <a class="button ghost large" href="#tour">See it work</a>
+      </div>
+    </div>
+    <div class="mascot" aria-hidden="true">
+      <div class="ring"></div>
+      <img src="img/mark.png" alt="" width="1024" height="1024">
+      <span class="chip c1" style="--c:#7fc8db">SQL editor</span>
+      <span class="chip c2" style="--c:#ff8d28">Explain</span>
+      <span class="chip c3" style="--c:#c3a6ff">ER diagram</span>
+      <span class="chip c4" style="--c:#7ed3a0">Import / export</span>
+      <span class="chip c5" style="--c:#8fb8ff">MCP</span>
+    </div>
+  </section>
+
+  <nav class="pill-nav" aria-label="Areas"><div>
+    <a class="on" href="#tour">Tour</a><a href="#editor">SQL editor</a><a href="#data">Data</a><a href="#schema">Schema</a>
+    <a href="#perf">Performance</a><a href="#safety">Safety</a><a href="#move">Import and export</a><a href="#agents">Agents and CLI</a>
+  </div></nav>
+
+  <!-- Tour: the GIFs, as on the home page -->
+  <section class="section" id="tour" style="padding-top:96px">
+    <header class="head"><p class="eyebrow">See it work</p><h2>From the first query to production.</h2></header>
+    <div class="tour">
+      <div class="tabs" role="tablist" aria-label="Tour" hidden>
+        <button type="button" role="tab" id="tab-rows" aria-controls="shot-rows"><b>A million rows</b><span>Open, scroll and sort from the header.</span></button>
+        <button type="button" role="tab" id="tab-editor" aria-controls="shot-editor"><b>SQL editor</b><span>JOINs completed from the foreign keys.</span></button>
+        <button type="button" role="tab" id="tab-edit" aria-controls="shot-edit"><b>Data editor</b><span>Edit in place, preview the SQL, save.</span></button>
+        <button type="button" role="tab" id="tab-explain" aria-controls="shot-explain"><b>Query plans</b><span>Explain analyze with a heatmap.</span></button>
+        <button type="button" role="tab" id="tab-docs" aria-controls="shot-docs"><b>Notes and tags</b><span>Comments, notes and tags on every column.</span></button>
+        <button type="button" role="tab" id="tab-palette" aria-controls="shot-palette"><b>Command palette</b><span>Everything one Ctrl+K away.</span></button>
+      </div>
+      <div class="screens">
+        <figure class="panel" id="shot-rows" role="tabpanel" aria-labelledby="tab-rows"><img src="img/screenshots/hero.gif" width="1600" height="960" alt="A table with a million rows opened and sorted from its header."></figure>
+        <figure class="panel" id="shot-editor" role="tabpanel" aria-labelledby="tab-editor"><img src="img/screenshots/editor.gif" width="1600" height="960" loading="lazy" alt="The SQL editor completing a JOIN from the foreign keys."></figure>
+        <figure class="panel" id="shot-edit" role="tabpanel" aria-labelledby="tab-edit"><img src="img/screenshots/data-editor.gif" width="1600" height="960" loading="lazy" alt="Edited cells and a new row, the SQL previewed before saving."></figure>
+        <figure class="panel" id="shot-explain" role="tabpanel" aria-labelledby="tab-explain"><img src="img/screenshots/explain.gif" width="1600" height="960" loading="lazy" alt="An explain analyze plan tinted by time, with an index suggestion."></figure>
+        <figure class="panel" id="shot-docs" role="tabpanel" aria-labelledby="tab-docs"><img src="img/screenshots/catalog.png" width="1600" height="960" loading="lazy" alt="A table's comment, notes and tags, and those of each column."></figure>
+        <figure class="panel" id="shot-palette" role="tabpanel" aria-labelledby="tab-palette"><img src="img/screenshots/palette.png" width="1600" height="960" loading="lazy" alt="The command palette listing tables and queries that match orders."></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="editor">
+    <header class="head"><p class="eyebrow">SQL editor</p><h2>Write it once, run it anywhere.</h2><p>An editor that knows your schema and remembers what you ran.</p></header>
+    <ul class="bento">
+      <li class="card w4"><h3>Completion from the schema</h3><p>Tables, columns and aliases in scope, and whole JOINs completed from the foreign keys with the alias and the ON condition.</p>
+        <pre class="term" aria-hidden="true"><b>SELECT</b> o.id, c.name <b>FROM</b> orders o
+<b>JOIN</b> <u>customers c ON c.id = o.customer_id</u>  <i># completed</i></pre></li>
+      <li class="card w2"><h3>Statement or script</h3><p>Ctrl+Enter runs the statement under the cursor, Alt+X the whole script.</p><p class="big">2<small>keys</small></p></li>
+      <li class="card w2"><h3>Parameters</h3><p><code>:name</code> and <code>?</code> placeholders, asked in a dialog before running.</p><div class="formats" aria-hidden="true"><span>:city</span><span>:from</span><span>?</span></div></li>
+      <li class="card w2"><h3>History</h3><p>The queries you ran, saved scripts and <code>.sql</code> files, with a query manager that shows the time of every statement.</p></li>
+      <li class="card w2"><h3>Notebooks</h3><p>SQL and Markdown cells in one tab; save it as a <code>.pnb</code> file or export it to HTML.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="data">
+    <header class="head"><p class="eyebrow">Data</p><h2>See and change rows without writing SQL.</h2></header>
+    <ul class="bento">
+      <li class="card w2"><h3>A million rows, no wait</h3><p>A canvas grid that reads a page at a time.</p><p class="big">178<small>fps</small></p></li>
+      <li class="card w4"><h3>Edit, then save all or nothing</h3><p>Changes are collected in the grid, the SQL is previewed, and the save is all or nothing. Every save leaves an undo script.</p>
+        <div class="diff" aria-hidden="true"><code class="del">- status = 'pending'</code><code class="add">+ status = 'shipped'</code><code class="add">+ INSERT 1 row</code></div></li>
+      <li class="card w3"><h3>The value, in full</h3><p>Long text, JSON, XML, hex and images in a value panel (F7); geometries on a map panel.</p><div class="formats" aria-hidden="true"><span>JSON</span><span>XML</span><span>Image</span><span>Map</span></div></li>
+      <li class="card w3"><h3>Charts and pivots</h3><p>A result switches between the grid and a chart from the status bar, and Pivot builds a pivot table from it.</p><div class="formats" aria-hidden="true"><span>Bar</span><span>Line</span><span>Scatter</span><span>Pie</span><span>Pivot</span></div></li>
+    </ul>
+  </section>
+
+  <section class="section" id="schema">
+    <header class="head"><p class="eyebrow">Schema</p><h2>Know the schema, change it safely.</h2></header>
+    <ul class="bento">
+      <li class="card w3"><h3>A table editor that shows its SQL</h3><p>Add and change columns, indexes and keys; the ALTER TABLE is shown before it runs.</p>
+        <div class="diff" aria-hidden="true"><code class="add">+ ADD COLUMN coupon_code varchar(32)</code><code class="del">- DROP COLUMN shipped_at</code></div></li>
+      <li class="card w3"><h3>Notes and tags</h3><p>The database's own comments, your notes and tags on every table and column.</p><div class="formats" aria-hidden="true"><span>#pii</span><span>#core</span><span>Markdown</span></div></li>
+      <li class="card w2"><h3>ER diagram</h3><p>Drawn from the foreign keys and laid out for you; export it to PNG or SVG.</p></li>
+      <li class="card w2"><h3>Docs in one file</h3><p>A schema as a Markdown file or a single HTML file that works offline, with an ER diagram.</p></li>
+      <li class="card w2"><h3>Compare and migrate</h3><p>Compare a schema with another one; the script that makes it like this one opens in the SQL editor, also as a Flyway or Liquibase migration.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="perf">
+    <header class="head"><p class="eyebrow">Performance</p><h2>See why a query is slow.</h2></header>
+    <ul class="bento">
+      <li class="card w4"><h3>Explain analyze, rolled back</h3><p>Runs the statement for real times, rolls back what it changed, tints each step by its share of the time and suggests an index.</p>
+        <div class="heat" aria-hidden="true">
+          <div><span>Seq Scan on orders</span><s style="--w:92%"></s><em>412 ms</em></div>
+          <div><span>Hash Join</span><s style="--w:38%"></s><em>96 ms</em></div>
+          <div><span>Index Scan customers</span><s style="--w:12%"></s><em>21 ms</em></div>
+        </div></li>
+      <li class="card w2"><h3>Server activity</h3><p>Sessions, locks and who blocks whom on PostgreSQL, MySQL, MariaDB and SQL Server; cancel a statement or end a session after a confirmation.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="safety">
+    <header class="head"><p class="eyebrow">Safety</p><h2>Production stays production.</h2></header>
+    <ul class="bento">
+      <li class="card w2"><h3>Colors you can't miss</h3><p>The window frame takes the connection's color.</p>
+        <div class="envs" aria-hidden="true"><span style="--c:#7ed3a0">development</span><span style="--c:#8fb8ff">test</span><span style="--c:#ff8a8a">production</span></div></li>
+      <li class="card w2"><h3>Manual commit on production</h3><p>Production opens in manual commit; every change is listed and confirmed before it runs.</p></li>
+      <li class="card w2"><h3>Read only when you say so</h3><p>A connection can be read only, and the lock button does the same for one editor tab. Passwords stay in the system keychain.</p></li>
+    </ul>
+  </section>
+
+  <section class="section" id="move">
+    <header class="head"><p class="eyebrow">Import and export</p><h2>Move data anywhere.</h2></header>
+    <ul class="bento">
+      <li class="card w3"><h3>Files in and out</h3><p>CSV, JSON, Parquet, Excel and more, streamed to disk or to S3.</p><div class="formats" aria-hidden="true"><span>CSV</span><span>JSON</span><span>Parquet</span><span>Excel</span><span>SQL</span><span>S3</span></div></li>
+      <li class="card w3"><h3>Between databases</h3><p>Copy a table or a whole schema from any database to any other.</p>
+        <div class="formats" aria-hidden="true"><span>PostgreSQL → MySQL</span><span>SQL Server → SQLite</span></div></li>
+    </ul>
+  </section>
+
+  <section class="section" id="agents">
+    <header class="head"><p class="eyebrow">Agents and CLI</p><h2>Ready for agents, read only by default.</h2></header>
+    <ul class="bento">
+      <li class="card w4"><h3>An MCP server and a command line</h3><p>Every MCP client can use your saved connections. Each connection gives agents no access, read only (the default) or read and write.</p>
+        <pre class="term" aria-hidden="true"><b>$</b> platypus-db <u>--mcp</u>
+<i># or the CLI, one JSON document</i>
+<b>$</b> platypus query <u>"select 1"</u></pre></li>
+      <li class="card w2"><h3>You approve the changes</h3><p>A change an agent wants to run opens a dialog in the app first.</p></li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <div class="cta">
+      <img src="img/mark.png" alt="" width="88" height="88">
+      <h2>All of this in a 19.5 MiB Linux download.</h2>
+      <p>Free and open source. No trial, no account.</p>
+      <div class="actions" style="justify-content:center"><a class="button primary large" href="download.html">Download</a><a class="button ghost large" href="compare.html">Compare with other clients</a></div>
+    </div>
+  </section>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="index.html"><img src="img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">Features</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Shortcuts</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="site.js" defer></script>
+</body>
+</html>
