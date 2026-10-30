@@ -13,6 +13,7 @@ pub mod cli;
 pub mod connections;
 pub mod dashboards;
 pub mod data;
+pub mod debugger;
 pub mod diagnostics;
 pub mod drivers;
 pub mod explain;

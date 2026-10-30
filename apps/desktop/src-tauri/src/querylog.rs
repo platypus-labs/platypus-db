@@ -476,6 +476,11 @@ impl Connection for Logged {
         self.track(LogKind::Query, text, self.inner.bulk_load(rows))
             .await
     }
+
+    // The debugger runs its statements through the sessions it is given, which are logged.
+    fn debugger(&self) -> Result<Arc<dyn platypus_core::Debugger>> {
+        self.inner.debugger()
+    }
 }
 
 /// The results after the first of a statement, their errors naming the server as the first
