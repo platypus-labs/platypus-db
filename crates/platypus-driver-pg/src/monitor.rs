@@ -5,6 +5,7 @@ use platypus_core::{
     Connection, Metric, ReplicationRow, Result, ServerMetrics, ServerParameter, TextRowExt,
     differs_from, float_of, query_row, query_sizes, query_text, set_value, sort_parameters,
 };
+use platypus_sql::Dialect;
 
 /// Every setting; the unit and the boot value are the ones `setting` is written in.
 const SETTINGS: &str = "SELECT name, setting, unit, boot_val, source, context, short_desc, \
@@ -48,10 +49,82 @@ fn alter_system(name: &str, value: Option<&str>, context: Option<&str>) -> Optio
     if context == Some("internal") || !plain {
         return None;
     }
-    Some(format!(
-        "ALTER SYSTEM SET {name} = {};",
-        set_value(value?, false)
-    ))
+    let value = value?;
+    let value = if LIST_SETTINGS.contains(&name) {
+        list_value(value)
+    } else {
+        set_value(value, |v| Dialect::Postgres.quote_literal(v))
+    };
+    Some(format!("ALTER SYSTEM SET {name} = {value};"))
+}
+
+/// The settings that PostgreSQL reads as a list of names (`GUC_LIST_QUOTE`): their value is
+/// written as one literal per element, and a single literal with commas in it would be
+/// one name. `pg_settings` has no flag for it before PostgreSQL 16, so they are listed.
+const LIST_SETTINGS: [&str; 6] = [
+    "search_path",
+    "temp_tablespaces",
+    "shared_preload_libraries",
+    "session_preload_libraries",
+    "local_preload_libraries",
+    "unix_socket_directories",
+];
+
+/// A list setting's value as `'a', 'b'`: each element is taken out of the list syntax
+/// the server shows (`"$user", public`, a name in double quotes with `""` inside) and
+/// written as a literal.
+fn list_value(value: &str) -> String {
+    let items = split_list(value);
+    if items.is_empty() {
+        return Dialect::Postgres.quote_literal("");
+    }
+    items
+        .iter()
+        .map(|i| Dialect::Postgres.quote_literal(i))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The elements of a PostgreSQL list value: separated by commas, with blanks around them
+/// dropped and double quotes taken off a quoted element.
+fn split_list(value: &str) -> Vec<String> {
+    let mut items = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut was_quoted = false;
+    let mut chars = value.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if quoted && chars.peek() == Some(&'"') => {
+                current.push('"');
+                chars.next();
+            }
+            '"' => {
+                quoted = !quoted;
+                was_quoted = true;
+            }
+            ',' if !quoted => {
+                items.push(finish_item(&mut current, &mut was_quoted));
+            }
+            // Blanks around an element are not part of it.
+            c if !quoted && c.is_whitespace() && (current.is_empty() || was_quoted) => {}
+            c => current.push(c),
+        }
+    }
+    items.push(finish_item(&mut current, &mut was_quoted));
+    items.retain(|i| !i.is_empty());
+    items
+}
+
+/// Takes the element read so far: blanks around a bare one are dropped, a quoted one is kept
+/// as it is.
+fn finish_item(current: &mut String, was_quoted: &mut bool) -> String {
+    let item = std::mem::take(current);
+    if std::mem::take(was_quoted) {
+        item
+    } else {
+        item.trim().to_owned()
+    }
 }
 
 pub(crate) async fn metrics(conn: &dyn Connection) -> Result<ServerMetrics> {
@@ -183,7 +256,34 @@ mod tests {
         );
         assert_eq!(
             alter_system("search_path", Some("\"$user\", public"), Some("user")).unwrap(),
-            "ALTER SYSTEM SET search_path = '\"$user\", public';"
+            "ALTER SYSTEM SET search_path = '$user', 'public';"
+        );
+        assert_eq!(
+            alter_system(
+                "shared_preload_libraries",
+                Some("pg_stat_statements, plugin_debugger"),
+                Some("postmaster")
+            )
+            .unwrap(),
+            "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements', 'plugin_debugger';"
+        );
+        assert_eq!(
+            alter_system(
+                "search_path",
+                Some("\"My \"\"Schema\"\"\", \"a,b\""),
+                Some("user")
+            )
+            .unwrap(),
+            "ALTER SYSTEM SET search_path = 'My \"Schema\"', 'a,b';"
+        );
+        assert_eq!(
+            alter_system("session_preload_libraries", Some(""), Some("superuser")).unwrap(),
+            "ALTER SYSTEM SET session_preload_libraries = '';"
+        );
+        // A setting that is not a list keeps its commas in one literal.
+        assert_eq!(
+            alter_system("datestyle", Some("ISO, MDY"), Some("user")).unwrap(),
+            "ALTER SYSTEM SET datestyle = 'ISO, MDY';"
         );
         assert_eq!(
             alter_system("log_line_prefix", Some("it's"), Some("sighup")).unwrap(),

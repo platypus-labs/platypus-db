@@ -126,9 +126,11 @@ export function Users({ connection, active, refresh, sideSession }: Props) {
         <button disabled={!options || !!why} title={why} data-action="new-user" onClick={() => setDialog({ kind: "new", of: "user" })}>
           {t("New user…")}
         </button>
-        <button disabled={!options || !!why} title={why} data-action="new-role" onClick={() => setDialog({ kind: "new", of: "role" })}>
-          {t("New role…")}
-        </button>
+        {options?.roles !== false && (
+          <button disabled={!options || !!why} title={why} data-action="new-role" onClick={() => setDialog({ kind: "new", of: "role" })}>
+            {t("New role…")}
+          </button>
+        )}
       </div>
       {error && (
         <div className="notice error small" data-field="users-error">
@@ -143,6 +145,7 @@ export function Users({ connection, active, refresh, sideSession }: Props) {
           connection={connection}
           sideSession={sideSession}
           readOnly={!!why}
+          roles={options?.roles !== false}
           version={reads + refresh}
           onSelect={setSelected}
           onOpen={setDialog}
@@ -245,6 +248,7 @@ function PrincipalDetails({
   connection,
   sideSession,
   readOnly,
+  roles,
   version,
   onSelect,
   onOpen,
@@ -254,6 +258,8 @@ function PrincipalDetails({
   connection: SavedConnection;
   sideSession: () => Promise<number | null>;
   readOnly: boolean;
+  /** Whether the server has roles. */
+  roles: boolean;
   /** Changes when the list was read again, so the privileges are too. */
   version: number;
   onSelect: (key: string) => void;
@@ -336,26 +342,32 @@ function PrincipalDetails({
         <button disabled={!!why} title={why} data-action="privileges" onClick={() => onOpen({ kind: "privileges", principal })}>
           {t("Privileges…")}
         </button>
-        <button disabled={!!why} title={why} data-action="roles" onClick={() => onOpen({ kind: "membership", principal })}>
-          {t("Roles…")}
-        </button>
+        {roles && (
+          <button disabled={!!why} title={why} data-action="roles" onClick={() => onOpen({ kind: "membership", principal })}>
+            {t("Roles…")}
+          </button>
+        )}
         <button className="admin-end" disabled={!!why} title={why} data-action="drop" onClick={() => onOpen({ kind: "drop", principal })}>
           {t("Drop…")}
         </button>
       </div>
-      <h3 className="admin-heading">{t("Member of")}</h3>
-      <MemberChips
-        names={principal.member_of}
-        find={find}
-        onSelect={onSelect}
-        onRemove={
-          readOnly
-            ? undefined
-            : (role) => onOpen({ kind: "membership", principal, preset: { action: "revoke", role } })
-        }
-        empty={t("It belongs to no role.")}
-        field="member-of"
-      />
+      {roles && (
+        <>
+          <h3 className="admin-heading">{t("Member of")}</h3>
+          <MemberChips
+            names={principal.member_of}
+            find={find}
+            onSelect={onSelect}
+            onRemove={
+              readOnly
+                ? undefined
+                : (role) => onOpen({ kind: "membership", principal, preset: { action: "revoke", role } })
+            }
+            empty={t("It belongs to no role.")}
+            field="member-of"
+          />
+        </>
+      )}
       {principal.kind === "role" && (
         <>
           <h3 className="admin-heading">{t("Members")}</h3>

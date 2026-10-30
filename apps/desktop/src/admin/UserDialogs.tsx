@@ -316,14 +316,14 @@ export function DropDialog({ env, principal }: { env: DialogEnv; principal: Prin
   const driver = env.connection.driver;
   const [reassign, setReassign] = useState("");
   const [dropOwned, setDropOwned] = useState(false);
-  const [dropLogin, setDropLogin] = useState(driver === "sqlserver" && principal.kind === "user");
+  const [dropLogin, setDropLogin] = useState(driver === "sqlserver" && principal.kind === "user" && !!principal.login);
   const others = env.principals.filter((p) => p.name !== principal.name);
   const change: SecurityChange = {
     change: "drop",
     name: principal.name,
     host: principal.host,
     kind: principal.kind,
-    options: { reassign_to: reassign || null, drop_owned: dropOwned, drop_login: dropLogin },
+    options: { reassign_to: reassign || null, drop_owned: dropOwned, drop_login: dropLogin, login: principal.login ?? null },
   };
   return (
     <SecurityDialog
@@ -357,7 +357,7 @@ export function DropDialog({ env, principal }: { env: DialogEnv; principal: Prin
           </label>
         </>
       )}
-      {driver === "sqlserver" && principal.kind === "user" && (
+      {driver === "sqlserver" && principal.kind === "user" && principal.login && (
         <label className="check">
           <input type="checkbox" checked={dropLogin} data-field="drop-login" onChange={(e) => setDropLogin(e.target.checked)} />
           <span>{t("Also drop its server login")}</span>

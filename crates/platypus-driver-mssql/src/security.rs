@@ -11,9 +11,9 @@ use platypus_sql::Dialect;
 
 /// The users and the roles made in the database: the fixed roles, `dbo`, `guest` and the
 /// system schemas are left out. Name, type (`R` is a role), how it authenticates, whether
-/// its login is disabled and whether it has a login.
+/// its login is disabled, whether it has a login and the login's name.
 const PRINCIPALS: &str = "SELECT p.name, p.type, p.authentication_type_desc, \
-     CAST(ISNULL(l.is_disabled, 0) AS int), CAST(CASE WHEN l.sid IS NULL THEN 0 ELSE 1 END AS int) \
+     CAST(ISNULL(l.is_disabled, 0) AS int), CAST(CASE WHEN l.sid IS NULL THEN 0 ELSE 1 END AS int), l.name \
      FROM sys.database_principals p LEFT JOIN sys.server_principals l ON l.sid = p.sid \
      WHERE p.type IN ('S', 'U', 'G', 'E', 'X', 'R') AND p.is_fixed_role = 0 \
        AND p.name NOT IN ('dbo', 'guest', 'INFORMATION_SCHEMA', 'sys', 'public') \
@@ -59,6 +59,7 @@ pub(crate) async fn principals(conn: &dyn Connection) -> Result<Vec<Principal>> 
                 kind: PrincipalKind::of(role),
                 flags,
                 authentication: Some(r.text(2)).filter(|a| !a.is_empty() && !role),
+                login: r.opt(5).filter(|_| !role),
                 name,
                 ..Principal::default()
             }

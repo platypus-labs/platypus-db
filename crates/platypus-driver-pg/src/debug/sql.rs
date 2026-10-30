@@ -147,6 +147,10 @@ pub(super) fn routine(row: &TextRow, parameters: &[TextRow]) -> DebugRoutine {
 
 /// The statement that calls `routine` with `arguments`, one for each input parameter: a
 /// function from a `SELECT`, which returns its rows, a procedure with `CALL`.
+///
+/// A procedure's OUT parameters always take a placeholder (`CALL` refuses a positional list
+/// without them). A default can be left out of a positional list only at its end; with one
+/// skipped before an argument that is given, every argument is written by name instead.
 pub(super) fn call_sql(routine: &DebugRoutine, arguments: &[DebugArgument]) -> Result<String> {
     let inputs = routine
         .parameters
@@ -160,49 +164,36 @@ pub(super) fn call_sql(routine: &DebugRoutine, arguments: &[DebugArgument]) -> R
             arguments.len()
         )));
     }
-    // A default value can only be left out at the end: a call has no other way to skip one.
-    let given = arguments
+    let slots = argument_slots(routine, arguments)?;
+    // Positional is possible while the skipped defaults are all at the end of the list.
+    let given = slots
         .iter()
-        .rposition(|a| *a != DebugArgument::Default)
+        .rposition(|(_, v)| v.is_some())
         .map_or(0, |i| i + 1);
+    let positional = slots[..given].iter().all(|(_, v)| v.is_some());
     let mut values = Vec::new();
-    let mut arguments = arguments.iter();
-    for p in &routine.parameters {
-        if !p.mode.is_input() {
-            // A procedure's OUT parameters take a placeholder; a function's are results.
-            if routine.procedure && p.mode == ParameterMode::Out && values.len() < given {
-                values.push(format!("NULL::{}", p.type_name));
-            }
-            continue;
-        }
-        let Some(argument) = arguments.next() else {
-            break;
-        };
-        let value = match argument {
-            DebugArgument::Value(text) => {
-                format!("{}::{}", Dialect::Postgres.quote_literal(text), p.type_name)
-            }
-            DebugArgument::Null => format!("NULL::{}", p.type_name),
-            DebugArgument::Default if !p.has_default => {
-                return Err(Error::Other(format!(
-                    "{} has no default value",
-                    parameter_label(p)
-                )));
-            }
-            DebugArgument::Default if values.len() < given => {
-                return Err(Error::Other(format!(
-                    "{} can keep its default value only if every later argument does too",
-                    parameter_label(p)
-                )));
-            }
-            DebugArgument::Default => continue,
-        };
+    for (p, value) in &slots[..if positional { given } else { slots.len() }] {
+        let Some(value) = value else { continue };
         let variadic = if p.mode == ParameterMode::Variadic {
             "VARIADIC "
         } else {
             ""
         };
-        values.push(format!("{variadic}{value}"));
+        if positional {
+            values.push(format!("{variadic}{value}"));
+        } else {
+            let name = p.name.as_deref().ok_or_else(|| {
+                Error::Other(format!(
+                    "{} has a default left out before an argument, and the {} parameter has \
+                     no name to pass that argument by",
+                    routine.name, p.type_name
+                ))
+            })?;
+            values.push(format!(
+                "{variadic}{} => {value}",
+                Dialect::Postgres.quote_ident(name)
+            ));
+        }
     }
     let name = Dialect::Postgres.qualified(Some(&routine.schema), &routine.name);
     let list = values.join(", ");
@@ -211,6 +202,44 @@ pub(super) fn call_sql(routine: &DebugRoutine, arguments: &[DebugArgument]) -> R
     } else {
         format!("SELECT * FROM {name}({list})")
     })
+}
+
+/// The parameters a call mentions, in order, each with its value: `None` for a default that
+/// is left out. A function's results are not parameters of the call.
+fn argument_slots<'a>(
+    routine: &'a DebugRoutine,
+    arguments: &[DebugArgument],
+) -> Result<Vec<(&'a DebugParameter, Option<String>)>> {
+    let mut slots = Vec::new();
+    let mut arguments = arguments.iter();
+    for p in &routine.parameters {
+        if !p.mode.is_input() {
+            if routine.procedure && p.mode == ParameterMode::Out {
+                slots.push((p, Some(format!("NULL::{}", p.type_name))));
+            }
+            continue;
+        }
+        let Some(argument) = arguments.next() else {
+            break;
+        };
+        let value = match argument {
+            DebugArgument::Value(text) => Some(format!(
+                "{}::{}",
+                Dialect::Postgres.quote_literal(text),
+                p.type_name
+            )),
+            DebugArgument::Null => Some(format!("NULL::{}", p.type_name)),
+            DebugArgument::Default if p.has_default => None,
+            DebugArgument::Default => {
+                return Err(Error::Other(format!(
+                    "{} has no default value",
+                    parameter_label(p)
+                )));
+            }
+        };
+        slots.push((p, value));
+    }
+    Ok(slots)
 }
 
 /// How a parameter is named in messages.
@@ -498,8 +527,11 @@ mod tests {
             .unwrap(),
             "SELECT * FROM public.f('1'::integer)"
         );
-        // A default in the middle, or where there is none, cannot be left out.
-        assert!(call_sql(&f, &[value("1"), DebugArgument::Default, value("3")]).is_err());
+        // A default in the middle is skipped by naming the arguments after it.
+        assert_eq!(
+            call_sql(&f, &[value("1"), DebugArgument::Default, value("3")]).unwrap(),
+            "SELECT * FROM public.f(a => '1'::integer, c => '3'::integer)"
+        );
         assert!(
             call_sql(
                 &f,
@@ -526,6 +558,61 @@ mod tests {
             call_sql(&p, &[value("1"), value("{2,3}")]).unwrap(),
             "CALL public.f('1'::integer, NULL::integer, VARIADIC '{2,3}'::integer[])"
         );
+    }
+
+    #[test]
+    fn procedure_calls_count_input_positions_apart_from_out_placeholders() {
+        let value = |v: &str| DebugArgument::Value(v.to_owned());
+        let procedure = |parameters: &[(&str, &str, &str)], defaults: &str| {
+            let mut p = function(parameters, defaults);
+            p.procedure = true;
+            p
+        };
+        // p(OUT r1, OUT r2, IN a DEFAULT, IN b DEFAULT, IN c DEFAULT)
+        let p = procedure(
+            &[
+                ("r1", "integer", "o"),
+                ("r2", "integer", "o"),
+                ("a", "integer", "i"),
+                ("b", "integer", "i"),
+                ("c", "integer", "i"),
+            ],
+            "3",
+        );
+        let default = DebugArgument::Default;
+        assert_eq!(
+            call_sql(&p, &[default.clone(), default.clone(), default.clone()]).unwrap(),
+            "CALL public.f(NULL::integer, NULL::integer)"
+        );
+        assert_eq!(
+            call_sql(&p, &[default.clone(), value("5"), default.clone()]).unwrap(),
+            "CALL public.f(r1 => NULL::integer, r2 => NULL::integer, b => '5'::integer)"
+        );
+        assert_eq!(
+            call_sql(&p, &[value("1"), default.clone(), default.clone()]).unwrap(),
+            "CALL public.f(NULL::integer, NULL::integer, '1'::integer)"
+        );
+        // p(IN a, OUT r, IN b DEFAULT)
+        let q = procedure(
+            &[("a", "text", "i"), ("r", "text", "o"), ("b", "text", "i")],
+            "1",
+        );
+        assert_eq!(
+            call_sql(&q, &[value("x"), default.clone()]).unwrap(),
+            "CALL public.f('x'::text, NULL::text)"
+        );
+        // An OUT parameter before a skipped default and an argument after it.
+        let r = procedure(
+            &[("a", "text", "i"), ("r", "text", "o"), ("b", "text", "i")],
+            "2",
+        );
+        assert_eq!(
+            call_sql(&r, &[default, value("q")]).unwrap(),
+            "CALL public.f(r => NULL::text, b => 'q'::text)"
+        );
+        // Naming needs names.
+        let unnamed = procedure(&[("", "text", "i"), ("", "text", "i")], "2");
+        assert!(call_sql(&unnamed, &[DebugArgument::Default, value("q")]).is_err());
     }
 
     #[test]

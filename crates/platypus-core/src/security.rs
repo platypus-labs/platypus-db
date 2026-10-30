@@ -77,6 +77,9 @@ pub struct Principal {
     pub valid_until: Option<String>,
     /// How it logs in: the authentication plugin (MySQL), the login kind (SQL Server).
     pub authentication: Option<String>,
+    /// The name of the server login a SQL Server user is mapped to: it can differ from the
+    /// user's own. `None` when the user has no login.
+    pub login: Option<String>,
     /// The roles it belongs to.
     pub member_of: Vec<String>,
 }
@@ -211,6 +214,10 @@ pub struct PrincipalSpec {
     /// The new name, when renaming. Altering only.
     #[serde(default)]
     pub rename_to: Option<String>,
+    /// Altering, SQL Server: the name of the login the user is mapped to
+    /// ([`Principal::login`]). Login-level changes (password, lock) need it.
+    #[serde(default)]
+    pub login: Option<String>,
 }
 
 /// What dropping a principal also does.
@@ -225,6 +232,10 @@ pub struct DropOptions {
     /// Drops the server login the user was created with (SQL Server).
     #[serde(default)]
     pub drop_login: bool,
+    /// The name of the login to drop with `drop_login` ([`Principal::login`]); without it
+    /// there is nothing to drop.
+    #[serde(default)]
+    pub login: Option<String>,
 }
 
 /// A change to the users, roles and privileges of a server.

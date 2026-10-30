@@ -224,6 +224,7 @@ export function alterSpec(p: Principal, form: PrincipalForm, known: PrincipalFla
     valid_until: validNow === (p.valid_until ?? "") ? null : validNow,
     password: form.password || null,
     rename_to: name && name !== p.name ? name : null,
+    login: p.login ?? null,
   };
 }
 

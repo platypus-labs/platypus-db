@@ -217,15 +217,34 @@ impl Logged {
     }
 }
 
+/// The secrets of `sql` when `masked` hides some of it; none for a statement that is logged
+/// as it is.
+fn secrets_if_masked(masked: &str, sql: &str) -> Vec<String> {
+    if masked == sql {
+        Vec::new()
+    } else {
+        platypus_sql::security::secrets_of(sql)
+    }
+}
+
+/// `error` without the `secrets` a server may have quoted in its text.
+fn hide_in_error(error: Error, secrets: &[String]) -> Error {
+    if secrets.is_empty() {
+        error
+    } else {
+        error.map_text(|t| platypus_sql::security::hide_secrets(t, secrets))
+    }
+}
+
 #[async_trait]
 impl Connection for Logged {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         // A password in a `CREATE USER` is not for the log.
-        let id = self.log.start(
-            &self.connection,
-            LogKind::Query,
-            platypus_sql::security::mask_secrets(sql).into_owned(),
-        );
+        let masked = platypus_sql::security::mask_secrets(sql);
+        let secrets = secrets_if_masked(&masked, sql);
+        let id = self
+            .log
+            .start(&self.connection, LogKind::Query, masked.into_owned());
         let started = Instant::now();
         let result = self.inner.execute(sql, options).await;
         let first = millis_since(started);
@@ -257,7 +276,8 @@ impl Connection for Logged {
                 ))
             }
             Err(e) => {
-                let e = self.tag(e);
+                // The server may quote the password back (MySQL: `near 'hunter2'`).
+                let e = hide_in_error(self.tag(e), &secrets);
                 self.log.finish(id, started, Some(e.to_string()));
                 Err(e)
             }
@@ -266,14 +286,15 @@ impl Connection for Logged {
 
     /// One entry for all of them, as they reach the server together.
     async fn execute_all(&self, statements: &[&str], expected: &[u64]) -> Executed {
-        let id = self.log.start(
-            &self.connection,
-            LogKind::Query,
-            platypus_sql::security::mask_secrets(&statements.join(";\n")).into_owned(),
-        );
+        let script = statements.join(";\n");
+        let masked = platypus_sql::security::mask_secrets(&script);
+        let secrets = secrets_if_masked(&masked, &script);
+        let id = self
+            .log
+            .start(&self.connection, LogKind::Query, masked.into_owned());
         let started = Instant::now();
         let mut executed = self.inner.execute_all(statements, expected).await;
-        executed.error = executed.error.map(|e| self.tag(e));
+        executed.error = executed.error.map(|e| hide_in_error(self.tag(e), &secrets));
         let rows = executed.rows.iter().sum();
         self.log.update(id, |e| e.rows = Some(rows));
         let error = executed.error.as_ref().map(ToString::to_string);
@@ -687,6 +708,26 @@ mod tests {
             );
             assert!(entries.iter().any(|e| e.text.contains("'********'")));
         });
+    }
+
+    #[test]
+    fn a_server_error_does_not_quote_the_password() {
+        let sql = "CREATE USER app IDENTIFIED BY 'hunter2'";
+        let masked = platypus_sql::security::mask_secrets(sql);
+        let secrets = secrets_if_masked(&masked, sql);
+        let quoted = Error::Database(platypus_core::DbError {
+            message: "You have an error near 'hunter2' at line 1".to_owned(),
+            detail: Some("hunter2".to_owned()),
+            ..platypus_core::DbError::default()
+        });
+        let hidden = hide_in_error(quoted, &secrets).to_string();
+        assert!(!hidden.contains("hunter2"), "{hidden}");
+        assert!(hidden.contains("near '********' at line 1"), "{hidden}");
+        // A statement that is logged as it is keeps its error as it is.
+        let plain = "SELECT 1 WHERE x = 'hunter2'";
+        let secrets = secrets_if_masked(&platypus_sql::security::mask_secrets(plain), plain);
+        let error = hide_in_error(Error::Other("near 'hunter2'".to_owned()), &secrets);
+        assert_eq!(error.to_string(), "near 'hunter2'");
     }
 
     #[test]

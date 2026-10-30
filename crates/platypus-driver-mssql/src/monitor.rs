@@ -4,8 +4,8 @@
 use platypus_core::{
     Connection, Metric, ReplicationRow, Result, ServerMetrics, ServerParameter, TextRowExt,
     differs_from, float_of, query_row, query_sizes, query_text, set_value, sort_parameters,
-    string_literal,
 };
+use platypus_sql::Dialect;
 
 /// What each option is when nobody changed it: read from a server that never was
 /// configured, and in the documentation of `sp_configure`. The catalog has no such column.
@@ -156,9 +156,9 @@ fn unit_of(name: &str) -> Option<String> {
 /// The call that sets option `name` to `value`; the change waits for `RECONFIGURE`.
 fn configure(name: &str, value: Option<&str>) -> Option<String> {
     Some(format!(
-        "EXEC sp_configure N{}, {};\nRECONFIGURE;",
-        string_literal(name, false),
-        set_value(value?, false)
+        "EXEC sp_configure {}, {};\nRECONFIGURE;",
+        Dialect::SqlServer.quote_literal(name),
+        set_value(value?, |v| Dialect::SqlServer.quote_literal(v))
     ))
 }
 
@@ -235,7 +235,10 @@ async fn counter(
     instance: Option<&str>,
 ) -> Metric {
     let instance = instance.map_or_else(String::new, |i| {
-        format!(" AND RTRIM(instance_name) = {}", string_literal(i, false))
+        format!(
+            " AND RTRIM(instance_name) = {}",
+            Dialect::SqlServer.quote_literal(i)
+        )
     });
     scalar(
         conn,

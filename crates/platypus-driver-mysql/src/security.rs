@@ -38,11 +38,14 @@ pub(crate) async fn principals(conn: &dyn Connection) -> Result<Vec<Principal>> 
         (MYSQL_ACCOUNTS, MYSQL_MEMBERS)
     };
     let mut member_of: HashMap<(String, String), Vec<String>> = HashMap::new();
-    for r in query_text(conn, members).await? {
-        member_of
-            .entry((r.text(0), r.text(1)))
-            .or_default()
-            .push(r.text(2));
+    // `mysql.role_edges` is new in MySQL 8.0: before it there are no roles to read.
+    if platypus_sql::security::roles_supported(Dialect::MySql, conn.server_info()) {
+        for r in query_text(conn, members).await? {
+            member_of
+                .entry((r.text(0), r.text(1)))
+                .or_default()
+                .push(r.text(2));
+        }
     }
     Ok(query_text(conn, accounts)
         .await?

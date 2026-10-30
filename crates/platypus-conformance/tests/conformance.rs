@@ -2894,6 +2894,7 @@ async fn drop_security(
         options: platypus_core::DropOptions {
             drop_owned: b.config.driver == DriverKind::Postgres,
             drop_login: b.config.driver == DriverKind::SqlServer,
+            login: (b.config.driver == DriverKind::SqlServer).then(|| name.to_owned()),
             ..platypus_core::DropOptions::default()
         },
     };
@@ -2919,6 +2920,7 @@ async fn change_an_attribute(b: &Backend, conn: &dyn Connection, user: &str, hos
         DriverKind::ClickHouse => alter.valid_until = Some("2035-01-01 00:00:00".to_owned()),
         _ => alter.flags_on = vec![PrincipalFlag::Locked],
     }
+    alter.login = (b.config.driver == DriverKind::SqlServer).then(|| user.to_owned());
     change_security(b, conn, &SecurityChange::Alter { spec: alter }).await;
     let changed = find_principal(conn, user).await.unwrap();
     match b.config.driver {
@@ -3065,6 +3067,21 @@ async fn membership(
     change_security(b, conn, &change).await;
 }
 
+/// Whether the server has roles, and what the test uses as one: MySQL before 8.0 has none,
+/// so a second user stands in for the role, to take privileges, and nothing joins it.
+fn role_stand_in(
+    admin: &dyn Connection,
+    driver: DriverKind,
+    host: Option<&str>,
+) -> (bool, platypus_core::PrincipalKind, Option<String>) {
+    let roles = platypus_sql::security::roles_supported(
+        platypus_sql::Dialect::from(driver),
+        admin.server_info(),
+    );
+    let kind = platypus_core::PrincipalKind::of(roles);
+    (roles, kind, host.map(str::to_owned).filter(|_| !roles))
+}
+
 /// Users and roles are created, listed with their memberships and privileges, changed and
 /// dropped; a grant is read back, and gone after the revoke.
 #[tokio::test]
@@ -3084,11 +3101,12 @@ async fn manages_users_roles_and_privileges() {
         let table = format!("{}.conf_sec", b.schema);
         let (user, role) = ("conf_sec_user", "conf_sec_role");
         let host = (b.config.driver == DriverKind::MySql).then(|| "%".to_owned());
+        let (roles, role_kind, role_host) = role_stand_in(admin, b.config.driver, host.as_deref());
         // Leftovers of a run that failed half way.
         run(admin, &format!("DROP TABLE IF EXISTS {table}"))
             .await
             .unwrap();
-        for (name, kind) in [(user, PrincipalKind::User), (role, PrincipalKind::Role)] {
+        for (name, kind) in [(user, PrincipalKind::User), (role, role_kind)] {
             let _ = drop_security(&b, admin, name, kind, host.as_deref()).await;
         }
         run(admin, &format!("CREATE TABLE {table} (id INT, v INT)"))
@@ -3102,8 +3120,8 @@ async fn manages_users_roles_and_privileges() {
             &SecurityChange::Create {
                 spec: PrincipalSpec {
                     name: role.to_owned(),
-                    host: None,
-                    kind: PrincipalKind::Role,
+                    host: role_host.clone(),
+                    kind: role_kind,
                     ..PrincipalSpec::default()
                 },
             },
@@ -3120,7 +3138,9 @@ async fn manages_users_roles_and_privileges() {
             spec.flags_on = vec![PrincipalFlag::Login];
         }
         change_security(&b, admin, &SecurityChange::Create { spec: spec.clone() }).await;
-        membership(&b, admin, GrantAction::Grant, role, user).await;
+        if roles {
+            membership(&b, admin, GrantAction::Grant, role, user).await;
+        }
 
         let listed_user = find_principal(admin, user)
             .await
@@ -3129,9 +3149,10 @@ async fn manages_users_roles_and_privileges() {
             .await
             .unwrap_or_else(|| panic!("{}: {role} is not listed", b.name));
         assert_eq!(listed_user.kind, PrincipalKind::User, "{}", b.name);
-        assert_eq!(listed_role.kind, PrincipalKind::Role, "{}", b.name);
-        assert!(
+        assert_eq!(listed_role.kind, role_kind, "{}", b.name);
+        assert_eq!(
             listed_user.member_of.iter().any(|r| r == role),
+            roles,
             "{}: {listed_user:?}",
             b.name
         );
@@ -3149,7 +3170,9 @@ async fn manages_users_roles_and_privileges() {
         change_an_attribute(&b, admin, user, host.as_deref()).await;
 
         // Take the user out of the role, then drop both.
-        membership(&b, admin, GrantAction::Revoke, role, user).await;
+        if roles {
+            membership(&b, admin, GrantAction::Revoke, role, user).await;
+        }
         let left = find_principal(admin, user).await.unwrap();
         assert!(
             left.member_of.iter().all(|r| r != role),
@@ -3159,7 +3182,7 @@ async fn manages_users_roles_and_privileges() {
         drop_security(&b, admin, user, PrincipalKind::User, host.as_deref())
             .await
             .unwrap();
-        drop_security(&b, admin, role, PrincipalKind::Role, None)
+        drop_security(&b, admin, role, role_kind, role_host.as_deref())
             .await
             .unwrap();
         assert!(find_principal(admin, user).await.is_none(), "{}", b.name);

@@ -5,6 +5,7 @@
 use platypus_core::{
     Connection, Result, ServerParameter, TextRowExt, differs_from, query_text, set_value,
 };
+use platypus_sql::Dialect;
 
 /// Where a pragma's value lives, which says how far a change reaches.
 #[derive(Clone, Copy)]
@@ -242,7 +243,10 @@ pub(crate) async fn parameters(conn: &dyn Connection) -> Result<Vec<ServerParame
 fn set_pragma(name: &str, value: &str, scope: Scope) -> Option<String> {
     match scope {
         Scope::ReadOnly => None,
-        _ => Some(format!("PRAGMA {name} = {};", set_value(value, false))),
+        _ => Some(format!(
+            "PRAGMA {name} = {};",
+            set_value(value, |v| Dialect::Sqlite.quote_literal(v))
+        )),
     }
 }
 

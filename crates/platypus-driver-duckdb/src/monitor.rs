@@ -7,6 +7,7 @@ use platypus_core::{
     Connection, Error, Result, ServerParameter, TextRowExt, differs_from, query_text, set_value,
     sort_parameters,
 };
+use platypus_sql::Dialect;
 use tokio::sync::oneshot;
 
 use crate::error::map_error;
@@ -24,9 +25,12 @@ pub(crate) async fn parameters(conn: &dyn Connection) -> Result<Vec<ServerParame
             let default = defaults.get(&name).cloned();
             ServerParameter {
                 changed: differs_from(value.as_deref(), default.as_deref()),
-                statement: value
-                    .as_deref()
-                    .map(|v| format!("SET {name} = {};", set_value(v, false))),
+                statement: value.as_deref().map(|v| {
+                    format!(
+                        "SET {name} = {};",
+                        set_value(v, |v| Dialect::DuckDb.quote_literal(v))
+                    )
+                }),
                 context: r.opt(3),
                 description: r.opt(2).filter(|d| !d.is_empty()),
                 source: None,

@@ -9,6 +9,7 @@ use platypus_core::{
     TextRowExt, differs_from, query_named, query_row, query_sizes, query_text, set_value,
     sort_parameters,
 };
+use platypus_sql::Dialect;
 
 use crate::admin::mariadb;
 
@@ -43,7 +44,10 @@ pub(crate) async fn parameters(conn: &dyn Connection) -> Result<Vec<ServerParame
 /// `SET GLOBAL name = value;`, which the server refuses for a variable it only reads at
 /// start.
 fn set_global(name: &str, value: Option<&str>) -> Option<String> {
-    Some(format!("SET GLOBAL {name} = {};", set_value(value?, true)))
+    Some(format!(
+        "SET GLOBAL {name} = {};",
+        set_value(value?, |v| Dialect::MySql.quote_literal(v))
+    ))
 }
 
 /// A limit worth showing: the server writes `0` for both limits of a variable that has none.
@@ -308,7 +312,8 @@ mod tests {
         );
         assert_eq!(
             set_global("x", Some(r"a\b")).unwrap(),
-            r"SET GLOBAL x = 'a\\b';"
+            // A backslash goes as hex: `NO_BACKSLASH_ESCAPES` would read it otherwise.
+            "SET GLOBAL x = _utf8mb4 X'615c62';"
         );
         assert!(set_global("x", None).is_none());
     }

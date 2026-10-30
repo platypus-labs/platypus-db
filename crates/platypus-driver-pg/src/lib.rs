@@ -659,9 +659,6 @@ impl PgConnection {
         }
     }
 
-    /// Whether the server lists its sessions and locks as PostgreSQL does: CockroachDB has
-    /// no `pg_blocking_pids` nor `pg_terminate_backend`, YugabyteDB keeps its locks
-    /// elsewhere.
     /// Whether PL/pgSQL can be debugged here, where the server has pldebugger: not on the
     /// databases that only speak the protocol, nor behind a pooler in transaction mode, where
     /// the routine marked for debugging and the call could reach different server sessions.
@@ -669,6 +666,9 @@ impl PgConnection {
         self.has_server_admin() && !self.unnamed_statements
     }
 
+    /// Whether the server lists its sessions and locks as PostgreSQL does: CockroachDB has
+    /// no `pg_blocking_pids` nor `pg_terminate_backend`, YugabyteDB keeps its locks
+    /// elsewhere.
     fn has_server_admin(&self) -> bool {
         !is_cockroach(self) && !is_yugabyte(self)
     }

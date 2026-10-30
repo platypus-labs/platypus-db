@@ -48,6 +48,8 @@ pub struct TargetPrivileges {
 pub struct SecurityOptions {
     /// The attributes a user or role has, in the order to show them.
     flags: &'static [PrincipalFlag],
+    /// Whether the server has roles (MySQL before 8.0 has none).
+    roles: bool,
     /// Privileges by kind of object; a kind with none cannot be granted on.
     targets: Vec<TargetPrivileges>,
 }
@@ -63,13 +65,15 @@ const CLASSES: [TargetClass; 6] = [
 
 /// The attributes and the privileges of the session's database.
 #[tauri::command]
-pub fn security_options(
+pub async fn security_options(
     state: State<'_, AppState>,
     session_id: u64,
 ) -> CommandResult<SecurityOptions> {
     let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    let conn = state.live(session_id).await?;
     Ok(SecurityOptions {
         flags: security::flags(dialect),
+        roles: security::roles_supported(dialect, conn.server_info()),
         targets: CLASSES
             .into_iter()
             .map(|target| TargetPrivileges {
@@ -82,12 +86,13 @@ pub fn security_options(
 
 /// The statements `change` runs, a password masked.
 #[tauri::command]
-pub fn security_preview(
+pub async fn security_preview(
     state: State<'_, AppState>,
     session_id: u64,
     change: SecurityChange,
 ) -> CommandResult<Vec<String>> {
     let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    check_roles(&state, session_id, dialect, &change).await?;
     security::statements(dialect, &change, true)
         .map_err(|e| CommandError::new("invalid_security_change", e))
 }
@@ -103,6 +108,7 @@ pub async fn apply_security(
 ) -> CommandResult<Vec<String>> {
     state.writable(session_id)?;
     let dialect = Dialect::from(state.session(session_id)?.config.driver);
+    check_roles(&state, session_id, dialect, &change).await?;
     let statements = security::statements(dialect, &change, false)
         .map_err(|e| CommandError::new("invalid_security_change", e))?;
     let shown = security::statements(dialect, &change, true)
@@ -119,4 +125,25 @@ pub async fn apply_security(
     })
     .await?;
     Ok(shown)
+}
+
+/// Refuses a change to roles on a server that has none.
+async fn check_roles(
+    state: &State<'_, AppState>,
+    session_id: u64,
+    dialect: Dialect,
+    change: &SecurityChange,
+) -> CommandResult<()> {
+    if !security::involves_roles(change) {
+        return Ok(());
+    }
+    let conn = state.live(session_id).await?;
+    if security::roles_supported(dialect, conn.server_info()) {
+        Ok(())
+    } else {
+        Err(CommandError::new(
+            "invalid_security_change",
+            "this server has no roles: they came with MySQL 8.0",
+        ))
+    }
 }

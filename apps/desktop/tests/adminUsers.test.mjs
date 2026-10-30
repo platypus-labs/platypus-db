@@ -160,7 +160,11 @@ test("an altered user states only what changed", () => {
     valid_until: null,
     password: null,
     rename_to: null,
+    login: null,
   });
+  // A SQL Server user is altered through its login, which has a name of its own.
+  const mapped = alterSpec(principal("app", { login: "corp\\app" }), form({ name: "app" }), []);
+  assert.equal(mapped.login, "corp\\app");
   const changed = alterSpec(p, form({ name: "web", flags: ["login", "superuser"], limit: "", validUntil: "", password: "new" }), [
     "login",
     "inherit",

@@ -631,6 +631,8 @@ export interface Principal {
   connection_limit: number | null;
   valid_until: string | null;
   authentication: string | null;
+  /** SQL Server: the login the user is mapped to. */
+  login?: string | null;
   member_of: string[];
 }
 
@@ -676,12 +678,16 @@ export interface PrincipalSpec {
   /** Never shown: previews and the query log mask it. */
   password?: string | null;
   rename_to?: string | null;
+  /** SQL Server: the login of the user, needed for a password or lock change. */
+  login?: string | null;
 }
 
 export interface DropOptions {
   reassign_to?: string | null;
   drop_owned?: boolean;
   drop_login?: boolean;
+  /** The login to drop with `drop_login`. */
+  login?: string | null;
 }
 
 /** A change to the users, roles and privileges of the server; see
@@ -705,6 +711,8 @@ export type SecurityChange =
  *  object (a kind with none cannot be granted on). */
 export interface SecurityOptions {
   flags: PrincipalFlag[];
+  /** False on a server without roles (MySQL before 8.0). */
+  roles: boolean;
   targets: { target: TargetClass; privileges: string[] }[];
 }
 

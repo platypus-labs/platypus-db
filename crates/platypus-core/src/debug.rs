@@ -97,7 +97,8 @@ pub enum DebugArgument {
     /// Text the database reads as a value of the parameter's type, e.g. `42` or `2024-01-31`.
     Value(String),
     Null,
-    /// Its default value: only for parameters that have one, all later ones left out too.
+    /// Its default value: only for parameters that have one. One before a given argument makes
+    /// the call pass the arguments by name, so those parameters need a name.
     Default,
 }
 

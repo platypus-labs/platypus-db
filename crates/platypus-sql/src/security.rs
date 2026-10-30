@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use platypus_core::{
     DropOptions, GrantAction, GrantTarget, Grantee, PrincipalFlag, PrincipalKind, PrincipalSpec,
-    SecurityChange, TargetClass,
+    SecurityChange, ServerInfo, ServerVersion, TargetClass,
 };
 
 use crate::Dialect;
@@ -394,8 +394,14 @@ impl Writer {
             }
             Dialect::SqlServer => {
                 out.push(format!("DROP {noun} {who}"));
-                if options.drop_login && kind == PrincipalKind::User {
-                    out.push(format!("DROP LOGIN {who}"));
+                // The login can have another name than the user's; without one there is
+                // nothing to drop.
+                if let Some(login) = options
+                    .login
+                    .as_deref()
+                    .filter(|l| options.drop_login && kind == PrincipalKind::User && !l.is_empty())
+                {
+                    out.push(format!("DROP LOGIN {}", self.ident(login)));
                 }
             }
             _ => out.push(format!("DROP {noun} {who}")),
@@ -758,16 +764,26 @@ impl Writer {
         }
         let name = self.ident(&spec.name);
         let mut out = Vec::new();
-        if let Some(p) = non_empty(spec.password.as_deref()) {
-            out.push(format!(
-                "ALTER LOGIN {name} WITH PASSWORD = {}",
-                self.password_literal(p)
-            ));
-        }
-        if spec.flags_on.contains(&PrincipalFlag::Locked) {
-            out.push(format!("ALTER LOGIN {name} DISABLE"));
-        } else if spec.flags_off.contains(&PrincipalFlag::Locked) {
-            out.push(format!("ALTER LOGIN {name} ENABLE"));
+        let wants_login_change = non_empty(spec.password.as_deref()).is_some()
+            || spec.flags_on.contains(&PrincipalFlag::Locked)
+            || spec.flags_off.contains(&PrincipalFlag::Locked);
+        if wants_login_change && spec.kind == PrincipalKind::User {
+            // The login is not necessarily named like the user.
+            let Some(login) = non_empty(spec.login.as_deref()) else {
+                return Err("the user has no server login to change".to_owned());
+            };
+            let login = self.ident(login);
+            if let Some(p) = non_empty(spec.password.as_deref()) {
+                out.push(format!(
+                    "ALTER LOGIN {login} WITH PASSWORD = {}",
+                    self.password_literal(p)
+                ));
+            }
+            if spec.flags_on.contains(&PrincipalFlag::Locked) {
+                out.push(format!("ALTER LOGIN {login} DISABLE"));
+            } else if spec.flags_off.contains(&PrincipalFlag::Locked) {
+                out.push(format!("ALTER LOGIN {login} ENABLE"));
+            }
         }
         if let Some(new) = non_empty(spec.rename_to.as_deref()) {
             let noun = if spec.kind == PrincipalKind::Role {
@@ -851,6 +867,29 @@ fn check_name(name: &str) -> Result<(), Unsupported> {
     }
 }
 
+/// Whether the server has roles: every database here does, except MySQL before 8.0.
+/// `MariaDB` and `TiDB` number their versions apart and have them.
+#[must_use]
+pub fn roles_supported(dialect: Dialect, info: &ServerInfo) -> bool {
+    dialect != Dialect::MySql
+        || info.product == "MariaDB"
+        || info.version.contains("TiDB")
+        || info.at_least(ServerVersion::new(8, 0, 0))
+}
+
+/// Whether `change` creates, alters, drops or grants a role, or changes who belongs to one.
+#[must_use]
+pub fn involves_roles(change: &SecurityChange) -> bool {
+    match change {
+        SecurityChange::Create { spec } | SecurityChange::Alter { spec } => {
+            spec.kind == PrincipalKind::Role
+        }
+        SecurityChange::Drop { kind, .. } => *kind == PrincipalKind::Role,
+        SecurityChange::Membership { .. } => true,
+        SecurityChange::Privileges { .. } => false,
+    }
+}
+
 /// `sql` with the passwords of its `CREATE`/`ALTER` `USER`/`ROLE`/`LOGIN` and
 /// `SET PASSWORD` statements replaced by `'********'`, so that it can go to a log. Other
 /// statements are returned as they are: a `WHERE password = 'x'` is data, not a
@@ -861,7 +900,32 @@ pub fn mask_secrets(sql: &str) -> Cow<'_, str> {
     if !lower.contains("password") && !lower.contains("identified") {
         return Cow::Borrowed(sql);
     }
-    Cow::Owned(Masker::new(sql).run())
+    Cow::Owned(Masker::new(sql).run().0)
+}
+
+/// The secrets [`mask_secrets`] hides from `sql`, as typed and with their escapes undone:
+/// a server error about a statement can quote either form.
+#[must_use]
+pub fn secrets_of(sql: &str) -> Vec<String> {
+    let lower = sql.to_ascii_lowercase();
+    if !lower.contains("password") && !lower.contains("identified") {
+        return Vec::new();
+    }
+    Masker::new(sql).run().1
+}
+
+/// `text` with each of `secrets` replaced by `********`, for the error of a statement that
+/// had a password: the server may quote the statement (`near 'hunter2' at line 1`).
+#[must_use]
+pub fn hide_secrets(text: &str, secrets: &[String]) -> String {
+    let mut ordered: Vec<&String> = secrets.iter().filter(|s| !s.is_empty()).collect();
+    // The longest first, so that a secret that holds another is hidden whole.
+    ordered.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    let mut out = text.to_owned();
+    for secret in ordered {
+        out = out.replace(secret.as_str(), "********");
+    }
+    out
 }
 
 /// Walks a script statement by statement. A statement is armed when it is one that sets
@@ -876,6 +940,8 @@ struct Masker<'a> {
     identified: bool,
     /// The next literal is a secret.
     secret_next: bool,
+    /// The secrets read so far.
+    secrets: Vec<String>,
 }
 
 impl<'a> Masker<'a> {
@@ -887,6 +953,7 @@ impl<'a> Masker<'a> {
             armed: false,
             identified: false,
             secret_next: false,
+            secrets: Vec::new(),
         }
     }
 
@@ -897,7 +964,7 @@ impl<'a> Masker<'a> {
         self.secret_next = false;
     }
 
-    fn run(mut self) -> String {
+    fn run(mut self) -> (String, Vec<String>) {
         let b = self.sql.as_bytes();
         let mut i = 0;
         while i < b.len() {
@@ -908,6 +975,9 @@ impl<'a> Masker<'a> {
                     i + 1
                 }
                 b'\'' => self.literal(i, i),
+                // In MySQL a double-quoted token is a string literal, and a secret position
+                // never takes an identifier, so there it is masked like a single-quoted one.
+                b'"' if self.secret_next => self.literal(i, i),
                 b'"' | b'`' => self.quoted(i, b[i]),
                 b'[' => self.quoted(i, b']'),
                 b'-' if b.get(i + 1) == Some(&b'-') => self.until(i, |c| c == b'\n'),
@@ -923,11 +993,13 @@ impl<'a> Masker<'a> {
                 c if c.is_ascii_whitespace() => self.copy_to(i, i + 1),
                 _ => {
                     self.secret_next = false;
-                    self.copy_to(i, i + 1)
+                    // Copy the whole character: slicing inside a UTF-8 sequence panics.
+                    let len = self.sql[i..].chars().next().map_or(1, char::len_utf8);
+                    self.copy_to(i, i + len)
                 }
             };
         }
-        self.out
+        (self.out, self.secrets)
     }
 
     /// Copies `from..to`, and returns `to`.
@@ -976,20 +1048,29 @@ impl<'a> Masker<'a> {
     /// masks too much rather than too little.
     fn literal(&mut self, from: usize, quote: usize) -> usize {
         let b = self.sql.as_bytes();
+        let close = b[quote];
         let mut i = quote + 1;
         while i < b.len() {
             match b[i] {
                 b'\\' => i += 2,
-                b'\'' if b.get(i + 1) == Some(&b'\'') => i += 2,
-                b'\'' => {
+                c if c == close && b.get(i + 1) == Some(&close) => i += 2,
+                c if c == close => {
                     i += 1;
                     break;
                 }
                 _ => i += 1,
             }
         }
-        let end = i.min(b.len());
+        let mut end = i.min(b.len());
+        // A backslash may have taken the first byte of a multi-byte character with it.
+        while !self.sql.is_char_boundary(end) {
+            end += 1;
+        }
         if self.secret_next {
+            let terminated = end > quote + 1 && b[end - 1] == close && end - 1 > quote;
+            let inner = &self.sql[quote + 1..if terminated { end - 1 } else { end }];
+            self.secrets.push(inner.to_owned());
+            self.secrets.push(unescape(inner, close));
             self.out.push_str(MASK);
             self.secret_next = false;
         } else {
@@ -1034,6 +1115,24 @@ impl<'a> Masker<'a> {
             _ => {}
         }
     }
+}
+
+/// `inner`, the text of a literal closed by `close`, as the server reads it: a doubled quote
+/// is one, a backslash takes the next character as it is.
+fn unescape(inner: &str, close: u8) -> String {
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            out.extend(chars.next());
+        } else if c == char::from(close) && chars.peek() == Some(&c) {
+            chars.next();
+            out.push(c);
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn is_word(c: u8) -> bool {
@@ -1182,6 +1281,7 @@ mod tests {
                 reassign_to: Some("postgres".to_owned()),
                 drop_owned: true,
                 drop_login: false,
+                login: None,
             },
         };
         assert_eq!(
@@ -1274,6 +1374,7 @@ mod tests {
             kind: PrincipalKind::User,
             options: DropOptions {
                 drop_login: true,
+                login: Some("app".to_owned()),
                 ..DropOptions::default()
             },
         };
@@ -1281,6 +1382,70 @@ mod tests {
             statements(Dialect::SqlServer, &drop, false).unwrap(),
             ["DROP USER app", "DROP LOGIN app"]
         );
+    }
+
+    #[test]
+    fn sql_server_changes_the_login_by_its_own_name() {
+        let mut s = spec("app");
+        s.login = Some("corp\\app".to_owned());
+        s.password = Some("p".to_owned());
+        s.flags_on = vec![PrincipalFlag::Locked];
+        s.rename_to = Some("app2".to_owned());
+        assert_eq!(
+            statements(
+                Dialect::SqlServer,
+                &SecurityChange::Alter { spec: s.clone() },
+                false
+            )
+            .unwrap(),
+            [
+                "ALTER LOGIN [corp\\app] WITH PASSWORD = N'p'",
+                "ALTER LOGIN [corp\\app] DISABLE",
+                "ALTER USER app WITH NAME = app2"
+            ]
+        );
+        s.flags_on.clear();
+        s.flags_off = vec![PrincipalFlag::Locked];
+        s.password = None;
+        s.rename_to = None;
+        assert_eq!(
+            one(
+                Dialect::SqlServer,
+                &SecurityChange::Alter { spec: s.clone() }
+            ),
+            "ALTER LOGIN [corp\\app] ENABLE"
+        );
+        // No mapped login: no login-level change, but a rename still works.
+        s.login = None;
+        assert!(
+            statements(
+                Dialect::SqlServer,
+                &SecurityChange::Alter { spec: s.clone() },
+                false
+            )
+            .is_err()
+        );
+        s.flags_off.clear();
+        s.rename_to = Some("app2".to_owned());
+        assert_eq!(
+            one(Dialect::SqlServer, &SecurityChange::Alter { spec: s }),
+            "ALTER USER app WITH NAME = app2"
+        );
+        let drop = |login: Option<&str>| SecurityChange::Drop {
+            name: "app".to_owned(),
+            host: None,
+            kind: PrincipalKind::User,
+            options: DropOptions {
+                drop_login: true,
+                login: login.map(str::to_owned),
+                ..DropOptions::default()
+            },
+        };
+        assert_eq!(
+            statements(Dialect::SqlServer, &drop(Some("lg")), false).unwrap(),
+            ["DROP USER app", "DROP LOGIN lg"]
+        );
+        assert_eq!(one(Dialect::SqlServer, &drop(None)), "DROP USER app");
     }
 
     #[test]
@@ -1592,11 +1757,151 @@ mod tests {
         assert!(matches!(mask_secrets("SELECT 1"), Cow::Borrowed(_)));
     }
 
+    fn info(product: &str, version: &str) -> ServerInfo {
+        ServerInfo {
+            product: product.to_owned(),
+            version: version.to_owned(),
+            encrypted: false,
+        }
+    }
+
+    #[test]
+    fn secrets_are_found_and_hidden_in_an_error_text() {
+        let sql = "CREATE USER a IDENTIFIED BY 'hun''ter2'; ALTER USER b PASSWORD \"é日\"";
+        let secrets = secrets_of(sql);
+        assert!(secrets.contains(&"hun''ter2".to_owned()));
+        assert!(secrets.contains(&"hun'ter2".to_owned()));
+        assert!(secrets.contains(&"é日".to_owned()));
+        assert_eq!(
+            hide_secrets(
+                "You have an error near 'hun'ter2' at line 1; and \"é日\"",
+                &secrets
+            ),
+            "You have an error near '********' at line 1; and \"********\""
+        );
+        let none: Vec<String> = Vec::new();
+        assert_eq!(secrets_of("SELECT password FROM t WHERE x = 'y'"), none);
+        assert_eq!(hide_secrets("nothing", &[String::new()]), "nothing");
+    }
+
+    #[test]
+    fn mysql_before_8_has_no_roles() {
+        assert!(!roles_supported(
+            Dialect::MySql,
+            &info("MySQL", "5.7.44-log")
+        ));
+        assert!(roles_supported(Dialect::MySql, &info("MySQL", "8.0.36")));
+        assert!(roles_supported(
+            Dialect::MySql,
+            &info("MariaDB", "10.6.21-MariaDB")
+        ));
+        assert!(roles_supported(
+            Dialect::MySql,
+            &info("MySQL", "5.7.25-TiDB-v7.5.0")
+        ));
+        assert!(roles_supported(
+            Dialect::Postgres,
+            &info("PostgreSQL", "16.4")
+        ));
+        let mut role = spec("r");
+        role.kind = PrincipalKind::Role;
+        assert!(involves_roles(&SecurityChange::Create { spec: role }));
+        assert!(!involves_roles(&SecurityChange::Create { spec: spec("u") }));
+        assert!(involves_roles(&SecurityChange::Membership {
+            action: GrantAction::Grant,
+            role: "r".to_owned(),
+            members: vec![],
+            admin_option: false,
+        }));
+    }
+
+    #[test]
+    fn non_ascii_text_never_panics_the_masker() {
+        for sql in [
+            "SELECT password FROM utenti WHERE città = 1",
+            "SELECT password FROM \"città\" WHERE nome = 'perché'",
+            "SELECT password -- è così\nFROM t",
+            "SELECT password /* 日本語 */ FROM `表`",
+            "SELECT password FROM [名前] WHERE x = N'日本'",
+            "SELECT password, 'a\\è' FROM t",
+        ] {
+            assert_eq!(mask_secrets(sql), sql, "{sql}");
+        }
+        assert_eq!(
+            mask_secrets("ALTER USER città PASSWORD 'pässwörd日本'; SELECT è"),
+            "ALTER USER città PASSWORD '********'; SELECT è"
+        );
+        assert_eq!(
+            mask_secrets("CREATE USER 'é' IDENTIFIED BY 'x\\é'"),
+            "CREATE USER 'é' IDENTIFIED BY '********'"
+        );
+    }
+
+    #[test]
+    fn random_mixes_of_ascii_and_non_ascii_never_panic() {
+        let pieces = [
+            "password",
+            " ",
+            "'",
+            "\"",
+            "`",
+            "[",
+            "]",
+            "\\",
+            "--",
+            "/*",
+            "*/",
+            ";",
+            "=",
+            "(",
+            "è",
+            "日",
+            "😀",
+            "IDENTIFIED BY",
+            "SET",
+            "ALTER USER",
+            "\n",
+        ];
+        let mut seed = 0x2545_F491_4F6C_DD1D_u64;
+        for _ in 0..3000 {
+            let mut sql = String::from("password ");
+            for _ in 0..12 {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                sql.push_str(pieces[usize::try_from(seed % 21).unwrap() % pieces.len()]);
+            }
+            let _ = mask_secrets(&sql);
+        }
+    }
+
+    #[test]
+    fn masks_double_quoted_secrets_as_mysql_reads_them() {
+        assert_eq!(
+            mask_secrets("CREATE USER a IDENTIFIED BY \"hunter2\""),
+            "CREATE USER a IDENTIFIED BY '********'"
+        );
+        assert_eq!(
+            mask_secrets("SET PASSWORD FOR a = \"hunter2\""),
+            "SET PASSWORD FOR a = '********'"
+        );
+        assert_eq!(
+            mask_secrets("ALTER USER a IDENTIFIED BY \"hun\"\"ter;2\"; SELECT 1"),
+            "ALTER USER a IDENTIFIED BY '********'; SELECT 1"
+        );
+        // An identifier outside a secret position stays as it is.
+        assert_eq!(
+            mask_secrets("ALTER USER \"a\" PASSWORD 'x'"),
+            "ALTER USER \"a\" PASSWORD '********'"
+        );
+    }
+
     #[test]
     fn a_masked_preview_never_holds_the_password() {
         let mut s = spec("app");
         s.password = Some("S3cret!".to_owned());
         s.connection_limit = Some(2);
+        s.login = Some("app".to_owned());
         for d in [
             Dialect::Postgres,
             Dialect::MySql,

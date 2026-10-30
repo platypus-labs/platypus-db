@@ -5,6 +5,7 @@ use platypus_core::{
     Connection, Metric, ReplicationRow, Result, ServerMetrics, ServerParameter, TextRowExt,
     float_of, query_row, query_sizes, query_text, set_value, sort_parameters,
 };
+use platypus_sql::Dialect;
 
 /// The settings of the session: their value, their default and whether they differ. The
 /// server writes descriptions over several lines.
@@ -26,10 +27,13 @@ pub(crate) async fn parameters(conn: &dyn Connection) -> Result<Vec<ServerParame
             let writable = r.opt(7).as_deref() == Some("0");
             ServerParameter {
                 changed: r.flag(3),
-                statement: value
-                    .as_deref()
-                    .filter(|_| writable)
-                    .map(|v| format!("SET {} = {};", r.text(0), set_value(v, true))),
+                statement: value.as_deref().filter(|_| writable).map(|v| {
+                    format!(
+                        "SET {} = {};",
+                        r.text(0),
+                        set_value(v, |v| Dialect::ClickHouse.quote_literal(v))
+                    )
+                }),
                 name: r.text(0),
                 value,
                 default: r.opt(2),

@@ -71,34 +71,18 @@ pub fn differs_from(value: Option<&str>, default: Option<&str>) -> bool {
     }
 }
 
-/// `value` as a string literal: quoted, with the quotes doubled, and the backslashes too for
-/// the dialects (MySQL) that read them as escapes.
-#[must_use]
-pub fn string_literal(value: &str, backslash_escapes: bool) -> String {
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('\'');
-    for c in value.chars() {
-        match c {
-            '\'' => out.push_str("''"),
-            '\\' if backslash_escapes => out.push_str("\\\\"),
-            c => out.push(c),
-        }
-    }
-    out.push('\'');
-    out
-}
-
 /// `value` as the right-hand side of a `SET`: plain numbers and the words `ON`/`OFF` as they
-/// are, anything else as a string literal.
+/// are, anything else as a string literal written by `quote` (the driver's
+/// `Dialect::quote_literal`, which knows the escaping of its database).
 #[must_use]
-pub fn set_value(value: &str, backslash_escapes: bool) -> String {
+pub fn set_value(value: &str, quote: impl Fn(&str) -> String) -> String {
     let plain = value.parse::<f64>().is_ok_and(f64::is_finite)
         && !value.starts_with('+')
         && !value.contains(['e', 'E', ' ']);
     if plain || matches!(value.to_ascii_uppercase().as_str(), "ON" | "OFF") {
         value.to_owned()
     } else {
-        string_literal(value, backslash_escapes)
+        quote(value)
     }
 }
 
@@ -133,22 +117,16 @@ mod tests {
     }
 
     #[test]
-    fn literals_escape_what_the_dialect_reads() {
-        assert_eq!(string_literal("it's", false), "'it''s'");
-        assert_eq!(string_literal(r"a\b", false), r"'a\b'");
-        assert_eq!(string_literal(r"a\b'", true), r"'a\\b'''");
-    }
-
-    #[test]
     fn set_values_keep_numbers_and_switches_bare() {
-        assert_eq!(set_value("128", false), "128");
-        assert_eq!(set_value("-1", false), "-1");
-        assert_eq!(set_value("0.5", false), "0.5");
-        assert_eq!(set_value("on", false), "on");
-        assert_eq!(set_value("1e3", false), "'1e3'");
-        assert_eq!(set_value("128MB", false), "'128MB'");
-        assert_eq!(set_value("", false), "''");
-        assert_eq!(set_value("NaN", false), "'NaN'");
+        let q = |v: &str| format!("'{v}'");
+        assert_eq!(set_value("128", q), "128");
+        assert_eq!(set_value("-1", q), "-1");
+        assert_eq!(set_value("0.5", q), "0.5");
+        assert_eq!(set_value("on", q), "on");
+        assert_eq!(set_value("1e3", q), "'1e3'");
+        assert_eq!(set_value("128MB", q), "'128MB'");
+        assert_eq!(set_value("", q), "''");
+        assert_eq!(set_value("NaN", q), "'NaN'");
     }
 
     #[test]
