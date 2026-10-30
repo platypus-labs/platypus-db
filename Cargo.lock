@@ -6209,6 +6209,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "platypus-sync"
+version = "0.2.1"
+dependencies = [
+ "argon2",
+ "platypus-core",
+ "platypus-store",
+ "ring",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+ "uuid",
+]
+
+[[package]]
 name = "platypus-tls"
 version = "0.2.1"
 dependencies = [
