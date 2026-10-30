@@ -2279,6 +2279,13 @@ async fn server_capabilities_match(
         "{}: object_statistics vs capabilities.server_statistics: {statistics:?}",
         b.name
     );
+    let debugger = conn.debugger();
+    assert_eq!(
+        matches!(debugger, Err(Error::Unsupported(_))),
+        !caps.debugger,
+        "{}: debugger vs capabilities.debugger: {debugger:?}",
+        b.name
+    );
     // No such table: a supported operation fails, but not as unsupported.
     for operation in [
         Maintenance::Vacuum,

@@ -452,6 +452,7 @@ impl Connection for MySqlConnection {
             server_statistics: true,
             maintenance: admin::MAINTENANCE,
             bulk_load: self.local_infile,
+            debugger: false,
             ..Default::default()
         }
     }

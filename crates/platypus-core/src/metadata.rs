@@ -281,7 +281,10 @@ pub async fn query_text(conn: &dyn Connection, sql: &str) -> Result<Vec<TextRow>
 }
 
 /// Every row of `stream`, its values rendered as text.
-pub(crate) async fn text_rows(stream: crate::RecordBatchStream) -> Result<Vec<TextRow>> {
+///
+/// # Errors
+/// When the stream fails, or a value cannot be written as text.
+pub async fn text_rows(stream: crate::RecordBatchStream) -> Result<Vec<TextRow>> {
     let batches: Vec<_> = stream.try_collect().await?;
     let mut rows = Vec::new();
     for batch in &batches {

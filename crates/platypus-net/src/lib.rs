@@ -645,4 +645,8 @@ impl Connection for Held {
     async fn bulk_load(&self, rows: &platypus_core::BulkRows<'_>) -> Result<u64> {
         self.inner.bulk_load(rows).await
     }
+
+    fn debugger(&self) -> Result<Arc<dyn platypus_core::Debugger>> {
+        self.inner.debugger()
+    }
 }

@@ -316,6 +316,7 @@ impl Connection for DuckDbConnection {
             object_ddl: true,
             metadata_search: true,
             bulk_load: true,
+            debugger: false,
             ..Default::default()
         }
     }

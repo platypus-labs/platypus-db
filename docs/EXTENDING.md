@@ -50,6 +50,19 @@ PostgreSQL does, and a wrapping connection forwards it. To add one:
 
 A driver that implements the method sets its flag in `fn capabilities`.
 
+`debugger` (flag `debugger`) is the one optional method that returns an object rather than
+a result: a `platypus_core::Debugger` for the database's routines (PostgreSQL's
+`PgDebugger`, on the pldebugger extension). It says whether the database can debug now
+(`availability`, and `install` for a missing extension), reads a routine and its
+parameters (`routine`), and `start`s a call on two sessions of its own, which it is given:
+the *target*, blocked by the call, and the *debugger*, which drives it. The
+`DebugSession` it returns steps, reads the stack and the variables, changes a variable,
+sets breakpoints, and `stop`s: the call is aborted, and the target's server process ended
+when it does not answer, so that no session is left blocked. The desktop opens the two
+sessions from the saved connection (`commands/debugger.rs`), never the user's own ones. A
+wrapping connection forwards `debugger`; the statements are logged through the sessions
+it is given.
+
 `explain` returns the server's plan document and the same plan as a tree of
 `platypus_core::PlanNode` (operation, detail, cost, estimated and actual rows, time, loops,
 other properties), which the explain tab shows for every database alike. A new driver runs

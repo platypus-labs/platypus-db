@@ -451,6 +451,7 @@ impl Connection for MssqlConnection {
             server_statistics: true,
             maintenance: admin::MAINTENANCE,
             bulk_load: true,
+            debugger: false,
         }
     }
 

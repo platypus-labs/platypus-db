@@ -208,6 +208,12 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("table maintenance"))
     }
 
+    /// The debugger of the database's routines, which runs a call on sessions of its own.
+    /// Optional: see [`Capabilities::debugger`].
+    fn debugger(&self) -> Result<Arc<dyn crate::Debugger>> {
+        Err(unsupported("debugging routines"))
+    }
+
     /// Objects of the user schemas whose name, column names or source contain `needle`,
     /// ignoring case; at most [`SEARCH_LIMIT`](crate::SEARCH_LIMIT) of them.
     /// Optional: see [`Capabilities::metadata_search`].
