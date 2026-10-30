@@ -2883,6 +2883,16 @@ const zh: Record<string, string> = {
   "Copied to the clipboard.": "已复制到剪贴板。",
   "The editor is read-only.": "编辑器为只读。",
   "Select some rows first.": "请先选择一些行。",
+  // Group O: review fixes (shared folders, first sync)
+  "{n} connection now goes to another server: its saved password was forgotten and is asked at the next connect.": "{n} 个连接现在指向另一台服务器：已忘记其保存的密码，下次连接时会再次询问。",
+  "{n} connections now go to another server: their saved passwords were forgotten and are asked at the next connect.": "{n} 个连接现在指向另一台服务器：已忘记其保存的密码，下次连接时会再次询问。",
+  "{n} connection keeps this computer's stricter safety settings.": "{n} 个连接保留了本电脑更严格的安全设置。",
+  "{n} connections keep this computer's stricter safety settings.": "{n} 个连接保留了本电脑更严格的安全设置。",
+  "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept, this computer's is kept as {copy}.": "{name}（{what}）在首次同步时与 {machine} 上的不同：已保留同步的版本，本电脑的版本另存为 {copy}。",
+  "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept; this computer had {value}.": "{name}（{what}）在首次同步时与 {machine} 上的不同：已保留同步的版本；本电脑原为 {value}。",
+  "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept.": "{name}（{what}）在首次同步时与 {machine} 上的不同：已保留同步的版本。",
+  "Sync: {n} item differed from the synced copy at this computer's first sync. The synced version was kept; see Settings, Sync.": "同步：本电脑首次同步时，有 {n} 项与同步副本不同。已保留同步的版本；请查看“设置”中的“同步”。",
+  "Sync: {n} items differed from the synced copy at this computer's first sync. The synced versions were kept; see Settings, Sync.": "同步：本电脑首次同步时，有 {n} 项与同步副本不同。已保留同步的版本；请查看“设置”中的“同步”。",
 };
 
 export default zh;

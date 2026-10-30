@@ -1036,10 +1036,13 @@ export interface SyncConflict {
   /** `script`, `connection`, `setting`, `project`… */
   what: string;
   name: string;
-  kind: "both_edited" | "deleted_and_edited";
+  /** `first_sync`: the item differed at this computer's first sync, and the synced version won. */
+  kind: "both_edited" | "deleted_and_edited" | "first_sync";
   /** The name of the copy that keeps the other version, when there is one. */
   copy: string | null;
   machine: string;
+  /** For `first_sync` without a copy: the value this computer had (a setting's). */
+  replaced?: string | null;
 }
 
 export interface SyncStatus {
@@ -1070,6 +1073,10 @@ export interface SharedNotice {
   added: number;
   removed: number;
   changed: number;
+  /** Connections the file now sends to another server: their saved credentials were forgotten. */
+  retargeted: number;
+  /** Connections whose safety settings the file loosened: this computer's stricter ones were kept. */
+  kept_stricter: number;
   message: string | null;
 }
 
@@ -2985,8 +2992,9 @@ export const api = {
   pluginsList: () => invoke<InstalledPlugin[]>("plugins_list"),
   /** Reads a package (a folder or a `.zip`) for the user to review before installing it. */
   pluginInspect: (path: string) => invoke<InspectedPlugin>("plugin_inspect", { path }),
-  /** Installs a package, approving the permissions of its manifest. */
-  pluginInstall: (path: string) => invoke<InstalledPlugin>("plugin_install", { path }),
+  /** Installs a package, approving the permissions of its manifest; refused when the package is
+   *  no longer the one reviewed (`hash` from `pluginInspect`). */
+  pluginInstall: (path: string, hash: string) => invoke<InstalledPlugin>("plugin_install", { path, hash }),
   pluginSetEnabled: (id: string, enabled: boolean) => invoke<void>("plugin_set_enabled", { id, enabled }),
   pluginRemove: (id: string) => invoke<void>("plugin_remove", { id }),
   /** Runs a plugin's action on the context of its scope; the page applies the outcome. */
@@ -3039,6 +3047,8 @@ export interface InspectedPlugin {
   description: PluginDescription;
   /** The installed version it replaces. */
   replaces: string | null;
+  /** The package's hash, given back to `pluginInstall` so that what is installed is what was reviewed. */
+  hash: string;
 }
 
 /** What the app does with an action's result. */

@@ -72,9 +72,9 @@ export function PluginsPanel() {
     await attempt(async () => setReview({ path: picked, plugin: await api.pluginInspect(picked) }));
   }
 
-  const install = (path: string) =>
+  const install = (path: string, hash: string) =>
     attempt(async () => {
-      await api.pluginInstall(path);
+      await api.pluginInstall(path, hash);
       setReview(null);
       await reloadPlugins();
     });
@@ -129,7 +129,7 @@ export function PluginsPanel() {
           <h4>{t("It asks to")}</h4>
           <PermissionList permissions={review.plugin.manifest.permissions} />
           <div className="driver-actions">
-            <button type="button" className="primary" data-action="confirm-install" disabled={busy} onClick={() => void install(review.path)}>
+            <button type="button" className="primary" data-action="confirm-install" disabled={busy} onClick={() => void install(review.path, review.plugin.hash)}>
               {t("Install and allow")}
             </button>
             <button type="button" data-action="cancel-install" disabled={busy} onClick={() => setReview(null)}>

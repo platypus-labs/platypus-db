@@ -224,3 +224,84 @@ fn remote_flow() {
     assert!(!s.merging && s.files.is_empty());
     assert_eq!(s.branch.ahead, 2);
 }
+
+#[test]
+fn a_shared_projects_scripts_use_the_repository_around_them() {
+    if git::find_git().is_none() {
+        eprintln!("skipping: git is not installed");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    // A team's repository: the shared project sits in a folder of it, beside other files.
+    let repo = tmp.path().join("team-repo");
+    let project = repo.join("db").join("sales");
+    let scripts = project.join("scripts");
+    fs::create_dir_all(&scripts).unwrap();
+    git_ok(&repo, &["init", "--quiet", "--initial-branch=main"]);
+    git_ok(&repo, &["config", "user.name", "Team"]);
+    git_ok(&repo, &["config", "user.email", "team@example.com"]);
+    fs::write(project.join("platypus-project.toml"), "version = 1\n").unwrap();
+    fs::write(repo.join("README.md"), "team\n").unwrap();
+    fs::write(scripts.join("a.sql"), "select 1;\n").unwrap();
+    git_ok(&repo, &["add", "-A"]);
+    git_ok(&repo, &["commit", "-q", "-m", "start"]);
+
+    // The scripts folder is a repository for the panel, and init leaves it alone.
+    assert!(git::status(&scripts).unwrap().is_repo);
+    git::init(&scripts).unwrap();
+    assert!(
+        !scripts.join(".git").exists(),
+        "no repository inside the team's"
+    );
+
+    // Only the scripts folder's files are listed, by their path in it.
+    fs::write(scripts.join("a.sql"), "select 2;\n").unwrap();
+    fs::create_dir(scripts.join("sub")).unwrap();
+    fs::write(scripts.join("sub/b.sql"), "select 3;\n").unwrap();
+    fs::write(repo.join("README.md"), "changed\n").unwrap();
+    fs::write(project.join("notes.txt"), "x\n").unwrap();
+    assert_eq!(
+        badges(&scripts),
+        [("a.sql".to_owned(), 'M'), ("sub/b.sql".to_owned(), '?')]
+    );
+    let d = git::diff(&scripts, "a.sql").unwrap();
+    assert!(
+        d.hunks[0]
+            .lines
+            .iter()
+            .any(|l| l.kind == LineKind::Added && l.text == "select 2;")
+    );
+    assert_eq!(
+        git::diff(&scripts, "sub/b.sql").unwrap().hunks[0].lines[0].kind,
+        LineKind::Added
+    );
+
+    // A commit takes the scripts named, in the team's repository, and nothing else.
+    git::commit(&scripts, &one("a.sql"), "edit a", None).unwrap();
+    assert_eq!(badges(&scripts), [("sub/b.sql".to_owned(), '?')]);
+    let committed = Command::new("git")
+        .args(["show", "--name-only", "--format=", "HEAD"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&committed.stdout).trim(),
+        "db/sales/scripts/a.sql"
+    );
+    let dirty = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    let dirty = String::from_utf8_lossy(&dirty.stdout);
+    assert!(
+        dirty.contains("README.md") && dirty.contains("notes.txt"),
+        "{dirty}"
+    );
+    assert!(matches!(git::push(&scripts), Err(GitError::NoRemote)));
+
+    // A folder inside a repository that is not a shared project's scripts is not one.
+    let other = repo.join("misc");
+    fs::create_dir(&other).unwrap();
+    assert!(!git::status(&other).unwrap().is_repo);
+}

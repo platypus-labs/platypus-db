@@ -125,6 +125,26 @@ pub struct Document {
     pub items: BTreeMap<String, Item>,
 }
 
+/// One version of an item: what it said, when and by whom.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Version {
+    pub fingerprint: String,
+    pub modified: i64,
+    #[serde(default)]
+    pub by: String,
+}
+
+impl Version {
+    /// Whether `item` is exactly this version, stamp included: the same content saved again
+    /// later is another version.
+    #[must_use]
+    pub fn is(&self, item: &Item) -> bool {
+        self.modified == item.modified
+            && self.by == item.by
+            && self.fingerprint == item.fingerprint()
+    }
+}
+
 /// What a machine remembers of the last sync of one item: its content and when it changed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BaseEntry {
@@ -135,6 +155,11 @@ pub struct BaseEntry {
     /// The machine that made that change.
     #[serde(default)]
     pub by: String,
+    /// The version the item had in the file before this one. A file that shows it again was
+    /// overwritten by a machine that had not seen the change (two writes at once through a
+    /// cloud drive): it is stale, not a new change, and must not revert this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous: Option<Version>,
 }
 
 impl BaseEntry {
@@ -145,7 +170,31 @@ impl BaseEntry {
             modified: item.modified,
             deleted: item.deleted,
             by: item.by.clone(),
+            previous: None,
         }
+    }
+
+    /// This entry as a [`Version`].
+    #[must_use]
+    pub fn version(&self) -> Version {
+        Version {
+            fingerprint: self.fingerprint.clone(),
+            modified: self.modified,
+            by: self.by.clone(),
+        }
+    }
+
+    /// The entry for `item` after a sync that knew `old`: `old`'s version becomes the
+    /// previous one when the item changed, and stays as it was otherwise.
+    #[must_use]
+    pub fn after(old: Option<&Self>, item: &Item) -> Self {
+        let mut entry = Self::of(item);
+        entry.previous = match old {
+            Some(old) if old.version().is(item) => old.previous.clone(),
+            Some(old) => Some(old.version()),
+            None => None,
+        };
+        entry
     }
 }
 

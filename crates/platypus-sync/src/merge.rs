@@ -10,6 +10,13 @@
 //!   way everywhere) keeps the item's name. For scripts and connections the other version is
 //!   kept too, as a copy named after the machine that made it. A deletion against an edit
 //!   keeps the edit. Everything is reported as a [`Conflict`].
+//! - Different on both sides with no `base` (a machine's first sync, or a new sync folder):
+//!   the file's version wins, so a new machine's defaults never overwrite what the others
+//!   agreed on. Scripts and connections keep this machine's version as a copy; for the other
+//!   kinds the [`Conflict`] carries it, so the Sync page can show what was replaced.
+//! - A file that shows the version an item had *before* the last change this machine synced
+//!   (`BaseEntry::previous`, same content and stamp) was overwritten by a machine that had not
+//!   seen that change: it is stale, and this machine's version is written again.
 
 use std::collections::BTreeMap;
 
@@ -47,6 +54,8 @@ pub enum ConflictKind {
     BothEdited,
     /// One side deleted it, the other changed it: the change is kept.
     DeletedAndEdited,
+    /// Neither side had synchronised it and they differ: the file's version was kept.
+    FirstSync,
 }
 
 /// An item that changed on both sides.
@@ -56,8 +65,11 @@ pub struct Conflict {
     pub kind: ConflictKind,
     /// Where the version that lost was kept, when it was.
     pub copy: Option<String>,
-    /// The machine that made the version that lost (or deleted the item).
+    /// The machine that made the version that lost (or deleted the item); for
+    /// [`ConflictKind::FirstSync`], the one whose version was kept.
     pub other_machine: String,
+    /// This machine's version, when a first sync replaced it and no copy keeps it.
+    pub replaced: Option<Value>,
 }
 
 /// The result of a merge.
@@ -89,7 +101,7 @@ pub fn merge(
     let mut out = Merged::default();
     let keys: std::collections::BTreeSet<&String> = local.keys().chain(remote.keys()).collect();
     for key in keys {
-        let known = base.get(key).map(|b| b.fingerprint.as_str());
+        let known = base.get(key);
         match (local.get(key), remote.get(key)) {
             (Some(l), None) => {
                 out.items.insert(key.clone(), l.clone());
@@ -119,7 +131,7 @@ fn take_remote(out: &mut Merged, key: &str, r: &Item) {
     }
 }
 
-fn both(out: &mut Merged, key: &str, l: &Item, r: &Item, known: Option<&str>) {
+fn both(out: &mut Merged, key: &str, l: &Item, r: &Item, known: Option<&BaseEntry>) {
     let (fl, fr) = (l.fingerprint(), r.fingerprint());
     if fl == fr {
         // The same content: keep the later stamp, so every machine ends with the same file.
@@ -131,15 +143,53 @@ fn both(out: &mut Merged, key: &str, l: &Item, r: &Item, known: Option<&str>) {
         out.items.insert(key.to_owned(), kept.clone());
         return;
     }
-    let local_changed = known != Some(fl.as_str());
-    let remote_changed = known != Some(fr.as_str());
-    match (local_changed, remote_changed) {
-        (true, false) => {
-            out.items.insert(key.to_owned(), l.clone());
+    let Some(base) = known else {
+        if l.deleted || r.deleted {
+            conflict(out, key, l, r);
+        } else {
+            first_sync(out, key, l, r);
         }
-        (false, true) => take_remote(out, key, r),
-        _ => conflict(out, key, l, r),
+        return;
+    };
+    let local_changed = base.fingerprint != fl;
+    let stale = base.previous.as_ref().is_some_and(|p| p.is(r));
+    let remote_changed = base.fingerprint != fr && !stale;
+    if !remote_changed {
+        out.items.insert(key.to_owned(), l.clone());
+    } else if !local_changed {
+        take_remote(out, key, r);
+    } else {
+        conflict(out, key, l, r);
     }
+}
+
+/// Both sides have the item, differently, and neither synchronised it before: the file's
+/// version is what the other machines agreed on, so it wins whatever the clocks say.
+fn first_sync(out: &mut Merged, key: &str, l: &Item, r: &Item) {
+    take_remote(out, key, r);
+    let copy = keep_copy(out, key, l);
+    out.conflicts.push(Conflict {
+        key: key.to_owned(),
+        kind: ConflictKind::FirstSync,
+        replaced: copy.is_none().then(|| l.value.clone()),
+        copy,
+        other_machine: r.by.clone(),
+    });
+}
+
+/// Keeps `loser` as a copy beside `key`, for the kinds that have copies; returns its key.
+fn keep_copy(out: &mut Merged, key: &str, loser: &Item) -> Option<String> {
+    copy_of(key, loser).map(|(copy_key, copy_item)| {
+        let copy_key = free_key(&out.items, &copy_key, &copy_item);
+        if !out.items.contains_key(&copy_key) {
+            out.items.insert(copy_key.clone(), copy_item.clone());
+            out.apply.push(Change::Put {
+                key: copy_key.clone(),
+                item: copy_item,
+            });
+        }
+        copy_key
+    })
 }
 
 /// Both sides changed the item.
@@ -156,6 +206,7 @@ fn conflict(out: &mut Merged, key: &str, l: &Item, r: &Item) {
             kind: ConflictKind::DeletedAndEdited,
             copy: None,
             other_machine: deleter.by.clone(),
+            replaced: None,
         });
         return;
     }
@@ -168,22 +219,13 @@ fn conflict(out: &mut Merged, key: &str, l: &Item, r: &Item) {
             item: r.clone(),
         });
     }
-    let copy = copy_of(key, loser).map(|(copy_key, copy_item)| {
-        let copy_key = free_key(&out.items, &copy_key, &copy_item);
-        if !out.items.contains_key(&copy_key) {
-            out.items.insert(copy_key.clone(), copy_item.clone());
-            out.apply.push(Change::Put {
-                key: copy_key.clone(),
-                item: copy_item,
-            });
-        }
-        copy_key
-    });
+    let copy = keep_copy(out, key, loser);
     out.conflicts.push(Conflict {
         key: key.to_owned(),
         kind: ConflictKind::BothEdited,
         copy,
         other_machine: loser.by.clone(),
+        replaced: None,
     });
 }
 
@@ -428,6 +470,7 @@ mod tests {
                 kind: ConflictKind::BothEdited,
                 copy: Some(copy.into()),
                 other_machine: "Work PC".into(),
+                replaced: None,
             }]
         );
     }
@@ -558,16 +601,84 @@ mod tests {
     }
 
     #[test]
-    fn a_first_sync_of_differing_items_is_a_conflict_not_a_loss() {
-        // No base: neither side can claim the other is stale.
+    fn a_first_sync_keeps_the_files_version_and_this_machines_aside() {
+        // No base: the new machine's version is later by the clock but does not win.
         let key = "script/all/a.sql";
+        let mine = live(json!("x"), NOW, "A");
+        let theirs = live(json!("y"), 4, "B");
         let m = merge(
-            &items(&[(key, live(json!("x"), 5, "A"))]),
-            &items(&[(key, live(json!("y"), 4, "B"))]),
+            &items(&[(key, mine.clone())]),
+            &items(&[(key, theirs.clone())]),
             &BTreeMap::new(),
             ctx(),
         );
-        assert_eq!(m.items.len(), 2);
+        assert_eq!(m.items[key], theirs);
+        let copy = "script/all/a (conflict A).sql";
+        assert_eq!(m.items[copy], mine, "nothing is lost");
+        assert!(m.apply.contains(&Change::Put {
+            key: key.into(),
+            item: theirs.clone()
+        }));
+        assert_eq!(m.conflicts[0].kind, ConflictKind::FirstSync);
+        assert_eq!(m.conflicts[0].copy.as_deref(), Some(copy));
+        assert_eq!(m.conflicts[0].replaced, None);
+        // A setting has no copy: the conflict says what this machine had.
+        let key = "setting/appearance.theme";
+        let m = merge(
+            &items(&[(key, live(json!("light"), NOW, "A"))]),
+            &items(&[(key, live(json!("dark"), 4, "B"))]),
+            &BTreeMap::new(),
+            ctx(),
+        );
+        assert_eq!(m.items[key].value, json!("dark"));
+        assert_eq!(m.items.len(), 1);
+        assert_eq!(m.conflicts[0].replaced, Some(json!("light")));
+        assert_eq!(m.conflicts[0].other_machine, "B");
+        // Equal values are no conflict at all.
+        let m = merge(
+            &items(&[(key, live(json!("dark"), NOW, "A"))]),
+            &items(&[(key, live(json!("dark"), 4, "B"))]),
+            &BTreeMap::new(),
+            ctx(),
+        );
+        assert!(m.conflicts.is_empty() && m.apply.is_empty());
+    }
+
+    #[test]
+    fn a_stale_overwrite_of_the_file_does_not_revert_a_change() {
+        let old = live(json!("a1"), 100, "A");
+        let new = live(json!("a2"), 200, "A");
+        let key = "setting/x";
+        // This machine wrote `new` over `old`; then another machine, which had read the file
+        // before, wrote it back with `old`.
+        let base = BTreeMap::from([(
+            key.to_owned(),
+            BaseEntry::after(Some(&BaseEntry::of(&old)), &new),
+        )]);
+        let m = merge(
+            &items(&[(key, new.clone())]),
+            &items(&[(key, old.clone())]),
+            &base,
+            ctx(),
+        );
+        assert!(m.apply.is_empty() && m.conflicts.is_empty());
+        assert_eq!(m.items[key], new, "written again");
+        // The same content saved again elsewhere, later, is a real change.
+        let again = live(json!("a1"), 300, "B");
+        let m = merge(
+            &items(&[(key, new.clone())]),
+            &items(&[(key, again.clone())]),
+            &base,
+            ctx(),
+        );
+        assert_eq!(m.items[key], again);
+        assert_eq!(
+            m.apply,
+            [Change::Put {
+                key: key.into(),
+                item: again
+            }]
+        );
     }
 
     #[test]

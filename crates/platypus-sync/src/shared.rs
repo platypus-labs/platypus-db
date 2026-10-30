@@ -12,12 +12,13 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use platypus_store::{
-    ConnectionFolder, ConnectionStore, LINKS_FILE, Project, SharedLink, SyncBatch, initials_of,
+    ConnectionFolder, ConnectionStore, LINKS_FILE, Project, SavedSsh, SharedLink, SyncBatch,
+    initials_of,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::portable::ShareConnection;
+use crate::portable::{ShareConnection, guard};
 use crate::{Result, SyncError};
 
 /// The project's file in the shared folder.
@@ -191,16 +192,34 @@ pub fn compare(before: &SharedProject, after: &SharedProject) -> Changes {
     }
 }
 
+/// What [`apply`] made of a project file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Applied {
+    /// The project's id.
+    pub id: Uuid,
+    /// Connections the file sends somewhere else: the credentials this machine kept for them
+    /// were forgotten, so their next connect asks again (see [`guard`]).
+    pub retargeted: usize,
+    /// Connections whose safety settings the file loosened: this machine's were kept.
+    pub kept_stricter: usize,
+}
+
 /// Makes the project in `store` what `shared` says, linked to `link`. `local_id` is the
 /// project to update; `None` makes a new one, with the file's id unless the app has a project
 /// with it. Connections are created or updated by id and keep their private settings; the
-/// ones the file no longer lists leave the project but stay saved. Returns the project's id.
+/// ones the file no longer lists leave the project but stay saved.
+///
+/// Anyone who can write to the folder can edit the file, so an update to a connection saved
+/// here is checked first ([`guard`]): one that now goes to another server, database or tunnel
+/// loses the password, SSH secrets and password command this machine kept for it (forgotten
+/// before anything is written, so a keychain that refuses stops the update), and its safety
+/// settings are never loosened by the file.
 pub fn apply(
     store: &mut ConnectionStore,
     local_id: Option<Uuid>,
     shared: &SharedProject,
     link: SharedLink,
-) -> Result<Uuid> {
+) -> Result<Applied> {
     let id = local_id.unwrap_or_else(|| {
         if store.projects().iter().any(|p| p.id == shared.id) {
             Uuid::new_v4()
@@ -226,19 +245,53 @@ pub fn apply(
         .filter_map(|c| c.folder.map(|f| (c.id, f)))
         .collect();
     project.shared = Some(link);
-    let connections = shared
-        .connections
-        .iter()
-        .map(|c| c.clone().into_saved(store.get(c.id)))
-        .collect();
+    let mut applied = Applied {
+        id,
+        retargeted: 0,
+        kept_stricter: 0,
+    };
+    let mut forget = Vec::new();
+    let mut connections = Vec::new();
+    for incoming in &shared.connections {
+        let existing = store.get(incoming.id);
+        let mut saved = incoming.clone().into_saved(existing);
+        if let Some(existing) = existing {
+            let guarded = guard(&store.effective(existing), &mut saved);
+            if guarded.retargeted {
+                applied.retargeted += 1;
+                // The connection's own tunnel only: a network profile's secrets serve others.
+                forget.push(existing.id);
+                forget.extend(
+                    existing
+                        .ssh
+                        .iter()
+                        .flat_map(SavedSsh::chain)
+                        .map(|s| s.secret_id),
+                );
+                forget.extend(
+                    saved
+                        .ssh
+                        .iter()
+                        .flat_map(SavedSsh::chain)
+                        .map(|s| s.secret_id),
+                );
+            }
+            applied.kept_stricter += usize::from(guarded.kept_stricter);
+        }
+        connections.push(saved);
+    }
+    let invalid = |e: platypus_store::StoreError| SyncError::Invalid(e.to_string());
+    for secret_id in forget {
+        store.set_secret(secret_id, None).map_err(invalid)?;
+    }
     store
         .apply_batch(SyncBatch {
             connections,
             projects: vec![project],
             ..SyncBatch::default()
         })
-        .map_err(|e| SyncError::Invalid(e.to_string()))?;
-    Ok(id)
+        .map_err(invalid)?;
+    Ok(applied)
 }
 
 #[cfg(test)]
@@ -321,7 +374,7 @@ mod tests {
             path: dir.path().join("team"),
             share_user: true,
         };
-        let id = apply(&mut mine, None, &shared, link.clone()).unwrap();
+        let id = apply(&mut mine, None, &shared, link.clone()).unwrap().id;
         assert_eq!(id, pid, "the file's id is used when free");
         let opened = mine.projects().iter().find(|p| p.id == id).unwrap().clone();
         assert_eq!(opened.shared, Some(link.clone()));
@@ -365,8 +418,80 @@ mod tests {
         let prod = s.get(prod).unwrap();
         assert_eq!(prod.host, "new.example.com");
         assert_eq!(prod.user, "alice", "no shared user: this machine's stays");
-        assert_eq!(prod.password_command.as_deref(), Some("echo CANARY_CMD"));
         assert_eq!(prod.options["password"], "CANARY_OPT");
+    }
+
+    #[test]
+    fn an_edit_that_sends_a_connection_elsewhere_forgets_its_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        let pid = sample(&mut s);
+        let project = s.projects().iter().find(|p| p.id == pid).unwrap().clone();
+        let prod = project.connections[0];
+        let mut c = s.get(prod).unwrap().clone();
+        c.ssh = Some(SavedSsh {
+            host: "bastion".to_owned(),
+            port: 22,
+            user: "alice".to_owned(),
+            auth: platypus_store::SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        });
+        c.agent_access = platypus_store::AgentAccess::Off;
+        c.read_only = true;
+        let ssh_secret = c.ssh.as_ref().unwrap().secret_id;
+        s.save(
+            c,
+            PasswordUpdate::Set(platypus_core::Secret::new("CANARY_PW")),
+        )
+        .unwrap();
+        s.set_secret(ssh_secret, Some(&platypus_core::Secret::new("CANARY_SSH")))
+            .unwrap();
+        let link = SharedLink {
+            path: dir.path().join("team"),
+            share_user: false,
+        };
+        let project = s.projects().iter().find(|p| p.id == pid).unwrap().clone();
+        let original = build(&s, &project, false);
+
+        // A rename, and a loosening of the safety settings: the credentials stay, the
+        // stricter settings too.
+        let mut renamed = original.clone();
+        renamed.connections[0].name = "Production".to_owned();
+        renamed.connections[0].agent_access = platypus_store::AgentAccess::ReadWrite;
+        renamed.connections[0].read_only = false;
+        let applied = apply(&mut s, Some(pid), &renamed, link.clone()).unwrap();
+        assert_eq!((applied.retargeted, applied.kept_stricter), (0, 1));
+        let saved = s.get(prod).unwrap();
+        assert_eq!(saved.name, "Production");
+        assert_eq!(saved.agent_access, platypus_store::AgentAccess::Off);
+        assert!(saved.read_only);
+        assert_eq!(saved.password_command.as_deref(), Some("echo CANARY_CMD"));
+        assert!(s.has_password(prod).unwrap());
+        assert!(s.secret(ssh_secret).unwrap().is_some());
+
+        // The server, or the tunnel, goes elsewhere: nothing this machine kept for it follows.
+        for change in [
+            &(|c: &mut ShareConnection| c.host = "evil.example.com".to_owned())
+                as &dyn Fn(&mut ShareConnection),
+            &|c| c.ssh.as_mut().unwrap().host = "evil-bastion".to_owned(),
+        ] {
+            s.set_password(prod, &platypus_core::Secret::new("CANARY_PW"))
+                .unwrap();
+            s.set_secret(ssh_secret, Some(&platypus_core::Secret::new("CANARY_SSH")))
+                .unwrap();
+            let project = s.projects().iter().find(|p| p.id == pid).unwrap().clone();
+            let mut moved = build(&s, &project, false);
+            change(&mut moved.connections[0]);
+            let applied = apply(&mut s, Some(pid), &moved, link.clone()).unwrap();
+            assert_eq!(applied.retargeted, 1);
+            let saved = s.get(prod).unwrap();
+            assert!(saved.password_command.is_none());
+            assert!(saved.save_password, "asked again at the next connect");
+            assert!(!s.has_password(prod).unwrap());
+            assert!(s.secret(ssh_secret).unwrap().is_none());
+        }
     }
 
     #[test]

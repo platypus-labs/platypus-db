@@ -6203,6 +6203,7 @@ dependencies = [
  "platypus-drivers",
  "platypus-tls",
  "reqwest",
+ "ring",
  "serde",
  "serde_json",
  "tempfile",

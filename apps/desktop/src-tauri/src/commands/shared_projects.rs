@@ -87,6 +87,10 @@ pub struct SharedNotice {
     added: usize,
     removed: usize,
     changed: usize,
+    /// Connections the file now sends elsewhere: their saved credentials were forgotten.
+    retargeted: usize,
+    /// Connections whose safety settings the file loosened: this computer's were kept.
+    kept_stricter: usize,
     message: Option<String>,
 }
 
@@ -99,6 +103,8 @@ impl SharedNotice {
             added: 0,
             removed: 0,
             changed: 0,
+            retargeted: 0,
+            kept_stricter: 0,
             message: Some(message),
         }
     }
@@ -129,11 +135,13 @@ fn reconcile(store: &mut ConnectionStore, seen: &Seen, project: &Project) -> Opt
     };
     let before = shared::build(store, project, link.share_user);
     let diff = shared::compare(&before, &file);
+    let mut guarded = (0, 0);
     if !diff.is_empty() {
         let share_user = file.connections.iter().any(|c| c.user.is_some());
         let link = SharedLink { share_user, ..link };
-        if let Err(e) = shared::apply(store, Some(project.id), &file, link) {
-            return Some(SharedNotice::problem(project, "invalid", e.to_string()));
+        match shared::apply(store, Some(project.id), &file, link) {
+            Ok(applied) => guarded = (applied.retargeted, applied.kept_stricter),
+            Err(e) => return Some(SharedNotice::problem(project, "invalid", e.to_string())),
         }
     }
     lock(seen).insert(project.id, text);
@@ -144,6 +152,8 @@ fn reconcile(store: &mut ConnectionStore, seen: &Seen, project: &Project) -> Opt
         added: diff.added,
         removed: diff.removed,
         changed: diff.changed,
+        retargeted: guarded.0,
+        kept_stricter: guarded.1,
         message: None,
     })
 }
@@ -272,7 +282,8 @@ pub fn open_shared_project(
             share_user: file.connections.iter().any(|c| c.user.is_some()),
         };
         let id = shared::apply(s, None, &file, link)
-            .map_err(|e| platypus_store::StoreError::Invalid(e.to_string()))?;
+            .map_err(|e| platypus_store::StoreError::Invalid(e.to_string()))?
+            .id;
         Ok(OpenedShared {
             workspace: Workspace::of(s),
             project: id,
@@ -379,6 +390,26 @@ mod tests {
         // Nothing changed since: no notice.
         let project = s.projects()[0].clone();
         assert!(reconcile(&mut s, &seen, &project).is_none());
+    }
+
+    #[test]
+    fn an_outside_edit_that_moves_a_connection_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, seen, _pid, team) = linked(dir.path());
+        let path = team.join(PROJECT_FILE);
+        let mut file = shared::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        file.connections[0].database = "/elsewhere/other.db".to_owned();
+        file.connections[0].agent_access = platypus_store::AgentAccess::ReadWrite;
+        std::fs::write(&path, shared::render(&file).unwrap()).unwrap();
+        let project = s.projects()[0].clone();
+        let notice = reconcile(&mut s, &seen, &project).unwrap();
+        assert_eq!(
+            (notice.kind, notice.retargeted, notice.kept_stricter),
+            ("changed", 1, 1)
+        );
+        let c = s.get(file.connections[0].id).unwrap();
+        assert_eq!(c.database, "/elsewhere/other.db");
+        assert_eq!(c.agent_access, platypus_store::AgentAccess::ReadOnly);
     }
 
     #[test]

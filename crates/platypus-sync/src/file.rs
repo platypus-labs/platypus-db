@@ -2,6 +2,7 @@
 //! the sync passphrase. Writes go to a temporary file renamed over the old one, so a crash or
 //! a full disk never leaves a half-written file for the other machines to read.
 
+use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::Path;
 
@@ -29,20 +30,52 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+fn missing_folder(folder: &Path) -> SyncError {
+    SyncError::Io {
+        path: folder.display().to_string(),
+        message: "the sync folder was not found".to_owned(),
+    }
+}
+
+/// A hash of the file's bytes, to tell whether another machine wrote it since it was read.
+fn stamp_of(bytes: &[u8]) -> String {
+    let hash = ring::digest::digest(&ring::digest::SHA256, bytes);
+    hash.as_ref().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
+}
+
+/// The file's bytes, `None` when there is none.
+fn read_bytes(folder: &Path) -> Result<Option<Vec<u8>>> {
+    if !folder.is_dir() {
+        return Err(missing_folder(folder));
+    }
+    let path = folder.join(FILE_NAME);
+    match std::fs::read(&path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(io(&path, &e)),
+    }
+}
+
+/// The stamp of the file in `folder` as it is now (see [`read_stamped`]); `None` when there
+/// is no file. Cheap: nothing is decrypted.
+pub fn stamp(folder: &Path) -> Result<Option<String>> {
+    Ok(read_bytes(folder)?.as_deref().map(stamp_of))
+}
+
 /// The document in `folder`, or `None` when no sync file is there yet. A folder that does not
 /// exist is an error (a drive that is not mounted must not look like an empty one).
 pub fn read(folder: &Path, passphrase: &str) -> Result<Option<Document>> {
-    if !folder.is_dir() {
-        return Err(SyncError::Io {
-            path: folder.display().to_string(),
-            message: "the sync folder was not found".to_owned(),
-        });
-    }
-    let path = folder.join(FILE_NAME);
-    let bytes = match std::fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(io(&path, &e)),
+    Ok(read_stamped(folder, passphrase)?.0)
+}
+
+/// [`read`], with the stamp of the bytes read: the same stamp from [`stamp`] later means
+/// nobody wrote the file in between.
+pub fn read_stamped(folder: &Path, passphrase: &str) -> Result<(Option<Document>, Option<String>)> {
+    let Some(bytes) = read_bytes(folder)? else {
+        return Ok((None, None));
     };
     let plain = crypto::open(passphrase, &bytes)?;
     let document: Document =
@@ -53,19 +86,18 @@ pub fn read(folder: &Path, passphrase: &str) -> Result<Option<Document>> {
             supported: DOCUMENT_FORMAT,
         });
     }
-    Ok(Some(document))
+    Ok((Some(document), Some(stamp_of(&bytes))))
 }
 
-/// Seals `document` and writes it to `folder`.
-pub fn write(folder: &Path, passphrase: &str, document: &Document) -> Result<()> {
+/// Seals `document` and writes it to `folder`; returns the stamp of what was written.
+pub fn write(folder: &Path, passphrase: &str, document: &Document) -> Result<String> {
     if !folder.is_dir() {
-        return Err(SyncError::Io {
-            path: folder.display().to_string(),
-            message: "the sync folder was not found".to_owned(),
-        });
+        return Err(missing_folder(folder));
     }
     let plain = serde_json::to_vec(document).map_err(|e| SyncError::Invalid(e.to_string()))?;
-    write_atomic(&folder.join(FILE_NAME), &crypto::seal(passphrase, &plain)?)
+    let sealed = crypto::seal(passphrase, &plain)?;
+    write_atomic(&folder.join(FILE_NAME), &sealed)?;
+    Ok(stamp_of(&sealed))
 }
 
 #[cfg(test)]
@@ -93,10 +125,21 @@ mod tests {
     fn writes_reads_and_hides_the_content() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(read(dir.path(), "p").unwrap(), None);
+        assert_eq!(stamp(dir.path()).unwrap(), None);
         write(dir.path(), "p", &document()).unwrap();
         let bytes = std::fs::read(dir.path().join(FILE_NAME)).unwrap();
         assert!(!bytes.windows(12).any(|w| w == b"CANARY_VALUE"));
         assert_eq!(read(dir.path(), "p").unwrap(), Some(document()));
+        // The stamp follows the bytes: the same until someone writes again.
+        let (_, read_stamp) = read_stamped(dir.path(), "p").unwrap();
+        assert_eq!(stamp(dir.path()).unwrap(), read_stamp);
+        let written = write(dir.path(), "p", &document()).unwrap();
+        assert_ne!(
+            read_stamp.as_deref(),
+            Some(written.as_str()),
+            "fresh salt and nonce"
+        );
+        assert_eq!(stamp(dir.path()).unwrap(), Some(written));
         assert!(matches!(
             read(dir.path(), "q"),
             Err(SyncError::WrongPassphrase)

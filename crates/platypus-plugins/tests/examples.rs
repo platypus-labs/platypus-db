@@ -14,6 +14,15 @@ use platypus_plugins::{ActionOutcome, PLUGIN_OPTION, PluginDriver, Plugins};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// Installs `source` as the app does: inspected, then installed with the reviewed hash.
+async fn install(
+    plugins: &Plugins,
+    source: &Path,
+) -> Result<platypus_plugins::Installed, platypus_plugins::PluginError> {
+    let reviewed = plugins.inspect(source).await?;
+    plugins.install(source, &reviewed.hash).await
+}
+
 fn example(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../examples/plugins")
@@ -24,7 +33,7 @@ fn example(name: &str) -> PathBuf {
 async fn sql_tools_actions() {
     let data = tempfile::tempdir().unwrap();
     let plugins = Plugins::new(data.path());
-    let installed = plugins.install(&example("sql-tools")).await.unwrap();
+    let installed = install(&plugins, &example("sql-tools")).await.unwrap();
     assert!(installed.approved.clipboard);
     assert_eq!(installed.description.actions.len(), 3);
 
@@ -238,7 +247,9 @@ fn config(port: u16, token: &str) -> ConnectionConfig {
 async fn toy_http_driver() {
     let data = tempfile::tempdir().unwrap();
     let plugins = Plugins::new(data.path());
-    plugins.install(&example("toy-http-driver")).await.unwrap();
+    install(&plugins, &example("toy-http-driver"))
+        .await
+        .unwrap();
     let seen = Seen::default();
     let port = toy_server(Arc::clone(&seen)).await;
     let driver = PluginDriver::new(plugins.clone());
@@ -321,7 +332,9 @@ async fn toy_http_driver() {
 async fn a_driver_may_reach_the_host_of_its_connection() {
     let data = tempfile::tempdir().unwrap();
     let plugins = Plugins::new(data.path());
-    plugins.install(&example("toy-http-driver")).await.unwrap();
+    install(&plugins, &example("toy-http-driver"))
+        .await
+        .unwrap();
     let port = toy_server(Seen::default()).await;
     // The plugin asks for no host in its manifest: the one the user typed is allowed.
     let mut config = config(port, "t0ken");

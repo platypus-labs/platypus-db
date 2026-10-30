@@ -2883,6 +2883,16 @@ const it: Record<string, string> = {
   "Copied to the clipboard.": "Copiato negli appunti.",
   "The editor is read-only.": "L'editor è in sola lettura.",
   "Select some rows first.": "Seleziona prima alcune righe.",
+  // Group O: review fixes (shared folders, first sync)
+  "{n} connection now goes to another server: its saved password was forgotten and is asked at the next connect.": "{n} connessione ora punta a un altro server: la password salvata è stata dimenticata e verrà chiesta alla prossima connessione.",
+  "{n} connections now go to another server: their saved passwords were forgotten and are asked at the next connect.": "{n} connessioni ora puntano a un altro server: le password salvate sono state dimenticate e verranno chieste alla prossima connessione.",
+  "{n} connection keeps this computer's stricter safety settings.": "{n} connessione mantiene le impostazioni di sicurezza più restrittive di questo computer.",
+  "{n} connections keep this computer's stricter safety settings.": "{n} connessioni mantengono le impostazioni di sicurezza più restrittive di questo computer.",
+  "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept, this computer's is kept as {copy}.": "{name} ({what}) era diverso da quello di {machine} alla prima sincronizzazione: è stata mantenuta la versione sincronizzata, quella di questo computer è conservata come {copy}.",
+  "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept; this computer had {value}.": "{name} ({what}) era diverso da quello di {machine} alla prima sincronizzazione: è stata mantenuta la versione sincronizzata; questo computer aveva {value}.",
+  "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept.": "{name} ({what}) era diverso da quello di {machine} alla prima sincronizzazione: è stata mantenuta la versione sincronizzata.",
+  "Sync: {n} item differed from the synced copy at this computer's first sync. The synced version was kept; see Settings, Sync.": "Sincronizzazione: {n} elemento era diverso dalla copia sincronizzata alla prima sincronizzazione di questo computer. È stata mantenuta la versione sincronizzata; vedi Impostazioni, Sincronizzazione.",
+  "Sync: {n} items differed from the synced copy at this computer's first sync. The synced versions were kept; see Settings, Sync.": "Sincronizzazione: {n} elementi erano diversi dalla copia sincronizzata alla prima sincronizzazione di questo computer. Sono state mantenute le versioni sincronizzate; vedi Impostazioni, Sincronizzazione.",
 };
 
 export default it;

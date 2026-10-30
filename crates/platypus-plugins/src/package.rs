@@ -5,9 +5,11 @@
 //! A package is a folder or a `.zip` with the two files at its root or in a single folder.
 //! Installing reads the module's description, so a module that does not load is refused
 //! before it is copied; the user approves the manifest's permissions by installing it
-//! (the app shows them first, from [`Plugins::inspect`]).
+//! (the app shows them first, from [`Plugins::inspect`]), and the install takes the hash of
+//! the package inspected, so it installs exactly what was shown.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -38,6 +40,9 @@ pub struct Inspected {
     pub description: Description,
     /// The version of the same plugin already installed, which this one replaces.
     pub replaces: Option<String>,
+    /// A hash of the package's two files, given back to [`Plugins::install`]: what is
+    /// installed is exactly what the user reviewed, even if the package changes in between.
+    pub hash: String,
 }
 
 /// An installed plugin.
@@ -101,7 +106,11 @@ impl Plugins {
 
     /// Reads a package and its module's description, without installing it.
     pub async fn inspect(&self, source: &Path) -> Result<Inspected, PluginError> {
-        let (manifest, wasm) = read_package(source)?;
+        let Package {
+            manifest,
+            wasm,
+            hash,
+        } = read_package(source)?;
         let description = describe(&manifest, wasm, self.limits).await?;
         let replaces = self
             .read_state()?
@@ -112,13 +121,26 @@ impl Plugins {
             manifest,
             description,
             replaces,
+            hash,
         })
     }
 
     /// Installs a package, replacing any version of the same plugin, turned on and with
-    /// its manifest's permissions approved.
-    pub async fn install(&self, source: &Path) -> Result<Installed, PluginError> {
-        let (manifest, wasm) = read_package(source)?;
+    /// its manifest's permissions approved. `reviewed` is the [`Inspected::hash`] of the
+    /// package the user approved: a package that changed since (other permissions, another
+    /// module) is refused.
+    pub async fn install(&self, source: &Path, reviewed: &str) -> Result<Installed, PluginError> {
+        let Package {
+            manifest,
+            wasm,
+            hash,
+        } = read_package(source)?;
+        if hash != reviewed {
+            return Err(PluginError::Invalid(
+                "the package changed since it was reviewed: review it again before installing"
+                    .to_owned(),
+            ));
+        }
         let description = describe(&manifest, wasm.clone(), self.limits).await?;
         let home = self.dir.join(&manifest.id);
         std::fs::create_dir_all(&home).map_err(PluginError::io(&home))?;
@@ -338,8 +360,32 @@ fn matches_manifest(manifest: &Manifest, description: &Description) -> Result<()
     Err(PluginError::Invalid(why.to_owned()))
 }
 
+/// A package as read: its manifest, its module, and the hash of both files.
+struct Package {
+    manifest: Manifest,
+    wasm: Vec<u8>,
+    hash: String,
+}
+
+/// The SHA-256 of the manifest's bytes and the module's, each preceded by its length so the
+/// boundary between them counts too.
+fn package_hash(manifest: &[u8], wasm: &[u8]) -> String {
+    let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
+    for part in [manifest, wasm] {
+        ctx.update(&(part.len() as u64).to_le_bytes());
+        ctx.update(part);
+    }
+    ctx.finish()
+        .as_ref()
+        .iter()
+        .fold(String::new(), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
+}
+
 /// The manifest and the module of a folder or a `.zip`.
-fn read_package(source: &Path) -> Result<(Manifest, Vec<u8>), PluginError> {
+fn read_package(source: &Path) -> Result<Package, PluginError> {
     let (manifest, wasm) = if source.is_dir() {
         (
             read_file(&source.join(MANIFEST_FILE), MAX_MANIFEST)?,
@@ -348,9 +394,14 @@ fn read_package(source: &Path) -> Result<(Manifest, Vec<u8>), PluginError> {
     } else {
         read_zip(source)?
     };
+    let hash = package_hash(&manifest, &wasm);
     let text = String::from_utf8(manifest)
         .map_err(|_| PluginError::Invalid(format!("{MANIFEST_FILE} is not UTF-8 text")))?;
-    Ok((Manifest::parse(&text)?, wasm))
+    Ok(Package {
+        manifest: Manifest::parse(&text)?,
+        wasm,
+        hash,
+    })
 }
 
 fn read_file(path: &Path, max: u64) -> Result<Vec<u8>, PluginError> {

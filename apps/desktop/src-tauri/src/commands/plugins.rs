@@ -42,10 +42,11 @@ pub async fn plugin_inspect(path: PathBuf) -> CommandResult<Inspected> {
     plugins()?.inspect(&path).await.map_err(failed)
 }
 
-/// Installs a package the user reviewed; its permissions are approved by this call.
+/// Installs a package the user reviewed; its permissions are approved by this call. `hash` is
+/// the one `plugin_inspect` gave: a package changed since the review is refused.
 #[tauri::command]
-pub async fn plugin_install(path: PathBuf) -> CommandResult<Installed> {
-    plugins()?.install(&path).await.map_err(failed)
+pub async fn plugin_install(path: PathBuf, hash: String) -> CommandResult<Installed> {
+    plugins()?.install(&path, &hash).await.map_err(failed)
 }
 
 #[tauri::command]

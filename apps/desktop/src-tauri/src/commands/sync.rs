@@ -8,13 +8,14 @@
 //! The page calls `sync_now` on demand, at start and every few minutes; the merge is in
 //! `platypus-sync`.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use platypus_core::Secret;
 use platypus_store::{ConnectionStore, SettingsStore};
-use platypus_sync::collect::{self, Plan};
-use platypus_sync::merge::{Conflict, ConflictKind, Context, merge};
+use platypus_sync::collect::{self, Plan, Withheld};
+use platypus_sync::merge::{Conflict, ConflictKind, Context, Merged, merge};
 use platypus_sync::model::{BaseEntry, DOCUMENT_FORMAT, Document, Item, SyncState};
 use platypus_sync::{SyncError, file};
 use serde::{Deserialize, Serialize};
@@ -74,12 +75,15 @@ pub struct ConflictInfo {
     pub what: String,
     /// The script's path, the connection's or project's name, the setting's key.
     pub name: String,
-    /// `both_edited` or `deleted_and_edited`.
+    /// `both_edited`, `deleted_and_edited` or `first_sync`.
     pub kind: String,
     /// The name of the copy that keeps the other version, when there is one.
     pub copy: Option<String>,
-    /// The computer that made the other version.
+    /// The computer that made the other version (for `first_sync`, the version kept).
     pub machine: String,
+    /// What this computer had, when a first sync replaced a setting with the synced one.
+    #[serde(default)]
+    pub replaced: Option<String>,
 }
 
 /// What the Sync page shows.
@@ -290,15 +294,16 @@ struct Run<'a> {
     now: i64,
 }
 
-/// Everything this machine has, as values by item key.
-fn current_values(
-    store: &ConnectionStore,
-    settings: &SettingsStore,
-    scripts: &Path,
-) -> (
-    std::collections::BTreeMap<String, Value>,
-    std::collections::BTreeMap<String, i64>,
-) {
+/// Everything this machine synchronises, as values by item key.
+struct Current {
+    values: BTreeMap<String, Value>,
+    /// When the scripts' files changed.
+    times: BTreeMap<String, i64>,
+    /// What this machine has but keeps out of the sync for now (see `collect::Withheld`).
+    withheld: Withheld,
+}
+
+fn current_values(store: &ConnectionStore, settings: &SettingsStore, scripts: &Path) -> Current {
     let mut values = collect::setting_values(settings.all());
     values.extend(collect::workspace_values(store));
     let mut scopes = vec!["all".to_owned()];
@@ -309,13 +314,19 @@ fn current_values(
             .filter(|p| p.shared.is_none())
             .map(|p| p.id.to_string()),
     );
-    let (script_values, times) = collect::script_values(scripts, &scopes);
-    values.extend(script_values);
-    (values, times)
+    let found = collect::script_values(scripts, &scopes);
+    values.extend(found.values);
+    let mut withheld = collect::shared_keys(store);
+    withheld.extend(found.withheld);
+    Current {
+        values,
+        times: found.times,
+        withheld,
+    }
 }
 
 /// A readable name for a conflict's item.
-fn describe(key: &str, items: &std::collections::BTreeMap<String, Item>) -> (String, String) {
+fn describe(key: &str, items: &BTreeMap<String, Item>) -> (String, String) {
     let (what, rest) = key.split_once('/').unwrap_or(("item", key));
     let name = match what {
         "script" => rest
@@ -333,11 +344,7 @@ fn describe(key: &str, items: &std::collections::BTreeMap<String, Item>) -> (Str
     (what.to_owned(), name)
 }
 
-fn conflict_info(
-    c: &Conflict,
-    items: &std::collections::BTreeMap<String, Item>,
-    at: i64,
-) -> ConflictInfo {
+fn conflict_info(c: &Conflict, items: &BTreeMap<String, Item>, at: i64) -> ConflictInfo {
     let (what, name) = describe(&c.key, items);
     ConflictInfo {
         at,
@@ -346,10 +353,16 @@ fn conflict_info(
         kind: match c.kind {
             ConflictKind::BothEdited => "both_edited",
             ConflictKind::DeletedAndEdited => "deleted_and_edited",
+            ConflictKind::FirstSync => "first_sync",
         }
         .to_owned(),
         copy: c.copy.as_ref().map(|k| describe(k, items).1),
         machine: c.other_machine.clone(),
+        replaced: c.replaced.as_ref().and_then(|v| match v {
+            Value::String(s) => Some(s.clone()),
+            Value::Bool(_) | Value::Number(_) => Some(v.to_string()),
+            _ => None,
+        }),
     }
 }
 
@@ -361,12 +374,15 @@ fn apply(
     plan: Plan,
 ) -> Result<usize, SyncError> {
     let invalid = |e: platypus_store::StoreError| SyncError::Invalid(e.to_string());
-    let applied = plan.batch.connections.len()
-        + plan.batch.projects.len()
-        + plan.batch.network_profiles.len()
-        + plan.batch.project_folders.len()
-        + plan.batch.remove_connections.len()
-        + plan.batch.remove_projects.len()
+    let b = &plan.batch;
+    let applied = b.connections.len()
+        + b.projects.len()
+        + b.network_profiles.len()
+        + b.project_folders.len()
+        + b.remove_connections.len()
+        + b.remove_projects.len()
+        + b.remove_network_profiles.len()
+        + b.remove_project_folders.len()
         + plan.settings.len()
         + plan.scripts.len();
     store.apply_batch(plan.batch).map_err(invalid)?;
@@ -377,6 +393,11 @@ fn apply(
     Ok(applied)
 }
 
+/// How many times a run reads and merges again when another machine wrote the file while it
+/// merged, before it writes anyway (what that write loses is caught at the next run, see
+/// `next_base`).
+const ATTEMPTS: usize = 3;
+
 /// One sync: read the file, merge, apply here, write the file when it changed, remember.
 /// Nothing is changed unless the file reads.
 fn run(
@@ -385,25 +406,35 @@ fn run(
     run: &Run<'_>,
     state: &mut SyncState,
 ) -> Result<SyncReport, SyncError> {
-    let remote = file::read(run.folder, run.passphrase)?;
-    let remote_items = remote.map(|d| d.items).unwrap_or_default();
-    let (values, times) = current_values(store, settings, run.scripts);
-    let local = collect::local_items(&values, &times, &state.base, run.machine, run.now);
-    let merged = merge(
-        &local,
-        &remote_items,
+    run_racing(store, settings, run, state, &mut || {})
+}
+
+/// [`run`], with `merged` called after each merge and before the check that the file did not
+/// change meanwhile: the tests write the file there, as another machine would.
+fn run_racing(
+    store: &mut ConnectionStore,
+    settings: &mut SettingsStore,
+    run: &Run<'_>,
+    state: &mut SyncState,
+    merged_hook: &mut dyn FnMut(),
+) -> Result<SyncReport, SyncError> {
+    let current = current_values(store, settings, run.scripts);
+    let local = collect::local_items(
+        &current.values,
+        &current.times,
         &state.base,
-        Context {
-            now: run.now,
-            machine: run.machine,
-        },
+        &current.withheld,
+        run.machine,
+        run.now,
     );
+    let (remote_items, merged) = merge_settled(&local, run, state, &current.withheld, merged_hook)?;
     let plan = collect::plan(&merged.apply, store);
     let skipped = plan.skipped.len();
     let applied = apply(store, settings, run.scripts, plan)?;
     let written = merged.items != remote_items;
+    let mut confirmed = None;
     if written {
-        file::write(
+        let stamp = file::write(
             run.folder,
             run.passphrase,
             &Document {
@@ -413,12 +444,20 @@ fn run(
                 items: merged.items.clone(),
             },
         )?;
+        // Another machine may have written between the check and this write: what the file
+        // holds now is what is synchronised, not what was meant to be.
+        if file::stamp(run.folder)?.as_deref() != Some(stamp.as_str()) {
+            // A file that does not read now confirms nothing: everything is tried again.
+            confirmed = Some(
+                file::read(run.folder, run.passphrase)
+                    .ok()
+                    .flatten()
+                    .map(|d| d.items)
+                    .unwrap_or_default(),
+            );
+        }
     }
-    state.base = merged
-        .items
-        .iter()
-        .map(|(k, i)| (k.clone(), BaseEntry::of(i)))
-        .collect();
+    state.base = next_base(&state.base, &merged.items, confirmed.as_ref());
     state.last_sync = Some(run.now);
     Ok(SyncReport {
         applied,
@@ -433,12 +472,73 @@ fn run(
     })
 }
 
+/// Reads the file and merges it with `local` until the file stays as it was read through the
+/// merge (another machine may write it meanwhile), at most [`ATTEMPTS`] times. Returns the
+/// file's items and the merge; what is withheld is never applied here.
+fn merge_settled(
+    local: &BTreeMap<String, Item>,
+    run: &Run<'_>,
+    state: &SyncState,
+    withheld: &Withheld,
+    merged_hook: &mut dyn FnMut(),
+) -> Result<(BTreeMap<String, Item>, Merged), SyncError> {
+    let mut attempt = 1;
+    loop {
+        let (remote, stamp) = file::read_stamped(run.folder, run.passphrase)?;
+        let remote_items = remote.map(|d| d.items).unwrap_or_default();
+        let mut merged = merge(
+            local,
+            &remote_items,
+            &state.base,
+            Context {
+                now: run.now,
+                machine: run.machine,
+            },
+        );
+        merged.apply.retain(|c| !withheld.contains(c.key()));
+        merged_hook();
+        if attempt == ATTEMPTS || file::stamp(run.folder)? == stamp {
+            return Ok((remote_items, merged));
+        }
+        attempt += 1;
+    }
+}
+
+/// What this machine remembers after a run: the merged items, except those the file did not
+/// end up holding (`confirmed`, when another machine's write replaced this one's), which keep
+/// their old entry, so that a change made here is still a change at the next run instead of
+/// being reverted by the other machine's older version.
+fn next_base(
+    old: &BTreeMap<String, BaseEntry>,
+    merged: &BTreeMap<String, Item>,
+    confirmed: Option<&BTreeMap<String, Item>>,
+) -> BTreeMap<String, BaseEntry> {
+    merged
+        .iter()
+        .filter_map(|(key, item)| {
+            let in_file = confirmed.is_none_or(|file| {
+                file.get(key)
+                    .is_some_and(|f| f.fingerprint() == item.fingerprint())
+            });
+            let entry = if in_file {
+                BaseEntry::after(old.get(key), item)
+            } else {
+                old.get(key)?.clone()
+            };
+            Some((key.clone(), entry))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use platypus_core::DriverKind;
-    use platypus_store::{MemorySecrets, PasswordUpdate, Project, SavedConnection};
+    use platypus_core::{DriverKind, SslMode};
+    use platypus_store::{
+        MemorySecrets, NetworkProfile, PasswordUpdate, Project, ProjectFolder, SavedConnection,
+        SharedLink,
+    };
 
     use super::*;
 
@@ -480,6 +580,30 @@ mod tests {
             },
             &mut m.state,
         )
+    }
+
+    /// Two machines and the folder they share.
+    fn pair(root: &Path) -> (Machine, Machine, PathBuf) {
+        let folder = root.join("cloud");
+        std::fs::create_dir(&folder).unwrap();
+        (machine(root, "A"), machine(root, "B"), folder)
+    }
+
+    fn sync_racing(m: &mut Machine, folder: &Path, now: i64, hook: &mut dyn FnMut()) -> SyncReport {
+        run_racing(
+            &mut m.store,
+            &mut m.settings,
+            &Run {
+                scripts: &m.scripts,
+                folder,
+                passphrase: "pass",
+                machine: m.name,
+                now,
+            },
+            &mut m.state,
+            hook,
+        )
+        .unwrap()
     }
 
     fn write_script(m: &Machine, path: &str, text: &str) {
@@ -586,6 +710,249 @@ mod tests {
             settled.applied == 0 && settled.conflicts.is_empty(),
             "{settled:?}"
         );
+    }
+
+    #[test]
+    fn sharing_a_project_is_not_a_deletion_on_the_other_machines() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut a, mut b, folder) = pair(root.path());
+        let p = Project::new("Team", "#112233");
+        let pid = p.id;
+        a.store.save_project(p).unwrap();
+        let scope = a.scripts.join(pid.to_string());
+        std::fs::create_dir_all(&scope).unwrap();
+        std::fs::write(scope.join("q.sql"), "select 1").unwrap();
+        sync(&mut a, &folder, 1_000).unwrap();
+        sync(&mut b, &folder, 2_000).unwrap();
+        assert_eq!(b.store.projects().len(), 1);
+        let b_script = b.scripts.join(pid.to_string()).join("q.sql");
+        assert!(b_script.exists());
+        // A shares the project through a folder: it leaves the sync, but is not deleted.
+        let mut shared = a.store.projects()[0].clone();
+        shared.shared = Some(SharedLink {
+            path: root.path().join("team"),
+            share_user: false,
+        });
+        a.store
+            .apply_batch(platypus_store::SyncBatch {
+                projects: vec![shared],
+                ..platypus_store::SyncBatch::default()
+            })
+            .unwrap();
+        sync(&mut a, &folder, 3_000).unwrap();
+        let report = sync(&mut b, &folder, 4_000).unwrap();
+        assert_eq!(report.applied, 0, "{report:?}");
+        assert_eq!(b.store.projects().len(), 1, "B keeps the project");
+        assert!(b_script.exists(), "and its scripts");
+        // B deletes it: the shared project on A stays, it lives in its folder now.
+        b.store.delete_project(pid).unwrap();
+        sync(&mut b, &folder, 5_000).unwrap();
+        sync(&mut a, &folder, 6_000).unwrap();
+        assert!(a.store.projects()[0].shared.is_some());
+        let settled = sync(&mut a, &folder, 7_000).unwrap();
+        assert!(settled.applied == 0 && !settled.written, "{settled:?}");
+    }
+
+    #[test]
+    fn a_script_that_cannot_be_synchronised_is_not_deleted_elsewhere() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut a, mut b, folder) = pair(root.path());
+        write_script(&a, "big.sql", "select 1");
+        sync(&mut a, &folder, 1_000).unwrap();
+        sync(&mut b, &folder, 2_000).unwrap();
+        // The file grows past the limit on A, and B's copy stays as it was.
+        std::fs::File::create(a.scripts.join("all/big.sql"))
+            .unwrap()
+            .set_len(collect::MAX_SCRIPT_BYTES + 1)
+            .unwrap();
+        sync(&mut a, &folder, 3_000).unwrap();
+        sync(&mut b, &folder, 4_000).unwrap();
+        assert_eq!(script(&b, "big.sql").as_deref(), Some("select 1"));
+        // An edit on B does not overwrite A's large file either.
+        write_script(&b, "big.sql", "select 2");
+        sync(&mut b, &folder, 5_000).unwrap();
+        sync(&mut a, &folder, 6_000).unwrap();
+        let len = std::fs::metadata(a.scripts.join("all/big.sql"))
+            .unwrap()
+            .len();
+        assert_eq!(len, collect::MAX_SCRIPT_BYTES + 1);
+    }
+
+    #[test]
+    fn a_new_machine_does_not_overwrite_what_the_others_agreed_on() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut a, mut b, folder) = pair(root.path());
+        a.settings
+            .set("appearance.theme", Some("dark".into()))
+            .unwrap();
+        write_script(&a, "m.sql", "select 'team'");
+        sync(&mut a, &folder, 1_000).unwrap();
+        // B was used alone before; its first sync comes much later by the clock.
+        b.settings
+            .set("appearance.theme", Some("light".into()))
+            .unwrap();
+        b.settings.set("editor.vim", Some(true.into())).unwrap();
+        write_script(&b, "m.sql", "select 'mine'");
+        let report = sync(&mut b, &folder, 9_000_000).unwrap();
+        assert_eq!(
+            b.settings.get::<String>("appearance.theme").as_deref(),
+            Some("dark")
+        );
+        assert_eq!(script(&b, "m.sql").as_deref(), Some("select 'team'"));
+        let theme = report
+            .conflicts
+            .iter()
+            .find(|c| c.what == "setting")
+            .unwrap();
+        assert_eq!(
+            (
+                theme.kind.as_str(),
+                theme.replaced.as_deref(),
+                theme.machine.as_str()
+            ),
+            ("first_sync", Some("light"), "A")
+        );
+        let copy = report
+            .conflicts
+            .iter()
+            .find(|c| c.what == "script")
+            .and_then(|c| c.copy.clone())
+            .unwrap();
+        assert_eq!(script(&b, &copy).as_deref(), Some("select 'mine'"));
+        // What only B had travels; A's theme stays.
+        sync(&mut a, &folder, 9_100_000).unwrap();
+        assert_eq!(
+            a.settings.get::<String>("appearance.theme").as_deref(),
+            Some("dark")
+        );
+        assert_eq!(a.settings.get::<bool>("editor.vim"), Some(true));
+        assert_eq!(script(&a, &copy).as_deref(), Some("select 'mine'"));
+    }
+
+    #[test]
+    fn a_write_while_merging_is_merged_again_not_lost() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut a, mut b, folder) = pair(root.path());
+        write_script(&a, "x.sql", "x1");
+        sync(&mut a, &folder, 1_000).unwrap();
+        sync(&mut b, &folder, 2_000).unwrap();
+        write_script(&a, "x.sql", "x2");
+        write_script(&b, "y.sql", "from B");
+        // B writes the file while A merges.
+        let mut raced = false;
+        let report = sync_racing(&mut a, &folder, 3_000, &mut || {
+            if !raced {
+                raced = true;
+                sync(&mut b, &folder, 3_500).unwrap();
+            }
+        });
+        assert!(raced && report.written);
+        assert_eq!(script(&a, "y.sql").as_deref(), Some("from B"));
+        sync(&mut b, &folder, 4_000).unwrap();
+        assert_eq!(script(&b, "x.sql").as_deref(), Some("x2"));
+        assert_eq!(script(&b, "y.sql").as_deref(), Some("from B"));
+    }
+
+    #[test]
+    fn a_write_that_lands_after_ours_does_not_revert_our_change() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut a, mut b, folder) = pair(root.path());
+        write_script(&a, "x.sql", "x1");
+        sync(&mut a, &folder, 1_000).unwrap();
+        sync(&mut b, &folder, 2_000).unwrap();
+        let file = folder.join(file::FILE_NAME);
+        let before = std::fs::read(&file).unwrap();
+        // A writes its change; B, which had read the file before, writes its own after it
+        // (a cloud drive keeps the last upload): A's change is gone from the file.
+        write_script(&a, "x.sql", "x2");
+        sync(&mut a, &folder, 3_000).unwrap();
+        let after_a = std::fs::read(&file).unwrap();
+        std::fs::write(&file, &before).unwrap();
+        write_script(&b, "y.sql", "from B");
+        sync(&mut b, &folder, 3_500).unwrap();
+        assert_ne!(std::fs::read(&file).unwrap(), after_a);
+        // A's next run sees the file's x1 as stale and writes x2 again.
+        let report = sync(&mut a, &folder, 4_000).unwrap();
+        assert!(report.written && report.conflicts.is_empty(), "{report:?}");
+        assert_eq!(script(&a, "x.sql").as_deref(), Some("x2"));
+        assert_eq!(script(&a, "y.sql").as_deref(), Some("from B"));
+        sync(&mut b, &folder, 5_000).unwrap();
+        assert_eq!(script(&b, "x.sql").as_deref(), Some("x2"));
+    }
+
+    #[test]
+    fn a_write_that_replaces_ours_is_not_remembered_as_synced() {
+        let old = BTreeMap::from([(
+            "setting/x".to_owned(),
+            BaseEntry::of(&Item::live("a".into(), 1, "A")),
+        )]);
+        let merged = BTreeMap::from([
+            ("setting/x".to_owned(), Item::live("b".into(), 2, "A")),
+            ("setting/y".to_owned(), Item::live("y".into(), 2, "A")),
+            ("setting/z".to_owned(), Item::live("z".into(), 2, "A")),
+        ]);
+        // The file now holds another machine's write: x as it was, y as ours, no z.
+        let file = BTreeMap::from([
+            ("setting/x".to_owned(), Item::live("a".into(), 1, "A")),
+            ("setting/y".to_owned(), Item::live("y".into(), 2, "A")),
+        ]);
+        let base = next_base(&old, &merged, Some(&file));
+        assert_eq!(
+            base["setting/x"], old["setting/x"],
+            "x is still to be synced"
+        );
+        assert_eq!(
+            base["setting/y"].fingerprint,
+            merged["setting/y"].fingerprint()
+        );
+        assert!(!base.contains_key("setting/z"));
+        let all = next_base(&old, &merged, None);
+        assert_eq!(all.len(), 3);
+        assert_eq!(
+            all["setting/x"].previous.as_ref().map(|p| p.modified),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn removed_profiles_and_rail_folders_count_as_applied() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut a, mut b, folder) = pair(root.path());
+        let profile = NetworkProfile {
+            id: Uuid::new_v4(),
+            name: "VPN".to_owned(),
+            ssl_mode: SslMode::Require,
+            ssl_root_cert: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
+            ssh: None,
+        };
+        let project = Project::new("Team", "#112233");
+        let rail = ProjectFolder {
+            id: Uuid::new_v4(),
+            name: "Work".to_owned(),
+            color: "#223344".to_owned(),
+            projects: vec![project.id],
+            collapsed: false,
+        };
+        a.store
+            .apply_batch(platypus_store::SyncBatch {
+                network_profiles: vec![profile.clone()],
+                projects: vec![project],
+                project_folders: vec![rail.clone()],
+                ..platypus_store::SyncBatch::default()
+            })
+            .unwrap();
+        sync(&mut a, &folder, 1_000).unwrap();
+        sync(&mut b, &folder, 2_000).unwrap();
+        assert_eq!(b.store.network_profiles().len(), 1);
+        assert_eq!(b.store.project_folders().len(), 1);
+        a.store.delete_network_profile(profile.id).unwrap();
+        a.store.ungroup(rail.id).unwrap();
+        sync(&mut a, &folder, 3_000).unwrap();
+        let report = sync(&mut b, &folder, 4_000).unwrap();
+        assert_eq!(report.applied, 2, "{report:?}");
+        assert!(b.store.network_profiles().is_empty() && b.store.project_folders().is_empty());
     }
 
     #[test]

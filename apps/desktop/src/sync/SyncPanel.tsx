@@ -6,6 +6,24 @@ import { onSyncRan, runSync, scheduleSync, syncErrorText, syncSummary } from "./
 
 /** What a conflict says, in one line. */
 function conflictText(c: SyncConflict): string {
+  if (c.kind === "first_sync") {
+    if (c.copy) {
+      return t("{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept, this computer's is kept as {copy}.", {
+        name: c.name,
+        what: c.what,
+        machine: c.machine,
+        copy: c.copy,
+      });
+    }
+    return c.replaced
+      ? t("{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept; this computer had {value}.", {
+          name: c.name,
+          what: c.what,
+          machine: c.machine,
+          value: c.replaced,
+        })
+      : t("{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept.", { name: c.name, what: c.what, machine: c.machine });
+  }
   if (c.kind === "deleted_and_edited") {
     return t("{name} ({what}) was deleted on {machine} and changed here: the change was kept.", { name: c.name, what: c.what, machine: c.machine });
   }

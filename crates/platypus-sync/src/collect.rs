@@ -103,6 +103,64 @@ pub fn workspace_values(store: &ConnectionStore) -> BTreeMap<String, Value> {
     out
 }
 
+/// Keys this machine has but does not synchronise now: a project shared through its own
+/// folder (and its scripts), a script it cannot read. Gone from the collected values, they
+/// are not deletions: no tombstone is made for them, and what the file says of them is left
+/// in the file and not applied here.
+#[derive(Debug, Clone, Default)]
+pub struct Withheld {
+    keys: HashSet<String>,
+    prefixes: Vec<String>,
+}
+
+impl Withheld {
+    /// Whether `key` is withheld.
+    #[must_use]
+    pub fn contains(&self, key: &str) -> bool {
+        self.keys.contains(key) || self.prefixes.iter().any(|p| key.starts_with(p.as_str()))
+    }
+
+    /// Withholds `key`.
+    pub fn insert(&mut self, key: String) {
+        self.keys.insert(key);
+    }
+
+    /// Withholds every key that starts with `prefix`.
+    pub fn insert_prefix(&mut self, prefix: String) {
+        self.prefixes.push(prefix);
+    }
+
+    /// The keys of `other` too.
+    pub fn extend(&mut self, other: Self) {
+        self.keys.extend(other.keys);
+        self.prefixes.extend(other.prefixes);
+    }
+}
+
+/// The keys of the projects shared through a folder here: the project, its scripts, and a
+/// rail folder that holds nothing else. Sharing a project takes it out of the sync; it must
+/// not read as a deletion on the other machines.
+#[must_use]
+pub fn shared_keys(store: &ConnectionStore) -> Withheld {
+    let mut out = Withheld::default();
+    let shared: HashSet<Uuid> = store
+        .projects()
+        .iter()
+        .filter(|p| p.shared.is_some())
+        .map(|p| p.id)
+        .collect();
+    for id in &shared {
+        out.insert(format!("{PROJECT}{id}"));
+        out.insert_prefix(format!("{SCRIPT}{id}/"));
+    }
+    for f in store.project_folders() {
+        if !f.projects.is_empty() && f.projects.iter().all(|id| shared.contains(id)) {
+            out.insert(format!("{RAIL_FOLDER}{}", f.id));
+        }
+    }
+    out
+}
+
 /// Serialising without naming each type twice.
 mod erased {
     use serde::Serialize;
@@ -122,57 +180,63 @@ mod erased {
 /// The largest script that is synchronised.
 pub const MAX_SCRIPT_BYTES: u64 = 4 * 1024 * 1024;
 
-/// The scripts under `base/<scope>` for each scope (`all`, or a project's id), as
-/// `script/<scope>/<path>` values `{ "text", "connection" }`, with their files' modification
-/// times (milliseconds) as the hint for when they changed.
+/// The scripts of some scopes, as [`script_values`] collects them.
+#[derive(Debug, Default)]
+pub struct Scripts {
+    /// `script/<scope>/<path>` values `{ "text", "connection" }`.
+    pub values: BTreeMap<String, Value>,
+    /// The files' modification times (milliseconds), the hint for when they changed.
+    pub times: BTreeMap<String, i64>,
+    /// Scripts that are there but are not synchronised (larger than [`MAX_SCRIPT_BYTES`],
+    /// not UTF-8 text, unreadable): kept out of the sync, not deleted from it.
+    pub withheld: Withheld,
+}
+
+/// The scripts under `base/<scope>` for each scope (`all`, or a project's id).
 #[must_use]
-pub fn script_values(
-    base: &Path,
-    scopes: &[String],
-) -> (BTreeMap<String, Value>, BTreeMap<String, i64>) {
-    let mut values = BTreeMap::new();
-    let mut times = BTreeMap::new();
+pub fn script_values(base: &Path, scopes: &[String]) -> Scripts {
+    let mut out = Scripts::default();
     for scope in scopes {
         let root = base.join(scope);
         for entry in list_scripts(&root).into_iter().filter(|e| !e.folder) {
             let Some(path) = resolve_script(&root, &entry.path) else {
                 continue;
             };
-            let Ok(meta) = std::fs::metadata(&path) else {
-                continue;
-            };
-            if meta.len() > MAX_SCRIPT_BYTES {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
             let key = format!("{SCRIPT}{scope}/{}", entry.path);
+            let text = std::fs::metadata(&path)
+                .ok()
+                .filter(|meta| meta.len() <= MAX_SCRIPT_BYTES)
+                .and_then(|meta| Some((meta, std::fs::read_to_string(&path).ok()?)));
+            let Some((meta, text)) = text else {
+                out.withheld.insert(key);
+                continue;
+            };
             if let Some(ms) = meta
                 .modified()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .and_then(|d| i64::try_from(d.as_millis()).ok())
             {
-                times.insert(key.clone(), ms);
+                out.times.insert(key.clone(), ms);
             }
-            values.insert(
+            out.values.insert(
                 key,
                 serde_json::json!({ "text": text, "connection": entry.connection }),
             );
         }
     }
-    (values, times)
+    out
 }
 
 /// This machine's items: each value stamped with the time it last changed. A value as it was
 /// at the last sync keeps its stamp; one that differs gets its `hint` (a file's time) or
-/// `now`. What was synchronised and is gone becomes a tombstone.
+/// `now`. What was synchronised and is gone becomes a tombstone, unless it is `withheld`.
 #[must_use]
 pub fn local_items(
     current: &BTreeMap<String, Value>,
     hints: &BTreeMap<String, i64>,
     base: &BTreeMap<String, BaseEntry>,
+    withheld: &Withheld,
     machine: &str,
     now: i64,
 ) -> BTreeMap<String, Item> {
@@ -192,7 +256,7 @@ pub fn local_items(
         out.insert(key.clone(), item);
     }
     for (key, b) in base {
-        if out.contains_key(key) {
+        if out.contains_key(key) || withheld.contains(key) {
             continue;
         }
         let tombstone = if b.deleted {
@@ -245,7 +309,7 @@ pub fn plan(changes: &[Change], store: &ConnectionStore) -> Plan {
         let key = change.key();
         match change {
             Change::Put { item, .. } => put(&mut plan, key, item, store),
-            Change::Remove { .. } => remove(&mut plan, key),
+            Change::Remove { .. } => remove(&mut plan, key, store),
         }
     }
     plan
@@ -292,7 +356,10 @@ fn put(plan: &mut Plan, key: &str, item: &Item, store: &ConnectionStore) {
             plan.batch.project_folders.push(folder);
         }
     } else if let Some(rest) = key.strip_prefix(SCRIPT) {
-        script_put(plan, key, rest, item);
+        let scope = rest.split_once('/').map_or(rest, |(s, _)| s);
+        if !Uuid::parse_str(scope).is_ok_and(|p| is_shared_project(store, p)) {
+            script_put(plan, key, rest, item);
+        }
     }
 }
 
@@ -319,7 +386,15 @@ fn script_put(plan: &mut Plan, key: &str, rest: &str, item: &Item) {
     });
 }
 
-fn remove(plan: &mut Plan, key: &str) {
+/// Whether `id` is a project shared through a folder here: it syncs through its folder.
+fn is_shared_project(store: &ConnectionStore, id: Uuid) -> bool {
+    store
+        .projects()
+        .iter()
+        .any(|p| p.id == id && p.shared.is_some())
+}
+
+fn remove(plan: &mut Plan, key: &str, store: &ConnectionStore) {
     let id = |prefix: &str| {
         key.strip_prefix(prefix)
             .and_then(|i| Uuid::parse_str(i).ok())
@@ -333,10 +408,15 @@ fn remove(plan: &mut Plan, key: &str) {
     } else if let Some(id) = id(PROFILE) {
         plan.batch.remove_network_profiles.push(id);
     } else if let Some(id) = id(PROJECT) {
-        plan.batch.remove_projects.push(id);
+        if !is_shared_project(store, id) {
+            plan.batch.remove_projects.push(id);
+        }
     } else if let Some(id) = id(RAIL_FOLDER) {
         plan.batch.remove_project_folders.push(id);
     } else if let Some((scope, path)) = key.strip_prefix(SCRIPT).and_then(|r| r.split_once('/')) {
+        if Uuid::parse_str(scope).is_ok_and(|p| is_shared_project(store, p)) {
+            return;
+        }
         plan.scripts.push(ScriptOp {
             scope: scope.to_owned(),
             path: path.to_owned(),
@@ -480,7 +560,7 @@ mod tests {
             ("setting/new".to_owned(), b.clone()),
         ]);
         let hints = BTreeMap::from([("setting/new".to_owned(), 77)]);
-        let items = local_items(&current, &hints, &base, "ME", 1000);
+        let items = local_items(&current, &hints, &base, &Withheld::default(), "ME", 1000);
         assert_eq!(items["setting/same"], Item::live(a, 10, "OLD"));
         assert_eq!(items["setting/edited"], Item::live(b.clone(), 1000, "ME"));
         assert_eq!(items["setting/new"], Item::live(b, 77, "ME"));
@@ -509,7 +589,7 @@ mod tests {
         ];
         assert_eq!(apply_scripts(dir.path(), &ops).unwrap(), 2);
         let scopes = ["all".to_owned(), project.to_string()];
-        let (values, times) = script_values(dir.path(), &scopes);
+        let Scripts { values, times, .. } = script_values(dir.path(), &scopes);
         assert_eq!(
             values["script/all/reports/m.sql"],
             json!({"text": "select 1", "connection": c})
@@ -529,6 +609,86 @@ mod tests {
         apply_scripts(dir.path(), &[delete]).unwrap();
         assert!(!dir.path().join("all/reports/m.sql").exists());
         assert!(read_script_links(&dir.path().join("all")).is_empty());
+    }
+
+    #[test]
+    fn scripts_that_cannot_be_synchronised_are_withheld_not_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let all = dir.path().join("all");
+        std::fs::create_dir_all(&all).unwrap();
+        std::fs::write(all.join("ok.sql"), "select 1").unwrap();
+        std::fs::write(all.join("latin1.sql"), b"select '\xe9'").unwrap();
+        let big = std::fs::File::create(all.join("big.sql")).unwrap();
+        big.set_len(MAX_SCRIPT_BYTES + 1).unwrap();
+        let scripts = script_values(dir.path(), &["all".to_owned()]);
+        assert_eq!(
+            scripts.values.keys().collect::<Vec<_>>(),
+            ["script/all/ok.sql"]
+        );
+        assert!(scripts.withheld.contains("script/all/latin1.sql"));
+        assert!(scripts.withheld.contains("script/all/big.sql"));
+        // They were synchronised before: no tombstone goes out for them.
+        let was = BaseEntry::of(&Item::live(json!({"text": "select 2"}), 10, "OLD"));
+        let base = BTreeMap::from([
+            ("script/all/latin1.sql".to_owned(), was.clone()),
+            ("script/all/big.sql".to_owned(), was.clone()),
+            ("script/all/deleted.sql".to_owned(), was),
+        ]);
+        let items = local_items(
+            &scripts.values,
+            &scripts.times,
+            &base,
+            &scripts.withheld,
+            "ME",
+            1000,
+        );
+        assert!(!items.contains_key("script/all/latin1.sql"));
+        assert!(!items.contains_key("script/all/big.sql"));
+        assert!(
+            items["script/all/deleted.sql"].deleted,
+            "a real deletion still travels"
+        );
+    }
+
+    #[test]
+    fn a_shared_project_is_withheld_and_never_removed_by_the_sync() {
+        use std::sync::Arc;
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConnectionStore::open(
+            dir.path().join("connections.toml"),
+            Arc::new(platypus_store::MemorySecrets::default()),
+        )
+        .unwrap();
+        let mut p = Project::new("Team", "#112233");
+        p.shared = Some(platypus_store::SharedLink {
+            path: dir.path().join("team"),
+            share_user: false,
+        });
+        let id = p.id;
+        store
+            .apply_batch(SyncBatch {
+                projects: vec![p],
+                ..SyncBatch::default()
+            })
+            .unwrap();
+        let withheld = shared_keys(&store);
+        assert!(withheld.contains(&format!("project/{id}")));
+        assert!(withheld.contains(&format!("script/{id}/a/b.sql")));
+        assert!(!withheld.contains("script/all/a.sql"));
+        let changes = [
+            Change::Remove {
+                key: format!("project/{id}"),
+            },
+            Change::Remove {
+                key: format!("script/{id}/a.sql"),
+            },
+            Change::Put {
+                key: format!("script/{id}/b.sql"),
+                item: Item::live(json!({"text": "x"}), 1, "B"),
+            },
+        ];
+        let plan = plan(&changes, &store);
+        assert!(plan.batch.remove_projects.is_empty() && plan.scripts.is_empty());
     }
 
     #[test]

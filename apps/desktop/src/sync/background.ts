@@ -68,11 +68,19 @@ export function runSync(): Promise<SyncReport> {
 
 /** What a run of the sync did, for a notice; `null` when there is nothing to say. */
 export function syncSummary(report: SyncReport): string | null {
+  const both = report.conflicts.filter((c) => c.kind !== "first_sync").length;
+  if (both > 0) {
+    return plural(
+      both,
+      "Sync: {n} change was made on both computers. Both versions were kept; see Settings, Sync.",
+      "Sync: {n} changes were made on both computers. Both versions were kept; see Settings, Sync.",
+    );
+  }
   if (report.conflicts.length > 0) {
     return plural(
       report.conflicts.length,
-      "Sync: {n} change was made on both computers. Both versions were kept; see Settings, Sync.",
-      "Sync: {n} changes were made on both computers. Both versions were kept; see Settings, Sync.",
+      "Sync: {n} item differed from the synced copy at this computer's first sync. The synced version was kept; see Settings, Sync.",
+      "Sync: {n} items differed from the synced copy at this computer's first sync. The synced versions were kept; see Settings, Sync.",
     );
   }
   return report.applied > 0 ? plural(report.applied, "Sync: {n} change brought in.", "Sync: {n} changes brought in.") : null;
@@ -122,12 +130,30 @@ export async function scheduleSync(first = false) {
 function sharedSummary(n: SharedNotice): string {
   switch (n.kind) {
     case "changed":
-      return t("{name} was updated from its shared folder: {added} added, {removed} removed, {changed} changed.", {
-        name: n.name,
-        added: n.added,
-        removed: n.removed,
-        changed: n.changed,
-      });
+      return [
+        t("{name} was updated from its shared folder: {added} added, {removed} removed, {changed} changed.", {
+          name: n.name,
+          added: n.added,
+          removed: n.removed,
+          changed: n.changed,
+        }),
+        n.retargeted > 0
+          ? plural(
+              n.retargeted,
+              "{n} connection now goes to another server: its saved password was forgotten and is asked at the next connect.",
+              "{n} connections now go to another server: their saved passwords were forgotten and are asked at the next connect.",
+            )
+          : "",
+        n.kept_stricter > 0
+          ? plural(
+              n.kept_stricter,
+              "{n} connection keeps this computer's stricter safety settings.",
+              "{n} connections keep this computer's stricter safety settings.",
+            )
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
     case "missing":
       return t("The shared folder of {name} is not available: {detail}", { name: n.name, detail: n.message ?? "" });
     default:
