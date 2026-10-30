@@ -3,6 +3,7 @@ import { api, type Project, type SavedConnection, toCommandError } from "../api"
 import { ConnectionPicker } from "./ConnectionPicker";
 import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
+import { workbench } from "../workbench";
 import { openSharedProject } from "./shared";
 
 /** The colors offered for a project; any other can be picked too. */
@@ -15,7 +16,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** Name, color and initials of a project. The initials follow the name until changed. */
+/** Name, color, initials and folder of a project. The initials follow the name until changed. */
 export function ProjectDialog({ project, onSaved, onClose }: Props) {
   const [name, setName] = useState(project?.name ?? "");
   const [color, setColor] = useState(project?.color ?? PROJECT_COLORS[0]!);
@@ -23,6 +24,9 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   const [ownInitials, setOwnInitials] = useState(project !== null);
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState<SavedConnection[]>([]);
+  const folders = workbench().projectFolders();
+  const currentFolder = folders.find((f) => project && f.projects.includes(project.id))?.id ?? "";
+  const [folder, setFolder] = useState(currentFolder);
   const [picked, setPicked] = useState(new Set(project?.connections ?? []));
 
   useEffect(() => {
@@ -50,7 +54,13 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
       connections: [...(project?.connections ?? []).filter((id) => picked.has(id)), ...[...picked].filter((id) => !project?.connections.includes(id))],
     };
     try {
-      const all = await api.saveProject(saved);
+      let all = await api.saveProject(saved);
+      // The rail's folders are read in the same call as the drag to a folder.
+      if (folder !== currentFolder) {
+        const w = await api.setProjectFolder(saved.id, folder || null);
+        workbench().setWorkspace(w);
+        all = w.projects;
+      }
       onSaved(all, all.find((p) => p.id === saved.id) ?? saved);
     } catch (err) {
       setError(storeMessage(toCommandError(err).message));
@@ -107,6 +117,19 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
             />
           </div>
         </label>
+        {folders.length > 0 && (
+          <label className="field">
+            <span>{t("Folder")}</span>
+            <select value={folder} onChange={(e) => setFolder(e.target.value)} data-field="folder">
+              <option value="">{t("None (top level)")}</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {all.length > 0 && (
           <div className="field">
             <span>{t("Connections")}</span>

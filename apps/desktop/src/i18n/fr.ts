@@ -2959,6 +2959,7 @@ const fr: Record<string, string> = {
   "Widget actions": "Actions du widget",
   "Already first": "Déjà en premier",
   "Already last": "Déjà en dernier",
+  "None (top level)": "Aucun (niveau principal)",
 };
 
 export default fr;

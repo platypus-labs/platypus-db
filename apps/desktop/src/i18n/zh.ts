@@ -2959,6 +2959,7 @@ const zh: Record<string, string> = {
   "Widget actions": "小组件操作",
   "Already first": "已在最前",
   "Already last": "已在最后",
+  "None (top level)": "无(顶层)",
 };
 
 export default zh;
