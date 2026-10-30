@@ -97,6 +97,7 @@ import {
 import { useCompare } from "../analysis/compare";
 import { editMeta } from "../grid/edit/meta";
 import { t, plural, msg } from "../i18n";
+import { rememberScript } from "../scripts/recent";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
 const REFRESH_CHOICES: [number, string][] = [
@@ -1468,6 +1469,7 @@ export function QueryTab({
     try {
       await api.writeTextFile(path, sql);
       onChange({ filePath: path, savedSql: sql });
+      rememberScript(path, connection.id);
     } catch (e) {
       onError(toCommandError(e).message);
     }
