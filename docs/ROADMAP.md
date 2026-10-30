@@ -122,7 +122,7 @@ per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva
 | O — Collaborazione e sync | ✅ completato |
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
-| R — Revisione grafica | 🔒 Delfa · group-r-redesign · 2026-10-30 |
+| R — Revisione grafica | libero |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
