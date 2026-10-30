@@ -96,7 +96,7 @@ async function importSqlServer(page) {
   const notes = await page.eval(`[...${dialog}.querySelectorAll('.import-note')].map(n => n.textContent)`);
   assert.equal(notes.length, 2, JSON.stringify(notes));
   assert.match(notes[0], /SQLEXPRESS/);
-  assert.match(notes[1], /Windows authentication/);
+  assert.match(notes[1], /Signs in with Windows/);
   const skipped = await page.eval(`[...${dialog}.querySelectorAll('.import-row.skipped')].map(r => r.textContent)`);
   assert.equal(skipped.length, 1, JSON.stringify(skipped));
   assert.match(skipped[0], /Legacy Oracle.*oracle · oracle_thin/);

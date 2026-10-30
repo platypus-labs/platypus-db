@@ -22,12 +22,12 @@ export default async function (page) {
   await page.waitFor(`${dialogError}.includes('no plan')`);
   await pastePlan(page, PG_BEFORE, "sqlserver");
   await page.waitFor(`${dialogError}.includes('no plan')`);
-  assert.notEqual(await page.eval(`document.querySelector('.plan-dialog')`), null, "the dialog stays open");
+  assert.equal(await page.eval(`document.querySelector('.plan-dialog') !== null`), true, "the dialog stays open");
 
   // Recognized: PostgreSQL's text, with psql's frame, analyzed, with its index suggestion.
   await pastePlan(page, PG_BEFORE);
   await page.waitFor(`${explainTab} !== undefined`, 10_000);
-  assert.equal(await page.eval(`document.querySelector('.plan-dialog')`), null);
+  assert.equal(await page.eval(`document.querySelector('.plan-dialog') === null`), true);
   assert.equal(await page.eval(`${explainTab}.querySelector('.object-title strong').textContent`), "Query plan");
   assert.equal(await page.eval(`${explainTab}.querySelector('.explain-sql').textContent`), "Pasted plan");
   assert.deepEqual(await page.eval(operations), ["HashAggregate", "Hash Join", "Seq Scan", "Hash", "Seq Scan"]);

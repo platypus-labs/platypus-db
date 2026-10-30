@@ -57,10 +57,10 @@ export default async function (page, { dir, shots }) {
   await settingsLack(dir, /sidebar_collapsed/);
   assert.equal(await page.eval(sidebarWidth), 300);
 
-  // Below the rows, the list's own menu: a new connection, or the import.
+  // Below the rows, the list's own menu: a new connection, the import, testing them all, a plan.
   await page.eval(`document.querySelector('.tree').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 150, clientY: 400 }))`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  assert.deepEqual(await page.eval(menuItems), ["New connection…", "Import connections…"]);
+  assert.deepEqual(await page.eval(menuItems), ["New connection…", "Import connections…", "Test connections", "Open query plan…"]);
   const glass = await page.eval(`getComputedStyle(document.querySelector('.context-menu')).backdropFilter`);
   assert.match(glass, /blur/);
   await page.eval(`${menuItem("New connection…")}.click()`);
@@ -163,7 +163,8 @@ export default async function (page, { dir, shots }) {
   assert.equal(await page.eval(`document.querySelectorAll('.settings-nav button').length`), 1);
   // The matches show grouped under their section, in place of the tabs.
   assert.deepEqual(await page.eval(`[...document.querySelectorAll('.settings-results > section:not([hidden]) > h3')].map(h => h.textContent)`), ["Appearance"]);
-  assert.equal(await page.eval(`document.querySelector('.modal.settings [role="tablist"]')`), null);
+  // The settings' own tabs; a panel's tabs (the agents') stay in their panel.
+  assert.equal(await page.eval(`document.querySelector('.modal.settings .settings-nav[role="tablist"]') === null`), true);
   // An action's name finds the shortcuts, filtered to it.
   // Panels the search leaves out are hidden.
   const shortcutsShown = `document.querySelector('.modal.settings .shortcuts')?.closest('section').hidden === false`;
