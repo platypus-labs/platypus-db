@@ -88,7 +88,10 @@ to the package manager.
   only the user names. Passwords DBeaver protects with its own master password cannot be read;
   those connections ask for theirs on first use, as do the ones of the other tools.
 - **Folders**: connections inside a project go in nested folders (drag them, or *Move to
-  folder*); projects in the rail go in folders too, by dropping one project on another.
+  folder*); projects in the rail go in folders too, by dropping one project on another. In
+  the rail, drag a project to the edge of another to move it there (a line shows where), onto
+  a folder to put it inside, inside an open folder to reorder it, or to the end of the rail to
+  take it out; `Esc` cancels a drag.
   Connections and folders keep the order you give them: drag one above or below another, or
   press Alt+Up / Alt+Down; a connection dropped onto another makes a new folder of the two.
 - **TLS** with libpq `sslmode` semantics, custom CAs, and client certificates for PostgreSQL and
@@ -674,8 +677,9 @@ through the MCP server.
 - **Quick query**: the tray icon (Settings › Appearance; on Linux it needs AppIndicator), or
   *Quick query…* in the palette, opens a small query window over the others, on the
   connection used last.
-- **Drag a table or a column** from the navigator into the SQL editor: its name, or a `SELECT`
-  in an empty editor or with `Shift` held.
+- **Drag a table or a column** from the navigator into the SQL editor: its name where you drop
+  it, or a `SELECT` in an empty editor or with `Shift` held. Dropped in a text field, e.g. a
+  filter, it gives its name.
 - **Activity log** (the pulse icon on top): the errors shown and the work done in the
   background, such as connections and catalog loads, with their time, to copy into a report.
   A query that runs longer than 10 seconds (Settings › SQL editor) ends with a system
