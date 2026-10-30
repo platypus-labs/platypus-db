@@ -95,7 +95,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  height: var(--control-md);
+  height: 28px;
   padding-right: var(--space-6);
   border-radius: var(--radius-xl);
   cursor: default;
@@ -142,9 +142,14 @@
 
 .tree-icon {
   display: flex;
-  width: 14px;
+  width: var(--icon-md);
   flex: none;
   color: var(--fg-muted);
+}
+
+.tree-icon svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .tree-icon[data-kind="database"] {

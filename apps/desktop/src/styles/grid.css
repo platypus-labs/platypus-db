@@ -184,7 +184,7 @@
   gap: var(--space-6);
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border);
-  min-height: 28px;
+  min-height: var(--control-md);
 }
 
 .value-name {
@@ -233,7 +233,7 @@
   gap: var(--space-6);
   padding: var(--space-4) var(--space-8);
   border-bottom: 1px solid var(--border);
-  min-height: 28px;
+  min-height: var(--control-md);
   white-space: nowrap;
 }
 
@@ -243,7 +243,7 @@
 
 .edit-count {
   font-size: var(--text-sm);
-  color: var(--warn, #e8590c);
+  color: var(--warn);
 }
 
 .edit-error {
