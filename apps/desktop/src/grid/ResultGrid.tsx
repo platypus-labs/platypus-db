@@ -249,14 +249,18 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               ref={grid}
               columns={computed.columns}
               resultColumns={columns.length}
-              headerTitle={(col) =>
-                [
-                  notes ? annotation(noteOf(col)) : undefined,
-                  columns[col] && sensitive(columns[col]) ? t("Sensitive column") : undefined,
-                  headerHint,
-                ]
-                  .filter(Boolean)
-                  .join("\n") || undefined
+              headerTitle={
+                // Sensitive columns are told apart where their marks are known or masking is on.
+                notes || headerHint || mask
+                  ? (col) =>
+                      [
+                        notes ? annotation(noteOf(col)) : undefined,
+                        columns[col] && sensitive(columns[col]) ? t("Sensitive column") : undefined,
+                        headerHint,
+                      ]
+                        .filter(Boolean)
+                        .join("\n") || undefined
+                  : undefined
               }
               headerVersion={notesVersion}
               headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}

@@ -231,16 +231,20 @@ export function ExportDialog({ name, driver, loadedRows, complete, transactionOp
     });
   }
 
+  /** The options sent: the sensitive columns as chosen; a profile opened without its result
+   *  keeps the columns it masks or leaves out. */
+  const chosenOptions = () => (sensitive.length ? withSensitive(sentOptions(options), sensitive, choice) : sentOptions(options));
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (urlKept) return;
-    const chosen = withSensitive(sentOptions(options), sensitive, choice);
+    const chosen = chosenOptions();
     const path = await askPath(chosen);
     if (path) onExport(path, chosen, source);
   }
 
   async function build() {
-    const chosen = withSensitive(sentOptions(options), sensitive, choice);
+    const chosen = chosenOptions();
     const path = await askPath(chosen);
     return path && query ? { kind: "export_query" as const, ...query, path, options: chosen } : null;
   }

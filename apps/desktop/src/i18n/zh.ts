@@ -2012,7 +2012,6 @@ const zh: Record<string, string> = {
   "Transaction from {time}": "事务开始于 {time}",
   "Committed on its own": "单独提交",
   "Mask sensitive data (for screen sharing)": "遮蔽敏感数据（用于屏幕共享）",
-  "Values of the columns below show as dots. Copies and exports keep the real values.": "下列列的值显示为圆点。复制和导出保留真实值。",
   "Comma-separated, e.g. inet, bytea; * is any characters.": "以逗号分隔，例如 inet, bytea；* 表示任意字符。",
   "Mask sensitive data": "遮蔽敏感数据",
   "{dots} Masked while the screen may be shared.": "{dots} 屏幕可能被共享时已遮蔽。",
@@ -2558,6 +2557,7 @@ const zh: Record<string, string> = {
   "Used by": "使用者",
   "Line": "行",
   "Not named by any view, routine, trigger or saved script: {columns}": "没有任何视图、例程、触发器或已保存脚本引用：{columns}",
+  "Values of the sensitive columns show as dots. Copies keep the real values; an export asks.": "敏感列的值显示为圆点。复制保留真实值；导出时会询问。",
 };
 
 export default zh;

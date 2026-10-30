@@ -16,7 +16,7 @@ export const maskSetting = defineSetting<boolean>({
   key: "safety.mask",
   section: "Safety",
   label: "Mask sensitive data (for screen sharing)",
-  description: "Values of the columns below show as dots. Copies and exports keep the real values.",
+  description: "Values of the sensitive columns show as dots. Copies keep the real values; an export asks.",
   default: false,
   control: { type: "boolean" },
 });
@@ -67,7 +67,8 @@ export function useSensitive(table?: TableScope | null): (column: Column) => boo
       const mark = scope && sensitiveMark(scope.connectionId, catalogKey(scope.database, scope.schema, scope.table, column.name));
       return isSensitive(mark, column, n, t);
     };
-  }, [scope, names, types, marks]);
+    // The scope's fields, not the object: callers build it on each render.
+  }, [scope?.connectionId, scope?.database, scope?.schema, scope?.table, names, types, marks]);
 }
 
 /** Whether a column's values show masked now; `null` while masking is off. */

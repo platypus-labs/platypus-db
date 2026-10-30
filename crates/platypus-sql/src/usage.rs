@@ -35,10 +35,9 @@ fn names(sql: &str, dialect: Dialect, first: usize, out: &mut Vec<Name>) {
                 }
             }
             TokenKind::String => {
+                // The opening tag holds no line break: the body starts on the token's line.
                 if let Some(body) = dollar_body(text) {
-                    let offset = text.find(body).unwrap_or(0);
-                    let before = text[..offset].matches('\n').count();
-                    names(body, dialect, line + before, out);
+                    names(body, dialect, line, out);
                 }
             }
             _ => {}

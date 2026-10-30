@@ -147,7 +147,8 @@ pub struct ColumnUse {
 /// Where a table's columns are used, with the folder the scripts' paths start from.
 #[derive(Debug, Serialize)]
 pub struct ColumnUsage {
-    pub scripts_root: PathBuf,
+    /// `None` when the scripts' folder cannot be read: no script is searched.
+    pub scripts_root: Option<PathBuf>,
     pub uses: Vec<ColumnUse>,
 }
 
@@ -199,7 +200,7 @@ pub async fn column_usage(
                 name: name.to_owned(),
                 parent: parent.map(str::to_owned),
                 line,
-                excerpt: platypus_sql::usage::excerpt(sql, line, 120),
+                excerpt: platypus_sql::usage::excerpt(sql, line, EXCERPT_CHARS),
             });
         }
     };
@@ -209,22 +210,58 @@ pub async fn column_usage(
             found(&ddl, &mut out, &o.name, Some(o.kind), o.parent.as_deref());
         }
     }
-    let root = super::scripts::root(&state, project)?;
-    let links = platypus_store::read_script_links(&root);
-    for entry in platypus_store::list_scripts(&root) {
-        let linked = links.get(&entry.path);
-        if entry.folder || linked.is_some_and(|c| *c != session.connection_id) {
-            continue;
-        }
-        if let Ok(script) = platypus_store::read_script(&root, &entry.path, SCRIPT_BYTES) {
-            found(&script.text, &mut out, &entry.path, None, None);
-        }
+    // The scripts are files: read off the async threads. Without their folder, the objects
+    // still tell where the columns are used.
+    let scripts_root = super::scripts::root(&state, project).ok();
+    if let Some(root) = scripts_root.clone() {
+        let (connection, table, columns) = (session.connection_id, table.clone(), columns.clone());
+        let scripts = tokio::task::spawn_blocking(move || {
+            script_uses(&root, connection, dialect, &table, &columns)
+        })
+        .await
+        .map_err(|e| CommandError::new("io", e.to_string()))?;
+        out.extend(scripts);
     }
     Ok(ColumnUsage {
-        scripts_root: root,
+        scripts_root,
         uses: out,
     })
 }
+
+/// The uses of `columns` of `table` in the saved scripts under `root` that open on
+/// `connection` or on none.
+fn script_uses(
+    root: &std::path::Path,
+    connection: Uuid,
+    dialect: platypus_sql::Dialect,
+    table: &str,
+    columns: &[String],
+) -> Vec<ColumnUse> {
+    let links = platypus_store::read_script_links(root);
+    let mut out = Vec::new();
+    for entry in platypus_store::list_scripts(root) {
+        if entry.folder || links.get(&entry.path).is_some_and(|c| *c != connection) {
+            continue;
+        }
+        let Ok(script) = platypus_store::read_script(root, &entry.path, SCRIPT_BYTES) else {
+            continue;
+        };
+        for (i, line) in platypus_sql::usage::column_uses(&script.text, dialect, table, columns) {
+            out.push(ColumnUse {
+                column: columns[i].clone(),
+                kind: None,
+                name: entry.path.clone(),
+                parent: None,
+                line,
+                excerpt: platypus_sql::usage::excerpt(&script.text, line, EXCERPT_CHARS),
+            });
+        }
+    }
+    out
+}
+
+/// The longest excerpt of the line naming a column.
+const EXCERPT_CHARS: usize = 120;
 
 /// How much of a saved script is searched for the columns it uses.
 const SCRIPT_BYTES: usize = 4 << 20;

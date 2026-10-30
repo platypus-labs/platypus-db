@@ -2012,7 +2012,6 @@ const es: Record<string, string> = {
   "Transaction from {time}": "Transacción desde las {time}",
   "Committed on its own": "Confirmada por sí sola",
   "Mask sensitive data (for screen sharing)": "Enmascarar datos sensibles (al compartir pantalla)",
-  "Values of the columns below show as dots. Copies and exports keep the real values.": "Los valores de las columnas de abajo se ven como puntos. Copias y exportaciones mantienen los valores reales.",
   "Comma-separated, e.g. inet, bytea; * is any characters.": "Separadas por comas, p. ej. inet, bytea; * es cualquier carácter.",
   "Mask sensitive data": "Enmascarar datos sensibles",
   "{dots} Masked while the screen may be shared.": "{dots} Enmascarado mientras la pantalla pueda estar compartida.",
@@ -2558,6 +2557,7 @@ const es: Record<string, string> = {
   "Used by": "Usado por",
   "Line": "Línea",
   "Not named by any view, routine, trigger or saved script: {columns}": "No nombradas por ninguna vista, rutina, trigger o script guardado: {columns}",
+  "Values of the sensitive columns show as dots. Copies keep the real values; an export asks.": "Los valores de las columnas sensibles se muestran como puntos. Las copias conservan los valores reales; una exportación pregunta.",
 };
 
 export default es;

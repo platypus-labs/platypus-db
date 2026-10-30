@@ -183,28 +183,53 @@ fn as_text(data_type: &DataType, format: Format) -> bool {
     format == Format::Parquet && matches!(data_type, DataType::Interval(_) | DataType::Duration(_))
 }
 
-/// The columns of `schema` the file gets, in order, with whether each is masked: all but
-/// those `options` leaves out.
-fn kept_columns(schema: &Schema, options: &ExportOptions) -> Vec<(usize, bool)> {
+/// How a column of the file shows its values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Masked {
+    No,
+    /// As [`MASK`], the column written as text.
+    Dots,
+    /// As NULL, in its own type: SQL statements, whose text in a number or date column would
+    /// not run again.
+    Null,
+}
+
+/// The columns of `schema` the file gets, in order, with how each is masked: all but those
+/// `options` leaves out.
+fn kept_columns(schema: &Schema, options: &ExportOptions) -> Vec<(usize, Masked)> {
     schema
         .fields()
         .iter()
         .enumerate()
         .filter(|(_, f)| !options.omitted.iter().any(|o| o == f.name()))
-        .map(|(i, f)| (i, options.masked.iter().any(|m| m == f.name())))
+        .map(|(i, f)| {
+            let masked = if !options.masked.iter().any(|m| m == f.name()) {
+                Masked::No
+            } else if options.format == Format::Sql
+                && !matches!(
+                    f.data_type(),
+                    DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
+                )
+            {
+                Masked::Null
+            } else {
+                Masked::Dots
+            };
+            (i, masked)
+        })
         .collect()
 }
 
-/// The schema of the `kept` columns of `schema`, masked ones as text.
-fn written_schema(schema: &Schema, kept: &[(usize, bool)]) -> Schema {
+/// The schema of the `kept` columns of `schema`, those masked with dots as text.
+fn written_schema(schema: &Schema, kept: &[(usize, Masked)]) -> Schema {
     Schema::new(
         kept.iter()
             .map(|&(i, masked)| {
                 let f = schema.field(i);
-                if masked {
-                    Field::new(f.name(), DataType::Utf8, true)
-                } else {
-                    f.clone()
+                match masked {
+                    Masked::No => f.clone(),
+                    Masked::Dots => Field::new(f.name(), DataType::Utf8, true),
+                    Masked::Null => f.clone().with_nullable(true),
                 }
             })
             .collect::<Vec<_>>(),
@@ -275,7 +300,7 @@ pub struct Exporter {
     sink: Option<Sink>,
     schema: SchemaRef,
     /// The columns of the result written, in order, each masked or not.
-    kept: Vec<(usize, bool)>,
+    kept: Vec<(usize, Masked)>,
     format: Format,
     partial: PathBuf,
     target: PathBuf,
@@ -379,8 +404,10 @@ impl Exporter {
             .zip(self.schema.fields())
             .map(|(&(i, masked), field)| {
                 let column = batch.column(i);
-                if masked {
+                if masked == Masked::Dots {
                     Ok(masked_column(column.as_ref()))
+                } else if masked == Masked::Null {
+                    Ok(arrow_array::new_null_array(field.data_type(), column.len()))
                 } else if column.data_type() == field.data_type() {
                     Ok(Arc::clone(column))
                 } else {

@@ -163,7 +163,9 @@ copy updates by replacing its executable; the welcome screen says `portable` bes
   viewer's headers say which they are, and an export can keep, mask or leave them out.
 - **Used by**, in a table's tab: for each column, the views, routines and triggers of its schema
   and the saved scripts of the project that name it, with the line, and the columns named
-  nowhere. Comments and strings do not count; a PostgreSQL routine's `$$` body does.
+  nowhere. A text counts when it names the table and the column (a column of the same name of
+  another table in it counts too). Comments and strings do not; a PostgreSQL routine's `$$`
+  body does.
 - **Schema documentation**: right-click a schema, *Export documentation…*, for a Markdown file
   or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes,
   tags and an ER diagram of each schema of up to 100 tables.

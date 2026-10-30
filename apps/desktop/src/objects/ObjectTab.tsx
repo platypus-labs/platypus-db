@@ -483,7 +483,10 @@ function ColumnUsageSection(props: {
     void (async () => {
       try {
         const sid = await props.sideSession();
-        if (sid === null) return;
+        if (sid === null) {
+          if (live) setError(t("Not connected."));
+          return;
+        }
         const read = await api.columnUsage(sid, schema, table, columns, workbench().activeProject()?.id ?? null);
         if (live) setUsage(read);
       } catch (e) {
@@ -501,7 +504,7 @@ function ColumnUsageSection(props: {
   const open = (u: ColumnUse) =>
     u.kind
       ? openObjectTab(connectionId, { database: props.database, schema, currentSchema: props.currentSchema, name: u.name, kind: u.kind, parent: u.parent })
-      : void openScriptFile(scriptFile(usage.scripts_root, u.name), connectionId).catch((e: unknown) => workbench().showError(toCommandError(e).message));
+      : usage.scripts_root && void openScriptFile(scriptFile(usage.scripts_root, u.name), connectionId).catch((e: unknown) => workbench().showError(toCommandError(e).message));
   return (
     <>
       <MetaTable

@@ -1520,7 +1520,8 @@ export interface ColumnUse {
 }
 
 export interface ColumnUsage {
-  scripts_root: string;
+  /** `null` when the scripts' folder cannot be read: no script is searched. */
+  scripts_root: string | null;
   uses: ColumnUse[];
 }
 

@@ -2012,7 +2012,6 @@ const de: Record<string, string> = {
   "Transaction from {time}": "Transaktion ab {time}",
   "Committed on its own": "Einzeln committet",
   "Mask sensitive data (for screen sharing)": "Sensible Daten maskieren (für Bildschirmfreigabe)",
-  "Values of the columns below show as dots. Copies and exports keep the real values.": "Werte der Spalten unten erscheinen als Punkte. Kopien und Exporte behalten die echten Werte.",
   "Comma-separated, e.g. inet, bytea; * is any characters.": "Durch Kommas getrennt, z. B. inet, bytea; * steht für beliebige Zeichen.",
   "Mask sensitive data": "Sensible Daten maskieren",
   "{dots} Masked while the screen may be shared.": "{dots} Maskiert, solange der Bildschirm geteilt sein kann.",
@@ -2558,6 +2557,7 @@ const de: Record<string, string> = {
   "Used by": "Verwendet von",
   "Line": "Zeile",
   "Not named by any view, routine, trigger or saved script: {columns}": "Von keiner View, Routine, keinem Trigger oder gespeicherten Skript genannt: {columns}",
+  "Values of the sensitive columns show as dots. Copies keep the real values; an export asks.": "Werte sensibler Spalten erscheinen als Punkte. Kopien behalten die echten Werte; ein Export fragt nach.",
 };
 
 export default de;
