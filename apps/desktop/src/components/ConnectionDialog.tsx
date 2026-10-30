@@ -620,39 +620,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </select>
                 </label>
               )}
-              <label className="field">
-                <span>{t("Type")}</span>
-                <select
-                  value={conn.connection_type ?? ""}
-                  onChange={(e) => set("connection_type", (e.target.value || null) as ConnectionType | null)}
-                  title={t("Production asks before changes and starts in manual commit")}
-                >
-                  <option value="">{t("None")}</option>
-                  {CONNECTION_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {t(type.label)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>{t("Color")}</span>
-                <div className="swatches">
-                  {COLORS.map((c) => (
-                    <button
-                      type="button"
-                      key={c || "none"}
-                      className={`swatch${(conn.color ?? "") === c ? " selected" : ""}`}
-                      style={{ background: c || "transparent" }}
-                      title={c || t("No color")}
-                      onClick={() => set("color", c || null)}
-                    />
-                  ))}
-                </div>
-              </label>
             </div>
 
             {!server ? (
+              <section className="form-section">
+                <h3>{t("Connection")}</h3>
               <label className="field">
                 <span>{t("Database file")}</span>
                 <div className="row tight">
@@ -667,7 +639,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </button>
                 </div>
               </label>
+              </section>
             ) : adbcProfile ? (
+              <section className="form-section">
+                <h3>{t("Connection")}</h3>
               <ProfileFields
                 conn={conn}
                 profile={adbcProfile}
@@ -687,8 +662,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   )
                 }
               />
+              </section>
             ) : (
               <>
+                <section className="form-section">
+                <h3>{t("Connection")}</h3>
                 {conn.driver === "plugin" && (
                   <PluginDriverField
                     value={conn.options?.plugin ?? ""}
@@ -821,6 +799,39 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       />
                     </label>
                   )}
+                  {conn.driver === "postgres" && (
+                    <label className="field">
+                      <span>{t("Connection pooler")}</span>
+                      <select
+                        value={conn.options?.pooler ?? ""}
+                        onChange={(e) => setOption("pooler", e.target.value)}
+                        data-field="pooler"
+                        title={t("In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.")}
+                      >
+                        <option value="">{t("None or session mode")}</option>
+                        <option value="transaction">{t("Transaction mode (PgBouncer, Supavisor, Neon)")}</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
+                )}
+                {conn.driver === "postgres" && poolerHint && (
+                  <div className="notice small pooler-hint" role="status">
+                    <span>
+                      {t("This is {service}'s pooler in transaction mode.", { service: poolerHint.service })}
+                    </span>
+                    <button type="button" onClick={() => setOption("pooler", "transaction")}>
+                      {t("Use transaction mode")}
+                    </button>
+                  </div>
+                )}
+                {VENDOR_DRIVERS.includes(conn.driver) ? <VendorDriverState driver={conn.driver} /> : null}
+                </section>
+
+                <section className="form-section">
+                <h3>{t("Authentication")}</h3>
+                {!urlMode && (!libsql || conn.driver === "oracle") && (
+                <div className="field-grid">
                   {!libsql && (
                     <label className="field">
                       <span>{t("User")}</span>
@@ -857,34 +868,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       </select>
                     </label>
                   )}
-                  {conn.driver === "postgres" && (
-                    <label className="field">
-                      <span>{t("Connection pooler")}</span>
-                      <select
-                        value={conn.options?.pooler ?? ""}
-                        onChange={(e) => setOption("pooler", e.target.value)}
-                        data-field="pooler"
-                        title={t("In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.")}
-                      >
-                        <option value="">{t("None or session mode")}</option>
-                        <option value="transaction">{t("Transaction mode (PgBouncer, Supavisor, Neon)")}</option>
-                      </select>
-                    </label>
-                  )}
                 </div>
                 )}
-                {conn.driver === "postgres" && poolerHint && (
-                  <div className="notice small pooler-hint" role="status">
-                    <span>
-                      {t("This is {service}'s pooler in transaction mode.", { service: poolerHint.service })}
-                    </span>
-                    <button type="button" onClick={() => setOption("pooler", "transaction")}>
-                      {t("Use transaction mode")}
-                    </button>
-                  </div>
-                )}
-                {VENDOR_DRIVERS.includes(conn.driver) ? <VendorDriverState driver={conn.driver} /> : null}
-
                 <div className="field-grid">
                   <label className="field">
                     <span>{t("{secret} from", { secret })}</span>
@@ -977,6 +962,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     })}
                   </p>
                 )}
+                </section>
               </>
             )}
 
@@ -1007,6 +993,40 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               </small>
             </div>
 
+            <section className="form-section">
+            <h3>{t("Appearance and safety")}</h3>
+            <div className="row">
+              <label className="field">
+                <span>{t("Type")}</span>
+                <select
+                  value={conn.connection_type ?? ""}
+                  onChange={(e) => set("connection_type", (e.target.value || null) as ConnectionType | null)}
+                  title={t("Production asks before changes and starts in manual commit")}
+                >
+                  <option value="">{t("None")}</option>
+                  {CONNECTION_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {t(type.label)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>{t("Color")}</span>
+                <div className="swatches">
+                  {COLORS.map((c) => (
+                    <button
+                      type="button"
+                      key={c || "none"}
+                      className={`swatch${(conn.color ?? "") === c ? " selected" : ""}`}
+                      style={{ background: c || "transparent" }}
+                      title={c || t("No color")}
+                      onClick={() => set("color", c || null)}
+                    />
+                  ))}
+                </div>
+              </label>
+            </div>
             <label className="check">
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />
               {t("Read-only (warn before modifying data)")}
@@ -1043,6 +1063,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             </label>
 
             <AgentAccessField conn={conn} onChange={(access) => set("agent_access", access)} />
+            </section>
 
             {projects.length > 0 && (
               <div className="field">

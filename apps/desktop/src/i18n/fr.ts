@@ -2912,6 +2912,7 @@ const fr: Record<string, string> = {
   "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept.": "{name} ({what}) différait de celui de {machine} à la première synchronisation : la version synchronisée a été gardée.",
   "Sync: {n} item differed from the synced copy at this computer's first sync. The synced version was kept; see Settings, Sync.": "Synchronisation : {n} élément différait de la copie synchronisée à la première synchronisation de cet ordinateur. La version synchronisée a été gardée ; voir Réglages, Synchronisation.",
   "Sync: {n} items differed from the synced copy at this computer's first sync. The synced versions were kept; see Settings, Sync.": "Synchronisation : {n} éléments différaient de la copie synchronisée à la première synchronisation de cet ordinateur. Les versions synchronisées ont été gardées ; voir Réglages, Synchronisation.",
+  "Appearance and safety": "Apparence et sécurité",
 };
 
 export default fr;

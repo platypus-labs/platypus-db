@@ -2912,6 +2912,7 @@ const zh: Record<string, string> = {
   "{name} ({what}) differed from {machine}'s at the first sync: the synced version was kept.": "{name}（{what}）在首次同步时与 {machine} 上的不同：已保留同步的版本。",
   "Sync: {n} item differed from the synced copy at this computer's first sync. The synced version was kept; see Settings, Sync.": "同步：本电脑首次同步时，有 {n} 项与同步副本不同。已保留同步的版本；请查看“设置”中的“同步”。",
   "Sync: {n} items differed from the synced copy at this computer's first sync. The synced versions were kept; see Settings, Sync.": "同步：本电脑首次同步时，有 {n} 项与同步副本不同。已保留同步的版本；请查看“设置”中的“同步”。",
+  "Appearance and safety": "外观与安全",
 };
 
 export default zh;
