@@ -12,12 +12,17 @@ use serde::{Deserialize, Serialize};
 mod install;
 mod registry;
 mod vendor;
+mod versions;
 
 pub use registry::{Package, Registry};
 pub use tokio_util::sync::CancellationToken;
 pub use vendor::{
     Archive, Program, VENDOR_PACKAGES, VendorPackage, install_vendor, installed_vendor, register,
     remove_vendor, unregister, vendor_package,
+};
+pub use versions::{
+    InstalledVersion, Update, activate, last_update_check, migrate_layout, newer_than,
+    record_update_check, remove_version, update_check_due, versions,
 };
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -131,29 +136,19 @@ pub(crate) fn is_plain_name(name: &str) -> bool {
     )
 }
 
-/// The installed driver `name`, the newest if several versions are there.
+/// The installed driver `name`: its active version, which is the newest unless another was
+/// chosen with [`activate`].
 #[must_use]
 pub fn installed(data_dir: &Path, name: &str) -> Option<Installed> {
     installed_in(&adbc_dir(data_dir), name)
 }
 
-/// The newest version of `name` under `root`, unless it was removed.
+/// The active version of `name` under `root`, unless it was removed.
 pub(crate) fn installed_in(root: &Path, name: &str) -> Option<Installed> {
-    if !is_plain_name(name) {
-        return None;
-    }
-    let dir = root.join(name);
-    if dir.join(REMOVED_MARK).exists() {
-        return None;
-    }
-    std::fs::read_dir(dir)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter_map(|e| read_installed(&e.path()))
-        .max_by(|a, b| registry::compare_versions(&a.version, &b.version))
+    versions::active_in(root, name)
 }
 
-fn read_installed(dir: &Path) -> Option<Installed> {
+pub(crate) fn read_installed(dir: &Path) -> Option<Installed> {
     let text = std::fs::read_to_string(dir.join("driver.toml")).ok()?;
     let mut installed: Installed = toml::from_str(&text).ok()?;
     // Stored relative, so the data folder can move.
@@ -207,7 +202,16 @@ pub fn purge_removed(data_dir: &Path) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }
+    migrate_layout(data_dir);
     purge_marked(&adbc_dir(data_dir));
+    for entry in std::fs::read_dir(adbc_dir(data_dir))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        // A version removed while Windows kept its library locked.
+        purge_marked(&entry.path());
+    }
     vendor::purge_removed_vendor(data_dir);
 }
 

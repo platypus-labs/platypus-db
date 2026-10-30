@@ -64,7 +64,10 @@ impl Registry {
                     license: package.license.clone(),
                     library: PathBuf::from(library),
                 };
-                place(&tmp, &target, record)
+                let placed = place(&tmp, &target, record)?;
+                // The version just installed is the one the person asked for.
+                crate::versions::set_active(&target, &placed.version)?;
+                Ok(placed)
             });
             let _ = std::fs::remove_dir_all(&tmp);
             result
