@@ -141,12 +141,18 @@ export class Page {
   }
 
   /** Shows a tab of the open Settings dialog, named by its section in English (the language
-   *  of the interface does not matter), and waits for its panel. */
-  async settingsTab(section) {
+   *  of the interface does not matter), and waits for its panel. With `sub`, also shows that
+   *  sub-tab of the page (by its English label). */
+  async settingsTab(section, sub) {
     const tab = `document.querySelector('.modal.settings [role="tab"][data-section=${JSON.stringify(section)}]')`;
     await this.waitFor(`${tab} != null`);
     await this.eval(`${tab}.click()`);
     await this.waitFor(`${tab}.getAttribute('aria-selected') === 'true' && document.querySelector('.settings-body')?.getAttribute('aria-labelledby') === ${tab}.id`);
+    if (sub === undefined) return;
+    const subTab = `document.querySelector('.modal.settings [role=tab][data-subtab=${JSON.stringify(sub)}]')`;
+    await this.waitFor(`${subTab} != null`);
+    await this.eval(`${subTab}.click()`);
+    await this.waitFor(`${subTab}.getAttribute('aria-selected') === 'true'`);
   }
 
   async type(text) {

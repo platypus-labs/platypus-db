@@ -30,7 +30,7 @@ export const ready = `document.querySelector('.shell') !== null`;
 export default async function (page, { dir }) {
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
-  await page.settingsTab("Appearance");
+  await page.settingsTab("Appearance", "Language and text");
 
   const font = `${setting("SQL editor font size")}.querySelector('input')`;
   await page.eval(`${font}.focus(); ${font}.select()`);

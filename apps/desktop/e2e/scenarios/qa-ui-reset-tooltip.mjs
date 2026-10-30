@@ -27,9 +27,9 @@ export const ready = `document.querySelector('.shell') !== null`;
 export default async function (page) {
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
-  await page.settingsTab("Appearance");
-  assert.deepEqual(
-    [await page.eval(resetTitle("Corners")), await page.eval(resetTitle("Grid rows")), await page.eval(resetTitle("Title bar"))],
-    ["Default: Rounded", "Default: Normal", "Default: In the top bar"],
-  );
+  await page.settingsTab("Appearance", "Density");
+  const density = [await page.eval(resetTitle("Corners")), await page.eval(resetTitle("Grid rows"))];
+  await page.settingsTab("Appearance", "Window");
+  const window = await page.eval(resetTitle("Title bar"));
+  assert.deepEqual([...density, window], ["Default: Rounded", "Default: Normal", "Default: In the top bar"]);
 }

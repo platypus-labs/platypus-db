@@ -166,12 +166,14 @@ export default async function (page, { dir, shots }) {
 
   // The app draws the title bar in its top bar, with the window buttons; "System" gives it back.
   assert.equal(await page.eval(`document.querySelectorAll('.window-controls button').length`), 3);
+  await page.settingsTab("Appearance", "Window");
   await page.eval(change(`${setting("Title bar")}.querySelector('select')`, "system"));
   await page.waitFor(`document.querySelector('.window-controls') === null`);
   assert.equal(await page.eval(`document.querySelector('.topbar').hasAttribute('data-tauri-drag-region')`), false);
   await page.eval(change(`${setting("Title bar")}.querySelector('select')`, "app"));
   await page.waitFor(`document.querySelectorAll('.window-controls button').length === 3`);
 
+  await page.settingsTab("Appearance", "Density");
   await page.eval(change(`${setting("Grid rows")}.querySelector('select')`, "compact"));
   await page.waitFor(`${cssVar("--grid-row-h")} === '20'`);
 
@@ -183,6 +185,7 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`Math.abs(window.devicePixelRatio - ${before}) < 0.01`);
 
   // Reset puts the theme's accent back.
+  await page.settingsTab("Appearance", "Theme");
   await page.eval(`[...${setting("Accent color")}.querySelectorAll('button')].find(b => b.textContent === 'Reset').click()`);
   await page.waitFor(`${cssVar("--accent")} === '#88c0d0'`);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);

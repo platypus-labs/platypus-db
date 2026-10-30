@@ -33,7 +33,7 @@ export default async function (page) {
 
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
-  await page.settingsTab("SQL editor");
+  await page.settingsTab("SQL editor", "Formatting");
   const indent = `${setting("Indentation when formatting (spaces)")}.querySelector('input')`;
   await page.eval(`${indent}.focus(); ${indent}.select()`);
   await page.type("2.5");
