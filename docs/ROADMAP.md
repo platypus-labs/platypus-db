@@ -119,7 +119,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ fatto (P1, P2; P3 in parte) |
 | O — Collaborazione e sync | 🔒 Delfa · group-o-collab · 2026-10-30 |
-| P — Piattaforma, qualità e release | libero |
+| P — Piattaforma, qualità e release | 🔒 Claude · claude/exciting-galileo-ukai8j · 2026-10-30 |
 | Q — Documentazione e catalogo dei dati | 🔒 Delfa · group-q-sensitive · 2026-10-30 |
 | R — Revisione grafica | ⏸ in attesa: si prende quando tutti gli altri gruppi sono completati |
 | S — Collaudo finale | ⏸ in attesa: si prende dopo il gruppo R |
