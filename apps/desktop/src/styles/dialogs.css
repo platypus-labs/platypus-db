@@ -580,6 +580,36 @@ button.primary.danger:hover:not(:disabled) {
   border-left: 1px solid var(--border);
 }
 
+/* The head of a page: its icon, the title and one line about it. */
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+.settings-head-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--control-xl);
+  height: var(--control-xl);
+  border-radius: var(--radius-xl);
+  background: var(--active);
+  color: var(--accent);
+}
+
+.settings-head h3 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.settings-head p {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
 /* While searching, the matches of every section, grouped under their section's name. */
 .settings-results > section {
   display: flex;

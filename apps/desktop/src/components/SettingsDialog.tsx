@@ -5,7 +5,7 @@ import { ThemesPanel } from "../themes/ThemesPanel";
 import { toCommandError } from "../api";
 import { type SettingDef, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
-import { Icon } from "../ui/Icon";
+import { Icon, type IconName } from "../ui/Icon";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
@@ -40,6 +40,42 @@ const PANELS: {
     render: (search) => <ShortcutsPanel search={search} />,
   },
 ];
+
+/** The icon and one line about each page, shown above its content. */
+const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
+  "Appearance": { icon: "theme", about: msg("Language, theme, colors and the size of the interface.") },
+  "Navigator": { icon: "sidebar", about: msg("How the navigator lists your databases and objects.") },
+  "SQL editor": { icon: "sql", about: msg("Editing, completion and checking of SQL.") },
+  "Results": { icon: "table", about: msg("How results are shown, formatted and exported.") },
+  "Safety": { icon: "lock", about: msg("What PlatypusDB asks before changes, and what it blocks.") },
+  "Connections": { icon: "database", about: msg("Checks on open connections.") },
+  "Toolbar": { icon: "settings", about: msg("Which buttons the editor toolbar shows.") },
+  "Performance": { icon: "activity", about: msg("When slow queries are marked.") },
+  "Tabs": { icon: "split", about: msg("How open tabs are arranged.") },
+  "Themes": { icon: "theme", about: msg("Import, export and choose the color themes.") },
+  "Master password": { icon: "key", about: msg("Protects saved passwords with one password of yours.") },
+  "Sync": { icon: "refresh", about: msg("Keep your settings and connections in step across computers.") },
+  "Agents": { icon: "agent", about: msg("Connect assistants and tools that work with your databases.") },
+  "Drivers": { icon: "database", about: msg("Database drivers installed and available to download.") },
+  "Plugins": { icon: "extension", about: msg("Add-ons that extend PlatypusDB.") },
+  "Diagnostics": { icon: "activity", about: msg("Logs and reports to help find and fix problems.") },
+  "Keyboard shortcuts": { icon: "terminal", about: msg("Every command and its key combination.") },
+};
+
+function PageHeader({ page }: { page: string }) {
+  const head = PAGE_HEAD[page];
+  return (
+    <div className="settings-head">
+      <span className="settings-head-icon">
+        <Icon name={head?.icon ?? "settings"} size={18} />
+      </span>
+      <div>
+        <h3>{t(page)}</h3>
+        {head && <p>{t(head.about)}</p>}
+      </div>
+    </div>
+  );
+}
 
 /** The section shown last, opened again next time; stored without a Settings entry. */
 const SECTION_KEY = "ui.settings_section";
@@ -207,7 +243,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               // Its first content, the heading, takes no focus: the panel does, after the tabs.
               tabIndex={0}
             >
-              <h3>{t(current)}</h3>
+              <PageHeader page={current} />
               {sections.get(current)?.map(row)}
               {panel?.render("")}
             </section>
