@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Project, toCommandError } from "../api";
 import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
+import { openSharedProject } from "./shared";
 
 /** The colors offered for a project; any other can be picked too. */
 export const PROJECT_COLORS = ["#6c63ff", "#d08f20", "#3d7bf7", "#a46be0", "#2f9e6e", "#e05a5a", "#1aa3b8", "#8a93a3"];
@@ -98,6 +99,18 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
         </label>
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">
+          {project === null && (
+            <button
+              type="button"
+              data-action="open-shared"
+              onClick={() => {
+                onClose();
+                void openSharedProject();
+              }}
+            >
+              {t("Open shared project…")}
+            </button>
+          )}
           <span className="spacer" />
           <button type="button" onClick={onClose}>
             {t("Cancel")}

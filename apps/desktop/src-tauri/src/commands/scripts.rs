@@ -34,6 +34,18 @@ fn io(path: &Path, e: &std::io::Error) -> CommandError {
 
 /// The project's folder, created on first use.
 pub(super) fn root(state: &AppState, project: Option<Uuid>) -> CommandResult<PathBuf> {
+    // A shared project keeps its scripts in the shared folder, so version control or the
+    // shared drive sees them.
+    if let Some(project) = project
+        && let Some(link) = state.with_store(|s| {
+            Ok(s.projects()
+                .iter()
+                .find(|p| p.id == project)
+                .and_then(|p| p.shared.clone()))
+        })?
+    {
+        return super::shared_projects::scripts_root(&link.path);
+    }
     let base = state
         .scripts
         .as_ref()

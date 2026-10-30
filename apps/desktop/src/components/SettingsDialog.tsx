@@ -10,6 +10,7 @@ import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
 import { MasterPasswordPanel } from "./MasterPassword";
+import { SyncPanel } from "../sync/SyncPanel";
 import { msg, t } from "../i18n";
 import { settingNumber } from "./settingValue";
 
@@ -26,6 +27,7 @@ const PANELS: {
 }[] = [
   { title: msg("Themes"), keywords: "theme import export JSON colors appearance file", render: () => <ThemesPanel /> },
   { title: msg("Master password"), keywords: "password encryption credentials keyring", render: () => <MasterPasswordPanel /> },
+  { title: msg("Sync"), keywords: "synchronize encrypted folder cloud passphrase backup computers devices share", render: () => <SyncPanel /> },
   { title: msg("Agents"), keywords: "MCP AI assistant", render: () => <AgentsPanel /> },
   { title: msg("Drivers"), keywords: "ODBC ADBC Oracle Instant Client download", render: () => <DriversPanel /> },
   { title: msg("Diagnostics"), keywords: "log logs crash report bug support zip", render: () => <DiagnosticsPanel /> },
