@@ -13,7 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use platypus_mcp::{
-    ANSWER_TIMEOUT, AppLink, BridgeFile, HELLO_EVERY, OpenSession, Verdict, WriteRequest,
+    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextRequest, ContextVerdict, HELLO_EVERY, OpenSession,
+    Verdict, WriteRequest,
 };
 use serde::Serialize;
 use tokio::sync::oneshot;
@@ -39,6 +40,9 @@ const FORGET_AFTER: Duration = Duration::from_secs(HELLO_EVERY.as_secs() * 3);
 pub const WRITE_REQUEST_EVENT: &str = "agent-write-request";
 /// A request no longer waits: answered, timed out, or its agent went away.
 pub const WRITE_SETTLED_EVENT: &str = "agent-write-settled";
+/// The same for the agents' requests to see what the user works on.
+pub const CONTEXT_REQUEST_EVENT: &str = "agent-context-request";
+pub const CONTEXT_SETTLED_EVENT: &str = "agent-context-settled";
 pub const AGENTS_EVENT: &str = "agents-connected";
 
 /// What the bridge needs from the app: kept apart so that tests run it without a window.
@@ -58,26 +62,104 @@ pub struct ConnectedAgent {
     pub agent: String,
 }
 
-/// A change waiting for the user.
-struct Pending {
-    request: WriteRequest,
+/// A request waiting for the user.
+struct Pending<R, V> {
+    request: R,
     since: Instant,
-    answer: oneshot::Sender<Verdict>,
+    answer: oneshot::Sender<V>,
 }
 
-/// A change waiting for the user, as the page gets it when it starts.
+/// A request waiting for the user, as the page gets it when it starts.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct WaitingWrite {
-    pub request: WriteRequest,
+pub struct Waited<R> {
+    pub request: R,
     /// How long it has waited, so that the page counts down from there.
     pub waited_ms: u64,
+}
+
+/// A change waiting for the user.
+pub type WaitingWrite = Waited<WriteRequest>;
+/// A request to see what the user works on, waiting for the user.
+pub type WaitingContext = Waited<ContextRequest>;
+
+/// The requests of one kind waiting for the user, by id, with when they came and how to
+/// answer them.
+struct Queue<R, V> {
+    pending: Mutex<HashMap<String, Pending<R, V>>>,
+    /// The page's event for a request that no longer waits.
+    settled: &'static str,
+}
+
+impl<R: Clone + Serialize, V> Queue<R, V> {
+    fn new(settled: &'static str) -> Self {
+        Self {
+            pending: Mutex::default(),
+            settled,
+        }
+    }
+
+    /// Answers the request `id`; `false` when it no longer waits.
+    fn answer(&self, id: &str, verdict: V) -> bool {
+        lock(&self.pending)
+            .remove(id)
+            .is_some_and(|pending| pending.answer.send(verdict).is_ok())
+    }
+
+    /// The requests waiting, the oldest first.
+    fn waiting(&self) -> Vec<Waited<R>> {
+        let mut waiting: Vec<(Instant, R)> = lock(&self.pending)
+            .values()
+            .map(|p| (p.since, p.request.clone()))
+            .collect();
+        waiting.sort_by_key(|(since, _)| *since);
+        waiting
+            .into_iter()
+            .map(|(since, request)| Waited {
+                request,
+                waited_ms: u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX),
+            })
+            .collect()
+    }
+
+    /// Tells the page of `request` with `event` and waits for the user's answer; `refused`
+    /// stands for it when nobody answers within [`ANSWER_TIMEOUT`].
+    async fn ask(
+        &self,
+        host: &dyn Host,
+        (id, request): (String, R),
+        event: &str,
+        refused: V,
+    ) -> Result<V, String> {
+        let (answer, answered) = oneshot::channel();
+        let payload = serde_json::to_value(&request).map_err(|e| e.to_string())?;
+        lock(&self.pending).insert(
+            id.clone(),
+            Pending {
+                request,
+                since: Instant::now(),
+                answer,
+            },
+        );
+        let _waiting = Waiting {
+            queue: self,
+            host,
+            id,
+        };
+        host.notify(event, payload);
+        Ok(match tokio::time::timeout(ANSWER_TIMEOUT, answered).await {
+            Ok(Ok(verdict)) => verdict,
+            _ => refused,
+        })
+    }
 }
 
 /// What the bridge shares between its requests, the app's endpoint and the commands.
 pub struct Link {
     host: Box<dyn Host>,
-    /// The changes waiting for the user, by id, with when they came and how to answer them.
-    pending: Mutex<HashMap<String, Pending>>,
+    /// The changes waiting for the user.
+    writes: Queue<WriteRequest, Verdict>,
+    /// The looks at the user's work waiting for them.
+    contexts: Queue<ContextRequest, ContextVerdict>,
     /// The agents connected, by session, with when they last said hello.
     agents: Mutex<HashMap<String, (String, Instant)>>,
 }
@@ -92,32 +174,30 @@ impl Link {
     pub fn new(host: impl Host) -> Self {
         Self {
             host: Box::new(host),
-            pending: Mutex::default(),
+            writes: Queue::new(WRITE_SETTLED_EVENT),
+            contexts: Queue::new(CONTEXT_SETTLED_EVENT),
             agents: Mutex::default(),
         }
     }
 
     /// Answers the change `id`; `false` when it no longer waits.
     pub fn answer(&self, id: &str, verdict: Verdict) -> bool {
-        lock(&self.pending)
-            .remove(id)
-            .is_some_and(|pending| pending.answer.send(verdict).is_ok())
+        self.writes.answer(id, verdict)
     }
 
     /// The changes waiting for the user, the oldest first.
     pub fn waiting(&self) -> Vec<WaitingWrite> {
-        let mut waiting: Vec<(Instant, WriteRequest)> = lock(&self.pending)
-            .values()
-            .map(|p| (p.since, p.request.clone()))
-            .collect();
-        waiting.sort_by_key(|(since, _)| *since);
-        waiting
-            .into_iter()
-            .map(|(since, request)| WaitingWrite {
-                request,
-                waited_ms: u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX),
-            })
-            .collect()
+        self.writes.waiting()
+    }
+
+    /// Answers the request `id` to see what the user works on; `false` when it no longer waits.
+    pub fn answer_context(&self, id: &str, verdict: ContextVerdict) -> bool {
+        self.contexts.answer(id, verdict)
+    }
+
+    /// The requests to see what the user works on that wait, the oldest first.
+    pub fn waiting_contexts(&self) -> Vec<WaitingContext> {
+        self.contexts.waiting()
     }
 
     /// The agents connected, by name.
@@ -154,20 +234,28 @@ impl Link {
     }
 }
 
-/// Removes a change from the waiting ones when its wait ends, however it ends (the agent's
+/// Removes a request from the waiting ones when its wait ends, however it ends (the agent's
 /// request dropped included), and tells the page.
-struct Waiting<'a> {
-    link: &'a Link,
+struct Waiting<'a, R, V> {
+    queue: &'a Queue<R, V>,
+    host: &'a dyn Host,
     id: String,
 }
 
-impl Drop for Waiting<'_> {
+impl<R, V> Drop for Waiting<'_, R, V> {
     fn drop(&mut self) {
-        lock(&self.link.pending).remove(&self.id);
-        self.link
-            .host
-            .notify(WRITE_SETTLED_EVENT, serde_json::json!(self.id));
+        lock(&self.queue.pending).remove(&self.id);
+        self.host
+            .notify(self.queue.settled, serde_json::json!(self.id));
     }
+}
+
+/// Why a request nobody answered is refused.
+fn unanswered() -> String {
+    format!(
+        "nobody answered in PlatypusDB within {} minutes",
+        ANSWER_TIMEOUT.as_secs() / 60
+    )
 }
 
 #[async_trait::async_trait]
@@ -177,29 +265,23 @@ impl AppLink for Link {
     }
 
     async fn confirm(&self, request: WriteRequest) -> Result<Verdict, String> {
-        let (answer, answered) = oneshot::channel();
         let id = request.id.clone();
-        let payload = serde_json::to_value(&request).map_err(|e| e.to_string())?;
-        let since = Instant::now();
-        lock(&self.pending).insert(
-            id.clone(),
-            Pending {
-                request,
-                since,
-                answer,
-            },
-        );
-        let _waiting = Waiting { link: self, id };
-        self.host.notify(WRITE_REQUEST_EVENT, payload);
-        Ok(match tokio::time::timeout(ANSWER_TIMEOUT, answered).await {
-            Ok(Ok(verdict)) => verdict,
-            _ => Verdict::Deny {
-                reason: Some(format!(
-                    "nobody answered in PlatypusDB within {} minutes",
-                    ANSWER_TIMEOUT.as_secs() / 60
-                )),
-            },
-        })
+        let refused = Verdict::Deny {
+            reason: Some(unanswered()),
+        };
+        self.writes
+            .ask(&*self.host, (id, request), WRITE_REQUEST_EVENT, refused)
+            .await
+    }
+
+    async fn context(&self, request: ContextRequest) -> Result<ContextVerdict, String> {
+        let id = request.id.clone();
+        let refused = ContextVerdict::Deny {
+            reason: Some(unanswered()),
+        };
+        self.contexts
+            .ask(&*self.host, (id, request), CONTEXT_REQUEST_EVENT, refused)
+            .await
     }
 
     async fn hello(&self, session: &str, agent: &str) -> Result<(), String> {

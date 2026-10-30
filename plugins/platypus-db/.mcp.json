@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "platypus": {
+      "command": "${PLATYPUS_DB:-platypus-db}",
+      "args": ["--mcp"]
+    }
+  }
+}

@@ -7,10 +7,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use platypus_mcp::{Agent, OpenSession, Profile, Verdict};
+use platypus_mcp::{Agent, ContextVerdict, OpenSession, Profile, Verdict};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use super::{Bridge, BridgeStatus, ConnectedAgent, DEFAULT_PORT, Host, Link, WaitingWrite};
+use super::{
+    Bridge, BridgeStatus, ConnectedAgent, DEFAULT_PORT, Host, Link, WaitingContext, WaitingWrite,
+};
 use crate::commands::AppState;
 
 /// The settings of the bridge (`agents.ts` in the page).
@@ -98,6 +100,24 @@ pub fn answer_agent_write(bridge: State<'_, Bridge>, id: String, verdict: Verdic
 #[tauri::command]
 pub fn agent_writes_waiting(bridge: State<'_, Bridge>) -> Vec<WaitingWrite> {
     bridge.link().waiting()
+}
+
+/// Answers the request `id` of an agent to see what the user works on; `false` when it no
+/// longer waits.
+#[tauri::command]
+pub fn agent_answer_context(
+    bridge: State<'_, Bridge>,
+    id: String,
+    verdict: ContextVerdict,
+) -> bool {
+    bridge.link().answer_context(&id, verdict)
+}
+
+/// The requests to see what the user works on that wait for an answer: the page asks at its
+/// start.
+#[tauri::command]
+pub fn agent_contexts_waiting(bridge: State<'_, Bridge>) -> Vec<WaitingContext> {
+    bridge.link().waiting_contexts()
 }
 
 #[tauri::command]

@@ -1,0 +1,10 @@
+# The PlatypusDB MCP server for Codex: add this to ~/.codex/config.toml. `command` is the
+# PlatypusDB app: `platypus-db` where it is on PATH (the Linux packages), else its full path,
+# e.g. 'C:\Program Files\PlatypusDB\platypus-db.exe' on Windows or
+# '/Applications/PlatypusDB.app/Contents/MacOS/platypus-db' on macOS.
+[mcp_servers.platypus]
+command = "platypus-db"
+args = ["--mcp"]
+# run_query and explain wait up to 300 s (timeout_seconds), longer than Codex's default for a
+# tool call.
+tool_timeout_sec = 330

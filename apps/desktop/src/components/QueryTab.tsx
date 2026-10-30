@@ -42,6 +42,8 @@ import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { ResultSourceBar } from "../analysis/QueryWithSql";
 import { useResultSql } from "../analysis/ResultSql";
+import { provideContext } from "../agents/context";
+import { type TabParts, tabSnapshot } from "../agents/contextTab";
 import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
 import {
@@ -322,6 +324,17 @@ export function QueryTab({
   // "Query with SQL" reads this tab's results with rows and which one is shown.
   const resultsNow = useRef({ results, shown, active, focusSql: resultSql.focus });
   resultsNow.current = { results, shown, active, focusSql: resultSql.focus };
+  // An agent the user allows reads the editor and the grid as they are when it asks.
+  const sharedNow = useRef<Omit<TabParts, "editor">>({ connection, title: null, result: view });
+  sharedNow.current = { connection, title: tab.filePath ? basename(tab.filePath) : (tab.title ?? null), result: view };
+  useEffect(
+    () =>
+      provideContext({
+        tabKey: tab.key,
+        snapshot: () => tabSnapshot({ ...sharedNow.current, editor: editor.current }),
+      }),
+    [],
+  );
   useEffect(
     () =>
       provideResults({

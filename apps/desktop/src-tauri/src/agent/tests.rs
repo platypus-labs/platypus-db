@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use platypus_mcp::{Agent, HttpLink, Profile};
+use platypus_mcp::{Agent, ContextPart, HttpLink, Profile, UserContext};
 
 use super::*;
 
@@ -239,4 +239,81 @@ async fn a_port_in_use_is_reported() {
         "{status:?}"
     );
     assert!(!BridgeFile::path(dir.path()).exists());
+}
+
+fn look(id: &str) -> ContextRequest {
+    ContextRequest {
+        id: id.to_owned(),
+        agent: "claude-code".to_owned(),
+        session: "s1".to_owned(),
+        parts: vec![ContextPart::Editor, ContextPart::Result],
+    }
+}
+
+/// Waits until the bridge has a look at the user's work waiting.
+async fn looked(bridge: &Bridge, count: usize) -> Vec<WaitingContext> {
+    eventually(|| Some(bridge.link().waiting_contexts()).filter(|w| w.len() == count))
+        .await
+        .expect("nothing asked")
+}
+
+#[tokio::test]
+async fn agents_ask_to_see_what_the_user_works_on_through_the_bridge() {
+    let dir = tempfile::tempdir().unwrap();
+    let (bridge, events) = bridge(dir.path()).await;
+    let told = |name: &str| lock(&events).iter().filter(|(e, _)| e == name).count();
+
+    // The request waits apart from the changes, and the user's share reaches the agent.
+    let link = HttpLink::new(dir.path());
+    let asking = tokio::spawn(async move { link.context(look("c1")).await });
+    let waiting = looked(&bridge, 1).await;
+    assert_eq!(
+        waiting[0].request.parts,
+        [ContextPart::Editor, ContextPart::Result]
+    );
+    assert_eq!(bridge.link().waiting(), [], "not a change");
+    assert_eq!(told(CONTEXT_REQUEST_EVENT), 1);
+    assert_eq!(told(WRITE_REQUEST_EVENT), 0);
+    let context = UserContext {
+        tab: Some("Orders".to_owned()),
+        editor: Some("SELECT 1".to_owned()),
+        ..UserContext::default()
+    };
+    let verdict = ContextVerdict::Session {
+        context: context.clone(),
+    };
+    assert!(bridge.link().answer_context("c1", verdict.clone()));
+    assert_eq!(asking.await.unwrap().unwrap(), verdict);
+    assert_eq!(bridge.link().waiting_contexts(), []);
+    assert_eq!(told(CONTEXT_SETTLED_EVENT), 1);
+    assert!(
+        !bridge
+            .link()
+            .answer_context("c1", ContextVerdict::Once { context }),
+        "answered already"
+    );
+
+    // A refusal carries the user's reason.
+    let link = HttpLink::new(dir.path());
+    let asking = tokio::spawn(async move { link.context(look("c2")).await });
+    looked(&bridge, 1).await;
+    let deny = ContextVerdict::Deny {
+        reason: Some("private".to_owned()),
+    };
+    assert!(bridge.link().answer_context("c2", deny.clone()));
+    assert_eq!(asking.await.unwrap().unwrap(), deny);
+
+    // An agent that goes away takes its request with it.
+    let link = HttpLink::new(dir.path());
+    let asking = tokio::spawn(async move { link.context(look("c3")).await });
+    looked(&bridge, 1).await;
+    asking.abort();
+    assert!(
+        eventually(|| bridge.link().waiting_contexts().is_empty().then_some(()))
+            .await
+            .is_some(),
+        "the request went with it"
+    );
+    assert_eq!(told(CONTEXT_SETTLED_EVENT), 3);
+    bridge.stop();
 }

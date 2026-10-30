@@ -1,0 +1,12 @@
+{
+  "name": "platypus-db",
+  "owner": { "name": "PlatypusDB", "url": "https://github.com/PaoloCisly/platypus-db" },
+  "description": "The PlatypusDB plugin: the app's MCP server and how to use it",
+  "plugins": [
+    {
+      "name": "platypus-db",
+      "source": "./plugins/platypus-db",
+      "description": "Query the database connections saved in PlatypusDB, with the access each one allows"
+    }
+  ]
+}
