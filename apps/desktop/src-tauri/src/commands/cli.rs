@@ -314,15 +314,16 @@ pub(super) fn spawn(program: &str, (args, env): Invocation, input: bool) -> Comm
 }
 
 /// Waits for the client to end, or (`None`) for `cancel`: the client is then killed, as
-/// dropping its wait drops the child, spawned with `kill_on_drop`.
+/// dropping its wait drops the child, spawned with `kill_on_drop`. A cancel already sent wins
+/// over a client that ends in the meantime.
 async fn wait_or_cancel(
     child: Child,
     cancel: oneshot::Receiver<()>,
 ) -> Option<std::io::Result<Output>> {
     let wait = Box::pin(child.wait_with_output());
-    match futures::future::select(wait, cancel).await {
-        futures::future::Either::Left((out, _)) => Some(out),
-        futures::future::Either::Right(_) => None,
+    match futures::future::select(cancel, wait).await {
+        futures::future::Either::Left(_) => None,
+        futures::future::Either::Right((out, _)) => Some(out),
     }
 }
 
@@ -401,17 +402,19 @@ mod tests {
 
     #[test]
     fn cancelling_kills_the_client() {
-        // `sort` waits for the end of its input, which stays open: it only ends when killed.
-        let child = Command::new("sort")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .expect("sort is on every PATH");
-        let (stop, cancel) = oneshot::channel();
-        stop.send(()).unwrap();
-        let out = tauri::async_runtime::block_on(wait_or_cancel(child, cancel));
+        // `sort` waits for the end of its input; on Unix tokio spawns only inside a runtime.
+        let out = tauri::async_runtime::block_on(async {
+            let child = Command::new("sort")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .expect("sort is on every PATH");
+            let (stop, cancel) = oneshot::channel();
+            stop.send(()).unwrap();
+            wait_or_cancel(child, cancel).await
+        });
         assert!(out.is_none());
     }
 
