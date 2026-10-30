@@ -16,6 +16,7 @@ pub mod decode;
 mod explain;
 pub use explain::read_plan;
 mod meta;
+mod monitor;
 mod tls;
 
 use std::pin::Pin;
@@ -449,6 +450,16 @@ impl Connection for PgConnection {
         admin::object_statistics(self).await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        self.server_admin()?;
+        monitor::parameters(self).await
+    }
+
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        self.server_admin()?;
+        monitor::metrics(self).await
+    }
+
     async fn maintain(
         &self,
         schema: &str,
@@ -496,6 +507,8 @@ impl Connection for PgConnection {
             },
             // CockroachDB's COPY has limits of its own in a transaction: rows go as INSERTs.
             bulk_load: !is_cockroach(self),
+            server_parameters: self.has_server_admin(),
+            server_metrics: self.has_server_admin(),
         }
     }
 

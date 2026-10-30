@@ -9,6 +9,7 @@
 mod error;
 mod http;
 mod meta;
+mod monitor;
 mod stream;
 mod types;
 
@@ -244,8 +245,18 @@ impl Connection for ClickHouseConnection {
             explain: true,
             object_ddl: true,
             metadata_search: true,
+            server_parameters: true,
+            server_metrics: true,
             ..Capabilities::default()
         }
+    }
+
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        monitor::parameters(self).await
+    }
+
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        monitor::metrics(self).await
     }
 
     async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {

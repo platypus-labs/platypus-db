@@ -2279,6 +2279,21 @@ async fn server_capabilities_match(
         "{}: object_statistics vs capabilities.server_statistics: {statistics:?}",
         b.name
     );
+    let parameters = conn.server_parameters().await;
+    assert_eq!(
+        matches!(parameters, Err(Error::Unsupported(_))),
+        !caps.server_parameters,
+        "{}: server_parameters vs capabilities.server_parameters: {:?}",
+        b.name,
+        parameters.as_ref().map(Vec::len)
+    );
+    let metrics = conn.server_metrics().await;
+    assert_eq!(
+        matches!(metrics, Err(Error::Unsupported(_))),
+        !caps.server_metrics,
+        "{}: server_metrics vs capabilities.server_metrics: {metrics:?}",
+        b.name
+    );
     // No such table: a supported operation fails, but not as unsupported.
     for operation in [
         Maintenance::Vacuum,
@@ -2423,6 +2438,244 @@ async fn lists_and_ends_server_sessions() {
         );
         let rows = collect(&b, &*admin, "SELECT 1").await;
         assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+    }
+}
+
+/// Every parameter has a name once, the listing has the well-known ones with the values the
+/// server documents, and a change made in the session shows as differing from the default
+/// where the server tells defaults.
+#[tokio::test]
+async fn reads_server_parameters() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        if !conn.capabilities().server_parameters {
+            continue;
+        }
+        let list = conn
+            .server_parameters()
+            .await
+            .unwrap_or_else(|e| panic!("{}: server_parameters: {e}", b.name));
+        assert!(
+            list.len() >= 10,
+            "{}: only {} parameters",
+            b.name,
+            list.len()
+        );
+        assert!(list.iter().all(|p| !p.name.is_empty()), "{}", b.name);
+        // Listed once, by name (ClickHouse has a setting of the server and of the session
+        // by the same name), as the tab shows them.
+        let mut keys: Vec<(&str, Option<&str>)> = list
+            .iter()
+            .map(|p| (p.name.as_str(), p.source.as_deref()))
+            .collect();
+        assert!(
+            keys.windows(2).all(|w| w[0] <= w[1]),
+            "{}: not sorted",
+            b.name
+        );
+        keys.dedup();
+        assert_eq!(
+            keys.len(),
+            list.len(),
+            "{}: a parameter is listed twice",
+            b.name
+        );
+
+        let (known, default) = known_parameter(b.name);
+        let parameter = list
+            .iter()
+            .find(|p| p.name == known)
+            .unwrap_or_else(|| panic!("{}: no parameter {known}", b.name));
+        assert!(
+            parameter.value.is_some(),
+            "{}: {known} has no value",
+            b.name
+        );
+        if let Some(default) = default {
+            assert_eq!(parameter.default.as_deref(), Some(default), "{}", b.name);
+        }
+        assert!(
+            parameter
+                .statement
+                .as_deref()
+                .is_some_and(|s| s.contains(known)),
+            "{}: {known}: {:?}",
+            b.name,
+            parameter.statement
+        );
+        changed_in_session(&b, &*conn).await;
+    }
+}
+
+/// The parameter each database has, and its default where the database documents one.
+fn known_parameter(backend: &str) -> (&'static str, Option<&'static str>) {
+    match backend {
+        "sqlite" | "libsql" => ("page_size", Some("4096")),
+        "duckdb" => ("threads", None),
+        "clickhouse" => ("max_threads", None),
+        "sqlserver" => ("cost threshold for parallelism", Some("5")),
+        "mariadb" => ("max_connections", Some("151")),
+        "mysql" => ("max_connections", None),
+        _ => ("max_connections", Some("100")),
+    }
+}
+
+/// Sets something in the session that is not the default and reads it back as changed; the
+/// statement the tab would offer for it runs. Servers that tell no default or are set by
+/// the configuration alone (MySQL, SQL Server) are left out.
+async fn changed_in_session(b: &Backend, conn: &dyn Connection) {
+    let (set, name) = match b.name {
+        "postgres" => ("SET work_mem = '8MB'", "work_mem"),
+        "duckdb" => (
+            "SET default_null_order = 'nulls_first'",
+            "default_null_order",
+        ),
+        "sqlite" => ("PRAGMA cache_size = 1234", "cache_size"),
+        _ => return,
+    };
+    run(conn, set)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {set}: {e}", b.name));
+    let list = conn.server_parameters().await.unwrap();
+    let parameter = list.iter().find(|p| p.name == name).unwrap();
+    assert!(
+        parameter.changed,
+        "{}: {name} is not changed: {parameter:?}",
+        b.name
+    );
+    assert_ne!(parameter.value, parameter.default, "{}", b.name);
+    // A statement for a changed parameter runs, as long as it only reaches the session.
+    if matches!(b.name, "duckdb" | "sqlite") {
+        let statement = parameter.statement.clone().unwrap();
+        run(conn, &statement)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {statement}: {e}", b.name));
+    }
+}
+
+/// A metric holds a value or a reason, never both and never neither.
+fn assert_metric(backend: &str, what: &str, metric: &platypus_core::Metric) {
+    assert_ne!(
+        metric.value.is_some(),
+        metric.unavailable.is_some(),
+        "{backend}: {what}: {metric:?}"
+    );
+}
+
+/// The load snapshot has its gauges and counters where the server keeps them, the counters
+/// do not go back between two snapshots, and what is missing says why.
+#[tokio::test]
+async fn reads_server_metrics() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        let conn = b.connect().await;
+        if !conn.capabilities().server_metrics {
+            continue;
+        }
+        let first = conn
+            .server_metrics()
+            .await
+            .unwrap_or_else(|e| panic!("{}: server_metrics: {e}", b.name));
+        for (what, metric) in [
+            ("connections_active", &first.connections_active),
+            ("connections_idle", &first.connections_idle),
+            ("connections_max", &first.connections_max),
+            ("uptime_seconds", &first.uptime_seconds),
+            ("transactions", &first.transactions),
+            ("statements", &first.statements),
+            ("cache_hits", &first.cache_hits),
+            ("cache_reads", &first.cache_reads),
+        ] {
+            assert_metric(b.name, what, metric);
+        }
+        assert!(
+            first.uptime_seconds.value.is_some_and(|s| s > 0.0),
+            "{}: {:?}",
+            b.name,
+            first.uptime_seconds
+        );
+        assert!(
+            first.connections_active.value.is_some(),
+            "{}: {:?}",
+            b.name,
+            first.connections_active
+        );
+        assert!(
+            !first.databases.is_empty(),
+            "{}: {:?}",
+            b.name,
+            first.databases_unavailable
+        );
+        assert!(first.databases.windows(2).all(|w| w[0].bytes >= w[1].bytes));
+        // A server with replication unreadable says why; one without has none to list.
+        assert!(
+            first.replication.is_empty() || first.replication_unavailable.is_none(),
+            "{}",
+            b.name
+        );
+        expect_counters(&b, &first);
+
+        // Work between the two snapshots only adds to the counters.
+        let table = format!("{}.conf_metrics", b.schema);
+        run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(&*conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap();
+        for i in 0..5 {
+            run(&*conn, &format!("INSERT INTO {table} VALUES ({i})"))
+                .await
+                .unwrap();
+            collect(&b, &*conn, &format!("SELECT id FROM {table}")).await;
+        }
+        let second = conn.server_metrics().await.unwrap();
+        for (what, before, after) in [
+            ("transactions", &first.transactions, &second.transactions),
+            ("statements", &first.statements, &second.statements),
+            ("cache_hits", &first.cache_hits, &second.cache_hits),
+        ] {
+            if let (Some(x), Some(y)) = (before.value, after.value) {
+                assert!(y >= x, "{}: {what} went back: {x} -> {y}", b.name);
+            }
+        }
+        // The statements run are counted by the servers that count them.
+        if let (Some(x), Some(y)) = (first.statements.value, second.statements.value) {
+            assert!(y >= x + 5.0, "{}: statements {x} -> {y}", b.name);
+        }
+        run(&*conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+    }
+}
+
+/// The counters each server keeps are in the snapshot.
+fn expect_counters(b: &Backend, metrics: &platypus_core::ServerMetrics) {
+    let (transactions, statements, cache) = match b.name {
+        "postgres" => (true, false, true),
+        "mysql" | "mariadb" => (true, true, true),
+        "sqlserver" => (true, true, false),
+        "clickhouse" => (false, true, true),
+        _ => return,
+    };
+    for (what, expected, metric) in [
+        ("transactions", transactions, &metrics.transactions),
+        ("statements", statements, &metrics.statements),
+        ("cache_hits", cache, &metrics.cache_hits),
+        ("cache_reads", cache, &metrics.cache_reads),
+    ] {
+        assert_eq!(
+            metric.value.is_some(),
+            expected,
+            "{}: {what}: {metric:?}",
+            b.name
+        );
+    }
+    if b.name == "postgres" {
+        assert!(metrics.connections_max.value.is_some_and(|m| m > 0.0));
     }
 }
 

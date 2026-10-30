@@ -14,6 +14,8 @@ mod explain;
 pub mod geometry;
 mod init;
 mod metadata;
+mod metrics;
+mod parameters;
 pub mod special;
 mod transaction;
 mod version;
@@ -42,9 +44,15 @@ pub use explain::{
 pub use init::{SessionInit, run_init};
 pub use metadata::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, ConstraintKind, ConstraintMeta,
-    FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, ObjectKind, ObjectMeta,
-    Property, ReferencingKey, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow, TextRowExt,
-    group_sorted, query_catalog, query_text,
+    FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch, NamedRow, ObjectKind,
+    ObjectMeta, Property, ReferencingKey, SEARCH_LIMIT, SchemaMeta, TableDetails, TextRow,
+    TextRowExt, group_sorted, query_catalog, query_named, query_text,
+};
+pub use metrics::{
+    DatabaseSize, Metric, ReplicationRow, ServerMetrics, float_of, query_row, query_sizes,
+};
+pub use parameters::{
+    ServerParameter, differs_from, same_value, set_value, sort_parameters, string_literal,
 };
 pub use transaction::{
     TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,

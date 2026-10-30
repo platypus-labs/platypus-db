@@ -422,6 +422,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::admin::end_server_session,
         commands::admin::top_queries,
         commands::admin::object_statistics,
+        commands::admin::server_parameters,
+        commands::admin::server_metrics,
         commands::admin::maintain_table,
         commands::backup::backup_database,
         commands::backup::restore_database,

@@ -196,6 +196,19 @@ pub trait Connection: Send + Sync + fmt::Debug {
         Err(unsupported("table statistics"))
     }
 
+    /// The configuration parameters of the server, by name, with their defaults where the
+    /// server tells them. Optional: see [`Capabilities::server_parameters`].
+    async fn server_parameters(&self) -> Result<Vec<crate::ServerParameter>> {
+        Err(unsupported("server parameters"))
+    }
+
+    /// A snapshot of the server's load: connections, counters, sizes and replication. What
+    /// the server does not tell, or the session may not read, is missing in it with the
+    /// reason. Optional: see [`Capabilities::server_metrics`].
+    async fn server_metrics(&self) -> Result<crate::ServerMetrics> {
+        Err(unsupported("server metrics"))
+    }
+
     /// Runs `operation` on table `schema.table`; returns what the server said of it, a line
     /// each. Optional: see [`Capabilities::maintenance`].
     async fn maintain(

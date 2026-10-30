@@ -16,6 +16,7 @@ mod explain;
 pub mod files;
 pub mod library;
 mod meta;
+mod monitor;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 mod types;
@@ -316,8 +317,13 @@ impl Connection for DuckDbConnection {
             object_ddl: true,
             metadata_search: true,
             bulk_load: true,
+            server_parameters: true,
             ..Default::default()
         }
+    }
+
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        monitor::parameters(self).await
     }
 
     /// The rows go in with the appender, in the session's transaction (one opened in

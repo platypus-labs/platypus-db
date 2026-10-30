@@ -19,6 +19,7 @@ mod bulk;
 pub mod columns;
 mod ddl;
 mod meta;
+mod monitor;
 #[doc(hidden)]
 pub mod tsql;
 
@@ -409,6 +410,14 @@ impl Connection for MssqlConnection {
         admin::object_statistics(self).await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        monitor::parameters(self).await
+    }
+
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        monitor::metrics(self).await
+    }
+
     async fn maintain(
         &self,
         schema: &str,
@@ -451,6 +460,8 @@ impl Connection for MssqlConnection {
             server_statistics: true,
             maintenance: admin::MAINTENANCE,
             bulk_load: true,
+            server_parameters: true,
+            server_metrics: true,
         }
     }
 

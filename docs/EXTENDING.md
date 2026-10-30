@@ -31,8 +31,8 @@ A database feature that not every driver supports is an optional method on the
 the flag says whether the driver overrides it. `open_session` returns the capabilities, so
 the UI can hide what a connection cannot do.
 
-Existing optional methods are `explain`, `object_ddl`, `databases`, `server_sessions` and
-`bulk_load`. `object_properties`
+Existing optional methods are `explain`, `object_ddl`, `databases`, `server_sessions`,
+`server_parameters`, `server_metrics` and `bulk_load`. `object_properties`
 and `catalog_foreign_keys` are optional too, but need no flag: their default is an empty
 list. `object_comment` has a default too: it takes the comment from the object list, and a
 driver whose list is expensive overrides it with a direct query. `objects_ddl` (the DDL of

@@ -10,6 +10,7 @@
 pub mod columns;
 #[doc(hidden)]
 pub mod meta;
+mod monitor;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -282,8 +283,13 @@ impl Connection for SqliteConnection {
             explain: true,
             object_ddl: true,
             metadata_search: true,
+            server_parameters: true,
             ..Default::default()
         }
+    }
+
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        monitor::parameters(self).await
     }
 }
 

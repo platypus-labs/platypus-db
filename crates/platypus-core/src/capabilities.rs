@@ -46,6 +46,10 @@ pub struct Capabilities {
     /// [`Connection::bulk_load`](crate::Connection::bulk_load): rows go in with the
     /// database's own bulk loading instead of INSERT statements.
     pub bulk_load: bool,
+    /// [`Connection::server_parameters`](crate::Connection::server_parameters).
+    pub server_parameters: bool,
+    /// [`Connection::server_metrics`](crate::Connection::server_metrics).
+    pub server_metrics: bool,
 }
 
 /// The error a `Connection` method returns when the driver does not implement it.

@@ -633,6 +633,14 @@ impl Connection for Held {
         self.inner.object_statistics().await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        self.inner.server_parameters().await
+    }
+
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        self.inner.server_metrics().await
+    }
+
     async fn maintain(
         &self,
         schema: &str,

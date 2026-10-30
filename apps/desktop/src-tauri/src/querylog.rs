@@ -447,6 +447,20 @@ impl Connection for Logged {
         .await
     }
 
+    async fn server_parameters(&self) -> Result<Vec<platypus_core::ServerParameter>> {
+        self.track(
+            LogKind::Metadata,
+            "server parameters",
+            self.inner.server_parameters(),
+        )
+        .await
+    }
+
+    // Not logged, like the sessions: the dashboard reads it every few seconds.
+    async fn server_metrics(&self) -> Result<platypus_core::ServerMetrics> {
+        self.inner.server_metrics().await.map_err(|e| self.tag(e))
+    }
+
     async fn object_statistics(&self) -> Result<Vec<platypus_core::ObjectStatistics>> {
         self.track(
             LogKind::Metadata,

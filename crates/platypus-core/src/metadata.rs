@@ -283,8 +283,38 @@ pub async fn query_text(conn: &dyn Connection, sql: &str) -> Result<Vec<TextRow>
 /// Every row of `stream`, its values rendered as text.
 pub(crate) async fn text_rows(stream: crate::RecordBatchStream) -> Result<Vec<TextRow>> {
     let batches: Vec<_> = stream.try_collect().await?;
-    let mut rows = Vec::new();
-    for batch in &batches {
+    Ok(batches_text(&batches)?
+        .into_iter()
+        .flat_map(|b| b.1)
+        .collect())
+}
+
+/// A row with its cells by column name in lower case.
+pub type NamedRow = std::collections::HashMap<String, Option<String>>;
+
+/// Runs a query whose columns the server names and orders by its version (`SHOW REPLICA
+/// STATUS`), and returns its rows by lower-case column name, values as text.
+///
+/// # Errors
+/// When the query fails.
+pub async fn query_named(conn: &dyn Connection, sql: &str) -> Result<Vec<NamedRow>> {
+    let ExecResult::Rows(stream) = conn.execute(sql, &ExecOptions::default()).await? else {
+        return Err(Error::Other("catalog query returned no rows".to_owned()));
+    };
+    let batches: Vec<_> = stream.try_collect().await?;
+    let mut out = Vec::new();
+    for (names, rows) in batches_text(&batches)? {
+        for row in rows {
+            out.push(names.iter().cloned().zip(row).collect());
+        }
+    }
+    Ok(out)
+}
+
+/// The column names (lower case) and text rows of each batch.
+fn batches_text(batches: &[arrow_array::RecordBatch]) -> Result<Vec<(Vec<String>, Vec<TextRow>)>> {
+    let mut out = Vec::new();
+    for batch in batches {
         let columns = batch
             .columns()
             .iter()
@@ -298,16 +328,23 @@ pub(crate) async fn text_rows(stream: crate::RecordBatchStream) -> Result<Vec<Te
                     .ok_or_else(|| Error::Other("text cast did not produce strings".to_owned()))
             })
             .collect::<Result<_>>()?;
-        for i in 0..batch.num_rows() {
-            rows.push(
+        let names = batch
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().to_lowercase())
+            .collect();
+        let rows = (0..batch.num_rows())
+            .map(|i| {
                 columns
                     .iter()
                     .map(|c| (!c.is_null(i)).then(|| c.value(i).to_owned()))
-                    .collect(),
-            );
-        }
+                    .collect()
+            })
+            .collect();
+        out.push((names, rows));
     }
-    Ok(rows)
+    Ok(out)
 }
 
 /// Accessors for [`TextRow`] cells, tolerant of the ways drivers render booleans.
