@@ -106,26 +106,48 @@ async function afterRun(page, action, timeout = 30_000) {
   );
 }
 
+/** Gives the focus to the main editor and waits until it has it: the SQL field of the result
+ *  takes the focus back when the grid under it changes, if it had it. */
+async function focusEditor(page) {
+  const content = `${visibleTab}.querySelector('.editor .cm-content')`;
+  await page.waitFor(`(() => { const c = ${content}; c.focus(); return document.activeElement === c; })()`);
+  await new Promise((r) => setTimeout(r, 150));
+  await page.waitFor(`(() => { const c = ${content}; c.focus(); return document.activeElement === c; })()`);
+}
+
+const completion = `document.querySelector('.cm-tooltip-autocomplete') !== null`;
+
+/** The completion list opens a moment after typing (and the editor ignores keys for a while once
+ *  it is open); Escape with no list would leave the editor for the result. So: let the list
+ *  come if it is coming, close it, and wait until it is gone. */
+async function closeCompletion(page) {
+  await new Promise((r) => setTimeout(r, 400));
+  if (await page.eval(completion)) {
+    await page.key("Escape", "Escape", 27);
+    await page.waitFor(`!(${completion})`);
+  }
+}
+
 /** Types `sql` as the main editor's whole text and runs it (Ctrl+Enter: the statement at the
  *  cursor). */
 export async function runQuery(page, sql, timeout) {
-  await page.eval(`${visibleTab}.querySelector('.editor .cm-content').focus()`);
+  await focusEditor(page);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
   await page.waitFor(`${editorText} === ${JSON.stringify(sql)}`);
-  await page.key("Escape", "Escape", 27);
+  await closeCompletion(page);
   await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL), timeout);
 }
 
 /** Runs the main editor's text again. */
 export async function rerun(page, timeout) {
-  await page.eval(`${visibleTab}.querySelector('.editor .cm-content').focus()`);
+  await focusEditor(page);
   await afterRun(page, () => page.key("Enter", "Enter", 13, CTRL), timeout);
 }
 
 /** Runs the editor's whole text as a script (Alt+X). */
 export async function runScript(page, sql, timeout) {
-  await page.eval(`${visibleTab}.querySelector('.editor .cm-content').focus()`);
+  await focusEditor(page);
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(sql);
   await page.waitFor(`${editorText} === ${JSON.stringify(sql)}`);
