@@ -1644,158 +1644,377 @@ html:not(.js) .panel + .panel {
   }
 }
 
-/* Inner pages (features, databases, compare, download, docs) and the driver icons of the
-   window above: the same parts as the home page, a few more. */
-/* Driver tile, as in the app (app.css .drv), on the site's colors. */
-.drv { position: relative; width: 16px; height: 16px; border-radius: 4px; display: inline-grid; place-items: center; flex: none;
-  font: 700 8px/1 var(--font-ui); color: #fff; vertical-align: -3px; margin-right: 6px; letter-spacing: -.02em; }
-.drv.lg { width: 34px; height: 34px; border-radius: 8px; font-size: 12px; margin: 0; }
-.drv .ping { position: absolute; right: -2px; bottom: -2px; width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--app-side); }
-.drv .ping.ok { background: var(--str); }
-.drv.pg { background: #336791; } .drv.my { background: #00758f; } .drv.mdb { background: #003545; } .drv.ms { background: #c4302b; }
-.drv.ch { background: #1a1a1a; color: #ffcc01; } .drv.lite { background: #0f80cc; } .drv.duck { background: #1f1f1f; color: #fff100; }
-.drv.ora { background: #c74634; } .drv.mongo { background: #13aa52; } .drv.trino { background: #dd00a1; } .drv.turso { background: #4ff8d2; color: #0b2c27; }
-.drv.odbc { background: #4b5563; } .drv.adbc { background: #374151; } .drv.snow { background: #29b5e8; } .drv.bq { background: #4386fa; }
-.drv.db2 { background: #0f62fe; } .drv.crdb { background: #6933ff; }
+/* ---------- Inner pages (features, databases, compare, download, docs) ---------- */
+/* The same header, footer, glow and type as the home page, and a few more parts. */
 
-/* Icons drawn by mock.js. */
-svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-svg.i.sm { width: 14px; height: 14px; }
-
-/* ---------- Inner pages: same header, footer, glow and type as the home ---------- */
-.page-head { max-width: var(--page); margin: 0 auto; padding: 96px var(--gutter) 0; }
-.page-head h1 { font-size: clamp(40px, 5.4vw, 64px); font-weight: 800; letter-spacing: -0.045em; }
-.page-head .lead { margin-top: 22px; }
-.page-sec { max-width: var(--page); margin: 0 auto; padding: 96px var(--gutter) 0; }
-.page-sec > h2 { font-size: clamp(26px, 3vw, 34px); font-weight: 750; letter-spacing: -0.03em; margin-bottom: 14px; }
-.page-sec > p { color: var(--mut); max-width: 640px; margin-bottom: 32px; }
-.pill-nav { position: sticky; top: 88px; z-index: 40; max-width: var(--page); margin: 56px auto 0; padding: 0 var(--gutter); }
-.pill-nav div { display: flex; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 14px; background: rgba(17, 20, 22, 0.72); backdrop-filter: blur(16px); overflow-x: auto; }
-.pill-nav a { padding: 8px 14px; border-radius: 9px; color: var(--mut); font-size: 14px; white-space: nowrap; }
-.pill-nav a:hover { color: var(--hi); text-decoration: none; background: var(--card-2); }
-.pill-nav a.on { color: var(--hi); background: var(--card-2); }
-
-/* Feature areas: the home's bento cards, one area per block. */
-.area { display: grid; grid-template-columns: 300px 1fr; gap: 48px; padding-top: 96px; max-width: var(--page); margin: 0 auto; padding-inline: var(--gutter); }
-.area h2 { font-size: 30px; font-weight: 750; letter-spacing: -0.03em; }
-.area > div:first-child p { color: var(--mut); margin-top: 12px; }
-.area .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--card-2); border: 1px solid var(--line); color: var(--acc); margin-bottom: 18px; }
-.area .ic svg.i { width: 22px; height: 22px; }
-.flist { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.flist .card { min-height: 0; padding: 22px; }
-.flist .card h3 { font-size: 17px; }
-.flist .card p { font-size: 14.5px; }
-.flist .card.w2 { grid-column: span 2; }
-
-/* Databases. */
-.db-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.db-grid > div { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, var(--card-2), var(--card) 60%); color: var(--hi); font-weight: 550; }
-.db-grid small { display: block; color: var(--dim); font: 500 11.5px/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
-.filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 24px; }
-.search-box { display: inline-flex; align-items: center; gap: 10px; height: 42px; width: 300px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--card); color: var(--dim); }
-.seg-pills { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
-.seg-pills span { padding: 7px 12px; border-radius: 8px; color: var(--mut); font-size: 14px; }
-.seg-pills span.on { background: var(--card-2); color: var(--hi); }
-.yes { color: var(--str); } .part { color: var(--num); } .no { color: var(--dim); }
-.grid td.c, .grid th.c { text-align: center; }
-
-/* Download. */
-.os-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.os-cards .card { min-height: 0; display: flex; flex-direction: column; gap: 16px; }
-.os-cards .card.rec { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc), 0 18px 50px rgba(255, 141, 40, 0.12); }
-.os-cards h3 { display: flex; align-items: center; gap: 10px; margin: 0; }
-.os-cards h3 svg.i { width: 22px; height: 22px; color: var(--hi); }
-.files { display: grid; gap: 4px; }
-.files a { display: flex; justify-content: space-between; padding: 9px 12px; border-radius: 9px; color: var(--fg); font-size: 15px; }
-.files a:hover { background: var(--card-2); text-decoration: none; }
-.files span { color: var(--dim); font: 13px var(--font-mono); }
-.term-line { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--app-side); font: 13px/1.6 var(--font-mono); color: var(--fg); overflow-x: auto; }
-.term-line .p { color: var(--dim); user-select: none; }
-.badge-rec { align-self: flex-start; padding: 3px 9px; border-radius: 999px; background: var(--glow); color: var(--acc-2); font: 600 11.5px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
-
-/* Docs. */
-.docs { display: grid; grid-template-columns: 230px minmax(0, 1fr) 200px; gap: 56px; max-width: var(--page); margin: 0 auto; padding: 72px var(--gutter) 0; }
-.docs nav h6 { margin: 26px 0 8px; color: var(--dim); font: 600 11.5px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; }
-.docs nav a { display: block; padding: 6px 12px; border-left: 1px solid var(--line); color: var(--mut); font-size: 14.5px; }
-.docs nav a.on { color: var(--hi); border-color: var(--acc); }
-.docs nav a:hover { text-decoration: none; color: var(--hi); }
-.docs article { max-width: 720px; }
-.docs article h1 { font-size: 44px; font-weight: 800; letter-spacing: -0.04em; margin: 10px 0 18px; }
-.docs article h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin: 44px 0 12px; }
-.docs article p { color: var(--fg); margin-bottom: 14px; }
-.docs .crumbs { color: var(--dim); font: 13px var(--font-mono); }
-.docs .toc-r { position: sticky; top: 110px; align-self: start; font-size: 14px; }
-.docs .toc-r a { display: block; padding: 4px 0; color: var(--mut); }
-.docs .toc-r .lbl { color: var(--dim); font: 600 11.5px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
-.callout { display: flex; gap: 12px; padding: 16px 18px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--card); margin: 18px 0; color: var(--fg); }
-.callout svg.i { color: var(--kw); margin-top: 3px; }
-.prevnext { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 56px; }
-.prevnext a { padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; color: var(--hi); }
-.prevnext a span { display: block; color: var(--dim); font-size: 13px; }
-.prevnext a:last-child { text-align: right; }
-.prevnext a:hover { border-color: var(--line-2); text-decoration: none; }
-
-@media (max-width: 900px) {
-  .area, .docs { grid-template-columns: 1fr; gap: 24px; }
-  .flist, .os-cards { grid-template-columns: 1fr; }
-  .flist .card.w2 { grid-column: auto; }
-  .db-grid { grid-template-columns: repeat(2, 1fr); }
-  .docs .toc-r { display: none; }
+/* Driver tile in the window of the home page, as in the app (app.css .drv). */
+.drv {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  border-radius: 4px;
+  color: #fff;
+  font: 700 8px/1 var(--font-ui);
+  letter-spacing: -0.02em;
+  vertical-align: -3px;
 }
 
-
-
-/* Compare page. */
-.vs { display: grid; grid-template-columns: 1fr 140px 1fr; align-items: stretch; border: 1px solid var(--line); border-radius: 20px; background: var(--card); overflow: hidden; }
-.vs-col { padding: 28px 32px; }
-.vs-col.me { background: radial-gradient(500px 240px at 0% 0%, rgba(255, 141, 40, 0.12), transparent 70%); }
-.vs-name { display: flex; align-items: center; gap: 12px; color: var(--hi); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 18px; }
-.vs dl { margin: 0; display: grid; gap: 0; }
-.vs dl div { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-top: 1px solid var(--line); }
-.vs dt { color: var(--mut); font-size: 14.5px; }
-.vs dd { margin: 0; color: var(--hi); font-weight: 600; text-align: right; }
-.vs-col.me dd { color: var(--acc-2); }
-.vs-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-inline: 1px solid var(--line); background: var(--app-side); text-align: center; }
-.vs-mid span { color: var(--dim); font: 600 12px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; }
-.vs-mid b { font-size: 40px; font-weight: 800; letter-spacing: -0.04em; background: linear-gradient(95deg, var(--acc-2), var(--acc) 40%, var(--acc-3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.vs-mid small { color: var(--mut); font-size: 13px; }
-.cl-logo { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 8px; border-radius: 6px; background: color-mix(in srgb, var(--c) 16%, var(--card-2)); color: var(--c); font: 700 9px/1 var(--font-mono); vertical-align: -5px; flex: none; }
-.cl-logo svg { width: 13px; height: 13px; fill: currentColor; }
-.cl-logo.lg { width: 34px; height: 34px; margin: 0; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); font-size: 12px; }
-.cl-logo.lg svg { width: 20px; height: 20px; }
-.cl-me { display: inline-block; width: 20px; height: 20px; margin-right: 8px; vertical-align: -5px; }
-.bar > span { white-space: nowrap; }
-.vs-why { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
-.vs-why .card, .imports .card { min-height: 0; padding: 24px; }
-.vs-why .card h3, .imports .card h3 { font-size: 17px; }
-.vs-why .card p, .imports .card p { font-size: 14.5px; }
-.size-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.size-two .bars { margin: 0; padding: 26px; }
-.size-two .bar { grid-template-columns: 170px 1fr 84px; font-size: 14px; }
-.bars-h { color: var(--mut); font: 600 12px/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; }
-.bar.todo s { width: 100%; background: repeating-linear-gradient(90deg, var(--line-2) 0 6px, transparent 6px 12px); }
-.matrix .grid th[scope], .matrix .grid tbody th { font-weight: 500; }
-.matrix tr.grp th { background: var(--app-side); color: var(--acc); font: 600 12px/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; padding-top: 14px; }
-.matrix td { text-align: center; }
-.matrix td.y, .matrix td.p, .matrix td.x { font-size: 17px; }
-.matrix td.y { color: var(--str); } .matrix td.p { color: var(--num); } .matrix td.x { color: var(--dim); }
-.matrix.price tbody tr:nth-child(2) td { text-align: left; font-size: 13px; color: var(--mut); }
-.matrix.price tbody tr:nth-child(2) td.me { color: var(--hi); }
-.imports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-
-@media (max-width: 900px) {
-  .vs { grid-template-columns: 1fr; } .vs-mid { padding: 16px; border-inline: 0; border-block: 1px solid var(--line); }
-  .vs-why, .size-two, .imports { grid-template-columns: 1fr; }
+.drv.pg {
+  background: #336791;
 }
-.matrix td.lft { text-align: left; font-size: 14px; color: var(--mut); }
-.mascot .chip { white-space: nowrap; }
-.hero-bars { margin: 0; padding: 28px; }
-.hero-bars .bar { grid-template-columns: 164px 1fr 84px; font-size: 14px; }
-.matrix tbody th { white-space: normal; min-width: 180px; }
-.matrix td.lft:last-child { min-width: 280px; }
+
+.drv .ping {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--app-side);
+}
+
+.drv .ping.ok {
+  background: var(--str);
+}
+
+/* Line icons. */
+svg.i {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+svg.i.sm {
+  width: 14px;
+  height: 14px;
+}
+
+/* The icon sprite at the end of each page. */
+.sprite {
+  position: absolute;
+}
+
+.actions.center {
+  justify-content: center;
+}
+
+.section.deep {
+  padding-top: 120px;
+}
 
 .more-link {
   margin-top: 20px;
+}
+
+/* Features: the pill navigation under the heading. */
+.pill-nav {
+  position: sticky;
+  top: 88px;
+  z-index: 40;
+  max-width: var(--page);
+  margin: 56px auto 0;
+  padding: 0 var(--gutter);
+}
+
+.pill-nav div {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(17, 20, 22, 0.72);
+  backdrop-filter: blur(16px);
+  overflow-x: auto;
+}
+
+.pill-nav a {
+  padding: 8px 14px;
+  border-radius: 9px;
+  color: var(--mut);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.pill-nav a:hover {
+  color: var(--hi);
+  text-decoration: none;
+  background: var(--card-2);
+}
+
+.pill-nav a.on {
+  color: var(--hi);
+  background: var(--card-2);
+}
+
+.mascot .chip {
+  white-space: nowrap;
+}
+
+/* Download. */
+.os-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.os-cards .card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.os-cards h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.os-cards h3 svg.i {
+  width: 22px;
+  height: 22px;
+  color: var(--hi);
+}
+
+.files {
+  display: grid;
+  gap: 4px;
+}
+
+.files a {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: var(--fg);
+  font-size: 15px;
+}
+
+.files a:hover {
+  background: var(--card-2);
+  text-decoration: none;
+}
+
+.files span {
+  color: var(--dim);
+  font: 13px var(--font-mono);
+}
+
+/* Docs. */
+.docs {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) 200px;
+  gap: 56px;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 72px var(--gutter) 0;
+}
+
+.docs nav h6 {
+  margin: 26px 0 8px;
+  color: var(--dim);
+  font: 600 11.5px/1.4 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.docs nav a {
+  display: block;
+  padding: 6px 12px;
+  border-left: 1px solid var(--line);
+  color: var(--mut);
+  font-size: 14.5px;
+}
+
+.docs nav a.on {
+  color: var(--hi);
+  border-color: var(--acc);
+}
+
+.docs nav a:hover {
+  text-decoration: none;
+  color: var(--hi);
+}
+
+.docs article {
+  max-width: 720px;
+}
+
+.docs article h1 {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin: 10px 0 18px;
+}
+
+.docs article h2 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 44px 0 12px;
+}
+
+.docs article p {
+  color: var(--fg);
+  margin-bottom: 14px;
+}
+
+.docs .crumbs {
+  color: var(--dim);
+  font: 13px var(--font-mono);
+}
+
+.docs .toc-r {
+  position: sticky;
+  top: 110px;
+  align-self: start;
+  font-size: 14px;
+}
+
+.docs .toc-r a {
+  display: block;
+  padding: 4px 0;
+  color: var(--mut);
+}
+
+.docs .toc-r .lbl {
+  margin-bottom: 8px;
+  color: var(--dim);
+  font: 600 11.5px/1.4 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.callout {
+  display: flex;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+.callout svg.i {
+  margin-top: 3px;
+  color: var(--kw);
+}
+
+/* Compare: one client against PlatypusDB. */
+.vs {
+  display: grid;
+  grid-template-columns: 1fr 140px 1fr;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.vs + .bento {
+  margin-top: 16px;
+}
+
+.vs-col {
+  padding: 28px 32px;
+}
+
+.vs-col.me {
+  background: radial-gradient(500px 240px at 0% 0%, rgba(255, 141, 40, 0.12), transparent 70%);
+}
+
+.vs-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  color: var(--hi);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.vs dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.vs dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+}
+
+.vs dt {
+  color: var(--mut);
+  font-size: 14.5px;
+}
+
+.vs dd {
+  margin: 0;
+  color: var(--hi);
+  font-weight: 600;
+  text-align: right;
+}
+
+.vs-col.me dd {
+  color: var(--acc-2);
+}
+
+.vs-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-inline: 1px solid var(--line);
+  background: var(--app-side);
+  text-align: center;
+}
+
+.vs-mid span {
+  color: var(--dim);
+  font: 600 12px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.vs-mid b {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: linear-gradient(95deg, var(--acc-2), var(--acc) 40%, var(--acc-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.vs-mid small {
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.seg-pills {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
 }
 
 .vs-pick {
@@ -1817,9 +2036,166 @@ svg.i.sm { width: 14px; height: 14px; }
   color: var(--hi);
 }
 
+/* Logos of the other clients. */
+.cl-logo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--c) 16%, var(--card-2));
+  color: var(--c);
+  font: 700 9px/1 var(--font-mono);
+  vertical-align: -5px;
+}
+
+.cl-logo svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
+.cl-logo.lg {
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.cl-logo.lg svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cl-logo.lg + h3 {
+  margin-top: 16px;
+}
+
+.cl-me {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  vertical-align: -5px;
+}
+
+/* Compare: size bars and the matrix. */
+.bar > span {
+  white-space: nowrap;
+}
+
+.bar.todo s {
+  width: 100%;
+  background: repeating-linear-gradient(90deg, var(--line-2) 0 6px, transparent 6px 12px);
+}
+
+.hero-bars {
+  margin: 0;
+  padding: 28px;
+}
+
+.hero-bars .bar {
+  grid-template-columns: 164px 1fr 84px;
+  font-size: 14px;
+}
+
+.size-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.size-two .bars {
+  margin: 0;
+  padding: 26px;
+}
+
+.size-two .bar {
+  grid-template-columns: 170px 1fr 84px;
+  font-size: 14px;
+}
+
+.bars-h {
+  color: var(--mut);
+  font: 600 12px/1.3 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.matrix tbody th {
+  min-width: 180px;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.matrix tr.grp th {
+  padding-top: 14px;
+  background: var(--app-side);
+  color: var(--acc);
+  font: 600 12px/1.3 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.matrix td {
+  text-align: center;
+}
+
+.matrix td.y,
+.matrix td.p,
+.matrix td.x {
+  font-size: 17px;
+}
+
+.matrix td.y {
+  color: var(--str);
+}
+
+.matrix td.p {
+  color: var(--num);
+}
+
+.matrix td.x {
+  color: var(--dim);
+}
+
+.matrix.price tbody tr:nth-child(2) td {
+  text-align: left;
+  font-size: 13px;
+  color: var(--mut);
+}
+
+.matrix.price tbody tr:nth-child(2) td.me {
+  color: var(--hi);
+}
+
 @media (max-width: 900px) {
   .docs {
     grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .docs .toc-r {
+    display: none;
+  }
+
+  .os-cards,
+  .size-two {
+    grid-template-columns: 1fr;
+  }
+
+  .vs {
+    grid-template-columns: 1fr;
+  }
+
+  .vs-mid {
+    padding: 16px;
+    border-inline: 0;
+    border-block: 1px solid var(--line);
   }
 }
 
@@ -1841,9 +2217,7 @@ svg.i.sm { width: 14px; height: 14px; }
     grid-template-columns: 96px 1fr 72px;
     gap: 10px;
   }
-}
 
-@media (max-width: 600px) {
   .bar .cl-logo,
   .bar .cl-me {
     display: none;
