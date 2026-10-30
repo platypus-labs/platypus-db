@@ -89,9 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| Debugger PL/pgSQL del gruppo J: l'immagine e i test di conformance sono verificati su un server vero (30 ottobre 2026, corretto lo sfasamento di una riga delle posizioni). Resta da lanciare su Windows lo scenario `admin-debugger-postgres` (serve l'eseguibile di release e il container `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`), poi eliminare questa riga | gruppo J, 2026-10-30 |
-| Scenari E2E del gruppo O scritti in un container Linux e mai eseguiti: `scripts-git-sqlite`, `share-query-sqlite`, `sync-folder-sqlite`, `projects-shared-sqlite`, `plugins-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
-| Gruppo P (pacchetti e vetrina) unito senza la verifica del crate desktop: nel container cloud mancano le librerie GTK, quindi non sono stati eseguiti `cargo clippy` e `cargo test -p platypus-desktop` (`commands/agents.rs`: comando MCP con `flatpak run`; `commands/mod.rs`: `package_manager` e il suo test), né la build di release e gli E2E delle aree toccate (banner di aggiornamento, impostazione degli agenti). Eseguirli su Windows e correggere quello che non va | gruppo P, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -1203,6 +1200,7 @@ repository aspettano che diventi pubblico.
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
 | Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
 | ⏭ serve un Mac — Prova del cask Homebrew su macOS (il manifest è pronto in `packaging/`) | P3 |
+| 🆕 Scenario E2E del banner di aggiornamento (oggi `UpdateBanner.tsx` non ha copertura E2E; serve un `latest.json` finto servito in locale) | P3 |
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
