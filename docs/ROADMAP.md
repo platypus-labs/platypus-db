@@ -89,8 +89,9 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Debugger PL/pgSQL del gruppo J mai provato su un server vero: nel container cloud apt è bloccato e l'immagine `docker/postgres-pldebug` non si costruisce. Avviare `docker compose -f docker/compose.yml --profile pldebug up -d --build --wait`, eseguire `PLATYPUS_TEST_PLDEBUG_URL=… cargo test -p platypus-conformance --test debugger` (i quattro test di debug, oggi saltati) e lo scenario `admin-debugger-postgres`, correggere quello che non va, poi segnare la riga ✅ nel gruppo J | gruppo J, 2026-10-30 |
 | Scenari E2E delle P3 dei gruppi I e M scritti in un container Linux e mai eseguiti: `erd-fullscreen-refresh-sqlite`, `erd-edit-sqlite`, `schema-changelog-sqlite`, `schema-objects-sqlite`, `schema-objects-postgres`, `schema-migrations-sqlite`, `schema-data-compare-sqlite`, `schema-history-sqlite`, `analysis-pivot-sqlite`, `analysis-across-sqlite`, `analysis-saved-results-sqlite`, `analysis-dashboard-sqlite`, `analysis-table-profile-sqlite`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | 2026-10-30, chiusura dei gruppi I e M |
-| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
+| Scenari E2E delle correzioni del 30 ottobre scritti in un container Linux e mai eseguiti: `object-tab-edit-table-sqlite` (Modifica tabella dal tab oggetto e dal data viewer), `generate-ddl-many-pg` (Genera il DDL su 300 tabelle, avanzamento, Stop), `navigator-select-sqlite` (adattato al tab che si riempie), `erd-layout-large-sqlite` (disposizione automatica e linee su 57 tabelle, con screenshot), `profiles-schedule-sqlite` (il task di un profilo prende il primo profilo arrivato), e quelli del gruppo G `cassandra`, `drivers-versions`, `drivers-versions-auto`, `drivers-versions-quiet`, `drivers-versions-recent`, e quelli del gruppo J `admin-parameters-postgres`, `admin-dashboard-postgres`, `admin-users-postgres`, `admin-users-mysql`. Eseguirli su Windows dopo la build di release e correggere scenari o codice | correzioni, 2026-10-30 |
 
 ### Lock dei gruppi
 
@@ -693,8 +694,31 @@ storico; stati applicata, pendente, divergente, fallita, mancante. Gli scenari E
 
 ### Gruppo J — Amministrazione del server
 
-**Stato: P2 completati** (restano i P3: utenti e ruoli, dashboard, debugger PL/pgSQL,
-parametri del server). Dal 29 ottobre 2026: query più costose e statistiche di tabelle e
+**Stato: P2 completati, P3 in parte** (fatti utenti e ruoli, dashboard e parametri del server;
+il debugger PL/pgSQL è scritto ma mai provato su un server con `pldebugger`, vedi "Correzioni
+aperte"). Dal 30 ottobre 2026: **parametri del server** (`server_parameters`, capacità omonima:
+`pg_settings`, variabili di MySQL con la loro origine, `information_schema.SYSTEM_VARIABLES` di
+MariaDB, `sys.configurations` di SQL Server con un elenco dei default, `system.settings` e
+`system.server_settings` di ClickHouse, 31 PRAGMA di SQLite, `duckdb_settings()`), con ricerca,
+"solo cambiati" e l'istruzione per cambiarli aperta nell'editor (mai eseguita da sola);
+**dashboard** (`server_metrics`: connessioni, transazioni e statement al secondo calcolati tra
+due letture, cache hit, dimensioni dei database, replica, uptime; ogni misura che il server
+rifiuta mostra "—" con il motivo; PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse);
+**utenti, ruoli e permessi** (`principals` e `principal_privileges`, capacità `security`; lo SQL
+lo scrive `platypus_sql::security` per PostgreSQL, MySQL/MariaDB, SQL Server e ClickHouse): crea,
+modifica, elimina (con `REASSIGN OWNED`/`DROP OWNED` in PostgreSQL), GRANT/REVOKE con grant
+option e appartenenza ai ruoli, anteprima con la password mascherata, che non arriva mai nel
+query log. Limiti: in MySQL serve `SELECT ON mysql.*` per leggere i permessi; SQL Server solo il
+database corrente e niente `DENY`; si vedono i permessi diretti, non quelli ereditati dai ruoli;
+in MySQL le transazioni al secondo contano solo i COMMIT/ROLLBACK espliciti. **Debugger
+PL/pgSQL** (`Connection::debugger`, capacità `debugger`, `platypus-driver-pg/src/debug/`, tab
+`debugger`): chiamata diretta di una funzione o procedura su due sessioni proprie
+(`pldbg_oid_debug`, `pldbg_attach_to_port`), passi dentro e sopra, continua, breakpoint nella
+colonna del sorgente, stack, variabili modificabili, risultato e messaggi alla fine, Stop che
+non lascia la sessione bloccata; profilo `pldebug` di `docker/compose.yml` con l'immagine che
+installa `pldebugger` (non costruibile nel container cloud: apt bloccato). Limiti: niente
+breakpoint globali né funzioni trigger; serve `plugin_debugger` in `shared_preload_libraries`.
+Dal 29 ottobre 2026: query più costose e statistiche di tabelle e
 indici (`top_queries` e `object_statistics`, capacità `server_statistics`; PostgreSQL da
 `pg_stat_statements` e `pg_stat_user_tables/indexes`, MySQL e MariaDB da `performance_schema`
 e `information_schema`, SQL Server da `dm_exec_query_stats`, `dm_db_partition_stats` e
@@ -731,13 +755,13 @@ solo i lock coinvolti in un'attesa.
 | ✅ **Lock manager**: blocchi e catene di attesa | P2 | D |
 | ✅ Backup e restore con `pg_dump`/`pg_restore` e `mysqldump`, con avanzamento | P2 | D |
 | ✅ Manutenzione: VACUUM, ANALYZE, REINDEX, OPTIMIZE e CHECK TABLE dal menu | P2 | D+ |
-| Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
-| Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
+| ✅ Utenti, ruoli e permessi (GRANT/REVOKE da form) | P3 | D |
+| ✅ Dashboard del server: connessioni, TPS, cache hit, dimensioni, replica | P3 | D+ |
 | ✅ **Task scheduler**: script, export e backup pianificati. Ogni piano ha ora e fuso orario, cartella, copie da tenere e un nuovo tentativo se fallisce; si vedono l'ultima esecuzione, il suo esito e la prossima, con "Esegui ora". Il backup è il dump SQL del gruppo H, quindi vale per tutti i driver senza `pg_dump` | P2 | D+ |
-| Debugger PL/pgSQL | P3 | D+ |
+| Debugger PL/pgSQL (scritto, da provare con il profilo `pldebug`) | P3 | D+ |
 | ✅ 🆕 **Query più costose del server**: `pg_stat_statements`, `performance_schema`, Query Store di SQL Server, con apertura nell'editor e nel tab `explain` | P2 | N |
 | ✅ 🆕 Statistiche di tabelle e indici: indici mai usati, bloat, tabelle con molte scansioni complete, ultimo VACUUM/ANALYZE | P2 | N |
-| 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
+| ✅ 🆕 Parametri del server (`pg_settings`, `SHOW VARIABLES`) con ricerca e differenze dai valori di default | P3 | N |
 
 ---
 
