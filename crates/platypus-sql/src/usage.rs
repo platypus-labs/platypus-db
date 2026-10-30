@@ -21,12 +21,13 @@ fn names(sql: &str, dialect: Dialect, first: usize, out: &mut Vec<Name>) {
         at = token.start;
         let text = token.text(sql);
         match token.kind {
-            TokenKind::Word => out.push(Name {
-                name: text.to_lowercase(),
-                line,
-            }),
-            TokenKind::QuotedIdent => {
-                if let Some(name) = unquote_ident(text) {
+            TokenKind::Word | TokenKind::QuotedIdent => {
+                let name = if token.kind == TokenKind::Word {
+                    Some(text.to_owned())
+                } else {
+                    unquote_ident(text)
+                };
+                if let Some(name) = name {
                     out.push(Name {
                         name: name.to_lowercase(),
                         line,

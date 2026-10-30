@@ -2829,7 +2829,9 @@ async fn check_fixture_objects(b: &Backend, conn: &dyn Connection) {
         &columns,
     );
     assert_eq!(
-        uses.iter().map(|(i, _)| columns[*i].as_str()).collect::<Vec<_>>(),
+        uses.iter()
+            .map(|(i, _)| columns[*i].as_str())
+            .collect::<Vec<_>>(),
         ["customer_id"],
         "{}: {ddl}",
         b.name

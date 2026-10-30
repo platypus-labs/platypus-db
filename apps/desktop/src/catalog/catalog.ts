@@ -1,6 +1,6 @@
 /**
- * The local notes, tags, display columns and sensitive marks of each connection (`catalog.db`), loaded once per
- * connection and shared by the navigator, the object tab, the grid and the editor's completion.
+ * The local notes, tags, display columns and sensitive marks of each connection (`catalog.db`),
+ * loaded once per connection and shared by the navigator, the object tab, the grid and the editor's completion.
  */
 import { useSyncExternalStore } from "react";
 import { api, type CatalogEntry, type CatalogKey, type DisplayColumn, type SensitiveColumn, toCommandError } from "../api";
