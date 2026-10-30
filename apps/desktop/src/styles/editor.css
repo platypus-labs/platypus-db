@@ -987,10 +987,12 @@ button.toggled {
   gap: var(--space-2);
 }
 
+/* `:only-child` does not see text nodes, so a button with an icon and a word matches too: a
+   minimum width keeps the icon alone square and lets the word widen its button. */
 .toolbar button:has(> svg:only-child) {
   justify-content: center;
-  width: var(--control-md);
-  padding: 0;
+  min-width: var(--control-md);
+  padding: 0 var(--space-6);
 }
 
 .toolbar .divider {
