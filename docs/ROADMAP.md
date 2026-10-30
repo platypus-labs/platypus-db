@@ -109,7 +109,7 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
 | F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
-| G — Nuovi driver | 🔒 Delfa · group-g-cassandra · 2026-10-30 |
+| G — Nuovi driver | ✅ completato |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ completato |
 | J — Amministrazione del server | ✅ fatto (P2) |
