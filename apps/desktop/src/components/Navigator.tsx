@@ -429,7 +429,6 @@ export function Navigator(props: Props) {
     });
   }
 
-
   // What the navigator's own actions need, refreshed every render.
   const nav = useRef<NavigatorApi>(null!);
   nav.current = {
