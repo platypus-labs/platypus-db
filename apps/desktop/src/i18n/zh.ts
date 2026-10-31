@@ -3040,6 +3040,7 @@ const zh: Record<string, string> = {
   "Reduced": "减少",
   "Dashboard widget": "仪表板小组件",
   "Only the first {shown} of {total} rows are in this export.": "此导出仅包含 {total} 行中的前 {shown} 行。",
+  "Could not connect to {name}, so its server activity cannot be read.": "无法连接到 {name}，因此无法读取服务器活动。",
 };
 
 export default zh;

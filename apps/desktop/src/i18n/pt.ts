@@ -3040,6 +3040,7 @@ const pt: Record<string, string> = {
   "Reduced": "Reduzidas",
   "Dashboard widget": "Widget do painel",
   "Only the first {shown} of {total} rows are in this export.": "Esta exportação contém apenas as primeiras {shown} de {total} linhas.",
+  "Could not connect to {name}, so its server activity cannot be read.": "Não foi possível conectar a {name}, então a atividade do servidor não pode ser lida.",
 };
 
 export default pt;

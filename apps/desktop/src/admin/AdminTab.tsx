@@ -110,6 +110,8 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   const interval = tab.interval ?? 5;
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The connection could not be opened: every view says so instead of listing nothing. */
+  const [unreachable, setUnreachable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -142,6 +144,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
       do {
         again.current = false;
         const sid = await sideSession();
+        setUnreachable(sid === null);
         if (sid === null) return;
         const capabilities = workbench().capabilities(sid) ?? null;
         setCaps(capabilities);
@@ -328,12 +331,17 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         </div>
       )}
       {error && <div className="notice error small admin-error">{error}</div>}
-      {!unsupported && view === "dashboard" && (
+      {unreachable && (
+        <div className="notice error small admin-error" data-field="unreachable">
+          {t("Could not connect to {name}, so its server activity cannot be read.", { name: connection.name })}
+        </div>
+      )}
+      {!unreachable && !unsupported && view === "dashboard" && (
         <div className="object-body admin-body">
           <Dashboard samples={samples} />
         </div>
       )}
-      {!unsupported && view === "parameters" && (
+      {!unreachable && !unsupported && view === "parameters" && (
         <div className="object-body admin-body">
           {parameters.error && <div className="notice error small" data-field="parameters-error">{parameters.error}</div>}
           {parameters.list && (
@@ -347,7 +355,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
           )}
         </div>
       )}
-      {!unsupported && view === "sessions" && (
+      {!unreachable && !unsupported && view === "sessions" && (
         <div className="object-body admin-body">
           <div className="admin-toolbar">
             <div className="admin-filters" role="group" aria-label={t("Show")}>
@@ -387,7 +395,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
           </div>
         </div>
       )}
-      {ON_DEMAND.has(view) && (
+      {!unreachable && ON_DEMAND.has(view) && (
         <div className="object-body admin-body">
           {statistics.error && <div className="notice error small" data-field="statistics-error">{statistics.error}</div>}
           {view === "statements" && statistics.queries && (
@@ -412,10 +420,10 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
           )}
         </div>
       )}
-      {view === "users" && caps?.security && (
+      {!unreachable && view === "users" && caps?.security && (
         <Users connection={connection} active={active} refresh={version} sideSession={sideSession} />
       )}
-      {!unsupported && view === "locks" && (
+      {!unreachable && !unsupported && view === "locks" && (
         <div className="object-body admin-body">
           <Locks
             sessions={sessions}
