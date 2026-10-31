@@ -142,6 +142,41 @@ async fn agents_ask_the_user_through_the_bridge() {
     assert_eq!(bridge.link().connected(), []);
 }
 
+/// A file written before with loose rights (an older version, a hand edit) is tightened on
+/// the next write, not only when it is created.
+#[test]
+fn a_private_file_is_tightened_on_every_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("agent-token");
+    std::fs::write(&path, "old").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    write_private(&path, "new").unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+    #[cfg(windows)]
+    {
+        // One entry, the user's, none inherited from the folder.
+        let out = std::process::Command::new("icacls")
+            .arg(&path)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(!text.contains("(I)"), "{text}");
+        assert_eq!(text.matches(":(F)").count(), 1, "{text}");
+        write_private(&path, "again").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "again");
+    }
+}
+
 #[tokio::test]
 async fn a_wrong_token_is_refused_and_a_new_one_replaces_the_old() {
     let dir = tempfile::tempdir().unwrap();
