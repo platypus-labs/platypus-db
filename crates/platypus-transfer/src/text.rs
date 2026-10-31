@@ -573,8 +573,8 @@ impl TextSink {
 }
 
 /// `value` as a spreadsheet shows it as text rather than runs it: a cell that starts with
-/// `=`, `+`, `-`, `@`, a tab or a carriage return is a formula to Excel, LibreOffice and
-/// Google Sheets (`=HYPERLINK(…)`, `=cmd|…`), and gets a leading `'`. A number such as
+/// `=`, `+`, `-`, `@`, a tab or a carriage return is a formula to the spreadsheets (Excel,
+/// Calc, Google Sheets: `=HYPERLINK(…)`, `=cmd|…`), and gets a leading `'`. A number such as
 /// `-5` or `+1.5e3` stays as it is.
 fn neutralized(value: &str) -> Cow<'_, str> {
     let formula = match value.chars().next() {

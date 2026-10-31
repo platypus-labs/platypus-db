@@ -328,9 +328,9 @@ impl Lexer for Mysql {
                     _ => {}
                 },
                 MyState::Quote(q) => {
-                    if c == b'\\' && q != b'`' && self.escapes {
-                        i += 1;
-                    } else if c == q && next == Some(q) {
+                    // An escaped character, or the quote doubled, stays inside.
+                    let escaped = c == b'\\' && q != b'`' && self.escapes;
+                    if escaped || (c == q && next == Some(q)) {
                         i += 1;
                     } else if c == q {
                         self.state = MyState::Normal;

