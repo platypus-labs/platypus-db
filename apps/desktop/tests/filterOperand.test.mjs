@@ -17,6 +17,13 @@ test("types without equality are compared as text or bytes", () => {
   assert.equal(filterOperand("mysql", "JSON", "`j`"), "CAST(`j` AS CHAR)");
 });
 
+test("a MySQL FLOAT is compared as the text the grid shows", () => {
+  assert.equal(filterOperand("mysql", "float", "`f`"), "CAST(`f` AS CHAR)");
+  assert.equal(filterOperand("mysql", "FLOAT(7,3) unsigned", "`f`"), "CAST(`f` AS CHAR)");
+  assert.equal(filterOperand("mysql", "double", "`d`"), "`d`");
+  assert.equal(filterOperand("postgres", "float4", "f"), "f");
+});
+
 test("other columns are compared as they are, so that their indexes serve", () => {
   assert.equal(filterOperand("postgres", "jsonb", "doc"), "doc");
   assert.equal(filterOperand("postgres", "text", "t"), "t");

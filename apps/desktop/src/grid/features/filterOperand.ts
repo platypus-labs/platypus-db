@@ -8,6 +8,9 @@ const PG_TEXT = /^(json|xml|point|line|lseg|box|path|polygon|circle)(\[\])?$/i;
  *  CLR types are shown as their bytes (`hierarchyid`, shown as its path, compares with it). */
 const MSSQL_TEXT = /^(n?text|xml|sql_variant)$/i;
 const MSSQL_BYTES = /^(image|udt|geography|geometry)$/i;
+/** MySQL and MariaDB `float` is single precision: the stored 0.1 is 0.10000000149..., which a
+ *  literal 0.1 (read as a double) never equals. Its text is the shortest one, the grid's. */
+const MYSQL_FLOAT = /^float\b/i;
 
 /**
  * The expression a condition on column `name` (already quoted) of type `dbType` compares
@@ -21,6 +24,6 @@ export function filterOperand(driver: DriverKind, dbType: string, name: string):
   if (driver === "postgres" && PG_TEXT.test(type)) return `${name}::text`;
   if (driver === "sqlserver" && MSSQL_TEXT.test(type)) return `CAST(${name} AS nvarchar(max))`;
   if (driver === "sqlserver" && MSSQL_BYTES.test(type)) return `CAST(${name} AS varbinary(max))`;
-  if (driver === "mysql" && /^json$/i.test(type)) return `CAST(${name} AS CHAR)`;
+  if (driver === "mysql" && (/^json$/i.test(type) || MYSQL_FLOAT.test(type))) return `CAST(${name} AS CHAR)`;
   return name;
 }
