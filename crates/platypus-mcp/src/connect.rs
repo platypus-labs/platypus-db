@@ -442,7 +442,7 @@ mod tests {
         });
         s.save_project(project).unwrap();
         let unapproved = config_of(&s, &saved, None).await.unwrap().0;
-        assert!(statements(unapproved).is_empty());
+        assert_eq!(statements(unapproved), Vec::<String>::new());
 
         let mut settings = SettingsStore::open(dir.path().join("settings.toml")).unwrap();
         let hash = init_hash("DELETE FROM audit");
@@ -458,7 +458,7 @@ mod tests {
         saved.init.statements = "DELETE FROM audit; DROP TABLE users".to_owned();
         s.save(saved.clone(), PasswordUpdate::Keep).unwrap();
         let changed = config_of(&s, &saved, Some(&settings)).await.unwrap().0;
-        assert!(statements(changed).is_empty());
+        assert_eq!(statements(changed), Vec::<String>::new());
     }
 
     #[tokio::test]
