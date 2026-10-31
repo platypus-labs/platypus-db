@@ -11,8 +11,8 @@ use std::time::{Duration, Instant, SystemTime};
 use platypus_core::{Connection, DriverKind, Error, ObjectKind, ObjectMeta, ObjectRef};
 use platypus_sql::Dialect;
 use platypus_store::{
-    AgentAccess, AgentCallStore, ConnectionStore, HistoryStatus, HistoryStore, NewAgentCall,
-    NewHistoryEntry, SavedConnection,
+    AgentAccess, AgentCallStore, ConnectionStore, HistoryStatus, HistoryStore, MAX_PENDING_ALL,
+    MAX_PENDING_PROPOSALS, NewAgentCall, NewHistoryEntry, SavedConnection,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -965,7 +965,7 @@ impl Agent {
                     .collect()
             })
             .filter(|t: &String| !t.is_empty());
-        self.with_calls(|store| {
+        let kept = self.with_calls(|store| {
             Ok(store.propose(
                 &origin_name(origin),
                 &saved.id.to_string(),
@@ -973,6 +973,13 @@ impl Agent {
                 sql,
             )?)
         })?;
+        if kept.is_none() {
+            return Err(AgentError::Invalid(format!(
+                "{MAX_PENDING_PROPOSALS} proposals of yours (or {MAX_PENDING_ALL} of all agents) \
+                 wait for the user to open them in PlatypusDB: no more until they are opened. \
+                 Put several statements in one proposal instead"
+            )));
+        }
         Ok(format!(
             "Proposed on `{}`: PlatypusDB opens it in a new editor tab, now if the app is open \
              or when it starts (within 24 hours). Nothing ran: the user reviews and runs it.",

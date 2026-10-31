@@ -42,6 +42,10 @@ const MIGRATIONS: &[&str] = &[
 
 /// Proposals older than this are not opened any more: the agent's session is long over.
 pub const PROPOSAL_LIFETIME: Duration = Duration::from_hours(24);
+/// Proposals of one agent that may wait for the app to open them.
+pub const MAX_PENDING_PROPOSALS: u32 = 20;
+/// Proposals of all agents that may wait for the app to open them.
+pub const MAX_PENDING_ALL: u32 = 100;
 
 /// SQL an agent proposed, for the user to review and run in the editor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -301,22 +305,39 @@ impl AgentCallStore {
         rows.collect::<Result<_, _>>().map_err(db_error)
     }
 
-    /// Keeps SQL `agent` proposes on a connection, for the app to open; returns its id.
+    /// Keeps SQL `agent` proposes on a connection, for the app to open; returns its id, or
+    /// `None` when [`MAX_PENDING_PROPOSALS`] of `agent`'s (or [`MAX_PENDING_ALL`] of all
+    /// agents') wait already: an agent cannot fill the profile, nor the app's tab bar.
     pub fn propose(
         &self,
         agent: &str,
         connection_id: &str,
         title: Option<&str>,
         sql: &str,
-    ) -> Result<i64> {
-        self.db
+    ) -> Result<Option<i64>> {
+        let now = SystemTime::now();
+        let added = self
+            .db
             .execute(
                 "INSERT INTO proposals (agent, connection_id, title, sql, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![agent, connection_id, title, sql, millis(SystemTime::now())],
+                 SELECT ?1, ?2, ?3, ?4, ?5
+                 WHERE (SELECT count(*) FROM proposals
+                        WHERE agent = ?1 AND opened = 0 AND created_at >= ?6) < ?7
+                   AND (SELECT count(*) FROM proposals
+                        WHERE opened = 0 AND created_at >= ?6) < ?8",
+                params![
+                    agent,
+                    connection_id,
+                    title,
+                    sql,
+                    millis(now),
+                    millis(now - PROPOSAL_LIFETIME),
+                    MAX_PENDING_PROPOSALS,
+                    MAX_PENDING_ALL,
+                ],
             )
             .map_err(db_error)?;
-        Ok(self.db.last_insert_rowid())
+        Ok((added == 1).then(|| self.db.last_insert_rowid()))
     }
 
     /// The proposals younger than [`PROPOSAL_LIFETIME`], oldest first, removed: each is
@@ -636,6 +657,45 @@ mod tests {
             s.db.query_row("SELECT count(*) FROM proposals", [], |r| r.get(0))
                 .unwrap();
         assert_eq!(left, 0, "opened and expired proposals are removed");
+    }
+
+    #[test]
+    fn waiting_proposals_are_bounded() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        for i in 0..MAX_PENDING_PROPOSALS {
+            assert!(
+                s.propose("flood", "c1", None, &format!("SELECT {i}"))
+                    .unwrap()
+                    .is_some()
+            );
+        }
+        assert_eq!(
+            s.propose("flood", "c1", None, "SELECT 'more'").unwrap(),
+            None
+        );
+        // Another agent still may, until all agents together reach their bound.
+        assert!(
+            s.propose("codex", "c1", None, "SELECT 1")
+                .unwrap()
+                .is_some()
+        );
+        // Expired proposals do not count; opened ones are gone.
+        s.db.execute(
+            "UPDATE proposals SET created_at = 0 WHERE agent = 'flood'",
+            [],
+        )
+        .unwrap();
+        assert!(
+            s.propose("flood", "c1", None, "SELECT 2")
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(s.take_proposals().unwrap().len(), 2);
+        for i in 0..MAX_PENDING_ALL {
+            let agent = format!("agent{}", i % 10);
+            assert!(s.propose(&agent, "c1", None, "SELECT 1").unwrap().is_some());
+        }
+        assert_eq!(s.propose("late", "c1", None, "SELECT 1").unwrap(), None);
     }
 
     #[test]
