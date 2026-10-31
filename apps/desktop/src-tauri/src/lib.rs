@@ -291,7 +291,7 @@ fn override_update_endpoint(
 }
 
 /// `http://` to `127.0.0.1`, `[::1]` or `localhost`, with no credentials.
-fn is_local_http(url: &str) -> bool {
+pub(crate) fn is_local_http(url: &str) -> bool {
     let Ok(url) = url::Url::parse(url) else {
         return false;
     };

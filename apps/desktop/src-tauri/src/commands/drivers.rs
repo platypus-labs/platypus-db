@@ -70,11 +70,35 @@ fn data_dir() -> CommandResult<&'static Path> {
 const REGISTRY_ENV: &str = "PLATYPUS_DRIVER_REGISTRY";
 
 /// The registry drivers are downloaded from: the public one unless `PLATYPUS_DRIVER_REGISTRY`
-/// names another.
+/// names another that may be trusted (`registry_override`).
 fn registry(dir: &Path) -> Registry {
-    match std::env::var(REGISTRY_ENV) {
-        Ok(url) if !url.trim().is_empty() => Registry::with_url(url.trim(), dir),
-        _ => Registry::public(dir),
+    match std::env::var(REGISTRY_ENV)
+        .ok()
+        .as_deref()
+        .and_then(registry_override)
+    {
+        Some(url) => Registry::with_url(url, dir),
+        None => Registry::public(dir),
+    }
+}
+
+/// `url` as a driver registry, when it can be trusted: the index names the SHA-256 of each
+/// native library it lists, so it must come over HTTPS, or plain HTTP only from this machine
+/// (the end-to-end tests' fake registry). Any other address is ignored.
+fn registry_override(url: &str) -> Option<&str> {
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+    let https = url::Url::parse(url).is_ok_and(|u| u.scheme() == "https" && u.host().is_some());
+    if https || crate::is_local_http(url) {
+        Some(url)
+    } else {
+        crate::applog::write(
+            "WARN",
+            &format!("{REGISTRY_ENV} ignored: only https:// or http:// on this machine"),
+        );
+        None
     }
 }
 
@@ -357,6 +381,29 @@ mod tests {
         drop(guard_a);
         assert!(!installing().contains_key("test-a"));
         assert!(installing().contains_key("test-b"));
+    }
+
+    #[test]
+    fn takes_only_a_registry_that_can_be_trusted() {
+        for url in [
+            "https://mirror.example.com/drivers/index.json",
+            "http://127.0.0.1:8123",
+            "http://localhost:8123/index.json",
+            "  https://mirror.example.com  ",
+        ] {
+            assert_eq!(registry_override(url), Some(url.trim()), "{url}");
+        }
+        for url in [
+            "",
+            "http://mirror.example.com/index.json",
+            "http://192.168.1.4:8123",
+            "http://user:pw@127.0.0.1:8123",
+            "ftp://mirror.example.com",
+            "file:///tmp/index.json",
+            "not a url",
+        ] {
+            assert_eq!(registry_override(url), None, "{url}");
+        }
     }
 
     #[test]
