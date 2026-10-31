@@ -13,7 +13,7 @@ use crate::ClickHouseConnection;
 /// Users, then roles: name, how the user authenticates, when its credentials expire.
 const ACCOUNTS: &str = "SELECT name, 'user', \
      arrayStringConcat(arrayMap(x -> toString(x), auth_type), ', '), \
-     if(empty(valid_until), NULL, toString(valid_until[1])) FROM system.users \
+     if(empty(valid_until) OR startsWith(toString(valid_until[1]), '1970-01-01'), NULL, \n     toString(valid_until[1])) FROM system.users \
      UNION ALL SELECT name, 'role', NULL, NULL FROM system.roles ORDER BY 2, 1";
 
 /// Member (user or role) and the role it was granted.

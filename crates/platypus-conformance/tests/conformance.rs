@@ -2940,14 +2940,26 @@ async fn change_an_attribute(b: &Backend, conn: &dyn Connection, user: &str, hos
     let changed = find_principal(conn, user).await.unwrap();
     match b.config.driver {
         DriverKind::Postgres => assert_eq!(changed.connection_limit, Some(3), "{}", b.name),
-        DriverKind::ClickHouse => assert!(
-            changed
-                .valid_until
-                .as_deref()
-                .is_some_and(|v| v.starts_with("2035")),
-            "{}: {changed:?}",
-            b.name
-        ),
+        DriverKind::ClickHouse => {
+            assert!(
+                changed
+                    .valid_until
+                    .as_deref()
+                    .is_some_and(|v| v.starts_with("2035")),
+                "{}: {changed:?}",
+                b.name
+            );
+            // Clearing the date: "never" reads back as no expiry, not as 1970.
+            let clear = PrincipalSpec {
+                name: user.to_owned(),
+                kind: PrincipalKind::User,
+                valid_until: Some(String::new()),
+                ..PrincipalSpec::default()
+            };
+            change_security(b, conn, &SecurityChange::Alter { spec: clear }).await;
+            let cleared = find_principal(conn, user).await.unwrap();
+            assert_eq!(cleared.valid_until, None, "{}: {cleared:?}", b.name);
+        }
         _ => assert!(
             changed.has(PrincipalFlag::Locked),
             "{}: {changed:?}",
