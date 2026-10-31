@@ -107,11 +107,19 @@ export async function fillForm(page, fields) {
 }
 
 /** Clicks Test connection and returns the notice once it shows. */
-export async function testConnection(page, timeoutMs = 30_000) {
+export async function testConnection(page, timeoutMs = 30_000, password = "") {
   // The notice of the previous test goes away when the next one starts: a new element.
   await page.eval(`document.querySelectorAll('.connection-dialog .notice').forEach(n => n.dataset.qaOld = '1')`);
   await page.eval(`${button(dialog, "Test connection")}.click()`);
   const fresh = `document.querySelector('.connection-dialog .notice.ok:not([data-qa-old]), .connection-dialog .notice.error:not([data-qa-old])')`;
+  // A connection that asks its password at each connection asks it for the test too: answered with
+  // `password` (empty by default, as most tests aim at a server that needs none or refuses anyway).
+  const prompt = `[...document.querySelectorAll('.modal-backdrop form.modal h2')].find(h => h.textContent.startsWith('Password for'))?.closest('form')`;
+  await page.waitFor(`${fresh} !== null || ${prompt} != null`, timeoutMs);
+  if (await page.eval(`${prompt} != null`)) {
+    await page.eval(fill(`${prompt}.querySelector('input[type=password]')`, password));
+    await page.eval(`${prompt}.requestSubmit()`);
+  }
   await page.waitFor(`${fresh} !== null && !${button(dialog, "Test connection")}.disabled`, timeoutMs);
   return page.eval(`${fresh}.textContent`);
 }
