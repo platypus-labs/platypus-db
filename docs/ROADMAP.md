@@ -128,7 +128,7 @@ blocco cade.
 | P — Piattaforma, qualità e release | ⛔ bloccato |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ✅ completato |
-| S — Collaudo finale | 🔒 Delfa · group-s-collaudo · 2026-10-31 |
+| S — Collaudo finale | ✅ fatto (P1 in parte: inventario, giro per aree, tutti i database, secondo giro; P2 in parte: revisione di sicurezza) |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
