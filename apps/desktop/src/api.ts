@@ -1748,8 +1748,9 @@ export type Compression = "none" | "gzip" | "zstd";
 export type ExportEvent =
   | { type: "progress"; rows: number; /** Bytes of a file read, and its size. */ bytes?: [number, number] }
   | { type: "done"; rows: number; elapsed_ms: number; warnings?: string[] }
-  | { type: "failed"; error: CommandError }
-  | { type: "cancelled" };
+  /** `rows`: those done before, exactly, for a job that counts them (progress may lag). */
+  | { type: "failed"; error: CommandError; rows?: number }
+  | { type: "cancelled"; rows?: number };
 
 /** Extensions of the files that open as a database and import into a table. */
 export const DATA_FILE_EXTENSIONS = ["csv", "tsv", "json", "ndjson", "jsonl", "parquet", "xlsx", "xlsm", "xls", "ods"];

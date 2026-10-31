@@ -41,6 +41,10 @@ interface Loaded {
   partial: boolean;
 }
 
+/** A connection's last result, handed to the merge with the session it ran in: copying the
+ *  rows checks the session's restrictions, so it stays open until then. */
+type Handed = Loaded & { sessionId: number };
+
 const PROBLEMS: Record<ScriptProblem, string> = {
   empty: msg("There is no statement to run."),
   parameters: msg("Parameters (:name, ?, ${name}) are not filled in on several connections: write the values in the script."),
@@ -166,6 +170,10 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     jobs.current.delete(jobId);
     void api.closeQuery(jobId).catch(() => undefined);
   };
+  const endSession = (sessionId: number) => {
+    sessions.current.delete(sessionId);
+    workbench().closeSession(sessionId);
+  };
 
   async function start() {
     // Until the run starts: a second click does not start another.
@@ -183,7 +191,7 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     stopped.current = false;
     setOutcomes(new Map(targets.map((c) => [c.id, { state: "queued" }])));
     setPhase("running");
-    const kept = new Map<string, Loaded>();
+    const kept = new Map<string, Handed>();
     await pool(targets, PARALLEL, async (c) => {
       const result = await runOn(c);
       if (result) kept.set(c.id, result);
@@ -223,8 +231,9 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     return answer;
   }
 
-  /** Runs the script on `c`; its last result with rows, read in full. */
-  async function runOn(c: SavedConnection): Promise<Loaded | null> {
+  /** Runs the script on `c`; its last result with rows, read in full, and its session, which
+   *  the merge closes. */
+  async function runOn(c: SavedConnection): Promise<Handed | null> {
     setOutcome(c.id, { state: "running", statement: 0 });
     // As a tab opens it: the password asked, the driver offered. A session of the side kind
     // stays in autocommit on production too: nothing is left to commit when it closes.
@@ -235,7 +244,7 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     }
     sessions.current.add(sessionId);
     let last: Loaded | null = null;
-    /** Set once `last` is handed over to the merge, which frees it then. */
+    /** Set once `last` and the session are handed over to the merge, which frees them then. */
     let keep = false;
     try {
       // Checked again in the connection's own dialect: batches, quoting and what writes differ.
@@ -285,19 +294,20 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
       }
       if (!last) return null;
       keep = true;
-      return last;
+      return { ...last, sessionId };
     } catch (e) {
       setOutcome(c.id, { state: "failed", statement: 0, message: toCommandError(e).message });
       return null;
     } finally {
-      if (last && !keep) free(last.jobId);
-      sessions.current.delete(sessionId);
-      workbench().closeSession(sessionId);
+      if (!keep) {
+        if (last) free(last.jobId);
+        endSession(sessionId);
+      }
     }
   }
 
   /** Copies the kept results into an in-memory DuckDB and opens a tab on them together. */
-  async function merge(kept: ({ c: SavedConnection } & Loaded)[]) {
+  async function merge(kept: ({ c: SavedConnection } & Handed)[]) {
     if (kept.length === 0) {
       setSummary([t("No connection returned rows.")]);
       setPhase("done");
@@ -322,7 +332,10 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
     } catch (e) {
       notes.unshift(toCommandError(e).message);
     } finally {
-      for (const k of kept) free(k.jobId);
+      for (const k of kept) {
+        free(k.jobId);
+        endSession(k.sessionId);
+      }
       setSummary(notes);
       setPhase("done");
     }

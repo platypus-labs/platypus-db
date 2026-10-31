@@ -42,8 +42,16 @@ pub enum ExportEvent {
     },
     Failed {
         error: CommandError,
+        /// The rows done before, exactly, for a job that counts them with [`Export::done`]:
+        /// the progress events, a few a second, may lag behind.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rows: Option<u64>,
     },
-    Cancelled,
+    Cancelled {
+        /// As for `Failed`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rows: Option<u64>,
+    },
 }
 
 impl From<ExportError> for CommandError {
@@ -67,6 +75,8 @@ pub struct Export {
     cooperative: bool,
     stopping: AtomicBool,
     warnings: Mutex<Vec<String>>,
+    /// The rows done so far, as the work last counted them.
+    done: Mutex<Option<u64>>,
 }
 
 impl std::fmt::Debug for Export {
@@ -133,30 +143,47 @@ impl Export {
     where
         F: Future<Output = Result<u64, CommandError>> + Send + 'static,
     {
-        let export = Arc::new(Self {
+        let export = Self::new(events, cooperative);
+        let task = Arc::clone(&export);
+        let handle = tauri::async_runtime::spawn(async move {
+            let started = Instant::now();
+            let result = work(Arc::clone(&task)).await;
+            task.finish(task.outcome(result, started));
+        });
+        *lock(&export.task) = Some(handle);
+        export
+    }
+
+    fn new(events: Channel<ExportEvent>, cooperative: bool) -> Arc<Self> {
+        Arc::new(Self {
             events,
             task: Mutex::new(None),
             over: AtomicBool::new(false),
             cooperative,
             stopping: AtomicBool::new(false),
             warnings: Mutex::new(Vec::new()),
-        });
-        let task = Arc::clone(&export);
-        let handle = tauri::async_runtime::spawn(async move {
-            let started = Instant::now();
-            let event = match work(Arc::clone(&task)).await {
-                Ok(rows) => ExportEvent::Done {
-                    rows,
-                    elapsed_ms: millis(started),
-                    warnings: std::mem::take(&mut *lock(&task.warnings)),
-                },
-                Err(_) if task.stopping() => ExportEvent::Cancelled,
-                Err(error) => ExportEvent::Failed { error },
-            };
-            task.finish(event);
-        });
-        *lock(&export.task) = Some(handle);
-        export
+            done: Mutex::new(None),
+        })
+    }
+
+    /// The event that reports how the work, started at `started`, ended.
+    fn outcome(&self, result: Result<u64, CommandError>, started: Instant) -> ExportEvent {
+        let rows = *lock(&self.done);
+        match result {
+            Ok(rows) => ExportEvent::Done {
+                rows,
+                elapsed_ms: millis(started),
+                warnings: std::mem::take(&mut *lock(&self.warnings)),
+            },
+            Err(_) if self.stopping() => ExportEvent::Cancelled { rows },
+            Err(error) => ExportEvent::Failed { error, rows },
+        }
+    }
+
+    /// Notes `rows` done so far, exactly: a failure or a stop reports them, where the
+    /// progress events may lag behind.
+    pub fn done(&self, rows: u64) {
+        *lock(&self.done) = Some(rows);
     }
 
     /// Notes something the job left out, reported when it is done.
@@ -265,7 +292,8 @@ impl Export {
         if let Some(task) = lock(&self.task).take() {
             task.abort();
         }
-        self.finish(ExportEvent::Cancelled);
+        let rows = *lock(&self.done);
+        self.finish(ExportEvent::Cancelled { rows });
     }
 }
 
@@ -281,4 +309,34 @@ pub fn write_batches(
         exporter.write(batch)?;
     }
     exporter.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failure() -> Result<u64, CommandError> {
+        Err(CommandError::new("script", "Statement 3 failed"))
+    }
+
+    #[test]
+    fn a_failure_or_a_stop_reports_the_rows_done_before_it() {
+        let job = Export::new(Channel::new(|_| Ok(())), true);
+        let event = job.outcome(failure(), Instant::now());
+        assert_eq!(
+            serde_json::to_value(&event).unwrap()["rows"],
+            serde_json::Value::Null,
+            "none counted: the dialog keeps what progress told"
+        );
+        job.done(1);
+        job.done(2);
+        let event = job.outcome(failure(), Instant::now());
+        assert!(matches!(event, ExportEvent::Failed { rows: Some(2), .. }));
+        job.stopping.store(true, Ordering::Release);
+        let event = job.outcome(failure(), Instant::now());
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::json!({ "type": "cancelled", "rows": 2 })
+        );
+    }
 }

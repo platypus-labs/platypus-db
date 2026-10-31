@@ -2038,6 +2038,19 @@ async fn snapshot_round_trip(
         panic!("{}: no snapshot of {change}", b.name)
     };
     assert_eq!((snapshot.verb, snapshot.rows), (verb, 2), "{}", b.name);
+    // Every name quoted, as the driver quotes identifiers.
+    let table = format!(
+        "{}.{}",
+        d.quote_ident_always(&b.schema),
+        d.quote_ident_always("conf_snap")
+    );
+    assert_eq!(snapshot.table, table, "{}", b.name);
+    assert!(
+        snapshot.restore.iter().any(|sql| sql.contains(&table)),
+        "{}: {:?}",
+        b.name,
+        snapshot.restore
+    );
     run(conn, change)
         .await
         .unwrap_or_else(|e| panic!("{}: {e}", b.name));
