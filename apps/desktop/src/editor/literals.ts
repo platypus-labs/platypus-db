@@ -1,13 +1,20 @@
 /**
  * Values of `:name` and `?` written into the SQL as literals: `42`, `NULL`, `true` and
- * `'quoted'` go in as typed and anything else as a string, escaped for the driver.
+ * `'quoted'` go in as typed (a negative number in parentheses) and anything else, codes such as
+ * `007` included, as a string, escaped for the driver.
  */
 import type { DriverKind, ParameterSpan } from "../api";
 
-/** A placeholder's key among the values: its name, or `?1`, `?2`… by position. */
+/** A placeholder's key among the values: its name, or `?1`, `?2`… by position. As in SQLite, a
+ *  plain `?` after a numbered `?3` is `?4`. */
 export function parameterKeys(spans: ParameterSpan[]): string[] {
   let n = 0;
-  return spans.map((p) => (p.kind === "positional" ? `?${++n}` : p.name));
+  return spans.map((p) => {
+    if (p.kind === "positional") return `?${++n}`;
+    const numbered = /^\?(\d+)$/.exec(p.name);
+    if (numbered) n = Math.max(n, Number(numbered[1]));
+    return p.name;
+  });
 }
 
 /** Drivers whose string literals read `\` as an escape: `C:\temp\new` would hold a tab and a
@@ -17,17 +24,47 @@ const BACKSLASH_ESCAPES = new Set<DriverKind>(["mysql", "clickhouse", "bigquery"
  *  literals): the quote is escaped with `\`. */
 const BACKSLASH_QUOTE = new Set<DriverKind>(["bigquery", "databricks"]);
 
-/** A value typed for `:name` or `?`, as SQL. */
+/** Whether `v` is a number that reads back as typed: not a code such as `007`, `0042` or
+ *  `+39333…`, which a number would turn into another value. */
+function isNumber(v: string): boolean {
+  return /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(v) && !/^-?0\d/.test(v);
+}
+
+/** A value typed for `:name` or `?`, as SQL. A negative number goes in parentheses: after a
+ *  `-` it would start a `--` comment, and before `::type` the cast would take only its digits. */
 export function literal(value: string, driver: DriverKind): string {
   const v = value.trim();
-  if (/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(v) || /^(null|true|false)$/i.test(v) || v.startsWith("'")) {
-    return v;
-  }
+  if (isNumber(v)) return v.startsWith("-") ? `(${v})` : v;
+  if (/^(null|true|false)$/i.test(v) || v.startsWith("'")) return v;
   const escaped = BACKSLASH_ESCAPES.has(driver) ? value.replaceAll("\\", "\\\\") : value;
   const quoted = escaped.replaceAll("'", BACKSLASH_QUOTE.has(driver) ? "\\'" : "''");
   // Transact-SQL's N'...' keeps text outside the database's code page.
   const prefix = driver === "sqlserver" ? "N" : "";
   return `${prefix}'${quoted}'`;
+}
+
+/** Whether characters `a` and `b` side by side start a comment (`--` or `/*`). */
+const opensComment = (a: string | undefined, b: string | undefined) => (a === "-" && b === "-") || (a === "/" && b === "*");
+
+/** `sql` with its placeholders replaced by `values`, and where each value went: `at` is its
+ *  range in the text, `from`/`to` its placeholder's in `sql`. A value never touches the text
+ *  around it so as to open a comment: `10-${v}` with `-5` becomes `10- -5`. */
+function fill(sql: string, spans: ParameterSpan[], values: Record<string, string>, driver: DriverKind) {
+  const keys = parameterKeys(spans);
+  const ranges: { start: number; end: number; from: number; to: number }[] = [];
+  let text = "";
+  let pos = 0;
+  spans.forEach((p, i) => {
+    const value = values[keys[i]!] ?? "";
+    let piece = p.kind === "variable" ? value : literal(value, driver);
+    text += sql.slice(pos, p.start);
+    if (opensComment(text.at(-1), piece[0])) piece = ` ${piece}`;
+    if (opensComment(piece.at(-1), sql[p.end])) piece = `${piece} `;
+    ranges.push({ start: text.length, end: text.length + piece.length, from: p.start, to: p.end });
+    text += piece;
+    pos = p.end;
+  });
+  return { text: text + sql.slice(pos), ranges };
 }
 
 /** Where offset `pos` of `substitute(sql, spans, values, driver)` stands in `sql`: past a value,
@@ -39,16 +76,12 @@ export function originalOffset(
   driver: DriverKind,
   pos: number,
 ): number {
-  const keys = parameterKeys(spans);
   // How much longer the substituted text is so far.
   let shift = 0;
-  for (const [i, p] of spans.entries()) {
-    const value = values[keys[i]!] ?? "";
-    const text = p.kind === "variable" ? value : literal(value, driver);
-    const start = p.start + shift;
-    if (pos < start) break;
-    if (pos < start + text.length) return p.start;
-    shift += text.length - (p.end - p.start);
+  for (const r of fill(sql, spans, values, driver).ranges) {
+    if (pos < r.start) break;
+    if (pos < r.end) return r.from;
+    shift = r.end - r.to;
   }
   return Math.max(0, Math.min(sql.length, pos - shift));
 }
@@ -73,13 +106,5 @@ export function substitute(
   values: Record<string, string>,
   driver: DriverKind,
 ): string {
-  const keys = parameterKeys(spans);
-  let out = "";
-  let pos = 0;
-  spans.forEach((p, i) => {
-    const value = values[keys[i]!] ?? "";
-    out += sql.slice(pos, p.start) + (p.kind === "variable" ? value : literal(value, driver));
-    pos = p.end;
-  });
-  return out + sql.slice(pos);
+  return fill(sql, spans, values, driver).text;
 }
