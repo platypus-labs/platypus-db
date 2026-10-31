@@ -22,6 +22,9 @@ export interface ColumnRule {
   /** DEFAULT gives the column a value: it has a default, takes NULL, or is a key the
    *  database numbers (identity, auto-increment, SQLite's rowid). */
   takesDefault: boolean;
+  /** An empty value is NULL: the column holds no text that could be empty (numbers, dates
+   *  and times, booleans, JSON, UUIDs, network addresses). */
+  emptyIsNull: boolean;
 }
 
 /** Why a cell was left as it was; the UI words it. */
@@ -72,6 +75,8 @@ const INTEGER_TYPE = /\b(tiny|small|medium|big)?int(eger)?\d*\b|\b(small|big)?se
 const NUMBER_TYPE = /\b(numeric|decimal|dec|real|double|float\d*|number|money|smallmoney)\b/i;
 const FLOAT_TYPE = /\b(real|double|float\d*)\b/i;
 const TEXT_TYPE = /char|text|clob|string|xml|\bname\b/i;
+/** Other types without an empty value: dates and times, UUIDs, network addresses. */
+const VALUE_TYPE = /^(nullable\()?(date|time|timestamp|datetime|smalldatetime|interval|year|uuid|uniqueidentifier|inet|cidr|macaddr)/i;
 const INTEGER = /^[+-]?\d+$/;
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const FLOAT_WORDS = new Set(["nan", "infinity", "+infinity", "-infinity", "inf", "-inf"]);
@@ -87,6 +92,8 @@ export function columnRule(column: ColumnInfo, meta: ColumnMeta | undefined): Co
     float: FLOAT_TYPE.test(type),
     // The catalog does not say which columns the database numbers: those are keys.
     takesDefault: !meta || meta.nullable || meta.default !== null || meta.primary_key,
+    emptyIsNull:
+      kind === "integer" || kind === "number" || kind === "bool" || kind === "json" || (kind === "other" && VALUE_TYPE.test(type)),
   });
   if (meta?.enum_values.length) return rule("enum");
   // Arrays and composite values are literals of their own.
@@ -107,9 +114,9 @@ export const isNumberRule = (rule: ColumnRule | undefined) => rule?.kind === "in
 export const loadsFromFile = (rule: ColumnRule | undefined) =>
   rule?.kind === "binary" || rule?.kind === "text" || rule?.kind === "json";
 
-/** An empty value in a number column is NULL, as in the cell editor. */
+/** An empty value is NULL where the column holds no empty text, as in the cell editor. */
 export function normalize(rule: ColumnRule, input: CellInput): CellInput {
-  return isNumberRule(rule) && input.kind === "value" && input.text.trim() === "" ? { kind: "null" } : input;
+  return rule.emptyIsNull && input.kind === "value" && input.text.trim() === "" ? { kind: "null" } : input;
 }
 
 function validJson(text: string): boolean {

@@ -675,7 +675,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       fields={columnMeta?.fields ?? []}
       nullable={columnMeta?.nullable ?? true}
       json={isJson(column, columnMeta)}
-      numeric={column.numeric}
+      emptyIsNull={rules[editing.cell.col]?.emptyIsNull ?? column.numeric}
       options={editing.options}
       onLoadFile={
         loadsFromFile(rules[editing.cell.col])
