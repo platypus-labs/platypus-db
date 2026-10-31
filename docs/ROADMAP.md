@@ -1319,8 +1319,16 @@ procede solo con i mockup approvati; una pagina senza mockup approvato non si to
 
 ### Gruppo S — Collaudo finale
 
-**Stato: da fare.** Si prende ora che il gruppo R è completato, sull'app finita e ridisegnata: è il collaudo
+**Stato: in corso.** Si prende ora che il gruppo R è completato, sull'app finita e ridisegnata: è il collaudo
 prima della v1.0, fatto con calma e con metodo, non una passata veloce.
+
+Fatto: l'inventario in [COVERAGE.md](COVERAGE.md) e i test per i suoi buchi; conformance nuova
+(caricamento su S3 con SeaweedFS, certificati client mTLS, agente SSH, ADBC generico, `schema_catalog`);
+il giro per aree con 12 tester (scenari `qa4-*`), che ha trovato 83 bug, tutti corretti; la revisione
+del codice, con 20 correzioni; le liste del collaudo a mano in [COLLAUDO.md](COLLAUDO.md). Resta: il
+secondo giro con tester nuovi (in corso, scenari `qa5-*`) e la verifica completa prima della v1.0; il
+collaudo a mano di installer e aggiornamento da una versione pubblicata e dell'integrazione col sistema
+(notifiche, vassoio); Linux a mano con la lista scritta; `⏭ serve un Mac` per macOS.
 
 Verificare che tutto funzioni su tutti i database e i sistemi, come lo usa una persona vera, e
 lasciare ogni controllo come test automatico che resti nel tempo. Si lavora come nella campagna
@@ -1340,9 +1348,9 @@ nei file delle aree toccate, in commit piccoli e separati
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| 🆕 **Inventario delle funzionalità** con, per ognuna, lo scenario E2E o il test di conformance che la copre; i buchi diventano test | P1 | N |
-| 🆕 **Giro per aree** con un tester ciascuna (connessioni, navigator, editor, griglia e modifica, analisi, import/export, impostazioni e tab, sicurezza e MCP, schema, amministrazione) sui casi normali, i casi limite e gli errori | P1 | N |
-| 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
+| ✅ 🆕 **Inventario delle funzionalità** con, per ognuna, lo scenario E2E o il test di conformance che la copre; i buchi diventano test | P1 | N |
+| ✅ 🆕 **Giro per aree** con un tester ciascuna (connessioni, navigator, editor, griglia e modifica, analisi, import/export, impostazioni e tab, sicurezza e MCP, schema, amministrazione) sui casi normali, i casi limite e gli errori | P1 | N |
+| ✅ 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
 | 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
 | 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano | P1 | N |
 | 🆕 **Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
