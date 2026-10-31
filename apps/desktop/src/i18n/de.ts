@@ -765,6 +765,7 @@ const de: Record<string, string> = {
   "Unknown command @{word}: use @set, @echo, @include or @export": "Unbekannter Befehl @{word}: @set, @echo, @include oder @export verwenden",
   "Parameters": "Parameter",
   "Numbers, {null}, {true} and {quoted} text go in as typed, anything else as a string. {raw} variables go in as typed.": "Zahlen, {null}, {true} und {quoted}-Text werden wie eingegeben übernommen, alles andere als Zeichenkette. {raw}-Variablen werden wie eingegeben übernommen.",
+  "The shared query came with these values: check them before running. {raw} values go into the SQL as they are.": "Die geteilte Abfrage kam mit diesen Werten: Prüfe sie vor dem Ausführen. {raw}-Werte gehen unverändert in das SQL ein.",
   "Names are letters, digits and _, starting with a letter.": "Namen bestehen aus Buchstaben, Ziffern und _ und beginnen mit einem Buchstaben.",
   "Two snippets have the same name.": "Zwei Snippets haben denselben Namen.",
   "Snippets": "Snippets",
@@ -3052,6 +3053,10 @@ const de: Record<string, string> = {
   "Restore the file with these commands?": "Die Datei mit diesen Befehlen wiederherstellen?",
   "Run these commands": "Diese Befehle ausführen",
   "the repository's own configuration runs commands ({keys}): remove these settings from its .git/config to use Git here": "die eigene Konfiguration des Repositorys führt Befehle aus ({keys}): entferne diese Einstellungen aus seiner .git/config, um Git hier zu verwenden",
+  "The master password must be at least 8 characters long.": "Das Master-Passwort muss mindestens 8 Zeichen lang sein.",
+  "A new sync passphrase must be at least 8 characters long.": "Eine neue Synchronisierungs-Passphrase muss mindestens 8 Zeichen lang sein.",
+  "the master password cannot be empty": "das Master-Passwort darf nicht leer sein",
+  "the master password must be at least 8 characters long": "das Master-Passwort muss mindestens 8 Zeichen lang sein",
 };
 
 export default de;

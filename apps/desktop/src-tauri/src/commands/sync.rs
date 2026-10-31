@@ -41,6 +41,7 @@ fn error(e: &SyncError) -> CommandError {
     let kind = match e {
         SyncError::WrongPassphrase => "sync_passphrase",
         SyncError::EmptyPassphrase => "sync_passphrase_empty",
+        SyncError::ShortPassphrase => "sync_passphrase_short",
         SyncError::Newer { .. } => "sync_newer",
         SyncError::NotSyncFile => "sync_not_file",
         SyncError::Damaged(_) => "sync_damaged",
@@ -180,13 +181,20 @@ pub fn sync_configure(
 ) -> CommandResult<SyncStatus> {
     let folder = PathBuf::from(folder.trim());
     let saved = self::passphrase(&state)?;
-    let secret = match (passphrase.filter(|p| !p.is_empty()), saved) {
+    let typed = passphrase.filter(|p| !p.is_empty());
+    let new = typed.is_some();
+    let secret = match (typed, saved) {
         (Some(p), _) => Secret::new(p),
         (None, Some(saved)) => saved,
         (None, None) => return Err(error(&SyncError::EmptyPassphrase)),
     };
-    // Checks the folder and the passphrase against a file that is there.
-    file::read(&folder, secret.expose()).map_err(|e| error(&e))?;
+    // Checks the folder and the passphrase against a file that is there. A folder with none
+    // starts a new sync, whose passphrase must be long enough; one that opens the file there
+    // was chosen before, on another computer.
+    let existing = file::read(&folder, secret.expose()).map_err(|e| error(&e))?;
+    if new && existing.is_none() {
+        platypus_sync::crypto::check_new_passphrase(secret.expose()).map_err(|e| error(&e))?;
+    }
     let dir = state_dir(&state)?;
     let changed_folder = folder_setting(&state).is_none_or(|f| f != folder);
     state.with_store(|s| s.set_secret(PASSPHRASE_ID, Some(&secret)))?;

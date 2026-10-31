@@ -17,6 +17,8 @@ export function syncErrorText(e: unknown): string {
       return t("Wrong sync passphrase, or the sync file is damaged. Nothing was changed.");
     case "sync_passphrase_empty":
       return t("Enter the sync passphrase.");
+    case "sync_passphrase_short":
+      return t("A new sync passphrase must be at least 8 characters long.");
     case "sync_newer":
       return t("The sync file was written by a newer PlatypusDB. Update the app on this computer; nothing was changed.");
     case "sync_not_file":

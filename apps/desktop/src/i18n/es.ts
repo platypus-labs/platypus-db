@@ -765,6 +765,7 @@ const es: Record<string, string> = {
   "Unknown command @{word}: use @set, @echo, @include or @export": "Comando desconocido @{word}: usa @set, @echo, @include o @export",
   "Parameters": "Parámetros",
   "Numbers, {null}, {true} and {quoted} text go in as typed, anything else as a string. {raw} variables go in as typed.": "Los números, {null}, {true} y el texto {quoted} entran tal cual, todo lo demás como cadena. Las variables {raw} entran tal cual.",
+  "The shared query came with these values: check them before running. {raw} values go into the SQL as they are.": "La consulta compartida llegó con estos valores: revísalos antes de ejecutar. Los valores {raw} entran en el SQL tal cual.",
   "Names are letters, digits and _, starting with a letter.": "Los nombres son letras, dígitos y _, y empiezan por una letra.",
   "Two snippets have the same name.": "Dos fragmentos tienen el mismo nombre.",
   "Snippets": "Fragmentos",
@@ -3052,6 +3053,10 @@ const es: Record<string, string> = {
   "Restore the file with these commands?": "¿Restaurar el archivo con estos comandos?",
   "Run these commands": "Ejecutar estos comandos",
   "the repository's own configuration runs commands ({keys}): remove these settings from its .git/config to use Git here": "la configuración propia del repositorio ejecuta comandos ({keys}): quita estos ajustes de su .git/config para usar Git aquí",
+  "The master password must be at least 8 characters long.": "La contraseña maestra debe tener al menos 8 caracteres.",
+  "A new sync passphrase must be at least 8 characters long.": "Una nueva frase de contraseña de sincronización debe tener al menos 8 caracteres.",
+  "the master password cannot be empty": "la contraseña maestra no puede estar vacía",
+  "the master password must be at least 8 characters long": "la contraseña maestra debe tener al menos 8 caracteres",
 };
 
 export default es;

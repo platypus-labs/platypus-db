@@ -765,6 +765,7 @@ const zh: Record<string, string> = {
   "Unknown command @{word}: use @set, @echo, @include or @export": "未知命令 @{word}：请使用 @set、@echo、@include 或 @export",
   "Parameters": "参数",
   "Numbers, {null}, {true} and {quoted} text go in as typed, anything else as a string. {raw} variables go in as typed.": "数字、{null}、{true} 和 {quoted} 文本按输入原样代入，其他内容作为字符串。{raw} 变量按输入原样代入。",
+  "The shared query came with these values: check them before running. {raw} values go into the SQL as they are.": "共享查询附带了这些值：运行前请检查。{raw} 值会原样代入 SQL。",
   "Names are letters, digits and _, starting with a letter.": "名称由字母、数字和 _ 组成，以字母开头。",
   "Two snippets have the same name.": "有两个代码片段同名。",
   "Snippets": "代码片段",
@@ -3052,6 +3053,10 @@ const zh: Record<string, string> = {
   "Restore the file with these commands?": "要连同这些命令一起还原该文件吗？",
   "Run these commands": "运行这些命令",
   "the repository's own configuration runs commands ({keys}): remove these settings from its .git/config to use Git here": "该仓库自身的配置会运行命令（{keys}）：请从其 .git/config 中删除这些设置后再在此使用 Git",
+  "The master password must be at least 8 characters long.": "主密码至少需要 8 个字符。",
+  "A new sync passphrase must be at least 8 characters long.": "新的同步口令至少需要 8 个字符。",
+  "the master password cannot be empty": "主密码不能为空",
+  "the master password must be at least 8 characters long": "主密码至少需要 8 个字符",
 };
 
 export default zh;

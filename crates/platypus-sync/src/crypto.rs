@@ -19,6 +19,12 @@ const MAX_M_COST: u32 = 1 << 20;
 const MAX_T_COST: u32 = 64;
 const MAX_P_COST: u32 = 16;
 const TAG_LEN: usize = 16;
+/// The key settings of new files: 64 MiB, 3 passes, 1 lane, above the library's defaults
+/// (19 MiB, 2 passes), as the file may sit on a third party's drive or Git remote where it
+/// can be attacked offline. The header names them, so files written with others still open.
+pub const KEY_COST: (u32, u32, u32) = (64 * 1024, 3, 1);
+/// The shortest passphrase a new sync accepts.
+pub const MIN_PASSPHRASE_LEN: usize = 8;
 
 /// What can go wrong reading or writing sync data.
 #[derive(Debug, thiserror::Error)]
@@ -28,6 +34,9 @@ pub enum SyncError {
 
     #[error("the sync passphrase cannot be empty")]
     EmptyPassphrase,
+
+    #[error("the sync passphrase must be at least 8 characters long")]
+    ShortPassphrase,
 
     #[error("this is not a PlatypusDB sync file")]
     NotSyncFile,
@@ -78,17 +87,20 @@ fn be(bytes: &[u8]) -> u32 {
     u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
 }
 
-/// Encrypts `plaintext` under `passphrase`: a fresh salt and nonce every time.
+/// Refuses a passphrase too short for a new sync. One that already opens the folder's file
+/// is not checked: it was chosen before, and every computer has it.
+pub fn check_new_passphrase(passphrase: &str) -> Result<(), SyncError> {
+    match passphrase.chars().count() {
+        0 => Err(SyncError::EmptyPassphrase),
+        n if n < MIN_PASSPHRASE_LEN => Err(SyncError::ShortPassphrase),
+        _ => Ok(()),
+    }
+}
+
+/// Encrypts `plaintext` under `passphrase` with [`KEY_COST`]: a fresh salt and nonce every
+/// time.
 pub fn seal(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
-    seal_with(
-        passphrase,
-        plaintext,
-        (
-            Params::DEFAULT_M_COST,
-            Params::DEFAULT_T_COST,
-            Params::DEFAULT_P_COST,
-        ),
-    )
+    seal_with(passphrase, plaintext, KEY_COST)
 }
 
 fn seal_with(
@@ -196,6 +208,40 @@ mod tests {
     fn the_default_settings_round_trip() {
         let sealed = seal("pass", b"data").unwrap();
         assert_eq!(open("pass", &sealed).unwrap(), b"data");
+        // The header names the stronger settings of new files.
+        assert_eq!(be(&sealed[12..16]), 64 * 1024);
+        assert_eq!(be(&sealed[16..20]), 3);
+        assert_eq!(be(&sealed[20..24]), 1);
+    }
+
+    #[test]
+    fn files_written_with_the_old_settings_still_open() {
+        let old = (
+            Params::DEFAULT_M_COST,
+            Params::DEFAULT_T_COST,
+            Params::DEFAULT_P_COST,
+        );
+        let sealed = seal_with("an old passphrase", b"data", old).unwrap();
+        assert_eq!(open("an old passphrase", &sealed).unwrap(), b"data");
+    }
+
+    #[test]
+    fn a_new_passphrase_has_a_minimum_length() {
+        assert!(matches!(
+            check_new_passphrase(""),
+            Err(SyncError::EmptyPassphrase)
+        ));
+        assert!(matches!(
+            check_new_passphrase("short"),
+            Err(SyncError::ShortPassphrase)
+        ));
+        // Characters, not bytes.
+        assert!(matches!(
+            check_new_passphrase("ééééééé"),
+            Err(SyncError::ShortPassphrase)
+        ));
+        assert!(check_new_passphrase("correct horse").is_ok());
+        assert!(check_new_passphrase("8 chars!").is_ok());
     }
 
     #[test]

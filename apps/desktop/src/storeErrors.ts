@@ -13,6 +13,8 @@ const STORE = new Set([
   msg("initials are one or two characters"),
   msg("a client certificate needs both the certificate and its key"),
   msg("a connection cannot go before itself"),
+  msg("the master password cannot be empty"),
+  msg("the master password must be at least 8 characters long"),
 ]);
 
 /** Messages with values in them: the pattern finds them, in the order of the text's names. */
