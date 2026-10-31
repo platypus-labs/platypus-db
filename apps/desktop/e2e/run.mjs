@@ -168,26 +168,35 @@ for (const file of scenarios) {
 
 /** Removes from the Windows Credential Manager what the scenario's profile in `dir` left there:
  *  the passwords of its connections (and the other secrets under the ids its connections.toml
- *  names) and the seal of its agent policy (`platypus_mcp::policy::Seal::of`), which every
- *  profile has its own of. Hundreds of throwaway profiles fill the Credential Manager until
- *  nothing more can be saved there ("Windows error code 8"). */
+ *  names), the bucket keys and signed URLs of its transfer profiles (`key_id` and `url_id` in
+ *  `src-tauri/src/profiles.rs`), and what it keeps under its own name
+ *  (`platypus_mcp::profile::keychain_id`): its sync passphrase and the seal of its agent policy.
+ *  Hundreds of throwaway profiles fill the Credential Manager until nothing more can be saved
+ *  there ("Windows error code 8"). */
 function forgetKeychainEntries(dir) {
-  const targets = [];
-  const connections = join(dir, "connections.toml");
-  if (existsSync(connections)) {
-    const ids = readFileSync(connections, "utf8").match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
-    for (const id of new Set(ids.map((i) => i.toLowerCase()))) targets.push(`${id}.platypusdb`);
+  const uuid = (hex) => [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join("-");
+  const idsIn = (file) => {
+    const path = join(dir, file);
+    if (!existsSync(path)) return [];
+    const ids = readFileSync(path, "utf8").match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
+    return [...new Set(ids.map((i) => i.toLowerCase()))];
+  };
+  const targets = idsIn("connections.toml").map((id) => `${id}.platypusdb`);
+  for (const id of idsIn("transfer-profiles.json")) {
+    const value = BigInt(`0x${id.replaceAll("-", "")}`);
+    for (const mask of [0x6275_636b_6574_2d6b_6579_0000_0000_0000n, 0x7369_676e_6564_2d75_726c_0000_0000_0000n]) {
+      targets.push(`${uuid((value ^ mask).toString(16).padStart(32, "0"))}.platypusdb`);
+    }
   }
-  // The seal's name: the SHA-256 of the profile folder as Rust's `canonicalize` gives it
+  // The profile's own name: the SHA-256 of its folder as Rust's `canonicalize` gives it
   // (`\\?\C:\...`), lowercased, its first 16 bytes as a UUID.
   try {
     const path = realpathSync.native(dir);
     const verbatim = path.startsWith("\\\\") ? `\\\\?\\UNC\\${path.slice(2)}` : `\\\\?\\${path}`;
-    const hex = createHash("sha256").update(verbatim.toLowerCase()).digest("hex");
-    const id = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join("-");
-    targets.push(`${id}.platypusdb-agent-policy`);
+    const id = uuid(createHash("sha256").update(verbatim.toLowerCase()).digest("hex"));
+    targets.push(`${id}.platypusdb`, `${id}.platypusdb-agent-policy`);
   } catch {
-    // No folder, no seal.
+    // No folder, nothing under its name.
   }
   for (const target of targets) spawnSync("cmdkey", [`/delete:${target}`], { stdio: "ignore" });
 }
