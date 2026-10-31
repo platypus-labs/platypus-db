@@ -58,7 +58,7 @@ test("a column field makes a PIVOT, with NULL as a column of its own", () => {
   assert.equal(
     sql({ column: "month", value: "amount", aggregate: "sum" }),
     [
-      `PIVOT (SELECT "region", coalesce(CAST("month" AS VARCHAR), 'NULL') AS "month", "amount" AS "__v" FROM result)`,
+      `PIVOT (SELECT "region", CASE WHEN "month" IS NULL THEN 'NULL' WHEN regexp_matches(CAST("month" AS VARCHAR), '^''*NULL$') THEN '''' || CAST("month" AS VARCHAR) ELSE CAST("month" AS VARCHAR) END AS "month", "amount" AS "__v" FROM result)`,
       'ON "month" USING sum("__v")',
       'GROUP BY "region"',
       'ORDER BY "region"',
@@ -93,11 +93,11 @@ test("identifiers and the total's label are quoted in the query", () => {
 });
 
 test("the value may also be a row field", () => {
-  assert.match(sql({ rows: ["amount"], column: "month", value: "amount", aggregate: "max" }), /"amount", coalesce.*"amount" AS "__v"/);
+  assert.match(sql({ rows: ["amount"], column: "month", value: "amount", aggregate: "max" }), /"amount", CASE WHEN .*"amount" AS "__v"/);
 });
 
 test("the pivot columns are counted as the PIVOT makes them", () => {
-  assert.equal(pivotCountSql("month"), `SELECT count(DISTINCT coalesce(CAST("month" AS VARCHAR), 'NULL')) FROM result`);
+  assert.equal(pivotCountSql("month"), `SELECT count(DISTINCT CASE WHEN "month" IS NULL THEN 'NULL' WHEN regexp_matches(CAST("month" AS VARCHAR), '^''*NULL$') THEN '''' || CAST("month" AS VARCHAR) ELSE CAST("month" AS VARCHAR) END) FROM result`);
 });
 
 test("the settings keep to the form's rules", () => {
@@ -117,4 +117,10 @@ test("the settings keep to the form's rules", () => {
   assert.equal(normalize({ ...BASE, column: "month", sort: "value_desc" }, COLUMNS)?.sort, "keys");
   assert.equal(normalize({ ...BASE, column: "month", totals: true, sort: "value_desc" }, COLUMNS)?.sort, "value_desc");
   assert.equal(normalize({ ...BASE, sort: "value_desc" }, COLUMNS)?.sort, "value_desc");
+});
+
+test("a NULL and a text spelt NULL do not share a pivot column", () => {
+  const query = sql({ column: "month", value: "amount", aggregate: "sum" });
+  assert.match(query, /WHEN "month" IS NULL THEN 'NULL' WHEN regexp_matches/);
+  assert.match(query, /THEN '''' \|\| CAST\("month" AS VARCHAR\)/);
 });
