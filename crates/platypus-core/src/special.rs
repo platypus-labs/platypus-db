@@ -1,6 +1,7 @@
 //! Values that a typed Arrow column cannot hold, but some databases store: `±infinity` dates
 //! and timestamps (PostgreSQL), dates outside the calendar such as MySQL's `0000-00-00`, and
-//! `NaN` in a PostgreSQL `numeric(p,s)`.
+//! `NaN` in a PostgreSQL `numeric(p,s)`. The end of the day `24:00:00` (PostgreSQL's `time`)
+//! is a time of day of exactly 24 hours, which Arrow refuses to show.
 //!
 //! Drivers keep the column's type and store these values as reserved numbers that no real
 //! value uses: outside the dates chrono can show, or above the largest decimal of 38 digits.
@@ -19,7 +20,8 @@ use std::fmt::Write;
 use arrow_array::cast::AsArray;
 use arrow_array::types::{
     Date32Type, Decimal128Type, IntervalDayTimeType, IntervalMonthDayNanoType,
-    IntervalYearMonthType, TimestampMicrosecondType, TimestampMillisecondType, TimestampSecondType,
+    IntervalYearMonthType, Time32MillisecondType, Time32SecondType, Time64MicrosecondType,
+    Time64NanosecondType, TimestampMicrosecondType, TimestampMillisecondType, TimestampSecondType,
 };
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray};
 use arrow_cast::display::{ArrayFormatter, DisplayIndex, FormatOptions, FormatResult};
@@ -184,6 +186,7 @@ pub fn text(array: &dyn Array, i: usize) -> Option<String> {
     }
     match array.data_type() {
         DataType::Date32 => date_text(array.as_primitive::<Date32Type>().value(i)),
+        DataType::Time32(_) | DataType::Time64(_) => end_of_day(array, i),
         DataType::Timestamp(unit, _) => {
             let value = match unit {
                 TimeUnit::Second => array.as_primitive::<TimestampSecondType>().value(i),
@@ -197,9 +200,36 @@ pub fn text(array: &dyn Array, i: usize) -> Option<String> {
     }
 }
 
-/// Whether arrays of this type can hold reserved dates or timestamps.
+/// `24:00:00` when value `i` of the time-of-day `array` is a whole day (or more, which only
+/// the end of the day reaches).
+fn end_of_day(array: &dyn Array, i: usize) -> Option<String> {
+    let full = match array.data_type() {
+        DataType::Time32(TimeUnit::Second) => {
+            i64::from(array.as_primitive::<Time32SecondType>().value(i)) >= SECONDS_PER_DAY
+        }
+        DataType::Time32(_) => {
+            i64::from(array.as_primitive::<Time32MillisecondType>().value(i))
+                >= SECONDS_PER_DAY * 1_000
+        }
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            array.as_primitive::<Time64NanosecondType>().value(i) >= MICROS_PER_DAY * 1_000
+        }
+        DataType::Time64(_) => {
+            array.as_primitive::<Time64MicrosecondType>().value(i) >= MICROS_PER_DAY
+        }
+        _ => false,
+    };
+    full.then(|| "24:00:00".to_owned())
+}
+
+const SECONDS_PER_DAY: i64 = 86_400;
+
+/// Whether arrays of this type can hold reserved dates, times or timestamps.
 fn may_hold(data_type: &DataType) -> bool {
-    matches!(data_type, DataType::Date32 | DataType::Timestamp(..))
+    matches!(
+        data_type,
+        DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) | DataType::Timestamp(..)
+    )
 }
 
 /// The first reserved value of column `array` of `field`, with its row.
@@ -707,6 +737,22 @@ mod tests {
         ]);
         assert_eq!(shown(&noon), ["0044-03-15T12:00:00 BC"]);
         assert_eq!(bc_text("2024-01-01"), None);
+    }
+
+    #[test]
+    fn shows_the_end_of_the_day_as_24_00() {
+        let micros = arrow_array::Time64MicrosecondArray::from(vec![
+            Some(MICROS_PER_DAY - 1),
+            Some(MICROS_PER_DAY),
+            None,
+        ]);
+        assert_eq!(shown(&micros), ["23:59:59.999999", "24:00:00", "NULL"]);
+        let seconds = arrow_array::Time32SecondArray::from(vec![86_400]);
+        assert_eq!(shown(&seconds), ["24:00:00"]);
+        let nanos = arrow_array::Time64NanosecondArray::from(vec![MICROS_PER_DAY * 1_000]);
+        assert_eq!(shown(&nanos), ["24:00:00"]);
+        let field = Field::new("t", micros.data_type().clone(), true);
+        assert_eq!(find(&field, &micros), Some((1, "24:00:00".to_owned())));
     }
 
     /// Days from the epoch to that day of the proleptic Gregorian calendar.
