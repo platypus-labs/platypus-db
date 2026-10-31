@@ -235,10 +235,21 @@ export async function rows(page) {
   return text === "" ? [] : text.split("\n").map((l) => l.split("\t"));
 }
 
+/** Presses F2 on the focused cell until an editor matching `selector` shows: right after the
+ *  table opens the column metadata may still be loading, and F2 is then ignored. */
+export async function pressF2(page, selector = ".cell-editor, .cell-popup-text") {
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await page.key("F2", "F2", 113);
+    for (let i = 0; i < 20; i++) {
+      if (await page.eval(`document.querySelector(${JSON.stringify(selector)}) !== null`)) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+  await page.waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`, 1000);
+}
 /** Types `text` in the focused cell's editor (F2) and commits it with Enter. */
 export async function editCell(page, text) {
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor, .cell-popup-text') !== null`);
+  await pressF2(page);
   await page.eval(`(() => {
     const el = document.querySelector('.cell-editor, .cell-popup-text');
     el.focus();
@@ -252,8 +263,7 @@ export async function editCell(page, text) {
 /** Sets the focused cell to `text` through its editor (F2), whatever the editor: the inline
  *  input, a select (bool, enum) or the popup (JSON, long text); returns the editor's kind. */
 export async function setCell(page, text) {
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor, .cell-popup-text, .list-editor') !== null`);
+  await pressF2(page, ".cell-editor, .cell-popup-text, .list-editor");
   const kind = await page.eval(`(() => {
     const el = document.querySelector('.cell-editor, .cell-popup-text');
     if (!el) return 'list';

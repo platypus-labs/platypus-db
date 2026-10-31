@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
+import { pressF2 } from "../qa-grid.mjs";
 
 const NAME = "E2E guards";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
@@ -62,8 +63,7 @@ async function focusCell(page, row, col) {
 
 async function editCell(page, row, col, text) {
   await focusCell(page, row, col);
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor') !== null`);
+  await pressF2(page, ".cell-editor");
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(text);
   await page.key("Enter", "Enter", 13);
@@ -155,8 +155,7 @@ export default async function (page, { dir }) {
   await openTable(page, "docs");
   await page.waitFor(`${status} === '1 row' && ${editBar}.includes('to edit a cell')`, 15_000);
   await focusCell(page, 0, 1);
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-popup textarea') !== null`);
+  await pressF2(page, ".cell-popup textarea");
   await page.eval(`[...document.querySelectorAll('.cell-popup button')].find(b => b.textContent === 'Format JSON').click()`);
   await page.waitFor(`document.querySelector('.cell-popup textarea').value.includes('\\n')`);
   const formatted = await page.eval(`document.querySelector('.cell-popup textarea').value`);
