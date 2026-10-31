@@ -233,11 +233,8 @@ fn parse(plan: &str) -> Result<PlanNode> {
             .ok_or_else(unreadable)?,
     );
     // Planning and execution times, triggers: the statement as a whole.
-    root.properties.extend(
-        top.iter()
-            .filter(|(k, _)| *k != "Plan")
-            .map(|(k, v)| (k.clone(), text(v))),
-    );
+    root.properties
+        .extend(shown_properties(top.iter().filter(|(k, _)| *k != "Plan")));
     Ok(root)
 }
 
@@ -262,10 +259,7 @@ fn node(map: &Map<String, Value>) -> PlanNode {
         actual_ms: num("Actual Total Time"),
         loops: num("Actual Loops"),
         full_scan: full_scan(operation, map),
-        properties: map
-            .iter()
-            .filter(|(k, _)| !SHOWN.contains(&k.as_str()))
-            .map(|(k, v)| (k.clone(), text(v)))
+        properties: shown_properties(map.iter().filter(|(k, _)| !SHOWN.contains(&k.as_str())))
             .collect(),
         children: map
             .get("Plans")
@@ -291,8 +285,14 @@ fn full_scan(operation: &str, map: &Map<String, Value>) -> Option<FullScan> {
     if !operation.ends_with("Seq Scan") {
         return None;
     }
+    // Qualified with the schema, so an index made for it lands on this table.
+    let name = s("Relation Name")?;
+    let table = match s("Schema") {
+        Some(schema) if !schema.is_empty() => format!("{schema}.{name}"),
+        _ => name.to_owned(),
+    };
     Some(FullScan {
-        table: s("Relation Name")?.to_owned(),
+        table,
         filter: s("Filter")?.to_owned(),
         rows_read: num("Actual Rows").map(|kept| {
             (kept + num("Rows Removed by Filter").unwrap_or(0.0))
@@ -301,13 +301,28 @@ fn full_scan(operation: &str, map: &Map<String, Value>) -> Option<FullScan> {
     })
 }
 
-/// A value as shown: strings unquoted, lists (sort keys, output columns) comma-separated.
+/// A value as shown: strings unquoted, lists (sort keys, output columns) comma-separated,
+/// objects (`Planning`) as `Key value` pairs.
 fn text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Array(items) => items.iter().map(text).collect::<Vec<_>>().join(", "),
+        Value::Object(map) => map
+            .iter()
+            .map(|(k, v)| format!("{k} {}", text(v)))
+            .collect::<Vec<_>>()
+            .join(", "),
         other => other.to_string(),
     }
+}
+
+/// The properties of a JSON object as shown, those with nothing to show (an empty list of
+/// `Triggers`) left out.
+fn shown_properties<'a>(
+    map: impl Iterator<Item = (&'a String, &'a Value)>,
+) -> impl Iterator<Item = (String, String)> {
+    map.map(|(k, v)| (k.clone(), text(v)))
+        .filter(|(_, v)| !v.is_empty())
 }
 
 #[cfg(test)]
@@ -454,4 +469,18 @@ mod tests {
         assert!(parse("[]").is_err());
         assert!(parse("QUERY PLAN").is_err());
     }
-}
+
+    #[test]
+    fn a_scan_names_its_schema_and_the_statement_lines_are_readable() {
+        let plan = r#"[{"Plan": {"Node Type": "Seq Scan", "Relation Name": "items",
+              "Schema": "qa4a2", "Alias": "items", "Filter": "(kind = 'k1')"},
+              "Planning": {"Shared Hit Blocks": 262, "Shared Read Blocks": 0},
+              "Triggers": [], "Execution Time": 0.3}]"#;
+        let root = parse(plan).unwrap();
+        assert_eq!(root.full_scan.unwrap().table, "qa4a2.items");
+        assert!(root.properties.contains(&(
+            "Planning".into(),
+            "Shared Hit Blocks 262, Shared Read Blocks 0".into()
+        )));
+        assert!(root.properties.iter().all(|(k, v)| k != "Triggers" && !v.is_empty()));
+    }}
