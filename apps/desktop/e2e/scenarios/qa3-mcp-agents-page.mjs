@@ -57,7 +57,9 @@ save_password = false
 async function openAgents(page) {
   await page.key(",", "Comma", 188, CTRL);
   await page.settingsTab("Agents");
-  await page.waitFor(`document.querySelector('.agents-panel [data-field="claude_command"]') !== null`);
+  await page.waitFor(`document.querySelector('.agents-panel [data-client="claude_code"]') !== null`);
+  await page.eval(`document.querySelector('[data-client="claude_code"]').click()`);
+  await page.waitFor(`document.querySelector('[data-field="claude_command"]') !== null`);
   await page.waitFor(`${accessOf(LITE)} !== undefined`);
 }
 
@@ -98,10 +100,12 @@ async function editAccess(page, name, access) {
 export default async function (page, { dir }) {
   await openAgents(page);
   const claude = await page.eval(`document.querySelector('[data-field="claude_command"]').textContent`);
-  const codex = await page.eval(`document.querySelector('[data-field="codex_config"]').textContent`);
+  await page.eval(`document.querySelector('[data-client="codex"]').click()`);
+  await page.waitFor(`document.querySelector('[data-field="snippet_codex"]') !== null`);
+  const codex = await page.eval(`document.querySelector('[data-field="snippet_codex"]').textContent`);
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
-  await page.eval(`document.querySelector('[data-copy="codex_config"]').click()`);
-  await page.waitFor(`document.querySelector('[data-copy="codex_config"]').textContent === 'Copied'`);
+  await page.eval(`document.querySelector('[data-copy="snippet_codex"]').click()`);
+  await page.waitFor(`document.querySelector('[data-copy="snippet_codex"]').textContent === 'Copied'`);
   assert.equal(await page.eval(`window.__copied`), codex, "Copy puts the Codex table on the clipboard");
   const { exe, dataDir } = parseCommands(claude, codex);
   assert.equal(dataDir, dir, "the commands name the app's profile");
