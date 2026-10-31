@@ -45,8 +45,8 @@ export default async function (page) {
   // The busiest step is tinted.
   const heats = await page.eval(`[...${explainTab}.querySelectorAll('.explain-node')].map(n => n.style.getPropertyValue('--heat'))`);
   assert.ok(heats.some((h) => parseInt(h) > 0), `heat in ${heats}`);
-  // orders is read in full for the status filter: an index is suggested.
-  assert.match(await page.eval(`${explainTab}.querySelector(".explain-suggestion")?.textContent ?? ""`), /^orders is read in full/);
+  // demo.orders is read in full for the status filter: an index is suggested, on the table of that schema.
+  assert.match(await page.eval(`${explainTab}.querySelector(".explain-suggestion")?.textContent ?? ""`), /^demo\.orders is read in full/);
 
   // The suggestion offers the index: Create index… opens an editor on the same connection with
   // the statement filled in (not run), and the plan stays as it was.
@@ -54,7 +54,7 @@ export default async function (page) {
   const editors = await page.eval(`document.querySelectorAll('.query-tab').length`);
   await page.eval(`${explainTab}.querySelector('.explain-suggestion button').click()`);
   await page.waitFor(`document.querySelectorAll('.query-tab').length === ${editors + 1}`, 10_000);
-  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === 'CREATE INDEX orders_status_idx ON orders (status);'`, 10_000);
+  await page.waitFor(`[...${queryTab}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === 'CREATE INDEX orders_status_idx ON demo.orders (status);'`, 10_000);
   assert.equal(await page.eval(`${queryTab}.querySelector('.result-grid, .grid') === null`), true, "the statement is not run");
 
   // Ignore hides that suggestion; the plan itself stays. (Back on the plan through its tab.)

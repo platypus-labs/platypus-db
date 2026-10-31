@@ -28,14 +28,27 @@ const SHOWN: &[&str] = &[
 ];
 
 pub async fn explain(conn: &PgConnection, sql: &str, analyze: bool) -> Result<Explain> {
+    // VERBOSE for the schema of each table read, so an index suggested lands on that table.
     let prefix = if analyze {
-        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)"
+        "EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)"
     } else {
-        "EXPLAIN (FORMAT JSON)"
+        "EXPLAIN (VERBOSE, FORMAT JSON)"
     };
     let plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
-    let root = parse(&plan)?;
+    let mut root = parse(&plan)?;
+    drop_verbose_lines(&mut root);
     Ok(Explain::new(ExplainFormat::Json, plan, root, analyze))
+}
+
+/// The properties a plain `EXPLAIN` does not have, which VERBOSE adds to the steps and to the
+/// statement: the output columns, the schema of a table, the query identifier. The document
+/// keeps them.
+fn drop_verbose_lines(node: &mut PlanNode) {
+    node.properties
+        .retain(|(k, _)| !matches!(k.as_str(), "Output" | "Schema" | "Query Identifier"));
+    for child in &mut node.children {
+        drop_verbose_lines(child);
+    }
 }
 
 /// CockroachDB's `EXPLAIN [ANALYZE]`: a text tree whose steps start with `•`, their
@@ -487,5 +500,26 @@ mod tests {
                 .iter()
                 .all(|(k, v)| k != "Triggers" && !v.is_empty())
         );
+    }
+
+    #[test]
+    fn a_verbose_plan_shows_the_lines_of_a_plain_one() {
+        let plan = r#"[{"Plan": {"Node Type": "Sort", "Output": ["id", "kind"],
+              "Sort Key": ["items.kind"], "Plans": [{"Node Type": "Seq Scan",
+              "Relation Name": "items", "Schema": "qa4a2", "Alias": "items",
+              "Output": ["id", "kind"], "Filter": "(items.kind = 'k1'::text)"}]},
+              "Query Identifier": 42, "Planning Time": 0.1}]"#;
+        let mut root = parse(plan).unwrap();
+        drop_verbose_lines(&mut root);
+        let scan = &root.children[0];
+        assert_eq!(scan.full_scan.as_ref().unwrap().table, "qa4a2.items");
+        let keys = |n: &PlanNode| {
+            n.properties
+                .iter()
+                .map(|(k, _)| k.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keys(&root), ["Sort Key", "Planning Time"]);
+        assert_eq!(keys(scan), ["Filter"]);
     }
 }
