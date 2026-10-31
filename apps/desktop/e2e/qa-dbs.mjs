@@ -32,7 +32,7 @@ Object.assign(DBS, {
   cockroach: {
     port: 56257,
     password: "",
-    toml: `driver = "postgres"\nhost = "localhost"\nport = 56257\ndatabase = "platypus"\nuser = "root"\nssl_mode = "disable"\npassword_command = "cmd /c echo."`,
+    toml: `driver = "postgres"\nhost = "localhost"\nport = 56257\ndatabase = "platypus"\nuser = "root"\nssl_mode = "disable"\npassword_command = "echo x"`,
     shell: ["exec", "-i", "platypus-db-cockroach-1", "cockroach", "sql", "--insecure", "-d", "platypus", "--format=tsv"],
     noPrompt: true,
   },
