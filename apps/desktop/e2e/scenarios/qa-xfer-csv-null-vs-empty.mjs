@@ -17,7 +17,7 @@ export const setup = ({ dir }) => sqliteOnly(dir);
 export default async function (page, { dir }) {
   await openEditor(page, "QA SQLite");
   assert.equal(await runScript(page, "SELECT NULL AS a, '' AS b"), "1 row");
-  assert.match(await exportResult(page, join(dir, "out.csv"), { format: "csv", source: "loaded" }), /^Exported 1 rows/);
+  assert.match(await exportResult(page, join(dir, "out.csv"), { format: "csv", source: "loaded" }), /^Exported 1 row\b/);
   const [, values] = readFileSync(join(dir, "out.csv"), "utf8").split(/\r?\n/);
   const [a, b] = values.split(",");
   assert.notEqual(a, b, `NULL written as ${JSON.stringify(a)}, '' as ${JSON.stringify(b)}`);

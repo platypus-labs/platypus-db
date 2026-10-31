@@ -128,7 +128,7 @@ export default async function (page, { dir, shots }) {
   const out = join(dir, "out.csv");
   await setEditor(page, `@export ${out}\nSELECT 1 AS a, 'b' AS b;`);
   const exported = await runScript(page, "Exported");
-  assert.match(exported[1] ?? "", /Exported 1 rows/);
+  assert.match(exported[1] ?? "", /Exported 1 row\b/);
   assert.match(readFileSync(out, "utf8"), /^a,b\r?\n1,b/);
 
   // Ctrl+\ runs into a new result tab; the × closes one.

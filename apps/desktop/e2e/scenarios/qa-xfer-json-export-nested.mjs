@@ -20,7 +20,7 @@ export const setup = ({ dir }) => saveConnections(dir, ["pg"]);
 export default async function (page, { dir }) {
   await openEditor(page, DBS.pg.name);
   assert.equal(await runScript(page, `SELECT '{"a": 1}'::jsonb AS j, ARRAY[1, 2] AS arr`), "1 row");
-  assert.match(await exportResult(page, join(dir, "out.json"), { format: "json", source: "loaded" }), /^Exported 1 rows/);
+  assert.match(await exportResult(page, join(dir, "out.json"), { format: "json", source: "loaded" }), /^Exported 1 row\b/);
   const text = readFileSync(join(dir, "out.json"), "utf8");
   assert.deepEqual(JSON.parse(text), [{ j: { a: 1 }, arr: [1, 2] }], text);
 }
