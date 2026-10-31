@@ -26,6 +26,7 @@ import {
   type ObjectTarget,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
+import { selectionAsScript } from "./selectionRun";
 import type { NotesScope } from "../grid/ResultGrid";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
@@ -572,9 +573,10 @@ export function QueryTab({
     const analysis = await api.analyzeSql(scope.text, connection.driver, from - scope.offset);
     const statements = analysis.statements;
     const all = plannedOf(scope.text, statements, scope.offset);
-    // A selection runs as typed, even if it holds several statements, unless it has client
-    // commands: those run one by one, as a script.
-    if (mode === "script" || (from !== to && statements.some((s) => s.kind === "command"))) {
+    // A selection runs as typed where several statements sent together return a result each;
+    // elsewhere, and with client commands, its statements run one by one, as a script.
+    const asScript = selectionAsScript(statements.map((s) => s.kind), connection.driver);
+    if (mode === "script" || (from !== to && asScript)) {
       return scriptOf(scope.text, analysis, all, scope.offset);
     }
     if (from !== to) {
