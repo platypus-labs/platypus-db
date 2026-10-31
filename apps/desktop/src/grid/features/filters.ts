@@ -4,6 +4,7 @@ import { registerAction } from "../../actions";
 import { type FilterTarget, api, isNoSql } from "../../api";
 import { msg } from "../../i18n";
 import type { GridActionContext } from "../DataGrid";
+import { filterOperand } from "./filterOperand";
 
 /** The data viewer's filter, for the actions; set by the query tab for a query it can rewrite. */
 export interface ViewerFilter {
@@ -39,7 +40,7 @@ function focusedCell({ grid, source }: GridActionContext) {
   // The conditions are SQL; a MongoDB filter is a query document typed by hand, a Redis one
   // the keys' pattern of BROWSE.
   if (isNoSql(source.connection.driver)) return null;
-  return { viewer: source.viewer, jobId: source.jobId, row, col: focused.col };
+  return { viewer: source.viewer, jobId: source.jobId, row, col: focused.col, source };
 }
 
 /** What a condition on the cell's column names, or why none can be written. */
@@ -52,11 +53,14 @@ function columnOf(cell: NonNullable<ReturnType<typeof focusedCell>>): { name: st
   return { reason: column?.kind === "ambiguous" ? REASONS.ambiguous : REASONS.computed };
 }
 
-/** The focused cell, when a condition on its column can be written. */
+/** The focused cell, when a condition on its column can be written: `name` for IS NULL,
+ *  `operand` for the comparisons with a value (see `filterOperand`). */
 function target(ctx: GridActionContext) {
   const cell = focusedCell(ctx);
   const column = cell && columnOf(cell);
-  return cell && column && "name" in column ? { ...cell, name: column.name } : null;
+  if (!cell || !column || !("name" in column)) return null;
+  const dbType = ctx.grid.columns()[cell.col]?.db_type ?? "";
+  return { ...cell, name: column.name, operand: filterOperand(cell.source.connection.driver, dbType, column.name) };
 }
 
 async function byValue(ctx: GridActionContext, equal: boolean) {
@@ -65,7 +69,7 @@ async function byValue(ctx: GridActionContext, equal: boolean) {
   const [literal] = await api.sqlLiterals(t.jobId, t.row, 1, t.col);
   if (literal === undefined) return;
   if (literal === "NULL") t.viewer.addCondition(`${t.name} IS ${equal ? "" : "NOT "}NULL`);
-  else t.viewer.addCondition(`${t.name} ${equal ? "=" : "<>"} ${literal}`);
+  else t.viewer.addCondition(`${t.operand} ${equal ? "=" : "<>"} ${literal}`);
 }
 
 const available = (ctx: GridActionContext) => focusedCell(ctx) !== null;
@@ -119,7 +123,7 @@ registerAction({
     const literals = await api.sqlLiterals(t.jobId, first, Math.min(last - first + 1, IN_LIMIT), t.col);
     const values = [...new Set(literals.filter((l) => l !== "NULL"))];
     const hasNull = literals.includes("NULL");
-    const list = values.length ? `${t.name} IN (${values.join(", ")})` : "";
+    const list = values.length ? `${t.operand} IN (${values.join(", ")})` : "";
     const nullTest = `${t.name} IS NULL`;
     t.viewer.addCondition(list && hasNull ? `(${list} OR ${nullTest})` : list || nullTest);
   },
