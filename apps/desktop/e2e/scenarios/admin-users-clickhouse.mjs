@@ -4,9 +4,9 @@
 // password = NOT IDENTIFIED, an expiry date), a role, edits (expiry date, password, rename),
 // grants and revokes on a table, a database and the server (also WITH GRANT OPTION), adds a
 // user to a role and takes it out, drops, and shows what the server or the app refuses: an
-// expiry date that is no date, an existing name, a role that does not exist, a revoke of only
-// CASCADE or grant-option-only (ClickHouse cannot) and routine grants are not offered. ClickHouse has
-// no host, connection limit or attributes: the form shows none. A read-only connection lists
+// expiry date that is no date, an existing name, a role that does not exist; a revoke offers
+// no CASCADE or grant-option-only (ClickHouse cannot) and routine grants are not offered.
+// ClickHouse has no host, connection limit or attributes: the form shows none. A read-only connection lists
 // them and changes nothing.
 import { DBS, assert, needs, sh } from "../qa-grid.mjs";
 import {
@@ -124,7 +124,7 @@ async function create(page) {
   await page.waitFor(`${principalRow("e2e_us_ro")} !== null`, 15_000);
   // No VALID UNTIL: no expiry date is shown (ClickHouse stores "never" as 1970-01-01).
   await selectPrincipal(page, "e2e_us_ro");
-  assert.equal(await page.eval(`${detailField("valid-until")}`), null, "a user without an expiry date shows none");
+  assert.equal(await page.eval(`${detailField("valid-until")} !== null`), false, "a user without an expiry date shows none");
 
   // A role has a name and nothing else.
   await openDialog(page, newButton("role"));
