@@ -44,3 +44,13 @@ export async function lab(page, dir, key) {
 export { ENGINES, saveEngines };
 
 
+
+/** Drops `Q4` of `key` with what the plain drop of qa3-schema.mjs leaves (SQL Server: functions, sequences). */
+export function dropAll(key) {
+  if (key === "mssql") {
+    ENGINES.mssql.exec("", Q4, `DECLARE @s nvarchar(max) = N'';
+SELECT @s += N'DROP ' + CASE type WHEN 'FN' THEN 'FUNCTION' WHEN 'IF' THEN 'FUNCTION' WHEN 'TF' THEN 'FUNCTION' WHEN 'P' THEN 'PROCEDURE' WHEN 'TR' THEN 'TRIGGER' WHEN 'SO' THEN 'SEQUENCE' END + N' ' + QUOTENAME(SCHEMA_NAME(schema_id)) + N'.' + QUOTENAME(name) + N';' FROM sys.objects WHERE schema_id = SCHEMA_ID('${Q4}') AND type IN ('FN','IF','TF','P','TR','SO');
+EXEC (@s);`);
+  }
+  ENGINES[key].drop(Q4);
+}
