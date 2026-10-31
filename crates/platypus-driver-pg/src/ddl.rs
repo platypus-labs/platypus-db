@@ -429,6 +429,73 @@ struct TableRows {
     columns: HashMap<String, Vec<TextRow>>,
     constraints: HashMap<String, Vec<TextRow>>,
     indexes: HashMap<String, Vec<TextRow>>,
+    extras: Extras,
+}
+
+/// What a script needs beyond columns and constraints. Read by queries of their own, so a
+/// server whose catalog lacks one (CockroachDB, for one) still gets the rest of the script.
+#[derive(Default)]
+struct Extras {
+    /// Storage parameters, row level security and the parents of each table.
+    options: HashMap<String, Vec<TextRow>>,
+    /// Policies: name, command, permissive, roles, `USING` and `WITH CHECK`.
+    policies: HashMap<String, Vec<TextRow>>,
+    /// Columns whose collation is not their type's: column name, collation.
+    collations: HashMap<String, Vec<TextRow>>,
+    /// The sequences columns own (`serial`): the sequence's properties, its name, the column.
+    sequences: HashMap<String, Vec<TextRow>>,
+}
+
+/// The `Extras` of the relations `oids`: what a query cannot read is left out.
+async fn table_extras(conn: &dyn Connection, oids: &str) -> Extras {
+    let read = async |sql: String| by_relation(conn, &sql).await.unwrap_or_default();
+    Extras {
+        options: read(format!(
+            "SELECT c.oid::text, array_to_string(c.reloptions, ', '), c.relrowsecurity,
+                    c.relforcerowsecurity,
+                    (SELECT string_agg(quote_ident(pn.nspname) || '.' || quote_ident(pc.relname),
+                                       ', ' ORDER BY i.inhseqno)
+                     FROM pg_inherits i JOIN pg_class pc ON pc.oid = i.inhparent
+                     JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+                     WHERE i.inhrelid = c.oid AND NOT c.relispartition)
+             FROM pg_class c WHERE c.oid IN ({oids})"
+        ))
+        .await,
+        policies: read(format!(
+            "SELECT p.polrelid::text, quote_ident(p.polname), p.polcmd::text, p.polpermissive,
+                    (SELECT string_agg(quote_ident(r.rolname), ', ' ORDER BY r.rolname)
+                     FROM pg_roles r WHERE r.oid = ANY (p.polroles)),
+                    pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid)
+             FROM pg_policy p WHERE p.polrelid IN ({oids}) ORDER BY p.polrelid, p.polname"
+        ))
+        .await,
+        collations: read(format!(
+            "SELECT a.attrelid::text, a.attname,
+                    CASE WHEN cn.nspname = 'pg_catalog' THEN quote_ident(co.collname)
+                         ELSE quote_ident(cn.nspname) || '.' || quote_ident(co.collname) END
+             FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
+             JOIN pg_collation co ON co.oid = a.attcollation
+             JOIN pg_namespace cn ON cn.oid = co.collnamespace
+             WHERE a.attrelid IN ({oids}) AND a.attnum > 0 AND NOT a.attisdropped
+               AND a.attcollation <> t.typcollation"
+        ))
+        .await,
+        sequences: read(format!(
+            "SELECT a.attrelid::text, format_type(s.seqtypid, NULL), s.seqincrement, s.seqmin,
+                    s.seqmax, s.seqstart, s.seqcache, s.seqcycle,
+                    quote_ident(sn.nspname) || '.' || quote_ident(sc.relname), quote_ident(a.attname)
+             FROM pg_attribute a
+             JOIN pg_depend d ON d.refobjid = a.attrelid AND d.refobjsubid = a.attnum
+                  AND d.refclassid = 'pg_class'::regclass AND d.classid = 'pg_class'::regclass
+                  AND d.deptype = 'a'
+             JOIN pg_sequence s ON s.seqrelid = d.objid
+             JOIN pg_class sc ON sc.oid = s.seqrelid
+             JOIN pg_namespace sn ON sn.oid = sc.relnamespace
+             WHERE a.attrelid IN ({oids}) AND a.attnum > 0 AND NOT a.attisdropped
+             ORDER BY a.attrelid, a.attnum"
+        ))
+        .await,
+    }
 }
 
 /// The table, columns, constraints and indexes queries, for the relations `oids` together.
@@ -483,11 +550,13 @@ async fn table_rows(conn: &dyn Connection, oids: &str) -> Result<TableRows> {
         ),
     )
     .await?;
+    let extras = table_extras(conn, oids).await;
     Ok(TableRows {
         info,
         columns,
         constraints,
         indexes,
+        extras,
     })
 }
 
@@ -557,7 +626,8 @@ async fn table(
         .iter()
         .map(|i| format!("{};", i.text(0)))
         .collect();
-    let mut create = create_table(&name, info, columns, of(&rows.constraints, oid));
+    let own = Own::of(&rows.extras, oid);
+    let mut create = create_table(&name, info, columns, of(&rows.constraints, oid), &own);
     if crate::is_yugabyte(conn) && info.opt(3).is_none() {
         let rel = relation(o.schema, o.name);
         let sharding = yugabyte_sharding(conn, &rel).await.unwrap_or((None, None));
@@ -570,7 +640,9 @@ async fn table(
         String::new()
     };
     let sections = [
+        own.sequences(),
         create,
+        own.after_create(&name),
         hypertable,
         indexes.join(
             "
@@ -589,22 +661,134 @@ async fn table(
         ))
 }
 
+/// The `Extras` of one table.
+struct Own<'a> {
+    /// Storage parameters, `ROW LEVEL SECURITY` flags and parents.
+    options: Option<&'a TextRow>,
+    policies: &'a [TextRow],
+    collations: &'a [TextRow],
+    sequences: &'a [TextRow],
+}
+
+impl<'a> Own<'a> {
+    fn of(extras: &'a Extras, oid: &str) -> Self {
+        Self {
+            options: of(&extras.options, oid).first(),
+            policies: of(&extras.policies, oid),
+            collations: of(&extras.collations, oid),
+            sequences: of(&extras.sequences, oid),
+        }
+    }
+
+    fn collation(&self, column: &str) -> Option<String> {
+        self.collations
+            .iter()
+            .find(|c| c.text(0) == column)
+            .map(|c| c.text(1))
+    }
+
+    /// `WITH (…)`: the storage parameters.
+    fn storage(&self) -> Option<String> {
+        self.options
+            .and_then(|o| o.opt(0))
+            .map(|params| format!("WITH ({params})"))
+    }
+
+    /// The parents of a table that inherits, `INHERITS (…)`.
+    fn inherits(&self) -> Option<String> {
+        self.options
+            .and_then(|o| o.opt(3))
+            .map(|parents| format!("INHERITS ({parents})"))
+    }
+
+    /// The sequences the columns own, to create before the table that uses them as defaults.
+    fn sequences(&self) -> String {
+        self.sequences
+            .iter()
+            .map(|s| create_sequence(&s.text(7), s))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// What follows the `CREATE TABLE`: the owner of each sequence, row level security and
+    /// the policies.
+    fn after_create(&self, name: &str) -> String {
+        let mut out: Vec<String> = self
+            .sequences
+            .iter()
+            .map(|s| {
+                format!(
+                    "ALTER SEQUENCE {} OWNED BY {name}.{};",
+                    s.text(7),
+                    s.text(8)
+                )
+            })
+            .collect();
+        if let Some(o) = self.options {
+            if o.flag(1) {
+                out.push(format!("ALTER TABLE {name} ENABLE ROW LEVEL SECURITY;"));
+            }
+            if o.flag(2) {
+                out.push(format!("ALTER TABLE {name} FORCE ROW LEVEL SECURITY;"));
+            }
+        }
+        out.extend(self.policies.iter().map(|p| policy(name, p)));
+        out.join("\n")
+    }
+}
+
+/// `CREATE POLICY` from a row of the policies query.
+fn policy(table: &str, p: &TextRow) -> String {
+    let command = match p.text(1).as_str() {
+        "r" => "SELECT",
+        "a" => "INSERT",
+        "w" => "UPDATE",
+        "d" => "DELETE",
+        _ => "ALL",
+    };
+    let mut sql = format!("CREATE POLICY {} ON {table}", p.text(0));
+    if !p.flag(2) {
+        sql.push_str(" AS RESTRICTIVE");
+    }
+    let _ = write!(sql, " FOR {command}");
+    if let Some(roles) = p.opt(3) {
+        let _ = write!(sql, " TO {roles}");
+    }
+    if let Some(using) = p.opt(4) {
+        let _ = write!(sql, " USING ({using})");
+    }
+    if let Some(check) = p.opt(5) {
+        let _ = write!(sql, " WITH CHECK ({check})");
+    }
+    sql.push(';');
+    sql
+}
+
 /// The `CREATE TABLE` statement from the rows of the table, columns and constraints queries.
 fn create_table(
     name: &str,
     info: &TextRow,
     columns: &[TextRow],
     constraints: &[TextRow],
+    own: &Own,
 ) -> String {
     if let Some(parent) = info.opt(3) {
         // Partitions inherit their columns and constraints.
-        return format!(
+        let mut sql = format!(
             "CREATE TABLE {name} PARTITION OF {parent}
-    {};",
+    {}",
             info.text(4)
         );
+        if let Some(storage) = own.storage() {
+            let _ = write!(sql, "\n{storage}");
+        }
+        sql.push(';');
+        return sql;
     }
-    let mut lines: Vec<String> = columns.iter().map(column_line).collect();
+    let mut lines: Vec<String> = columns
+        .iter()
+        .map(|c| column_line(c, own.collation(&c.text(0)).as_deref()))
+        .collect();
     lines.extend(
         constraints
             .iter()
@@ -624,12 +808,18 @@ fn create_table(
     "
         )
     );
+    if let Some(parents) = own.inherits() {
+        let _ = write!(sql, "\n{parents}");
+    }
     if let Some(key) = info.opt(2) {
         let _ = write!(
             sql,
             "
 PARTITION BY {key}"
         );
+    }
+    if let Some(storage) = own.storage() {
+        let _ = write!(sql, "\n{storage}");
     }
     if let Some(server) = info.opt(6) {
         let _ = write!(
@@ -684,9 +874,13 @@ fn comments(name: &str, info: &TextRow, columns: &[TextRow]) -> String {
         )
 }
 
-/// `name type [GENERATED ...] [DEFAULT ...] [NOT NULL]` from a row of the columns query.
-fn column_line(c: &TextRow) -> String {
+/// `name type [COLLATE ...] [GENERATED ...] [DEFAULT ...] [NOT NULL]` from a row of the
+/// columns query.
+fn column_line(c: &TextRow, collation: Option<&str>) -> String {
     let mut line = format!("{} {}", ident(&c.text(0)), c.text(1));
+    if let Some(collation) = collation {
+        let _ = write!(line, " COLLATE {collation}");
+    }
     let default = c.opt(3);
     match (c.text(4).as_str(), c.text(5).as_str(), default) {
         ("a", _, _) => line.push_str(" GENERATED ALWAYS AS IDENTITY"),
@@ -717,9 +911,14 @@ async fn sequence(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
         o,
     )
     .await?;
-    Ok(format!(
-        "CREATE SEQUENCE {}\n    AS {}\n    INCREMENT BY {}\n    MINVALUE {}\n    MAXVALUE {}\n    START WITH {}\n    CACHE {}\n    {};",
-        qualified(o.schema, o.name),
+    Ok(create_sequence(&qualified(o.schema, o.name), &s))
+}
+
+/// `CREATE SEQUENCE` of `name` from a row that starts with the type, increment, minimum,
+/// maximum, start, cache and cycle flag.
+fn create_sequence(name: &str, s: &TextRow) -> String {
+    format!(
+        "CREATE SEQUENCE {name}\n    AS {}\n    INCREMENT BY {}\n    MINVALUE {}\n    MAXVALUE {}\n    START WITH {}\n    CACHE {}\n    {};",
         s.text(0),
         s.text(1),
         s.text(2),
@@ -727,7 +926,7 @@ async fn sequence(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
         s.text(4),
         s.text(5),
         if s.flag(6) { "CYCLE" } else { "NO CYCLE" }
-    ))
+    )
 }
 
 async fn type_ddl(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<String> {
@@ -888,40 +1087,175 @@ mod tests {
         let row =
             |v: [Option<&str>; 7]| -> TextRow { v.iter().map(|c| c.map(str::to_owned)).collect() };
         assert_eq!(
-            column_line(&row([
-                Some("id"),
-                Some("bigint"),
-                Some("t"),
-                None,
-                Some("a"),
-                Some(""),
+            column_line(
+                &row([
+                    Some("id"),
+                    Some("bigint"),
+                    Some("t"),
+                    None,
+                    Some("a"),
+                    Some(""),
+                    None
+                ]),
                 None
-            ])),
+            ),
             "id bigint GENERATED ALWAYS AS IDENTITY NOT NULL"
         );
         assert_eq!(
-            column_line(&row([
-                Some("Total"),
-                Some("numeric(12,2)"),
-                Some("f"),
-                Some("0"),
-                Some(""),
-                Some(""),
+            column_line(
+                &row([
+                    Some("Total"),
+                    Some("numeric(12,2)"),
+                    Some("f"),
+                    Some("0"),
+                    Some(""),
+                    Some(""),
+                    None
+                ]),
                 None
-            ])),
+            ),
             "\"Total\" numeric(12,2) DEFAULT 0"
         );
         assert_eq!(
-            column_line(&row([
-                Some("t2"),
-                Some("integer"),
-                Some("f"),
-                Some("(a * 2)"),
-                Some(""),
-                Some("s"),
+            column_line(
+                &row([
+                    Some("t2"),
+                    Some("integer"),
+                    Some("f"),
+                    Some("(a * 2)"),
+                    Some(""),
+                    Some("s"),
+                    None
+                ]),
                 None
-            ])),
+            ),
             "t2 integer GENERATED ALWAYS AS ((a * 2)) STORED"
+        );
+        assert_eq!(
+            column_line(
+                &row([
+                    Some("note"),
+                    Some("text"),
+                    Some("f"),
+                    None,
+                    Some(""),
+                    Some(""),
+                    None
+                ]),
+                Some("\"C\"")
+            ),
+            "note text COLLATE \"C\""
+        );
+    }
+
+    fn cells<const N: usize>(v: [Option<&str>; N]) -> TextRow {
+        v.iter().map(|c| c.map(str::to_owned)).collect()
+    }
+
+    #[test]
+    fn prints_policies() {
+        let all = cells([
+            Some("p_all"),
+            Some("*"),
+            Some("t"),
+            None,
+            Some("(a > 1)"),
+            None,
+        ]);
+        assert_eq!(
+            policy("s.t", &all),
+            "CREATE POLICY p_all ON s.t FOR ALL USING ((a > 1));"
+        );
+        let own = cells([
+            Some("p_own"),
+            Some("w"),
+            Some("f"),
+            Some("alice, bob"),
+            Some("(o = CURRENT_USER)"),
+            Some("(o = CURRENT_USER)"),
+        ]);
+        assert_eq!(
+            policy("s.t", &own),
+            "CREATE POLICY p_own ON s.t AS RESTRICTIVE FOR UPDATE TO alice, bob USING ((o = CURRENT_USER)) WITH CHECK ((o = CURRENT_USER));"
+        );
+    }
+
+    #[test]
+    fn tables_keep_options_parents_security_and_sequences() {
+        let info = cells([Some("r"), Some("p"), None, None, None, None, None]);
+        let id = cells([
+            Some("id"),
+            Some("integer"),
+            Some("t"),
+            Some("nextval('s.t_id_seq'::regclass)"),
+            Some(""),
+            Some(""),
+            None,
+        ]);
+        let note = cells([
+            Some("note"),
+            Some("text"),
+            Some("f"),
+            None,
+            Some(""),
+            Some(""),
+            None,
+        ]);
+        let options = cells([
+            Some("fillfactor=70"),
+            Some("t"),
+            Some("f"),
+            Some("s.parent"),
+        ]);
+        let policies = [cells([
+            Some("p"),
+            Some("r"),
+            Some("t"),
+            None,
+            Some("(true)"),
+            None,
+        ])];
+        let collations = [cells([Some("note"), Some("\"C\"")])];
+        let sequences = [cells([
+            Some("integer"),
+            Some("1"),
+            Some("1"),
+            Some("2147483647"),
+            Some("1"),
+            Some("1"),
+            Some("f"),
+            Some("s.t_id_seq"),
+            Some("id"),
+        ])];
+        let own = Own {
+            options: Some(&options),
+            policies: &policies,
+            collations: &collations,
+            sequences: &sequences,
+        };
+        let create = create_table("s.t", &info, &[id, note], &[], &own);
+        assert!(create.contains("note text COLLATE \"C\""), "{create}");
+        assert!(
+            create.ends_with(")\nINHERITS (s.parent)\nWITH (fillfactor=70);"),
+            "{create}"
+        );
+        assert!(
+            own.sequences()
+                .starts_with("CREATE SEQUENCE s.t_id_seq\n    AS integer")
+        );
+        let after = own.after_create("s.t");
+        assert!(
+            after.contains("ALTER SEQUENCE s.t_id_seq OWNED BY s.t.id;"),
+            "{after}"
+        );
+        assert!(
+            after.contains("ALTER TABLE s.t ENABLE ROW LEVEL SECURITY;"),
+            "{after}"
+        );
+        assert!(!after.contains("FORCE"), "{after}");
+        assert!(
+            after.contains("CREATE POLICY p ON s.t FOR SELECT USING ((true));"),
+            "{after}"
         );
     }
 }

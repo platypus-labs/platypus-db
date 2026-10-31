@@ -4742,6 +4742,75 @@ async fn sizes_tables_and_nests_partitions() {
     }
 }
 
+/// The DDL of a PostgreSQL table with a collation, a `serial` column, storage parameters, row
+/// level security, a policy and a parent runs on its own, and is the same once run.
+#[tokio::test]
+async fn postgres_table_ddl_runs_standalone() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = &b.schema;
+        let (parent, kid) = (
+            format!("probe_ddl_parent{}", std::process::id()),
+            format!("probe_ddl_kid{}", std::process::id()),
+        );
+        let drop = format!("DROP TABLE IF EXISTS {s}.{kid}, {s}.{parent} CASCADE");
+        run(&*conn, &drop).await.unwrap();
+        for sql in [
+            format!(
+                "CREATE TABLE {s}.{parent} (id serial PRIMARY KEY, note text COLLATE \"C\", owner text)
+                 WITH (fillfactor = 70)"
+            ),
+            format!("ALTER TABLE {s}.{parent} ENABLE ROW LEVEL SECURITY"),
+            format!(
+                "CREATE POLICY p_owner ON {s}.{parent} FOR SELECT USING (owner = current_user)"
+            ),
+            format!("CREATE TABLE {s}.{kid} (extra int) INHERITS ({s}.{parent})"),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
+        let ddl_of = |name: String| {
+            let conn = &conn;
+            let schema = s.clone();
+            async move {
+                conn.object_ddl(&ObjectRef {
+                    schema: &schema,
+                    name: &name,
+                    kind: ObjectKind::Table,
+                    parent: None,
+                })
+                .await
+                .unwrap()
+            }
+        };
+        let (parent_ddl, kid_ddl) = (ddl_of(parent.clone()).await, ddl_of(kid.clone()).await);
+        for part in [
+            "CREATE SEQUENCE",
+            "COLLATE \"C\"",
+            "WITH (fillfactor=70)",
+            "ENABLE ROW LEVEL SECURITY",
+            "CREATE POLICY p_owner",
+            "OWNED BY",
+        ] {
+            assert!(parent_ddl.contains(part), "{part} in {parent_ddl}");
+        }
+        assert!(kid_ddl.contains("INHERITS ("), "{kid_ddl}");
+        // Run alone, in a database that has none of it.
+        run(&*conn, &drop).await.unwrap();
+        for script in [&parent_ddl, &kid_ddl] {
+            for statement in platypus_sql::split(script, platypus_sql::Dialect::Postgres) {
+                run(&*conn, statement.text(script)).await.unwrap();
+            }
+        }
+        assert_eq!(ddl_of(parent.clone()).await, parent_ddl);
+        assert_eq!(ddl_of(kid.clone()).await, kid_ddl);
+        run(&*conn, &drop).await.unwrap();
+    }
+}
+
 /// The geometry in a cell: binary values as (E)WKB, others as text.
 fn shape(batch: &RecordBatch, column: usize) -> Option<geometry::Shape> {
     let array = batch.column(column);
