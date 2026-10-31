@@ -100,11 +100,7 @@ pub async fn take(
     else {
         return Ok(Taken::TooMany);
     };
-    let table = format!(
-        "{}.{}",
-        dialect.quote_ident_always(&schema),
-        dialect.quote_ident_always(name)
-    );
+    let table = quoted_table(dialect, &schema, name);
     let described: Vec<Column<'_>> = columns
         .iter()
         .zip(
@@ -148,6 +144,15 @@ pub async fn take(
         rows: rows.len() as u64,
         restore,
     }))
+}
+
+/// `schema.name`, both quoted whatever they are.
+fn quoted_table(dialect: Dialect, schema: &str, name: &str) -> String {
+    format!(
+        "{}.{}",
+        dialect.quote_ident_always(schema),
+        dialect.quote_ident_always(name)
+    )
 }
 
 /// The rows of `select` as text, with the kind of each column; `None` past `limit` rows.

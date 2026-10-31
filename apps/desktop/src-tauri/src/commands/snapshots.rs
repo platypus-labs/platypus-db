@@ -67,7 +67,7 @@ static LAST_TAKEN: AtomicI64 = AtomicI64::new(0);
 /// same millisecond, so that the newest is listed first and pruned last.
 fn taken_at(now: i64) -> i64 {
     let mut stamp = now;
-    let _ = LAST_TAKEN.fetch_update(Ordering::AcqRel, Ordering::Acquire, |last| {
+    let _ = LAST_TAKEN.try_update(Ordering::AcqRel, Ordering::Acquire, |last| {
         stamp = now.max(last + 1);
         Some(stamp)
     });
