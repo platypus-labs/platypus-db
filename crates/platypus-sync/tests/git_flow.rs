@@ -310,3 +310,86 @@ fn a_shared_projects_scripts_use_the_repository_around_them() {
     fs::create_dir(&other).unwrap();
     assert!(!git::status(&other).unwrap().is_repo);
 }
+
+/// A repository planted with a hook and an fsmonitor command of its own (in a shared folder,
+/// `.git` comes along): Git run by the app starts neither. A plain `git` does, which shows
+/// the plant works here; where it does not (no shell for hooks), only the app side is checked.
+#[test]
+fn a_planted_repository_runs_nothing() {
+    if git::find_git().is_none() {
+        eprintln!("skipping: git is not installed");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("scripts");
+    fs::create_dir(&dir).unwrap();
+    git_ok(&dir, &["init", "-q"]);
+    git_ok(&dir, &["config", "user.name", "Test"]);
+    git_ok(&dir, &["config", "user.email", "test@example.com"]);
+    git_ok(
+        &dir,
+        &["config", "core.fsmonitor", "echo ran > .git/fsmonitor-ran"],
+    );
+    let hook = dir.join(".git/hooks/pre-commit");
+    fs::write(&hook, "#!/bin/sh\necho ran > .git/hook-ran\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fs::write(dir.join("a.sql"), "select 1;\n").unwrap();
+    let fsmonitor = dir.join(".git/fsmonitor-ran");
+    let hook_ran = dir.join(".git/hook-ran");
+
+    // The control: plain Git runs both.
+    let _ = Command::new("git").arg("status").current_dir(&dir).output();
+    git_ok(&dir, &["add", "a.sql"]);
+    let _ = Command::new("git")
+        .args(["commit", "-q", "-m", "control"])
+        .current_dir(&dir)
+        .output();
+    let planted = (fsmonitor.exists(), hook_ran.exists());
+    if planted != (true, true) {
+        eprintln!("the plant did not run with plain git here: {planted:?}");
+    }
+    let _ = fs::remove_file(&fsmonitor);
+    let _ = fs::remove_file(&hook_ran);
+
+    fs::write(dir.join("b.sql"), "select 2;\n").unwrap();
+    assert!(git::status(&dir).unwrap().is_repo);
+    git::commit(&dir, &one("b.sql"), "add b", None).unwrap();
+    assert!(!fsmonitor.exists(), "the fsmonitor command ran");
+    assert!(!hook_ran.exists(), "the pre-commit hook ran");
+
+    // Settings that run commands on their own are refused, whoever wrote them; Git LFS's
+    // own are not.
+    git_ok(&dir, &["config", "filter.lfs.clean", "git-lfs clean -- %f"]);
+    assert!(git::status(&dir).unwrap().is_repo);
+    for (key, value) in [
+        ("filter.evil.clean", "echo ran > .git/filter-ran"),
+        ("credential.helper", "!echo ran"),
+        ("diff.external", "echo"),
+        ("core.worktree", ".."),
+    ] {
+        git_ok(&dir, &["config", key, value]);
+        match git::status(&dir) {
+            Err(GitError::UnsafeConfig(keys)) => {
+                assert_eq!(keys, [key.to_lowercase()], "{key}");
+            }
+            other => panic!("{key}: {other:?}"),
+        }
+        git_ok(&dir, &["config", "--unset", key]);
+    }
+    fs::write(dir.join(".gitattributes"), "*.sql filter=evil\n").unwrap();
+    git_ok(&dir, &["config", "--add", "include.path", "evil.config"]);
+    fs::write(
+        dir.join(".git/evil.config"),
+        "[filter \"evil\"]\n\tclean = echo ran > .git/filter-ran\n",
+    )
+    .unwrap();
+    assert!(matches!(
+        git::commit(&dir, &one(".gitattributes"), "attrs", None),
+        Err(GitError::UnsafeConfig(_))
+    ));
+    assert!(!dir.join(".git/filter-ran").exists());
+}

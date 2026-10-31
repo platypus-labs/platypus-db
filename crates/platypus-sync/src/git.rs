@@ -58,6 +58,13 @@ pub enum GitError {
     /// Starting Git, or reading a file, failed.
     #[error("{0}")]
     Io(String),
+    /// The repository's own configuration names commands for Git to run (a filter, a
+    /// credential helper, …): not run from the app, whoever put them there.
+    #[error(
+        "the repository's own configuration runs commands ({}): remove these settings from its .git/config to use Git here",
+        .0.join(", ")
+    )]
+    UnsafeConfig(Vec<String>),
 }
 
 impl GitError {
@@ -75,6 +82,7 @@ impl GitError {
             Self::InvalidPath(_) | Self::Invalid(_) => "invalid",
             Self::Failed(_) => "git_failed",
             Self::Io(_) => "io",
+            Self::UnsafeConfig(_) => "git_unsafe_config",
         }
     }
 }
@@ -215,11 +223,34 @@ fn drain(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<String> {
     })
 }
 
+/// A hooks folder that holds no hook.
+#[cfg(windows)]
+const NO_HOOKS: &str = "core.hooksPath=NUL";
+#[cfg(not(windows))]
+const NO_HOOKS: &str = "core.hooksPath=/dev/null";
+
+/// Settings given to every command over the repository's own (`-c` comes first): a
+/// repository that arrived in a shared folder, `.git/config` and hooks included, must not run
+/// commands of its own when the app reads or commits its scripts. The pager is never started
+/// (the output is a pipe) and the SSH command comes from the environment, which wins over
+/// `core.sshCommand`. The system configuration is kept: on Windows it holds Git's
+/// credential helper and TLS settings.
+const OVERRIDES: [&str; 5] = [
+    "core.fsmonitor=false",
+    NO_HOOKS,
+    "core.pager=cat",
+    "protocol.ext.allow=never",
+    "submodule.recurse=false",
+];
+
 /// Runs `git args` in `dir`, killing it after `timeout`. A failing exit status is not an
 /// error here: callers read `ok`.
 fn run_raw(dir: &Path, args: &[&str], timeout: Duration) -> Result<Output> {
     let git = find_git().ok_or(GitError::NotInstalled)?;
     let mut cmd = Command::new(git);
+    for setting in OVERRIDES {
+        cmd.args(["-c", setting]);
+    }
     cmd.arg("--literal-pathspecs")
         .args(args)
         .current_dir(dir)
@@ -230,6 +261,7 @@ fn run_raw(dir: &Path, args: &[&str], timeout: Duration) -> Result<Output> {
         // they can be recognised.
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_PAGER", "cat")
         .env("LC_ALL", "C");
     if std::env::var_os("GIT_SSH_COMMAND").is_none() {
         cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
@@ -345,6 +377,7 @@ fn locate(dir: &Path) -> Result<Option<Repo>> {
     if top.is_empty() {
         return Ok(None);
     }
+    check_config(dir)?;
     if prefix.is_empty() {
         return Ok(Some(Repo {
             top: dir.to_owned(),
@@ -357,6 +390,68 @@ fn locate(dir: &Path) -> Result<Option<Repo>> {
         top: PathBuf::from(top),
         prefix: prefix.to_owned(),
     }))
+}
+
+/// Whether the setting `name = value` makes Git run a command that `OVERRIDES` does not turn
+/// off. `name` is as Git lists it: section and key in lower case.
+fn runs_command(name: &str, value: &str) -> bool {
+    let (section, rest) = name.split_once('.').unwrap_or((name, ""));
+    let (sub, key) = match rest.rsplit_once('.') {
+        Some((sub, key)) => (Some(sub), key),
+        None => (None, rest),
+    };
+    // What `git lfs install --local` writes runs Git LFS itself, which is no stranger's.
+    let lfs = matches!(
+        (sub, key, value),
+        (Some("lfs"), "clean", "git-lfs clean -- %f")
+            | (Some("lfs"), "smudge", "git-lfs smudge -- %f")
+            | (Some("lfs"), "process", "git-lfs filter-process")
+    );
+    match (section, sub, key) {
+        ("core", None, k) => matches!(
+            k,
+            "askpass" | "editor" | "gitproxy" | "worktree" | "alternaterefscommand"
+        ),
+        ("diff", None, "external") | ("sequence", None, "editor") => true,
+        ("diff", Some(_), "command" | "textconv")
+        | ("merge", Some(_), "driver")
+        | ("remote", Some(_), "uploadpack" | "receivepack")
+        | ("hook", Some(_), "command")
+        | ("credential", _, "helper")
+        | ("gpg", _, "program") => true,
+        ("filter", Some(_), "clean" | "smudge" | "process") => !lfs,
+        ("submodule", Some(_), "update") => value.trim_start().starts_with('!'),
+        _ => false,
+    }
+}
+
+/// Refuses a repository whose own configuration (`.git/config`, its worktree's, and the
+/// files they include) names commands for Git to run: they would run with the user's rights
+/// when the app commits or pulls. Settings of the user's own (global, system) are trusted.
+fn check_config(dir: &Path) -> Result<()> {
+    let out = run_raw(
+        dir,
+        &["config", "--list", "--show-scope", "--includes", "-z"],
+        LOCAL_TIMEOUT,
+    )?;
+    if !out.ok {
+        return Ok(());
+    }
+    let mut found = Vec::new();
+    let mut fields = out.stdout.split('\0');
+    while let (Some(scope), Some(entry)) = (fields.next(), fields.next()) {
+        let (name, value) = entry.split_once('\n').unwrap_or((entry, ""));
+        let name = name.to_lowercase();
+        if matches!(scope, "local" | "worktree") && runs_command(&name, value) {
+            found.push(name);
+        }
+    }
+    if found.is_empty() {
+        Ok(())
+    } else {
+        found.dedup();
+        Err(GitError::UnsafeConfig(found))
+    }
 }
 
 fn require_repo(dir: &Path) -> Result<Repo> {
