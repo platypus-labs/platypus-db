@@ -147,3 +147,9 @@ export function quoteIdent(name: string, driver: DriverKind): string {
 export function redisArg(text: string): string {
   return /^[^\s"']+$/.test(text) ? text : `"${text.replace(/[\\"]/g, "\\$&").replace(/\n/g, "\\n")}"`;
 }
+
+/** A routine's name without the signature the navigator lists it with (`f(x integer)`). */
+export function routineBase(name: string): string {
+  const open = name.indexOf("(");
+  return open > 0 ? name.slice(0, open).trimEnd() : name;
+}

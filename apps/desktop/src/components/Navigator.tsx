@@ -18,6 +18,8 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
 import { ROW_HEIGHT, rowWindow, scrollToRow, stepAt } from "../navigator/rowWindow";
+import { routineBase } from "../sqlIdent";
+import { textFilter } from "../navigator/filter";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
@@ -668,6 +670,7 @@ export function Navigator(props: Props) {
     const hidden = prefs.filters[c.id];
     const hiddenSchema = nameMatcher(hidden?.schemas);
     const hiddenObject = nameMatcher(hidden?.objects);
+    const text = textFilter(needle);
     // User schemas first, catalog schemas after them.
     const ordered = schemas
       .filter((s) => !(simple && s.system) && !hiddenSchema(s.name))
@@ -677,13 +680,13 @@ export function Navigator(props: Props) {
       const objects = loaded<ObjectMeta[]>(skey);
       const matches = objects?.filter(
         (o) =>
-          (!needle || o.name.toLowerCase().includes(needle)) &&
+          text.matches(schema.name, o.name) &&
           (needTags.length === 0 ||
             needTags.every((t) => catalogEntry(c.id, catalogKey(db, schema.name, o.name))?.tags.includes(t))) &&
           (!simple || SIMPLE_KINDS.has(o.kind)) &&
           !hiddenObject(o.name),
       );
-      if ((needle || needTags.length > 0) && objects && matches?.length === 0) continue;
+      if ((needle || needTags.length > 0) && objects && matches?.length === 0 && !text.wholeSchema(schema.name)) continue;
       const sOpen = expanded.has(skey) || ((!!needle || needTags.length > 0) && !!matches?.length);
       out.push({
         key: skey,
@@ -812,7 +815,8 @@ export function Navigator(props: Props) {
           marked,
           onOpen: () => openObject(c, db, schema, object),
           menu,
-          sql: { name: target },
+          // A routine is dragged as a call: its name quoted, without the signature.
+          sql: { name: object.kind === "function" || object.kind === "procedure" ? `${qualifiedName(c.driver, schema, routineBase(object.name))}()` : target },
         },
       ];
     }
@@ -1527,13 +1531,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "copy",
       order: 40,
       multiple: true,
-      // Routines are copied bare, as before: their call syntax differs from a table's.
-      run: (arg) =>
-        copy(
-          (arg.selection ?? [arg])
-            .map(({ object, target }) => (isRelation(object.kind) ? target : object.name))
-            .join("\n"),
-        ),
+      // The bare name, as for a column; Copy qualified name has the schema and the quotes.
+      run: (arg) => copy((arg.selection ?? [arg]).map(({ object }) => object.name).join("\n")),
     }),
     registerAction({
       id: "object.bookmark",

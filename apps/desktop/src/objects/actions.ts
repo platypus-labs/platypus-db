@@ -15,7 +15,7 @@ import {
 import { catalogKey, renameCatalog, reportCatalogError } from "../catalog/catalog";
 import { renamedObject } from "../catalog/renames";
 import { isRelation } from "../components/Navigator";
-import { renameBookmarks } from "../navigator/prefs";
+import { removeBookmarks, renameBookmarks } from "../navigator/prefs";
 import { requestNavigatorRefresh } from "../navigatorEvents";
 import { getSetting } from "../settings";
 import { quoteIdent, schemaRef, selectLimit } from "../sqlNames";
@@ -244,5 +244,10 @@ registerAction({
         options: { cascade: support.get(arg.connection.driver)?.cascade ?? false },
       },
       ({ cascade }) => ({ statement: "drop", cascade }),
+      () =>
+        removeBookmarks(
+          { connectionId: arg.connection.id, database: arg.database, schema: arg.schema.name, kind: arg.object.kind },
+          arg.object.name,
+        ),
     ),
 });
