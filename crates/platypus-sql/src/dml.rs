@@ -11,8 +11,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::ops::Range;
 
-use platypus_core::arrow_schema::DataType;
-use platypus_core::{Connection, Error, ExecOptions, ExecResult};
+use platypus_core::arrow_schema::{DataType, Field};
+use platypus_core::{Connection, Error, ExecOptions, ExecResult, META_DB_TYPE};
 
 use crate::Dialect;
 
@@ -61,6 +61,25 @@ impl ValueKind {
             DataType::Time32(_) | DataType::Time64(_) => Self::Time,
             DataType::Map(..) => Self::Map,
             _ => Self::Text,
+        }
+    }
+
+    /// The kind of a result column. SQLite types a column of a result by the values it holds
+    /// (see its driver), so one declared `DECIMAL(10,2)` or `NUMERIC` whose rows are all whole
+    /// numbers reads as integers: the declared type decides whether it takes fractions (only a
+    /// type with `INT` in its name has integer affinity), and a column with no declared type
+    /// takes anything.
+    #[must_use]
+    pub fn of_field(field: &Field, dialect: Dialect) -> Self {
+        let kind = Self::of(field.data_type());
+        let whole_only = field
+            .metadata()
+            .get(META_DB_TYPE)
+            .is_some_and(|declared| declared.to_ascii_uppercase().contains("INT"));
+        if kind == Self::Integer && dialect == Dialect::Sqlite && !whole_only {
+            Self::Decimal
+        } else {
+            kind
         }
     }
 }
@@ -1219,6 +1238,48 @@ mod tests {
                 default: Some("0"),
             },
         ]
+    }
+
+    #[test]
+    fn sqlite_numeric_columns_take_fractions_whatever_they_hold() {
+        use std::collections::HashMap;
+        let field = |declared: Option<&str>| {
+            let f = Field::new("price", DataType::Int64, true);
+            match declared {
+                Some(d) => {
+                    f.with_metadata(HashMap::from([(META_DB_TYPE.to_owned(), d.to_owned())]))
+                }
+                None => f,
+            }
+        };
+        let kind = |declared, dialect| ValueKind::of_field(&field(declared), dialect);
+        for numeric in [Some("DECIMAL(10,2)"), Some("NUMERIC"), Some("REAL"), None] {
+            assert_eq!(
+                kind(numeric, Dialect::Sqlite),
+                ValueKind::Decimal,
+                "{numeric:?}"
+            );
+        }
+        for whole in ["INTEGER", "bigint", "UNSIGNED BIG INT"] {
+            assert_eq!(
+                kind(Some(whole), Dialect::Sqlite),
+                ValueKind::Integer,
+                "{whole}"
+            );
+        }
+        assert_eq!(
+            kind(Some("DECIMAL(10,2)"), Dialect::Postgres),
+            ValueKind::Integer
+        );
+        let price = Column {
+            name: "price",
+            kind: ValueKind::Decimal,
+            default: None,
+        };
+        assert_eq!(
+            price.literal(Dialect::Sqlite, Some("9.99")).unwrap(),
+            "9.99"
+        );
     }
 
     #[test]

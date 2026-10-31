@@ -917,3 +917,68 @@ async fn duckdb_unsigned_128_bit_numbers_and_zoned_times_keep_their_value() {
         ])]
     );
 }
+
+#[tokio::test]
+async fn sqlite_numeric_columns_of_whole_numbers_still_take_fractions() {
+    use platypus_sql::dml::{Column, ValueKind};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("qa.db");
+    std::fs::File::create(&path).unwrap();
+    let conn = file_connection(&SqliteDriver, DriverKind::Sqlite, &path).await;
+    let conn = &*conn;
+    run(
+        conn,
+        "CREATE TABLE qa_fix_prices (id INTEGER PRIMARY KEY, price DECIMAL(10,2), loose, qty INT)",
+    )
+    .await;
+    run(
+        conn,
+        "INSERT INTO qa_fix_prices VALUES (1, 10, 5, 1), (2, 20, 6, 2)",
+    )
+    .await;
+    let (types, rows) =
+        texts_with(conn, "SELECT id, price, loose, qty FROM qa_fix_prices", 10).await;
+    // The values stay the integers they are...
+    assert_eq!(types[1], DataType::Int64);
+    assert_eq!(rows[0], row(&["1", "10", "5", "1"]));
+    // ...and the editor writes fractions into the numeric columns, whole numbers into the others.
+    let ExecResult::Rows(stream) = conn
+        .execute(
+            "SELECT id, price, loose, qty FROM qa_fix_prices",
+            &ExecOptions::default(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("no rows");
+    };
+    let kinds: Vec<_> = stream
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| ValueKind::of_field(f, Dialect::Sqlite))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ValueKind::Integer,
+            ValueKind::Decimal,
+            ValueKind::Decimal,
+            ValueKind::Integer
+        ]
+    );
+    let price = Column {
+        name: "price",
+        kind: kinds[1],
+        default: None,
+    };
+    let sql = format!(
+        "UPDATE qa_fix_prices SET price = {} WHERE id = 1",
+        price.literal(Dialect::Sqlite, Some("9.99")).unwrap()
+    );
+    run(conn, &sql).await;
+    assert_eq!(
+        texts(conn, "SELECT price FROM qa_fix_prices WHERE id = 1").await,
+        [row(&["9.99"])]
+    );
+}
