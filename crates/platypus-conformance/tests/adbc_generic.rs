@@ -147,10 +147,9 @@ async fn generic_adbc_explains_a_missing_or_wrong_library() {
     assert!(driver.connect(&config).await.is_err());
 }
 
-/// DuckDB's ADBC driver exports `duckdb_adbc_init`, not the standard `AdbcDriverInit`, and the
-/// generic driver has no field for the entrypoint: the library cannot be loaded.
+/// DuckDB's ADBC driver exports `duckdb_adbc_init`, not the standard `AdbcDriverInit`: the
+/// generic driver loads it once the entrypoint is named.
 #[tokio::test]
-#[ignore = "bug: the generic ADBC driver cannot name a library's entrypoint (DuckDB's)"]
 async fn generic_adbc_loads_duckdb() {
     let Some(library) = library("duckdb").await else {
         return;
@@ -158,6 +157,9 @@ async fn generic_adbc_loads_duckdb() {
     let dir = tempfile::tempdir().unwrap();
     let mut config = config(&library, &dir.path().join("generic.duckdb"));
     config.options.remove("uri");
+    config
+        .options
+        .insert("entrypoint".to_owned(), "duckdb_adbc_init".to_owned());
     config.options.insert(
         "path".to_owned(),
         dir.path().join("generic.duckdb").display().to_string(),

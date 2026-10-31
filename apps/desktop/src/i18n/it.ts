@@ -976,6 +976,7 @@ const it: Record<string, string> = {
   "On — HTTPS, verify certificate": "Attivo — HTTPS, verifica il certificato",
   "On — HTTPS, unverified": "Attivo — HTTPS, non verificato",
   "Password (optional)": "Password (facoltativa)",
+  "Entrypoint (optional)": "Entrypoint (facoltativo)",
   "Driver library": "Libreria del driver",
   "URI": "URI",
   "Changes on {name} (production)": "Modifiche su {name} (produzione)",

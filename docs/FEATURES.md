@@ -21,7 +21,7 @@ Everything PlatypusDB does, area by area. The [README](../README.md) has the sho
 | Apache Cassandra 4+ and ScyllaDB 5.4+ | `scylla` crate (rustls) | CQL; keyspaces as schemas, tables, materialized views, types and functions in the navigator; edited in the grid by full primary key; no row count, sort or filter in the data viewer |
 | CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their default port, user, database and SSL |
 | Snowflake, BigQuery, Databricks, Trino | ADBC driver, downloaded on first use | Queries, results, navigator and autocompletion; no data editing, explain or manual commit yet |
-| Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them |
+| Any database with an ADBC driver | ADBC driver library you choose | Its URI and options as the driver documents them; an optional entrypoint symbol for libraries that do not export `AdbcDriverInit` (DuckDB: `duckdb_adbc_init`) |
 | Oracle | native driver with Oracle Instant Client, downloaded on first use | PL/SQL blocks (end them with a `/` line in scripts), real cancel, navigator, DDL; Windows needs the Visual C++ Redistributable, Linux `libaio` |
 | IBM Db2 | IBM's ODBC driver, installed on first use (Windows) | Registering the driver asks for administrator rights (UAC) |
 | Any ODBC driver or DSN (Windows) | the system's ODBC driver manager | A DSN, or a driver and its connection string |
