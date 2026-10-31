@@ -20,19 +20,41 @@ export interface Workspace {
   active: Record<string, number>;
 }
 
+/** `parsed` without the tabs that are not tabs (null, no connection): one bad entry must not
+ *  blank the app. The active indices are moved to the tabs that stay; `null` when `parsed`
+ *  has no list of tabs at all. */
+export function cleanWorkspace(parsed: unknown): Workspace | null {
+  if (typeof parsed !== "object" || parsed === null || !Array.isArray((parsed as Workspace).tabs)) return null;
+  const { tabs, active } = parsed as Workspace;
+  const newIndex = new Map<number, number>();
+  const kept: PersistedTab[] = [];
+  tabs.forEach((tab, i) => {
+    if (typeof tab !== "object" || tab === null || typeof tab.connectionId !== "string") return;
+    newIndex.set(i, kept.length);
+    kept.push(tab);
+  });
+  const moved: Record<string, number> = {};
+  if (typeof active === "object" && active !== null) {
+    for (const [key, index] of Object.entries(active)) {
+      const at = newIndex.get(index);
+      if (at !== undefined) moved[key] = at;
+    }
+  }
+  return { tabs: kept, active: moved };
+}
+
 /** The saved workspace; one from 0.2.0 becomes the tabs of All connections. */
 export function loadWorkspace(): Workspace | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Workspace;
-      return Array.isArray(parsed.tabs) ? parsed : null;
+      return cleanWorkspace(JSON.parse(raw));
     }
     const old = localStorage.getItem(KEY_V1);
     if (!old) return null;
     const parsed = JSON.parse(old) as { tabs: PersistedTab[]; active: number };
-    if (!Array.isArray(parsed.tabs)) return null;
-    return { tabs: parsed.tabs.map((t) => ({ ...t, project: null })), active: { all: parsed.active } };
+    const clean = cleanWorkspace({ tabs: parsed.tabs, active: { all: parsed.active } });
+    return clean && { tabs: clean.tabs.map((t) => ({ ...t, project: null })), active: clean.active };
   } catch {
     return null;
   }
