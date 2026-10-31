@@ -298,6 +298,7 @@ pub async fn table_details(
             primary: c.kind == "PRIMARY KEY",
             partial: false,
             size: None,
+            detail: None,
         })
         .collect();
     let rows = query_text(
@@ -315,6 +316,7 @@ pub async fn table_details(
         partial: false,
         columns: index_expressions(&r.text(3)),
         size: None,
+        detail: None,
     }));
 
     let foreign_keys = all
@@ -327,6 +329,7 @@ pub async fn table_details(
             ref_schema: schema.to_owned(),
             ref_table: c.ref_table.clone(),
             ref_columns: c.ref_columns.clone(),
+            detail: None,
         })
         .collect();
     let constraints = all

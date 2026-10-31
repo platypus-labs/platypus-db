@@ -278,6 +278,7 @@ pub fn table_details(catalogs: &[Catalog]) -> TableDetails {
             primary: true,
             partial: false,
             size: None,
+            detail: None,
         })
         .into_iter()
         .collect();
@@ -293,6 +294,7 @@ pub fn table_details(catalogs: &[Catalog]) -> TableDetails {
                 ref_schema: schema.clone().unwrap_or_default(),
                 ref_table: table.clone(),
                 ref_columns: c.references.iter().map(|r| r.2.clone()).collect(),
+                detail: None,
             })
         })
         .collect();

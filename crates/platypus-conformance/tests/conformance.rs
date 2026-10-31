@@ -4811,6 +4811,122 @@ async fn postgres_table_ddl_runs_standalone() {
     }
 }
 
+/// The index and foreign key lists of PostgreSQL say what the DDL says: the predicate, the
+/// sort order, the included columns and the referential actions.
+#[tokio::test]
+async fn postgres_details_show_index_and_key_options() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = &b.schema;
+        let (parent, child) = (
+            format!("probe_det_parent{}", std::process::id()),
+            format!("probe_det_child{}", std::process::id()),
+        );
+        let drop = format!("DROP TABLE IF EXISTS {s}.{child}, {s}.{parent} CASCADE");
+        run(&*conn, &drop).await.unwrap();
+        for sql in [
+            format!("CREATE TABLE {s}.{parent} (id int PRIMARY KEY)"),
+            format!(
+                "CREATE TABLE {s}.{child} (id int PRIMARY KEY, pa int, pb int, amount int,
+                 CONSTRAINT fk_pa FOREIGN KEY (pa) REFERENCES {s}.{parent} (id)
+                     ON DELETE SET NULL ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED)"
+            ),
+            format!("CREATE UNIQUE INDEX ix_part ON {s}.{child} (pa) WHERE pb IS NULL"),
+            format!(
+                "CREATE INDEX ix_order ON {s}.{child} (amount DESC NULLS LAST, pb NULLS FIRST) INCLUDE (pa)"
+            ),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
+        let details = conn.table_details(s, &child).await.unwrap();
+        let index = |name: &str| {
+            details
+                .indexes
+                .iter()
+                .find(|i| i.name == name)
+                .and_then(|i| i.detail.clone())
+                .unwrap_or_default()
+        };
+        assert!(index("ix_part").contains("WHERE"), "{:?}", details.indexes);
+        let ordered = index("ix_order");
+        assert!(ordered.contains("amount DESC NULLS LAST"), "{ordered}");
+        assert!(ordered.contains("pb NULLS FIRST"), "{ordered}");
+        assert!(ordered.contains("INCLUDE (pa)"), "{ordered}");
+        assert_eq!(index("probe_none"), "");
+        let key = details.foreign_keys[0].detail.clone().unwrap_or_default();
+        assert_eq!(
+            key,
+            "ON DELETE SET NULL ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED"
+        );
+        run(&*conn, &drop).await.unwrap();
+    }
+}
+
+/// The DDL of a SQL Server table with a column collation, a SPARSE column, a named default and
+/// descriptions runs on its own and is the same once run.
+#[tokio::test]
+async fn sqlserver_table_ddl_runs_standalone() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.config.driver != DriverKind::SqlServer {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = &b.schema;
+        let table = format!("probe_ddl{}", std::process::id());
+        let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
+        run(&*conn, &drop).await.unwrap();
+        let create = format!(
+            "CREATE TABLE {s}.{table} (id INT PRIMARY KEY,
+                name NVARCHAR(50) COLLATE Latin1_General_CS_AS NOT NULL,
+                extra INT SPARSE NULL,
+                qty INT NOT NULL CONSTRAINT df_probe_qty DEFAULT (7))"
+        );
+        run(&*conn, &create).await.unwrap();
+        for (column, text) in [(None, "Orders"), (Some("name"), "Who orders")] {
+            let level2 = column.map_or(String::new(), |c| {
+                format!(", @level2type = N'COLUMN', @level2name = N'{c}'")
+            });
+            let sql = format!(
+                "EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'{text}',
+                 @level0type = N'SCHEMA', @level0name = N'{s}',
+                 @level1type = N'TABLE', @level1name = N'{table}'{level2}"
+            );
+            run(&*conn, &sql).await.unwrap();
+        }
+        let ddl_of = || async {
+            conn.object_ddl(&ObjectRef {
+                schema: s,
+                name: &table,
+                kind: ObjectKind::Table,
+                parent: None,
+            })
+            .await
+            .unwrap()
+        };
+        let ddl = ddl_of().await;
+        for part in [
+            "COLLATE Latin1_General_CS_AS",
+            "SPARSE",
+            "CONSTRAINT df_probe_qty DEFAULT",
+            "sp_addextendedproperty",
+            "Who orders",
+        ] {
+            assert!(ddl.contains(part), "{part} in {ddl}");
+        }
+        run(&*conn, &drop).await.unwrap();
+        for statement in platypus_sql::split(&ddl, platypus_sql::Dialect::SqlServer) {
+            run(&*conn, statement.text(&ddl)).await.unwrap();
+        }
+        assert_eq!(ddl_of().await, ddl);
+        run(&*conn, &drop).await.unwrap();
+    }
+}
+
 /// The geometry in a cell: binary values as (E)WKB, others as text.
 fn shape(batch: &RecordBatch, column: usize) -> Option<geometry::Shape> {
     let array = batch.column(column);

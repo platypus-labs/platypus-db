@@ -4,7 +4,7 @@ use platypus_core::{
     CATALOG_LIMIT, CatalogColumn, CatalogForeignKey, ColumnMeta, Connection, ConstraintKind,
     ConstraintMeta, Error, FieldMeta, ForeignKeyMeta, IndexMeta, MatchKind, MetadataMatch,
     ObjectKind, ObjectMeta, ReferencingKey, Result, SEARCH_LIMIT, SchemaMeta, TableDetails,
-    TextRowExt, query_catalog, query_text,
+    TextRow, TextRowExt, query_catalog, query_text,
 };
 use platypus_sql::Dialect;
 
@@ -339,6 +339,17 @@ pub async fn table_details(
 
     let indexes = indexes(conn, &relation).await?;
 
+    // `ON DELETE CASCADE`; nothing for the default, NO ACTION.
+    let action = |on: &str, code: &str| {
+        format!(
+            "CASE con.{code} WHEN 'r' THEN 'ON {on} RESTRICT' WHEN 'c' THEN 'ON {on} CASCADE'
+                 WHEN 'n' THEN 'ON {on} SET NULL' WHEN 'd' THEN 'ON {on} SET DEFAULT' END"
+        )
+    };
+    let (on_delete, on_update) = (
+        action("DELETE", "confdeltype"),
+        action("UPDATE", "confupdtype"),
+    );
     let foreign_keys = query_text(
         conn,
         &format!(
@@ -351,7 +362,13 @@ pub async fn table_details(
                     array_to_string(ARRAY(
                         SELECT a.attname FROM unnest(con.confkey) WITH ORDINALITY k(n, o)
                         JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.n
-                        ORDER BY k.o), chr(31))
+                        ORDER BY k.o), chr(31)),
+                    NULLIF(concat_ws(' ',
+                        CASE WHEN con.confmatchtype = 'f' THEN 'MATCH FULL' END,
+                        {on_delete}, {on_update},
+                        CASE WHEN con.condeferrable THEN 'DEFERRABLE'
+                             || CASE WHEN con.condeferred THEN ' INITIALLY DEFERRED' ELSE '' END
+                        END), '')
              FROM pg_constraint con
              JOIN pg_class fc ON fc.oid = con.confrelid
              JOIN pg_namespace fn ON fn.oid = fc.relnamespace
@@ -367,6 +384,7 @@ pub async fn table_details(
         ref_schema: r.text(2),
         ref_table: r.text(3),
         ref_columns: list(r.opt(4)),
+        detail: r.opt(5),
     })
     .collect();
 
@@ -396,10 +414,32 @@ fn index_column(part: String) -> String {
 }
 
 async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>> {
-    let size = if crate::is_cockroach(conn) {
+    let cockroach = crate::is_cockroach(conn);
+    let size = if cockroach {
         "NULL::bigint"
     } else {
         "pg_relation_size(i.indexrelid)"
+    };
+    // The keys that are not ascending nulls last, and the included columns; CockroachDB's
+    // catalog has no `indoption`.
+    let (order, include) = if cockroach {
+        ("NULL", "NULL")
+    } else {
+        (
+            "array_to_string(ARRAY(
+                SELECT pg_get_indexdef(i.indexrelid, k, true)
+                       || CASE WHEN i.indoption[k - 1] & 1 = 1 THEN ' DESC' ELSE '' END
+                       || CASE WHEN i.indoption[k - 1] & 2 = 2 AND i.indoption[k - 1] & 1 = 0
+                               THEN ' NULLS FIRST'
+                               WHEN i.indoption[k - 1] & 2 = 0 AND i.indoption[k - 1] & 1 = 1
+                               THEN ' NULLS LAST' ELSE '' END
+                FROM generate_series(1, i.indnkeyatts) k
+                WHERE i.indoption[k - 1] & 3 <> 0
+                ORDER BY k), chr(31))",
+            "CASE WHEN i.indnatts > i.indnkeyatts THEN 'INCLUDE (' || array_to_string(ARRAY(
+                SELECT pg_get_indexdef(i.indexrelid, k, true)
+                FROM generate_series(i.indnkeyatts + 1, i.indnatts::int) k ORDER BY k), ', ') || ')' END",
+        )
     };
     Ok(query_text(
         conn,
@@ -408,7 +448,8 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
                     array_to_string(ARRAY(
                         SELECT pg_get_indexdef(i.indexrelid, k, true)
                         FROM generate_series(1, i.indnkeyatts) k ORDER BY k), chr(31)),
-                    {size}, i.indpred IS NOT NULL
+                    {size}, i.indpred IS NOT NULL, {order}, {include},
+                    pg_get_expr(i.indpred, i.indrelid, true)
              FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
              WHERE i.indrelid = {relation}
              ORDER BY i.indisprimary DESC, ic.relname"
@@ -423,8 +464,22 @@ async fn indexes(conn: &dyn Connection, relation: &str) -> Result<Vec<IndexMeta>
         partial: r.flag(5),
         columns: list(r.opt(3)).into_iter().map(index_column).collect(),
         size: r.number(4),
+        detail: index_detail(&r),
     })
     .collect())
+}
+
+/// The sort orders, `INCLUDE` list and predicate of an index row, written as one line.
+fn index_detail(r: &TextRow) -> Option<String> {
+    let order = list(r.opt(6)).join(", ");
+    let predicate = r.opt(8).map(|p| format!("WHERE {p}"));
+    let detail = [Some(order), r.opt(7), predicate]
+        .into_iter()
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!detail.is_empty()).then_some(detail)
 }
 
 /// Primary key, unique, check and exclusion constraints.

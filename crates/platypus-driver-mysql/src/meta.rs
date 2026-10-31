@@ -260,6 +260,7 @@ pub async fn table_details(
                     primary: r.flag(2),
                     partial: false,
                     size: None,
+                    detail: None,
                 },
             )
         }),
@@ -287,6 +288,7 @@ pub async fn table_details(
                     ref_schema: r.text(2),
                     ref_table: r.text(3),
                     ref_columns: vec![r.text(4)],
+                    detail: None,
                 },
             )
         }),

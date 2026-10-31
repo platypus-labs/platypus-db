@@ -297,6 +297,7 @@ mod tests {
             primary,
             partial: false,
             size: None,
+            detail: None,
         }
     }
 
@@ -333,6 +334,7 @@ mod tests {
                 ref_schema: "public".to_owned(),
                 ref_table: "customers".to_owned(),
                 ref_columns: vec!["id".to_owned()],
+                detail: None,
             }],
             ..TableDetails::default()
         };

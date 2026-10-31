@@ -1242,6 +1242,7 @@ mod tests {
             ref_schema: "demo".to_owned(),
             ref_table: "Customers".to_owned(),
             ref_columns: vec!["id".to_owned()],
+            detail: None,
         };
         assert_eq!(
             foreign_key_sql(Dialect::Postgres, "copy", "orders", &fk),
@@ -1331,6 +1332,7 @@ mod tests {
                         ref_schema: String::new(),
                         ref_table: (*r).to_owned(),
                         ref_columns: vec!["id".to_owned()],
+                        detail: None,
                     })
                     .collect(),
                 ..TableDetails::default()

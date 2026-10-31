@@ -301,6 +301,7 @@ pub async fn table_details(shared: &Shared, table: &str) -> Result<TableDetails>
             primary: true,
             partial: false,
             size: None,
+            detail: None,
         }],
         foreign_keys: Vec::new(),
         constraints: Vec::new(),

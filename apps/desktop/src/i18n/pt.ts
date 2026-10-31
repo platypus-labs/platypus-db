@@ -881,6 +881,7 @@ const pt: Record<string, string> = {
   "Primary": "Primária",
   "Definition": "Definição",
   "Referenced columns": "Colunas referenciadas",
+  "Details": "Detalhes",
   "Foreign key": "Chave estrangeira",
   "This driver cannot show the DDL of objects.": "Este driver não consegue mostrar o DDL dos objetos.",
   "New name": "Novo nome",

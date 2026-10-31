@@ -295,7 +295,10 @@ async fn columns(conn: &MssqlConnection, id: &str) -> Result<Vec<Column>> {
             "SELECT c.name, t.name, c.max_length, c.precision, c.scale, t.is_user_defined,
                     c.is_nullable, dc.definition, CAST(ep.value AS NVARCHAR(4000)),
                     c.is_identity, CAST(ic.seed_value AS NVARCHAR(40)),
-                    CAST(ic.increment_value AS NVARCHAR(40)), cc.definition, cc.is_persisted
+                    CAST(ic.increment_value AS NVARCHAR(40)), cc.definition, cc.is_persisted,
+                    CASE WHEN c.collation_name <> CONVERT(sysname, DATABASEPROPERTYEX(DB_NAME(), 'Collation'))
+                         THEN c.collation_name END,
+                    c.is_sparse, CASE WHEN dc.is_system_named = 0 THEN dc.name END
              FROM sys.columns c
              JOIN sys.types t ON t.user_type_id = c.user_type_id
              LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id
@@ -321,6 +324,9 @@ async fn columns(conn: &MssqlConnection, id: &str) -> Result<Vec<Column>> {
             comment: r.opt(8),
             identity: r.flag(9).then(|| (r.text(10), r.text(11))),
             computed: r.opt(12).map(|expression| (expression, r.flag(13))),
+            collation: r.opt(14),
+            sparse: r.flag(15),
+            default_name: r.opt(16),
         })
         .collect())
 }
@@ -465,6 +471,7 @@ pub async fn table_details(
                 primary: i.primary,
                 partial: i.filter.is_some(),
                 size: i.size,
+                detail: None,
             })
             .collect(),
         foreign_keys: foreign_keys
@@ -475,6 +482,7 @@ pub async fn table_details(
                 ref_schema: k.ref_schema,
                 ref_table: k.ref_table,
                 ref_columns: k.ref_columns,
+                detail: None,
             })
             .collect(),
         constraints,
@@ -545,13 +553,31 @@ pub async fn object_ddl(conn: &MssqlConnection, o: &ObjectRef<'_>) -> Result<Str
             if columns.is_empty() {
                 return Err(Error::Other(format!("no such object: {qualified}")));
             }
-            Ok(ddl::table(
+            let mut script = ddl::table(
                 &qualified,
                 &columns,
                 &indexes(conn, &id).await?,
                 &checks(conn, &id).await?,
                 &own_foreign_keys(conn, &id).await?,
-            ))
+            );
+            let table_comment = first_row(
+                conn,
+                &format!(
+                    "SELECT CAST(ep.value AS NVARCHAR(4000)) FROM sys.extended_properties ep
+                     WHERE ep.class = 1 AND ep.major_id = {id} AND ep.minor_id = 0
+                       AND ep.name = 'MS_Description'"
+                ),
+                &qualified,
+            )
+            .await
+            .ok()
+            .and_then(|r| r.opt(0));
+            let comments = ddl::comments(o.schema, o.name, table_comment.as_deref(), &columns);
+            if !comments.is_empty() {
+                script.push_str("\n\n");
+                script.push_str(&comments);
+            }
+            Ok(script)
         }
         ObjectKind::View | ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger => {
             first_row(conn, &format!("SELECT OBJECT_DEFINITION({id})"), &qualified)

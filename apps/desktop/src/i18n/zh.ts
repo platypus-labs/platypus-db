@@ -881,6 +881,7 @@ const zh: Record<string, string> = {
   "Primary": "主键",
   "Definition": "定义",
   "Referenced columns": "被引用的列",
+  "Details": "详情",
   "Foreign key": "外键",
   "This driver cannot show the DDL of objects.": "此驱动无法显示对象的 DDL。",
   "New name": "新名称",

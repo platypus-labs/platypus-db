@@ -262,6 +262,7 @@ pub async fn table_details(
                     primary: r.flag(2),
                     partial: r.flag(4),
                     size: None,
+                    detail: None,
                 },
             )
         }),
@@ -282,6 +283,7 @@ pub async fn table_details(
                 primary: true,
                 partial: false,
                 size: None,
+                detail: None,
             },
         );
     }
@@ -306,6 +308,7 @@ pub async fn table_details(
                     ref_table: r.text(2),
                     // Empty when the key references the parent's primary key implicitly.
                     ref_columns: vec![r.text(3)],
+                    detail: None,
                 },
             )
         }),

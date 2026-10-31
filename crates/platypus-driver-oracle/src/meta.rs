@@ -397,6 +397,7 @@ pub fn table_details(
                 ref_schema: first.text(4),
                 ref_table: first.text(5),
                 ref_columns: rows.iter().map(|r| r.text(6)).collect(),
+                detail: None,
             }),
         }
     }
@@ -410,6 +411,7 @@ pub fn table_details(
                 columns: vec![index_column(r)],
                 unique: r.text(1) == "UNIQUE",
                 size: None,
+                detail: None,
             };
             (name, index)
         }),

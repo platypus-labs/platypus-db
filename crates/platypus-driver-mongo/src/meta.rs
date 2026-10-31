@@ -147,6 +147,7 @@ pub async fn table_details(
                     partial: false,
                     size: None,
                     name,
+                    detail: None,
                 }
             })
             .collect()

@@ -1325,6 +1325,8 @@ export interface IndexMeta {
   primary: boolean;
   /** Covers only the rows of a condition (`WHERE`). */
   partial: boolean;
+  /** Sort order, INCLUDE columns and WHERE predicate, as the database writes them. */
+  detail: string | null;
   size: number | null;
 }
 
@@ -1334,6 +1336,8 @@ export interface ForeignKeyMeta {
   ref_schema: string;
   ref_table: string;
   ref_columns: string[];
+  /** Referential actions and deferral (ON DELETE SET NULL, DEFERRABLE). */
+  detail: string | null;
 }
 
 export interface ConstraintMeta {
