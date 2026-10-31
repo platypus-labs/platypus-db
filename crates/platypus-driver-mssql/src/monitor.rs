@@ -149,8 +149,11 @@ pub(crate) async fn parameters(conn: &dyn Connection) -> Result<Vec<ServerParame
 
 /// The unit an option's name ends with: `max server memory (MB)` counts in `MB`.
 fn unit_of(name: &str) -> Option<String> {
-    let inner = name.strip_suffix(')')?.rsplit_once(" (")?.1;
-    (!inner.is_empty()).then(|| inner.to_owned())
+    let (base, inner) = name.strip_suffix(')')?.rsplit_once(" (")?;
+    // `ft crawl bandwidth (max)` is the maximum of a bandwidth, no unit; `recovery interval
+    // (min)` counts minutes.
+    let bound = matches!(inner, "max" | "min") && base.ends_with("bandwidth");
+    (!inner.is_empty() && !bound).then(|| inner.to_owned())
 }
 
 /// The call that sets option `name` to `value`; the change waits for `RECONFIGURE`.
@@ -283,6 +286,10 @@ mod tests {
         assert_eq!(unit_of("max server memory (MB)").as_deref(), Some("MB"));
         assert_eq!(unit_of("fill factor (%)").as_deref(), Some("%"));
         assert_eq!(unit_of("max degree of parallelism"), None);
+        assert_eq!(unit_of("recovery interval (min)").as_deref(), Some("min"));
+        // The bounds of a bandwidth are no units.
+        assert_eq!(unit_of("ft crawl bandwidth (max)"), None);
+        assert_eq!(unit_of("ft notify bandwidth (min)"), None);
     }
 
     #[test]
