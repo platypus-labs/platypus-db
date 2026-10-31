@@ -24,6 +24,7 @@ export default async function (page, { dir }) {
       name: NAME,
       file: join(dir, "platypus.dump"),
       table: TABLE,
+      clean: true,
       dropTable: () => sh(DB, `DROP TABLE ${TABLE}`),
       count: () => {
         const n = sh(DB, `SELECT count(*) FROM pg_tables WHERE schemaname || '.' || tablename = '${TABLE}'`);
