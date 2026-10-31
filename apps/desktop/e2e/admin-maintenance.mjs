@@ -81,7 +81,7 @@ export async function maintenanceFlow(page, { path, table, operations, outputs, 
     const r = await runOperation(page);
     assert.ok(r.ok, `${operation}: ${r.text}`);
     assert.equal(r.text, `${WORDS[operation]} done.`);
-    if (outputs[operation]) assert.match(r.output ?? "", outputs[operation], `${operation} output`);
+    if (outputs[operation]) assert.match(r.output ?? "", outputs[operation], `${operation} output: ${JSON.stringify(r.output)}`);
     // Done: the buttons are Close only, and running it again needs the menu again.
     assert.equal(await page.eval(`[...${dialog}.querySelectorAll('button')].map(b => b.textContent).join('|')`), "Close");
     await closeDialog(page);
