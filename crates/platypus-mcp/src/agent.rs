@@ -577,7 +577,8 @@ impl Agent {
         });
         if !reusable {
             *slot = None;
-            let (conn, redactor) = connect::open(store, saved).await?;
+            let settings = self.profile.settings();
+            let (conn, redactor) = connect::open(store, saved, settings.as_ref()).await?;
             *slot = Some(Session {
                 fingerprint,
                 driver: saved.driver,

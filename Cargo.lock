@@ -6168,6 +6168,7 @@ dependencies = [
  "platypus-plugins",
  "platypus-sql",
  "platypus-store",
+ "platypus-sync",
  "rmcp",
  "rusqlite",
  "schemars 1.2.3",
