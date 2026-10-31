@@ -722,7 +722,12 @@ through the MCP server.
   you are asked again, and you can always connect without it. Your own init statements never ask.
   Agents and the `platypus` CLI leave out init statements you have not approved. A connection
   new from a shared project gives agents no access until you choose otherwise; the file never
-  raises what you chose, nor learns it.
+  raises what you chose, nor learns it. A `${env:NAME}` the file adds or changes (and every
+  one of a connection the file sends to another server) is held, written `$${env:NAME}` and
+  taken as text, until you edit it in the connection's settings: the file cannot send your
+  environment variables to a server of its choosing. An ODBC driver given as a library path,
+  and `FILEDSN`, `SAVEFILE` or network paths in a connection string, are left out. A shared
+  query's link or `.platypus` file prefills a new connection with its references held too.
 - **Agent settings changed outside the app**: when `connections.toml` or `settings.toml` is
   edited to give agents more (agent access, changes run without asking, `UPDATE` or `DELETE`
   without `WHERE`), agents keep what you allowed and the app asks you, when it starts or gets

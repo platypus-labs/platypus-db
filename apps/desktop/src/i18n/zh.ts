@@ -3065,6 +3065,8 @@ const zh: Record<string, string> = {
   "the master password must be at least 8 characters long": "主密码至少需要 8 个字符",
   "Formulas as text, for spreadsheets": "公式按文本写入（用于电子表格）",
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "以 =、+、-、@ 或制表符开头的单元格会在前面加上 '，使电子表格将其显示为文本而不是作为公式运行。数字保持不变。若文件由其他程序读取，请关闭此项。",
+  "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} 个连接含有来自文件的环境变量引用，在你于其设置中编辑之前不会读取。",
+  "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} 个连接含有来自文件的环境变量引用，在你于其设置中编辑之前不会读取。",
 };
 
 export default zh;

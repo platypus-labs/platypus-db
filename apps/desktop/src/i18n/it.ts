@@ -3065,6 +3065,8 @@ const it: Record<string, string> = {
   "the master password must be at least 8 characters long": "la password principale deve avere almeno 8 caratteri",
   "Formulas as text, for spreadsheets": "Formule come testo, per i fogli di calcolo",
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "Una cella che inizia con =, +, -, @ o una tabulazione riceve un ' davanti, così un foglio di calcolo la mostra come testo invece di eseguirla come formula. I numeri restano come sono. Disattivalo per un file letto da un altro programma.",
+  "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} connessione ha riferimenti a variabili d'ambiente presi dal file, che non vengono letti finché non li modifichi nelle sue impostazioni.",
+  "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} connessioni hanno riferimenti a variabili d'ambiente presi dal file, che non vengono letti finché non li modifichi nelle loro impostazioni.",
 };
 
 export default it;

@@ -93,6 +93,9 @@ pub struct SharedNotice {
     retargeted: usize,
     /// Connections whose safety settings the file loosened: this computer's were kept.
     kept_stricter: usize,
+    /// Connections whose new `${env:…}` references were held: they connect as written until
+    /// the user edits them.
+    held_references: usize,
     message: Option<String>,
 }
 
@@ -107,6 +110,7 @@ impl SharedNotice {
             changed: 0,
             retargeted: 0,
             kept_stricter: 0,
+            held_references: 0,
             message: Some(message),
         }
     }
@@ -137,12 +141,18 @@ fn reconcile(store: &mut ConnectionStore, seen: &Seen, project: &Project) -> Opt
     };
     let before = shared::build(store, project, link.share_user);
     let diff = shared::compare(&before, &file);
-    let mut guarded = (0, 0);
+    let mut guarded = (0, 0, 0);
     if !diff.is_empty() {
         let share_user = file.connections.iter().any(|c| c.user.is_some());
         let link = SharedLink { share_user, ..link };
         match shared::apply(store, Some(project.id), &file, link) {
-            Ok(applied) => guarded = (applied.retargeted, applied.kept_stricter),
+            Ok(applied) => {
+                guarded = (
+                    applied.retargeted,
+                    applied.kept_stricter,
+                    applied.held_references,
+                );
+            }
             Err(e) => return Some(SharedNotice::problem(project, "invalid", e.to_string())),
         }
     }
@@ -156,6 +166,7 @@ fn reconcile(store: &mut ConnectionStore, seen: &Seen, project: &Project) -> Opt
         changed: diff.changed,
         retargeted: guarded.0,
         kept_stricter: guarded.1,
+        held_references: guarded.2,
         message: None,
     })
 }

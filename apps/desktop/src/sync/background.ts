@@ -154,6 +154,13 @@ function sharedSummary(n: SharedNotice): string {
               "{n} connections keep this computer's stricter safety settings.",
             )
           : "",
+        n.held_references > 0
+          ? plural(
+              n.held_references,
+              "{n} connection has environment variable references from the file, not read until you edit them in its settings.",
+              "{n} connections have environment variable references from the file, not read until you edit them in their settings.",
+            )
+          : "",
       ]
         .filter(Boolean)
         .join(" ");

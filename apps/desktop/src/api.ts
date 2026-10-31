@@ -1080,6 +1080,9 @@ export interface SharedNotice {
   retargeted: number;
   /** Connections whose safety settings the file loosened: this computer's stricter ones were kept. */
   kept_stricter: number;
+  /** Connections whose new `${env:…}` references were held (`$${…}`): read as written until
+   *  the user edits them. */
+  held_references: number;
   message: string | null;
 }
 
