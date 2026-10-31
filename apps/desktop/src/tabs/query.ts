@@ -35,7 +35,7 @@ registerTabKind({
     if (!tab.filePath) return tab.title ?? "";
     return `${basename(tab.filePath)}${tab.sql !== tab.savedSql ? " •" : ""}`;
   },
-  persist: ({ sql, filePath, savedSql, title, table, tableRef, sorts, viewerQuery, database, variables, terminal, charts }) => ({
+  persist: ({ sql, filePath, savedSql, title, table, tableRef, sorts, viewerQuery, database, variables, unconfirmedVariables, terminal, charts }) => ({
     database,
     sql,
     filePath,
@@ -46,6 +46,7 @@ registerTabKind({
     sorts,
     viewerQuery,
     variables,
+    unconfirmedVariables,
     terminal,
     charts,
   }),
@@ -61,6 +62,10 @@ registerTabKind({
     viewerQuery: text(saved.viewerQuery),
     database: text(saved.database),
     variables: strings(saved.variables),
+    // A shared query's values still to confirm stay so after a restart.
+    unconfirmedVariables: Array.isArray(saved.unconfirmedVariables)
+      ? saved.unconfirmedVariables.filter((k): k is string => typeof k === "string")
+      : undefined,
     terminal: saved.terminal === true,
     charts: savedCharts(saved.charts),
   }),
