@@ -30,6 +30,7 @@ impl SettingsStore {
         let path = path.into();
         let mut values = match std::fs::read_to_string(&path) {
             Ok(text) => text
+                .trim_start_matches('\u{feff}')
                 .parse::<toml::Table>()
                 .map_err(|e| StoreError::Format {
                     path: path.clone(),

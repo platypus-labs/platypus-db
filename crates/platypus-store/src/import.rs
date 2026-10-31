@@ -222,7 +222,14 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
             source,
         })
     };
-    let read_text = |p: &Path| read(p).map(|b| String::from_utf8_lossy(&b).into_owned());
+    // Windows editors save a byte order mark, which is not part of the text.
+    let read_text = |p: &Path| {
+        read(p).map(|b| {
+            String::from_utf8_lossy(&b)
+                .trim_start_matches('\u{feff}')
+                .to_owned()
+        })
+    };
     let invalid = |message: String| StoreError::Format {
         path: path.to_owned(),
         message,
@@ -708,8 +715,9 @@ fn pg_service(ini: &str) -> Vec<SavedConnection> {
             continue;
         }
         if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            // Without `dbname` libpq connects to the database named like the user.
             let mut c = connection(name, DriverKind::Postgres);
-            name.clone_into(&mut c.database);
+            c.database.clear();
             out.push(c);
             continue;
         }
@@ -725,6 +733,16 @@ fn pg_service(ini: &str) -> Vec<SavedConnection> {
             "sslmode" => c.ssl_mode = value.parse().unwrap_or(c.ssl_mode),
             "sslrootcert" => c.ssl_root_cert = Some(PathBuf::from(value)),
             _ => {}
+        }
+    }
+    for c in &mut out {
+        // Without a user either, the service name is the best guess left.
+        if c.database.is_empty() {
+            c.database = if c.user.is_empty() {
+                c.name.clone()
+            } else {
+                c.user.clone()
+            };
         }
     }
     out
@@ -863,6 +881,35 @@ mod tests {
             ("r.example.com", Some(5440), "rep")
         );
         assert_eq!(services[1].database, "local");
+
+        // Without `dbname` libpq connects to the database named like the user.
+        let services = pg_service("[app]\nhost=h\nuser=carol\n[bare]\nhost=h2\n");
+        assert_eq!(services[0].database, "carol");
+        assert_eq!(services[1].database, "bare");
+    }
+
+    #[test]
+    fn text_files_with_byte_order_mark() {
+        let dir = std::env::temp_dir().join(format!("pdb-bom-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("pg_service.conf");
+        std::fs::write(
+            &file,
+            "\u{feff}[first]\nhost=a\ndbname=d\n[second]\nhost=b\n",
+        )
+        .unwrap();
+        let found = import(ImportSource::PgService, &file).unwrap();
+        assert_eq!(found[0].connections.len(), 2);
+        assert_eq!(found[0].connections[0].name, "first");
+        let file = dir.join("servers.json");
+        std::fs::write(
+            &file,
+            "\u{feff}{\"Servers\": {\"1\": {\"Name\": \"A\", \"Host\": \"a\", \"Port\": 5432, \"Username\": \"v\"}}}",
+        )
+        .unwrap();
+        let found = import(ImportSource::Pgadmin, &file).unwrap();
+        assert_eq!(found[0].connections.len(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

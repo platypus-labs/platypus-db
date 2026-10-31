@@ -583,8 +583,8 @@ impl ConnectionStore {
         let (version, mut projects, mut project_folders, network_profiles, connections) =
             match std::fs::read_to_string(&path) {
                 Ok(text) => {
-                    let file: ConnectionsFile =
-                        toml::from_str(&text).map_err(|e| StoreError::Format {
+                    let file: ConnectionsFile = toml::from_str(text.trim_start_matches('\u{feff}'))
+                        .map_err(|e| StoreError::Format {
                             path: path.clone(),
                             message: e.to_string(),
                         })?;

@@ -88,7 +88,8 @@ fn home(path: &str) -> PathBuf {
 #[must_use]
 pub fn parse_dotenv(text: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    for line in text.lines() {
+    // A byte order mark from a Windows editor would glue itself to the first name.
+    for line in text.trim_start_matches('\u{feff}').lines() {
         let line = line.trim();
         let line = line.strip_prefix("export ").unwrap_or(line).trim_start();
         if line.starts_with('#') {
@@ -308,6 +309,13 @@ mod tests {
                 .collect()
         };
         EnvVars::with(map(process), map(file))
+    }
+
+    #[test]
+    fn dotenv_with_byte_order_mark() {
+        let parsed = parse_dotenv("\u{feff}FIRST=1\nSECOND=2\n");
+        assert_eq!(parsed.get("FIRST").map(String::as_str), Some("1"));
+        assert_eq!(parsed.len(), 2);
     }
 
     #[test]
