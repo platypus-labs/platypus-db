@@ -1,4 +1,4 @@
-﻿//! The editor's SQL formatter (Ctrl+Shift+F). It works on tokens, not a parse tree, so
+//! The editor's SQL formatter (Ctrl+Shift+F). It works on tokens, not a parse tree, so
 //! half-typed or dialect-specific SQL still formats. Clauses start new lines. Items of
 //! `SELECT`, `SET`, `GROUP BY`, `ORDER BY` and `VALUES`, and the columns of `CREATE TABLE`,
 //! get a line each. Subqueries are indented. Only whitespace and the case of keywords
@@ -349,7 +349,7 @@ fn symbol(src: &str, tokens: &[Token], i: usize) -> (Kind, usize) {
     }
 }
 
-/// Whether the word at `i` is the `U` of `U&'â€¦'` or `U&"â€¦"`, the three tokens touching.
+/// Whether the word at `i` is the `U` of `U&'…'` or `U&"…"`, the three tokens touching.
 fn unicode_escape(src: &str, tokens: &[Token], i: usize) -> bool {
     let Some([u, amp, quoted]) = tokens.get(i..i + 3) else {
         return false;
