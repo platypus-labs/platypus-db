@@ -103,6 +103,11 @@ prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
 scenari e distribuzione su macOS) si saltano finché non ce n'è uno. Non si prendono, non contano
 per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva un Mac.
 
+**Righe `⛔ bloccato`.** Attività che oggi non si possono fare per un limite esterno (una libreria
+che manca, un servizio a pagamento): la riga dice il motivo e cosa servirebbe. Come le righe
+`⏭ serve un Mac`, non si prendono e non contano per `✅ completato`; si riprendono quando il
+blocco cade.
+
 | Gruppo | Lock |
 |---|---|
 | A — Modifica dei dati | ✅ completato |
@@ -110,7 +115,7 @@ per `✅ completato` e non tengono aperto un gruppo; si riprendono quando arriva
 | C — Navigator e oggetti | ✅ completato |
 | D — Editor SQL | ✅ completato |
 | E — Explain e performance | ✅ completato |
-| F — Connettività e credenziali | ✅ fatto (P1, P2; P3 in parte) |
+| F — Connettività e credenziali | ✅ completato |
 | G — Nuovi driver | ✅ completato |
 | H — Import, export e trasferimento | ✅ completato |
 | I — Strumenti di schema | ✅ completato |
@@ -283,12 +288,12 @@ le copia da `GridSelection.shown`, coi valori calcolati sulle righe caricate.
 
 ---
 
-### Gruppo F — Connettività e sicurezza delle credenziali — ✅ P1 e P2 fatti, P3 in parte
+### Gruppo F — Connettività e sicurezza delle credenziali — ✅ completato
 
-**Stato: P1 e P2 completati; dei P3 fatti proxy, comandi su eventi, gestori di credenziali,
+**Stato: completato.** Fatti P1, P2 e i P3: proxy, comandi su eventi, gestori di credenziali,
 test di tutte le connessioni, token IAM AWS e GCP ed Entra ID, accesso Windows (SSPI) a SQL
-Server, port forward Kubernetes e AWS SSM** (resta Kerberos/GSSAPI per PostgreSQL e MySQL, che
-i loro driver Rust non hanno). Accesso senza password: opzione `auth` (`platypus_core::Auth`):
+Server, port forward Kubernetes e AWS SSM. Kerberos/GSSAPI per PostgreSQL e MySQL è
+`⛔ bloccato`: i loro driver Rust non lo hanno (il motivo è nella riga della tabella). Accesso senza password: opzione `auth` (`platypus_core::Auth`):
 `aws_iam`, `gcp_iam` ed `entra_id` sono token che `platypus-net/src/token.rs` chiede a ogni
 connessione alla CLI (`aws rds generate-db-auth-token`, `gcloud sql generate-login-token`,
 `az account get-access-token`, con la risorsa di SQL Server o quella di PostgreSQL e MySQL di
@@ -364,7 +369,7 @@ prima di scrivere in Prod è nel gruppo L. Restano i P3.
 | ✅ Comandi shell su eventi (prima della connessione, dopo la disconnessione), ad esempio un VPN | P3 | D |
 | ✅ Autenticazione: `.pgpass`, password da comando shell, chiedi ogni volta | P2 | D |
 | ✅ SSPI (Kerberos o NTLM) per SQL Server su Windows, Entra ID, IAM AWS e GCP | P3 | D+ |
-| Kerberos (GSSAPI) per PostgreSQL e MySQL | P3 | D+ |
+| ⛔ bloccato — Kerberos (GSSAPI) per PostgreSQL e MySQL. tokio-postgres riconosce i messaggi GSS ma li rifiuta, mysql_async non ha plugin di accesso Kerberos né un modo per aggiungerne. PostgreSQL si potrebbe fare con una copia del driver e `cross-krb5` (SSPI su Windows, GSSAPI altrove), circa 3-5 giorni più la copia da mantenere; per MySQL serve prima un aggancio per i plugin in mysql_async (il plugin Kerberos di MySQL è solo nella versione Enterprise; MariaDB ha `auth_gssapi`) | P3 | D+ |
 | ✅ **Master password** per le credenziali salvate (oltre al keychain) | P2 | D |
 | ✅ Gestione certificati SSL: CA personalizzate, certificato client | P2 | D |
 | ✅ Import delle connessioni da DBeaver (`data-sources.json`), DataGrip, pgAdmin, `~/.pg_service.conf` | P1 | D |
