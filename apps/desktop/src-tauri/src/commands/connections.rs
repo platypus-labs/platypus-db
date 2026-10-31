@@ -437,6 +437,7 @@ fn check_address(config: &ConnectionConfig) -> CommandResult<()> {
             | DriverKind::Trino
             | DriverKind::Adbc
             | DriverKind::Oracle
+            | DriverKind::Odbc
     );
     if needs_host && config.host.trim().is_empty() {
         return Err(Error::Config("the host is missing".to_owned()).into());
@@ -762,6 +763,8 @@ mod tests {
         assert!(check_address(&config).is_ok());
         // A server reached by a URL or an account has no host field.
         assert!(check_address(&ConnectionConfig::new(DriverKind::Snowflake)).is_ok());
+        // An ODBC data source or connection string holds the server.
+        assert!(check_address(&ConnectionConfig::new(DriverKind::Odbc)).is_ok());
     }
 
     fn none<T>() -> Result<T, String> {
