@@ -1,5 +1,5 @@
 // QA4-CONN-11 (medium). Test connection in the form of a connection whose password source is
-// "Ask every time" (and has no Password field then) answers "invalid configuration: password
+// "Ask every time" (its Password field only tests, and is left empty) answers "invalid configuration: password
 // missing": the connection works when expanded (the app asks for the password), but the form
 // cannot test it and calls it misconfigured.
 // Steps: edit a PostgreSQL connection saved with "Ask every time"; Test connection.
@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { button, dialog, editConnection, needsPort } from "../conn-helpers.mjs";
+import { button, dialog, editConnection, fill, needsPort, notice } from "../conn-helpers.mjs";
 
 export const skip = needsPort(55432, "PostgreSQL");
 
@@ -37,9 +37,15 @@ save_password = false
 export default async function (page) {
   await editConnection(page, "QA ask");
   await page.eval(`${button(dialog, "Test connection")}.click()`);
-  const asked = `document.querySelector('.modal input[type=password]') !== null && !document.querySelector('.connection-dialog input[type=password]')`;
-  const notice = `(document.querySelector('.connection-dialog .notice.error')?.textContent ?? '')`;
-  await page.waitFor(`${asked} || ${notice} !== ''`, 15_000);
-  const message = await page.eval(notice);
-  assert.doesNotMatch(message, /password missing/, `Test connection of an "ask every time" connection: ${message}`);
+  // The prompt is a dialog of its own: the form's "Password (only to test the connection)"
+  // field, left empty, is not it.
+  const prompt = `[...document.querySelectorAll('.modal input[type=password]')].find(i => !i.closest('.connection-dialog'))`;
+  const failed = `(document.querySelector('.connection-dialog .notice.error')?.textContent ?? '')`;
+  await page.waitFor(`${prompt} !== undefined || ${failed} !== ''`, 15_000);
+  assert.equal(await page.eval(failed), "", `Test connection of an "ask every time" connection asks for the password`);
+  // The password typed there is the one tested.
+  await page.eval(fill(prompt, "platypus"));
+  await page.eval(`${prompt}.closest('form').requestSubmit()`);
+  await page.waitFor(`${prompt} === undefined && ${notice} !== ''`, 30_000);
+  assert.match(await page.eval(notice), /^Connected/, "the connection works with the password asked");
 }
