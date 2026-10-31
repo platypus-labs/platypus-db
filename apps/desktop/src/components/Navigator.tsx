@@ -37,7 +37,7 @@ import { testConnections } from "./TestConnectionsDialog";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
-import { openObjectTab, showsData } from "../objects/open";
+import { focusData, openObjectTab } from "../objects/open";
 import { EmptyState } from "../ui/State";
 import type { Point } from "../ui/pointerDrag";
 import { useDrag } from "../ui/useDrag";
@@ -419,7 +419,7 @@ export function Navigator(props: Props) {
 
   /** Opens a table's data, or goes back to the tab already showing it. */
   function openData(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta, target: string) {
-    if (workbench().focusTab((t) => showsData(t, c.id, db, target))) return;
+    if (focusData(c.id, db, target)) return;
     onOpenTab(c, {
       sql: viewerSql(c.driver, target),
       autorun: true,

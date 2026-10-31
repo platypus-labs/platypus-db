@@ -30,6 +30,20 @@ export function onRevealConnection(listener: (connectionId: string) => void): ()
   return () => window.removeEventListener(REVEAL, handler);
 }
 
+const DATA_AGAIN = "platypus:data-again";
+
+/** "Open data" on a table whose data tab is open already: the tab, `tabKey`, reads its rows
+ *  again when it shows none, its last read having failed (e.g. while the server was down). */
+export function requestDataAgain(tabKey: number) {
+  window.dispatchEvent(new CustomEvent<number>(DATA_AGAIN, { detail: tabKey }));
+}
+
+export function onDataAgain(listener: (tabKey: number) => void): () => void {
+  const handler = (e: Event) => listener((e as CustomEvent<number>).detail);
+  window.addEventListener(DATA_AGAIN, handler);
+  return () => window.removeEventListener(DATA_AGAIN, handler);
+}
+
 export function onNavigatorRefresh(listener: (detail: NavigatorRefresh) => void): () => void {
   const handler = (e: Event) => listener((e as CustomEvent<NavigatorRefresh>).detail);
   window.addEventListener(EVENT, handler);

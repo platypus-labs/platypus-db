@@ -1,4 +1,5 @@
 import { isNoSql, type DriverKind, type ObjectKind } from "../api";
+import { requestDataAgain } from "../navigatorEvents";
 import type { TabModel } from "../tabs/registry";
 import { workbench } from "../workbench";
 
@@ -52,3 +53,15 @@ export function openObjectTab(
 /** Whether `tab` is the data viewer of `table` (its qualified name) on the connection. */
 export const showsData = (tab: TabModel, connectionId: string, database: string | null | undefined, table: string) =>
   tab.kind === "query" && tab.connectionId === connectionId && sameDatabase(tab, database) && tab.table === table;
+
+/** Brings forward the data viewer of `table`, which reads its rows again if its last read
+ *  failed (the server was down, say); `false` when no tab shows it. */
+export function focusData(connectionId: string, database: string | null | undefined, table: string): boolean {
+  let key: number | undefined;
+  const shown = workbench().focusTab((t) => {
+    if (key === undefined && showsData(t, connectionId, database, table)) key = t.key;
+    return t.key === key;
+  });
+  if (shown && key !== undefined) requestDataAgain(key);
+  return shown;
+}

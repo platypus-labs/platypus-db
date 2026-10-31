@@ -85,7 +85,7 @@ import { ChartToggle } from "../analysis/ChartView";
 import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
 import { RunMemory, rerunsUnasked } from "./rerun";
-import { requestNavigatorRefresh } from "../navigatorEvents";
+import { onDataAgain, requestNavigatorRefresh } from "../navigatorEvents";
 import {
   type ShownSort,
   type ViewerSort,
@@ -516,6 +516,16 @@ export function QueryTab({
     onChange({ autorun: false });
     void run("statement");
   }, []);
+
+  // "Open data" on the table again: a data viewer whose read failed (or never started, its
+  // session not opening while the server was down) reads its rows again.
+  const dataAgain = useRef(() => {});
+  dataAgain.current = () => {
+    if (!tab.table || running) return;
+    if (shown && shown.status.kind !== "error") return;
+    void run("statement");
+  };
+  useEffect(() => onDataAgain((key) => key === tab.key && dataAgain.current()), [tab.key]);
 
   // A data viewer restored at start reads its table's rows again once shown, as it did when
   // opened: only while the editor holds one of the viewer's own queries, which only read.

@@ -21,7 +21,7 @@ import { onNavigatorRefresh, requestNavigatorRefresh } from "../navigatorEvents"
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
-import { editsTables, openObjectTab, openTableEditor, showsData } from "./open";
+import { editsTables, focusData, openObjectTab, openTableEditor } from "./open";
 import { openScriptFile, scriptFile } from "../scripts/scripts";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
@@ -249,7 +249,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           <button
             className="primary"
             onClick={() =>
-              workbench().focusTab((t) => showsData(t, connection.id, tab.database, qualified)) ||
+              focusData(connection.id, tab.database, qualified) ||
               workbench().openTab("query", connection.id, {
                 sql: viewerSql(connection.driver, qualified),
                 autorun: true,
