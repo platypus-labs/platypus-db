@@ -198,11 +198,13 @@ impl TxTracker {
     }
 
     /// After a typed statement that set the commit mode (see [`typed_autocommit`]): back in
-    /// autocommit mode, an open transaction ends where the server `commits` it on the switch
-    /// (MySQL) and stays open where it does not (SQL Server keeps `@@TRANCOUNT`).
+    /// autocommit mode from manual mode, an open transaction ends where the server `commits`
+    /// it on the switch (MySQL) and stays open where it does not (SQL Server keeps
+    /// `@@TRANCOUNT`). Already in autocommit mode, the switch commits nothing: a `START
+    /// TRANSACTION` stays open.
     pub fn typed_autocommit(&self, on: bool, commits: bool) {
-        self.set_autocommit(on);
-        if on && commits {
+        let was = self.autocommit.swap(on, Ordering::AcqRel);
+        if on && !was && commits {
             self.set_open(false);
         }
     }
@@ -366,7 +368,16 @@ mod tests {
         );
         tx.typed_autocommit(true, false);
         assert!(tx.state().open, "SQL Server keeps the transaction open");
+        let tx = TxTracker::default();
+        tx.typed_autocommit(false, true);
+        tx.after(TxEffect::None, true);
         tx.typed_autocommit(true, true);
         assert!(!tx.state().open, "MySQL commits it");
+        assert!(tx.state().autocommit);
+        // In autocommit mode a START TRANSACTION is not committed by SET autocommit = 1.
+        tx.after(TxEffect::Begin, true);
+        tx.typed_autocommit(true, true);
+        assert!(tx.state().open, "the transaction started stays open");
+        assert!(tx.state().autocommit);
     }
 }
