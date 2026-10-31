@@ -8,6 +8,8 @@ import { CTRL } from "../cdp.mjs";
 import { skip as noPostgres } from "./dev-postgres.mjs";
 
 const NAME = "E2E vault PG";
+/** A new master password needs at least 8 characters. */
+const MASTER = "master-pw-1";
 const row = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const button = (scope, text) =>
@@ -60,8 +62,8 @@ export default async function (page, { dir }) {
   // Turned on: an empty vault file.
   await openSettings(page);
   await page.eval(`${button(".master-password", "Set a master password…")}.click()`);
-  await page.eval(setLabeled(".master-password", "New master password", "m1"));
-  await page.eval(setLabeled(".master-password", "Repeat it", "m1"));
+  await page.eval(setLabeled(".master-password", "New master password", MASTER));
+  await page.eval(setLabeled(".master-password", "Repeat it", MASTER));
   await page.eval(`${button(".master-password", "Turn on")}.click()`);
   await page.waitFor(`document.querySelector('.master-password .notice.ok') !== null`, 15_000);
   assert.ok(existsSync(vault));
@@ -86,7 +88,7 @@ export default async function (page, { dir }) {
   await page.eval(setLabeled(".unlock-vault", "Master password", "nope"));
   await page.eval(`${button(".unlock-vault", "Unlock")}.click()`);
   await page.waitFor(`document.querySelector('.unlock-vault .notice.error')?.textContent.includes('wrong master password')`, 15_000);
-  await page.eval(setLabeled(".unlock-vault", "Master password", "m1"));
+  await page.eval(setLabeled(".unlock-vault", "Master password", MASTER));
   await page.eval(`${button(".unlock-vault", "Unlock")}.click()`);
   await page.waitFor(`document.querySelector('.unlock-vault') === null`, 15_000);
   await page.waitFor(`${row("demo")} !== undefined`, 15_000);
@@ -94,7 +96,7 @@ export default async function (page, { dir }) {
   // Turned off: the passwords go back to the keychain and the file is deleted.
   await openSettings(page);
   await page.eval(`${button(".master-password", "Turn off…")}.click()`);
-  await page.eval(setLabeled(".master-password", "Current master password", "m1"));
+  await page.eval(setLabeled(".master-password", "Current master password", MASTER));
   await page.eval(`${button(".master-password", "Turn off")}.click()`);
   await page.waitFor(`document.querySelector('.master-password .notice.ok')?.textContent.includes('keychain')`, 15_000);
   assert.ok(!existsSync(vault));
