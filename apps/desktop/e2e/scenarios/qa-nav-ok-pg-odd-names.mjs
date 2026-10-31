@@ -1,7 +1,7 @@
 // Regression guard (passes): PostgreSQL objects with odd names work from the navigator — a
 // schema with a space and quotes, tables with mixed case, a quote, a slash, a dot, unicode and
 // a reserved word: Open data reads their rows, the DDL quotes them, the filter box finds them,
-// Rename… and Drop… run through their dialogs, and a multi-selection's Copy name lists all.
+// Rename… and Drop… run through their dialogs, and a multi-selection's Copy name lists all, bare.
 import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";
 import { DBS, connectTo, expand, gridText, menu, needs, row, saveConnections, treeLabels, visibleTab, waitRun } from "../qa-nav-helpers.mjs";
@@ -75,7 +75,8 @@ export default async function (page) {
     }
     await menu(page, "select", "Copy name");
     await page.waitFor(`window.__copied !== undefined`);
-    assert.equal(await page.eval(`window.__copied`), `${Q}."Mixed Case"\n${Q}."select"`);
+    // Copy name is the bare name; Copy qualified name has the schema and the quotes.
+    assert.equal(await page.eval(`window.__copied`), "Mixed Case\nselect");
     assert.ok((await page.eval(treeLabels)).includes("sl/ash.dot"));
   } finally {
     DBS.postgres.exec(`DROP SCHEMA IF EXISTS ${Q} CASCADE;`);
