@@ -11,6 +11,9 @@ installer-out/
 # Local tool settings and worktrees; only the shared .claude/settings.json is tracked
 .claude/*
 !.claude/settings.json
+!.claude/agents/
+!.claude/skills/
+!.claude/hooks/
 
 # Brainstorming mockups (visual companion)
 .superpowers/

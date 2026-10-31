@@ -1,4 +1,22 @@
 {
+  "permissions": {
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run rerun:*)",
+      "Bash(gh release:*)",
+      "Bash(git tag:*)",
+      "PowerShell(git push --force:*)",
+      "PowerShell(git push -f:*)",
+      "PowerShell(git push --force-with-lease:*)",
+      "PowerShell(gh workflow run:*)",
+      "PowerShell(gh run rerun:*)",
+      "PowerShell(gh release:*)",
+      "PowerShell(git tag:*)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -18,6 +36,18 @@
             "type": "command",
             "command": "graphify hook-guard read",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/rustfmt.mjs\"",
+            "timeout": 15
           }
         ]
       }
