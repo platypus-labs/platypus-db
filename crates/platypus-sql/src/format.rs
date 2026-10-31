@@ -286,9 +286,8 @@ fn symbol(src: &str, tokens: &[Token], i: usize) -> (Kind, usize) {
 
 /// Whether the word at `i` is the `U` of `U&'…'` or `U&"…"`, the three tokens touching.
 fn unicode_escape(src: &str, tokens: &[Token], i: usize) -> bool {
-    let [u, amp, quoted] = match tokens.get(i..i + 3) {
-        Some([u, amp, quoted]) => [u, amp, quoted],
-        _ => return false,
+    let Some([u, amp, quoted]) = tokens.get(i..i + 3) else {
+        return false;
     };
     u.text(src).eq_ignore_ascii_case("u")
         && amp.text(src) == "&"

@@ -103,7 +103,7 @@ pub fn parameters(src: &str, dialect: Dialect) -> Vec<Parameter> {
                     name: String::new(),
                     start: t.start,
                     end: t.end,
-                })
+                });
             }
             ":" | "@" | "$" if named && (prefix == ":" || dialect == Dialect::Sqlite) => {
                 // Not `::type`, `a[1:n]` or `x:=`: the prefix must follow neither a name nor
