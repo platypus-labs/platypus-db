@@ -17,7 +17,8 @@
 
 import { spawn as spawnApp } from "node:child_process";
 import { spawnSync } from "./proc.mjs";
-import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -154,6 +155,7 @@ for (const file of scenarios) {
       { stdio: "ignore" },
     );
     await new Promise((r) => setTimeout(r, 300));
+    forgetKeychainEntries(dir);
     // WebView2 can hold its profile files a few seconds after the tree is killed: a folder
     // left behind in the temp directory is no reason to stop the run.
     try {
@@ -162,6 +164,32 @@ for (const file of scenarios) {
       console.log(`     (left ${root}: ${e instanceof Error ? e.message : e})`);
     }
   }
+}
+
+/** Removes from the Windows Credential Manager what the scenario's profile in `dir` left there:
+ *  the passwords of its connections (and the other secrets under the ids its connections.toml
+ *  names) and the seal of its agent policy (`platypus_mcp::policy::Seal::of`), which every
+ *  profile has its own of. Hundreds of throwaway profiles fill the Credential Manager until
+ *  nothing more can be saved there ("Windows error code 8"). */
+function forgetKeychainEntries(dir) {
+  const targets = [];
+  const connections = join(dir, "connections.toml");
+  if (existsSync(connections)) {
+    const ids = readFileSync(connections, "utf8").match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
+    for (const id of new Set(ids.map((i) => i.toLowerCase()))) targets.push(`${id}.platypusdb`);
+  }
+  // The seal's name: the SHA-256 of the profile folder as Rust's `canonicalize` gives it
+  // (`\\?\C:\...`), lowercased, its first 16 bytes as a UUID.
+  try {
+    const path = realpathSync.native(dir);
+    const verbatim = path.startsWith("\\\\") ? `\\\\?\\UNC\\${path.slice(2)}` : `\\\\?\\${path}`;
+    const hex = createHash("sha256").update(verbatim.toLowerCase()).digest("hex");
+    const id = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join("-");
+    targets.push(`${id}.platypusdb-agent-policy`);
+  } catch {
+    // No folder, no seal.
+  }
+  for (const target of targets) spawnSync("cmdkey", [`/delete:${target}`], { stdio: "ignore" });
 }
 
 /** Why the app has no DevTools page: its state, output and the WebView2 runtime. */
