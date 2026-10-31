@@ -652,6 +652,9 @@ export function App() {
             }),
           );
         }
+        // An editor opened later skips the catalog while the password is unknown: the navigator
+        // session, opened with the typed password, loads it for them.
+        if (side && typed !== undefined) setTimeout(() => requestCatalog(connection, false, database));
         return session.session_id;
       } catch (e) {
         const error = toCommandError(e);
