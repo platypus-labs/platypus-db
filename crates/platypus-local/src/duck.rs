@@ -522,7 +522,7 @@ mod tests {
             zones(&[schema.as_ref(), &tokyo, &odd, &utc, &tokyo]),
             ["Asia/Tokyo", "UTC"]
         );
-        assert!(zones(&[schema.as_ref()]).is_empty());
+        assert_eq!(zones(&[schema.as_ref()]), Vec::<String>::new());
     }
 
     #[test]

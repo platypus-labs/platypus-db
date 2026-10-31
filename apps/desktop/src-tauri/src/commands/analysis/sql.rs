@@ -441,7 +441,7 @@ mod tests {
         assert_eq!(zone, "Asia/Tokyo", "the first result's zone, not the last");
         // One zone, or none: nothing to tell.
         let (_, zones) = fill(&memory, &[], &[zoned("tokyo", "Asia/Tokyo")]).unwrap();
-        assert!(zones.is_empty());
+        assert_eq!(zones, Vec::<String>::new());
     }
 
     #[test]
