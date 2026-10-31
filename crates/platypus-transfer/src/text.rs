@@ -154,32 +154,38 @@ fn xlsx_text(v: &str) -> std::borrow::Cow<'_, str> {
 }
 
 /// The ClickHouse literal of the JSON text `json` of a list, map or tuple of `data_type`:
-/// `[1, 2]`, `map('k', 1)`, `(1, 'x')`. `None` for text that is not that JSON.
+/// `[1, 2]`, `map('k', 1)`, `(1, 'x')`, `tuple(1)`. `None` for text that is not that JSON.
 fn clickhouse_nested(data_type: &DataType, json: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(json).ok()?;
-    nested_literal(data_type, &value)
+    nested_literal(data_type, &Json::parse(json)?)
 }
 
-fn nested_literal(data_type: &DataType, value: &serde_json::Value) -> Option<String> {
-    use serde_json::Value;
+fn nested_literal(data_type: &DataType, value: &Json<'_>) -> Option<String> {
     let quote = |s: &str| Dialect::ClickHouse.quote_literal(s);
     Some(match (data_type, value) {
-        (_, Value::Null) => "NULL".to_owned(),
-        (DataType::List(item) | DataType::LargeList(item), Value::Array(items)) => {
+        (_, Json::Null) => "NULL".to_owned(),
+        (DataType::List(item) | DataType::LargeList(item), Json::Array(items)) => {
             let items = items
                 .iter()
                 .map(|v| nested_literal(item.data_type(), v))
                 .collect::<Option<Vec<_>>>()?;
             format!("[{}]", items.join(", "))
         }
-        (DataType::Struct(fields), Value::Object(object)) => {
+        (DataType::Struct(fields), Json::Object(object)) => {
             let items = fields
                 .iter()
-                .map(|f| nested_literal(f.data_type(), object.get(f.name())?))
+                .map(|f| {
+                    let (_, v) = object.iter().find(|(k, _)| k == f.name())?;
+                    nested_literal(f.data_type(), v)
+                })
                 .collect::<Option<Vec<_>>>()?;
-            format!("({})", items.join(", "))
+            // `(x)` is `x` in parentheses: a tuple of one is written as a call.
+            if items.len() == 1 {
+                format!("tuple({})", items[0])
+            } else {
+                format!("({})", items.join(", "))
+            }
         }
-        (DataType::Map(entries, _), Value::Object(object)) => {
+        (DataType::Map(entries, _), Json::Object(object)) => {
             let DataType::Struct(kv) = entries.data_type() else {
                 return None;
             };
@@ -194,11 +200,126 @@ fn nested_literal(data_type: &DataType, value: &serde_json::Value) -> Option<Str
             }
             format!("map({})", args.join(", "))
         }
-        (_, Value::String(s)) => quote(s),
-        (_, Value::Number(n)) => n.to_string(),
-        (_, Value::Bool(b)) => b.to_string(),
+        (_, Json::String(s)) => quote(s),
+        (_, Json::Number(n)) => (*n).to_owned(),
+        (_, Json::Bool(b)) => b.to_string(),
         _ => return None,
     })
+}
+
+/// A JSON value as written: its numbers as their text, every digit of an `Int128` or a
+/// `Decimal` kept, and its objects' keys in their order, which is a map's.
+#[derive(Debug, PartialEq)]
+enum Json<'a> {
+    Null,
+    Bool(bool),
+    Number(&'a str),
+    String(String),
+    Array(Vec<Json<'a>>),
+    Object(Vec<(String, Json<'a>)>),
+}
+
+impl<'a> Json<'a> {
+    /// `text` read whole; `None` when it is not one JSON value.
+    fn parse(text: &'a str) -> Option<Self> {
+        let mut at = 0;
+        let value = Self::value(text, &mut at)?;
+        text[at..].trim_start().is_empty().then_some(value)
+    }
+
+    fn value(text: &'a str, at: &mut usize) -> Option<Self> {
+        *at += text[*at..].len() - text[*at..].trim_start().len();
+        let rest = &text[*at..];
+        let word = |w: &str, value: Self, at: &mut usize| {
+            rest.starts_with(w).then(|| {
+                *at += w.len();
+                value
+            })
+        };
+        match rest.as_bytes().first()? {
+            b'n' => word("null", Self::Null, at),
+            b't' => word("true", Self::Bool(true), at),
+            b'f' => word("false", Self::Bool(false), at),
+            b'"' => Self::string(text, at).map(Self::String),
+            b'[' => {
+                *at += 1;
+                let mut items = Vec::new();
+                if !Self::close(text, at, b']') {
+                    loop {
+                        items.push(Self::value(text, at)?);
+                        if Self::close(text, at, b']') {
+                            break;
+                        }
+                        Self::expect(text, at, b',')?;
+                    }
+                }
+                Some(Self::Array(items))
+            }
+            b'{' => {
+                *at += 1;
+                let mut entries = Vec::new();
+                if !Self::close(text, at, b'}') {
+                    loop {
+                        *at += text[*at..].len() - text[*at..].trim_start().len();
+                        let key = Self::string(text, at)?;
+                        Self::expect(text, at, b':')?;
+                        entries.push((key, Self::value(text, at)?));
+                        if Self::close(text, at, b'}') {
+                            break;
+                        }
+                        Self::expect(text, at, b',')?;
+                    }
+                }
+                Some(Self::Object(entries))
+            }
+            b'-' | b'0'..=b'9' => {
+                let len = rest
+                    .bytes()
+                    .position(|c| !matches!(c, b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'))
+                    .unwrap_or(rest.len());
+                let number = &rest[..len];
+                // Only a number JSON writes: no `01`, `1.` or `-` alone.
+                serde_json::from_str::<serde_json::Value>(number).ok()?;
+                *at += len;
+                Some(Self::Number(number))
+            }
+            _ => None,
+        }
+    }
+
+    /// The string literal at `at`, its escapes undone.
+    fn string(text: &str, at: &mut usize) -> Option<String> {
+        let bytes = text.as_bytes();
+        if bytes.get(*at) != Some(&b'"') {
+            return None;
+        }
+        let mut end = *at + 1;
+        loop {
+            match bytes.get(end)? {
+                b'\\' => end += 2,
+                b'"' => break,
+                _ => end += 1,
+            }
+        }
+        let s = serde_json::from_str(text.get(*at..=end)?).ok()?;
+        *at = end + 1;
+        Some(s)
+    }
+
+    /// Whether `close` follows, blanks aside; past it if so.
+    fn close(text: &str, at: &mut usize, close: u8) -> bool {
+        let rest = text[*at..].trim_start();
+        let found = rest.as_bytes().first() == Some(&close);
+        if found {
+            *at = text.len() - rest.len() + 1;
+        }
+        found
+    }
+
+    /// Past `byte`, which must follow, blanks aside.
+    fn expect(text: &str, at: &mut usize, byte: u8) -> Option<()> {
+        Self::close(text, at, byte).then_some(())
+    }
 }
 
 fn markdown_cell(s: &str) -> String {
@@ -612,6 +733,46 @@ mod tests {
             Some("[(1, 'x')]")
         );
         assert_eq!(clickhouse_nested(&map, "nope"), None);
+    }
+
+    #[test]
+    fn clickhouse_nested_values_keep_one_field_tuples_digits_and_key_order() {
+        use arrow_schema::Field;
+        use std::sync::Arc;
+        let one = DataType::Struct(vec![Field::new("1", DataType::Int64, true)].into());
+        assert_eq!(
+            clickhouse_nested(&one, r#"{"1":7}"#).as_deref(),
+            Some("tuple(7)")
+        );
+        // Beyond what a double holds: an Int128 and a Decimal(38, 10).
+        let list = DataType::List(Arc::new(Field::new("item", DataType::Int64, true)));
+        assert_eq!(
+            clickhouse_nested(
+                &list,
+                "[170141183460469231731687303715884105727, -1.0000000001, 18446744073709551615]"
+            )
+            .as_deref(),
+            Some("[170141183460469231731687303715884105727, -1.0000000001, 18446744073709551615]")
+        );
+        let entries = Field::new(
+            "entries",
+            DataType::Struct(
+                vec![
+                    Field::new("key", DataType::Utf8, false),
+                    Field::new("value", DataType::Utf8, true),
+                ]
+                .into(),
+            ),
+            false,
+        );
+        let map = DataType::Map(Arc::new(entries), false);
+        assert_eq!(
+            clickhouse_nested(&map, r#" { "z" : "a\"bè" , "a":"\\" } "#).as_deref(),
+            Some(r#"map('z', 'a"bè', 'a', '\\')"#)
+        );
+        for bad in ["[1,]", "[01]", "{\"a\" 1}", "[1] x", "\"open", "-"] {
+            assert_eq!(clickhouse_nested(&list, bad), None, "{bad}");
+        }
     }
 
     #[test]
