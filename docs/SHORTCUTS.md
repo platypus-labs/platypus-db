@@ -26,7 +26,7 @@ never a shortcut outside macOS.
 | `Alt+Up`, `Alt+Down` | Move the line |
 | `Ctrl+Shift+K` | Delete the line |
 | `Ctrl+Alt+Up`, `Ctrl+Alt+Down` | Add a cursor above / below |
-| `Ctrl+Alt+F`, `Ctrl+Alt+U` (macOS: `⌘⌥[`, `⌘⌥]`) | Fold / unfold everything |
+| `Ctrl+Alt+F`, `Ctrl+Alt+Shift+F` (macOS: `⌘⌥[`, `⌘⌥]`) | Fold / unfold everything |
 | `Ctrl+D`, `Ctrl+Shift+L` | Select the next / every occurrence |
 | `Alt+drag` | Rectangular selection |
 | `Ctrl+F` | Find and replace |
