@@ -50,6 +50,11 @@ const APP = new Set([
 
 const APP_PATTERNS: [RegExp, string, string[]][] = [
   [/^not a file of the repository: (.*)$/s, msg("not a file of the repository: {path}"), ["path"]],
+  [
+    /^the repository's own configuration runs commands \((.*)\): remove these settings from its \.git\/config to use Git here$/s,
+    msg("the repository's own configuration runs commands ({keys}): remove these settings from its .git/config to use Git here"),
+    ["keys"],
+  ],
   [/^(.*) does not exist, nor does its folder$/s, msg("{path} does not exist, nor does its folder"), ["path"]],
   [
     /^(.*) not found: a relative path is not created, give the full path of the file$/s,

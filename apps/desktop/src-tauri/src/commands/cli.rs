@@ -82,6 +82,30 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
 /// Arguments and environment of a command-line tool.
 pub(super) type Invocation = (Vec<String>, Vec<(&'static str, String)>);
 
+/// The database name as the PostgreSQL tools' `-d` takes it: a connection string of the
+/// name alone, quoted. Given bare, a name holding `=` (or a URI) would be read as a
+/// connection string of its own, able to point the tools, and the password, at another host.
+fn pg_database(name: &str) -> String {
+    if name.is_empty() {
+        return String::new();
+    }
+    format!(
+        "dbname='{}'",
+        name.replace('\\', r"\\").replace('\'', r"\'")
+    )
+}
+
+/// `value` as an argument that a client cannot take for one of its options.
+pub(super) fn not_an_option<'a>(what: &str, value: &'a str) -> CommandResult<&'a str> {
+    if value.starts_with('-') {
+        return Err(CommandError::new(
+            "invalid",
+            format!("the {what} cannot start with '-': {value}"),
+        ));
+    }
+    Ok(value)
+}
+
 /// What the PostgreSQL tools (`psql`, `pg_dump`, `pg_restore`) need to reach `config`'s
 /// database at `host:port`: the password and TLS go in the environment.
 pub(super) fn pg_connection(
@@ -89,16 +113,12 @@ pub(super) fn pg_connection(
     host: &str,
     port: Option<u16>,
 ) -> Invocation {
-    let mut args: Vec<String> = [
-        "-h",
-        host,
-        "-U",
-        config.user.as_str(),
-        "-d",
-        config.database.as_str(),
-    ]
-    .map(str::to_owned)
-    .into();
+    let mut args: Vec<String> = vec![
+        format!("--host={host}"),
+        format!("--username={}", config.user),
+        "-d".to_owned(),
+        pg_database(&config.database),
+    ];
     if let Some(port) = port {
         args.extend(["-p".to_owned(), port.to_string()]);
     }
@@ -132,9 +152,8 @@ pub(super) fn mysql_connection(
     host: &str,
     port: Option<u16>,
 ) -> Invocation {
-    let mut args: Vec<String> = ["-h", host, "-u", config.user.as_str()]
-        .map(str::to_owned)
-        .into();
+    // `--name=value`, which no value can turn into another option.
+    let mut args: Vec<String> = vec![format!("--host={host}"), format!("--user={}", config.user)];
     if let Some(port) = port {
         args.push(format!("--port={port}"));
     }
@@ -213,14 +232,13 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
             let (connection, mysql_env) = mysql_connection(config, host, port);
             args.extend(connection);
             if !config.database.is_empty() {
-                args.push(config.database.clone());
+                args.push(format!("--database={}", config.database));
             }
             env = mysql_env;
         }
         DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::Libsql => {
-            args.extend(
-                ["-bail", "-header", "-column", config.database.as_str()].map(str::to_owned),
-            );
+            args.extend(["-bail", "-header", "-column"].map(str::to_owned));
+            args.push(sqlite_file(&config.database));
         }
         DriverKind::SqlServer => {
             args = sqlcmd_args(config, host, port);
@@ -249,6 +267,16 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
         | DriverKind::Plugin => {}
     }
     (args, env)
+}
+
+/// The database file as `sqlite3` takes it: a path starting with `-` would be read as an
+/// option (older shells know no `--`), so it goes as `./-…`, the same file.
+fn sqlite_file(path: &str) -> String {
+    if path.starts_with('-') {
+        format!("./{path}")
+    } else {
+        path.to_owned()
+    }
 }
 
 /// `sqlcmd` stops at the first error, with quoted identifiers on (it turns them off by
@@ -649,7 +677,7 @@ mod tests {
 
         config.driver = DriverKind::MySql;
         let (args, env) = invocation(&config, "db", None);
-        assert_eq!(args.last().map(String::as_str), Some("shop"));
+        assert_eq!(args.last().map(String::as_str), Some("--database=shop"));
         assert!(
             !args.iter().any(|a| a.starts_with("--ssl-mode")),
             "default SSL mode"
@@ -666,6 +694,47 @@ mod tests {
         );
         assert!(!args.iter().any(|a| a.contains("s3cret")));
         assert!(env.contains(&("SQLCMDPASSWORD", "s3cret".to_owned())));
+    }
+
+    #[test]
+    fn no_name_turns_into_an_option_of_the_client() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.user = "-U".to_owned();
+        config.database = "x host=evil.example port=1 '\\".to_owned();
+        let (args, _) = invocation(&config, "-h", None);
+        assert!(args.contains(&"--host=-h".to_owned()), "{args:?}");
+        assert!(args.contains(&"--username=-U".to_owned()), "{args:?}");
+        // The whole name is the database's, quoted: no host of its own.
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["-d", r"dbname='x host=evil.example port=1 \'\\'"]),
+            "{args:?}"
+        );
+        config.database = String::new();
+        let (args, _) = invocation(&config, "db", None);
+        assert!(args.windows(2).any(|w| w == ["-d", ""]), "{args:?}");
+
+        config.driver = DriverKind::MySql;
+        config.database = "--init-command=DROP DATABASE x".to_owned();
+        let (args, _) = invocation(&config, "--skip-ssl", None);
+        assert!(args.contains(&"--host=--skip-ssl".to_owned()), "{args:?}");
+        assert!(args.contains(&"--user=-U".to_owned()), "{args:?}");
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("--database=--init-command=DROP DATABASE x")
+        );
+        assert!(!args.iter().any(|a| a.starts_with("--init-command")));
+
+        config.driver = DriverKind::Sqlite;
+        config.database = "-cmd".to_owned();
+        let (args, _) = invocation(&config, "", None);
+        assert_eq!(args.last().map(String::as_str), Some("./-cmd"));
+        config.database = "/data/app.db".to_owned();
+        let (args, _) = invocation(&config, "", None);
+        assert_eq!(args.last().map(String::as_str), Some("/data/app.db"));
+
+        assert!(not_an_option("database", "-x").is_err());
+        assert_eq!(not_an_option("database", "shop").ok(), Some("shop"));
     }
 
     #[test]

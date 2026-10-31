@@ -499,6 +499,9 @@ export interface RestoreRequest {
   path: string;
   /** Drops the archive's objects before creating them again (`pg_restore --clean`). */
   clean: boolean;
+  /** The user has seen the client commands of a SQL file (`\!`, `system`…) and runs them.
+   *  Without it a file with any fails with `client_commands`, its lines as the message. */
+  allow_client_commands?: boolean;
 }
 
 /** The formats of a scheduled export. */

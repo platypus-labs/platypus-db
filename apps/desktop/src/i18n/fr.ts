@@ -3048,6 +3048,10 @@ const fr: Record<string, string> = {
   "Dashboard widget": "Widget du tableau de bord",
   "Only the first {shown} of {total} rows are in this export.": "Cet export ne contient que les {shown} premières lignes sur {total}.",
   "Could not connect to {name}, so its server activity cannot be read.": "Connexion à {name} impossible : l'activité du serveur ne peut pas être lue.",
+  "This file has commands for {tool} itself, which can run programs and write files on this computer:": "Ce fichier contient des commandes pour {tool} lui-même, qui peuvent lancer des programmes et écrire des fichiers sur cet ordinateur :",
+  "Restore the file with these commands?": "Restaurer le fichier avec ces commandes ?",
+  "Run these commands": "Exécuter ces commandes",
+  "the repository's own configuration runs commands ({keys}): remove these settings from its .git/config to use Git here": "la configuration propre du dépôt exécute des commandes ({keys}) : retirez ces réglages de son .git/config pour utiliser Git ici",
 };
 
 export default fr;

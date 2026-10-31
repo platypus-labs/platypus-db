@@ -3048,6 +3048,10 @@ const zh: Record<string, string> = {
   "Dashboard widget": "仪表板小组件",
   "Only the first {shown} of {total} rows are in this export.": "此导出仅包含 {total} 行中的前 {shown} 行。",
   "Could not connect to {name}, so its server activity cannot be read.": "无法连接到 {name}，因此无法读取服务器活动。",
+  "This file has commands for {tool} itself, which can run programs and write files on this computer:": "此文件包含 {tool} 本身的命令，这些命令可以在这台电脑上运行程序和写入文件：",
+  "Restore the file with these commands?": "要连同这些命令一起还原该文件吗？",
+  "Run these commands": "运行这些命令",
+  "the repository's own configuration runs commands ({keys}): remove these settings from its .git/config to use Git here": "该仓库自身的配置会运行命令（{keys}）：请从其 .git/config 中删除这些设置后再在此使用 Git",
 };
 
 export default zh;
