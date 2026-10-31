@@ -324,19 +324,19 @@ fn clickhouse_table_starts(src: &str, tokens: &[Token]) -> Vec<bool> {
     // Per level of parentheses: whether its `FROM` reads tables, and whether a `FROM` list
     // is being read.
     let mut levels: Vec<(bool, bool)> = vec![(true, false)];
-    let mut starts = vec![false; tokens.len()];
+    let mut starts = Vec::with_capacity(tokens.len());
     for i in 0..tokens.len() {
         let prev = i.checked_sub(1);
         let prev_word = prev.and_then(word);
         let array_join = prev_word.as_deref() == Some("JOIN")
             && i.checked_sub(2).and_then(word).as_deref() == Some("ARRAY");
         let (tables, in_from) = *levels.last().unwrap_or(&(true, false));
-        starts[i] = match prev_word.as_deref() {
+        starts.push(match prev_word.as_deref() {
             Some("FROM") => tables,
             Some("JOIN") => !array_join,
             Some("DESCRIBE" | "DESC" | "TABLE") => true,
             _ => prev.is_some_and(|p| symbol(p, ",")) && in_from,
-        };
+        });
         if symbol(i, "(") {
             let call =
                 prev_word.is_some() && !matches!(word(i + 1).as_deref(), Some("SELECT" | "WITH"));
@@ -354,7 +354,7 @@ fn clickhouse_table_starts(src: &str, tokens: &[Token]) -> Vec<bool> {
         {
             match w.as_str() {
                 "FROM" => level.1 = level.0,
-                "JOIN" => level.1 = !(prev_word.as_deref() == Some("ARRAY")),
+                "JOIN" => level.1 = prev_word.as_deref() != Some("ARRAY"),
                 "SELECT" | "WHERE" | "PREWHERE" | "GROUP" | "HAVING" | "ORDER" | "LIMIT"
                 | "SETTINGS" | "FORMAT" | "UNION" | "WINDOW" | "QUALIFY" | "ARRAY" | "ON"
                 | "USING" => level.1 = false,
