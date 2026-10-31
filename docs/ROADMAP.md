@@ -1,4 +1,4 @@
-﻿# PlatypusDB — Roadmap post-MVP
+# PlatypusDB — Roadmap post-MVP
 
 Pianificazione delle funzionalità dopo la v0.1.0, divisa in **gruppi indipendenti** che più persone
 possono portare avanti in parallelo. Ogni gruppo ha un'area di codice propria, così i conflitti di
