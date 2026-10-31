@@ -195,7 +195,7 @@ const NAME_KEYWORDS: &[&str] = &["EXISTS", "INTO", "REFERENCES", "TABLE", "VIEW"
 /// Operators of several characters, longest first.
 const OPERATORS: &[&str] = &[
     "->>", "#>>", "!~*", "<=>", "<>", "<=", ">=", "!=", "||", "->", "#>", "@>", "<@", "&&", "::",
-    "=>", ":=", "~*", "!~", "?|", "?&", "<<", ">>", "~~",
+    "=>", ":=", "~*", "!~", "!<", "!>", "?|", "?&", "<<", ">>", "~~",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,6 +284,19 @@ fn symbol(src: &str, tokens: &[Token], i: usize) -> (Kind, usize) {
     }
 }
 
+/// Whether the word at `i` is the `U` of `U&'…'` or `U&"…"`, the three tokens touching.
+fn unicode_escape(src: &str, tokens: &[Token], i: usize) -> bool {
+    let [u, amp, quoted] = match tokens.get(i..i + 3) {
+        Some([u, amp, quoted]) => [u, amp, quoted],
+        _ => return false,
+    };
+    u.text(src).eq_ignore_ascii_case("u")
+        && amp.text(src) == "&"
+        && amp.start == u.end
+        && quoted.start == amp.end
+        && matches!(quoted.kind, TokenKind::String | TokenKind::QuotedIdent)
+}
+
 fn atoms(src: &str, dialect: Dialect) -> Vec<Atom<'_>> {
     let tokens: Vec<Token> = Lexer::new(src, dialect).collect();
     let mut atoms = Vec::new();
@@ -309,6 +322,8 @@ fn atoms(src: &str, dialect: Dialect) -> Vec<Atom<'_>> {
             {
                 (Kind::Literal, i + 2)
             }
+            // A Unicode escape string or name: `U&'d\0061t'`, `U&"d\0061t"`.
+            TokenKind::Word if unicode_escape(src, &tokens, i) => (Kind::Literal, i + 3),
             TokenKind::Word => {
                 let upper = t.text(src).to_ascii_uppercase();
                 let kind = if KEYWORDS.binary_search(&upper.as_str()).is_ok() {
@@ -905,6 +920,22 @@ mod tests {
                 FormatOptions::default()
             ),
             "SELECT\n  @v,\n  N'x',\n  a <=> b"
+        );
+    }
+
+    #[test]
+    fn keeps_unicode_escapes_and_not_less_than() {
+        assert_eq!(
+            pg(r#"select U&'d\0061t' as u, u&"d\0061t", a & 'x' from t"#),
+            "SELECT\n  U&'d\\0061t' AS u,\n  u&\"d\\0061t\",\n  a & 'x'\nFROM\n  t"
+        );
+        assert_eq!(
+            format(
+                "select a from t where b !< 2 and c !> 3",
+                Dialect::SqlServer,
+                FormatOptions::default()
+            ),
+            "SELECT\n  a\nFROM\n  t\nWHERE\n  b !< 2\n  AND c !> 3"
         );
     }
 
