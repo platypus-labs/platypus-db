@@ -7726,3 +7726,172 @@ async fn clickhouse_imports_all_or_nothing() {
     assert_eq!(count().await, ("2".to_owned(), "1".to_owned()));
     run(&*conn, "DROP TABLE conf_ch_stage").await.unwrap();
 }
+
+/// A ClickHouse Replace whose move into the table fails after emptying it keeps the rows in
+/// the staging table and names it; a user who may not create tables still imports, told the
+/// import is not all-or-nothing.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn clickhouse_import_keeps_rows_and_imports_without_create() {
+    use arrow_array::Int64Array;
+    use arrow_schema::{DataType, Field, Schema};
+    use platypus_sql::Dialect;
+    use platypus_transfer::import::{
+        ImportColumn, ImportError, ImportMode, ImportPlan, import_rows,
+    };
+    use std::sync::Arc;
+
+    let all = backends().await;
+    let Some(b) = all
+        .iter()
+        .find(|b| b.config.driver == DriverKind::ClickHouse)
+    else {
+        return;
+    };
+    let conn = b.connect().await;
+    let user = "conf_ch_insert_only";
+    let stages = "SELECT name FROM system.tables WHERE database = currentDatabase() \
+                  AND name LIKE 'conf_ch_move_platypus_stage%'";
+    let drop_stages = || async {
+        for batch in collect(b, &*conn, stages).await {
+            for row in 0..batch.num_rows() {
+                let name = cell(&batch, 0, row).unwrap();
+                run(&*conn, &format!("DROP TABLE {name}")).await.unwrap();
+            }
+        }
+    };
+    drop_stages().await;
+    for sql in [
+        "DROP TABLE IF EXISTS conf_ch_move_mv".to_owned(),
+        "DROP TABLE IF EXISTS conf_ch_move".to_owned(),
+        format!("DROP USER IF EXISTS {user}"),
+        // A Log table, which cannot trade places with a copy; its view refuses n = 99, so
+        // the rows load into the staging table and fail on the move.
+        "CREATE TABLE conf_ch_move (id Int32, n Int32) ENGINE = Log".to_owned(),
+        "CREATE MATERIALIZED VIEW conf_ch_move_mv ENGINE = Memory \
+         AS SELECT throwIf(n = 99) AS x FROM conf_ch_move"
+            .to_owned(),
+        "INSERT INTO conf_ch_move VALUES (0, 0)".to_owned(),
+    ] {
+        run(&*conn, &sql).await.unwrap();
+    }
+    let plan = |mode| ImportPlan {
+        source_table: String::new(),
+        source_schema: None,
+        schema: Some(b.schema.clone()),
+        table: "conf_ch_move".to_owned(),
+        create: false,
+        mode,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: ["id", "n"]
+            .iter()
+            .map(|c| ImportColumn {
+                source: (*c).to_owned(),
+                target: (*c).to_owned(),
+                data_type: None,
+                not_null: false,
+                default: None,
+            })
+            .collect(),
+    };
+    async fn load(
+        conn: &dyn Connection,
+        plan: ImportPlan,
+        id: Vec<i64>,
+        n: Vec<i64>,
+    ) -> Result<u64, ImportError> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, true),
+            Field::new("n", DataType::Int64, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(id)),
+                Arc::new(Int64Array::from(n)),
+            ],
+        )
+        .unwrap();
+        let stream = platypus_core::RecordBatchStream::new(
+            schema,
+            futures::stream::iter(vec![Ok(batch)]).boxed(),
+        );
+        import_rows(stream, (conn, Dialect::ClickHouse), &plan, |_| true).await
+    }
+    let staged = || async {
+        let batches = collect(b, &*conn, stages).await;
+        let name = batches
+            .iter()
+            .find(|b| b.num_rows() > 0)
+            .and_then(|b| cell(b, 0, 0))?;
+        let sql = format!("SELECT count() FROM {name}");
+        let rows = cell(&collect(b, &*conn, &sql).await[0], 0, 0).unwrap();
+        Some((name, rows))
+    };
+
+    let failed = load(&*conn, plan(ImportMode::Replace), vec![1, 2], vec![1, 99])
+        .await
+        .unwrap_err();
+    let (name, rows) = staged().await.expect("the staging table stays");
+    assert_eq!(rows, "2", "every imported row is in {name}");
+    assert!(
+        matches!(&failed, ImportError::Plan(m) if m.contains(&name) && m.contains("kept in")),
+        "{failed}"
+    );
+    drop_stages().await;
+
+    // A user who may insert into the table but create nothing.
+    run(
+        &*conn,
+        &format!("CREATE USER {user} IDENTIFIED BY 'Conf-Ins-2026!x'"),
+    )
+    .await
+    .unwrap();
+    run(
+        &*conn,
+        &format!(
+            "GRANT SELECT, INSERT ON {}.conf_ch_move TO {user}",
+            b.schema
+        ),
+    )
+    .await
+    .unwrap();
+    let mut config = b.config.clone();
+    user.clone_into(&mut config.user);
+    config.password = Some(platypus_core::Secret::new("Conf-Ins-2026!x"));
+    let limited = driver(DriverKind::ClickHouse)
+        .connect(&config)
+        .await
+        .unwrap();
+    run(&*conn, "TRUNCATE TABLE conf_ch_move").await.unwrap();
+    let written = load(&*limited, plan(ImportMode::Append), vec![3, 4], vec![3, 4])
+        .await
+        .unwrap();
+    assert_eq!(written, 2);
+    let refused = load(&*limited, plan(ImportMode::Append), vec![5], vec![99])
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("went straight into"),
+        "{refused}"
+    );
+    assert!(staged().await.is_none(), "no staging table");
+    let count = collect(
+        b,
+        &*conn,
+        "SELECT count() FROM conf_ch_move WHERE id IN (3, 4)",
+    )
+    .await;
+    assert_eq!(cell(&count[0], 0, 0).unwrap(), "2");
+
+    for sql in [
+        format!("DROP USER {user}"),
+        "DROP TABLE conf_ch_move_mv".to_owned(),
+        "DROP TABLE conf_ch_move".to_owned(),
+    ] {
+        run(&*conn, &sql).await.unwrap();
+    }
+}

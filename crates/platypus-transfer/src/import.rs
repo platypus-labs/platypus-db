@@ -12,6 +12,7 @@ use std::sync::Arc;
 use arrow_array::{Array, RecordBatch};
 use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, Field, Schema, TimeUnit};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use futures::StreamExt;
 use platypus_core::{
     BulkRows, Connection, DriverKind, ExecOptions, ExecResult, META_DB_TYPE, RecordBatchStream,
@@ -985,7 +986,9 @@ async fn flush(
 /// Writes `rows`, whose columns are the plan's sources in order, as [`import`] does.
 ///
 /// ClickHouse has no transaction to undo a failed load, so rows for an existing table go
-/// into a staging table first and move into the target only once all of them are in.
+/// into a staging table first and move into the target only once all of them are in. A
+/// user who may not create the staging table gets the rows written straight into the
+/// target, and an error that says what stayed.
 pub async fn import_rows(
     rows: RecordBatchStream,
     (target, dialect): (&dyn Connection, Dialect),
@@ -1005,83 +1008,235 @@ pub async fn import_rows(
         ..plan.clone()
     };
     let staging = staging_plan.table(dialect);
-    exec(
-        target,
-        &format!(
-            "CREATE TABLE {staging} AS {} ENGINE = MergeTree ORDER BY tuple()",
-            plan.table(dialect)
-        ),
-    )
-    .await?;
-    let loaded = import_direct(rows, (target, dialect), &staging_plan, progress).await;
-    let moved = match loaded {
-        Ok(written) => move_staged(target, dialect, plan, &staging)
-            .await
-            .map(|()| written),
-        Err(e) => Err(e),
+    let table = plan.table(dialect);
+    // A copy of the table, engine and all, takes its place in one step.
+    let exchange = plan.mode() == ImportMode::Replace && exchangeable(target, dialect, plan).await;
+    let create = if exchange {
+        format!("CREATE TABLE {staging} AS {table}")
+    } else {
+        format!("CREATE TABLE {staging} AS {table} ENGINE = MergeTree ORDER BY tuple()")
     };
-    let _ = exec(target, &format!("DROP TABLE {staging}")).await;
-    moved
+    if let Err(e) = exec(target, &create).await {
+        if !access_denied(&e) {
+            return Err(e.into());
+        }
+        return import_direct(rows, (target, dialect), plan, progress)
+            .await
+            .map_err(|e| match e {
+                ImportError::Cancelled => e,
+                e => ImportError::Plan(format!(
+                    "{e}. The user may not create the staging table that makes a ClickHouse \
+                     import all-or-nothing, so the rows went straight into {table}: what the \
+                     import changed before this error stays"
+                )),
+            });
+    }
+    match import_direct(rows, (target, dialect), &staging_plan, progress).await {
+        Ok(written) => {
+            let names = plan
+                .columns
+                .iter()
+                .map(|c| dialect.quote_ident(&c.target))
+                .collect::<Vec<_>>()
+                .join(", ");
+            move_staged(target, (&table, &staging), plan.mode(), exchange, &names)
+                .await
+                .map(|()| written)
+        }
+        Err(e) => {
+            let _ = exec(target, &format!("DROP TABLE {staging}")).await;
+            Err(e)
+        }
+    }
 }
 
-/// Moves the rows of a ClickHouse staging table into the plan's table, replacing its rows
-/// first in [`ImportMode::Replace`].
+/// Whether the ClickHouse table of `plan` can trade places with a copy of itself: a
+/// `MergeTree` that replicates nothing, whose copy would join the table's replicas.
+async fn exchangeable(target: &dyn Connection, dialect: Dialect, plan: &ImportPlan) -> bool {
+    let database = plan.schema.as_deref().map_or_else(
+        || "currentDatabase()".to_owned(),
+        |s| dialect.quote_literal(s),
+    );
+    let sql = format!(
+        "SELECT engine FROM system.tables WHERE database = {database} AND name = {}",
+        dialect.quote_literal(&plan.table)
+    );
+    query_value(target, &sql)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|engine| engine.ends_with("MergeTree") && !engine.starts_with("Replicated"))
+}
+
+/// Whether ClickHouse refused `error` for a missing grant.
+fn access_denied(error: &platypus_core::Error) -> bool {
+    let text = error.to_string();
+    text.contains("ACCESS_DENIED") || text.contains("Not enough privileges")
+}
+
+/// Moves the rows of a ClickHouse staging table into `table`, replacing its rows in
+/// [`ImportMode::Replace`]: with `exchange`, by trading places with the staging table, a
+/// copy of it. Where that fails, `table` is emptied and the rows copied, and the staging
+/// table stays when the copy fails, as the only place the rows are left.
 async fn move_staged(
     target: &dyn Connection,
-    dialect: Dialect,
-    plan: &ImportPlan,
-    staging: &str,
+    (table, staging): (&str, &str),
+    mode: ImportMode,
+    exchange: bool,
+    names: &str,
 ) -> Result<(), ImportError> {
-    if plan.mode() == ImportMode::Replace {
-        exec(target, &format!("TRUNCATE TABLE {}", plan.table(dialect))).await?;
-    }
-    let names = plan
-        .columns
-        .iter()
-        .map(|c| dialect.quote_ident(&c.target))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "INSERT INTO {} ({names}) SELECT {names} FROM {staging}",
-        plan.table(dialect)
-    );
-    exec(target, &sql).await?;
-    Ok(())
-}
-
-/// The days a ClickHouse date or time type holds, `(name, first, last)` as `YYYY-MM-DD`: it
-/// clamps a value outside them to the nearest one without a word.
-type DayRange = (&'static str, &'static str, &'static str);
-
-fn day_range(declared: &str) -> Option<DayRange> {
-    let mut name = declared.trim();
-    while let Some(inner) = ["Nullable(", "LowCardinality("]
-        .iter()
-        .find_map(|p| name.strip_prefix(p))
+    let drop = format!("DROP TABLE {staging}");
+    let drop_staging = || exec(target, &drop);
+    // The staging table holds the old rows afterwards.
+    if exchange
+        && exec(target, &format!("EXCHANGE TABLES {table} AND {staging}"))
+            .await
+            .is_ok()
     {
-        name = inner.strip_suffix(')').unwrap_or(inner).trim();
+        let _ = drop_staging().await;
+        return Ok(());
     }
-    match name.split_once('(').map_or(name, |(base, _)| base) {
-        "Date32" => Some(("Date32", "1900-01-01", "2299-12-31")),
-        "DateTime64" => Some(("DateTime64", "1900-01-01", "2299-12-31")),
-        "Date" => Some(("Date", "1970-01-01", "2149-06-06")),
-        "DateTime" => Some(("DateTime", "1970-01-01", "2106-02-07")),
-        _ => None,
+    let replace = mode == ImportMode::Replace;
+    if replace && let Err(e) = exec(target, &format!("TRUNCATE TABLE {table}")).await {
+        let _ = drop_staging().await;
+        return Err(e.into());
+    }
+    let sql = format!("INSERT INTO {table} ({names}) SELECT {names} FROM {staging}");
+    match exec(target, &sql).await {
+        Err(e) if replace => Err(ImportError::Plan(format!(
+            "{e}. {table} was emptied before this error: the imported rows are kept in \
+             {staging}"
+        ))),
+        moved => {
+            let _ = drop_staging().await;
+            Ok(moved?)
+        }
     }
 }
 
-/// The day range of each column of `plan` in a ClickHouse target, `None` for the columns that
+/// What a ClickHouse date or time type holds, in UTC: it clamps a value outside to the
+/// nearest one without a word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TimeRange {
+    name: &'static str,
+    first: NaiveDateTime,
+    last: NaiveDateTime,
+}
+
+impl TimeRange {
+    /// The range of the ClickHouse type `declared`. `extended` for a server from 22.8 on,
+    /// where `Date32` and `DateTime64` reach from 1900 to 2299; before, from 1925 to 2283.
+    fn of(declared: &str, extended: bool) -> Option<Self> {
+        let mut name = declared.trim();
+        while let Some(inner) = ["Nullable(", "LowCardinality("]
+            .iter()
+            .find_map(|p| name.strip_prefix(p))
+        {
+            name = inner.strip_suffix(')').unwrap_or(inner).trim();
+        }
+        let wide = if extended {
+            ((1900, 1, 1), (2299, 12, 31))
+        } else {
+            ((1925, 1, 1), (2283, 11, 11))
+        };
+        let (name, (first, last), last_time) =
+            match name.split_once('(').map_or(name, |(base, _)| base) {
+                "Date32" => ("Date32", wide, None),
+                "DateTime64" => ("DateTime64", wide, None),
+                "Date" => ("Date", ((1970, 1, 1), (2149, 6, 6)), None),
+                "DateTime" => ("DateTime", ((1970, 1, 1), (2106, 2, 7)), Some((6, 28, 15))),
+                _ => return None,
+            };
+        let day = |(y, m, d): (i32, u32, u32)| NaiveDate::from_ymd_opt(y, m, d);
+        let (h, m, s) = last_time.unwrap_or((23, 59, 59));
+        Some(Self {
+            name,
+            first: day(first)?.and_hms_opt(0, 0, 0)?,
+            last: day(last)?.and_hms_nano_opt(h, m, s, 999_999_999)?,
+        })
+    }
+
+    /// `at` as the range shows it: the day alone for the date types.
+    fn show(&self, at: NaiveDateTime) -> String {
+        if self.name.starts_with("DateTime") {
+            at.format("%Y-%m-%d %H:%M:%S").to_string()
+        } else {
+            at.format("%Y-%m-%d").to_string()
+        }
+    }
+}
+
+/// When the date or timestamp `text`, as an import writes it, falls: in UTC where it names an
+/// offset. A signed year (`+10000-01-01`) is beyond every range; `None` for text that is no
+/// date.
+fn moment(text: &str) -> Option<NaiveDateTime> {
+    let text = text.trim();
+    let bytes = text.as_bytes();
+    if bytes.len() > 1 && bytes[1].is_ascii_digit() {
+        match bytes[0] {
+            b'+' => return Some(NaiveDateTime::MAX),
+            b'-' => return Some(NaiveDateTime::MIN),
+            _ => {}
+        }
+    }
+    if bytes.len() < 10 || bytes[4] != b'-' {
+        return None;
+    }
+    let date = NaiveDate::parse_from_str(text.get(..10)?, "%Y-%m-%d").ok()?;
+    let Some(rest) = text[10..].strip_prefix(['T', ' ']) else {
+        return Some(date.and_time(NaiveTime::MIN));
+    };
+    let end = rest
+        .find(|c: char| !(c.is_ascii_digit() || c == ':' || c == '.'))
+        .unwrap_or(rest.len());
+    let time = NaiveTime::parse_from_str(&rest[..end], "%H:%M:%S%.f")
+        .or_else(|_| NaiveTime::parse_from_str(&rest[..end], "%H:%M"))
+        .unwrap_or(NaiveTime::MIN);
+    let at = date.and_time(time);
+    Some(
+        offset_seconds(rest[end..].trim())
+            .and_then(|s| at.checked_sub_signed(TimeDelta::seconds(s)))
+            .unwrap_or(at),
+    )
+}
+
+/// The seconds of a UTC offset `+HH:MM`, `+HHMM` or `+HH`; `None` for none, `Z` or a zone name.
+fn offset_seconds(zone: &str) -> Option<i64> {
+    let sign = match zone.as_bytes().first()? {
+        b'+' => 1,
+        b'-' => -1,
+        _ => return None,
+    };
+    let digits: String = zone[1..].chars().filter(|c| *c != ':').collect();
+    let hours: i64 = digits.get(..2)?.parse().ok()?;
+    let minutes: i64 = digits.get(2..4).map_or(Ok(0), str::parse).ok()?;
+    Some(sign * (hours * 3600 + minutes * 60))
+}
+
+/// Whether a ClickHouse server of `version` has the extended `Date32` and `DateTime64` (22.8
+/// on); an unknown one is taken as older, whose ranges are narrower.
+fn extended_dates(version: Option<&str>) -> bool {
+    version.is_some_and(|v| {
+        let mut parts = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+        (parts.next().unwrap_or(0), parts.next().unwrap_or(0)) >= (22, 8)
+    })
+}
+
+/// The range of each column of `plan` in a ClickHouse target, `None` for the columns that
 /// are no date or time: from the types the import creates, else from the table's own.
 async fn clickhouse_ranges(
     target: &dyn Connection,
     dialect: Dialect,
     plan: &ImportPlan,
-) -> Vec<Option<DayRange>> {
+) -> Vec<Option<TimeRange>> {
+    let version = query_value(target, "SELECT version()").await.ok().flatten();
+    let extended = extended_dates(version.as_deref());
+    let range = |declared: &str| TimeRange::of(declared, extended);
     if plan.create {
         return plan
             .columns
             .iter()
-            .map(|c| c.data_type.as_deref().and_then(day_range))
+            .map(|c| c.data_type.as_deref().and_then(range))
             .collect();
     }
     let database = plan.schema.as_deref().map_or_else(
@@ -1100,7 +1255,7 @@ async fn clickhouse_ranges(
                 .iter()
                 .find(|r| r[0].as_deref() == Some(c.target.as_str()))
                 .and_then(|r| r[1].as_deref())
-                .and_then(day_range)
+                .and_then(range)
         })
         .collect()
 }
@@ -1108,7 +1263,7 @@ async fn clickhouse_ranges(
 /// Refuses a date or timestamp of `batch` outside what its ClickHouse column holds.
 fn check_ranges(
     plan: &ImportPlan,
-    ranges: &[Option<DayRange>],
+    ranges: &[Option<TimeRange>],
     batch: &RecordBatch,
 ) -> Result<(), ImportError> {
     if ranges.iter().all(Option::is_none) {
@@ -1116,19 +1271,19 @@ fn check_ranges(
     }
     let rows = rows_text(batch)?;
     for (at, range) in ranges.iter().enumerate() {
-        let Some((name, first, last)) = range else {
+        let Some(range) = range else {
             continue;
         };
         for text in rows.iter().filter_map(|r| r[at].as_deref()) {
-            let bytes = text.as_bytes();
-            let dated =
-                bytes.len() >= 10 && bytes[..4].iter().all(u8::is_ascii_digit) && bytes[4] == b'-';
-            if dated && (text[..10] < **first || text[..10] > **last) {
+            if moment(text).is_some_and(|m| m < range.first || m > range.last) {
                 return Err(InvalidValue {
                     column: plan.columns[at].target.clone(),
                     message: format!(
-                        "{text} is outside the range of ClickHouse {name} ({first} to {last}), \
-                         which would store another date"
+                        "{text} is outside the range of ClickHouse {} ({} to {}), which would \
+                         store another date",
+                        range.name,
+                        range.show(range.first),
+                        range.show(range.last)
                     ),
                 }
                 .into());
@@ -1354,15 +1509,74 @@ mod tests {
 
     #[test]
     fn clickhouse_date_types_have_a_range() {
-        assert_eq!(day_range("Date32").map(|r| r.1), Some("1900-01-01"));
+        let range = |t| TimeRange::of(t, true);
+        let shown = |r: Option<TimeRange>| r.map(|r| (r.name, r.show(r.first), r.show(r.last)));
         assert_eq!(
-            day_range("LowCardinality(Nullable(DateTime64(6, 'UTC')))").map(|r| r.2),
-            Some("2299-12-31")
+            shown(range("Date32")),
+            Some(("Date32", "1900-01-01".into(), "2299-12-31".into()))
         );
-        assert_eq!(day_range("Nullable(Date)").map(|r| r.2), Some("2149-06-06"));
-        assert_eq!(day_range("DateTime('UTC')").map(|r| r.0), Some("DateTime"));
-        assert_eq!(day_range("Int32"), None);
-        assert_eq!(day_range("String"), None);
+        assert_eq!(
+            shown(range("LowCardinality(Nullable(DateTime64(6, 'UTC')))")).map(|r| r.2),
+            Some("2299-12-31 23:59:59".into())
+        );
+        assert_eq!(
+            shown(range("Nullable(Date)")).map(|r| r.2),
+            Some("2149-06-06".into())
+        );
+        assert_eq!(
+            shown(range("DateTime('UTC')")),
+            Some((
+                "DateTime",
+                "1970-01-01 00:00:00".into(),
+                "2106-02-07 06:28:15".into()
+            ))
+        );
+        assert_eq!(range("Int32"), None);
+        assert_eq!(range("String"), None);
+        // Servers before 22.8, or of an unknown version, hold less.
+        assert_eq!(
+            shown(TimeRange::of("DateTime64(3)", false)).map(|r| (r.1, r.2)),
+            Some(("1925-01-01 00:00:00".into(), "2283-11-11 23:59:59".into()))
+        );
+        assert!(extended_dates(Some("26.3.25.2")));
+        assert!(extended_dates(Some("22.8.1.1")));
+        assert!(!extended_dates(Some("22.3.15.33")));
+        assert!(!extended_dates(None));
+    }
+
+    #[test]
+    fn timestamps_are_checked_to_the_second() {
+        let p = ImportPlan {
+            columns: vec![ImportColumn {
+                source: "t".into(),
+                target: "t".into(),
+                data_type: None,
+                not_null: false,
+                default: None,
+            }],
+            ..plan(false)
+        };
+        let schema = Arc::new(Schema::new(vec![Field::new("t", DataType::Utf8, true)]));
+        let check = |declared: &str, text: &str| {
+            let batch = RecordBatch::try_new(
+                schema.clone(),
+                vec![Arc::new(StringArray::from(vec![text]))],
+            )
+            .unwrap();
+            check_ranges(&p, &[TimeRange::of(declared, true)], &batch).is_ok()
+        };
+        assert!(check("DateTime", "2106-02-07 06:28:15"));
+        assert!(!check("DateTime", "2106-02-07 06:28:16"));
+        assert!(!check("DateTime", "2106-02-07T06:28:16Z"));
+        // An offset moves the moment to UTC.
+        assert!(check("DateTime", "2106-02-07T07:28:15+01:00"));
+        assert!(!check("DateTime", "2106-02-07T05:28:16-01:00"));
+        assert!(!check("DateTime", "1969-12-31 23:59:59"));
+        assert!(check("Date", "2149-06-06 23:59:59"));
+        // Years past 9999 and before 0 come signed.
+        assert!(!check("DateTime64(3)", "+10000-01-01T00:00:00"));
+        assert!(!check("Date32", "-0001-01-01"));
+        assert!(check("Date32", "not a date"));
     }
 
     #[test]
@@ -1371,7 +1585,7 @@ mod tests {
         let mut p = plan(true);
         p.columns.truncate(1);
         p.columns[0].data_type = Some("Date32".to_owned());
-        let ranges = [day_range("Date32")];
+        let ranges = [TimeRange::of("Date32", true)];
         let schema = Arc::new(Schema::new(vec![Field::new("d", DataType::Date32, true)]));
         let days = |v: Vec<Option<i32>>| {
             RecordBatch::try_new(schema.clone(), vec![Arc::new(Date32Array::from(v))]).unwrap()
