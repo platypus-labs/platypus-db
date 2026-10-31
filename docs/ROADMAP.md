@@ -1,4 +1,4 @@
-# PlatypusDB — Roadmap post-MVP
+﻿# PlatypusDB — Roadmap post-MVP
 
 Pianificazione delle funzionalità dopo la v0.1.0, divisa in **gruppi indipendenti** che più persone
 possono portare avanti in parallelo. Ogni gruppo ha un'area di codice propria, così i conflitti di
@@ -128,7 +128,7 @@ blocco cade.
 | P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ✅ completato |
-| S — Collaudo finale | libero |
+| S — Collaudo finale | 🔒 Delfa · group-s-collaudo · 2026-10-31 |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
