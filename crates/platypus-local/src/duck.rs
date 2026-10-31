@@ -32,8 +32,9 @@ pub fn load(
 ) -> Result<usize, LocalError> {
     register(conn)?;
     // The zone the grid shows the instants in, so SQL on the result agrees with the screen. A
-    // database built without the time zone data keeps its own zone.
-    let _ = conn.execute_batch(&format!("SET TimeZone = '{}'", session_zone(schema)));
+    // database built without the time zone data keeps its own zone. GLOBAL: the SQL runs on
+    // another connection to the same database, which a session setting would not reach.
+    let _ = conn.execute_batch(&format!("SET GLOBAL TimeZone = '{}'", session_zone(schema)));
     let rows = storable(schema, batches)?;
     let name = quote(table);
     let select = format!("SELECT {} FROM {SCAN}(?)", rows.select);
@@ -456,7 +457,11 @@ mod tests {
     fn zoned_timestamps_read_in_the_zone_the_grid_shows() {
         platypus_driver_duckdb::testing::load();
         let conn = duckdb::Connection::open_in_memory().unwrap();
-        conn.execute_batch("SET TimeZone = 'Europe/Rome'").unwrap();
+        // The computer's zone, and the SQL tab's own connection to the database, open before
+        // the result is loaded through another one.
+        conn.execute_batch("SET GLOBAL TimeZone = 'Europe/Rome'")
+            .unwrap();
+        let sql = conn.try_clone().unwrap();
         let schema: SchemaRef = Arc::new(Schema::new(vec![Field::new(
             "ts",
             DataType::Timestamp(TimeUnit::Microsecond, Some("+00:00".into())),
@@ -467,10 +472,12 @@ mod tests {
             .with_timezone("+00:00");
         let batch = RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(at)]).unwrap();
         load(&conn, "result", &schema, &[batch]).unwrap();
-        let hour: String = conn
-            .query_row("SELECT strftime(ts, '%H:%M') FROM result", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(hour, "01:30");
+        for conn in [&conn, &sql] {
+            let hour: String = conn
+                .query_row("SELECT strftime(ts, '%H:%M') FROM result", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(hour, "01:30");
+        }
     }
 
     #[test]
