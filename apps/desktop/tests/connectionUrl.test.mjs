@@ -2,7 +2,7 @@
 // (src/connectionUrl.ts); the parsing itself is the backend's.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyUrlEdit, cleanFilePath, hasUrl, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed } from "../src/connectionUrl.ts";
+import { applyUrlEdit, cleanFilePath, hasUrl, hostOptional, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed } from "../src/connectionUrl.ts";
 
 const form = (over = {}) => ({
   id: "c1",
@@ -166,4 +166,13 @@ test("an SSH tunnel without host or user is named", () => {
   assert.equal(sshMissing(ssh("bastion", " ")), "user");
   assert.equal(sshMissing(ssh("bastion", "ops", ssh("", "ops"))), "host");
   assert.equal(sshMissing(ssh("bastion", "ops")), null);
+});
+
+test("a host may be left empty only where the server is named elsewhere", () => {
+  for (const driver of ["oracle", "odbc", "plugin", "snowflake", "bigquery", "databricks", "trino", "adbc"]) {
+    assert.equal(hostOptional(driver), true, driver);
+  }
+  for (const driver of ["postgres", "mysql", "sqlserver", "clickhouse", "libsql", "mongo", "redis", "elasticsearch", "cassandra", "db2"]) {
+    assert.equal(hostOptional(driver), false, driver);
+  }
 });

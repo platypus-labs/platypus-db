@@ -429,17 +429,7 @@ fn check_address(config: &ConnectionConfig) -> CommandResult<()> {
     if config.driver.is_embedded() {
         return Ok(());
     }
-    let needs_host = !matches!(
-        config.driver,
-        DriverKind::Snowflake
-            | DriverKind::BigQuery
-            | DriverKind::Databricks
-            | DriverKind::Trino
-            | DriverKind::Adbc
-            | DriverKind::Oracle
-            | DriverKind::Odbc
-    );
-    if needs_host && config.host.trim().is_empty() {
+    if config.driver.needs_host() && config.host.trim().is_empty() {
         return Err(Error::Config("the host is missing".to_owned()).into());
     }
     config.check_host()?;
@@ -763,8 +753,59 @@ mod tests {
         assert!(check_address(&config).is_ok());
         // A server reached by a URL or an account has no host field.
         assert!(check_address(&ConnectionConfig::new(DriverKind::Snowflake)).is_ok());
-        // An ODBC data source or connection string holds the server.
-        assert!(check_address(&ConnectionConfig::new(DriverKind::Odbc)).is_ok());
+        // An ODBC data source or connection string holds the server, an Oracle net service
+        // name or connect descriptor too, and a plugin may know its endpoint.
+        for driver in [DriverKind::Odbc, DriverKind::Oracle, DriverKind::Plugin] {
+            let mut config = ConnectionConfig::new(driver);
+            config.host.clear();
+            assert!(check_address(&config).is_ok(), "{driver:?}");
+        }
+        // ClickHouse is not assumed on this machine.
+        let mut config = ConnectionConfig::new(DriverKind::ClickHouse);
+        config.host = " ".to_owned();
+        assert!(check_address(&config).is_err());
+    }
+
+    /// The connection form refuses an empty host for the drivers the backend does.
+    #[test]
+    fn the_form_and_the_backend_agree_on_the_drivers_without_a_host() {
+        let source = include_str!("../../../src/connectionUrl.ts");
+        let list = source
+            .split_once("HOST_OPTIONAL: readonly DriverKind[] = [")
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .map(|(list, _)| list)
+            .expect("HOST_OPTIONAL in connectionUrl.ts");
+        let form: Vec<DriverKind> = list
+            .split(',')
+            .map(|name| serde_json::from_str(name.trim()).unwrap())
+            .collect();
+        let all = [
+            DriverKind::Postgres,
+            DriverKind::MySql,
+            DriverKind::SqlServer,
+            DriverKind::ClickHouse,
+            DriverKind::Libsql,
+            DriverKind::Mongo,
+            DriverKind::Redis,
+            DriverKind::Elasticsearch,
+            DriverKind::Cassandra,
+            DriverKind::Snowflake,
+            DriverKind::BigQuery,
+            DriverKind::Databricks,
+            DriverKind::Trino,
+            DriverKind::Adbc,
+            DriverKind::Oracle,
+            DriverKind::Db2,
+            DriverKind::Odbc,
+            DriverKind::Plugin,
+        ];
+        for driver in all {
+            assert_eq!(
+                form.contains(&driver),
+                !driver.needs_host(),
+                "{driver:?} in HOST_OPTIONAL"
+            );
+        }
     }
 
     fn none<T>() -> Result<T, String> {

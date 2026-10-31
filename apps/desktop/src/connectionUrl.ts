@@ -71,6 +71,15 @@ export function splitSqlServerHost(text: string): { host: string; port: number }
   return m && port >= 1 && port <= 65535 ? { host: m[1]!, port } : null;
 }
 
+/** The servers whose connection may leave the host empty, as the backend reads it
+ *  (`DriverKind::needs_host`, whose test checks this list): the ADBC databases find theirs in
+ *  their options, Oracle in a net service name or connect descriptor, ODBC in a data source
+ *  or connection string, a plugin in its manifest. */
+export const HOST_OPTIONAL: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino", "adbc", "oracle", "odbc", "plugin"];
+
+/** Whether the server connection of `driver` can be tried without a host. */
+export const hostOptional = (driver: DriverKind) => HOST_OPTIONAL.includes(driver);
+
 /** What an SSH tunnel's servers lack to be tried: the first host or user left empty. */
 export function sshMissing(ssh: SavedSsh | null | undefined): "host" | "user" | null {
   for (let s = ssh; s; s = s.jump) {

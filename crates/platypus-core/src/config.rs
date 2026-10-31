@@ -186,6 +186,29 @@ impl DriverKind {
     pub const fn is_embedded(self) -> bool {
         matches!(self, Self::Sqlite | Self::DuckDb)
     }
+
+    /// Whether a connection must name a host to be tried. Not an embedded database, nor one
+    /// that may find its server elsewhere: the ADBC databases in their account, workspace or
+    /// URI options, Oracle in a net service name or connect descriptor, ODBC in a data source
+    /// or connection string, a plugin in its own manifest. `ClickHouse` needs one, as the
+    /// form says: no `localhost` is assumed for it. The connection form keeps the same list
+    /// (`HOST_OPTIONAL` in `connectionUrl.ts`).
+    #[must_use]
+    pub const fn needs_host(self) -> bool {
+        !matches!(
+            self,
+            Self::Sqlite
+                | Self::DuckDb
+                | Self::Snowflake
+                | Self::BigQuery
+                | Self::Databricks
+                | Self::Trino
+                | Self::Adbc
+                | Self::Oracle
+                | Self::Odbc
+                | Self::Plugin
+        )
+    }
 }
 
 /// TLS behaviour, following libpq `sslmode` semantics.

@@ -24,7 +24,7 @@ import {
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
 import { asksPassword, CONNECTION_TYPES, noteText } from "../connections";
-import { applyUrlEdit, cleanFilePath, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed, type ConnectBy } from "../connectionUrl";
+import { applyUrlEdit, cleanFilePath, hostOptional, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed, type ConnectBy } from "../connectionUrl";
 import { PasswordPrompt } from "../App";
 import { workbench } from "../workbench";
 import { hasSessionTimeZone, withoutUnusableInit } from "../connectionEdit";
@@ -353,7 +353,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const formProblem = (c: SavedConnection) => {
     if (!server) return null;
     if (!validPort(c.port)) return t("The port must be a number from 1 to 65535.");
-    if (!adbcProfile && !c.host.trim()) return t("The host is missing.");
+    if (!hostOptional(c.driver) && !c.host.trim()) return t("The host is missing.");
     const missing = sshMissing(c.network_profile ? null : c.ssh);
     if (missing === "host") return t("The SSH host is missing.");
     if (missing === "user") return t("The SSH user is missing.");
