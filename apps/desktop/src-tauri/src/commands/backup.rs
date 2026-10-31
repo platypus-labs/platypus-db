@@ -543,9 +543,13 @@ pub async fn restore_database(
             match restore_invocation(&config, &host, port, &request).await? {
                 Restore::Reads(program, invocation) => {
                     // The archive's table of contents counts its tables.
-                    let listing = Command::new(program)
+                    let mut listing = Command::new(program);
+                    #[cfg(windows)]
+                    listing.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
+                    let listing = listing
                         .arg("-l")
                         .arg(&request.path)
+                        .stdin(std::process::Stdio::null())
                         .output()
                         .await
                         .ok()

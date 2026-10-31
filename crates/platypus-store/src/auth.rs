@@ -137,7 +137,8 @@ fn run_command(command: &str, output: bool) -> Result<Secret> {
         use std::os::windows::process::CommandExt as _;
         shell
             .args(["/D", "/S", "/C"])
-            .raw_arg(format!("\"{command}\""));
+            .raw_arg(format!("\"{command}\""))
+            .creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
     }
     #[cfg(not(windows))]
     shell.arg("-c").arg(command);
