@@ -16,12 +16,20 @@ const STORE = new Set([
 ]);
 
 /** Messages with values in them: the pattern finds them, in the order of the text's names. */
-const STORE_PATTERNS: [RegExp, string, string[]][] = [[/^a project named "(.*)" exists already$/s, msg('a project named "{name}" exists already'), ["name"]]];
+const STORE_PATTERNS: [RegExp, string, string[]][] = [
+  [/^a project named "(.*)" exists already$/s, msg('a project named "{name}" exists already'), ["name"]],
+  [/^a connection named "(.*)" exists already$/s, msg('a connection named "{name}" exists already'), ["name"]],
+];
 
 const APP = new Set([
   msg("Query cancelled"),
   msg("Connection closed"),
   msg("no database file given"),
+  msg("the host is missing"),
+  msg("the SSH host is missing"),
+  msg("the SSH user is missing"),
+  // The drivers' own checks, raised by the app and not by the server.
+  msg("invalid configuration: password missing"),
   msg("commit or roll back the open transaction first"),
   msg("The connection was lost and has been reopened; the open transaction was rolled back."),
   msg(
@@ -48,6 +56,9 @@ const APP_PATTERNS: [RegExp, string, string[]][] = [
     msg("{path} not found: a relative path is not created, give the full path of the file"),
     ["path"],
   ],
+  [/^cannot open (.*): unable to open database file$/s, msg("cannot open {path}: unable to open database file"), ["path"]],
+  [/^cannot open (.*): file is not a database$/s, msg("cannot open {path}: file is not a database"), ["path"]],
+  [/^invalid Redis database `(.*)`: a number, such as 0$/s, msg("invalid Redis database `{name}`: a number, such as 0"), ["name"]],
   [/^(.*) is read-only: nothing that may change it runs there$/s, msg("{name} is read-only: nothing that may change it runs there"), ["name"]],
   [
     /^the download failed \(check the internet connection\): (.*)$/s,

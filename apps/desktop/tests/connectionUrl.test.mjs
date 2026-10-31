@@ -2,7 +2,7 @@
 // (src/connectionUrl.ts); the parsing itself is the backend's.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyUrlEdit, hasUrl, looksLikeConnection, splitLogin, urlModeDriver, validPort, withParsed } from "../src/connectionUrl.ts";
+import { applyUrlEdit, cleanFilePath, hasUrl, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed } from "../src/connectionUrl.ts";
 
 const form = (over = {}) => ({
   id: "c1",
@@ -143,4 +143,27 @@ test("a URL edit without the TLS files removes them", () => {
   const kept = applyUrlEdit(form(), "", "x", parsed({ password: null, ...files }));
   assert.equal(kept.conn.ssl_root_cert, "C:/certs/ca.pem");
   assert.equal(kept.conn.ssl_client_key, "C:/certs/c.key");
+});
+
+test("a file path loses the quotes Copy as path adds and the blanks around it", () => {
+  assert.equal(cleanFilePath('"D:\data\app.db"'), "D:\data\app.db");
+  assert.equal(cleanFilePath(" D:\data\app.db "), "D:\data\app.db");
+  assert.equal(cleanFilePath("'/tmp/a b.db'"), "/tmp/a b.db");
+  assert.equal(cleanFilePath('"D:\data'), '"D:\data');
+});
+
+test("SQL Server's host,port is split, anything else is left", () => {
+  assert.deepEqual(splitSqlServerHost("localhost,51433"), { host: "localhost", port: 51433 });
+  assert.deepEqual(splitSqlServerHost("tcp:db.example.com, 1433"), { host: "db.example.com", port: 1433 });
+  assert.equal(splitSqlServerHost("db.example.com"), null);
+  assert.equal(splitSqlServerHost("db,99999"), null);
+});
+
+test("an SSH tunnel without host or user is named", () => {
+  const ssh = (host, user, jump = null) => ({ host, user, port: 22, auth: "agent", key_path: null, secret_id: "x", jump });
+  assert.equal(sshMissing(null), null);
+  assert.equal(sshMissing(ssh("", "ops")), "host");
+  assert.equal(sshMissing(ssh("bastion", " ")), "user");
+  assert.equal(sshMissing(ssh("bastion", "ops", ssh("", "ops"))), "host");
+  assert.equal(sshMissing(ssh("bastion", "ops")), null);
 });
