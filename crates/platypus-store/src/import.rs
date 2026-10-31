@@ -1479,7 +1479,10 @@ mod tests {
             ]
         );
         let ch = named(&project, "ch");
-        assert_eq!((ch.host.as_str(), ch.port, ch.database.as_str()), ("ch.example.com", Some(8123), "logs"));
+        assert_eq!(
+            (ch.host.as_str(), ch.port, ch.database.as_str()),
+            ("ch.example.com", Some(8123), "logs")
+        );
         assert_eq!(named(&project, "ora").database, "svc");
     }
 
