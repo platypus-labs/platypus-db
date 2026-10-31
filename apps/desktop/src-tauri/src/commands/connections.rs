@@ -277,7 +277,9 @@ pub fn save_connection(
             )
         })?;
     }
-    state.with_store(|s| {
+    let access = connection.agent_access;
+    let before = state.with_store(|s| Ok(s.get(id).map(|c| c.agent_access)))?;
+    let saved = state.with_store(|s| {
         let old = s.get(connection.id).and_then(|c| c.ssh.clone());
         let new = connection.ssh.clone();
         s.save(connection, update)?;
@@ -292,7 +294,10 @@ pub fn save_connection(
             s.set_projects_of(id, &projects)?;
         }
         Ok(s.list().to_vec())
-    })
+    })?;
+    // The agent access chosen here is the user's: agents get it (see `agent_policy`).
+    state.approve_agent_access(id, before, access);
+    Ok(saved)
 }
 
 /// Connection files of other tools found where they keep them.
@@ -396,8 +401,50 @@ pub async fn test_connection(
     Ok(conn.server_info().clone())
 }
 
+/// The option names that point a driver at its server (a URL, a DSN, an account…).
+const ADDRESS_OPTIONS: [&str; 12] = [
+    "host",
+    "url",
+    "uri",
+    "dsn",
+    "connection",
+    "account",
+    "endpoint",
+    "server",
+    "proxy",
+    "port",
+    "domain",
+    "region",
+];
+
+/// Whether the form `form` still reaches the server of the saved connection `saved`: the
+/// same driver, host, port, database, tunnel (SSH chain, network profile) and options that
+/// name the server. Only then may the password kept for `saved` go with it; a form pointed
+/// elsewhere is tested with a typed password only.
+fn same_target(form: &SavedConnection, saved: &SavedConnection) -> bool {
+    let address = |c: &SavedConnection| -> Vec<(String, String)> {
+        c.options
+            .iter()
+            .filter(|(k, _)| {
+                let k = k.to_ascii_lowercase();
+                // `connect_timeout` and the like change how, not where.
+                !k.contains("timeout") && ADDRESS_OPTIONS.iter().any(|a| k.contains(a))
+            })
+            .map(|(k, v)| (k.clone(), v.trim().to_owned()))
+            .collect()
+    };
+    form.driver == saved.driver
+        && form.host.trim() == saved.host.trim()
+        && form.port == saved.port
+        && form.database.trim() == saved.database.trim()
+        && form.ssh == saved.ssh
+        && form.network_profile == saved.network_profile
+        && address(form) == address(saved)
+}
+
 /// Opens the connection `connection` describes, with the password the form typed, else the
-/// one it keeps; shared by the connection test and the driver compatibility probe.
+/// one it keeps when the form still reaches the saved server ([`same_target`]); shared by the
+/// connection test and the driver compatibility probe.
 pub(crate) async fn open_for_test(
     state: &AppState,
     connection: &SavedConnection,
@@ -411,8 +458,8 @@ pub(crate) async fn open_for_test(
             Some(secret) => Some(secret),
             // A connection that was never saved has nothing stored yet.
             None => state.with_store(|s| match s.get(connection.id) {
-                Some(_) => s.password(connection.id),
-                None => Ok(None),
+                Some(saved) if same_target(connection, saved) => s.password(connection.id),
+                _ => Ok(None),
             })?,
         },
     };
@@ -722,6 +769,59 @@ mod tests {
     use crate::commands::analysis::error_kind;
 
     use super::*;
+
+    /// The kept password goes only to the server it was kept for: a form pointed at another
+    /// host, port, database, driver, tunnel or URL option is tested without it.
+    #[test]
+    fn the_kept_password_goes_only_to_its_own_server() {
+        let mut saved = SavedConnection::new("Shop", DriverKind::Postgres);
+        saved.host = "db.internal".to_owned();
+        saved.port = Some(5432);
+        saved.database = "shop".to_owned();
+        saved
+            .options
+            .insert("connect_timeout".to_owned(), "10".to_owned());
+        let mut form = saved.clone();
+        form.name = "Shop renamed".to_owned();
+        form.user = "other".to_owned();
+        form.read_only = true;
+        form.options
+            .insert("connect_timeout".to_owned(), "30".to_owned());
+        assert!(
+            same_target(&form, &saved),
+            "only the name and settings changed"
+        );
+        form.host = " db.internal ".to_owned();
+        assert!(same_target(&form, &saved));
+
+        let changes: [fn(&mut SavedConnection); 7] = [
+            |c| c.host = "attacker.example".to_owned(),
+            |c| c.port = Some(6543),
+            |c| c.database = "other".to_owned(),
+            |c| c.driver = DriverKind::MySql,
+            |c| c.network_profile = Some(Uuid::new_v4()),
+            |c| {
+                c.ssh = Some(SavedSsh {
+                    host: "jump.example".to_owned(),
+                    port: 22,
+                    user: "me".to_owned(),
+                    auth: platypus_store::SshAuthKind::Agent,
+                    key_path: None,
+                    secret_id: Uuid::nil(),
+                    jump: None,
+                });
+            },
+            |c| {
+                c.options
+                    .insert("url".to_owned(), "postgres://attacker.example/x".to_owned());
+            },
+        ];
+        for (i, change) in changes.iter().enumerate() {
+            let mut form = saved.clone();
+            change(&mut form);
+            assert!(!same_target(&form, &saved), "change {i}");
+        }
+    }
 
     #[test]
     fn a_connection_without_a_host_or_an_ssh_host_is_refused_at_once() {

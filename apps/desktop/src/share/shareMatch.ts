@@ -57,18 +57,27 @@ export function matchTarget<C extends TargetFields>(target: ShareTarget, connect
   return { exact, candidates: scored.map(([, c]) => c) };
 }
 
+/** `text` with each `${` that would read an environment variable written `$${`, which a
+ *  connection reads as the text itself (as `held_references` in platypus-sync does). */
+export function heldReferences(text: string): string {
+  // A function's result is taken as it is: no `$` patterns in it.
+  return text.replace(/(?<!\$)\$\{/g, () => "$${");
+}
+
 /** `base` (a new connection of the descriptor's driver) filled in from the descriptor. The
  *  sender's name is kept, with nothing else of theirs: no user or password is set, the
- *  receiver types their own. */
+ *  receiver types their own. A `${env:NAME}` in the sender's fields is held (`$${env:NAME}`):
+ *  it would read this computer's environment and could send a variable to the sender's
+ *  server, so it is read only once the receiver edits it. */
 export function prefillFromTarget<C extends TargetFields>(base: C, target: ShareTarget): C {
   return {
     ...base,
     name: target.name || base.name,
     driver: target.driver,
-    host: target.host || base.host,
+    host: target.host ? heldReferences(target.host) : base.host,
     port: target.port ?? base.port,
-    database: target.database,
+    database: heldReferences(target.database),
     // The default schema is part of what the query assumes.
-    ...(target.schema ? { init: { time_zone: null, statements: "", ...base.init, schema: target.schema } } : {}),
+    ...(target.schema ? { init: { time_zone: null, statements: "", ...base.init, schema: heldReferences(target.schema) } } : {}),
   } as C;
 }

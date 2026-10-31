@@ -28,5 +28,8 @@ pub fn set_setting(
                 .map_err(|e| CommandError::new("invalid", format!("{key}: {e}")))?,
         )
     };
-    state.with_settings(|s| s.set(&key, value))
+    state.with_settings(|s| s.set(&key, value.clone()))?;
+    // What agents may do, chosen here, is the user's (see `agent_policy`).
+    state.approve_agent_setting(&key, value.as_ref());
+    Ok(())
 }

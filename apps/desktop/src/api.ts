@@ -499,6 +499,9 @@ export interface RestoreRequest {
   path: string;
   /** Drops the archive's objects before creating them again (`pg_restore --clean`). */
   clean: boolean;
+  /** The user has seen the client commands of a SQL file (`\!`, `system`…) and runs them.
+   *  Without it a file with any fails with `client_commands`, its lines as the message. */
+  allow_client_commands?: boolean;
 }
 
 /** The formats of a scheduled export. */
@@ -1077,8 +1080,18 @@ export interface SharedNotice {
   retargeted: number;
   /** Connections whose safety settings the file loosened: this computer's stricter ones were kept. */
   kept_stricter: number;
+  /** Connections whose new `${env:…}` references were held (`$${…}`): read as written until
+   *  the user edits them. */
+  held_references: number;
   message: string | null;
 }
+
+/** An edit made outside the app that gives agents more than the user approved: agents do
+ *  not get it until the user accepts it. */
+export type AgentPolicyChange =
+  | { kind: "access"; id: string; name: string; from: AgentAccess; to: AgentAccess }
+  | { kind: "confirm_writes" }
+  | { kind: "unfiltered" };
 
 export interface OpenedShared {
   workspace: Workspace;
@@ -1729,6 +1742,9 @@ export interface ExportOptions {
   format: ExportFormat;
   delimiter: string;
   header: boolean;
+  /** CSV: cells a spreadsheet would run as formulas (`=`, `+`, `-`, `@`…) get a leading `'`;
+   *  numbers stay. On when left out. */
+  formulas_as_text?: boolean;
   /** SQL: the table the INSERT statements write to. */
   table?: string;
   /** SQL: the database the statements are written for. */
@@ -2374,6 +2390,8 @@ export const api = {
     invoke<Workspace>("share_project", { projectId, folder, shareUser }),
   openSharedProject: (folder: string) => invoke<OpenedShared>("open_shared_project", { folder }),
   refreshSharedProjects: () => invoke<SharedNotice[]>("refresh_shared_projects"),
+  agentPolicyChanges: () => invoke<AgentPolicyChange[]>("agent_policy_changes"),
+  answerAgentPolicy: (accept: boolean) => invoke<void>("answer_agent_policy", { accept }),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
   deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),

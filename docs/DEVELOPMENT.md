@@ -114,6 +114,21 @@ PLATYPUS_README_SHOTS=../../docs/screenshots npm run e2e -- readme
 PLATYPUS_README_GIFS=../../docs/screenshots npm run e2e -- gifs
 ```
 
+### Test-only environment variables
+
+The release build honours a few variables so that the end-to-end tests can drive it. Each
+is set only by whoever launches the app, never by the app itself or by a file it reads:
+
+- `PLATYPUS_DEVTOOLS_PORT` opens the web view's developer tools protocol (CDP) on that port,
+  bound to `127.0.0.1`. **Accepted risk:** the protocol has no authentication, so while it is
+  open any process of this machine that connects can drive the app, with the user's
+  connections and passwords. It stays in release builds because the end-to-end suite drives
+  the release executable through it; never set it outside a test run.
+- `PLATYPUS_DRIVER_REGISTRY` points the driver downloads at another index: only an `https://`
+  address, or `http://` on this machine (the tests' fake registry); any other is ignored.
+- `PLATYPUS_UPDATE_URL` points the updater at a plain-HTTP address on this machine only; the
+  update signature is still checked.
+
 In VS Code, **Run PlatypusDB** (Ctrl+Shift+B) installs the frontend dependencies if they are
 missing, builds the sample database and starts `tauri dev`. `.vscode/tasks.json` also has
 tasks to start and stop the dev databases.

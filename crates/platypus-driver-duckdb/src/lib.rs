@@ -76,7 +76,8 @@ pub fn memory_path(name: &str) -> String {
 
 /// Opens the in-memory database `name`, or finds it open, with a connection to fill it.
 pub fn memory_database(name: &str) -> Result<(MemoryDatabase, duckdb::Connection)> {
-    let (database, conn) = database::connect(&memory_path(name), &files::ReadOptions::default())?;
+    let (database, conn) =
+        database::connect(&memory_path(name), &files::ReadOptions::default(), false)?;
     Ok((
         MemoryDatabase {
             _database: database,
@@ -142,8 +143,8 @@ impl DuckDbConnection {
         std::thread::Builder::new()
             .name("platypus-duckdb".to_owned())
             .spawn(move || {
-                match database::connect(&config.database, &files::ReadOptions::of(&config.options))
-                {
+                let options = files::ReadOptions::of(&config.options);
+                match database::connect(&config.database, &options, config.read_only) {
                     // The connection is dropped before its database.
                     Ok((_database, conn)) => {
                         let version = conn.version().unwrap_or_default();

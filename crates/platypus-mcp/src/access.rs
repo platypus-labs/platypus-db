@@ -368,8 +368,10 @@ fn clickhouse_table_starts(src: &str, tokens: &[Token]) -> Vec<bool> {
 }
 
 /// The first name in `statement` that reaches outside a read-only transaction in
-/// `dialect`, however the server reads the statement and decodes its quoted names.
-fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
+/// `dialect`, however the server reads the statement and decodes its quoted names: what a
+/// read-only connection or agent may not run, though the statement only reads.
+#[must_use]
+pub fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
     let outside = Outside::of(dialect);
     Lexer::readings(statement, dialect)
         .into_iter()
@@ -491,6 +493,20 @@ pub fn check_cql<'a>(
         connection,
     )
     .map(|_| statement)
+}
+
+/// Whether the user is asked before `statement` (as [`changes`] takes it) runs for an agent
+/// that may write, where Settings ask before agents' changes: it may change something, or it
+/// calls what acts outside the transaction (`dblink_exec`, Trino's `query()`, Snowflake's
+/// `SYSTEM$` functions, Oracle's packages), which no read-only transaction stops.
+#[must_use]
+pub fn asks_first(statement: &str, driver: DriverKind) -> bool {
+    let sql = !matches!(
+        driver,
+        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
+    );
+    changes(statement, driver)
+        || (sql && outside_effect(statement, Dialect::from(driver)).is_some())
 }
 
 /// [`check`] for the one `statement` it found.
@@ -1212,6 +1228,33 @@ mod tests {
             "SELECT a IS DISTINCT FROM b FROM t, deltaLake('http://h/b/')",
         ));
         assert!(message.contains("outside the transaction"), "{message}");
+    }
+
+    #[test]
+    fn read_write_agents_are_asked_before_effects_outside() {
+        for (driver, sql) in [
+            (
+                DriverKind::Postgres,
+                "select dblink_exec('host=x', 'drop table t')",
+            ),
+            (DriverKind::Postgres, "select pg_terminate_backend(42)"),
+            (
+                DriverKind::Trino,
+                "SELECT * FROM TABLE(system.query(query => 'DELETE FROM t'))",
+            ),
+            (DriverKind::Snowflake, "SELECT SYSTEM$ABORT_SESSION(42)"),
+            (
+                DriverKind::Oracle,
+                "select utl_http.request('http://x') from dual",
+            ),
+            (DriverKind::Sqlite, "select load_extension('x')"),
+            (DriverKind::Postgres, "delete from t where id = 1"),
+        ] {
+            assert!(asks_first(sql, driver), "{driver:?}: {sql}");
+        }
+        assert!(!asks_first("select * from t", DriverKind::Postgres));
+        assert!(!asks_first("db.a.find()", DriverKind::Mongo));
+        assert!(!asks_first("SELECT query FROM t", DriverKind::Trino));
     }
 
     #[test]

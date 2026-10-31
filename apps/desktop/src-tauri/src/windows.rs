@@ -34,8 +34,12 @@ pub fn window_config(app: &AppHandle, label: &str) -> Option<tauri::utils::confi
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
     {
+        // Unauthenticated, so on the loopback only (Chromium's default, said explicitly): an
+        // accepted risk for the end-to-end tests, see docs/DEVELOPMENT.md.
         let args = config.additional_browser_args.unwrap_or_default();
-        config.additional_browser_args = Some(format!("{args} --remote-debugging-port={port}"));
+        config.additional_browser_args = Some(format!(
+            "{args} --remote-debugging-address=127.0.0.1 --remote-debugging-port={port}"
+        ));
     }
     Some(config)
 }

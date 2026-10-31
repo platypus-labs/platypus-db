@@ -102,12 +102,16 @@ fn open(config: &ConnectionConfig) -> Result<rusqlite::Connection> {
             "{path} does not exist, nor does its folder"
         )));
     }
-    let create = memory || (!uri && in_a_folder);
-    let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE
-        | OpenFlags::SQLITE_OPEN_URI
-        | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    if create {
-        flags |= OpenFlags::SQLITE_OPEN_CREATE;
+    let mut flags = OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    if config.read_only {
+        // A read-only connection opens the file read-only: SQLite itself refuses a write,
+        // whatever runs (`PRAGMA query_only` could be turned off again).
+        flags |= OpenFlags::SQLITE_OPEN_READ_ONLY;
+    } else {
+        flags |= OpenFlags::SQLITE_OPEN_READ_WRITE;
+        if memory || (!uri && in_a_folder) {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
     }
     let conn = rusqlite::Connection::open_with_flags(path, flags)
         .map_err(|e| Error::Connect(format!("cannot open {path}: {e}")))?;

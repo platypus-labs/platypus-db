@@ -9,12 +9,14 @@ interface Props {
   /** Keys whose value goes in as typed (`${name}`); the others become literals. */
   raw: Set<string>;
   initial: Record<string, string>;
+  /** Keys whose initial value came with a shared query: the user is told to check them. */
+  suggested?: string[];
   onRun: (values: Record<string, string>) => void;
   onCancel: () => void;
 }
 
 /** Asks the values of a statement's parameters before it runs. */
-export function ParamsDialog({ sql, keys, raw, initial, onRun, onCancel }: Props) {
+export function ParamsDialog({ sql, keys, raw, initial, suggested = [], onRun, onCancel }: Props) {
   const [values, setValues] = useState(() => Object.fromEntries(keys.map((k) => [k, initial[k] ?? ""])));
   return (
     <div className="modal-backdrop" onMouseDown={onCancel}>
@@ -37,6 +39,13 @@ export function ParamsDialog({ sql, keys, raw, initial, onRun, onCancel }: Props
             raw: <code>{"${name}"}</code>,
           })}
         </p>
+        {suggested.length > 0 && (
+          <p className="notice warn" data-field="suggested_values">
+            {tNodes("The shared query came with these values: check them before running. {raw} values go into the SQL as they are.", {
+              raw: <code>{"${name}"}</code>,
+            })}
+          </p>
+        )}
         {keys.map((k, i) => (
           <label className="field" key={k}>
             <span>{raw.has(k) ? `\${${k}}` : k.startsWith("?") ? k : `:${k}`}</span>

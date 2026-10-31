@@ -98,6 +98,9 @@
 .modal.confirm p {
   font-size: var(--text-md);
   color: var(--fg);
+  /* A question may list lines (a file's commands): kept one per line, long ones wrapped. */
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 /* The destructive answer: the solid red, the same in both themes. */

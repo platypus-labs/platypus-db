@@ -22,7 +22,7 @@ use platypus_driver_sqlite::SqliteDriver;
 use platypus_plugins::PluginDriver;
 use platypus_sql::Dialect;
 use platypus_store::{
-    AgentAccess, ConnectionStore, SavedConnection, SavedSsh, SshAuthKind, StoreError,
+    AgentAccess, ConnectionStore, SavedConnection, SavedSsh, SettingsStore, SshAuthKind, StoreError,
 };
 use uuid::Uuid;
 
@@ -162,10 +162,39 @@ fn ssh_secrets(
         .collect()
 }
 
-/// The settings to open `saved` with, and the secrets they hold for the redactor.
+/// The bootstrap statements of `saved` that run for agents and the command line. Those of a
+/// connection in a shared project, which anyone who writes to its folder can change, run only
+/// once the user approved that exact text in the app (which asks at the first connect, as
+/// for a change): unapproved ones are left out, and the log (stderr) says so.
+fn approved_init<'a>(
+    store: &ConnectionStore,
+    saved: &'a SavedConnection,
+    settings: Option<&SettingsStore>,
+) -> &'a str {
+    use platypus_sync::init_approval::{approval_key, needs_approval};
+    let shared = store
+        .projects()
+        .iter()
+        .any(|p| p.shared.is_some() && p.connections.contains(&saved.id));
+    let approved = settings.and_then(|s| s.get::<String>(&approval_key(saved.id)));
+    if needs_approval(shared, &saved.init.statements, approved.as_deref()) {
+        eprintln!(
+            "platypus-mcp: `{}`: its bootstrap statements come from a shared project and were \
+             not approved on this computer, so they did not run. Connect to it once in \
+             PlatypusDB and approve them there",
+            saved.name
+        );
+        return "";
+    }
+    &saved.init.statements
+}
+
+/// The settings to open `saved` with, and the secrets they hold for the redactor. `settings`
+/// holds the approvals of shared bootstrap statements ([`approved_init`]).
 pub async fn config_of(
     store: &ConnectionStore,
     saved: &SavedConnection,
+    settings: Option<&SettingsStore>,
 ) -> Result<(ConnectionConfig, Redactor)> {
     let effective = store.effective(saved);
     let mut redactor = Redactor::default();
@@ -219,7 +248,7 @@ pub async fn config_of(
         }
         ssh = hop.jump.as_deref();
     }
-    let script = &effective.init.statements;
+    let script = approved_init(store, &effective, settings);
     config.init.statements = platypus_sql::split(script, Dialect::from(effective.driver))
         .iter()
         .map(|s| s.text(script).to_owned())
@@ -267,12 +296,13 @@ fn connect_message(e: &Error) -> String {
     }
 }
 
-/// Opens `saved` for agents; errors are redacted.
+/// Opens `saved` for agents, with the approvals `settings` holds; errors are redacted.
 pub async fn open(
     store: &ConnectionStore,
     saved: &SavedConnection,
+    settings: Option<&SettingsStore>,
 ) -> Result<(Box<dyn Connection>, Redactor)> {
-    let (config, redactor) = config_of(store, saved).await?;
+    let (config, redactor) = config_of(store, saved, settings).await?;
     let failed = |e: Error| AgentError::Connect {
         name: saved.name.clone(),
         message: redactor.apply(&connect_message(&e)),
@@ -367,7 +397,7 @@ mod tests {
         s.set_ssh_secret(ssh.secret_id, Some(&Secret::new("ssh-secret")))
             .unwrap();
 
-        let (config, redactor) = config_of(&s, &saved).await.unwrap();
+        let (config, redactor) = config_of(&s, &saved, None).await.unwrap();
         assert_eq!(config.password, Some(Secret::new("db-secret")));
         assert_eq!(
             config.ssh.unwrap().auth,
@@ -384,7 +414,51 @@ mod tests {
         let mut writer = saved.clone();
         writer.agent_access = platypus_store::AgentAccess::ReadWrite;
         s.save(writer.clone(), PasswordUpdate::Keep).unwrap();
-        assert!(!config_of(&s, &writer).await.unwrap().0.read_only);
+        assert!(!config_of(&s, &writer, None).await.unwrap().0.read_only);
+    }
+
+    /// A shared project's bootstrap statements run for agents and the command line only once
+    /// the user approved that text in the app; the user's own always run.
+    #[tokio::test]
+    async fn shared_bootstrap_statements_run_only_once_approved() {
+        use platypus_store::{Project, SharedLink};
+        use platypus_sync::init_approval::{approval_key, init_hash};
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path(), Arc::new(MemorySecrets::default()));
+        let mut saved = SavedConnection::new("Lite", DriverKind::Sqlite);
+        saved.database = dir.path().join("x.db").display().to_string();
+        saved.init.statements = "DELETE FROM audit".to_owned();
+        s.save(saved.clone(), PasswordUpdate::Keep).unwrap();
+        let statements = |config: ConnectionConfig| config.init.statements;
+        let own = config_of(&s, &saved, None).await.unwrap().0;
+        assert_eq!(statements(own), ["DELETE FROM audit"]);
+
+        let mut project = Project::new("Team", "#336699");
+        project.connections = vec![saved.id];
+        project.shared = Some(SharedLink {
+            path: dir.path().join("team"),
+            share_user: false,
+        });
+        s.save_project(project).unwrap();
+        let unapproved = config_of(&s, &saved, None).await.unwrap().0;
+        assert_eq!(statements(unapproved), Vec::<String>::new());
+
+        let mut settings = SettingsStore::open(dir.path().join("settings.toml")).unwrap();
+        let hash = init_hash("DELETE FROM audit");
+        settings
+            .set(
+                &approval_key(saved.id),
+                Some(platypus_store::toml::Value::String(hash)),
+            )
+            .unwrap();
+        let approved = config_of(&s, &saved, Some(&settings)).await.unwrap().0;
+        assert_eq!(statements(approved), ["DELETE FROM audit"]);
+        // Text changed in the shared file is not the text approved.
+        saved.init.statements = "DELETE FROM audit; DROP TABLE users".to_owned();
+        s.save(saved.clone(), PasswordUpdate::Keep).unwrap();
+        let changed = config_of(&s, &saved, Some(&settings)).await.unwrap().0;
+        assert_eq!(statements(changed), Vec::<String>::new());
     }
 
     #[tokio::test]
@@ -408,13 +482,13 @@ mod tests {
             PasswordUpdate::Set(Secret::new("${env:PLATYPUS_TEST_DB_PW}")),
         )
         .unwrap();
-        let (config, redactor) = config_of(&s, &saved).await.unwrap();
+        let (config, redactor) = config_of(&s, &saved, None).await.unwrap();
         assert_eq!(config.host, "db.from-env");
         assert_eq!(config.password, Some(Secret::new("env-secret")));
         assert_eq!(redactor.apply("bad env-secret"), "bad ***");
 
         saved.user = "${env:PLATYPUS_TEST_NOT_SET}".to_owned();
-        let error = config_of(&s, &saved).await.unwrap_err().to_string();
+        let error = config_of(&s, &saved, None).await.unwrap_err().to_string();
         assert!(
             error.contains("PLATYPUS_TEST_NOT_SET is not set"),
             "{error}"
@@ -429,7 +503,7 @@ mod tests {
         let s = store(dir, Arc::new(MemorySecrets::default()));
         let mut saved = SavedConnection::new("Duck", DriverKind::DuckDb);
         saved.database = database.display().to_string();
-        open(&s, &saved).await.unwrap().0
+        open(&s, &saved, None).await.unwrap().0
     }
 
     async fn run(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
@@ -458,8 +532,15 @@ mod tests {
         .unwrap();
         let read_secret = format!("SELECT * FROM read_text('{}')", secret.display());
 
-        let conn = duckdb_for_agents(dir.path(), &dir.path().join("agent.duckdb")).await;
+        // A read-only agent opens the file read-only, which DuckDB does only to a database
+        // that exists.
+        let database = dir.path().join("agent.duckdb");
+        let mut create = ConnectionConfig::new(DriverKind::DuckDb);
+        create.database = database.display().to_string();
+        drop(DuckDbDriver.connect(&create).await.unwrap());
+        let conn = duckdb_for_agents(dir.path(), &database).await;
         run(&*conn, "SELECT 42").await.unwrap();
+        assert!(run(&*conn, "CREATE TABLE t (a INT)").await.is_err());
         for sql in [
             read_secret.as_str(),
             &format!("SELECT * FROM glob('{}/*')", dir.path().display()),
@@ -482,18 +563,18 @@ mod tests {
         let mut s = store(dir.path(), Arc::new(vault));
         let saved = SavedConnection::new("Locked PG", DriverKind::Postgres);
         s.save(saved.clone(), PasswordUpdate::Keep).unwrap();
-        let err = config_of(&s, &saved).await.unwrap_err();
+        let err = config_of(&s, &saved, None).await.unwrap_err();
         assert!(matches!(err, AgentError::Locked(_)), "{err}");
         assert!(err.to_string().contains("master password"), "{err}");
 
         let mut asks = saved.clone();
         asks.save_password = false;
-        let err = config_of(&s, &asks).await.unwrap_err();
+        let err = config_of(&s, &asks, None).await.unwrap_err();
         assert!(matches!(err, AgentError::Denied(_)), "{err}");
 
         let mut command = asks.clone();
         command.password_command = Some("echo from-command".to_owned());
-        let (config, redactor) = config_of(&s, &command).await.unwrap();
+        let (config, redactor) = config_of(&s, &command, None).await.unwrap();
         assert_eq!(config.password, Some(Secret::new("from-command")));
         assert_eq!(redactor.apply("echo from-command"), "***");
     }

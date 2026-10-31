@@ -85,6 +85,7 @@ import { ChartToggle } from "../analysis/ChartView";
 import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
 import { RunMemory, rerunsUnasked } from "./rerun";
+import { asksMore } from "./filledChecks";
 import { onDataAgain, requestNavigatorRefresh } from "../navigatorEvents";
 import {
   type ShownSort,
@@ -152,6 +153,9 @@ export interface QueryTabModel extends TabBase {
   ddlDone?: number;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
+  /** The variables a shared query came with whose values the user did not confirm yet: a
+   *  `${name}` value goes into the SQL as it is, so the next run asks for them, filled in. */
+  unconfirmedVariables?: string[];
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
    *  connection does not outlive the app. */
   resultSource?: ResultSource;
@@ -255,6 +259,9 @@ function plannedOf(text: string, spans: StatementSpan[], offset: number, depth =
     };
   });
 }
+
+/** Whether `p` has `${name}` variables, whose values go into its text as they are. */
+const writesRaw = (p: Planned) => p.params.some((s) => s.kind === "variable");
 
 /** What a group of statements sent together does, for the checks and the run: a query only
  *  if each is one. */
@@ -440,6 +447,8 @@ export function QueryTab({
     keys: string[];
     raw: Set<string>;
     initial: Record<string, string>;
+    /** Keys whose value came with a shared query, offered for the user to check. */
+    suggested: string[];
     resolve: (values: Record<string, string> | null) => void;
   } | null>(null);
   const [terminalLog, setTerminalLog] = useState<TerminalBlock[]>([]);
@@ -758,13 +767,19 @@ export function QueryTab({
   ): Promise<Record<string, string> | null> {
     const keys = parameterKeys(p.params);
     const raw = new Set(p.params.filter((s) => s.kind === "variable").map((s) => s.name));
-    const ask = [...new Set(keys)].filter((k) => (raw.has(k) ? !(k in variables) : !defined.has(k)));
+    // The values a shared query came with are asked once, filled in, before they run.
+    const unconfirmed = new Set(tab.unconfirmedVariables ?? []);
+    const ask = [...new Set(keys)].filter((k) =>
+      raw.has(k) ? !(k in variables) || (unconfirmed.has(k) && !defined.has(k)) : !defined.has(k),
+    );
     if (ask.length === 0) return variables;
+    const suggested = ask.filter((k) => unconfirmed.has(k));
     const answer = await new Promise<Record<string, string> | null>((resolve) =>
-      setAsking({ sql: p.sql, keys: ask, raw, initial: variables, resolve }),
+      setAsking({ sql: p.sql, keys: ask, raw, initial: variables, suggested, resolve }),
     );
     setAsking(null);
     if (!answer) return null;
+    if (suggested.length > 0) onChange({ unconfirmedVariables: [...unconfirmed].filter((k) => !suggested.includes(k)) });
     Object.assign(lastAnswers.current, answer);
     for (const k of ask) if (!k.startsWith("?")) defined.add(k);
     return { ...variables, ...answer };
@@ -814,6 +829,21 @@ export function QueryTab({
   async function confirmed(planned: Planned[]): Promise<boolean> {
     const request = await check(connection, planned.flatMap((p) => p.checks), sideSession);
     return !request || new Promise<boolean>((resolve) => setGuard({ request, resolve }));
+  }
+
+  /** `p`, whose `${name}` values went into its text as `sql`, judged again as it runs: the
+   *  values may make a read a change, or drop its WHERE. The read-only check applies to `sql`
+   *  (unless `force`, the tab's own Run anyway), and the confirmations the values add are
+   *  asked. The status to show instead of running it, or `null` to run it. */
+  async function filledRefusal(p: Planned, sql: string, force: boolean): Promise<ResultStatus | null> {
+    const analysis = await api.analyzeSql(sql, connection.driver, 0);
+    const filled = plannedOf(sql, analysis.statements, -1);
+    if (connection.read_only && !force && filled.some((f) => !f.readOnly)) {
+      return { kind: "error", error: clientError(t("{name} is read-only and this may modify data.", { name: connection.name })) };
+    }
+    const checks = filled.flatMap((f) => f.checks);
+    if (asksMore(p.checks, checks) && !(await confirmed([{ ...p, sql, checks }]))) return cancelled();
+    return null;
   }
 
   /** Runs what `mode` selects in the editor, or `again` (statements that ran before). With
@@ -985,8 +1015,11 @@ export function QueryTab({
         status = await command(p, i);
       } else {
         const filled = p.params.length ? await fillParams(p, variables, defined) : variables;
+        const refused = filled && writesRaw(p) ? await filledRefusal(p, substitute(p.sql, p.params, filled, connection.driver), force) : null;
         if (!filled) {
           status = cancelled();
+        } else if (refused) {
+          status = refused;
         } else {
           values = filled;
           if (p.params.length) {
@@ -2195,6 +2228,7 @@ export function QueryTab({
           keys={asking.keys}
           raw={asking.raw}
           initial={asking.initial}
+          suggested={asking.suggested}
           onRun={asking.resolve}
           onCancel={() => asking.resolve(null)}
         />

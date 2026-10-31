@@ -79,9 +79,15 @@ fn settings() -> Result<duckdb::Config> {
 /// `:memory:`), with the instance it belongs to. Keep the instance at least as long as the
 /// connection, so that a reconnect finds it open. A data file read with other `options` is
 /// another instance.
+///
+/// With `read_only` (a read-only connection), a database file not open yet is opened
+/// read-only, so that DuckDB itself refuses writes. One file has one instance in the
+/// process: a connection to a file already open shares its instance as it was opened, and an
+/// in-memory database or a data file is never read-only (the statement check stops writes).
 pub fn connect(
     path: &str,
     options: &files::ReadOptions,
+    read_only: bool,
 ) -> Result<(Arc<Database>, duckdb::Connection)> {
     if path.is_empty() {
         return Err(Error::Config("no database file given".to_owned()));
@@ -101,6 +107,11 @@ pub fn connect(
     } else {
         let root = if path.starts_with(MEMORY) || data_file {
             duckdb::Connection::open_in_memory_with_flags(settings()?)
+        } else if read_only {
+            let settings = settings()?
+                .access_mode(duckdb::AccessMode::ReadOnly)
+                .map_err(|e| Error::Connect(format!("cannot configure DuckDB: {e}")))?;
+            duckdb::Connection::open_with_flags(&key, settings)
         } else {
             duckdb::Connection::open_with_flags(&key, settings()?)
         }

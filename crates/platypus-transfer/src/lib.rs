@@ -118,6 +118,11 @@ pub struct ExportOptions {
     pub delimiter: char,
     /// CSV header row.
     pub header: bool,
+    /// CSV: a text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return
+    /// gets a leading `'`, so that a spreadsheet shows it instead of running it as a formula
+    /// (CSV injection); numbers such as `-5` stay as they are. On by default: off for a file
+    /// meant for another program, which would read the `'` as part of the value.
+    pub formulas_as_text: bool,
     /// SQL: the table the statements insert into, as typed (it is quoted when needed).
     pub table: String,
     /// SQL: the database the statements are written for.
@@ -142,6 +147,7 @@ impl Default for ExportOptions {
             format: Format::Csv,
             delimiter: ',',
             header: true,
+            formulas_as_text: true,
             table: "export".to_owned(),
             driver: None,
             compression: Compression::None,
@@ -367,6 +373,7 @@ impl Exporter {
                         sql: (dialect, table),
                         delimiter,
                         header: options.header,
+                        formulas_as_text: options.formulas_as_text,
                     },
                 )?))
             }

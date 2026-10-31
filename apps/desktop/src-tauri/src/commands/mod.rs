@@ -5,6 +5,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 pub mod admin;
+pub mod agent_policy;
 pub mod agents;
 pub mod analysis;
 pub mod backup;

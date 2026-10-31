@@ -20,6 +20,8 @@ use serde::Serialize;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(windows)]
+mod acl;
 mod commands;
 mod http;
 
@@ -477,20 +479,29 @@ fn new_token(dir: &Path) -> Result<String, String> {
     Ok(token)
 }
 
-/// Writes `text` to `path`, readable only by the user where the system has such rights.
+/// Writes `text` to `path`, readable only by the user: mode 0600 on Unix, an access list of
+/// the user alone on Windows. The rights are set on every write, before the text goes in,
+/// so a file left by an older version (or loosened by hand) is tightened too.
 fn write_private(path: &Path, text: &str) -> Result<(), String> {
     use std::io::Write;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
+    let cannot = |e: std::io::Error| format!("cannot write {}: {e}", path.display());
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    options
-        .open(path)
-        .and_then(|mut file| file.write_all(text.as_bytes()))
-        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+    let mut file = options.open(path).map_err(cannot)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(cannot)?;
+    }
+    #[cfg(windows)]
+    acl::restrict_to_user(path)?;
+    file.write_all(text.as_bytes()).map_err(cannot)
 }
 
 #[cfg(test)]

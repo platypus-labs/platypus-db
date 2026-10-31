@@ -341,9 +341,11 @@ pub struct ConnectionConfig {
     /// What a driver needs beyond the fields above, e.g. Snowflake's `warehouse`.
     pub options: BTreeMap<String, String>,
     /// The session only reads: set by the app for a read-only connection and for agents with
-    /// read-only access, never saved. Drivers whose server can refuse what reaches outside a
-    /// read query make it do so (ClickHouse runs such statements with `readonly = 1`); the
-    /// others leave it to the statement check.
+    /// read-only access, never saved. Drivers whose server can refuse writes make it do so,
+    /// after the session setup: PostgreSQL (and CockroachDB, YugabyteDB) with
+    /// `default_transaction_read_only`, MySQL and MariaDB with `SET SESSION TRANSACTION READ
+    /// ONLY`, SQLite and DuckDB by opening the file read-only, ClickHouse with `readonly = 1`.
+    /// The others leave it to the statement check.
     pub read_only: bool,
 }
 

@@ -11,7 +11,7 @@ import {
   encodeLink,
   isShareLink,
 } from "../src/share/shareQuery.ts";
-import { describeTarget, matchTarget, prefillFromTarget } from "../src/share/shareMatch.ts";
+import { describeTarget, heldReferences, matchTarget, prefillFromTarget } from "../src/share/shareMatch.ts";
 
 const target = { driver: "postgres", host: "db.example.com", port: 5432, database: "shop", schema: "public", name: "Shop" };
 const query = (over = {}) => ({ title: "Top orders", sql: "SELECT * FROM orders WHERE total > :min", parameters: {}, target, ...over });
@@ -191,4 +191,21 @@ test("a new connection is prefilled without credentials", () => {
   assert.equal(filled.init.schema, "public");
   const bare = prefillFromTarget(base, { ...target, host: "", port: null, name: "", schema: null });
   assert.deepEqual([bare.name, bare.host, bare.port, "init" in bare], ["", "localhost", 5432, false]);
+});
+
+test("the sender's environment references are held, read only once the receiver edits them", () => {
+  const base = { ...saved("new", { name: "", host: "localhost", port: 5432, database: "", user: "" }), password: "" };
+  const filled = prefillFromTarget(base, {
+    ...target,
+    host: "${env:AWS_SECRET_ACCESS_KEY}.attacker.example",
+    database: "${env:A}-${env:B}",
+    schema: "$${env:KEPT}",
+  });
+  assert.deepEqual(
+    [filled.host, filled.database, filled.init.schema],
+    ["$${env:AWS_SECRET_ACCESS_KEY}.attacker.example", "$${env:A}-$${env:B}", "$${env:KEPT}"],
+  );
+  assert.equal(heldReferences("${${"), "$${$${");
+  assert.equal(heldReferences(heldReferences("x${env:A}")), "x$${env:A}");
+  assert.equal(heldReferences("plain"), "plain");
 });

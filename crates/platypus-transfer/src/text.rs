@@ -1,6 +1,7 @@
 //! The formats written cell by cell from the values' text: CSV, JSON, SQL `INSERT`
 //! statements, Markdown, HTML and XML tables, and Excel workbooks.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::path::Path;
@@ -31,6 +32,8 @@ pub struct Settings {
     /// For CSV: the field separator, and whether a header row comes first.
     pub delimiter: u8,
     pub header: bool,
+    /// For CSV: cells a spreadsheet would run as formulas are written as text.
+    pub formulas_as_text: bool,
 }
 
 pub struct TextSink {
@@ -402,7 +405,7 @@ impl TextSink {
         match self.format {
             Format::Csv if self.settings.header => {
                 let mut s = String::new();
-                csv_line(&mut s, self.settings.delimiter, self.names.iter().map(Some));
+                csv_line(&mut s, &self.settings, self.names.iter().map(Some));
                 s
             }
             Format::Json => "[".to_owned(),
@@ -469,7 +472,7 @@ impl TextSink {
     fn row(&mut self, s: &mut String, row: &[Option<String>]) -> Result<()> {
         match self.format {
             Format::Csv => {
-                csv_line(s, self.settings.delimiter, row.iter().map(Option::as_ref));
+                csv_line(s, &self.settings, row.iter().map(Option::as_ref));
             }
             Format::Json | Format::Ndjson => {
                 if self.format == Format::Json && !self.first {
@@ -569,21 +572,47 @@ impl TextSink {
     }
 }
 
+/// `value` as a spreadsheet shows it as text rather than runs it: a cell that starts with
+/// `=`, `+`, `-`, `@`, a tab or a carriage return is a formula to the spreadsheets (Excel,
+/// Calc, Google Sheets: `=HYPERLINK(…)`, `=cmd|…`), and gets a leading `'`. A number such as
+/// `-5` or `+1.5e3` stays as it is.
+fn neutralized(value: &str) -> Cow<'_, str> {
+    let formula = match value.chars().next() {
+        Some('=' | '@' | '\t' | '\r') => true,
+        Some('+' | '-') => value.parse::<f64>().is_err(),
+        _ => false,
+    };
+    if formula {
+        Cow::Owned(format!("'{value}"))
+    } else {
+        Cow::Borrowed(value)
+    }
+}
+
 /// A CSV line of `values`: a value is quoted when it holds the delimiter, a quote or a line
 /// break, and an empty text is `""`, so that it differs from NULL, which is nothing.
-fn csv_line<'a>(s: &mut String, delimiter: u8, values: impl Iterator<Item = Option<&'a String>>) {
-    let delimiter = char::from(delimiter);
+fn csv_line<'a>(
+    s: &mut String,
+    settings: &Settings,
+    values: impl Iterator<Item = Option<&'a String>>,
+) {
+    let delimiter = char::from(settings.delimiter);
     for (i, v) in values.enumerate() {
         if i > 0 {
             s.push(delimiter);
         }
         let Some(v) = v else { continue };
+        let v = if settings.formulas_as_text {
+            neutralized(v)
+        } else {
+            Cow::Borrowed(v.as_str())
+        };
         if v.is_empty() || v.contains([delimiter, '"', '\n', '\r']) {
             s.push('"');
             s.push_str(&v.replace('"', "\"\""));
             s.push('"');
         } else {
-            s.push_str(v);
+            s.push_str(&v);
         }
     }
     s.push('\n');
@@ -679,6 +708,44 @@ mod tests {
         for (input, output) in cases {
             assert_eq!(base64(input.as_bytes()), output, "{input:?}");
         }
+    }
+
+    #[test]
+    fn csv_cells_a_spreadsheet_would_run_are_written_as_text() {
+        let settings = |formulas_as_text| Settings {
+            sql: (Dialect::Postgres, String::new()),
+            delimiter: b',',
+            header: true,
+            formulas_as_text,
+        };
+        let values: Vec<String> = [
+            "=HYPERLINK(\"http://evil\",\"x\")",
+            "+cmd|' /C calc'!A0",
+            "-2+3",
+            "@SUM(A1)",
+            "\tlead",
+            "-5",
+            "+1.5e3",
+            "plain",
+            "a=b",
+        ]
+        .map(str::to_owned)
+        .into();
+        let mut s = String::new();
+        csv_line(&mut s, &settings(true), values.iter().map(Some));
+        assert_eq!(
+            s,
+            "\"'=HYPERLINK(\"\"http://evil\"\",\"\"x\"\")\",'+cmd|' /C calc'!A0,'-2+3,'@SUM(A1),'\tlead,-5,+1.5e3,plain,a=b\n"
+        );
+        let mut s = String::new();
+        csv_line(&mut s, &settings(false), values.iter().map(Some));
+        assert!(s.starts_with("\"=HYPERLINK("), "{s}");
+        assert!(s.contains(",@SUM(A1),"), "{s}");
+        // NULL stays nothing, the empty text "".
+        let mut s = String::new();
+        let empty = String::new();
+        csv_line(&mut s, &settings(true), [None, Some(&empty)].into_iter());
+        assert_eq!(s, ",\"\"\n");
     }
 
     #[test]

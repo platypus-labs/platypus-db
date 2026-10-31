@@ -24,6 +24,12 @@ const KEY_LEN: usize = 32;
 const MAX_M_COST: u32 = 1 << 20;
 const MAX_T_COST: u32 = 64;
 const MAX_P_COST: u32 = 16;
+/// The key settings of new keys: 64 MiB, 3 passes, 1 lane, above the library's defaults
+/// (19 MiB, 2 passes). The file names its own, so a vault written with others still opens,
+/// and takes these on the next unlock.
+const KEY_COST: (u32, u32, u32) = (64 * 1024, 3, 1);
+/// The shortest master password a new vault, or a new password, accepts.
+pub const MIN_PASSWORD_LEN: usize = 8;
 
 /// What the vault file holds; everything but the KDF settings is encrypted.
 #[derive(Serialize, Deserialize)]
@@ -41,6 +47,8 @@ struct VaultFile {
 struct Unlocked {
     key: [u8; KEY_LEN],
     salt: [u8; SALT_LEN],
+    /// The settings `key` was derived with, written with it.
+    cost: (u32, u32, u32),
     secrets: HashMap<Uuid, String>,
 }
 
@@ -66,14 +74,15 @@ impl std::fmt::Debug for VaultSecrets {
     }
 }
 
-/// Refuses an empty master password.
+/// Refuses a new master password that is empty or shorter than [`MIN_PASSWORD_LEN`]
+/// characters. Unlocking does not check: a vault made before keeps its password.
 fn check_password(password: &str) -> Result<()> {
-    if password.is_empty() {
-        return Err(StoreError::Invalid(
-            "the master password cannot be empty".to_owned(),
-        ));
-    }
-    Ok(())
+    let message = match password.chars().count() {
+        0 => "the master password cannot be empty",
+        n if n < MIN_PASSWORD_LEN => "the master password must be at least 8 characters long",
+        _ => return Ok(()),
+    };
+    Err(StoreError::Invalid(message.to_owned()))
 }
 
 fn corrupt(path: &Path, message: &str) -> StoreError {
@@ -108,14 +117,6 @@ fn random<const N: usize>() -> Result<[u8; N]> {
         .fill(&mut out)
         .map_err(|_| StoreError::Invalid("no random numbers from the system".to_owned()))?;
     Ok(out)
-}
-
-fn params() -> (u32, u32, u32) {
-    (
-        Params::DEFAULT_M_COST,
-        Params::DEFAULT_T_COST,
-        Params::DEFAULT_P_COST,
-    )
 }
 
 fn derive(password: &str, salt: &[u8], (m, t, p): (u32, u32, u32)) -> Result<[u8; KEY_LEN]> {
@@ -153,8 +154,9 @@ impl VaultSecrets {
         let salt = random::<SALT_LEN>()?;
         let vault = Self::locked(path);
         let open = Unlocked {
-            key: derive(password, &salt, params())?,
+            key: derive(password, &salt, KEY_COST)?,
             salt,
+            cost: KEY_COST,
             secrets: secrets
                 .into_iter()
                 .map(|(id, s)| (id, s.expose().to_owned()))
@@ -205,15 +207,41 @@ impl VaultSecrets {
         if file.m_cost > MAX_M_COST || file.t_cost > MAX_T_COST || file.p_cost > MAX_P_COST {
             return Err(corrupt(&self.path, "key settings out of range"));
         }
-        let key = derive(password, &salt, (file.m_cost, file.t_cost, file.p_cost))?;
+        let cost = (file.m_cost, file.t_cost, file.p_cost);
+        let key = derive(password, &salt, cost)?;
         let plain = sealing_key(&key)
             .open_in_place(Nonce::assume_unique_for_key(nonce), Aad::empty(), &mut data)
             .map_err(|_| StoreError::Invalid("wrong master password".to_owned()))?;
         let secrets =
             serde_json::from_slice(plain).map_err(|e| corrupt(&self.path, &e.to_string()))?;
         plain.fill(0);
-        *self.lock_state() = Some(Unlocked { key, salt, secrets });
+        let mut open = Unlocked {
+            key,
+            salt,
+            cost,
+            secrets,
+        };
+        if cost != KEY_COST {
+            self.strengthen(&mut open, password);
+        }
+        *self.lock_state() = Some(open);
         Ok(())
+    }
+
+    /// Writes `open` again under a key with [`KEY_COST`] and a new salt, for a vault written
+    /// with weaker settings. A failure keeps the old key, which still opens the file.
+    fn strengthen(&self, open: &mut Unlocked, password: &str) {
+        let Ok(salt) = random::<SALT_LEN>() else {
+            return;
+        };
+        let Ok(key) = derive(password, &salt, KEY_COST) else {
+            return;
+        };
+        let old = (open.key, open.salt, open.cost);
+        (open.key, open.salt, open.cost) = (key, salt, KEY_COST);
+        if self.write(open).is_err() {
+            (open.key, open.salt, open.cost) = old;
+        }
     }
 
     /// Forgets the key and the secrets until the next unlock.
@@ -229,11 +257,11 @@ impl VaultSecrets {
         // The salt changes only with its key, and both only once the file is written: a
         // failure keeps the old password working.
         let salt = random::<SALT_LEN>()?;
-        let key = derive(password, &salt, params())?;
-        let old = (open.key, open.salt);
-        (open.key, open.salt) = (key, salt);
+        let key = derive(password, &salt, KEY_COST)?;
+        let old = (open.key, open.salt, open.cost);
+        (open.key, open.salt, open.cost) = (key, salt, KEY_COST);
         if let Err(e) = self.write(open) {
-            (open.key, open.salt) = old;
+            (open.key, open.salt, open.cost) = old;
             return Err(e);
         }
         Ok(())
@@ -262,7 +290,7 @@ impl VaultSecrets {
         sealing_key(&open.key)
             .seal_in_place_append_tag(Nonce::assume_unique_for_key(nonce), Aad::empty(), &mut data)
             .map_err(|_| StoreError::Invalid("cannot encrypt the vault".to_owned()))?;
-        let (m_cost, t_cost, p_cost) = params();
+        let (m_cost, t_cost, p_cost) = open.cost;
         let text = serde_json::to_string_pretty(&VaultFile {
             version: FILE_VERSION,
             m_cost,
@@ -318,8 +346,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("secrets.vault");
         let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
-        let vault = VaultSecrets::create(&path, "hunter2", HashMap::from([(a, Secret::new("pg"))]))
-            .unwrap();
+        let vault =
+            VaultSecrets::create(&path, "hunter2!", HashMap::from([(a, Secret::new("pg"))]))
+                .unwrap();
         vault.set(b, &Secret::new("ssh")).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("pg") && !text.contains("ssh"), "{text}");
@@ -329,18 +358,68 @@ mod tests {
         let err = reopened.unlock("wrong").unwrap_err();
         assert!(err.to_string().contains("wrong master password"), "{err}");
         assert!(!reopened.is_unlocked());
-        reopened.unlock("hunter2").unwrap();
+        reopened.unlock("hunter2!").unwrap();
         assert_eq!(reopened.get(a).unwrap().unwrap().expose(), "pg");
         assert_eq!(reopened.get(b).unwrap().unwrap().expose(), "ssh");
 
         reopened.delete(a).unwrap();
         reopened.change_password("correct horse").unwrap();
         reopened.lock();
-        assert!(reopened.unlock("hunter2").is_err());
+        assert!(reopened.unlock("hunter2!").is_err());
         reopened.unlock("correct horse").unwrap();
         assert_eq!(reopened.get(a).unwrap(), None);
         assert_eq!(reopened.entries().unwrap().len(), 1);
         assert!(VaultSecrets::create(dir.path().join("x"), "", HashMap::new()).is_err());
+    }
+
+    #[test]
+    fn a_new_password_has_a_minimum_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = VaultSecrets::create(dir.path().join("x"), "short", HashMap::new()).unwrap_err();
+        assert!(err.to_string().contains("at least 8 characters"), "{err}");
+        assert!(!dir.path().join("x").exists());
+        // Characters, not bytes.
+        assert!(VaultSecrets::create(dir.path().join("x"), "ééééééé", HashMap::new()).is_err());
+        let vault = VaultSecrets::create(dir.path().join("x"), "eight ch", HashMap::new()).unwrap();
+        assert!(vault.change_password("1234567").is_err());
+    }
+
+    /// A vault written with the library's defaults (what older versions wrote) still opens,
+    /// and is written again with the stronger settings.
+    #[test]
+    fn an_older_vault_opens_and_is_strengthened() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.vault");
+        let id = Uuid::new_v4();
+        let old = (
+            Params::DEFAULT_M_COST,
+            Params::DEFAULT_T_COST,
+            Params::DEFAULT_P_COST,
+        );
+        let salt = random::<SALT_LEN>().unwrap();
+        let vault = VaultSecrets::locked(&path);
+        vault
+            .write(&Unlocked {
+                key: derive("pw", &salt, old).unwrap(),
+                salt,
+                cost: old,
+                secrets: HashMap::from([(id, "pg".to_owned())]),
+            })
+            .unwrap();
+        let costs = |path: &Path| {
+            let file: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+            ["m_cost", "t_cost", "p_cost"].map(|k| file[k].as_u64().unwrap())
+        };
+        assert_eq!(costs(&path)[0], u64::from(Params::DEFAULT_M_COST));
+
+        // A short password of before is still taken to unlock.
+        vault.unlock("pw").unwrap();
+        assert_eq!(vault.get(id).unwrap().unwrap().expose(), "pg");
+        assert_eq!(costs(&path), [64 * 1024, 3, 1]);
+        let again = VaultSecrets::locked(&path);
+        again.unlock("pw").unwrap();
+        assert_eq!(again.get(id).unwrap().unwrap().expose(), "pg");
     }
 
     #[test]
@@ -349,7 +428,7 @@ mod tests {
         let path = dir.path().join("secrets.vault");
         VaultSecrets::create(
             &path,
-            "pw",
+            "password",
             HashMap::from([(Uuid::new_v4(), Secret::new("x"))]),
         )
         .unwrap();
@@ -359,19 +438,19 @@ mod tests {
         let flipped = if data.starts_with('0') { "1" } else { "0" };
         file["data"] = format!("{flipped}{}", &data[1..]).into();
         std::fs::write(&path, file.to_string()).unwrap();
-        assert!(VaultSecrets::locked(&path).unlock("pw").is_err());
+        assert!(VaultSecrets::locked(&path).unlock("password").is_err());
     }
 
     #[test]
     fn refuses_key_settings_out_of_range() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("secrets.vault");
-        VaultSecrets::create(&path, "pw", HashMap::new()).unwrap();
+        VaultSecrets::create(&path, "password", HashMap::new()).unwrap();
         let mut file: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         file["m_cost"] = (MAX_M_COST + 1).into();
         std::fs::write(&path, file.to_string()).unwrap();
-        let err = VaultSecrets::locked(&path).unlock("pw").unwrap_err();
+        let err = VaultSecrets::locked(&path).unlock("password").unwrap_err();
         assert!(err.to_string().contains("out of range"), "{err}");
     }
 }

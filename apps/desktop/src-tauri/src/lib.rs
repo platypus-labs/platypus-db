@@ -291,7 +291,7 @@ fn override_update_endpoint(
 }
 
 /// `http://` to `127.0.0.1`, `[::1]` or `localhost`, with no credentials.
-fn is_local_http(url: &str) -> bool {
+pub(crate) fn is_local_http(url: &str) -> bool {
     let Ok(url) = url::Url::parse(url) else {
         return false;
     };
@@ -420,6 +420,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::shared_projects::share_project,
         commands::shared_projects::open_shared_project,
         commands::shared_projects::refresh_shared_projects,
+        commands::agent_policy::agent_policy_changes,
+        commands::agent_policy::answer_agent_policy,
         commands::analysis::across::open_across_db,
         commands::analysis::across::reload_across_db,
         commands::saved_results::save_result,

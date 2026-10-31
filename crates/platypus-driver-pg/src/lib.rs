@@ -59,11 +59,28 @@ impl Driver for PgDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
-        let conn: Box<dyn Connection> = Box::new(PgConnection::connect(config).await?);
+        let pg = PgConnection::connect(config).await?;
+        let pooled = pg.unnamed_statements;
+        let conn: Box<dyn Connection> = Box::new(pg);
         platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        // A read-only connection's transactions are read-only on the server too (CockroachDB
+        // and YugabyteDB take the same setting), so a function that writes fails there. Set
+        // after the setup, which cannot undo it. Behind a pooler in transaction mode the
+        // setting would stay on a server session that other clients get: there, as on a
+        // server that refuses it, only the statement check applies.
+        if config.read_only && !pooled {
+            let read_only = platypus_core::SessionInit {
+                statements: vec![READ_ONLY_SESSION.to_owned()],
+                ..platypus_core::SessionInit::default()
+            };
+            let _ = platypus_core::run_init(&*conn, &read_only, self.kind()).await;
+        }
         Ok(conn)
     }
 }
+
+/// What makes every transaction of a read-only connection's session read-only.
+const READ_ONLY_SESSION: &str = "SET default_transaction_read_only = on";
 
 #[derive(Debug)]
 pub struct PgConnection {
