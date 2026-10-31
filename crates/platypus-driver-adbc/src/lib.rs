@@ -102,7 +102,7 @@ pub struct AdbcConnection {
 impl AdbcConnection {
     pub async fn open(config: &ConnectionConfig, library: &Path) -> Result<Self> {
         let options = profile::options(config)?;
-        let (commands, opened) = session::spawn(library, options)?;
+        let (commands, opened) = session::spawn(library, profile::entrypoint(config), options)?;
         let opened = opened.await.map_err(|_| Error::Closed)??;
         let configured = |key: &str| {
             config

@@ -87,6 +87,14 @@ fn ssl_opts(config: &ConnectionConfig) -> Result<Option<SslOpts>> {
     };
     let identity = match (&config.ssl_client_cert, &config.ssl_client_key) {
         (Some(cert), Some(key)) => {
+            for (what, file) in [("certificate", cert), ("key", key)] {
+                if !file.is_file() {
+                    return Err(Error::Config(format!(
+                        "client {what} file not found: {}",
+                        file.display()
+                    )));
+                }
+            }
             Some(ClientIdentity::new(cert.clone().into(), key.clone().into()))
         }
         (None, None) => None,
@@ -883,9 +891,19 @@ mod tests {
         let mut config = ConnectionConfig::new(DriverKind::MySql);
         config.ssl_mode = SslMode::Require;
         assert!(ssl_opts(&config).unwrap().is_some());
-        config.ssl_client_cert = Some("client.crt".into());
+        let dir = tempfile::tempdir().unwrap();
+        let (cert, key) = (dir.path().join("client.crt"), dir.path().join("client.key"));
+        config.ssl_client_cert = Some(cert.clone());
         assert!(ssl_opts(&config).is_err());
-        config.ssl_client_key = Some("client.key".into());
+        config.ssl_client_key = Some(key.clone());
+
+        // A file that is not there is named in the error, the certificate or the key.
+        let err = ssl_opts(&config).err().unwrap().to_string();
+        assert!(err.contains("client.crt"), "{err}");
+        std::fs::write(&cert, b"").unwrap();
+        let err = ssl_opts(&config).err().unwrap().to_string();
+        assert!(err.contains("client.key"), "{err}");
+        std::fs::write(&key, b"").unwrap();
         assert!(ssl_opts(&config).unwrap().is_some());
     }
 

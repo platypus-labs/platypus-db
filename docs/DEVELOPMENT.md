@@ -135,6 +135,9 @@ docker compose -f docker/compose.yml up -d --wait
 docker compose -f docker/compose.yml --profile sqlserver up -d --wait
 docker compose -f docker/compose.yml --profile libsql up -d --wait
 docker compose -f docker/compose.yml --profile mongo up -d --wait
+# S3-compatible store (export upload to a bucket) and PostgreSQL / MySQL that require a client certificate
+docker compose -f docker/compose.yml --profile s3 up -d --wait
+docker compose -f docker/compose.yml --profile tls up -d --wait
 # Older versions (PostgreSQL 12/14/16, MySQL 5.7/8.0, MariaDB 10.6, SQL Server 2017, MongoDB 5),
 # then the conformance suite on each
 docker compose -f docker/compose.yml --profile versions up -d --wait

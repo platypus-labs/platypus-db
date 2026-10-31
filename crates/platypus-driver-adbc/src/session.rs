@@ -87,8 +87,14 @@ fn database_option(key: &str) -> OptionDatabase {
 }
 
 /// Loads the driver and opens a connection with `options`.
-fn open(library: &Path, options: Vec<(String, String)>) -> Result<(ManagedConnection, Opened)> {
-    let load = |version| ManagedDriver::load_dynamic_from_filename(library, None, version);
+fn open(
+    library: &Path,
+    entrypoint: Option<&str>,
+    options: Vec<(String, String)>,
+) -> Result<(ManagedConnection, Opened)> {
+    let load = |version| {
+        ManagedDriver::load_dynamic_from_filename(library, entrypoint.map(str::as_bytes), version)
+    };
     // Drivers written for ADBC 1.0 refuse to initialise as 1.1.
     let mut driver = load(AdbcVersion::V110)
         .or_else(|_| load(AdbcVersion::V100))
@@ -155,6 +161,7 @@ fn info(connection: &ManagedConnection) -> (Option<String>, Option<String>) {
 /// Starts the thread; answers once the connection is open or has failed.
 pub fn spawn(
     library: &Path,
+    entrypoint: Option<String>,
     options: Vec<(String, String)>,
 ) -> Result<(std_mpsc::Sender<Command>, oneshot::Receiver<Result<Opened>>)> {
     let (commands, inbox) = std_mpsc::channel();
@@ -162,18 +169,20 @@ pub fn spawn(
     let library = library.to_owned();
     std::thread::Builder::new()
         .name("platypus-adbc".to_owned())
-        .spawn(move || match open(&library, options) {
-            Ok((mut connection, info)) => {
-                let _ = ready.send(Ok(info));
-                // Ends when the connection, and with it the sender, is dropped.
-                for command in inbox {
-                    run(&mut connection, command);
+        .spawn(
+            move || match open(&library, entrypoint.as_deref(), options) {
+                Ok((mut connection, info)) => {
+                    let _ = ready.send(Ok(info));
+                    // Ends when the connection, and with it the sender, is dropped.
+                    for command in inbox {
+                        run(&mut connection, command);
+                    }
                 }
-            }
-            Err(e) => {
-                let _ = ready.send(Err(e));
-            }
-        })
+                Err(e) => {
+                    let _ = ready.send(Err(e));
+                }
+            },
+        )
         .map_err(|e| Error::Connect(format!("cannot start the ADBC worker: {e}")))?;
     Ok((commands, opened))
 }

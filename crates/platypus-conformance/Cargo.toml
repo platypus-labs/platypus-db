@@ -13,6 +13,7 @@ arrow-cast.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
 futures.workspace = true
+hmac = "0.13"
 platypus-core.workspace = true
 platypus-driver-adbc.workspace = true
 platypus-driver-clickhouse.workspace = true
@@ -35,9 +36,11 @@ platypus-net.workspace = true
 platypus-schema.workspace = true
 platypus-sql.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 tokio-util.workspace = true
+ureq = { version = "3", default-features = false }
 
 [lints]
 workspace = true

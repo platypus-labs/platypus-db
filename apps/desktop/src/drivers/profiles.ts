@@ -87,6 +87,11 @@ export const PROFILES: Partial<Record<DriverKind, Profile>> = {
   adbc: {
     fields: [
       { key: "options.driver_file", label: msg("Driver library"), required: true, file: true },
+      {
+        key: "options.entrypoint",
+        label: msg("Entrypoint (optional)"),
+        placeholder: "AdbcDriverInit",
+      },
       { key: "options.uri", label: msg("URI"), placeholder: "grpc+tls://host:port" },
       { key: "user", label: msg("User") },
     ],

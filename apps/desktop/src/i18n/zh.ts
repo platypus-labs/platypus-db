@@ -976,6 +976,7 @@ const zh: Record<string, string> = {
   "On — HTTPS, verify certificate": "开启 — HTTPS，验证证书",
   "On — HTTPS, unverified": "开启 — HTTPS，不验证",
   "Password (optional)": "密码（可选）",
+  "Entrypoint (optional)": "入口函数（可选）",
   "Driver library": "驱动库",
   "URI": "URI",
   "Changes on {name} (production)": "{name} 上的更改（生产）",
