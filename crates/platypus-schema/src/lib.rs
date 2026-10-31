@@ -442,6 +442,7 @@ pub async fn load(
             if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(1)) {
                 let definition = create::parse(&create, dialect);
                 apply_definition(&mut design, &definition);
+                mysql_unique_keys(&mut design, &definition);
                 catalog::mysql(&mut design, &definition);
             }
             // ENGINE and the like stay as they are: MySQL alters tables in place.
@@ -476,6 +477,41 @@ pub async fn load(
         _ => {}
     }
     Ok(design)
+}
+
+/// MySQL: a unique key on a prefix (`` `email`(20) ``), an expression or in descending order
+/// becomes a unique index of the design, whose key parts [`catalog::mysql`] then keeps; as a
+/// `UNIQUE (email)` constraint it would lose them, and fail on a `TEXT` column. One on whole
+/// columns stays a constraint.
+fn mysql_unique_keys(design: &mut TableDesign, definition: &create::Definition) {
+    for parsed in definition.indexes.iter().filter(|i| i.unique) {
+        let Some(at) = design
+            .constraints
+            .iter()
+            .position(|c| c.kind == ConstraintType::Unique && c.name == parsed.name)
+        else {
+            continue;
+        };
+        // `SHOW CREATE TABLE` quotes every name.
+        let columns = &design.constraints[at].columns;
+        let plain = parsed.parts.len() == columns.len()
+            && parsed
+                .parts
+                .iter()
+                .zip(columns)
+                .all(|(p, c)| *p == Dialect::MySql.quote_ident_always(c));
+        if plain {
+            continue;
+        }
+        let key = design.constraints.remove(at);
+        design.indexes.push(IndexDesign {
+            original: key.original,
+            name: key.name,
+            columns: key.columns,
+            unique: true,
+            ..IndexDesign::default()
+        });
+    }
 }
 
 /// What the design keeps of a SQLite table beyond its details, read from the SQL SQLite keeps
@@ -700,6 +736,44 @@ pub async fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mysql_unique_key_on_a_prefix_becomes_a_unique_index_with_its_parts() {
+        let unique = |name: &str, columns: &[&str]| ConstraintDesign {
+            original: Some(name.to_owned()),
+            name: name.to_owned(),
+            kind: ConstraintType::Unique,
+            columns: columns.iter().map(|&c| c.to_owned()).collect(),
+            check: String::new(),
+        };
+        let mut design = TableDesign {
+            constraints: vec![
+                unique("u_email", &["email"]),
+                unique("u_body", &["body", "id"]),
+            ],
+            ..TableDesign::default()
+        };
+        let definition = create::parse(
+            "CREATE TABLE `t` (\n  `id` int NOT NULL,\n  `email` varchar(90),\n  `body` text,\n  \
+             UNIQUE KEY `u_email` (`email`),\n  UNIQUE KEY `u_body` (`body`(20),`id` DESC)\n) ENGINE=InnoDB",
+            Dialect::MySql,
+        );
+        mysql_unique_keys(&mut design, &definition);
+        catalog::mysql(&mut design, &definition);
+        // On whole columns: still a constraint.
+        assert_eq!(design.constraints, [unique("u_email", &["email"])]);
+        assert_eq!(
+            design.indexes,
+            [IndexDesign {
+                original: Some("u_body".into()),
+                name: "u_body".into(),
+                columns: vec!["body".into(), "id".into()],
+                unique: true,
+                parts: vec!["`body`(20)".into(), "`id` DESC".into()],
+                ..IndexDesign::default()
+            }]
+        );
+    }
 
     #[test]
     fn a_time_columns_current_timestamp_is_an_expression() {

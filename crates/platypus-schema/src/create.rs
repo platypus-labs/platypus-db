@@ -12,15 +12,18 @@ pub struct Definition {
     pub options: Option<String>,
     /// Whether a column is `AUTOINCREMENT` (SQLite).
     pub autoincrement: bool,
-    /// The plain, `FULLTEXT` and `SPATIAL` indexes of MySQL's `SHOW CREATE TABLE`.
+    /// The plain, unique, `FULLTEXT` and `SPATIAL` indexes of MySQL's `SHOW CREATE TABLE`.
     pub indexes: Vec<IndexDefinition>,
 }
 
-/// An index of MySQL's `SHOW CREATE TABLE`, a `KEY`, a `FULLTEXT KEY` or a `SPATIAL KEY`.
+/// An index of MySQL's `SHOW CREATE TABLE`, a `KEY`, a `UNIQUE KEY`, a `FULLTEXT KEY` or a
+/// `SPATIAL KEY`.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct IndexDefinition {
     pub name: String,
-    /// `FULLTEXT` or `SPATIAL`; `None` for a plain index.
+    /// A `UNIQUE KEY`.
+    pub unique: bool,
+    /// `FULLTEXT` or `SPATIAL`; `None` for a plain or unique index.
     pub method: Option<String>,
     /// The key parts as written: `` `body`(50) ``, `` `a` DESC ``, `(lower(`b`))`.
     pub parts: Vec<String>,
@@ -39,8 +42,8 @@ pub struct ColumnDefinition {
 /// no bare column name is one.
 const CONSTRAINT_WORDS: [&str; 5] = ["CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOREIGN"];
 
-/// Further ones of MySQL's `SHOW CREATE TABLE`, also reserved there.
-const MYSQL_INDEX_WORDS: [&str; 4] = ["KEY", "INDEX", "FULLTEXT", "SPATIAL"];
+/// The words that start an index in MySQL's `SHOW CREATE TABLE`, all reserved there.
+const MYSQL_INDEX_WORDS: [&str; 5] = ["KEY", "INDEX", "UNIQUE", "FULLTEXT", "SPATIAL"];
 
 struct Tokens<'a> {
     sql: &'a str,
@@ -151,13 +154,15 @@ pub fn parse(sql: &str, dialect: Dialect) -> Definition {
     out
 }
 
-/// The index defined by the tokens `from..to`: `[FULLTEXT | SPATIAL] KEY name (parts) ..`.
+/// The index defined by the tokens `from..to`:
+/// `[UNIQUE | FULLTEXT | SPATIAL] KEY name (parts) ..`.
 fn mysql_index(t: &Tokens<'_>, from: usize, to: usize) -> Option<IndexDefinition> {
     let method = ["FULLTEXT", "SPATIAL"]
         .into_iter()
         .find(|w| t.is_word(from, w))
         .map(str::to_owned);
-    let mut i = from + usize::from(method.is_some());
+    let unique = t.is_word(from, "UNIQUE");
+    let mut i = from + usize::from(method.is_some() || unique);
     if t.is_word(i, "KEY") || t.is_word(i, "INDEX") {
         i += 1;
     }
@@ -171,6 +176,7 @@ fn mysql_index(t: &Tokens<'_>, from: usize, to: usize) -> Option<IndexDefinition
     };
     Some(IndexDefinition {
         name,
+        unique,
         method,
         parts,
     })
@@ -274,7 +280,7 @@ mod tests {
         let d = parse(
             "CREATE TABLE `d` (\n  `id` int NOT NULL,\n  `body` text,\n  PRIMARY KEY (`id`),\n  \
              KEY `d_body` (`body`(50)),\n  KEY `d_two` (`id` DESC,(lower(`body`))),\n  \
-             FULLTEXT KEY `d_ft` (`body`)\n) ENGINE=InnoDB",
+             FULLTEXT KEY `d_ft` (`body`),\n  UNIQUE KEY `d_u` (`body`(20),`id` DESC)\n) ENGINE=InnoDB",
             Dialect::MySql,
         );
         assert_eq!(d.columns.len(), 2);
@@ -283,18 +289,25 @@ mod tests {
             [
                 IndexDefinition {
                     name: "d_body".into(),
-                    method: None,
                     parts: vec!["`body`(50)".into()],
+                    ..Default::default()
                 },
                 IndexDefinition {
                     name: "d_two".into(),
-                    method: None,
                     parts: vec!["`id` DESC".into(), "(lower(`body`))".into()],
+                    ..Default::default()
                 },
                 IndexDefinition {
                     name: "d_ft".into(),
                     method: Some("FULLTEXT".into()),
                     parts: vec!["`body`".into()],
+                    ..Default::default()
+                },
+                IndexDefinition {
+                    name: "d_u".into(),
+                    unique: true,
+                    method: None,
+                    parts: vec!["`body`(20)".into(), "`id` DESC".into()],
                 },
             ]
         );
