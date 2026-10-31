@@ -79,15 +79,27 @@ impl AgentError {
     }
 }
 
+/// A profile file as an agent is told of it: its name, not where the profile is (the user's
+/// folders, their name in them).
+fn file_name(path: &std::path::Path) -> String {
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
 impl From<platypus_store::StoreError> for AgentError {
     fn from(e: platypus_store::StoreError) -> Self {
         match e {
             // A parse error quotes the file's lines, which may hold a password command.
             platypus_store::StoreError::Format { path, message } => Self::Store(format!(
                 "invalid {}: {}",
-                path.display(),
+                file_name(&path),
                 message.lines().next().unwrap_or_default()
             )),
+            platypus_store::StoreError::Io { path, source } => {
+                Self::Store(format!("cannot access {}: {source}", file_name(&path)))
+            }
             other => Self::Store(other.to_string()),
         }
     }
@@ -100,7 +112,8 @@ mod tests {
     #[test]
     fn file_errors_do_not_quote_the_file() {
         let e = AgentError::from(platypus_store::StoreError::Format {
-            path: "connections.toml".into(),
+            path: std::path::Path::new("C:/Users/ada/AppData/Roaming/PlatypusDB")
+                .join("connections.toml"),
             message: "TOML parse error at line 3\n  |\n3 | password_command = \"echo s3cret\""
                 .to_owned(),
         });
@@ -109,6 +122,11 @@ mod tests {
             "invalid connections.toml: TOML parse error at line 3"
         );
         assert_eq!(e.kind(), "store");
+        let e = AgentError::from(platypus_store::StoreError::Io {
+            path: "/home/ada/.local/share/platypus-db/settings.toml".into(),
+            source: std::io::Error::other("denied"),
+        });
+        assert_eq!(e.to_string(), "cannot access settings.toml: denied");
         assert_eq!(
             AgentError::Timeout(Duration::from_millis(1500)).to_string(),
             "cancelled after 1.5s: raise timeout_seconds or narrow the query"
