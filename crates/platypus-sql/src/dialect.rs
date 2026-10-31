@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 
 use platypus_core::DriverKind;
-use platypus_core::arrow_schema::DataType;
+use platypus_core::arrow_schema::{DataType, TimeUnit};
 
 use crate::{Lexer, Token, TokenKind};
 
@@ -1192,6 +1192,11 @@ impl Dialect {
                 }
             }
             (T::Date32 | T::Date64, _) => "DATE",
+            // MySQL's TIME has no fraction of a second unless asked: 23:59:59.999999 would
+            // round up to 24:00:00.
+            (T::Time32(TimeUnit::Second), Self::MySql) => "TIME",
+            (T::Time32(TimeUnit::Millisecond), Self::MySql) => "TIME(3)",
+            (T::Time32(_) | T::Time64(_), Self::MySql) => "TIME(6)",
             (T::Time32(_) | T::Time64(_), dialect) if dialect != Self::Sqlite => "TIME",
             (T::Timestamp(..), Self::MySql) => "DATETIME(6)",
             (T::Timestamp(_, None), Self::SqlServer) => "DATETIME2",
@@ -1372,6 +1377,18 @@ mod tests {
             Dialect::DuckDb,
             Dialect::SqlServer,
         ];
+        // MySQL keeps the fraction of a time of day: TIME alone rounds 23:59:59.999999 up.
+        for (time, want) in [
+            (DataType::Time32(TimeUnit::Second), "TIME"),
+            (DataType::Time32(TimeUnit::Millisecond), "TIME(3)"),
+            (DataType::Time64(TimeUnit::Microsecond), "TIME(6)"),
+        ] {
+            assert_eq!(Dialect::MySql.column_type(&time), want);
+        }
+        assert_eq!(
+            Dialect::Postgres.column_type(&DataType::Time64(TimeUnit::Microsecond)),
+            "TIME"
+        );
         for (data_type, expected) in cases {
             for (dialect, want) in dialects.iter().zip(expected) {
                 assert_eq!(
