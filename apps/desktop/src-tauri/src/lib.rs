@@ -420,6 +420,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::shared_projects::share_project,
         commands::shared_projects::open_shared_project,
         commands::shared_projects::refresh_shared_projects,
+        commands::agent_policy::agent_policy_changes,
+        commands::agent_policy::answer_agent_policy,
         commands::analysis::across::open_across_db,
         commands::analysis::across::reload_across_db,
         commands::saved_results::save_result,

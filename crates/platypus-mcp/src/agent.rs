@@ -25,6 +25,7 @@ use crate::error::{AgentError, Result};
 use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
+use crate::policy::{AgentPolicy, Seal};
 use crate::profile::Profile;
 use crate::query::{self, Limits, RunError};
 use crate::redact::Redactor;
@@ -345,6 +346,8 @@ pub struct Agent {
     allowed: Mutex<HashSet<(String, Uuid)>>,
     /// The session of calls that bring none (the CLI's).
     session: String,
+    /// The policy the user approved in the app, which edits of the files cannot loosen.
+    seal: Seal,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only
@@ -383,6 +386,7 @@ pub(crate) fn may_use(c: &SavedConnection) -> bool {
 impl Agent {
     #[must_use]
     pub fn new(profile: Profile) -> Self {
+        let seal = Seal::of(profile.config_dir());
         Self {
             profile,
             sessions: Mutex::default(),
@@ -391,7 +395,40 @@ impl Agent {
             link: None,
             allowed: Mutex::default(),
             session: Uuid::new_v4().to_string(),
+            seal,
         }
+    }
+
+    /// The agent, with the approved policy sealed by `seal` instead of the keychain's.
+    #[must_use]
+    pub fn with_seal(mut self, seal: Seal) -> Self {
+        self.seal = seal;
+        self
+    }
+
+    /// What agents may do now: what the files say, never more than the user approved in the
+    /// app (see [`crate::policy`]).
+    fn policy(&self, store: &ConnectionStore) -> AgentPolicy {
+        let settings = self.profile.settings();
+        let current = AgentPolicy::current(store.list(), settings.as_ref());
+        self.seal.read().honored(&current)
+    }
+
+    /// The saved connections, each with the agent access agents get on it ([`Self::policy`]),
+    /// and the store.
+    pub(crate) fn connections(&self) -> Result<(ConnectionStore, Vec<SavedConnection>)> {
+        let store = self.profile.connections()?;
+        let policy = self.policy(&store);
+        let connections = store
+            .list()
+            .iter()
+            .map(|c| {
+                let mut c = c.clone();
+                c.agent_access = policy.access(c.id);
+                c
+            })
+            .collect();
+        Ok((store, connections))
     }
 
     /// The agent, reaching the open app through `link`.
@@ -407,12 +444,22 @@ impl Agent {
         self.link.as_ref()
     }
 
-    /// Whether agents' changes wait for the user's yes in the app (Settings › Safety).
+    /// Whether agents' changes wait for the user's yes in the app (Settings › Safety), as
+    /// approved there.
     fn confirms_changes(&self) -> bool {
         self.profile
-            .settings()
-            .and_then(|s| s.get::<bool>("agents.confirm_writes"))
-            .unwrap_or(true)
+            .connections()
+            .map_or(true, |store| self.policy(&store).confirm_writes)
+    }
+
+    /// What the Safety setting for `UPDATE` or `DELETE` without `WHERE` means for agents, as
+    /// approved in the app.
+    fn unfiltered_rule(&self, store: &ConnectionStore) -> UnfilteredRule {
+        if self.policy(store).unfiltered_allowed {
+            UnfilteredRule::Allow
+        } else {
+            UnfilteredRule::Refuse
+        }
     }
 
     /// Asks the user, in the open app, to let `statement` change `saved` for `origin`, unless
@@ -514,9 +561,8 @@ impl Agent {
 
     /// The connections agents may use, in the order the app lists them.
     pub fn list_connections(&self) -> Result<Vec<ConnectionInfo>> {
-        let store = self.profile.connections()?;
-        Ok(store
-            .list()
+        let (_, connections) = self.connections()?;
+        Ok(connections
             .iter()
             .filter(|c| may_use(c))
             .map(|c| ConnectionInfo {
@@ -536,8 +582,8 @@ impl Agent {
 
     /// The connection named `name` (or with that id), if agents may use it.
     pub(crate) fn find(&self, name: &str) -> Result<(ConnectionStore, SavedConnection)> {
-        let store = self.profile.connections()?;
-        let visible = || store.list().iter().filter(|c| may_use(c));
+        let (store, connections) = self.connections()?;
+        let visible = || connections.iter().filter(|c| may_use(c));
         let id = Uuid::parse_str(name.trim()).ok();
         let exact: Vec<&SavedConnection> = visible()
             .filter(|c| Some(c.id) == id || c.name == name)
@@ -706,7 +752,7 @@ impl Agent {
         let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
         let access = saved.effective_agent_access();
-        let unfiltered = UnfilteredRule::from_settings(self.profile.settings().as_ref());
+        let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();
         let start = Instant::now();
         let checked = if saved.driver == DriverKind::Mongo {
@@ -832,7 +878,7 @@ impl Agent {
         }
         let access = saved.effective_agent_access();
         let unfiltered = if analyze {
-            UnfilteredRule::from_settings(self.profile.settings().as_ref())
+            self.unfiltered_rule(&store)
         } else {
             UnfilteredRule::Allow
         };
@@ -1246,6 +1292,53 @@ mod tests {
         let asked = locked(&app.asked);
         assert_eq!(asked.len(), 1, "a plain query is not asked about");
         assert_eq!(asked[0].statement, "SELECT load_extension('x')");
+    }
+
+    /// An agent that edits the profile's files to give itself more gets nothing until the
+    /// user accepts the edit in the app, which seals it.
+    #[tokio::test]
+    async fn an_outside_edit_cannot_give_agents_more_than_approved() {
+        use platypus_store::{MemorySecrets, SecretStore};
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("db.sqlite");
+        sqlite(&db, 2);
+        save_connection(dir.path(), "sqlite", &db);
+        let profile = Profile::at(dir.path());
+        let secrets: Arc<dyn SecretStore> = Arc::new(MemorySecrets::default());
+        let seal = Seal::with(dir.path(), secrets);
+        let approve = || {
+            let store = profile.connections().unwrap();
+            let settings = profile.settings();
+            seal.write(&AgentPolicy::current(store.list(), settings.as_ref()))
+                .unwrap();
+        };
+        approve();
+        let toml = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        std::fs::write(
+            dir.path().join("connections.toml"),
+            toml + "agent_access = \"read_write\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("settings.toml"),
+            "[agents]\nconfirm_writes = false\n",
+        )
+        .unwrap();
+        let agent = Agent::new(Profile::at(dir.path())).with_seal(seal.clone());
+        let delete = change("DELETE FROM t WHERE id = 1");
+        let refused = agent.run_query(&delete, "test").await.unwrap_err();
+        assert!(refused.to_string().contains("read-only"), "{refused}");
+        assert_eq!(
+            agent.list_connections().unwrap()[0].agent_access,
+            AgentAccess::ReadOnly
+        );
+        assert_eq!(count(&agent).await, "2");
+
+        // Accepted in the app: the edit applies, writes without asking included.
+        approve();
+        agent.run_query(&delete, "test").await.unwrap();
+        assert_eq!(count(&agent).await, "1");
     }
 
     #[tokio::test]

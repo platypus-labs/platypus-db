@@ -1083,6 +1083,13 @@ export interface SharedNotice {
   message: string | null;
 }
 
+/** An edit made outside the app that gives agents more than the user approved: agents do
+ *  not get it until the user accepts it. */
+export type AgentPolicyChange =
+  | { kind: "access"; id: string; name: string; from: AgentAccess; to: AgentAccess }
+  | { kind: "confirm_writes" }
+  | { kind: "unfiltered" };
+
 export interface OpenedShared {
   workspace: Workspace;
   project: string;
@@ -2380,6 +2387,8 @@ export const api = {
     invoke<Workspace>("share_project", { projectId, folder, shareUser }),
   openSharedProject: (folder: string) => invoke<OpenedShared>("open_shared_project", { folder }),
   refreshSharedProjects: () => invoke<SharedNotice[]>("refresh_shared_projects"),
+  agentPolicyChanges: () => invoke<AgentPolicyChange[]>("agent_policy_changes"),
+  answerAgentPolicy: (accept: boolean) => invoke<void>("answer_agent_policy", { accept }),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
   deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),

@@ -3,6 +3,7 @@
  * every few minutes, and the shared projects' folders when the window gets focus. Both can
  * also be asked for by hand (`runSync`, `refreshShared`); what they find is shown as a notice.
  */
+import { checkAgentPolicy } from "../agents/policyWatch";
 import { api, toCommandError, type SharedNotice, type SyncReport } from "../api";
 import { plural, t } from "../i18n";
 import { scriptsChanged } from "../scripts/scripts";
@@ -188,7 +189,14 @@ export async function refreshShared(): Promise<SharedNotice[]> {
 export function startBackground(): () => void {
   stopped = false;
   void scheduleSync(true);
-  const onFocus = () => void refreshShared().catch((e: unknown) => console.warn("shared projects", e));
+  const onFocus = () => {
+    void refreshShared().catch((e: unknown) => console.warn("shared projects", e));
+    // Edits of the profile's files that give agents more wait for the user's yes.
+    void checkAgentPolicy(async () => {
+      await loadSettings();
+      await reloadWorkspace();
+    });
+  };
   onFocus();
   window.addEventListener("focus", onFocus);
   return () => {

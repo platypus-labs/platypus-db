@@ -277,7 +277,9 @@ pub fn save_connection(
             )
         })?;
     }
-    state.with_store(|s| {
+    let access = connection.agent_access;
+    let before = state.with_store(|s| Ok(s.get(id).map(|c| c.agent_access)))?;
+    let saved = state.with_store(|s| {
         let old = s.get(connection.id).and_then(|c| c.ssh.clone());
         let new = connection.ssh.clone();
         s.save(connection, update)?;
@@ -292,7 +294,10 @@ pub fn save_connection(
             s.set_projects_of(id, &projects)?;
         }
         Ok(s.list().to_vec())
-    })
+    })?;
+    // The agent access chosen here is the user's: agents get it (see `agent_policy`).
+    state.approve_agent_access(id, before, access);
+    Ok(saved)
 }
 
 /// Connection files of other tools found where they keep them.
