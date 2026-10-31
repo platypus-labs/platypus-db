@@ -16,7 +16,7 @@ use crate::import::{ImportError, rows_text};
 pub struct Snapshot {
     /// `UPDATE` or `DELETE`.
     pub verb: &'static str,
-    /// The table, qualified as the statements write it.
+    /// The table, qualified and quoted as the statements write it.
     pub table: String,
     pub rows: u64,
     pub restore: Vec<String>,
@@ -85,9 +85,10 @@ pub async fn take(
     if touched.verb == "UPDATE" && (key.is_empty() || sets_key) {
         return Ok(Taken::NoKey);
     }
+    // Every name quoted: a restore script reads the same whatever words the database reserves.
     let quoted: Vec<String> = columns
         .iter()
-        .map(|c| dialect.quote_ident(&c.name).into_owned())
+        .map(|c| dialect.quote_ident_always(&c.name))
         .collect();
     // PostgreSQL writes every value as its own text, which it reads back as the column's type.
     let list: Vec<String> = if dialect == Dialect::Postgres {
@@ -99,7 +100,11 @@ pub async fn take(
     else {
         return Ok(Taken::TooMany);
     };
-    let table = dialect.qualified(Some(&schema), name);
+    let table = format!(
+        "{}.{}",
+        dialect.quote_ident_always(&schema),
+        dialect.quote_ident_always(name)
+    );
     let described: Vec<Column<'_>> = columns
         .iter()
         .zip(

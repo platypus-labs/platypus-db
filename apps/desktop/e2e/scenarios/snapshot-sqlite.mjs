@@ -16,6 +16,8 @@ const row = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const log = `document.querySelector('.modal.tx-log')`;
 const tabCount = `document.querySelectorAll('.query-tab').length`;
+/** Whether the visible editor holds `text`; false while a new tab's editor is still mounting. */
+const editorHas = (text) => `(${visibleTab}?.querySelector('.cm-content')?.textContent.includes(${JSON.stringify(text)}) === true)`;
 
 export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "shop.db"));
@@ -62,7 +64,7 @@ async function restoreFromLog(page, n) {
   await page.waitFor(`${log} !== null`);
   const tabs = await page.eval(tabCount);
   await page.eval(`[...${log}.querySelectorAll('.tx-log-restore')][${n}].click()`);
-  await page.waitFor(`${tabCount} === ${tabs + 1} && ${visibleTab}.querySelector('.cm-content').textContent.includes('Puts back the rows')`, 15_000);
+  await page.waitFor(`${tabCount} === ${tabs + 1} && ${editorHas("Puts back the rows")}`, 15_000);
 }
 
 /** Runs the restore script the visible tab holds, as it is. */
@@ -88,7 +90,7 @@ export default async function (page, { dir }) {
 
   // Back in the first editor: a DELETE, then a join a snapshot cannot read, which still runs.
   await page.eval(`document.querySelectorAll('.tab')[0].click()`);
-  await page.waitFor(`${visibleTab}.querySelector('.cm-content').textContent.includes('UPDATE accounts')`, 15_000);
+  await page.waitFor(editorHas("UPDATE accounts"), 15_000);
   await runScript(page, "DELETE FROM accounts WHERE balance <= 0;\nUPDATE accounts SET owner = 'y' WHERE id IN (SELECT a.id FROM accounts a JOIN accounts b ON a.id = b.id);");
   assert.equal(accounts(dir).length, 1);
   await page.eval(`${toolbarButton("Transaction log")}.click()`);
@@ -101,8 +103,16 @@ export default async function (page, { dir }) {
   assert.equal(restored.length, 3, JSON.stringify(restored));
   assert.deepEqual(restored.slice(1), before.slice(1), "the deleted rows are back");
 
-  // Snapshots… lists every one, newest first.
+  // Snapshots… lists every one, newest first: the restore script of the first UPDATE ran two
+  // UPDATEs from the editor, which have one each too (its INSERTs of the DELETE do not).
   await palette(page, "Snapshots before changes");
-  await page.waitFor(`document.querySelectorAll('.modal.snapshots .snapshot-list li').length === 3`, 15_000);
-  assert.match(await page.eval(`document.querySelector('.modal.snapshots .snapshot-list li').textContent`), /UPDATE/);
+  const heads = `[...document.querySelectorAll('.modal.snapshots .snapshot-list li .snapshot-head')].map(h => [h.querySelector('strong').textContent, h.querySelector('.muted').textContent.split(' · ').pop()].join(' · '))`;
+  await page.waitFor(`${heads}.length === 5`, 15_000);
+  assert.deepEqual(await page.eval(heads), [
+    'UPDATE "main"."accounts" · 1 row',
+    'DELETE "main"."accounts" · 2 rows',
+    'UPDATE "main"."accounts" · 1 row',
+    'UPDATE "main"."accounts" · 1 row',
+    'UPDATE "main"."accounts" · 2 rows',
+  ]);
 }

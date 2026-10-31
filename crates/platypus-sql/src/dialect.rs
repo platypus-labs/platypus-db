@@ -696,6 +696,13 @@ impl Dialect {
         if first_ok && rest_ok && !is_reserved(name, self) {
             return Cow::Borrowed(name);
         }
+        Cow::Owned(self.quote_ident_always(name))
+    }
+
+    /// Quotes an identifier whether the dialect requires it or not: for statements the app
+    /// writes for later, which must read the same whatever words the database reserves then.
+    #[must_use]
+    pub fn quote_ident_always(self, name: &str) -> String {
         let (open, close) = self.ident_quotes();
         let escaped = match self {
             // A backslash escapes the next character inside BigQuery quotes.
@@ -706,7 +713,7 @@ impl Dialect {
                 .replace('\\', "\\\\"),
             _ => name.replace(close, &format!("{close}{close}")),
         };
-        Cow::Owned(format!("{open}{escaped}{close}"))
+        format!("{open}{escaped}{close}")
     }
 
     /// The character that delimits quoted identifiers: the opening one where they differ.
@@ -1387,6 +1394,15 @@ mod tests {
         ] {
             assert!(list.windows(2).all(|w| w[0] < w[1]), "{list:?}");
         }
+    }
+
+    #[test]
+    fn quotes_identifiers_always_when_asked() {
+        assert_eq!(Dialect::Sqlite.quote_ident_always("main"), "\"main\"");
+        assert_eq!(Dialect::Postgres.quote_ident_always("a\"b"), "\"a\"\"b\"");
+        assert_eq!(Dialect::MySql.quote_ident_always("orders"), "`orders`");
+        assert_eq!(Dialect::SqlServer.quote_ident_always("a]b"), "[a]]b]");
+        assert_eq!(Dialect::BigQuery.quote_ident_always("a`b"), "`a\\`b`");
     }
 
     #[test]

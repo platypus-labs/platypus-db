@@ -4,6 +4,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use platypus_sql::snapshot::touched_rows;
 use platypus_transfer::snapshot::{Taken, take};
@@ -59,6 +60,20 @@ pub enum SnapshotOutcome {
     NoKey,
 }
 
+/// The time the last snapshot was taken at.
+static LAST_TAKEN: AtomicI64 = AtomicI64::new(0);
+
+/// The time a snapshot taken `now` is noted at: later than the one before, even within the
+/// same millisecond, so that the newest is listed first and pruned last.
+fn taken_at(now: i64) -> i64 {
+    let mut stamp = now;
+    let _ = LAST_TAKEN.fetch_update(Ordering::AcqRel, Ordering::Acquire, |last| {
+        stamp = now.max(last + 1);
+        Some(stamp)
+    });
+    stamp
+}
+
 fn io(path: &Path, e: &std::io::Error) -> CommandError {
     CommandError::new("io", format!("{}: {e}", path.display()))
 }
@@ -111,7 +126,7 @@ pub async fn take_snapshot(
         Ok(Taken::NoKey) => return Ok(SnapshotOutcome::NoKey),
         Err(e) => return Err(CommandError::new("snapshot", e.to_string())),
     };
-    let taken_at = chrono::Utc::now().timestamp_millis();
+    let taken_at = taken_at(chrono::Utc::now().timestamp_millis());
     let meta = SnapshotMeta {
         id: format!("{taken_at}-{}", &Uuid::new_v4().simple().to_string()[..8]),
         connection_id: session.connection_id,
@@ -204,6 +219,18 @@ mod tests {
         left.sort();
         assert_eq!(left.len(), KEPT);
         assert_eq!(left[0], format!("{:013}-a.json", 1003));
+    }
+
+    #[test]
+    fn snapshots_in_the_same_millisecond_keep_their_order() {
+        let now = chrono::Utc::now().timestamp_millis() + 1_000_000;
+        let first = taken_at(now);
+        let second = taken_at(now);
+        assert!(first >= now && second > first, "{first} {second}");
+        assert!(
+            taken_at(now - 5) > second,
+            "a clock set back does not reorder them"
+        );
     }
 
     #[test]
