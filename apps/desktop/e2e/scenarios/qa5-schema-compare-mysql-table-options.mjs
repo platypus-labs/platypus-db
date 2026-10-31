@@ -27,7 +27,7 @@ export default async function (page) {
     const r = await roundTrip(page, p.chain, p.last, p.target, p.targetSchema);
     assert.ok(r.sql, `Compare gave no script: ${JSON.stringify(r.first)}`);
     assert.equal(r.runError, null, r.sql);
-    assert.equal(read(`SELECT engine || '|' || table_collation FROM information_schema.tables WHERE table_schema = '${DST}' AND table_name = 'a'`).replace("\n", ""), "MyISAM|latin1_general_ci");
+    assert.equal(read(`SELECT CONCAT(engine, '|', table_collation) FROM information_schema.tables WHERE table_schema = '${DST}' AND table_name = 'a'`).replace("\n", ""), "MyISAM|latin1_general_ci");
   } finally {
     
     ENGINES[KEY].drop(SRC);
