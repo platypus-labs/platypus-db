@@ -300,15 +300,19 @@ export async function save(page) {
   // A notice left by an edit (cells a mass edit skipped) is not the save's.
   await page.eval(`${visibleTab}.querySelector('.edit-error button')?.click()`);
   await page.eval(`${visibleTab}.querySelector('.edit-bar button.primary').click()`);
+  // The outcome is read in the same check that sees it: the grid reloads after a save, and
+  // the edit bar read a moment later may be gone.
+  await page.eval(`window.__saveOutcome = null`);
   await page.waitFor(
-    `${editBar}.includes('to edit a cell') || ${visibleTab}.querySelector('.edit-bar .error, .edit-error, .notice.error') != null || document.querySelector('.modal .error') != null`,
+    `(window.__saveOutcome = (() => {
+      const tab = ${visibleTab};
+      const err = tab?.querySelector('.edit-bar .error, .edit-error, .notice.error') ?? document.querySelector('.modal .error');
+      if (err) return 'ERROR: ' + err.textContent;
+      return ${editBar}.includes('to edit a cell') ? ${editBar} : null;
+    })()) !== null`,
     60_000,
   );
-  return page.eval(`(() => {
-    const tab = ${visibleTab};
-    const err = tab.querySelector('.edit-bar .error, .edit-error, .notice.error') ?? document.querySelector('.modal .error');
-    return err ? 'ERROR: ' + err.textContent : tab.querySelector('.edit-bar:not([hidden])')?.textContent;
-  })()`);
+  return page.eval(`window.__saveOutcome`);
 }
 
 export const shotter = (page, shots, prefix) => async (name) => {
