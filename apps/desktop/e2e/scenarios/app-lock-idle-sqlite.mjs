@@ -75,6 +75,14 @@ async function connects(page) {
   return { "Prod db": count("Prod db"), "Dev db": count("Dev db") };
 }
 
+/** Makes the page's clock movable with `skew`. */
+const installSkew = (page) =>
+  page.eval(`(() => {
+    const real = Date.now.bind(Date);
+    window.__skew = 0;
+    Date.now = () => real() + window.__skew;
+  })()`);
+
 export default async function (page) {
   // The window may be behind others on the machine running the tests: a hidden page's timers are
   // slowed down, and the idle check is a timer.
@@ -84,11 +92,7 @@ export default async function (page) {
     await page.eval(`${row(name)}.querySelector('.twisty').click()`);
     await page.waitFor(`${row(name)}.getAttribute('aria-expanded') === 'true' && ${row("things")} !== undefined`, 15_000);
   }
-  await page.eval(`(() => {
-    const real = Date.now.bind(Date);
-    window.__skew = 0;
-    Date.now = () => real() + window.__skew;
-  })()`);
+  await installSkew(page);
 
   // Two minutes idle and no master password: nothing to lock with, the app stays open.
   await skew(page, 120_000);
@@ -127,7 +131,10 @@ export default async function (page) {
 
   // 0 never locks, however long the pause.
   await page.eval(`window.__TAURI_INTERNALS__.invoke('set_setting', { key: 'safety.lock_minutes', value: 0 })`);
-  await page.sleep(500);
+  // The page keeps the settings it loaded at the start: a reload makes it read this one.
+  await page.eval(`location.reload()`);
+  await page.waitFor(`${row("Dev db")} !== undefined && ${lock} === null`, 30_000);
+  await installSkew(page);
   await skew(page, 3_600_000);
   await pastOneCheck(page);
   assert.equal(await page.eval(`${lock} === null`), true, "the app stays open");

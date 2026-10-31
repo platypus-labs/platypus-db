@@ -56,7 +56,7 @@ export default async function (page) {
           path: [NAME, "platypus", "dbo", "Tables", TABLE],
           table: TABLE,
           operations: ["analyze", "reindex", "check"],
-          outputs: { analyze: null, reindex: null, check: /DBCC results for .e2e_maint_t.[sS]*There are 3 rows in 1 pages/ },
+          outputs: { analyze: null, reindex: null, check: /DBCC results for .e2e_maint_t.[\s\S]*There are 3 rows in 1 pages/ },
           gone: { table: GONE, drop: () => sh(DB, drop(GONE)) },
           missing: /Cannot find the object|does not exist|e2e_maint_gone/i,
         }),
