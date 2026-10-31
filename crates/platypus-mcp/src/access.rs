@@ -1068,6 +1068,12 @@ mod tests {
         assert!(denied(rw("start transaction", UnfilteredRule::Allow)).contains("BEGIN"));
         let both = denied(rw("truncate a, s.b", UnfilteredRule::Refuse));
         assert!(both.contains("`a`, `s.b`"), "{both}");
+        // A data-modifying common table expression behind a SELECT.
+        let cte = denied(rw(
+            "with d as (delete from t returning *) select count(*) from d",
+            UnfilteredRule::Refuse,
+        ));
+        assert!(cte.contains("every row of `t`"), "{cte}");
     }
 
     /// A Transact-SQL batch needs no `;`, and a MySQL `DELIMITER` joins statements: the

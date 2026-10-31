@@ -406,23 +406,60 @@ fn tsql_batch(w: &Words<'_>, main: usize, end: usize) -> Vec<Unfiltered> {
     changes
 }
 
+/// The bodies of the common table expressions of the `WITH` between `start` and `main`, as
+/// the token ranges inside their parentheses: `name [(columns)] AS [NOT] [MATERIALIZED] (…)`.
+fn cte_bodies(w: &Words<'_>, start: usize, main: usize) -> Vec<(usize, usize)> {
+    let mut bodies = Vec::new();
+    let mut i = start + 1;
+    while i < main {
+        if !w.symbol(i, "(") {
+            i += 1;
+            continue;
+        }
+        let mut depth = 0usize;
+        let close = (i..main)
+            .find(|&k| {
+                if w.symbol(k, "(") {
+                    depth += 1;
+                } else if w.symbol(k, ")") {
+                    depth -= 1;
+                }
+                depth == 0
+            })
+            .unwrap_or(main);
+        if i > 0 && w.is(i - 1, &["AS", "MATERIALIZED"]) {
+            bodies.push((i + 1, close));
+        }
+        i = close + 1;
+    }
+    bodies
+}
+
 /// The changes to every row in the statement between `start` and `end` (no `;` inside), and
-/// whether it begins or ends a transaction.
+/// whether it begins or ends a transaction. A data-modifying common table expression
+/// (`WITH d AS (DELETE FROM t RETURNING *) SELECT …`) counts as much as the main statement.
 fn part(w: &Words<'_>, (start, end): (usize, usize), dialect: Dialect) -> (Vec<Unfiltered>, bool) {
     let main = if w.is(start, &["WITH"]) {
         w.find_top(start + 1, end, MAIN_VERBS).unwrap_or(start)
     } else {
         start
     };
+    let mut changes: Vec<Unfiltered> = cte_bodies(w, start, main)
+        .into_iter()
+        .filter(|&(from, to)| from < to)
+        .flat_map(|body| part(w, body, dialect).0)
+        .collect();
     if dialect == Dialect::SqlServer {
         let transaction = w.top(start, end).any(|i| tsql_transaction(w, i));
-        return (tsql_batch(w, main, end), transaction);
+        changes.extend(tsql_batch(w, main, end));
+        return (changes, transaction);
     }
     let transaction = matches!(
         classify(w.text(start, end)),
         TxEffect::Begin | TxEffect::End
     );
-    (unfiltered(w, main, end, dialect), transaction)
+    changes.extend(unfiltered(w, main, end, dialect));
+    (changes, transaction)
 }
 
 /// The changes to every row in `w` and whether it begins or ends a transaction, over the
@@ -627,6 +664,46 @@ mod tests {
         assert_eq!(
             changes_in("DELETE g FROM qa_safe_g g WHERE g.id = 1", my),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn finds_changes_in_common_table_expressions() {
+        let pg = Dialect::Postgres;
+        assert_eq!(
+            changes_in(
+                "WITH d AS (DELETE FROM qa4_cte RETURNING *) SELECT count(*) FROM d",
+                pg
+            ),
+            ["DELETE qa4_cte"]
+        );
+        assert_eq!(
+            changes_in(
+                "WITH u AS (UPDATE qa4_cte SET v = 'y' RETURNING *) SELECT count(*) FROM u",
+                pg
+            ),
+            ["UPDATE qa4_cte"]
+        );
+        assert_eq!(
+            changes_in(
+                "WITH RECURSIVE a (x) AS (SELECT 1), b AS MATERIALIZED (DELETE FROM s.t \
+                 RETURNING id), c AS NOT MATERIALIZED (UPDATE u SET a = (SELECT 1) RETURNING a) \
+                 DELETE FROM v",
+                pg
+            ),
+            ["DELETE s.t", "UPDATE u", "DELETE v"]
+        );
+        for sql in [
+            "WITH d AS (DELETE FROM t WHERE id = 1 RETURNING *) SELECT count(*) FROM d",
+            "WITH u AS (UPDATE t SET v = 'y' WHERE id IN (1, 2) RETURNING *) SELECT * FROM u",
+            "WITH x (a, b) AS (SELECT 1, 2) SELECT * FROM x",
+            "WITH x AS (SELECT * FROM t) INSERT INTO u SELECT * FROM x",
+        ] {
+            assert_eq!(changes_in(sql, pg), Vec::<String>::new(), "{sql}");
+        }
+        assert_eq!(
+            analyze("WITH d AS (DELETE FROM t RETURNING *) SELECT 1", pg).kind,
+            StatementKind::Dml
         );
     }
 
