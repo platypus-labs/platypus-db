@@ -702,6 +702,30 @@ mod tests {
         assert!(!only_reads("db.a.find(", DriverKind::Mongo));
     }
 
+    /// The maintenance statements the Maintenance dialog runs, typed in the editor, a script,
+    /// a schedule or the command-line client: none runs on a read-only connection.
+    #[test]
+    fn maintenance_is_no_read() {
+        for (driver, sql) in [
+            (DriverKind::Postgres, "VACUUM (VERBOSE) demo.t"),
+            (DriverKind::Postgres, "VACUUM FULL"),
+            (DriverKind::Postgres, "ANALYZE demo.t"),
+            (DriverKind::Postgres, "REINDEX TABLE demo.t"),
+            (DriverKind::Postgres, "CLUSTER demo.t"),
+            (DriverKind::MySql, "OPTIMIZE TABLE t"),
+            (DriverKind::MySql, "ANALYZE TABLE t"),
+            (DriverKind::MySql, "CHECK TABLE t"),
+            (DriverKind::MySql, "REPAIR TABLE t"),
+            (DriverKind::SqlServer, "UPDATE STATISTICS dbo.t"),
+            (DriverKind::SqlServer, "ALTER INDEX ALL ON dbo.t REBUILD"),
+            (DriverKind::SqlServer, "DBCC CHECKTABLE ('dbo.t')"),
+            (DriverKind::Sqlite, "VACUUM"),
+            (DriverKind::Sqlite, "REINDEX t"),
+        ] {
+            assert!(!only_reads(sql, driver), "{driver:?}: {sql}");
+        }
+    }
+
     #[test]
     fn sql_server_statements_keep_their_semicolon_and_batches() {
         let sql = "@set x = 1;\nDECLARE @a int = 1;\nMERGE t USING s ON 1 = 1 WHEN MATCHED THEN DELETE;\nGO 2\nSELECT 1"

@@ -667,4 +667,38 @@ mod tests {
         let (state, sid) = session_of(no_editing, true).await;
         assert_eq!(kind(&state.editable(sid).unwrap_err()), "read_only");
     }
+
+    /// Table maintenance runs on no read-only connection, from a tab's session or from the
+    /// navigator's side session the Maintenance dialog opens, and the error says why.
+    #[tokio::test]
+    async fn read_only_connections_refuse_maintenance() {
+        use platypus_core::Maintenance;
+        for side in [false, true] {
+            let (state, sid) = session_of(Restrictions::default(), true).await;
+            lock(&state.sessions).get_mut(&sid).unwrap().side = side;
+            for operation in [
+                Maintenance::Vacuum,
+                Maintenance::Analyze,
+                Maintenance::Reindex,
+                Maintenance::Optimize,
+                Maintenance::Check,
+            ] {
+                let e = admin::maintain(&state, sid, "main", "t", operation)
+                    .await
+                    .unwrap_err();
+                assert_eq!(kind(&e), "read_only", "{operation:?}");
+                assert_eq!(
+                    e.message(),
+                    "Ledger is read-only: nothing that may change it runs there"
+                );
+            }
+            assert_eq!(kind(&state.writable(sid).unwrap_err()), "read_only");
+        }
+        // Not read-only: it reaches the driver, and SQLite has no maintenance.
+        let (state, sid) = session_of(Restrictions::default(), false).await;
+        let e = admin::maintain(&state, sid, "main", "t", Maintenance::Vacuum)
+            .await
+            .unwrap_err();
+        assert_ne!(kind(&e), "read_only");
+    }
 }

@@ -70,12 +70,25 @@ pub async fn maintain_table(
     table: String,
     operation: Maintenance,
 ) -> CommandResult<Vec<String>> {
+    maintain(&state, session_id, &schema, &table, operation).await
+}
+
+/// [`maintain_table`]. A read-only connection refuses it before anything reaches the server,
+/// whichever of its sessions asks: a tab's, or the navigator's side session the Maintenance
+/// dialog uses (each knows its saved connection, whose setting is read at each call).
+pub(crate) async fn maintain(
+    state: &AppState,
+    session_id: u64,
+    schema: &str,
+    table: &str,
+    operation: Maintenance,
+) -> CommandResult<Vec<String>> {
     state.writable(session_id)?;
     let conn = state.live(session_id).await?;
     // Outside a transaction: VACUUM refuses one, and the others would keep their locks (or
     // commit what was pending, in MySQL) on a session in manual-commit mode.
     super::one_off(&conn, async {
-        Ok(conn.maintain(&schema, &table, operation).await?)
+        Ok(conn.maintain(schema, table, operation).await?)
     })
     .await
 }

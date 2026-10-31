@@ -4,7 +4,7 @@
 // run nothing); once run it says done and shows what the server answered; a table that is
 // gone gives the server's error in the dialog; a read-only connection refuses.
 import assert from "node:assert/strict";
-import { openPath } from "./qa-dbs.mjs";
+import { openPath, rowIn } from "./qa-dbs.mjs";
 import { treeMenu } from "./qa-grid.mjs";
 
 const LABELS = { vacuum: "Vacuum…", analyze: "Analyze…", reindex: "Reindex…", optimize: "Optimize…", check: "Check…" };
@@ -22,10 +22,12 @@ export async function maintenanceMenu(page, table) {
   );
 }
 
-/** Picks `operation` in the Maintenance menu of `table` and waits for its dialog. */
-export async function openOperation(page, table, operation) {
+/** Picks `operation` in the Maintenance menu of `table` and waits for its dialog. `chain` (the
+ *  rows above it, from the connection down) picks the row when the first one labelled `table`
+ *  is under another connection. */
+export async function openOperation(page, table, operation, chain) {
   const label = LABELS[operation];
-  await treeMenu(page, table, "Maintenance");
+  await treeMenu(page, table, "Maintenance", chain ? rowIn(chain, table) : undefined);
   await page.waitFor(`[...document.querySelectorAll('.context-menu button')].some(b => b.textContent.startsWith(${JSON.stringify(label)}))`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(label)})).click()`);
   await page.waitFor(`${dialog} !== null`, 10_000);
@@ -98,10 +100,11 @@ export async function maintenanceFlow(page, { path, table, operations, outputs, 
   await closeDialog(page);
 }
 
-/** On a read-only connection the operation is refused with its reason, and the table is as it was. */
+/** On a read-only connection the operation is refused with its reason, and the table is as it was.
+ *  The table is picked under `path`: the same table shows under the writable connection too. */
 export async function refusedReadOnly(page, { path, table, operation }) {
   await openPath(page, path);
-  await openOperation(page, table, operation);
+  await openOperation(page, table, operation, path.slice(0, -1));
   const r = await runOperation(page);
   assert.equal(r.ok, false, `refused: ${r.text}`);
   assert.match(r.text, /read-only|read only/i);

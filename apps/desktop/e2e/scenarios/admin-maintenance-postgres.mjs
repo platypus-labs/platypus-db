@@ -66,7 +66,7 @@ export default async function (page) {
       table: RO_TABLE,
       operation: "vacuum",
     });
-    assert.equal(sh(DB, `SELECT coalesce(last_vacuum::text, 'never') FROM pg_stat_user_tables WHERE relname = '${TABLE}';`), "never");
+    assert.equal(sh(DB, `SELECT coalesce(last_vacuum::text, 'never') FROM pg_stat_user_tables WHERE relname = '${RO_TABLE}';`), "never");
   } finally {
     sh(DB, `DROP TABLE IF EXISTS demo.${TABLE}, demo.${GONE}, demo.${RO_TABLE};`);
   }

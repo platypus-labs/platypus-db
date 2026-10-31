@@ -136,10 +136,11 @@ export async function openEditor(page, name, db, child) {
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content') != null`, 30_000);
 }
 
-/** Opens a tree row's context menu and runs `item`. */
-export async function treeMenu(page, label, item) {
-  await page.waitFor(`${treeRow(label)} !== undefined`, 15_000);
-  await page.eval(`document.querySelectorAll('#qa-row').forEach(e => e.removeAttribute('id')); ${treeRow(label)}.id = 'qa-row'; document.getElementById('qa-row').scrollIntoView({ block: 'center' })`);
+/** Opens a tree row's context menu and runs `item`. `row` picks the row when the first one
+ *  labelled `label` is not it (the same table under two connections): `rowIn(chain, label)`. */
+export async function treeMenu(page, label, item, row = treeRow(label)) {
+  await page.waitFor(`${row} !== undefined`, 15_000);
+  await page.eval(`document.querySelectorAll('#qa-row').forEach(e => e.removeAttribute('id')); ${row}.id = 'qa-row'; document.getElementById('qa-row').scrollIntoView({ block: 'center' })`);
   await page.sleep(100);
   const r = await page.rect("#qa-row");
   await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
