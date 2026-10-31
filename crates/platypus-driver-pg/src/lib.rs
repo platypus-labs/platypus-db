@@ -96,6 +96,9 @@ fn copies_through_client(sql: &str) -> bool {
         && words.iter().any(|w| w == "STDOUT" || w == "STDIN")
 }
 
+/// How long [`Connection::check_alive`] waits for the server's answer.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// What manual-commit mode sets before each statement.
 const SAVEPOINT: &str = "SAVEPOINT platypus_statement";
 
@@ -372,6 +375,26 @@ impl Connection for PgConnection {
 
     fn is_closed(&self) -> bool {
         self.client.is_closed()
+    }
+
+    /// An empty simple query, outside the transaction tracking: it opens no transaction, and
+    /// an answer (even an error, in a transaction a failed statement aborted) means alive. A
+    /// server stopped or killed closes the socket, which the connection task sees at once;
+    /// a link that went silent (a network cut, a sleeping laptop) does not, and the probe
+    /// left unanswered finds it before the next statement would hang.
+    async fn check_alive(&self) -> bool {
+        if self.is_closed() {
+            return false;
+        }
+        // A statement holds the session: in use, so alive.
+        let Ok(_guard) = self.busy.try_lock() else {
+            return true;
+        };
+        match tokio::time::timeout(PING_TIMEOUT, self.client.simple_query("")).await {
+            Ok(Ok(_)) => true,
+            Ok(Err(e)) => e.as_db_error().is_some() && !self.is_closed(),
+            Err(_) => false,
+        }
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {
