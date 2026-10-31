@@ -76,10 +76,19 @@ impl ValueKind {
             .metadata()
             .get(META_DB_TYPE)
             .is_some_and(|declared| declared.to_ascii_uppercase().contains("INT"));
-        if kind == Self::Integer && dialect == Dialect::Sqlite && !whole_only {
-            Self::Decimal
-        } else {
-            kind
+        if dialect != Dialect::Sqlite || whole_only {
+            return kind;
+        }
+        // A column with no rows, or only NULLs, is typed text by the driver; its declared
+        // `NUMERIC`/`DECIMAL` affinity still turns "1,5" into a mistake, not a string.
+        let numeric_declared = field.metadata().get(META_DB_TYPE).is_some_and(|declared| {
+            let declared = declared.to_ascii_uppercase();
+            declared.contains("NUM") || declared.contains("DEC")
+        });
+        match kind {
+            Self::Integer => Self::Decimal,
+            Self::Text if numeric_declared => Self::Decimal,
+            _ => kind,
         }
     }
 }
@@ -1260,6 +1269,23 @@ mod tests {
                 "{numeric:?}"
             );
         }
+        // Declared numeric but typed text by the driver (no rows): still a number.
+        for declared in ["NUMERIC", "DECIMAL(10,2)", "numeric(5)"] {
+            let text = Field::new("price", DataType::Utf8, true).with_metadata(HashMap::from([(
+                META_DB_TYPE.to_owned(),
+                declared.to_owned(),
+            )]));
+            assert_eq!(
+                ValueKind::of_field(&text, Dialect::Sqlite),
+                ValueKind::Decimal,
+                "{declared}"
+            );
+        }
+        let text = Field::new("name", DataType::Utf8, true).with_metadata(HashMap::from([(
+            META_DB_TYPE.to_owned(),
+            "TEXT".to_owned(),
+        )]));
+        assert_eq!(ValueKind::of_field(&text, Dialect::Sqlite), ValueKind::Text);
         for whole in ["INTEGER", "bigint", "UNSIGNED BIG INT"] {
             assert_eq!(
                 kind(Some(whole), Dialect::Sqlite),
