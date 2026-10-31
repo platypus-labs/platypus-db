@@ -101,6 +101,10 @@ pub fn load(conn: &duckdb::Connection, path: &str, options: &ReadOptions) -> Res
             .map_err(|e| Error::Connect(format!("cannot read {path}: {e}")));
     }
     let d = Dialect::DuckDb;
+    if reader == "read_json" && has_utf8_bom(path) {
+        return load_json_without_bom(conn, path, name)
+            .map_err(|e| Error::Connect(format!("cannot read {path}: {e}")));
+    }
     // The file is read again at each query: a missing or unreadable file fails here first.
     let sql = format!(
         "CREATE OR REPLACE VIEW {} AS SELECT * FROM {reader}({}); SELECT * FROM {0} LIMIT 0",
@@ -109,6 +113,40 @@ pub fn load(conn: &duckdb::Connection, path: &str, options: &ReadOptions) -> Res
     );
     conn.execute_batch(&sql)
         .map_err(|e| Error::Connect(format!("cannot read {path}: {e}")))
+}
+
+const UTF8_BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
+
+/// Whether the file starts with a UTF-8 byte order mark, which DuckDB's JSON reader takes for
+/// data (the file then reads as one row of text).
+fn has_utf8_bom(path: &str) -> bool {
+    let mut start = [0u8; 3];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut start))
+        .is_ok()
+        && start == UTF8_BOM
+}
+
+/// Loads a JSON file with a byte order mark as a table of its copy without the mark.
+fn load_json_without_bom(
+    conn: &duckdb::Connection,
+    path: &str,
+    name: &str,
+) -> std::result::Result<(), String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let n = COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let copy =
+        std::env::temp_dir().join(format!("platypus-import-{}-{n}.json", std::process::id()));
+    std::fs::write(&copy, &bytes[UTF8_BOM.len()..]).map_err(|e| e.to_string())?;
+    let d = Dialect::DuckDb;
+    let sql = format!(
+        "CREATE OR REPLACE TABLE {} AS SELECT * FROM read_json({})",
+        d.quote_ident(name),
+        d.quote_literal(&copy.to_string_lossy()),
+    );
+    let loaded = conn.execute_batch(&sql).map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(&copy);
+    loaded
 }
 
 /// Names the files [`load_csv`] writes, apart within the process.
@@ -527,6 +565,19 @@ mod tests {
         assert_eq!(
             load_rows("ragged.csv", ragged, &skip).unwrap(),
             [["1", "2"]]
+        );
+    }
+
+    #[test]
+    fn json_with_a_byte_order_mark_reads_as_rows() {
+        let body = br#"[{"id":1,"name":"a"},{"id":2,"name":"b"}]"#;
+        let mut marked = UTF8_BOM.to_vec();
+        marked.extend_from_slice(body);
+        let rows = load_rows("marked.json", &marked, &ReadOptions::default()).unwrap();
+        assert_eq!(rows, [["1", "a"], ["2", "b"]]);
+        assert_eq!(
+            load_rows("plain.json", body, &ReadOptions::default()).unwrap(),
+            rows
         );
     }
 
