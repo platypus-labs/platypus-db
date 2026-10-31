@@ -447,18 +447,25 @@ fn check_address(config: &ConnectionConfig) -> CommandResult<()> {
 }
 
 /// Whether a failed login is about the credentials, so that asking for the password again
-/// may help. The drivers word it their own way.
+/// may help. The drivers word it their own way: libSQL answers "Unauthorized", a plugin
+/// may pass on its server's HTTP 401.
 fn login_refused(e: &CommandError) -> bool {
     let text = e.message().to_ascii_lowercase();
-    [
-        "password",
-        "authenticat",
-        "access denied",
-        "login failed",
-        "credentials",
-    ]
-    .iter()
-    .any(|word| text.contains(word))
+    let status_401 = text.match_indices("401").any(|(at, _)| {
+        let digit = |c: Option<char>| c.is_some_and(|c| c.is_ascii_digit());
+        !digit(text[..at].chars().next_back()) && !digit(text[at + 3..].chars().next())
+    });
+    status_401
+        || [
+            "password",
+            "authenticat",
+            "access denied",
+            "login failed",
+            "credentials",
+            "unauthorized",
+        ]
+        .iter()
+        .any(|word| text.contains(word))
 }
 
 #[derive(Debug, Serialize)]
@@ -764,6 +771,33 @@ mod tests {
         let mut config = ConnectionConfig::new(DriverKind::ClickHouse);
         config.host = " ".to_owned();
         assert!(check_address(&config).is_err());
+    }
+
+    #[test]
+    fn a_refused_login_is_told_by_the_words_of_each_driver() {
+        let refused = |message: &str| {
+            let e: CommandError = Error::Config(message.to_owned()).into();
+            login_refused(&e)
+        };
+        for message in [
+            "password authentication failed for user \"app\"",
+            "Access denied for user 'app'@'%'",
+            "Login failed for user 'sa'.",
+            "server returned 401 Unauthorized",
+            "HTTP status 401",
+            "Unauthorized",
+            "invalid credentials",
+        ] {
+            assert!(refused(message), "{message}");
+        }
+        for message in [
+            "connection refused",
+            "could not connect to 10.0.0.1:4010",
+            "error at line 1401",
+            "HTTP status 503",
+        ] {
+            assert!(!refused(message), "{message}");
+        }
     }
 
     /// The connection form refuses an empty host for the drivers the backend does.
