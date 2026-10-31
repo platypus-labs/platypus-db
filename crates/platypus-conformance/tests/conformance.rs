@@ -7741,6 +7741,31 @@ async fn clickhouse_import_keeps_rows_and_imports_without_create() {
     };
     use std::sync::Arc;
 
+    async fn load(
+        conn: &dyn Connection,
+        plan: ImportPlan,
+        id: Vec<i64>,
+        n: Vec<i64>,
+    ) -> Result<u64, ImportError> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, true),
+            Field::new("n", DataType::Int64, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(id)),
+                Arc::new(Int64Array::from(n)),
+            ],
+        )
+        .unwrap();
+        let stream = platypus_core::RecordBatchStream::new(
+            schema,
+            futures::stream::iter(vec![Ok(batch)]).boxed(),
+        );
+        import_rows(stream, (conn, Dialect::ClickHouse), &plan, |_| true).await
+    }
+
     let all = backends().await;
     let Some(b) = all
         .iter()
@@ -7750,10 +7775,10 @@ async fn clickhouse_import_keeps_rows_and_imports_without_create() {
     };
     let conn = b.connect().await;
     let user = "conf_ch_insert_only";
-    let stages = "SELECT name FROM system.tables WHERE database = currentDatabase() \
+    let staging_tables = "SELECT name FROM system.tables WHERE database = currentDatabase() \
                   AND name LIKE 'conf_ch_move_platypus_stage%'";
     let drop_stages = || async {
-        for batch in collect(b, &*conn, stages).await {
+        for batch in collect(b, &*conn, staging_tables).await {
             for row in 0..batch.num_rows() {
                 let name = cell(&batch, 0, row).unwrap();
                 run(&*conn, &format!("DROP TABLE {name}")).await.unwrap();
@@ -7797,32 +7822,8 @@ async fn clickhouse_import_keeps_rows_and_imports_without_create() {
             })
             .collect(),
     };
-    async fn load(
-        conn: &dyn Connection,
-        plan: ImportPlan,
-        id: Vec<i64>,
-        n: Vec<i64>,
-    ) -> Result<u64, ImportError> {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("id", DataType::Int64, true),
-            Field::new("n", DataType::Int64, true),
-        ]));
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(Int64Array::from(id)),
-                Arc::new(Int64Array::from(n)),
-            ],
-        )
-        .unwrap();
-        let stream = platypus_core::RecordBatchStream::new(
-            schema,
-            futures::stream::iter(vec![Ok(batch)]).boxed(),
-        );
-        import_rows(stream, (conn, Dialect::ClickHouse), &plan, |_| true).await
-    }
     let staged = || async {
-        let batches = collect(b, &*conn, stages).await;
+        let batches = collect(b, &*conn, staging_tables).await;
         let name = batches
             .iter()
             .find(|b| b.num_rows() > 0)
