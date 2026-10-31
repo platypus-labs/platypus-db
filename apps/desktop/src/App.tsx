@@ -654,12 +654,15 @@ export function App() {
         }
         return session.session_id;
       } catch (e) {
-        passwords.current.delete(connection.id);
         const error = toCommandError(e);
         if (error.kind !== "auth") {
+          // A server that does not answer says nothing of the password: the next attempt, once
+          // it is back, uses the one typed instead of asking again.
+          if (typed !== undefined) passwords.current.set(connection.id, typed);
           setToast(`${connection.name}: ${error.message}`);
           return null;
         }
+        passwords.current.delete(connection.id);
         const entered = await askPassword(connection, error.message);
         if (entered === null) return null;
         password = entered;
