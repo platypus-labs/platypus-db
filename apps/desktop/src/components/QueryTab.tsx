@@ -228,6 +228,10 @@ interface Seen {
 /** How often the results of a run are drawn while it goes on. */
 const RENDER_EVERY_MS = 60;
 
+/** What an export says when it is done: "Exported 1 row to a.csv in 3 ms". */
+const exported = (rows: number, path: string, ms: number) =>
+  plural(rows, "Exported {n} row to {path} in {time}", "Exported {n} rows to {path} in {time}", { path, time: formatMs(ms) });
+
 /** `all` with `added` placed right after the result `id` (at the end when it is gone). */
 function withAfter(all: Result[], id: number, added: Result[]): Result[] {
   const at = all.findIndex((r) => r.id === id);
@@ -772,9 +776,8 @@ export function QueryTab({
       api
         .exportQuery(sessionId, sql, path, options, (event) => {
           if (event.type === "done") {
-            const rows = fmt.format(event.rows);
-            const text = t("Exported {rows} rows to {path} in {time}", { rows, path, time: formatMs(event.elapsed_ms) });
-            resolve({ kind: "message", summary: t("Exported {rows} rows", { rows }), text });
+            const text = exported(event.rows, path, event.elapsed_ms);
+            resolve({ kind: "message", summary: plural(event.rows, "Exported {n} row", "Exported {n} rows"), text });
           } else if (event.type === "failed") {
             resolve({ kind: "error", error: event.error });
           } else if (event.type === "cancelled") {
@@ -1403,7 +1406,7 @@ export function QueryTab({
       setExporting({ exportId: null, rows: result.rows, done: null, failed: false });
       try {
         const rows = await api.exportRows(result.jobId, path, options);
-        finish(t("Exported {rows} rows to {path} in {time}", { rows: fmt.format(rows), path: file, time: formatMs(Math.round(performance.now() - started)) }));
+        finish(exported(rows, file, Math.round(performance.now() - started)));
       } catch (e) {
         finish(t("Export failed: {message}", { message: toCommandError(e).message }), true);
       }
@@ -1423,7 +1426,7 @@ export function QueryTab({
             setExporting((e) => e && { ...e, rows: event.rows });
             break;
           case "done":
-            finish(t("Exported {rows} rows to {path} in {time}", { rows: fmt.format(event.rows), path: file, time: formatMs(event.elapsed_ms) }));
+            finish(exported(event.rows, file, event.elapsed_ms));
             break;
           case "failed":
             finish(t("Export failed: {message}", { message: event.error.message }), true);
