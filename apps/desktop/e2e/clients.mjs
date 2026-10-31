@@ -29,3 +29,6 @@ export function withPath(...folders) {
   const key = pathKey();
   return { [key]: [...folders.filter(Boolean), process.env[key] ?? ""].join(delimiter) };
 }
+
+/** Whether `tool` runs from the PATH of this process. */
+export const hasOnPath = onPath;
