@@ -1496,6 +1496,8 @@ const zh: Record<string, string> = {
   "Show completions": "显示补全",
   "A key that types a character needs Ctrl or Alt.": "输入字符的按键需要配合 Ctrl 或 Alt。",
   "A key typed with AltGr is a character, not a shortcut.": "用 AltGr 输入的按键是字符，不是快捷键。",
+  "{agent} proposed {count} SQL scripts. Open each in a new editor tab? Otherwise they are discarded.": "{agent} 提议了 {count} 个 SQL 脚本。是否在新的编辑器标签页中逐个打开？否则将丢弃它们。",
+  "Open them": "打开它们",
   // Closing tabs
   "Save the changes to {file}?": "保存对 {file} 的更改？",
   "Don't save": "不保存",

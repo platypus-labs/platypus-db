@@ -69,20 +69,20 @@ pub async fn dump(
     let Chosen {
         objects,
         tables,
-        owned_by,
+        with_table,
     } = chosen_objects(conn, dialect, schema, only).await?;
     let mut dumped = Dumped::default();
     // Enum and composite types, then the domains on them, then sequences: what columns use.
     for kind in [ObjectKind::Type, ObjectKind::Domain, ObjectKind::Sequence] {
         for o in objects.iter().filter(|o| o.kind == kind) {
+            if with_table.contains(&o.name) {
+                continue;
+            }
             w.object(conn, schema, o.kind, &o.name, None, &mut dumped.skipped)
                 .await?;
         }
     }
     let keys = create_tables(conn, &mut w, schema, &tables).await?;
-    for sql in &owned_by {
-        w.statement(sql)?;
-    }
     dumped.tables = tables.len();
 
     if data {
@@ -146,8 +146,9 @@ struct Chosen {
     objects: Vec<ObjectMeta>,
     /// With their details, in the order to create them.
     tables: Vec<(String, TableDetails)>,
-    /// The statements that give `serial` sequences back to their columns.
-    owned_by: Vec<String>,
+    /// The `serial` sequences whose table is in the dump: its DDL creates them and gives them
+    /// back to their columns.
+    with_table: HashSet<String>,
 }
 
 /// The objects of `schema` to dump, with `only` those of these names and what they need:
@@ -203,31 +204,26 @@ async fn chosen_objects(
         })
         .cloned()
         .collect();
-    let owned_by = objects
+    let with_table = objects
         .iter()
-        .filter_map(|o| {
-            let owner = owners.get(&o.name)?;
-            tables.iter().any(|(t, _)| *t == owner.table).then(|| {
-                format!(
-                    "ALTER SEQUENCE {} OWNED BY {}.{}",
-                    dialect.qualified(Some(schema), &o.name),
-                    dialect.qualified(Some(schema), &owner.table),
-                    dialect.quote_ident(&owner.column)
-                )
-            })
+        .filter(|o| o.kind == ObjectKind::Sequence)
+        .filter(|o| {
+            owners
+                .get(&o.name)
+                .is_some_and(|owner| tables.iter().any(|(t, _)| *t == owner.table))
         })
+        .map(|o| o.name.clone())
         .collect();
     Ok(Chosen {
         objects,
         tables,
-        owned_by,
+        with_table,
     })
 }
 
 /// A sequence that belongs to a column.
 struct Owner {
     table: String,
-    column: String,
     /// An identity column's, which the table's DDL makes, rather than a `serial` one's.
     identity: bool,
 }
@@ -257,16 +253,10 @@ async fn owned_sequences(
         .into_iter()
         .filter_map(|row| {
             let mut row = row.into_iter();
-            let (name, table, column) = (row.next()??, row.next()??, row.next()??);
+            let (name, table) = (row.next()??, row.next()??);
+            row.next()?;
             let identity = row.next()?? == "i";
-            Some((
-                name,
-                Owner {
-                    table,
-                    column,
-                    identity,
-                },
-            ))
+            Some((name, Owner { table, identity }))
         })
         .collect()
 }
@@ -776,6 +766,7 @@ mod tests {
                         ref_schema: String::new(),
                         ref_table: (*r).to_owned(),
                         ref_columns: vec![],
+                        detail: None,
                     })
                     .collect(),
                 ..TableDetails::default()

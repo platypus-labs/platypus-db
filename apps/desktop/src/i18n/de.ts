@@ -1496,6 +1496,8 @@ const de: Record<string, string> = {
   "Show completions": "Vervollständigungen anzeigen",
   "A key that types a character needs Ctrl or Alt.": "Eine Taste, die ein Zeichen eingibt, braucht Ctrl oder Alt.",
   "A key typed with AltGr is a character, not a shortcut.": "Eine mit AltGr eingegebene Taste ist ein Zeichen, kein Tastenkürzel.",
+  "{agent} proposed {count} SQL scripts. Open each in a new editor tab? Otherwise they are discarded.": "{agent} hat {count} SQL-Skripte vorgeschlagen. Jedes in einem neuen Editor-Tab öffnen? Sonst werden sie verworfen.",
+  "Open them": "Öffnen",
   // Closing tabs
   "Save the changes to {file}?": "Änderungen an {file} speichern?",
   "Don't save": "Nicht speichern",
