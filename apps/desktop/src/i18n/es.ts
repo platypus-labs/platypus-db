@@ -3039,6 +3039,7 @@ const es: Record<string, string> = {
   "Yes": "Sí",
   "Reduced": "Reducidas",
   "Dashboard widget": "Widget del panel",
+  "Only the first {shown} of {total} rows are in this export.": "Esta exportación solo contiene las primeras {shown} de {total} filas.",
 };
 
 export default es;

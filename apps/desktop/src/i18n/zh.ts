@@ -3039,6 +3039,7 @@ const zh: Record<string, string> = {
   "Yes": "是",
   "Reduced": "减少",
   "Dashboard widget": "仪表板小组件",
+  "Only the first {shown} of {total} rows are in this export.": "此导出仅包含 {total} 行中的前 {shown} 行。",
 };
 
 export default zh;

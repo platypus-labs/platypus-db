@@ -3039,6 +3039,7 @@ const fr: Record<string, string> = {
   "Yes": "Oui",
   "Reduced": "Réduites",
   "Dashboard widget": "Widget du tableau de bord",
+  "Only the first {shown} of {total} rows are in this export.": "Cet export ne contient que les {shown} premières lignes sur {total}.",
 };
 
 export default fr;

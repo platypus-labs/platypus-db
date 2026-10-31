@@ -34,7 +34,7 @@ function block(b: Block, i: number): ReactNode {
     case "list": {
       const Tag = b.ordered ? "ol" : "ul";
       return (
-        <Tag key={i}>
+        <Tag key={i} start={b.ordered && b.start !== 1 ? b.start : undefined}>
           {b.items.map((item, j) => (
             <li key={j}>{inline(item)}</li>
           ))}
