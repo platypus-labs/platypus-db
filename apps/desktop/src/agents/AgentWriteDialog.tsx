@@ -4,10 +4,17 @@ import { plural, t } from "../i18n";
 import { answerWrite, useWaitingWrites } from "./bridge";
 import { denial, estimatedRows, statementParts, timeLeft, type StatementPart, type Verdict } from "./writes";
 
-/** A piece of the statement: its text, or a marker in place of padding, which no one could
- *  take for SQL. */
+/** A piece of the statement: its text, or a marker in place of padding or of an invisible
+ *  character, which no one could take for SQL. */
 function part(piece: StatementPart, i: number) {
   if ("text" in piece) return <span key={i}>{piece.text}</span>;
+  if ("invisible" in piece) {
+    return (
+      <span key={i} className="statement-gap" data-gap="invisible">
+        {t("invisible {code}", { code: piece.invisible })}
+      </span>
+    );
+  }
   return (
     <span key={i} className="statement-gap" data-gap={piece.gap}>
       {piece.gap === "lines"

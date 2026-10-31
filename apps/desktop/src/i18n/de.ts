@@ -2099,6 +2099,7 @@ const de: Record<string, string> = {
   "{n} blank lines": "{n} Leerzeilen",
   "{n} space": "{n} Leerzeichen",
   "{n} spaces": "{n} Leerzeichen",
+  "invisible {code}": "unsichtbar {code}",
   "The statement goes on below: scroll it to the end before allowing it.": "Die Anweisung geht unten weiter: Scrollen Sie sie bis zum Ende, bevor Sie sie erlauben.",
   "{agent} wants to see what you are working on": "{agent} möchte sehen, woran Sie arbeiten",
   "Reading the active tab…": "Aktiver Tab wird gelesen…",

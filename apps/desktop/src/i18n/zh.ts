@@ -2099,6 +2099,7 @@ const zh: Record<string, string> = {
   "{n} blank lines": "{n} 个空行",
   "{n} space": "{n} 个空格",
   "{n} spaces": "{n} 个空格",
+  "invisible {code}": "不可见字符 {code}",
   "The statement goes on below: scroll it to the end before allowing it.": "语句下方还有内容：请先滚动到末尾再允许。",
   "{agent} wants to see what you are working on": "{agent} 想查看你正在处理的内容",
   "Reading the active tab…": "正在读取当前标签页…",

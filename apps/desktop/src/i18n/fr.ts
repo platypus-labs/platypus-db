@@ -2099,6 +2099,7 @@ const fr: Record<string, string> = {
   "{n} blank lines": "{n} lignes vides",
   "{n} space": "{n} espace",
   "{n} spaces": "{n} espaces",
+  "invisible {code}": "invisible {code}",
   "The statement goes on below: scroll it to the end before allowing it.": "L'instruction continue plus bas : faites-la défiler jusqu'à la fin avant de l'autoriser.",
   "{agent} wants to see what you are working on": "{agent} veut voir sur quoi vous travaillez",
   "Reading the active tab…": "Lecture de l'onglet actif…",

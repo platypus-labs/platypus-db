@@ -64,3 +64,25 @@ test("padding cannot push the end of a statement out of sight", () => {
   assert.deepEqual(statementParts(sql), [{ text: sql }]);
   assert.deepEqual(statementParts(""), []);
 });
+
+test("format characters cannot reorder or hide what the dialog shows", () => {
+  // A right-to-left override shows `WHERE id = 1` while it runs `1 = di EREHW`.
+  const bidi = statementParts("DELETE FROM t ‮WHERE id = 1‬");
+  assert.deepEqual(bidi, [{ text: "DELETE FROM t " }, { invisible: "U+202E" }, { text: "WHERE id = 1" }, { invisible: "U+202C" }]);
+  // Isolates, marks, zero-width ones and a code point beyond the BMP (a tag character).
+  const hidden = statementParts("a⁦b⁩‎‏c​d\u{e0041}");
+  assert.deepEqual(hidden, [
+    { text: "a" },
+    { invisible: "U+2066" },
+    { text: "b" },
+    { invisible: "U+2069" },
+    { invisible: "U+200E" },
+    { invisible: "U+200F" },
+    { text: "c" },
+    { invisible: "U+200B" },
+    { text: "d" },
+    { invisible: "U+E0041" },
+  ]);
+  // Inside a long run of padding they are counted with it.
+  assert.deepEqual(statementParts(`a${"​".repeat(20)}b`), [{ text: "a" }, { gap: "spaces", count: 20 }, { text: "b" }]);
+});

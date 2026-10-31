@@ -2099,6 +2099,7 @@ const pt: Record<string, string> = {
   "{n} blank lines": "{n} linhas em branco",
   "{n} space": "{n} espaço",
   "{n} spaces": "{n} espaços",
+  "invisible {code}": "invisível {code}",
   "The statement goes on below: scroll it to the end before allowing it.": "A instrução continua abaixo: role-a até o fim antes de permiti-la.",
   "{agent} wants to see what you are working on": "{agent} quer ver no que você está trabalhando",
   "Reading the active tab…": "Lendo a aba ativa…",
