@@ -126,7 +126,12 @@ to the package manager.
 - **Connection types** Development, Test and Production, with colors and a read-only flag. The
   connection form groups its fields under *Connection* and *Authentication*; type, color,
   read-only and agents' access are on the *Appearance and safety* page.
-  Production shows a red PROD badge and opens in manual commit.
+  Production shows a red PROD badge and opens in manual commit. A read-only connection runs only
+  statements that read and call nothing that acts outside the transaction or on the server's
+  files (`pg_terminate_backend`, `dblink_exec`, `GET_LOCK`, `LOAD_FILE`, DuckDB's `read_csv`…),
+  and where the database can its session is read-only on the server too (PostgreSQL,
+  CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB, ClickHouse), so that a function that
+  writes fails there as well; marking or unmarking it applies to the session at the next connect.
 - After connecting, a default schema, a time zone and bootstrap statements run on every
   connection and reconnection.
 - Idle sessions are checked every minute: the status bar shows the latency, and a connection
@@ -207,7 +212,10 @@ to the package manager.
   name to open its object.
 - **Parameters** (`:id`, `?`) and **variables** (`${name}`) asked in a dialog and kept in a
   Variables panel; client commands `@set`, `@echo`, `@include file.sql` and
-  `@export file.csv`.
+  `@export file.csv`. A `${name}` value goes into the SQL as it is, so a statement with
+  variables is checked again filled in: a read-only connection refuses it if it now changes
+  something, and a change the values add (a lost `WHERE`, a write on production) is asked
+  about. The values a shared query comes with are asked once, filled in, before they run.
 - Editable snippets (`sel` then `Tab`), query history, `.sql` files.
 - `Ctrl+\` runs into a new result tab; a terminal mode shows results as text; a script can run
   with the local `psql`, `mysql`, `sqlcmd` or `sqlite3`.
@@ -712,6 +720,13 @@ through the MCP server.
   SQL a teammate sets to run at every connect (a connection's init statements) is shown
   first and runs only after you approve that exact text on your machine; if the file changes it,
   you are asked again, and you can always connect without it. Your own init statements never ask.
+  Agents and the `platypus` CLI leave out init statements you have not approved. A connection
+  new from a shared project gives agents no access until you choose otherwise; the file never
+  raises what you chose, nor learns it.
+- **Agent settings changed outside the app**: when `connections.toml` or `settings.toml` is
+  edited to give agents more (agent access, changes run without asking, `UPDATE` or `DELETE`
+  without `WHERE`), agents keep what you allowed and the app asks you, when it starts or gets
+  focus, to accept or undo the edit; see [AGENTS.md](AGENTS.md).
 - **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
   and the navigator, or a driver for a database reached over HTTP; each asks for its
   permissions at install. See [PLUGINS.md](PLUGINS.md).
