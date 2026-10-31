@@ -640,14 +640,7 @@ fn xlsx_row(
             sheet.write_number_with_format(r, c, serial, format)?;
             continue;
         }
-        let number = match kind {
-            ValueKind::Decimal if significant_digits(v) > XLSX_DIGITS => None,
-            ValueKind::Integer | ValueKind::Float | ValueKind::Real | ValueKind::Decimal => v
-                .parse::<f64>()
-                .ok()
-                .filter(|n| n.is_finite() && n.abs() < XLSX_MAX_EXACT),
-            _ => None,
-        };
+        let number = xlsx_number(*kind, v);
         match (kind, number) {
             (_, Some(n)) => sheet.write_number(r, c, n)?,
             (ValueKind::Bool, _) => sheet.write_boolean(r, c, v == "true")?,
@@ -657,6 +650,20 @@ fn xlsx_row(
     Ok(())
 }
 
+/// The number a cell is written as, when its text holds as one: integers and decimals within
+/// what a double keeps exactly (15 digits), floats whatever their size.
+fn xlsx_number(kind: ValueKind, v: &str) -> Option<f64> {
+    match kind {
+        ValueKind::Decimal if significant_digits(v) > XLSX_DIGITS => None,
+        // A float is a double in Excel as it is: the exactness limit is for digits.
+        ValueKind::Float | ValueKind::Real => v.parse::<f64>().ok().filter(|n| n.is_finite()),
+        ValueKind::Integer | ValueKind::Decimal => v
+            .parse::<f64>()
+            .ok()
+            .filter(|n| n.is_finite() && n.abs() < XLSX_MAX_EXACT),
+        _ => None,
+    }
+}
 /// Excel's serial number of a date or time as the export writes it (`2024-01-31`,
 /// `2024-01-31T10:30:00`, with a fraction or an offset, taken in UTC): days since 1899-12-30.
 /// `None` for one Excel cannot show, before 1900 or not a date.
@@ -695,6 +702,21 @@ fn significant_digits(v: &str) -> usize {
 mod tests {
     use super::*;
 
+    #[test]
+    fn large_floats_are_numbers_but_large_integers_and_decimals_stay_text() {
+        assert_eq!(xlsx_number(ValueKind::Float, "1.5e300"), Some(1.5e300));
+        assert_eq!(
+            xlsx_number(ValueKind::Real, "12345678901234567890"),
+            Some(1.234_567_890_123_456_8e19)
+        );
+        assert_eq!(xlsx_number(ValueKind::Float, "NaN"), None);
+        assert_eq!(xlsx_number(ValueKind::Integer, "9007199254740993"), None);
+        assert_eq!(xlsx_number(ValueKind::Integer, "42"), Some(42.0));
+        assert_eq!(
+            xlsx_number(ValueKind::Decimal, "12345678901234567890.5"),
+            None
+        );
+    }
     #[test]
     fn encodes_base64() {
         let cases = [
