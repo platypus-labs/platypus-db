@@ -77,9 +77,10 @@ function parseCommands(claude, codex) {
   assert.match(codex, /^args = \["--mcp"\]$/m, "Codex starts the app with --mcp too");
   // The Codex table names the same program and folder (TOML strings: literal or basic).
   const value = (key) => {
-    const line = codex.split("\n").find((l) => l.startsWith(`${key} = `));
-    assert.ok(line, `${key} missing from the Codex table: ${codex}`);
-    const raw = line.slice(key.length + 3).trim();
+    // A top-level key, or one inside the inline `env = { KEY = '...' }` table.
+    const found = new RegExp(`(?:^|[{,]\\s*)${key} = ('[^']*'|"(?:[^"\\\\]|\\\\.)*")`, "m").exec(codex);
+    assert.ok(found, `${key} missing from the Codex table: ${codex}`);
+    const raw = found[1];
     return raw.startsWith("'") ? raw.slice(1, -1) : JSON.parse(raw);
   };
   assert.equal(value("command"), exe, "Claude Code and Codex start the same program");

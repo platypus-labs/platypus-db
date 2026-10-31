@@ -186,7 +186,9 @@ async function clients(page, dir, shots) {
   assert.equal(await page.eval(`${client("cursor")}.dataset.state`), "missing");
   assert.equal(await page.eval(`${client("windsurf")}.dataset.state`), "unreadable");
   assert.equal(await page.eval(`document.querySelector('[data-install="windsurf"]').disabled`), true);
-  assert.match(await page.eval(`${client("cursor")}.textContent`), /\.cursor[\\/]mcp\.json/);
+  await page.eval(`${client("cursor")}.click()`);
+  await page.waitFor(`document.querySelector('[data-detail="cursor"]') !== null`);
+  assert.match(await page.eval(`document.querySelector('[data-detail="cursor"]').textContent`), /\.cursor[\\/]mcp\.json/);
   // The entry to copy by hand follows the chosen client.
   await page.eval(`${client("codex")}.click()`);
   await page.waitFor(`document.querySelector('[data-field="snippet_codex"]')?.textContent.includes('[mcp_servers.platypus]')`);
@@ -253,7 +255,7 @@ async function clearLog(page) {
 /** An agent proposes a change on the read-only connection: the open app shows it in a new
  *  editor tab, titled as asked, and nothing ran. */
 async function proposal(page, dir, shots) {
-  await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
+  await page.eval(`document.querySelector('.modal.settings > .actions button.primary').click()`);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
   const mcp = await startMcp(dir, "e2e-agent");
   try {
