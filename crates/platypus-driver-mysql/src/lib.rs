@@ -53,6 +53,17 @@ impl Driver for MySqlDriver {
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
         let conn: Box<dyn Connection> = Box::new(MySqlConnection::connect(config).await?);
         platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        // A read-only connection's transactions are read-only on the server too, so a stored
+        // function that writes fails there; set after the setup, which cannot undo it. `TiDB`
+        // only pretends to take it (or refuses it), and a server that refuses it keeps the
+        // statement check alone.
+        if config.read_only && !conn.server_info().version.contains("TiDB") {
+            let read_only = platypus_core::SessionInit {
+                statements: vec!["SET SESSION TRANSACTION READ ONLY".to_owned()],
+                ..platypus_core::SessionInit::default()
+            };
+            let _ = platypus_core::run_init(&*conn, &read_only, self.kind()).await;
+        }
         Ok(conn)
     }
 }
@@ -87,6 +98,14 @@ fn ssl_opts(config: &ConnectionConfig) -> Result<Option<SslOpts>> {
     };
     let identity = match (&config.ssl_client_cert, &config.ssl_client_key) {
         (Some(cert), Some(key)) => {
+            for (what, file) in [("certificate", cert), ("key", key)] {
+                if !file.is_file() {
+                    return Err(Error::Config(format!(
+                        "client {what} file not found: {}",
+                        file.display()
+                    )));
+                }
+            }
             Some(ClientIdentity::new(cert.clone().into(), key.clone().into()))
         }
         (None, None) => None,
@@ -297,7 +316,12 @@ impl Connection for MySqlConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         let effect = classify(sql);
         let result = self.start(sql, options).await;
-        self.tx.after(effect, true);
+        // A typed `SET autocommit = 0` makes the next change wait for COMMIT, as the
+        // toolbar's manual mode does; `= 1` in manual mode commits what is open.
+        match platypus_core::typed_autocommit(sql) {
+            Some(on) if result.is_ok() => self.tx.typed_autocommit(on, true),
+            _ => self.tx.after(effect, true),
+        }
         result
     }
 
@@ -883,9 +907,19 @@ mod tests {
         let mut config = ConnectionConfig::new(DriverKind::MySql);
         config.ssl_mode = SslMode::Require;
         assert!(ssl_opts(&config).unwrap().is_some());
-        config.ssl_client_cert = Some("client.crt".into());
+        let dir = tempfile::tempdir().unwrap();
+        let (cert, key) = (dir.path().join("client.crt"), dir.path().join("client.key"));
+        config.ssl_client_cert = Some(cert.clone());
         assert!(ssl_opts(&config).is_err());
-        config.ssl_client_key = Some("client.key".into());
+        config.ssl_client_key = Some(key.clone());
+
+        // A file that is not there is named in the error, the certificate or the key.
+        let err = ssl_opts(&config).err().unwrap().to_string();
+        assert!(err.contains("client.crt"), "{err}");
+        std::fs::write(&cert, b"").unwrap();
+        let err = ssl_opts(&config).err().unwrap().to_string();
+        assert!(err.contains("client.key"), "{err}");
+        std::fs::write(&key, b"").unwrap();
         assert!(ssl_opts(&config).unwrap().is_some());
     }
 

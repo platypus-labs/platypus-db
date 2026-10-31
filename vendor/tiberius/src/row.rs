@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    tds::codec::{ColumnData, FixedLenType, TokenRow, TypeInfo, VarLenType},
+    tds::codec::{ClrType, ColumnData, FixedLenType, TokenRow, TypeInfo, VarLenType},
     FromSql,
 };
 use std::{fmt::Display, sync::Arc};
@@ -15,6 +15,8 @@ pub struct Column {
     pub(crate) scale: Option<u8>,
     /// PlatypusDB: the declared length in bytes of sized types; `None` for `max` types.
     pub(crate) max_length: Option<usize>,
+    /// PlatypusDB: the CLR type of a `udt` column.
+    pub(crate) clr: Option<ClrType>,
 }
 
 impl Column {
@@ -26,6 +28,7 @@ impl Column {
             precision: None,
             scale: None,
             max_length: None,
+            clr: None,
         }
     }
 
@@ -40,6 +43,7 @@ impl Column {
                 column.scale = Some(*scale);
             }
             TypeInfo::VarLenSized(cx) => match cx.r#type() {
+                VarLenType::Udt => column.clr = cx.clr(),
                 #[cfg(feature = "tds73")]
                 VarLenType::Timen | VarLenType::Datetime2 | VarLenType::DatetimeOffsetn => {
                     column.scale = Some(cx.len() as u8);
@@ -76,6 +80,11 @@ impl Column {
     /// `nvarchar`, `binary` or `varbinary` column; `None` for `max` and other types.
     pub fn max_length(&self) -> Option<usize> {
         self.max_length
+    }
+
+    /// PlatypusDB: the CLR type of a `udt` column (`hierarchyid`, `geography`, ...).
+    pub fn clr_type(&self) -> Option<ClrType> {
+        self.clr
     }
 
     /// The name of the column.

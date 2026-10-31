@@ -23,8 +23,10 @@ import {
   VENDOR_DRIVERS,
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
-import { CONNECTION_TYPES, noteText } from "../connections";
-import { applyUrlEdit, looksLikeConnection, splitLogin, urlModeDriver, validPort, withParsed, type ConnectBy } from "../connectionUrl";
+import { asksPassword, CONNECTION_TYPES, noteText } from "../connections";
+import { applyUrlEdit, cleanFilePath, hostOptional, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed, type ConnectBy } from "../connectionUrl";
+import { PasswordPrompt } from "../App";
+import { workbench } from "../workbench";
 import { hasSessionTimeZone, withoutUnusableInit } from "../connectionEdit";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
@@ -218,6 +220,17 @@ function PortForwardFields({
   );
 }
 
+/** Enter in a single-line field saves the connection, as in every other dialog: not in a text
+ *  area, a button or a list, and not while an input method is composing text. */
+function enterSaves(e: React.KeyboardEvent): boolean {
+  if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return false;
+  if (e.nativeEvent.isComposing || e.keyCode === 229 || e.defaultPrevented) return false;
+  const target = e.target as HTMLElement;
+  if (target.tagName !== "INPUT") return false;
+  const type = (target as HTMLInputElement).type;
+  return !["checkbox", "radio", "button", "submit", "file", "range", "color"].includes(type);
+}
+
 export function ConnectionDialog({ initial, existing, projects, memberOf, driverChosen, onSaved, onClose }: Props) {
   const [conn, setConn] = useState(initial);
   const [inProjects, setInProjects] = useState(() => new Set(memberOf));
@@ -331,16 +344,50 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
    *  that the password goes where passwords go, never into the saved host. */
   function takeLogin(base = conn, typedPassword = password): { c: SavedConnection; typed: string } {
     const login = server && !adbcProfile && base.driver !== "mongo" ? splitLogin(base.host) : null;
-    if (!login) return { c: { ...base, host: base.host.trim() }, typed: typedPassword };
-    const c = { ...base, host: login.host, port: login.port ?? base.port, user: login.user || base.user };
+    if (!login) return { c: tidyAddress({ ...base, host: base.host.trim() }), typed: typedPassword };
+    const c = tidyAddress({ ...base, host: login.host, port: login.port ?? base.port, user: login.user || base.user });
     const typed = login.password ?? typedPassword;
     setConn(c);
     setPassword(typed);
     return { c, typed };
   }
 
+  /** The address fields as the driver reads them: a file path without the quotes "Copy as
+   *  path" adds, SQL Server's `host,port` split. */
+  function tidyAddress(c: SavedConnection): SavedConnection {
+    if (!server) return { ...c, database: cleanFilePath(c.database) };
+    const split = c.driver === "sqlserver" ? splitSqlServerHost(c.host) : null;
+    return split ? { ...c, host: split.host, port: split.port } : c;
+  }
+
   /** The form's problem that the server would answer less clearly, or `null`. */
-  const formProblem = (c: SavedConnection) => (server && !validPort(c.port) ? t("The port must be a number from 1 to 65535.") : null);
+  const formProblem = (c: SavedConnection) => {
+    if (!server) return null;
+    if (!validPort(c.port)) return t("The port must be a number from 1 to 65535.");
+    if (!hostOptional(c.driver) && !c.host.trim()) return t("The host is missing.");
+    const missing = sshMissing(c.network_profile ? null : c.ssh);
+    if (missing === "host") return t("The SSH host is missing.");
+    if (missing === "user") return t("The SSH user is missing.");
+    return null;
+  };
+
+  /** The password to test an "ask every time" connection with, when none is typed in the
+   *  form: asked as opening the connection does; `null` when the question is cancelled. */
+  async function testPassword(c: SavedConnection, typed: string): Promise<string | null> {
+    if (typed !== "" || !asksPassword(c)) return typed;
+    return new Promise((resolve) =>
+      workbench().openDialog((close) => (
+        <PasswordPrompt
+          connection={c}
+          error={null}
+          onDone={(entered) => {
+            close();
+            resolve(entered);
+          }}
+        />
+      )),
+    );
+  }
 
   /** `parsed`, read from the URL `text`, into the form's settings; `null`, with the error
    *  under the field, when the URL is for another database. */
@@ -386,10 +433,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     const { c, typed } = form;
     const problem = formProblem(c);
     if (problem) return setResult({ ok: false, message: problem });
+    const password = await testPassword(c, typed);
+    if (password === null) return;
     setBusy(true);
     setResult(null);
     try {
-      const server = await withDriver(() => api.testConnection(ownNetwork(c), passwordInput(typed), sshSecrets()));
+      const server = await withDriver(() => api.testConnection(ownNetwork(c), passwordInput(password), sshSecrets()));
       setResult({ ok: true, server });
     } catch (e) {
       setResult({ ok: false, message: toCommandError(e).message });
@@ -561,7 +610,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
         <form
           className="modal connection-dialog"
           onSubmit={save}
-          onKeyDown={(e) => e.key === "Escape" && onClose()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+            else if (enterSaves(e)) {
+              // Handled here, so the browser's own implicit submission does not save twice.
+              e.preventDefault();
+              e.currentTarget.requestSubmit();
+            }
+          }}
           // A required field left empty on another tab: show that tab.
           onInvalidCapture={(e) => {
             const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-page]")?.dataset.page;

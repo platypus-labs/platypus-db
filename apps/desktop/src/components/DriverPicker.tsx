@@ -187,9 +187,37 @@ interface Props {
   onClose: () => void;
 }
 
-/** The choices whose (translated) name, or driver, contains `needle`, folded. */
+/** Other names people search a database by, by tile label. */
+const ALIASES: Record<string, string> = {
+  PostgreSQL: "pg postgres psql pgsql",
+  MySQL: "mysql",
+  MariaDB: "maria mysql",
+  "SQL Server": "mssql sqlserver sql server tsql azure",
+  ClickHouse: "ch click house",
+  SQLite: "sqlite3 lite",
+  DuckDB: "duck",
+  "Turso / libSQL": "libsql turso sqld",
+  MongoDB: "mongo mongod documentdb cosmos",
+  Redis: "valkey keydb dragonfly",
+  "Elasticsearch / OpenSearch": "elastic es opensearch",
+  "Apache Cassandra": "cassandra cql",
+  ScyllaDB: "scylla cassandra",
+  BigQuery: "bq google",
+  CockroachDB: "cockroach crdb",
+  YugabyteDB: "yugabyte yb",
+  TimescaleDB: "timescale tsdb",
+  "IBM Db2": "db2 ibm",
+  Oracle: "oracledb oci",
+};
+
+/** The choices whose (translated) name, alias or driver contains `needle`, folded. */
 function matching(choices: Choice[], needle: string): Choice[] {
-  return choices.filter((c) => fold(t(c.label)).includes(needle) || c.driver.includes(needle));
+  return choices.filter(
+    (c) =>
+      fold(t(c.label)).includes(needle) ||
+      c.driver.includes(needle) ||
+      fold(ALIASES[c.label] ?? "").split(" ").some((a) => a.startsWith(needle) || (needle.length > 2 && a.includes(needle))),
+  );
 }
 
 /** First step of a new connection: the database, as a grid of logos, with a search. */

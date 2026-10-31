@@ -11,7 +11,7 @@
 // "serve": the server starts and waits on stdin instead of printing the usage and exiting
 // with an error, so a mistyped agent config looks like a hung server.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";

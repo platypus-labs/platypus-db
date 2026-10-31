@@ -5,11 +5,15 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use arrow_array::{Array as _, StringArray, UnionArray};
+use arrow_array::types::Decimal256Type;
+use arrow_array::{
+    Array as _, ArrowPrimitiveType, Decimal128Array, Decimal256Array, StringArray, UnionArray,
+};
 use arrow_cast::display::FormatOptions;
 use arrow_schema::{ArrowError, DataType, FieldRef, Schema, SchemaRef};
 use duckdb::core::{LogicalTypeHandle, LogicalTypeId};
 use platypus_core::META_DB_TYPE;
+use platypus_sql::{Dialect, Lexer, TokenKind};
 
 /// Nested types deeper than this are named by their outer levels only.
 const MAX_DEPTH: usize = 8;
@@ -53,18 +57,31 @@ pub fn portable(data_type: &DataType) -> Option<DataType> {
 
 /// `schema` with each field tagged with the DuckDB type of its result column, and zoned
 /// timestamps made [`portable`].
-pub fn tag_schema(schema: &Schema, stmt: &duckdb::Statement<'_>) -> SchemaRef {
+pub fn tag_schema(
+    schema: &Schema,
+    stmt: &duckdb::Statement<'_>,
+    zoned_times: &[usize],
+) -> SchemaRef {
     let fields: Vec<_> = schema
         .fields()
         .iter()
         .enumerate()
         .map(|(i, field)| {
             let mut metadata = field.metadata().clone();
-            let name = type_name(&stmt.column_logical_type(i), 0);
+            let name = if zoned_times.contains(&i) {
+                TIME_TZ.to_owned()
+            } else {
+                type_name(&stmt.column_logical_type(i), 0)
+            };
             let bits = name == "BIT";
+            let huge = name == "UHUGEINT";
             metadata.insert(META_DB_TYPE.to_owned(), name);
             let field = field.as_ref().clone().with_metadata(metadata);
             match portable(field.data_type()) {
+                // Arrow has no unsigned 128-bit number: see [`unsigned_huge`].
+                _ if huge && *field.data_type() == DataType::Decimal128(38, 0) => {
+                    field.with_data_type(DataType::Decimal256(39, 0))
+                }
                 // `BIT` arrives as DuckDB's bytes: shown as its digits, see [`bit_text`].
                 _ if bits && *field.data_type() == DataType::Binary => {
                     field.with_data_type(DataType::Utf8)
@@ -88,6 +105,73 @@ pub fn tag_schema(schema: &Schema, stmt: &duckdb::Statement<'_>) -> SchemaRef {
     ))
 }
 
+/// The name of `TIMETZ` in [`META_DB_TYPE`].
+const TIME_TZ: &str = "TIME WITH TIME ZONE";
+
+/// The `UHUGEINT` values of `column`, which Arrow exports as the same bits of a signed
+/// `DECIMAL(38, 0)`, as the unsigned numbers they are: the top half of the range reads
+/// negative there, and `DECIMAL(39, 0)` holds all of it.
+///
+/// # Errors
+/// When Arrow refuses the precision.
+pub fn unsigned_huge(column: &Decimal128Array) -> Result<Decimal256Array, ArrowError> {
+    type Wide = <Decimal256Type as ArrowPrimitiveType>::Native;
+    column
+        .iter()
+        .map(|v| v.map(|v| Wide::from_parts(v.cast_unsigned(), 0)))
+        .collect::<Decimal256Array>()
+        .with_precision_and_scale(39, 0)
+}
+
+/// The result columns of type `TIMETZ`, whose offset Arrow's time of day loses.
+pub fn time_tz_columns(stmt: &duckdb::Statement<'_>, count: usize) -> Vec<usize> {
+    (0..count)
+        .filter(|&i| type_name(&stmt.column_logical_type(i), 0) == TIME_TZ)
+        .collect()
+}
+
+/// `sql` up to the end of its statement, without its `;` and what comes after, when it is a
+/// plain query, one that can be read from as a subquery; `None` for other statements.
+pub fn plain_query(sql: &str) -> Option<&str> {
+    let tokens: Vec<_> = Lexer::new(sql, Dialect::DuckDb)
+        .filter(|t| {
+            !matches!(
+                t.kind,
+                TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment
+            )
+        })
+        .collect();
+    let first = tokens.first().filter(|t| t.kind == TokenKind::Word)?;
+    if !["SELECT", "WITH", "FROM", "VALUES", "TABLE"]
+        .contains(&first.text(sql).to_ascii_uppercase().as_str())
+    {
+        return None;
+    }
+    let end = tokens
+        .last()
+        .filter(|t| t.text(sql) == ";")
+        .map_or(tokens.last()?.end, |t| t.start);
+    Some(&sql[..end])
+}
+
+/// The plain query `query`, whose result columns are `names`, with its `zoned` columns as
+/// text (`03:04:05+02`); `None` when `zoned` is empty or names a column `names` has not.
+pub fn timetz_query(query: &str, names: &[String], zoned: &[usize]) -> Option<String> {
+    if zoned.is_empty() {
+        return None;
+    }
+    let replaced = zoned
+        .iter()
+        .map(|&i| {
+            let name = Dialect::DuckDb.quote_ident(names.get(i)?);
+            Some(format!("CAST({name} AS VARCHAR) AS {name}"))
+        })
+        .collect::<Option<Vec<String>>>()?;
+    Some(format!(
+        "SELECT * REPLACE ({}) FROM (\n{query}\n)",
+        replaced.join(", ")
+    ))
+}
 /// The values of a `UNION` column as DuckDB prints them: the value of the member each row
 /// holds (`5`, not Arrow's `{n=5}`), NULL where that value is NULL (Arrow's `{n=}`).
 ///

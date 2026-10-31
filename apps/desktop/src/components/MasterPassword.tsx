@@ -47,6 +47,9 @@ export function UnlockDialog({ onDone }: { onDone: (unlocked: boolean) => void }
 
 type Mode = "enable" | "change" | "disable" | null;
 
+/** The shortest new master password the vault takes (`MIN_PASSWORD_LEN` in platypus-store). */
+const MIN_PASSWORD_LENGTH = 8;
+
 /** The master password in the Settings: turn it on or off, change it, lock now. */
 export function MasterPasswordPanel() {
   const [status, setStatus] = useState<VaultStatus | null>(null);
@@ -85,10 +88,12 @@ export function MasterPasswordPanel() {
 
   const needsNew = mode === "enable" || mode === "change";
   const mismatch = needsNew && confirm !== "" && confirm !== next;
+  // As the vault counts: characters, not UTF-16 units.
+  const tooShort = needsNew && next !== "" && [...next].length < MIN_PASSWORD_LENGTH;
   const ready =
     (mode === "disable" && current !== "") ||
-    (mode === "enable" && next !== "" && next === confirm) ||
-    (mode === "change" && current !== "" && next !== "" && next === confirm);
+    (mode === "enable" && next !== "" && !tooShort && next === confirm) ||
+    (mode === "change" && current !== "" && next !== "" && !tooShort && next === confirm);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -155,6 +160,7 @@ export function MasterPasswordPanel() {
                 <span>{t("Repeat it")}</span>
                 <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
               </label>
+              {tooShort && <div className="error-text small">{t("The master password must be at least 8 characters long.")}</div>}
               {mismatch && <div className="error-text small">{t("The two passwords differ.")}</div>}
               {mode === "enable" && (
                 <div className="muted small">{t("It cannot be recovered: without it the saved passwords are lost.")}</div>

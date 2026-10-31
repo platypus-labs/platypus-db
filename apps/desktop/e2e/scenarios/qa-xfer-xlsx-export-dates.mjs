@@ -18,7 +18,7 @@ export const setup = ({ dir }) => saveConnections(dir, ["pg"]);
 export default async function (page, { dir }) {
   await openEditor(page, DBS.pg.name);
   assert.equal(await runScript(page, "SELECT DATE '2024-01-31' AS d, TIMESTAMP '2024-01-31 10:30' AS ts"), "1 row");
-  assert.match(await exportResult(page, join(dir, "out.xlsx"), { format: "xlsx", source: "loaded" }), /^Exported 1 rows/);
+  assert.match(await exportResult(page, join(dir, "out.xlsx"), { format: "xlsx", source: "loaded" }), /^Exported 1 row\b/);
   const sheet = zipEntry(join(dir, "out.xlsx"), "xl/worksheets/sheet1.xml");
   const a2 = /<c r="A2"[^>]*>.*?<\/c>/.exec(sheet)?.[0] ?? "";
   assert.doesNotMatch(a2, /t="inlineStr"|t="s"/, `A2 is text: ${a2}`);

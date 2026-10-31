@@ -499,6 +499,9 @@ export interface RestoreRequest {
   path: string;
   /** Drops the archive's objects before creating them again (`pg_restore --clean`). */
   clean: boolean;
+  /** The user has seen the client commands of a SQL file (`\!`, `system`…) and runs them.
+   *  Without it a file with any fails with `client_commands`, its lines as the message. */
+  allow_client_commands?: boolean;
 }
 
 /** The formats of a scheduled export. */
@@ -1077,8 +1080,18 @@ export interface SharedNotice {
   retargeted: number;
   /** Connections whose safety settings the file loosened: this computer's stricter ones were kept. */
   kept_stricter: number;
+  /** Connections whose new `${env:…}` references were held (`$${…}`): read as written until
+   *  the user edits them. */
+  held_references: number;
   message: string | null;
 }
+
+/** An edit made outside the app that gives agents more than the user approved: agents do
+ *  not get it until the user accepts it. */
+export type AgentPolicyChange =
+  | { kind: "access"; id: string; name: string; from: AgentAccess; to: AgentAccess }
+  | { kind: "confirm_writes" }
+  | { kind: "unfiltered" };
 
 export interface OpenedShared {
   workspace: Workspace;
@@ -1312,6 +1325,8 @@ export interface IndexMeta {
   primary: boolean;
   /** Covers only the rows of a condition (`WHERE`). */
   partial: boolean;
+  /** Sort order, INCLUDE columns and WHERE predicate, as the database writes them. */
+  detail: string | null;
   size: number | null;
 }
 
@@ -1321,6 +1336,8 @@ export interface ForeignKeyMeta {
   ref_schema: string;
   ref_table: string;
   ref_columns: string[];
+  /** Referential actions and deferral (ON DELETE SET NULL, DEFERRABLE). */
+  detail: string | null;
 }
 
 export interface ConstraintMeta {
@@ -1422,13 +1439,23 @@ export interface TableDesign {
   primary_key_name?: string | null;
   indexes: IndexDesign[];
   foreign_keys: ForeignKeyDesign[];
-  /** UNIQUE and CHECK constraints. */
+  /** UNIQUE, CHECK and EXCLUDE constraints. */
   constraints: ConstraintDesign[];
-  /** SQLite's `WITHOUT ROWID`, `STRICT`, kept from the database. */
+  /** What follows the column list, kept from the database: SQLite's `WITHOUT ROWID`,
+   *  PostgreSQL's `PARTITION BY`, ClickHouse's engine clause. */
   options?: string | null;
   /** The table's `CREATE TRIGGER` statements (SQLite), run again when it is rebuilt. */
   triggers?: string[];
+  /** The partitions of a partitioned table (PostgreSQL). */
+  partitions?: { name: string; bound: string }[];
+  /** The user-defined types its columns use (PostgreSQL). */
+  types?: { schema: string; name: string; kind: string; body: string }[];
+  /** The period and history table of a system-versioned table (SQL Server). */
+  system_time?: { start: string; end: string; history: string | null } | null;
 }
+
+/** When a key or constraint is checked: `deferred` for `DEFERRABLE INITIALLY DEFERRED`. */
+export type Deferral = "not_deferrable" | "immediate" | "deferred";
 
 export interface ColumnDesign {
   original: string | null;
@@ -1454,6 +1481,17 @@ export interface IndexDesign {
   unique: boolean;
   /** Its own `CREATE INDEX` (SQLite), run again while the index is unchanged. */
   sql?: string | null;
+  /** Key parts that say more than their column (`lower(name)`, a prefix length, `DESC`); emptied
+   *  when the columns are edited. */
+  parts?: string[];
+  /** A kind other than the default: `brin`, `FULLTEXT`, `CLUSTERED`. */
+  method?: string | null;
+  /** Columns carried without keying on them (`INCLUDE`). */
+  include?: string[];
+  /** The condition of a partial index, without `WHERE`. */
+  predicate?: string | null;
+  /** MySQL's `INVISIBLE`, MariaDB's `IGNORED`. */
+  visibility?: string | null;
 }
 
 export interface ForeignKeyDesign {
@@ -1466,15 +1504,25 @@ export interface ForeignKeyDesign {
   /** `null` for NO ACTION. */
   on_delete: string | null;
   on_update: string | null;
+  /** Kept from the database: `DEFERRABLE ..`, `MATCH FULL`, SQL Server's `NOCHECK`. */
+  deferral?: Deferral;
+  match_type?: string | null;
+  disabled?: boolean;
 }
 
 export interface ConstraintDesign {
   original: string | null;
   name: string;
-  kind: "unique" | "check";
+  kind: "unique" | "check" | "exclusion";
   columns: string[];
-  /** The condition of a CHECK, without `CHECK`. */
+  /** The condition of a CHECK, without `CHECK`; what follows `EXCLUDE` in an exclusion. */
   check: string;
+  /** Kept from the database: `DEFERRABLE ..`, `NULLS NOT DISTINCT`, SQLite's `ON CONFLICT`,
+   *  MySQL's `NOT ENFORCED` and SQL Server's `NOCHECK` (`disabled`). */
+  deferral?: Deferral;
+  nulls_not_distinct?: boolean;
+  on_conflict?: string | null;
+  disabled?: boolean;
 }
 
 /** The migration tool whose file `schemaChangelog` writes. */
@@ -1715,6 +1763,9 @@ export interface ExportOptions {
   format: ExportFormat;
   delimiter: string;
   header: boolean;
+  /** CSV: cells a spreadsheet would run as formulas (`=`, `+`, `-`, `@`…) get a leading `'`;
+   *  numbers stay. On when left out. */
+  formulas_as_text?: boolean;
   /** SQL: the table the INSERT statements write to. */
   table?: string;
   /** SQL: the database the statements are written for. */
@@ -2174,6 +2225,9 @@ export type ResultPartial = "memory_limit" | "stopped";
 export interface OpenedResultDb {
   connection: SavedConnection;
   partial: ResultPartial | null;
+  /** The time zones the results' timestamps name, when more than one: SQL shows their
+   *  instants in the first. */
+  zones: string[];
 }
 
 /** A table to copy into the DuckDB of "Query across databases". */
@@ -2200,6 +2254,8 @@ export interface AcrossTable {
 export interface OpenedAcross {
   connection: SavedConnection;
   tables: AcrossTable[];
+  /** As `OpenedResultDb.zones`. */
+  zones: string[];
 }
 
 // Analysis (group M): saved results
@@ -2355,6 +2411,8 @@ export const api = {
     invoke<Workspace>("share_project", { projectId, folder, shareUser }),
   openSharedProject: (folder: string) => invoke<OpenedShared>("open_shared_project", { folder }),
   refreshSharedProjects: () => invoke<SharedNotice[]>("refresh_shared_projects"),
+  agentPolicyChanges: () => invoke<AgentPolicyChange[]>("agent_policy_changes"),
+  answerAgentPolicy: (accept: boolean) => invoke<void>("answer_agent_policy", { accept }),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
   deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),
@@ -2642,9 +2700,16 @@ export const api = {
   lintSql: (sql: string, driver: DriverKind) => invoke<SqlLint>("lint_sql", { sql, driver }),
   /** `sql` sorted by `column` or, with `null`, back to `original` (the ORDER BY it had before
    *  the viewer's sort, from `sqlOrderClause`) or unsorted: only its top-level ORDER BY changes.
+   *  With `position` (from 1), the sort names the column by its place in the select list.
    *  `null` when it is not a read-only query the sort can be placed in with certainty. */
-  sqlOrderBy: (sql: string, driver: DriverKind, column: string | null, desc: boolean, original: string | null = null) =>
-    invoke<string | null>("sql_order_by", { sql, driver, column, desc, original }),
+  sqlOrderBy: (
+    sql: string,
+    driver: DriverKind,
+    column: string | null,
+    desc: boolean,
+    original: string | null = null,
+    position: number | null = null,
+  ) => invoke<string | null>("sql_order_by", { sql, driver, column, desc, original, position }),
   /** The top-level ORDER BY of `sql` as written; `null` when it has none. */
   sqlOrderClause: (sql: string, driver: DriverKind) => invoke<string | null>("sql_order_clause", { sql, driver }),
   /** Whether a header click may rewrite `sql` (see `sqlOrderBy`). */

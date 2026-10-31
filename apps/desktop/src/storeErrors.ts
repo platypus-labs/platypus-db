@@ -13,15 +13,25 @@ const STORE = new Set([
   msg("initials are one or two characters"),
   msg("a client certificate needs both the certificate and its key"),
   msg("a connection cannot go before itself"),
+  msg("the master password cannot be empty"),
+  msg("the master password must be at least 8 characters long"),
 ]);
 
 /** Messages with values in them: the pattern finds them, in the order of the text's names. */
-const STORE_PATTERNS: [RegExp, string, string[]][] = [[/^a project named "(.*)" exists already$/s, msg('a project named "{name}" exists already'), ["name"]]];
+const STORE_PATTERNS: [RegExp, string, string[]][] = [
+  [/^a project named "(.*)" exists already$/s, msg('a project named "{name}" exists already'), ["name"]],
+  [/^a connection named "(.*)" exists already$/s, msg('a connection named "{name}" exists already'), ["name"]],
+];
 
 const APP = new Set([
   msg("Query cancelled"),
   msg("Connection closed"),
   msg("no database file given"),
+  msg("the host is missing"),
+  msg("the SSH host is missing"),
+  msg("the SSH user is missing"),
+  // The drivers' own checks, raised by the app and not by the server.
+  msg("invalid configuration: password missing"),
   msg("commit or roll back the open transaction first"),
   msg("The connection was lost and has been reopened; the open transaction was rolled back."),
   msg(
@@ -42,12 +52,21 @@ const APP = new Set([
 
 const APP_PATTERNS: [RegExp, string, string[]][] = [
   [/^not a file of the repository: (.*)$/s, msg("not a file of the repository: {path}"), ["path"]],
+  [
+    /^the repository's own configuration runs commands \((.*)\): remove these settings from its \.git\/config to use Git here$/s,
+    msg("the repository's own configuration runs commands ({keys}): remove these settings from its .git/config to use Git here"),
+    ["keys"],
+  ],
   [/^(.*) does not exist, nor does its folder$/s, msg("{path} does not exist, nor does its folder"), ["path"]],
   [
     /^(.*) not found: a relative path is not created, give the full path of the file$/s,
     msg("{path} not found: a relative path is not created, give the full path of the file"),
     ["path"],
   ],
+  // SQLite may repeat the path after its reason: "…: unable to open database file: D:\x".
+  [/^cannot open (.*?): unable to open database file(?:: .*)?$/s, msg("cannot open {path}: unable to open database file"), ["path"]],
+  [/^cannot open (.*?): file is not a database(?:: .*)?$/s, msg("cannot open {path}: file is not a database"), ["path"]],
+  [/^invalid Redis database `(.*)`: a number, such as 0$/s, msg("invalid Redis database `{name}`: a number, such as 0"), ["name"]],
   [/^(.*) is read-only: nothing that may change it runs there$/s, msg("{name} is read-only: nothing that may change it runs there"), ["name"]],
   [
     /^the download failed \(check the internet connection\): (.*)$/s,

@@ -85,8 +85,9 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
       const to = await workbench().sideSession(target, targetDatabase);
       if (source === null || to === null) return;
       const { script, sql } = await api.compareSchemas(source, schema, to, targetSchema);
-      if (script.statements.length === 0) return setSame(true);
-      if (output !== "editor") {
+      // A difference the script leaves to the user (its warnings) still is one.
+      if (script.statements.length === 0 && script.warnings.length === 0) return setSame(true);
+      if (output !== "editor" && script.statements.length > 0) {
         if (await writeChangelog(script, output)) onClose();
         return;
       }

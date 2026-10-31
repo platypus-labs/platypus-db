@@ -75,6 +75,10 @@ const compact = new Map<string, Intl.NumberFormat>();
 /** A number in a few characters: 1.5K, 2M, 0.25; written as `locale` writes numbers (the
  *  interface language, not the system's). */
 export function formatNumber(v: number, locale?: string): string {
+  // Under 0.01 two decimals would write it as 0: keep its significant digits (1.5E-6).
+  if (v !== 0 && Math.abs(v) < 0.01) {
+    return new Intl.NumberFormat(locale, { notation: "scientific", maximumSignificantDigits: 3 }).format(v);
+  }
   const key = locale ?? "";
   let format = compact.get(key);
   if (!format) {

@@ -6,7 +6,7 @@
 // Instant Client comes from PLATYPUS_E2E_ORACLE_DRIVERS (a folder holding
 // `drivers/vendor/oracle/<version>`), else from target/conformance-drivers, which
 // `PLATYPUS_TEST_ORACLE_CLIENT=download cargo test -p platypus-conformance` fills.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { cpSync, existsSync, writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { dirname, join, resolve } from "node:path";

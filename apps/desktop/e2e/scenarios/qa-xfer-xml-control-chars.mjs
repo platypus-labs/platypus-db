@@ -16,7 +16,7 @@ export const setup = ({ dir }) => sqliteOnly(dir);
 export default async function (page, { dir }) {
   await openEditor(page, "QA SQLite");
   assert.equal(await runScript(page, "SELECT 'a' || char(1) || 'b' AS t"), "1 row");
-  assert.match(await exportResult(page, join(dir, "out.xml"), { format: "xml", source: "loaded" }), /^Exported 1 rows/);
+  assert.match(await exportResult(page, join(dir, "out.xml"), { format: "xml", source: "loaded" }), /^Exported 1 row\b/);
   const xml = readFileSync(join(dir, "out.xml"), "utf8");
   assert.doesNotMatch(xml, /[\x00-\x08\x0B\x0C\x0E-\x1F]/, JSON.stringify(xml));
 }

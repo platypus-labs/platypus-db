@@ -41,8 +41,10 @@ where
         Text => super::text::decode(src, collation).await?,
         NText => super::text::decode(src, None).await?,
         Image => super::image::decode(src).await?,
-        // PlatypusDB: UDT values are their serialized bytes, variants their base value.
-        Udt => super::binary::decode(src, len).await?,
+        // PlatypusDB: UDT values are their serialized bytes, variants their base value. A UDT
+        // is always sent partially length-prefixed, whatever its maximum size (892 bytes for
+        // `hierarchyid`): read by that size, the row lost its place in the stream.
+        Udt => super::binary::decode(src, 0xffff).await?,
         SSVariant => super::variant::decode(src).await?,
         #[allow(unreachable_patterns)]
         t => {

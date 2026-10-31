@@ -1,4 +1,5 @@
-// The interface in Spanish, German, French, Portuguese and Chinese: chosen in Settings ›
+// The interface in Italian, Spanish, German, French, Portuguese and Chinese (the seven languages
+// with English; the list offers exactly those): chosen in Settings ›
 // Appearance › Language, each loads its dictionary and shows at once (the Settings' own
 // title, the welcome screen), sets the page's language, and writes the keys of the
 // shortcuts as its keyboards do (Strg in German). Back to English at the end; a start in a
@@ -12,7 +13,7 @@ import { restart } from "../qa-jrn.mjs";
 import { sqliteConnection } from "../query.mjs";
 
 const NAME = "E2E languages";
-const LANGUAGES = ["es", "de", "fr", "pt", "zh"];
+const LANGUAGES = ["it", "es", "de", "fr", "pt", "zh"];
 const dictionary = async (lang) =>
   (await import(pathToFileURL(join(import.meta.dirname, "..", "..", "src", "i18n", `${lang}.ts`)).href)).default;
 const pick = (value) => `(() => {
@@ -41,6 +42,11 @@ async function choose(page, lang, title) {
     await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   }
   await page.settingsTab("Appearance", "Language and text");
+  if (lang === "it") {
+    // The list offers English, the six dictionaries and the system's language, no more.
+    const offered = await page.eval(`[...[...document.querySelectorAll('.modal.settings .setting')].find(s => s.querySelector('select option[value="es"]')).querySelectorAll('select option')].map(o => o.value)`);
+    assert.deepEqual([...offered].sort(), ["de", "en", "es", "fr", "it", "pt", "system", "zh"]);
+  }
   await page.eval(pick(lang));
   await page.waitFor(`${heading} === ${JSON.stringify(title)}`, 10_000);
 }

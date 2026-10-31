@@ -7,7 +7,18 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 (no window opens, and the app need not be open for reading).
 
 - Each connection gives agents **no access**, **read only** (the default) or **read and
-  write**; production and read-only connections are never more than read only.
+  write**; production and read-only connections are never more than read only. A connection
+  that comes new from a shared project starts with **no access** on your computer, whatever
+  the project file says, and the file never raises it later; what you choose stays on your
+  computer and is not written back to the team's file.
+- **Edits outside the app wait for you**: `connections.toml` and `settings.toml` are files a
+  coding agent with file tools can write, so the app keeps what you allowed agents (agent
+  access, "Ask before agents change data", the Safety setting for `UPDATE` or `DELETE` without
+  `WHERE`) in `agent-policy.json`, sealed by its SHA-256 in the system keychain. Agents get
+  what the files say, never more than what is sealed; an edit that gives them more is asked
+  about when the app starts or its window gets focus (accept it, or undo it), and an edit that
+  gives them less applies at once. Without a keychain there is no seal, and the files are
+  taken as they are.
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
 - Agents' queries are in the history with the agent's name, and every tool call is in the
   agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
@@ -20,6 +31,9 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
   refused. With the app closed, agents' changes are refused. A query that writes through a
   function counts too: where the database refuses writes in a read-only transaction
   (PostgreSQL, MySQL, MariaDB, SQLite) queries run in one first, and the write is asked about.
+  A query that calls what acts outside the transaction (`dblink_exec`, `pg_terminate_backend`,
+  Trino's `query()`, Snowflake's `SYSTEM$` functions, Oracle's packages: the names read-only
+  agents are refused) is asked about before it runs, as a change.
   Settings → Safety → "Ask before agents change data" turns the questions off.
 - While the app is open, agents reach it through a **bridge** on a local port with a token:
   the top bar shows the agents connected, and the `list_open_sessions` tool shows them the
@@ -78,7 +92,9 @@ Linux packages put it there), set `PLATYPUS_DB` to its full path, e.g.
 profile, or of `PLATYPUS_DATA_DIR` when set. With a master password the saved passwords stay
 locked to agents: such connections answer with an error saying so, and work with a password
 command or `.pgpass` instead. A connection that asks for its password every time is not
-available to agents.
+available to agents. The bootstrap statements of a connection in a shared project run for
+agents and the CLI only once you approved that exact text in the app (which asks at the first
+connect): until then they are left out, and the server's log (stderr) says so.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
 `search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql`,
@@ -103,6 +119,10 @@ column is known by its name only: the names of Settings › Safety (emails, phon
 count, and so do the columns the user marked sensitive in the app; a column marked not
 sensitive is still masked where the rules name it, since the text does not say which table it
 is. When the app's catalog cannot be read, the tools fail rather than show the values.
+The history and the agents' call log never keep a password a statement sets
+(`CREATE ROLE … PASSWORD '…'`, `IDENTIFIED BY '…'`, `SET PASSWORD`): it is stored as
+`'********'`, in the statement, in a call's arguments and in the error, whether the app or an
+agent ran it.
 
 Clients that read MCP resources find the schema there too: `resources/list` has one resource
 per connection agents may use (`platypus://<connection>`, its schemas), and two templates,
@@ -122,9 +142,28 @@ if it is open, else when it starts (within 24 hours).
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB
 and SQL Server roll the transaction back), and functions that act outside it
-(`pg_terminate_backend`, `dblink`, `LOAD_FILE`…) are refused. DuckDB sessions of agents
+(`pg_terminate_backend`, `dblink`, `LOAD_FILE`…) are refused. The session itself is read-only
+on the server, for read-only agents and for the app's read-only connections alike: PostgreSQL,
+CockroachDB and YugabyteDB set `default_transaction_read_only`, MySQL and MariaDB `SET SESSION
+TRANSACTION READ ONLY`, SQLite and DuckDB open the file read-only (DuckDB only when no other
+session of the app holds the file), after the bootstrap statements, so that a function that
+writes fails there too. Behind a pooler in transaction mode, and on SQL Server, Oracle, libSQL
+and the ADBC and ODBC databases, the statement check alone stops writes. ClickHouse has no
+transaction: its read-only sessions (read-only agents, and the app's read-only connections)
+send every statement but `SET` with `readonly = 1`, so the server itself refuses writes and
+the table functions that reach other servers or its files (`url`, `s3`, `remote`, `file`,
+`deltaLake`, `iceberg`, `hudi`, `fileCluster`, `ytsaurus`…); an agent's statement is also
+checked against the table functions that read only local data (`numbers`, `zeros`,
+`generateRandom`, `values`, `view`, `merge`, `dictionary`, `null`, `format`, `loop`,
+`generate_series`): any other one in a `FROM` list is refused. DuckDB sessions of agents
 cannot read or write other files nor load extensions, and close after each call so the app
-can open the file.
+can open the file. On Redis, the commands that show the server's credentials change nothing
+but are not reads either: `ACL GETUSER` and `ACL LIST` (the hash of every password) and a
+`CONFIG GET` whose patterns match a parameter that holds a password (`requirepass`,
+`masterauth`, `masteruser`, the TLS key passphrases; so `CONFIG GET *` and `CONFIG GET *pass*`
+too). Read-only agents and the app's read-only connections refuse them; on a read-write
+connection the user is asked first, as for a change. `CONFIG GET maxmemory`, `ACL USERS` and
+`ACL WHOAMI` still run.
 
 On read-write connections changes commit at once, once allowed in the app (see above);
 `BEGIN`, `COMMIT` and `ROLLBACK` are refused, and so are `UPDATE` or `DELETE` without `WHERE`

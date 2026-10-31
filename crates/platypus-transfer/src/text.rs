@@ -1,6 +1,7 @@
 //! The formats written cell by cell from the values' text: CSV, JSON, SQL `INSERT`
 //! statements, Markdown, HTML and XML tables, and Excel workbooks.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::path::Path;
@@ -31,6 +32,8 @@ pub struct Settings {
     /// For CSV: the field separator, and whether a header row comes first.
     pub delimiter: u8,
     pub header: bool,
+    /// For CSV: cells a spreadsheet would run as formulas are written as text.
+    pub formulas_as_text: bool,
 }
 
 pub struct TextSink {
@@ -41,6 +44,9 @@ pub struct TextSink {
     json: Vec<JsonKind>,
     /// For Excel: the date or time columns, written as Excel dates.
     dates: Vec<Option<DateCell>>,
+    /// For SQL in ClickHouse: the type of the lists, maps and tuples, which it reads back
+    /// only as its own literals, `map('k', 1)` and `(1, 'x')`.
+    nested: Vec<Option<DataType>>,
     settings: Settings,
     out: Out,
     rows: u32,
@@ -150,6 +156,175 @@ fn xlsx_text(v: &str) -> std::borrow::Cow<'_, str> {
     format!("{}{note}", &v[..end]).into()
 }
 
+/// The ClickHouse literal of the JSON text `json` of a list, map or tuple of `data_type`:
+/// `[1, 2]`, `map('k', 1)`, `(1, 'x')`, `tuple(1)`. `None` for text that is not that JSON.
+fn clickhouse_nested(data_type: &DataType, json: &str) -> Option<String> {
+    nested_literal(data_type, &Json::parse(json)?)
+}
+
+fn nested_literal(data_type: &DataType, value: &Json<'_>) -> Option<String> {
+    let quote = |s: &str| Dialect::ClickHouse.quote_literal(s);
+    Some(match (data_type, value) {
+        (_, Json::Null) => "NULL".to_owned(),
+        (DataType::List(item) | DataType::LargeList(item), Json::Array(items)) => {
+            let items = items
+                .iter()
+                .map(|v| nested_literal(item.data_type(), v))
+                .collect::<Option<Vec<_>>>()?;
+            format!("[{}]", items.join(", "))
+        }
+        (DataType::Struct(fields), Json::Object(object)) => {
+            let items = fields
+                .iter()
+                .map(|f| {
+                    let (_, v) = object.iter().find(|(k, _)| k == f.name())?;
+                    nested_literal(f.data_type(), v)
+                })
+                .collect::<Option<Vec<_>>>()?;
+            // `(x)` is `x` in parentheses: a tuple of one is written as a call.
+            if items.len() == 1 {
+                format!("tuple({})", items[0])
+            } else {
+                format!("({})", items.join(", "))
+            }
+        }
+        (DataType::Map(entries, _), Json::Object(object)) => {
+            let DataType::Struct(kv) = entries.data_type() else {
+                return None;
+            };
+            let [key, item] = kv.iter().collect::<Vec<_>>()[..] else {
+                return None;
+            };
+            let mut args = Vec::with_capacity(object.len() * 2);
+            for (k, v) in object {
+                let number = k.parse::<f64>().is_ok() && key.data_type().is_numeric();
+                args.push(if number { k.clone() } else { quote(k) });
+                args.push(nested_literal(item.data_type(), v)?);
+            }
+            format!("map({})", args.join(", "))
+        }
+        (_, Json::String(s)) => quote(s),
+        (_, Json::Number(n)) => (*n).to_owned(),
+        (_, Json::Bool(b)) => b.to_string(),
+        _ => return None,
+    })
+}
+
+/// A JSON value as written: its numbers as their text, every digit of an `Int128` or a
+/// `Decimal` kept, and its objects' keys in their order, which is a map's.
+#[derive(Debug, PartialEq)]
+enum Json<'a> {
+    Null,
+    Bool(bool),
+    Number(&'a str),
+    String(String),
+    Array(Vec<Json<'a>>),
+    Object(Vec<(String, Json<'a>)>),
+}
+
+impl<'a> Json<'a> {
+    /// `text` read whole; `None` when it is not one JSON value.
+    fn parse(text: &'a str) -> Option<Self> {
+        let mut at = 0;
+        let value = Self::value(text, &mut at)?;
+        text[at..].trim_start().is_empty().then_some(value)
+    }
+
+    fn value(text: &'a str, at: &mut usize) -> Option<Self> {
+        *at += text[*at..].len() - text[*at..].trim_start().len();
+        let rest = &text[*at..];
+        let word = |w: &str, value: Self, at: &mut usize| {
+            rest.starts_with(w).then(|| {
+                *at += w.len();
+                value
+            })
+        };
+        match rest.as_bytes().first()? {
+            b'n' => word("null", Self::Null, at),
+            b't' => word("true", Self::Bool(true), at),
+            b'f' => word("false", Self::Bool(false), at),
+            b'"' => Self::string(text, at).map(Self::String),
+            b'[' => {
+                *at += 1;
+                let mut items = Vec::new();
+                if !Self::close(text, at, b']') {
+                    loop {
+                        items.push(Self::value(text, at)?);
+                        if Self::close(text, at, b']') {
+                            break;
+                        }
+                        Self::expect(text, at, b',')?;
+                    }
+                }
+                Some(Self::Array(items))
+            }
+            b'{' => {
+                *at += 1;
+                let mut entries = Vec::new();
+                if !Self::close(text, at, b'}') {
+                    loop {
+                        *at += text[*at..].len() - text[*at..].trim_start().len();
+                        let key = Self::string(text, at)?;
+                        Self::expect(text, at, b':')?;
+                        entries.push((key, Self::value(text, at)?));
+                        if Self::close(text, at, b'}') {
+                            break;
+                        }
+                        Self::expect(text, at, b',')?;
+                    }
+                }
+                Some(Self::Object(entries))
+            }
+            b'-' | b'0'..=b'9' => {
+                let len = rest
+                    .bytes()
+                    .position(|c| !matches!(c, b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'))
+                    .unwrap_or(rest.len());
+                let number = &rest[..len];
+                // Only a number JSON writes: no `01`, `1.` or `-` alone.
+                serde_json::from_str::<serde_json::Value>(number).ok()?;
+                *at += len;
+                Some(Self::Number(number))
+            }
+            _ => None,
+        }
+    }
+
+    /// The string literal at `at`, its escapes undone.
+    fn string(text: &str, at: &mut usize) -> Option<String> {
+        let bytes = text.as_bytes();
+        if bytes.get(*at) != Some(&b'"') {
+            return None;
+        }
+        let mut end = *at + 1;
+        loop {
+            match bytes.get(end)? {
+                b'\\' => end += 2,
+                b'"' => break,
+                _ => end += 1,
+            }
+        }
+        let s = serde_json::from_str(text.get(*at..=end)?).ok()?;
+        *at = end + 1;
+        Some(s)
+    }
+
+    /// Whether `close` follows, blanks aside; past it if so.
+    fn close(text: &str, at: &mut usize, close: u8) -> bool {
+        let rest = text[*at..].trim_start();
+        let found = rest.as_bytes().first() == Some(&close);
+        if found {
+            *at = text.len() - rest.len() + 1;
+        }
+        found
+    }
+
+    /// Past `byte`, which must follow, blanks aside.
+    fn expect(text: &str, at: &mut usize, byte: u8) -> Option<()> {
+        Self::close(text, at, byte).then_some(())
+    }
+}
+
 fn markdown_cell(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('|', "\\|")
@@ -176,6 +351,19 @@ impl TextSink {
             .iter()
             .map(|f| DateCell::of(f.data_type()))
             .collect();
+        let nested = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                (format == Format::Sql
+                    && settings.sql.0 == Dialect::ClickHouse
+                    && matches!(
+                        f.data_type(),
+                        DataType::List(_) | DataType::Struct(_) | DataType::Map(..)
+                    ))
+                .then(|| f.data_type().clone())
+            })
+            .collect();
         let out = if format == Format::Xlsx {
             let mut workbook = Workbook::new();
             let sheet = workbook.add_worksheet_with_constant_memory()?;
@@ -194,6 +382,7 @@ impl TextSink {
             kinds,
             json,
             dates,
+            nested,
             settings,
             out,
             rows: 0,
@@ -216,7 +405,7 @@ impl TextSink {
         match self.format {
             Format::Csv if self.settings.header => {
                 let mut s = String::new();
-                csv_line(&mut s, self.settings.delimiter, self.names.iter().map(Some));
+                csv_line(&mut s, &self.settings, self.names.iter().map(Some));
                 s
             }
             Format::Json => "[".to_owned(),
@@ -283,7 +472,7 @@ impl TextSink {
     fn row(&mut self, s: &mut String, row: &[Option<String>]) -> Result<()> {
         match self.format {
             Format::Csv => {
-                csv_line(s, self.settings.delimiter, row.iter().map(Option::as_ref));
+                csv_line(s, &self.settings, row.iter().map(Option::as_ref));
             }
             Format::Json | Format::Ndjson => {
                 if self.format == Format::Json && !self.first {
@@ -333,7 +522,17 @@ impl TextSink {
             Format::Sql => {
                 let (dialect, table) = &self.settings.sql;
                 let mut literals = Vec::with_capacity(row.len());
-                for ((name, kind), v) in self.names.iter().zip(&self.kinds).zip(row) {
+                for (i, ((name, kind), v)) in
+                    self.names.iter().zip(&self.kinds).zip(row).enumerate()
+                {
+                    let nested = self.nested[i]
+                        .as_ref()
+                        .zip(v.as_deref())
+                        .and_then(|(t, json)| clickhouse_nested(t, json));
+                    if let Some(lit) = nested {
+                        literals.push(lit);
+                        continue;
+                    }
                     let column = Column {
                         name,
                         kind: *kind,
@@ -373,21 +572,47 @@ impl TextSink {
     }
 }
 
+/// `value` as a spreadsheet shows it as text rather than runs it: a cell that starts with
+/// `=`, `+`, `-`, `@`, a tab or a carriage return is a formula to the spreadsheets (Excel,
+/// Calc, Google Sheets: `=HYPERLINK(…)`, `=cmd|…`), and gets a leading `'`. A number such as
+/// `-5` or `+1.5e3` stays as it is.
+fn neutralized(value: &str) -> Cow<'_, str> {
+    let formula = match value.chars().next() {
+        Some('=' | '@' | '\t' | '\r') => true,
+        Some('+' | '-') => value.parse::<f64>().is_err(),
+        _ => false,
+    };
+    if formula {
+        Cow::Owned(format!("'{value}"))
+    } else {
+        Cow::Borrowed(value)
+    }
+}
+
 /// A CSV line of `values`: a value is quoted when it holds the delimiter, a quote or a line
 /// break, and an empty text is `""`, so that it differs from NULL, which is nothing.
-fn csv_line<'a>(s: &mut String, delimiter: u8, values: impl Iterator<Item = Option<&'a String>>) {
-    let delimiter = char::from(delimiter);
+fn csv_line<'a>(
+    s: &mut String,
+    settings: &Settings,
+    values: impl Iterator<Item = Option<&'a String>>,
+) {
+    let delimiter = char::from(settings.delimiter);
     for (i, v) in values.enumerate() {
         if i > 0 {
             s.push(delimiter);
         }
         let Some(v) = v else { continue };
+        let v = if settings.formulas_as_text {
+            neutralized(v)
+        } else {
+            Cow::Borrowed(v.as_str())
+        };
         if v.is_empty() || v.contains([delimiter, '"', '\n', '\r']) {
             s.push('"');
             s.push_str(&v.replace('"', "\"\""));
             s.push('"');
         } else {
-            s.push_str(v);
+            s.push_str(&v);
         }
     }
     s.push('\n');
@@ -415,14 +640,7 @@ fn xlsx_row(
             sheet.write_number_with_format(r, c, serial, format)?;
             continue;
         }
-        let number = match kind {
-            ValueKind::Decimal if significant_digits(v) > XLSX_DIGITS => None,
-            ValueKind::Integer | ValueKind::Float | ValueKind::Real | ValueKind::Decimal => v
-                .parse::<f64>()
-                .ok()
-                .filter(|n| n.is_finite() && n.abs() < XLSX_MAX_EXACT),
-            _ => None,
-        };
+        let number = xlsx_number(*kind, v);
         match (kind, number) {
             (_, Some(n)) => sheet.write_number(r, c, n)?,
             (ValueKind::Bool, _) => sheet.write_boolean(r, c, v == "true")?,
@@ -432,6 +650,20 @@ fn xlsx_row(
     Ok(())
 }
 
+/// The number a cell is written as, when its text holds as one: integers and decimals within
+/// what a double keeps exactly (15 digits), floats whatever their size.
+fn xlsx_number(kind: ValueKind, v: &str) -> Option<f64> {
+    match kind {
+        ValueKind::Decimal if significant_digits(v) > XLSX_DIGITS => None,
+        // A float is a double in Excel as it is: the exactness limit is for digits.
+        ValueKind::Float | ValueKind::Real => v.parse::<f64>().ok().filter(|n| n.is_finite()),
+        ValueKind::Integer | ValueKind::Decimal => v
+            .parse::<f64>()
+            .ok()
+            .filter(|n| n.is_finite() && n.abs() < XLSX_MAX_EXACT),
+        _ => None,
+    }
+}
 /// Excel's serial number of a date or time as the export writes it (`2024-01-31`,
 /// `2024-01-31T10:30:00`, with a fraction or an offset, taken in UTC): days since 1899-12-30.
 /// `None` for one Excel cannot show, before 1900 or not a date.
@@ -471,6 +703,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn large_floats_are_numbers_but_large_integers_and_decimals_stay_text() {
+        assert_eq!(xlsx_number(ValueKind::Float, "1.5e300"), Some(1.5e300));
+        assert_eq!(
+            xlsx_number(ValueKind::Real, "12345678901234567890"),
+            Some(1.234_567_890_123_456_8e19)
+        );
+        assert_eq!(xlsx_number(ValueKind::Float, "NaN"), None);
+        assert_eq!(xlsx_number(ValueKind::Integer, "9007199254740993"), None);
+        assert_eq!(xlsx_number(ValueKind::Integer, "42"), Some(42.0));
+        assert_eq!(
+            xlsx_number(ValueKind::Decimal, "12345678901234567890.5"),
+            None
+        );
+    }
+    #[test]
     fn encodes_base64() {
         let cases = [
             ("", ""),
@@ -486,6 +733,44 @@ mod tests {
     }
 
     #[test]
+    fn csv_cells_a_spreadsheet_would_run_are_written_as_text() {
+        let settings = |formulas_as_text| Settings {
+            sql: (Dialect::Postgres, String::new()),
+            delimiter: b',',
+            header: true,
+            formulas_as_text,
+        };
+        let values: Vec<String> = [
+            "=HYPERLINK(\"http://evil\",\"x\")",
+            "+cmd|' /C calc'!A0",
+            "-2+3",
+            "@SUM(A1)",
+            "\tlead",
+            "-5",
+            "+1.5e3",
+            "plain",
+            "a=b",
+        ]
+        .map(str::to_owned)
+        .into();
+        let mut s = String::new();
+        csv_line(&mut s, &settings(true), values.iter().map(Some));
+        assert_eq!(
+            s,
+            "\"'=HYPERLINK(\"\"http://evil\"\",\"\"x\"\")\",'+cmd|' /C calc'!A0,'-2+3,'@SUM(A1),'\tlead,-5,+1.5e3,plain,a=b\n"
+        );
+        let mut s = String::new();
+        csv_line(&mut s, &settings(false), values.iter().map(Some));
+        assert!(s.starts_with("\"=HYPERLINK("), "{s}");
+        assert!(s.contains(",@SUM(A1),"), "{s}");
+        // NULL stays nothing, the empty text "".
+        let mut s = String::new();
+        let empty = String::new();
+        csv_line(&mut s, &settings(true), [None, Some(&empty)].into_iter());
+        assert_eq!(s, ",\"\"\n");
+    }
+
+    #[test]
     fn writes_xml_control_characters_in_base64() {
         let mut s = String::new();
         xml_field(&mut s, "a\u{2}b", Some("x\u{1}y"));
@@ -497,6 +782,86 @@ mod tests {
              <field name=\"n\">tab\tand &lt;tag&gt;</field>\n    \
              <field name=\"z\" null=\"true\"/>\n"
         );
+    }
+
+    #[test]
+    fn clickhouse_reads_maps_and_tuples_as_functions_and_tuples() {
+        use arrow_schema::Field;
+        use std::sync::Arc;
+        let entries = Field::new(
+            "entries",
+            DataType::Struct(
+                vec![
+                    Field::new("key", DataType::Utf8, false),
+                    Field::new("value", DataType::Int32, true),
+                ]
+                .into(),
+            ),
+            false,
+        );
+        let map = DataType::Map(Arc::new(entries), false);
+        assert_eq!(
+            clickhouse_nested(&map, r#"{"k":1,"it's":null}"#).as_deref(),
+            Some("map('k', 1, 'it''s', NULL)")
+        );
+        assert_eq!(clickhouse_nested(&map, "{}").as_deref(), Some("map()"));
+        let tuple = DataType::Struct(
+            vec![
+                Field::new("1", DataType::Int32, true),
+                Field::new("2", DataType::Utf8, true),
+            ]
+            .into(),
+        );
+        assert_eq!(
+            clickhouse_nested(&tuple, r#"{"1":1,"2":"x"}"#).as_deref(),
+            Some("(1, 'x')")
+        );
+        let list = DataType::List(Arc::new(Field::new("item", tuple, true)));
+        assert_eq!(
+            clickhouse_nested(&list, r#"[{"1":1,"2":"x"}]"#).as_deref(),
+            Some("[(1, 'x')]")
+        );
+        assert_eq!(clickhouse_nested(&map, "nope"), None);
+    }
+
+    #[test]
+    fn clickhouse_nested_values_keep_one_field_tuples_digits_and_key_order() {
+        use arrow_schema::Field;
+        use std::sync::Arc;
+        let one = DataType::Struct(vec![Field::new("1", DataType::Int64, true)].into());
+        assert_eq!(
+            clickhouse_nested(&one, r#"{"1":7}"#).as_deref(),
+            Some("tuple(7)")
+        );
+        // Beyond what a double holds: an Int128 and a Decimal(38, 10).
+        let list = DataType::List(Arc::new(Field::new("item", DataType::Int64, true)));
+        assert_eq!(
+            clickhouse_nested(
+                &list,
+                "[170141183460469231731687303715884105727, -1.0000000001, 18446744073709551615]"
+            )
+            .as_deref(),
+            Some("[170141183460469231731687303715884105727, -1.0000000001, 18446744073709551615]")
+        );
+        let entries = Field::new(
+            "entries",
+            DataType::Struct(
+                vec![
+                    Field::new("key", DataType::Utf8, false),
+                    Field::new("value", DataType::Utf8, true),
+                ]
+                .into(),
+            ),
+            false,
+        );
+        let map = DataType::Map(Arc::new(entries), false);
+        assert_eq!(
+            clickhouse_nested(&map, r#" { "z" : "a\"bè" , "a":"\\" } "#).as_deref(),
+            Some(r#"map('z', 'a"bè', 'a', '\\')"#)
+        );
+        for bad in ["[1,]", "[01]", "{\"a\" 1}", "[1] x", "\"open", "-"] {
+            assert_eq!(clickhouse_nested(&list, bad), None, "{bad}");
+        }
     }
 
     #[test]

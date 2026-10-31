@@ -15,8 +15,10 @@
 // history and settings are never touched. Windows only for now: the page is driven
 // through the WebView2 DevTools protocol.
 
-import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawn as spawnApp } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -58,26 +60,36 @@ for (const file of scenarios) {
     console.log(`skip ${file}: ${skipped}`);
     continue;
   }
-  const dir = mkdtempSync(join(tmpdir(), "platypus-e2e-"));
+  const root = mkdtempSync(join(tmpdir(), "platypus-e2e-"));
+  // A portable scenario runs a copy of the executable with a `data` folder next to it, which
+  // holds the profile (no PLATYPUS_DATA_DIR): `dir` is that folder.
+  const portable = scenario.portable === true;
+  const dir = portable ? join(root, "app", "data") : root;
+  const appExe = portable ? join(root, "app", "platypus-db.exe") : exe;
+  if (portable) {
+    mkdirSync(dir, { recursive: true });
+    copyFileSync(exe, appExe);
+  }
   // `port` lets a scenario reach the app's other windows.
-  const ctx = { dir, port, exe, shots: process.env.PLATYPUS_E2E_SHOTS ?? null };
+  const ctx = { dir, root, port, exe: appExe, sourceExe: exe, shots: process.env.PLATYPUS_E2E_SHOTS ?? null };
   if (ctx.shots) mkdirSync(ctx.shots, { recursive: true });
   await scenario.setup?.(ctx);
   englishInterface(dir);
   quietAnimations(dir, file);
   await agentDefaults(dir);
   if (scenario.duckdb !== false) installDuckDb(dir);
-  const app = spawn(exe, [], {
-    env: {
-      ...process.env,
-      // Extra variables of the scenario, e.g. where other tools keep their files.
-      ...(scenario.env?.(ctx) ?? {}),
-      PLATYPUS_DATA_DIR: dir,
-      WEBVIEW2_USER_DATA_FOLDER: join(dir, "webview"),
-      PLATYPUS_DEVTOOLS_PORT: String(port),
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const env = {
+    ...process.env,
+    // Extra variables of the scenario, e.g. where other tools keep their files.
+    ...(scenario.env?.(ctx) ?? {}),
+    WEBVIEW2_USER_DATA_FOLDER: join(root, "webview"),
+    PLATYPUS_DEVTOOLS_PORT: String(port),
+  };
+  if (portable) delete env.PLATYPUS_DATA_DIR;
+  else env.PLATYPUS_DATA_DIR = dir;
+  ctx.env = env;
+  const app = spawnApp(appExe, [], { env, stdio: ["ignore", "pipe", "pipe"] });
+  ctx.app = app;
   const output = [];
   app.stdout.on("data", (d) => output.push(d));
   app.stderr.on("data", (d) => output.push(d));
@@ -137,20 +149,56 @@ for (const file of scenarios) {
         "-NoProfile",
         "-Command",
         `Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | ` +
-          `Where-Object { $_.CommandLine -like '*${dir.replaceAll("'", "''")}*' } | ` +
+          `Where-Object { $_.CommandLine -like '*${root.replaceAll("'", "''")}*' } | ` +
           `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
       ],
       { stdio: "ignore" },
     );
     await new Promise((r) => setTimeout(r, 300));
+    forgetKeychainEntries(dir);
     // WebView2 can hold its profile files a few seconds after the tree is killed: a folder
     // left behind in the temp directory is no reason to stop the run.
     try {
-      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+      rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     } catch (e) {
-      console.log(`     (left ${dir}: ${e instanceof Error ? e.message : e})`);
+      console.log(`     (left ${root}: ${e instanceof Error ? e.message : e})`);
     }
   }
+}
+
+/** Removes from the Windows Credential Manager what the scenario's profile in `dir` left there:
+ *  the passwords of its connections (and the other secrets under the ids its connections.toml
+ *  names), the bucket keys and signed URLs of its transfer profiles (`key_id` and `url_id` in
+ *  `src-tauri/src/profiles.rs`), and what it keeps under its own name
+ *  (`platypus_mcp::profile::keychain_id`): its sync passphrase and the seal of its agent policy.
+ *  Hundreds of throwaway profiles fill the Credential Manager until nothing more can be saved
+ *  there ("Windows error code 8"). */
+function forgetKeychainEntries(dir) {
+  const uuid = (hex) => [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join("-");
+  const idsIn = (file) => {
+    const path = join(dir, file);
+    if (!existsSync(path)) return [];
+    const ids = readFileSync(path, "utf8").match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
+    return [...new Set(ids.map((i) => i.toLowerCase()))];
+  };
+  const targets = idsIn("connections.toml").map((id) => `${id}.platypusdb`);
+  for (const id of idsIn("transfer-profiles.json")) {
+    const value = BigInt(`0x${id.replaceAll("-", "")}`);
+    for (const mask of [0x6275_636b_6574_2d6b_6579_0000_0000_0000n, 0x7369_676e_6564_2d75_726c_0000_0000_0000n]) {
+      targets.push(`${uuid((value ^ mask).toString(16).padStart(32, "0"))}.platypusdb`);
+    }
+  }
+  // The profile's own name: the SHA-256 of its folder as Rust's `canonicalize` gives it
+  // (`\\?\C:\...`), lowercased, its first 16 bytes as a UUID.
+  try {
+    const path = realpathSync.native(dir);
+    const verbatim = path.startsWith("\\\\") ? `\\\\?\\UNC\\${path.slice(2)}` : `\\\\?\\${path}`;
+    const id = uuid(createHash("sha256").update(verbatim.toLowerCase()).digest("hex"));
+    targets.push(`${id}.platypusdb`, `${id}.platypusdb-agent-policy`);
+  } catch {
+    // No folder, nothing under its name.
+  }
+  for (const target of targets) spawnSync("cmdkey", [`/delete:${target}`], { stdio: "ignore" });
 }
 
 /** Why the app has no DevTools page: its state, output and the WebView2 runtime. */

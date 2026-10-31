@@ -122,7 +122,7 @@ interface Props {
   rowCount: number;
   cache: RowCache;
   version: number;
-  sort?: { column: string; desc: boolean } | null;
+  sort?: { column: string; desc: boolean; position?: number } | null;
   onHeaderClick?: (column: number) => void;
   /** Tooltip of the headers when they do not sort. */
   headerHint?: string;

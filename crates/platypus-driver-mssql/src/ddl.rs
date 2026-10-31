@@ -41,6 +41,12 @@ pub struct Column {
     pub nullable: bool,
     /// The default's expression as stored, e.g. `((0))`.
     pub default: Option<String>,
+    /// The name of the default constraint, when it is not one the server made up.
+    pub default_name: Option<String>,
+    /// The column's own collation, when it differs from the database's.
+    pub collation: Option<String>,
+    pub sparse: bool,
+    /// The `MS_Description` extended property.
     pub comment: Option<String>,
     /// `(seed, increment)` of an identity column.
     pub identity: Option<(String, String)>,
@@ -137,14 +143,62 @@ fn column_definition(c: &Column) -> String {
         return out;
     }
     let _ = write!(out, " {}", c.data_type);
+    if let Some(collation) = &c.collation {
+        let _ = write!(out, " COLLATE {collation}");
+    }
+    if c.sparse {
+        out.push_str(" SPARSE");
+    }
     if let Some((seed, increment)) = &c.identity {
         let _ = write!(out, " IDENTITY({seed},{increment})");
     }
     out.push_str(if c.nullable { " NULL" } else { " NOT NULL" });
     if let Some(default) = &c.default {
+        if let Some(name) = &c.default_name {
+            let _ = write!(out, " CONSTRAINT {}", D.quote_ident(name));
+        }
         let _ = write!(out, " DEFAULT {default}");
     }
     out
+}
+
+/// `sp_addextendedproperty` calls for the `MS_Description` of the table and its columns.
+#[must_use]
+pub fn comments(
+    schema: &str,
+    table: &str,
+    table_comment: Option<&str>,
+    columns: &[Column],
+) -> String {
+    let add = |text: &str, column: Option<&str>| {
+        let mut sql = format!(
+            "EXEC sp_addextendedproperty @name = N'MS_Description', @value = {},\n    \
+             @level0type = N'SCHEMA', @level0name = {},\n    \
+             @level1type = N'TABLE', @level1name = {}",
+            D.quote_literal(text),
+            D.quote_literal(schema),
+            D.quote_literal(table)
+        );
+        if let Some(column) = column {
+            let _ = write!(
+                sql,
+                ",\n    @level2type = N'COLUMN', @level2name = {}",
+                D.quote_literal(column)
+            );
+        }
+        sql.push(';');
+        sql
+    };
+    table_comment
+        .map(|text| add(text, None))
+        .into_iter()
+        .chain(
+            columns
+                .iter()
+                .filter_map(|c| c.comment.as_deref().map(|text| add(text, Some(&c.name)))),
+        )
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn action(keyword: &str, action: &str) -> String {
@@ -291,9 +345,14 @@ mod tests {
             },
             Column {
                 default: Some("((0))".to_owned()),
+                default_name: Some("df qty".to_owned()),
                 ..column("qty", "int", true)
             },
-            column("order", "nvarchar(10)", true),
+            Column {
+                collation: Some("Latin1_General_CS_AS".to_owned()),
+                sparse: true,
+                ..column("order", "nvarchar(10)", true)
+            },
             Column {
                 computed: Some(("([qty]*(2))".to_owned(), true)),
                 ..column("double", "int", true)
@@ -342,14 +401,36 @@ mod tests {
             table("demo.t", &columns, &indexes, &checks, &fks),
             "CREATE TABLE demo.t (\n    \
              id int IDENTITY(1,1) NOT NULL,\n    \
-             qty int NULL DEFAULT ((0)),\n    \
-             [order] nvarchar(10) NULL,\n    \
+             qty int NULL CONSTRAINT [df qty] DEFAULT ((0)),\n    \
+             [order] nvarchar(10) COLLATE Latin1_General_CS_AS SPARSE NULL,\n    \
              [double] AS ([qty]*(2)) PERSISTED,\n    \
              CONSTRAINT pk_t PRIMARY KEY CLUSTERED (id),\n    \
              CONSTRAINT fk_c FOREIGN KEY (qty) REFERENCES dbo.[my table] (id) ON DELETE SET NULL,\n    \
              CONSTRAINT ck_qty CHECK ([qty]>=(0))\n);\n\
              CREATE NONCLUSTERED INDEX t_qty ON demo.t (qty DESC) INCLUDE ([order]) WHERE ([qty]>(0));"
         );
+    }
+
+    #[test]
+    fn writes_descriptions() {
+        let columns = [
+            Column {
+                comment: Some("it's the key".to_owned()),
+                ..column("id", "int", false)
+            },
+            column("name", "nvarchar(10)", true),
+        ];
+        assert_eq!(
+            comments("dbo", "t", Some("Orders"), &columns),
+            "EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'Orders',\n    \
+             @level0type = N'SCHEMA', @level0name = N'dbo',\n    \
+             @level1type = N'TABLE', @level1name = N't';\n\
+             EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'it''s the key',\n    \
+             @level0type = N'SCHEMA', @level0name = N'dbo',\n    \
+             @level1type = N'TABLE', @level1name = N't',\n    \
+             @level2type = N'COLUMN', @level2name = N'id';"
+        );
+        assert_eq!(comments("dbo", "t", None, &[column("a", "int", true)]), "");
     }
 
     #[test]

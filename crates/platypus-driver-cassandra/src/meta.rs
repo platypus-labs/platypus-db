@@ -309,6 +309,7 @@ pub async fn table_details(
             primary: true,
             partial: false,
             size: None,
+            detail: None,
         });
         details.constraints.push(ConstraintMeta {
             name: "PRIMARY KEY".to_owned(),
@@ -348,6 +349,7 @@ async fn indexes(conn: &dyn Connection, keyspace: &str, table: &str) -> Result<V
                 primary: false,
                 partial: false,
                 size: None,
+                detail: None,
             }
         })
         .collect())

@@ -2,6 +2,7 @@
 //! schema history shows beside the script that [`crate::compare`] writes.
 
 use std::collections::BTreeSet;
+use std::fmt::Write;
 
 use serde::Serialize;
 
@@ -182,11 +183,26 @@ fn column_changes(table: &str, o: &ColumnDesign, n: &ColumnDesign, out: &mut Vec
 /// The name of an index and what it is, to tell an index of the same name that changed.
 fn index_key(i: &IndexDesign) -> (String, String) {
     let unique = if i.unique { "unique " } else { "" };
-    (i.name.clone(), format!("{unique}{}", i.columns.join(",")))
+    let mut definition = format!("{unique}{}", i.columns.join(","));
+    for (what, value) in [
+        ("using", i.method.clone()),
+        ("keys", (!i.parts.is_empty()).then(|| i.parts.join(","))),
+        (
+            "include",
+            (!i.include.is_empty()).then(|| i.include.join(",")),
+        ),
+        ("where", i.predicate.clone()),
+        ("visibility", i.visibility.clone()),
+    ] {
+        if let Some(value) = value {
+            let _ = write!(definition, " {what} {value}");
+        }
+    }
+    (i.name.clone(), definition)
 }
 
 fn foreign_key_key(f: &ForeignKeyDesign) -> (String, String) {
-    let definition = format!(
+    let mut definition = format!(
         "{} -> {}.{}({}) {:?} {:?}",
         f.columns.join(","),
         f.ref_schema,
@@ -195,12 +211,33 @@ fn foreign_key_key(f: &ForeignKeyDesign) -> (String, String) {
         f.on_delete,
         f.on_update
     );
+    options(&mut definition, f.deferral, f.disabled);
+    if let Some(m) = &f.match_type {
+        let _ = write!(definition, " match {m}");
+    }
     (f.name.clone(), definition)
 }
 
 fn constraint_key(c: &ConstraintDesign) -> (String, String) {
-    let definition = format!("{:?} {} {}", c.kind, c.columns.join(","), c.check);
+    let mut definition = format!("{:?} {} {}", c.kind, c.columns.join(","), c.check);
+    options(&mut definition, c.deferral, c.disabled);
+    if c.nulls_not_distinct {
+        definition.push_str(" nulls not distinct");
+    }
+    if let Some(resolution) = &c.on_conflict {
+        let _ = write!(definition, " on conflict {resolution}");
+    }
     (c.name.clone(), definition)
+}
+
+/// Adds to the `definition` of a key or constraint when it is deferrable or disabled.
+fn options(definition: &mut String, deferral: crate::Deferral, disabled: bool) {
+    if let Some(clause) = deferral.clause() {
+        let _ = write!(definition, " {}", clause.to_ascii_lowercase());
+    }
+    if disabled {
+        definition.push_str(" disabled");
+    }
 }
 
 /// Adds the parts of `new` that `old` lacks and drops those `new` lacks. `key` gives a part's

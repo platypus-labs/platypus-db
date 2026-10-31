@@ -1,7 +1,7 @@
 // Helpers of the Users and roles scenarios (group J): the admin tab's section, the list and
 // details of users and roles, and the dialogs that create, change and drop them and grant
 // and revoke privileges.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assert } from "./qa-grid.mjs";

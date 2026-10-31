@@ -703,21 +703,44 @@ fn proposes_sql_for_the_app_to_open() {
     drop(client);
 
     let log = rusqlite::Connection::open(dir.path().join("agent-calls.db")).unwrap();
-    let proposals: Vec<(String, String, Option<String>, String)> = log
-        .prepare("SELECT agent, connection_id, title, sql FROM proposals")
-        .unwrap()
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
+    let proposals = || -> Vec<(String, String, Option<String>, String)> {
+        log.prepare("SELECT agent, connection_id, title, sql FROM proposals")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
     assert_eq!(
-        proposals,
+        proposals(),
         [(
             "test-agent".to_owned(),
             "00000000-0000-4000-8000-000000000001".to_owned(),
             Some("Remove Ada".to_owned()),
             "DELETE FROM t WHERE id = 1".to_owned()
         )]
+    );
+
+    // A flood of proposals stops at the bound, with a reason the agent can act on.
+    let mut client = initialized(dir.path());
+    let mut refused = None;
+    for i in 1..=platypus_store::MAX_PENDING_PROPOSALS {
+        let (text, error) = client.call(
+            "propose_sql",
+            &json!({ "connection": "App db", "sql": format!("SELECT {i}") }),
+        );
+        if error {
+            refused = Some((i, text));
+            break;
+        }
+    }
+    let (at, text) = refused.expect("the proposals are bounded");
+    assert_eq!(at, platypus_store::MAX_PENDING_PROPOSALS, "{text}");
+    assert!(text.contains("wait for the user"), "{text}");
+    drop(client);
+    assert_eq!(
+        proposals().len(),
+        platypus_store::MAX_PENDING_PROPOSALS as usize
     );
 }
 

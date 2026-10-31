@@ -7,14 +7,35 @@ use std::collections::HashMap;
 
 use platypus_core::{
     Connection, EndSession, Error, ExecOptions, Maintenance, ObjectStatistics, Result, ServerLock,
-    ServerQuery, ServerSession, StatisticsKind, TOP_QUERIES, TextRowExt, query_locks,
+    ServerQuery, ServerSession, StatisticsKind, TOP_QUERIES, TextRow, TextRowExt, query_locks,
     query_statements, query_text, refuse_own_session, run_maintenance, session_number,
     sort_statistics,
 };
 use platypus_sql::Dialect;
 
-/// The client sessions, the one asking first; the server's own threads left out.
+/// The client sessions, the one asking first; the server's own threads left out. What MySQL
+/// 5.7, or a server without `performance_schema`, answers from.
 const SESSIONS: &str = "SELECT ID, USER, DB, HOST, COMMAND, INFO, \
+     CASE WHEN COMMAND IN ('Query', 'Execute') THEN TIME END, NULLIF(STATE, ''), \
+     ID = CONNECTION_ID() \
+     FROM information_schema.PROCESSLIST \
+     WHERE COMMAND NOT IN ('Daemon', 'Binlog Dump') AND USER NOT IN ('system user', 'event_scheduler') \
+     ORDER BY ID = CONNECTION_ID() DESC, ID";
+
+/// The same on MySQL 8 from `performance_schema.threads`, whose `PROCESSLIST_INFO` keeps the
+/// characters of four bytes (an emoji) that `information_schema.PROCESSLIST` turns to `?`.
+const MYSQL_SESSIONS: &str = "SELECT PROCESSLIST_ID, PROCESSLIST_USER, PROCESSLIST_DB, PROCESSLIST_HOST, \
+     PROCESSLIST_COMMAND, PROCESSLIST_INFO, \
+     CASE WHEN PROCESSLIST_COMMAND IN ('Query', 'Execute') THEN PROCESSLIST_TIME END, \
+     NULLIF(PROCESSLIST_STATE, ''), PROCESSLIST_ID = CONNECTION_ID() \
+     FROM performance_schema.threads \
+     WHERE TYPE = 'FOREGROUND' AND PROCESSLIST_ID IS NOT NULL \
+       AND COALESCE(PROCESSLIST_COMMAND, '') NOT IN ('Daemon', 'Binlog Dump') \
+       AND COALESCE(PROCESSLIST_USER, '') NOT IN ('system user', 'event_scheduler') \
+     ORDER BY PROCESSLIST_ID = CONNECTION_ID() DESC, PROCESSLIST_ID";
+
+/// MariaDB's: `INFO` is `utf8mb3`, `INFO_BINARY` holds the bytes the client sent.
+const MARIADB_SESSIONS: &str = "SELECT ID, USER, DB, HOST, COMMAND, CONVERT(INFO_BINARY USING utf8mb4), \
      CASE WHEN COMMAND IN ('Query', 'Execute') THEN TIME END, NULLIF(STATE, ''), \
      ID = CONNECTION_ID() \
      FROM information_schema.PROCESSLIST \
@@ -59,8 +80,23 @@ pub(crate) fn mariadb(conn: &dyn Connection) -> bool {
     conn.server_info().product == "MariaDB"
 }
 
+/// The session rows, from the table that keeps the statements whole where there is one.
+async fn session_rows(conn: &dyn Connection) -> Result<Vec<TextRow>> {
+    let whole = if mariadb(conn) {
+        MARIADB_SESSIONS
+    } else {
+        MYSQL_SESSIONS
+    };
+    // A server without that table (or with `performance_schema` off, which leaves it empty,
+    // while the asking session is always there) answers from the process list.
+    match query_text(conn, whole).await {
+        Ok(rows) if !rows.is_empty() => Ok(rows),
+        _ => query_text(conn, SESSIONS).await,
+    }
+}
+
 pub(crate) async fn sessions(conn: &dyn Connection) -> Result<Vec<ServerSession>> {
-    let rows = query_text(conn, SESSIONS).await?;
+    let rows = session_rows(conn).await?;
     // MySQL 5.7 has MariaDB's table, not `data_lock_waits`. Seeing other sessions' locks
     // needs PROCESS (and `performance_schema`): without it the list has no waits, and the
     // Locks view tells why.

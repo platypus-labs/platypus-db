@@ -180,7 +180,7 @@ export function DesignForm({ driver, design, onChange, schema, catalog, section,
             head={[t("Name"), t("Columns"), t("Unique"), ""]}
             rows={design.indexes.map((x, i) => [
               <input value={x.name} onChange={(e) => setPart("indexes", i, { name: e.target.value })} aria-label={t("Index name")} />,
-              <NamesInput value={x.columns} onChange={(columns) => setPart("indexes", i, { columns })} hint={columnNames} />,
+              <NamesInput value={x.columns} onChange={(columns) => setPart("indexes", i, { columns, parts: [] })} hint={columnNames} />,
               <input type="checkbox" checked={x.unique} onChange={(e) => setPart("indexes", i, { unique: e.target.checked })} aria-label={t("Unique")} />,
               <RemoveButton onClick={() => removePart("indexes", i)} />,
             ])}
@@ -230,6 +230,7 @@ export function DesignForm({ driver, design, onChange, schema, catalog, section,
               <select value={c.kind} onChange={(e) => setPart("constraints", i, { kind: e.target.value as ConstraintDesign["kind"] })} aria-label={t("Kind")}>
                 <option value="unique">UNIQUE</option>
                 <option value="check">CHECK</option>
+                {c.kind === "exclusion" && <option value="exclusion">EXCLUDE</option>}
               </select>,
               c.kind === "unique" ? (
                 <NamesInput value={c.columns} onChange={(columns) => setPart("constraints", i, { columns })} hint={columnNames} />

@@ -58,8 +58,14 @@ export const quote = (name: string): string => `"${name.replace(/"/g, '""')}"`;
 /** `text` as a DuckDB string literal. */
 const literal = (text: string): string => `'${text.replace(/'/g, "''")}'`;
 
-/** The pivot columns a column field makes, with NULL as a column of its own. */
-const label = (column: string): string => `coalesce(CAST(${quote(column)} AS VARCHAR), ${literal(NULL_LABEL)})`;
+/** The pivot columns a column field makes, with NULL as a column of its own: a NULL is
+ *  written NULL and a text that reads like it gets a quote in front (NULL, quote + NULL, ...),
+ *  so the two never share a column. */
+const label = (column: string): string => {
+  const text = `CAST(${quote(column)} AS VARCHAR)`;
+  const clash = `regexp_matches(${text}, ${literal(`^'*${NULL_LABEL}$`)})`;
+  return `CASE WHEN ${quote(column)} IS NULL THEN ${literal(NULL_LABEL)} WHEN ${clash} THEN ${literal("'")} || ${text} ELSE ${text} END`;
+};
 
 /** The query that counts the pivot columns of `column`, for the limit. */
 export function pivotCountSql(column: string): string {

@@ -10,6 +10,7 @@ import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { formatCount, t, plural } from "../i18n";
 import { Icon } from "../ui/Icon";
 import { ErrorState } from "../ui/State";
+import { sortPosition } from "./viewerSort";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -82,9 +83,9 @@ export function describe(result: Result): string {
 /** Grid (or message) for one statement's result. */
 interface PanelProps {
   result: Result;
-  sort?: { column: string; desc: boolean } | null;
+  sort?: { column: string; desc: boolean; position?: number } | null;
   /** Header clicks with the column name; the data viewer sorts with them. */
-  onHeaderClick?: (column: string) => void;
+  onHeaderClick?: (column: string, position: number | undefined) => void;
   /** Why the headers do not sort, as their tooltip. */
   headerHint?: string;
   /** Passed to the grid's actions. */
@@ -209,7 +210,7 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
           cache={cache}
           version={version}
           sort={sort}
-          onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name))}
+          onHeaderClick={onHeaderClick && ((i) => onHeaderClick(columns[i]!.name, sortPosition(columns, i)))}
           headerHint={headerHint}
           source={source}
           edit={edit}

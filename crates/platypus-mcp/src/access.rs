@@ -146,8 +146,30 @@ const DUCKDB_OUTSIDE: Outside = Outside {
     ],
     reads: &[],
 };
-/// ClickHouse table functions read the server's files, other servers and URLs, or run
-/// scripts (`executable`).
+/// The ClickHouse table functions that read only the server's own tables or make up rows:
+/// every other one in a `FROM` list (`url`, `s3`, `deltaLake`, `iceberg`, `fileCluster`,
+/// `ytsaurus`…, and the ones later versions add) may reach other servers or the server's
+/// files, so a read-only agent's statement cannot call it. The driver also runs read-only
+/// sessions with `readonly = 1`, which refuses them on the server.
+const CLICKHOUSE_LOCAL_TABLE_FUNCTIONS: &[&str] = &[
+    "numbers",
+    "numbers_mt",
+    "zeros",
+    "zeros_mt",
+    "generate_series",
+    "generateseries",
+    "generaterandom",
+    "values",
+    "view",
+    "viewifpermitted",
+    "null",
+    "format",
+    "merge",
+    "dictionary",
+    "loop",
+];
+/// ClickHouse functions that read the server's files, other servers and URLs, or run
+/// scripts (`executable`), wherever they are called (`file()` is a plain function too).
 const CLICKHOUSE_OUTSIDE: Outside = Outside {
     words: &[],
     calls: &[
@@ -283,9 +305,73 @@ fn duckdb_file_scan(src: &str, tokens: &[Token]) -> Option<usize> {
     })
 }
 
+/// Which of `tokens` stand where ClickHouse reads a table: after `FROM`, `JOIN` (not
+/// `ARRAY JOIN`, whose argument is an array) and `DESCRIBE [TABLE]`, and after each `,` of a
+/// `FROM` list, in subqueries too. The `FROM` inside a function's parentheses
+/// (`extract(DAY FROM d)`, `trim(BOTH ' ' FROM s)`) is none.
+fn clickhouse_table_starts(src: &str, tokens: &[Token]) -> Vec<bool> {
+    let word = |i: usize| {
+        tokens
+            .get(i)
+            .filter(|t| t.kind == TokenKind::Word)
+            .map(|t| t.text(src).to_ascii_uppercase())
+    };
+    let symbol = |i: usize, s: &str| {
+        tokens
+            .get(i)
+            .is_some_and(|t| t.kind == TokenKind::Symbol && t.text(src) == s)
+    };
+    // Per level of parentheses: whether its `FROM` reads tables, and whether a `FROM` list
+    // is being read.
+    let mut levels: Vec<(bool, bool)> = vec![(true, false)];
+    let mut starts = Vec::with_capacity(tokens.len());
+    for i in 0..tokens.len() {
+        let prev = i.checked_sub(1);
+        let prev_word = prev.and_then(word);
+        let array_join = prev_word.as_deref() == Some("JOIN")
+            && i.checked_sub(2).and_then(word).as_deref() == Some("ARRAY");
+        // `a IS [NOT] DISTINCT FROM b` compares: what follows is no table.
+        let compares = i.checked_sub(2).and_then(word).as_deref() == Some("DISTINCT");
+        let (tables, in_from) = *levels.last().unwrap_or(&(true, false));
+        starts.push(match prev_word.as_deref() {
+            Some("FROM") => tables && !compares,
+            Some("JOIN") => !array_join,
+            Some("DESCRIBE" | "DESC" | "TABLE") => true,
+            _ => prev.is_some_and(|p| symbol(p, ",")) && in_from,
+        });
+        if symbol(i, "(") {
+            let call =
+                prev_word.is_some() && !matches!(word(i + 1).as_deref(), Some("SELECT" | "WITH"));
+            let keyword = matches!(
+                prev_word.as_deref(),
+                Some("IN" | "EXISTS" | "AS" | "FROM" | "JOIN")
+            );
+            levels.push((!call || keyword, false));
+        } else if symbol(i, ")") {
+            if levels.len() > 1 {
+                levels.pop();
+            }
+        } else if let Some(w) = word(i)
+            && let Some(level) = levels.last_mut()
+        {
+            match w.as_str() {
+                "FROM" => level.1 = level.0 && prev_word.as_deref() != Some("DISTINCT"),
+                "JOIN" => level.1 = prev_word.as_deref() != Some("ARRAY"),
+                "SELECT" | "WHERE" | "PREWHERE" | "GROUP" | "HAVING" | "ORDER" | "LIMIT"
+                | "SETTINGS" | "FORMAT" | "UNION" | "WINDOW" | "QUALIFY" | "ARRAY" | "ON"
+                | "USING" => level.1 = false,
+                _ => {}
+            }
+        }
+    }
+    starts
+}
+
 /// The first name in `statement` that reaches outside a read-only transaction in
-/// `dialect`, however the server reads the statement and decodes its quoted names.
-fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
+/// `dialect`, however the server reads the statement and decodes its quoted names: what a
+/// read-only connection or agent may not run, though the statement only reads.
+#[must_use]
+pub fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
     let outside = Outside::of(dialect);
     Lexer::readings(statement, dialect)
         .into_iter()
@@ -298,6 +384,11 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
             {
                 return Some(tokens[i].text(statement).to_owned());
             }
+            let table_starts = if dialect == Dialect::ClickHouse {
+                clickhouse_table_starts(statement, &tokens)
+            } else {
+                Vec::new()
+            };
             tokens.iter().enumerate().find_map(|(i, t)| {
                 let (names, last) = match t.kind {
                     TokenKind::Word => (vec![t.text(statement).to_owned()], i),
@@ -313,9 +404,13 @@ fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
                 let call = tokens
                     .get(last + 1)
                     .is_some_and(|n| n.kind == TokenKind::Symbol && n.text(statement) == "(");
-                names
-                    .into_iter()
-                    .find(|name| outside.reaches(&name.to_ascii_lowercase(), call))
+                let table_function = call && table_starts.get(i).copied().unwrap_or(false);
+                names.into_iter().find(|name| {
+                    let lower = name.to_ascii_lowercase();
+                    outside.reaches(&lower, call)
+                        || (table_function
+                            && !CLICKHOUSE_LOCAL_TABLE_FUNCTIONS.contains(&lower.as_str()))
+                })
             })
         })
 }
@@ -398,6 +493,20 @@ pub fn check_cql<'a>(
         connection,
     )
     .map(|_| statement)
+}
+
+/// Whether the user is asked before `statement` (as [`changes`] takes it) runs for an agent
+/// that may write, where Settings ask before agents' changes: it may change something, or it
+/// calls what acts outside the transaction (`dblink_exec`, Trino's `query()`, Snowflake's
+/// `SYSTEM$` functions, Oracle's packages), which no read-only transaction stops.
+#[must_use]
+pub fn asks_first(statement: &str, driver: DriverKind) -> bool {
+    let sql = !matches!(
+        driver,
+        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
+    );
+    changes(statement, driver)
+        || (sql && outside_effect(statement, Dialect::from(driver)).is_some())
 }
 
 /// [`check`] for the one `statement` it found.
@@ -559,6 +668,11 @@ pub fn check_redis<'a>(
     );
     match (access, parsed.kind()) {
         (AgentAccess::ReadOnly, Kind::Query) if !session => Ok(statement),
+        (AgentAccess::ReadOnly, _) if parsed.reveals_secrets() => Err(AgentError::Denied(format!(
+            "`{connection}` is read-only for agents, and `{statement}` shows the server's credentials \
+                 (passwords or their hashes): ask for a parameter that holds none, e.g. \
+                 `CONFIG GET maxmemory`, or `ACL USERS` and `ACL WHOAMI` for the users"
+        ))),
         (AgentAccess::ReadOnly, kind) => Err(AgentError::Denied(format!(
             "`{connection}` is read-only for agents: only commands that change nothing may run, \
              and this one {}. The user can allow agents to write in PlatypusDB's connection \
@@ -731,6 +845,17 @@ mod tests {
         assert!(denied(ro("FLUSHDB")).contains("empties"));
         assert!(denied(ro("SELECT 2")).contains("session"));
         assert!(matches!(ro("GET a\nGET b"), Err(AgentError::Invalid(_))));
+        for sql in [
+            "CONFIG GET requirepass",
+            "CONFIG GET *",
+            "ACL LIST",
+            "ACL GETUSER default",
+        ] {
+            assert!(denied(ro(sql)).contains("credentials"), "{sql}");
+            // A read-write agent's user is asked first, as for a change.
+            assert!(changes(sql, DriverKind::Redis), "{sql}");
+        }
+        assert!(ro("CONFIG GET maxmemory").is_ok());
         let rw = |sql| check_redis(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "r");
         assert!(rw("SET a 1").is_ok());
         assert!(denied(rw("FLUSHALL")).contains("changes, and agents cannot"));
@@ -1046,6 +1171,92 @@ mod tests {
         }
     }
 
+    /// ClickHouse table functions are allowed by name: a new one that reaches out is refused.
+    #[test]
+    fn read_only_allows_local_clickhouse_table_functions_only() {
+        let ro = |sql| {
+            check(
+                sql,
+                Dialect::ClickHouse,
+                AgentAccess::ReadOnly,
+                UnfilteredRule::Allow,
+                "db",
+            )
+        };
+        for sql in [
+            "SELECT * FROM deltaLake('http://h:1/b/', 'k', 's')",
+            "SELECT * FROM iceberg('http://h:1/b/', 'k', 's')",
+            "SELECT * FROM icebergS3('http://h:1/b/')",
+            "SELECT * FROM hudi('http://h:1/b/', 'k', 's')",
+            "SELECT * FROM fileCluster('default', 'x.csv')",
+            "SELECT * FROM ytsaurus('http://h', '//t', 'tok', 'a String')",
+            "SELECT * FROM paimon('http://h:1/b/')",
+            "SELECT * FROM azureBlobStorageCluster('c', 'u', 'x', 'y')",
+            "SELECT * FROM t, someFutureFunction('x')",
+            "SELECT * FROM t JOIN `deltaLake`('http://h:1/b/') AS d ON 1",
+            "SELECT * FROM (SELECT * FROM hudiCluster('c', 'http://h/b/'))",
+            "SELECT * FROM view(SELECT * FROM deltaLake('http://h/b/'))",
+            "SELECT 1 WHERE 1 IN (SELECT 1 FROM iceberg('http://h/b/'))",
+            "DESCRIBE TABLE deltaLake('http://h/b/')",
+            "DESC iceberg('http://h/b/')",
+        ] {
+            let message = denied(ro(sql));
+            assert!(
+                message.contains("outside the transaction"),
+                "{sql}: {message}"
+            );
+        }
+        for sql in [
+            "SELECT * FROM numbers(10)",
+            "SELECT * FROM system.numbers LIMIT 1",
+            "SELECT * FROM t, generateRandom('a Int') LIMIT 1",
+            "SELECT * FROM values('a Int', 1)",
+            "SELECT * FROM view(SELECT 1)",
+            "SELECT * FROM dictionary('d')",
+            "SELECT extract(DAY FROM now()), trim(BOTH ' ' FROM toString(1))",
+            "SELECT a FROM t ARRAY JOIN arrayMap(x -> x, [1]) AS a",
+            "SELECT * FROM t JOIN u ON t.id = u.id WHERE f(1) > 0",
+            "SELECT count() FROM (SELECT 1)",
+            "SELECT * FROM t WHERE a IS NOT DISTINCT FROM lower(b)",
+            "SELECT * FROM t WHERE (a, b) IS DISTINCT FROM lower(c)",
+            "SELECT a IS DISTINCT FROM upper(b) FROM t, u",
+        ] {
+            assert!(ro(sql).is_ok(), "{sql}: {:?}", ro(sql));
+        }
+        // A table after a comparison is still one.
+        let message = denied(ro(
+            "SELECT a IS DISTINCT FROM b FROM t, deltaLake('http://h/b/')",
+        ));
+        assert!(message.contains("outside the transaction"), "{message}");
+    }
+
+    #[test]
+    fn read_write_agents_are_asked_before_effects_outside() {
+        for (driver, sql) in [
+            (
+                DriverKind::Postgres,
+                "select dblink_exec('host=x', 'drop table t')",
+            ),
+            (DriverKind::Postgres, "select pg_terminate_backend(42)"),
+            (
+                DriverKind::Trino,
+                "SELECT * FROM TABLE(system.query(query => 'DELETE FROM t'))",
+            ),
+            (DriverKind::Snowflake, "SELECT SYSTEM$ABORT_SESSION(42)"),
+            (
+                DriverKind::Oracle,
+                "select utl_http.request('http://x') from dual",
+            ),
+            (DriverKind::Sqlite, "select load_extension('x')"),
+            (DriverKind::Postgres, "delete from t where id = 1"),
+        ] {
+            assert!(asks_first(sql, driver), "{driver:?}: {sql}");
+        }
+        assert!(!asks_first("select * from t", DriverKind::Postgres));
+        assert!(!asks_first("db.a.find()", DriverKind::Mongo));
+        assert!(!asks_first("SELECT query FROM t", DriverKind::Trino));
+    }
+
     #[test]
     fn one_statement_per_call() {
         let rw = |sql| check(sql, PG, AgentAccess::ReadWrite, UnfilteredRule::Allow, "db");
@@ -1068,6 +1279,12 @@ mod tests {
         assert!(denied(rw("start transaction", UnfilteredRule::Allow)).contains("BEGIN"));
         let both = denied(rw("truncate a, s.b", UnfilteredRule::Refuse));
         assert!(both.contains("`a`, `s.b`"), "{both}");
+        // A data-modifying common table expression behind a SELECT.
+        let cte = denied(rw(
+            "with d as (delete from t returning *) select count(*) from d",
+            UnfilteredRule::Refuse,
+        ));
+        assert!(cte.contains("every row of `t`"), "{cte}");
     }
 
     /// A Transact-SQL batch needs no `;`, and a MySQL `DELIMITER` joins statements: the

@@ -1,10 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toCommandError } from "../api";
 import { plural, t } from "../i18n";
 import { answerWrite, useWaitingWrites } from "./bridge";
-import { denial, estimatedRows, timeLeft, type Verdict } from "./writes";
+import { denial, estimatedRows, statementParts, timeLeft, type StatementPart, type Verdict } from "./writes";
 
-/** Asks the user about the oldest change an agent wants to run: its statement, the rows
+/** A piece of the statement: its text, or a marker in place of padding or of an invisible
+ *  character, which no one could take for SQL. */
+function part(piece: StatementPart, i: number) {
+  if ("text" in piece) return <span key={i}>{piece.text}</span>;
+  if ("invisible" in piece) {
+    return (
+      <span key={i} className="statement-gap" data-gap="invisible">
+        {t("invisible {code}", { code: piece.invisible })}
+      </span>
+    );
+  }
+  return (
+    <span key={i} className="statement-gap" data-gap={piece.gap}>
+      {piece.gap === "lines"
+        ? plural(piece.count, "{n} blank line", "{n} blank lines")
+        : plural(piece.count, "{n} space", "{n} spaces")}
+    </span>
+  );
+}
+
+/** Asks the user about the oldest change an agent wants to run: its statement (padding
+ *  collapsed, and allowed only once read to its end when taller than its box), the rows
  *  the database expects it to change and its plan. Refusing (Escape too) can say why: the
  *  agent reads it. Nothing answered in five minutes is refused by the bridge. */
 export function AgentWriteDialog() {
@@ -27,6 +48,17 @@ export function AgentWriteDialog() {
     setError(null);
     setBusy(false);
   }, [id]);
+  // A statement taller than its box can be allowed once it was read to its end.
+  const box = useRef<HTMLPreElement>(null);
+  const [seenEnd, setSeenEnd] = useState(true);
+  const readTo = () => {
+    const el = box.current;
+    if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - 2) setSeenEnd(true);
+  };
+  useLayoutEffect(() => {
+    const el = box.current;
+    setSeenEnd(!el || el.scrollHeight <= el.clientHeight + 1);
+  }, [id]);
   if (!first) return null;
   const { request, since } = first;
   const rows = estimatedRows(request.estimated_rows);
@@ -48,9 +80,14 @@ export function AgentWriteDialog() {
         onKeyDown={(e) => e.key === "Escape" && deny()}
       >
         <h2 id="agent-write-title">{t("{agent} wants to change data on {name}", { agent: request.agent, name: request.connection })}</h2>
-        <pre className="sql-preview" data-field="statement">
-          {request.statement}
+        <pre className="sql-preview" data-field="statement" ref={box} onScroll={readTo}>
+          {statementParts(request.statement).map(part)}
         </pre>
+        {!seenEnd && (
+          <div className="notice small warn" data-field="more">
+            {t("The statement goes on below: scroll it to the end before allowing it.")}
+          </div>
+        )}
         <div className={`notice small ${rows === null ? "" : "warn"}`} data-field="rows">
           {rows === null
             ? t("The database gives no estimate of the rows it changes.")
@@ -81,13 +118,13 @@ export function AgentWriteDialog() {
           <button
             type="button"
             onClick={() => answer({ answer: "session" })}
-            disabled={busy}
+            disabled={busy || !seenEnd}
             title={t("This change, and the next ones of this agent on {name} until it stops", { name: request.connection })}
             data-answer="session"
           >
             {t("Allow for this session")}
           </button>
-          <button type="button" className="primary danger" onClick={() => answer({ answer: "once" })} disabled={busy} data-answer="once">
+          <button type="button" className="primary danger" onClick={() => answer({ answer: "once" })} disabled={busy || !seenEnd} data-answer="once">
             {t("Allow once")}
           </button>
         </div>

@@ -63,6 +63,8 @@ export function selectSql(
 export interface Sort {
   column: string;
   desc: boolean;
+  /** The column's place in the select list (from 1), when its name cannot point to it. */
+  position?: number;
 }
 
 /** The data viewer's first query for a table (already quoted) and an optional `WHERE`

@@ -95,6 +95,15 @@ function prettyJson(text: string): string | null {
   return isJsonDocument(text) ? formatJson(text) : null;
 }
 
+/** `bytes` as base64, in chunks so a large image does not overflow the call stack. */
+function base64Of(bytes: Uint8Array): string {
+  let binaryText = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binaryText += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binaryText);
+}
+
 /** The focused cell's whole value: text, JSON or XML formatted, hex, or an image. */
 export function ValuePanel({ target, onClose }: { target: ValueTarget | null; onClose: () => void }) {
   const [bytes, setBytes] = useState<Uint8Array<ArrayBuffer> | null>(null);
@@ -123,8 +132,8 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
 
   const text = useMemo(() => (bytes && !binary ? new TextDecoder().decode(bytes) : ""), [bytes, binary]);
   const image = bytes && binary ? imageType(bytes) : null;
-  const url = useMemo(() => (bytes && image ? URL.createObjectURL(new Blob([bytes], { type: image })) : null), [bytes, image]);
-  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
+  // A `data:` URL: the WebView's CSP allows `data:` images but not `blob:` ones.
+  const url = useMemo(() => (bytes && image ? `data:${image};base64,${base64Of(bytes)}` : null), [bytes, image]);
 
   const formatted = useMemo(() => {
     const plain = binary || text.length > FORMAT_LIMIT;

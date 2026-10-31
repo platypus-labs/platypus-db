@@ -62,8 +62,8 @@ fn oracle_stored_plsql(src: &str) -> bool {
         && crate::is_plsql(src)
 }
 
-/// Every placeholder of `src`, in order: `:name` (and in SQLite, `@name` and `$name`), `?`
-/// outside PostgreSQL, and `${name}`.
+/// Every placeholder of `src`, in order: `:name` (and in SQLite, `@name`, `$name` and `?1`),
+/// `?` outside PostgreSQL and ClickHouse, and `${name}`.
 #[must_use]
 pub fn parameters(src: &str, dialect: Dialect) -> Vec<Parameter> {
     let tokens: Vec<_> = Lexer::new(src, dialect).collect();
@@ -82,12 +82,29 @@ pub fn parameters(src: &str, dialect: Dialect) -> Vec<Parameter> {
         }
         let prefix = t.text(src);
         match prefix {
-            "?" if dialect != Dialect::Postgres => more.push(Parameter {
-                kind: ParameterKind::Positional,
-                name: String::new(),
-                start: t.start,
-                end: t.end,
-            }),
+            // SQLite's `?1`, `?2`: numbered, the same number is the same value. Its name keeps
+            // the `?`, which the editor's own keys of plain `?` (`?1`, `?2`…) share.
+            "?" if dialect == Dialect::Sqlite
+                && let Some(number) = tokens.get(i + 1)
+                && number.start == t.end
+                && number.text(src).bytes().all(|b| b.is_ascii_digit()) =>
+            {
+                more.push(Parameter {
+                    kind: ParameterKind::Named,
+                    name: src[t.start..number.end].to_owned(),
+                    start: t.start,
+                    end: number.end,
+                });
+            }
+            // PostgreSQL's `?` is a JSON operator, ClickHouse's the ternary `a ? b : c`.
+            "?" if !matches!(dialect, Dialect::Postgres | Dialect::ClickHouse) => {
+                more.push(Parameter {
+                    kind: ParameterKind::Positional,
+                    name: String::new(),
+                    start: t.start,
+                    end: t.end,
+                });
+            }
             ":" | "@" | "$" if named && (prefix == ":" || dialect == Dialect::Sqlite) => {
                 // Not `::type`, `a[1:n]` or `x:=`: the prefix must follow neither a name nor
                 // another colon, and touch the name after it.
@@ -150,6 +167,25 @@ mod tests {
         assert_eq!(names("select '{}'::jsonb ? 'a'", Dialect::Postgres), []);
         assert_eq!(names("set @x := 1", Dialect::MySql), []);
         assert_eq!(names("${unclosed", Dialect::Sqlite), []);
+        // ClickHouse's ternary operator.
+        assert_eq!(names("SELECT 1 ? 'a' : 'b' AS t", Dialect::ClickHouse), []);
+    }
+
+    #[test]
+    fn sqlite_numbered_question_marks() {
+        use ParameterKind::{Named, Positional};
+        assert_eq!(
+            names("SELECT ?1 AS x, ?2 AS y, ?1 AS z, ?", Dialect::Sqlite),
+            [
+                (Named, "?1".to_owned(), "?1"),
+                (Named, "?2".to_owned(), "?2"),
+                (Named, "?1".to_owned(), "?1"),
+                (Positional, String::new(), "?"),
+            ]
+        );
+        // `? 1` is a placeholder followed by a number; elsewhere `?1` is not numbered.
+        assert_eq!(names("SELECT ? 1", Dialect::Sqlite)[0].1, "");
+        assert_eq!(names("SELECT ?1", Dialect::MySql)[0].1, "");
     }
 
     #[test]

@@ -20,6 +20,7 @@ mod library;
 pub mod link;
 pub mod output;
 pub mod plan;
+pub mod policy;
 pub mod profile;
 pub mod query;
 mod redact;

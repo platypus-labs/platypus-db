@@ -347,7 +347,7 @@ fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Scrip
             .enumerate()
             .map(|(i, f)| Column {
                 name: f.name(),
-                kind: ValueKind::of(f.data_type()),
+                kind: ValueKind::of_field(f, dialect),
                 default: changes.defaults.get(i).and_then(Option::as_deref),
             })
             .collect(),

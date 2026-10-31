@@ -9,7 +9,7 @@ import { msg, plural, t } from "../i18n";
 import { DRIVER_NAMES } from "../drivers/names";
 import { withDriver } from "../drivers/DriverPopup";
 import { workbench } from "../workbench";
-import { openTemporaryQuery, ReloadBar } from "./QueryWithSql";
+import { noteZones, openTemporaryQuery, ReloadBar } from "./QueryWithSql";
 import {
   type AcrossLoaded,
   type AcrossOrigin,
@@ -127,6 +127,7 @@ function CrossQueryDialog({ start, onClose }: { start: AcrossStart[]; onClose: (
       const opened = await withDriver(() => api.openAcrossDb(title, request));
       onClose();
       openTemporaryQuery(opened.connection, { sql: initialSql(opened.tables), title: t("Across databases"), across: originOf(refs, opened.tables) });
+      noteZones(opened.zones);
     } catch (e) {
       // The message starts with the source that failed.
       setError(toCommandError(e).message);

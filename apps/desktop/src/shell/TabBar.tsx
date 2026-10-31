@@ -1,9 +1,12 @@
-import { type CSSProperties, type KeyboardEvent, type MouseEvent, Fragment, forwardRef } from "react";
+import { type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent, Fragment, forwardRef, useState } from "react";
 import { titleWithKeys } from "../actions";
 import { defineSetting, useSettingsVersion } from "../settings";
 import type { TabModel } from "../tabs/registry";
 import { Icon, type IconName } from "../ui/Icon";
+import { edgeZone, markedTarget } from "../ui/pointerDrag";
 import { scrollSideways } from "../ui/scroll";
+import { useDrag } from "../ui/useDrag";
+import { neighbour } from "./tabOrder";
 import { t } from "../i18n";
 
 export const groupTabsSetting = defineSetting<boolean>({
@@ -44,6 +47,14 @@ interface Props {
   onActivate: (tab: TabModel) => void;
   onClose: (tab: TabModel) => void;
   onMenu: (tab: TabModel, x: number, y: number) => void;
+  /** `dragged` was dropped before (or, with `after`, behind) `over`. */
+  onMove: (dragged: number, over: number, after: boolean) => void;
+}
+
+/** Where a dragged tab would land: beside the tab `key`. */
+interface Drop {
+  key: number;
+  after: boolean;
 }
 
 /** The tab bar: a tab list the arrows move through, Delete closes and the menu key opens the
@@ -52,6 +63,21 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
   // The close button's tooltip names the current shortcut.
   useSettingsVersion();
   const { tabs, activeTab, besideTab, grouped, folded } = props;
+  const startDrag = useDrag();
+  const [drop, setDrop] = useState<Drop | null>(null);
+  const drag = (tab: TabModel) => (e: PointerEvent) =>
+    startDrag<Drop>(e, {
+      label: props.title(tab),
+      target: (el, at) => {
+        const over = markedTarget(el, "data-tab");
+        const key = over ? Number(over.value) : NaN;
+        if (!over || key === tab.key || Number.isNaN(key)) return null;
+        const r = over.element.getBoundingClientRect();
+        return { key, after: edgeZone(at.x - r.left, r.width, 0.5) === "after" };
+      },
+      show: setDrop,
+      drop: (target) => props.onMove(tab.key, target.key, target.after),
+    });
   const focusTab = (tab: TabModel | undefined, bar: HTMLElement) => {
     if (!tab) return;
     props.onActivate(tab);
@@ -61,7 +87,12 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
     const shown = tabs.filter((t) => !hidden(t));
     const at = shown.indexOf(tab);
     const bar = e.currentTarget.parentElement!;
-    if (e.key === "ArrowRight") focusTab(shown[(at + 1) % shown.length], bar);
+    if (e.altKey && e.shiftKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+      // The keyboard way to move the tab: one place along the bar.
+      const step = e.key === "ArrowRight" ? 1 : -1;
+      const next = neighbour(shown, tab.key, step);
+      if (next) props.onMove(tab.key, next.key, step > 0);
+    } else if (e.key === "ArrowRight") focusTab(shown[(at + 1) % shown.length], bar);
     else if (e.key === "ArrowLeft") focusTab(shown[(at - 1 + shown.length) % shown.length], bar);
     else if (e.key === "Home") focusTab(shown[0], bar);
     else if (e.key === "End") focusTab(shown.at(-1), bar);
@@ -106,10 +137,11 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
                 role="tab"
                 aria-selected={tab.key === activeTab}
                 tabIndex={tab.key === activeTab ? 0 : -1}
-                className={`tab${tab.key === activeTab ? " active" : ""}${tab.key === besideTab ? " beside" : ""}${tab.pinned ? " pinned" : ""}`}
+                className={`tab${tab.key === activeTab ? " active" : ""}${tab.key === besideTab ? " beside" : ""}${tab.pinned ? " pinned" : ""}${drop?.key === tab.key ? (drop.after ? " drop-after" : " drop-before") : ""}`}
                 style={conn}
                 title={tab.pinned ? props.title(tab) : undefined}
                 onClick={() => props.onActivate(tab)}
+                onPointerDown={drag(tab)}
                 // The press of the middle button starts the browser's autoscroll when the bar overflows,
                 // and that swallows the click: it is cancelled here.
                 onMouseDown={(e) => e.button === 1 && e.preventDefault()}

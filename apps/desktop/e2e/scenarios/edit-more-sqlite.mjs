@@ -3,7 +3,7 @@
 // table, a virtual key for a table without one, mass edits of a selection and cells loaded
 // from files. Pasting goes through the system clipboard, which the scenario overwrites.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";

@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use platypus_sql::security::{hide_secrets, mask_secrets, secrets_of};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +42,10 @@ const MIGRATIONS: &[&str] = &[
 
 /// Proposals older than this are not opened any more: the agent's session is long over.
 pub const PROPOSAL_LIFETIME: Duration = Duration::from_hours(24);
+/// Proposals of one agent that may wait for the app to open them.
+pub const MAX_PENDING_PROPOSALS: u32 = 20;
+/// Proposals of all agents that may wait for the app to open them.
+pub const MAX_PENDING_ALL: u32 = 100;
 
 /// SQL an agent proposed, for the user to review and run in the editor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -144,6 +149,37 @@ fn capped(text: &str, max: usize) -> String {
     }
 }
 
+/// The JSON `arguments` of a call with the passwords of statements that set credentials
+/// masked in each of its strings ([`mask_secrets`]), and the secrets found, to hide from the
+/// error. Arguments that are not JSON are masked as one text.
+fn masked_arguments(arguments: &str) -> (String, Vec<String>) {
+    fn walk(value: &mut serde_json::Value, secrets: &mut Vec<String>) {
+        match value {
+            serde_json::Value::String(s) => {
+                let found = secrets_of(s);
+                if !found.is_empty() {
+                    *s = mask_secrets(s).into_owned();
+                    secrets.extend(found);
+                }
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(|v| walk(v, secrets)),
+            serde_json::Value::Object(map) => map.values_mut().for_each(|v| walk(v, secrets)),
+            _ => {}
+        }
+    }
+    match serde_json::from_str::<serde_json::Value>(arguments) {
+        Ok(mut value) => {
+            let mut secrets = Vec::new();
+            walk(&mut value, &mut secrets);
+            if secrets.is_empty() {
+                return (arguments.to_owned(), secrets);
+            }
+            (value.to_string(), secrets)
+        }
+        Err(_) => (mask_secrets(arguments).into_owned(), secrets_of(arguments)),
+    }
+}
+
 impl AgentCallStore {
     pub fn open(path: &Path) -> Result<Self> {
         let db = open_log(path)?;
@@ -161,7 +197,11 @@ impl AgentCallStore {
         Ok(Self { db })
     }
 
+    /// Adds `call`, the passwords of the statements in its arguments masked, there and in its
+    /// error: the log is shown in the app and exported.
     pub fn record(&self, call: &NewAgentCall) -> Result<i64> {
+        let (arguments, secrets) = masked_arguments(&call.arguments);
+        let error = call.error.as_deref().map(|e| hide_secrets(e, &secrets));
         self.db
             .execute(
                 "INSERT INTO calls (session, agent, tool, connection, arguments, started_at,
@@ -172,11 +212,11 @@ impl AgentCallStore {
                     call.agent,
                     call.tool,
                     call.connection,
-                    capped(&call.arguments, ARGUMENT_CHARS),
+                    capped(&arguments, ARGUMENT_CHARS),
                     millis(call.started_at),
                     i64::try_from(call.duration.as_millis()).unwrap_or(i64::MAX),
                     call.status.as_str(),
-                    call.error.as_deref().map(|e| capped(e, ERROR_CHARS)),
+                    error.as_deref().map(|e| capped(e, ERROR_CHARS)),
                 ],
             )
             .map_err(db_error)?;
@@ -265,22 +305,39 @@ impl AgentCallStore {
         rows.collect::<Result<_, _>>().map_err(db_error)
     }
 
-    /// Keeps SQL `agent` proposes on a connection, for the app to open; returns its id.
+    /// Keeps SQL `agent` proposes on a connection, for the app to open; returns its id, or
+    /// `None` when [`MAX_PENDING_PROPOSALS`] of `agent`'s (or [`MAX_PENDING_ALL`] of all
+    /// agents') wait already: an agent cannot fill the profile, nor the app's tab bar.
     pub fn propose(
         &self,
         agent: &str,
         connection_id: &str,
         title: Option<&str>,
         sql: &str,
-    ) -> Result<i64> {
-        self.db
+    ) -> Result<Option<i64>> {
+        let now = SystemTime::now();
+        let added = self
+            .db
             .execute(
                 "INSERT INTO proposals (agent, connection_id, title, sql, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![agent, connection_id, title, sql, millis(SystemTime::now())],
+                 SELECT ?1, ?2, ?3, ?4, ?5
+                 WHERE (SELECT count(*) FROM proposals
+                        WHERE agent = ?1 AND opened = 0 AND created_at >= ?6) < ?7
+                   AND (SELECT count(*) FROM proposals
+                        WHERE opened = 0 AND created_at >= ?6) < ?8",
+                params![
+                    agent,
+                    connection_id,
+                    title,
+                    sql,
+                    millis(now),
+                    millis(now - PROPOSAL_LIFETIME),
+                    MAX_PENDING_PROPOSALS,
+                    MAX_PENDING_ALL,
+                ],
             )
             .map_err(db_error)?;
-        Ok(self.db.last_insert_rowid())
+        Ok((added == 1).then(|| self.db.last_insert_rowid()))
     }
 
     /// The proposals younger than [`PROPOSAL_LIFETIME`], oldest first, removed: each is
@@ -486,6 +543,52 @@ mod tests {
     }
 
     #[test]
+    fn masks_passwords_before_keeping_them() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        s.record(&NewAgentCall {
+            arguments:
+                r#"{"connection":"App db","sql":"CREATE ROLE x LOGIN PASSWORD 'Sup3r\"S3cret'"}"#
+                    .to_owned(),
+            error: Some("near 'Sup3r\"S3cret': syntax error".to_owned()),
+            ..call("one", "run_query", HistoryStatus::Error)
+        })
+        .unwrap();
+        s.record(&NewAgentCall {
+            arguments: "ALTER USER a IDENTIFIED BY 'hunter2' {".to_owned(),
+            ..call("one", "run_query", HistoryStatus::Ok)
+        })
+        .unwrap();
+        let calls = s
+            .search(&AgentCallQuery {
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            calls[0].arguments,
+            "ALTER USER a IDENTIFIED BY '********' {"
+        );
+        let args: serde_json::Value = serde_json::from_str(&calls[1].arguments).unwrap();
+        assert_eq!(args["sql"], "CREATE ROLE x LOGIN PASSWORD '********'");
+        assert_eq!(args["connection"], "App db");
+        let error = calls[1].error.as_deref().unwrap();
+        assert!(!error.contains("S3cret"), "{error}");
+        // Arguments with nothing to mask are kept as sent.
+        s.record(&call("one", "run_query", HistoryStatus::Ok))
+            .unwrap();
+        let last = s
+            .search(&AgentCallQuery {
+                limit: 1,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            last[0].arguments,
+            r#"{"connection":"App db","sql":"SELECT 1"}"#
+        );
+    }
+
+    #[test]
     fn long_arguments_are_cut() {
         let s = AgentCallStore::open_in_memory().unwrap();
         s.record(&NewAgentCall {
@@ -554,6 +657,45 @@ mod tests {
             s.db.query_row("SELECT count(*) FROM proposals", [], |r| r.get(0))
                 .unwrap();
         assert_eq!(left, 0, "opened and expired proposals are removed");
+    }
+
+    #[test]
+    fn waiting_proposals_are_bounded() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        for i in 0..MAX_PENDING_PROPOSALS {
+            assert!(
+                s.propose("flood", "c1", None, &format!("SELECT {i}"))
+                    .unwrap()
+                    .is_some()
+            );
+        }
+        assert_eq!(
+            s.propose("flood", "c1", None, "SELECT 'more'").unwrap(),
+            None
+        );
+        // Another agent still may, until all agents together reach their bound.
+        assert!(
+            s.propose("codex", "c1", None, "SELECT 1")
+                .unwrap()
+                .is_some()
+        );
+        // Expired proposals do not count; opened ones are gone.
+        s.db.execute(
+            "UPDATE proposals SET created_at = 0 WHERE agent = 'flood'",
+            [],
+        )
+        .unwrap();
+        assert!(
+            s.propose("flood", "c1", None, "SELECT 2")
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(s.take_proposals().unwrap().len(), 2);
+        for i in 0..MAX_PENDING_ALL {
+            let agent = format!("agent{}", i % 10);
+            assert!(s.propose(&agent, "c1", None, "SELECT 1").unwrap().is_some());
+        }
+        assert_eq!(s.propose("late", "c1", None, "SELECT 1").unwrap(), None);
     }
 
     #[test]

@@ -102,17 +102,24 @@ fn open(config: &ConnectionConfig) -> Result<rusqlite::Connection> {
             "{path} does not exist, nor does its folder"
         )));
     }
-    let create = memory || (!uri && in_a_folder);
-    let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE
-        | OpenFlags::SQLITE_OPEN_URI
-        | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    if create {
-        flags |= OpenFlags::SQLITE_OPEN_CREATE;
+    let mut flags = OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    if config.read_only {
+        // A read-only connection opens the file read-only: SQLite itself refuses a write,
+        // whatever runs (`PRAGMA query_only` could be turned off again).
+        flags |= OpenFlags::SQLITE_OPEN_READ_ONLY;
+    } else {
+        flags |= OpenFlags::SQLITE_OPEN_READ_WRITE;
+        if memory || (!uri && in_a_folder) {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
     }
     let conn = rusqlite::Connection::open_with_flags(path, flags)
         .map_err(|e| Error::Connect(format!("cannot open {path}: {e}")))?;
     conn.busy_timeout(BUSY_TIMEOUT)
         .map_err(|e| map_error(e, ""))?;
+    // SQLite opens a file lazily: one read tells a database from any other file.
+    conn.query_row("PRAGMA schema_version", [], |row| row.get::<_, i64>(0))
+        .map_err(|e| Error::Connect(format!("cannot open {path}: {e}")))?;
     Ok(conn)
 }
 
@@ -636,6 +643,20 @@ mod tests {
         let name = format!("platypus-missing-{}.db", std::process::id());
         assert!(error(&name).contains("relative path"));
         assert!(!Path::new(&name).exists());
+    }
+
+    #[test]
+    fn a_file_that_is_not_a_database_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.txt");
+        std::fs::write(
+            &path,
+            "this is a text file, not a database
+"
+            .repeat(200),
+        )
+        .unwrap();
+        assert!(error(path.to_str().unwrap()).contains("not a database"));
     }
 
     #[test]

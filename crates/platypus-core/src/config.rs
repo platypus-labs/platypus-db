@@ -186,6 +186,29 @@ impl DriverKind {
     pub const fn is_embedded(self) -> bool {
         matches!(self, Self::Sqlite | Self::DuckDb)
     }
+
+    /// Whether a connection must name a host to be tried. Not an embedded database, nor one
+    /// that may find its server elsewhere: the ADBC databases in their account, workspace or
+    /// URI options, Oracle in a net service name or connect descriptor, ODBC in a data source
+    /// or connection string, a plugin in its own manifest. `ClickHouse` needs one, as the
+    /// form says: no `localhost` is assumed for it. The connection form keeps the same list
+    /// (`HOST_OPTIONAL` in `connectionUrl.ts`).
+    #[must_use]
+    pub const fn needs_host(self) -> bool {
+        !matches!(
+            self,
+            Self::Sqlite
+                | Self::DuckDb
+                | Self::Snowflake
+                | Self::BigQuery
+                | Self::Databricks
+                | Self::Trino
+                | Self::Adbc
+                | Self::Oracle
+                | Self::Odbc
+                | Self::Plugin
+        )
+    }
 }
 
 /// TLS behaviour, following libpq `sslmode` semantics.
@@ -317,6 +340,13 @@ pub struct ConnectionConfig {
     pub init: SessionInit,
     /// What a driver needs beyond the fields above, e.g. Snowflake's `warehouse`.
     pub options: BTreeMap<String, String>,
+    /// The session only reads: set by the app for a read-only connection and for agents with
+    /// read-only access, never saved. Drivers whose server can refuse writes make it do so,
+    /// after the session setup: PostgreSQL (and CockroachDB, YugabyteDB) with
+    /// `default_transaction_read_only`, MySQL and MariaDB with `SET SESSION TRANSACTION READ
+    /// ONLY`, SQLite and DuckDB by opening the file read-only, ClickHouse with `readonly = 1`.
+    /// The others leave it to the statement check.
+    pub read_only: bool,
 }
 
 /// The option that says a pooler stands between the app and a PostgreSQL server, and its
@@ -425,6 +455,7 @@ impl ConnectionConfig {
             ssh: None,
             init: SessionInit::default(),
             options: BTreeMap::new(),
+            read_only: false,
         }
     }
 

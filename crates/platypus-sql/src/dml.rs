@@ -11,8 +11,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::ops::Range;
 
-use platypus_core::arrow_schema::DataType;
-use platypus_core::{Connection, Error, ExecOptions, ExecResult};
+use platypus_core::arrow_schema::{DataType, Field};
+use platypus_core::{Connection, Error, ExecOptions, ExecResult, META_DB_TYPE};
 
 use crate::Dialect;
 
@@ -36,6 +36,8 @@ pub enum ValueKind {
     Date,
     /// A time of day.
     Time,
+    /// Key-value pairs, shown as `{k: 1}`.
+    Map,
     Text,
 }
 
@@ -57,7 +59,36 @@ impl ValueKind {
             },
             DataType::Date32 | DataType::Date64 => Self::Date,
             DataType::Time32(_) | DataType::Time64(_) => Self::Time,
+            DataType::Map(..) => Self::Map,
             _ => Self::Text,
+        }
+    }
+
+    /// The kind of a result column. SQLite types a column of a result by the values it holds
+    /// (see its driver), so one declared `DECIMAL(10,2)` or `NUMERIC` whose rows are all whole
+    /// numbers reads as integers: the declared type decides whether it takes fractions (only a
+    /// type with `INT` in its name has integer affinity), and a column with no declared type
+    /// takes anything.
+    #[must_use]
+    pub fn of_field(field: &Field, dialect: Dialect) -> Self {
+        let kind = Self::of(field.data_type());
+        let whole_only = field
+            .metadata()
+            .get(META_DB_TYPE)
+            .is_some_and(|declared| declared.to_ascii_uppercase().contains("INT"));
+        if dialect != Dialect::Sqlite || whole_only {
+            return kind;
+        }
+        // A column with no rows, or only NULLs, is typed text by the driver; its declared
+        // `NUMERIC`/`DECIMAL` affinity still turns "1,5" into a mistake, not a string.
+        let numeric_declared = field.metadata().get(META_DB_TYPE).is_some_and(|declared| {
+            let declared = declared.to_ascii_uppercase();
+            declared.contains("NUM") || declared.contains("DEC")
+        });
+        match kind {
+            Self::Integer => Self::Decimal,
+            Self::Text if numeric_declared => Self::Decimal,
+            _ => kind,
         }
     }
 }
@@ -240,6 +271,81 @@ fn oracle_datetime(text: &str, zoned: bool) -> Option<String> {
     })
 }
 
+/// DuckDB reads a date or timestamp before Christ as `0044-03-15 (BC)` and
+/// `0044-03-15 (BC) 12:00:00`; the grid shows `0044-03-15 BC` and `0044-03-15T12:00:00 BC`.
+/// `None` for any other text.
+fn duckdb_bc(text: &str) -> Option<String> {
+    let body = text.strip_suffix(" BC")?;
+    let (date, rest) = (body.get(..10)?, body.get(10..)?);
+    let rest = rest.strip_prefix(['T', ' ']).unwrap_or(rest);
+    Some(if rest.is_empty() {
+        format!("{date} (BC)")
+    } else {
+        format!("{date} (BC) {rest}")
+    })
+}
+
+/// A map as the grid shows it (`{k: 1, z: 2}`, or DuckDB's `MAP {'k': 1}`) in the form
+/// DuckDB casts from text, `{k=1, z=2}`: the separators of the pairs change, the keys and values
+/// stay. `None` when a pair has no separator.
+fn duckdb_map(text: &str) -> Option<String> {
+    let body = text.strip_prefix("MAP").unwrap_or(text).trim_start();
+    let inner = body.strip_prefix('{')?.strip_suffix('}')?;
+    let (mut depth, mut quote) = (0_u32, None::<char>);
+    let (mut pairs, mut key, mut current) = (Vec::new(), None::<String>, String::new());
+    for c in inner.chars() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => match c {
+                // Only a quote that starts a key or a value quotes: the text of an unquoted
+                // value may hold an apostrophe.
+                '\'' | '"' if current.trim().is_empty() => quote = Some(c),
+                '[' | '{' | '(' => depth += 1,
+                ']' | '}' | ')' => depth = depth.saturating_sub(1),
+                ':' | '=' if depth == 0 && key.is_none() => {
+                    key = Some(std::mem::take(&mut current));
+                    continue;
+                }
+                ',' if depth == 0 => {
+                    pairs.push((key.take()?, std::mem::take(&mut current)));
+                    continue;
+                }
+                _ => {}
+            },
+        }
+        current.push(c);
+    }
+    if key.is_some() || !current.trim().is_empty() {
+        pairs.push((key?, current));
+    }
+    // An unquoted text with a quote inside is quoted, as DuckDB reads no other.
+    let word = |s: &str| {
+        let s = s.trim();
+        if s.starts_with(['\'', '"']) || !s.contains(['\'', '"']) {
+            s.to_owned()
+        } else {
+            // DuckDB's nested text escapes a quote with a backslash.
+            format!("'{}'", s.replace('\'', "\\'"))
+        }
+    };
+    let pairs: Vec<String> = pairs
+        .iter()
+        .map(|(k, v)| format!("{}={}", word(k), word(v)))
+        .collect();
+    Some(format!("{{{}}}", pairs.join(", ")))
+}
+
+/// More digits than DuckDB reads in a bare integer: such a number is a double there, but a
+/// text converts to the column's exact type (`UHUGEINT`).
+fn is_wide_integer(number: &str) -> bool {
+    let digits = number.strip_prefix(['+', '-']).unwrap_or(number);
+    digits.len() > 38 && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
 fn is_integer(s: &str) -> bool {
     let digits = s.strip_prefix(['+', '-']).unwrap_or(s);
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
@@ -313,8 +419,14 @@ impl Column<'_> {
                 .or_else(|| trimmed.strip_suffix('Z'))
                 .unwrap_or(trimmed)
                 .to_owned(),
+            ValueKind::Timestamp { .. } | ValueKind::Date if dialect == Dialect::DuckDb => {
+                duckdb_bc(trimmed).unwrap_or_else(|| trimmed.to_owned())
+            }
             ValueKind::Timestamp { .. } | ValueKind::Date | ValueKind::Time => trimmed.to_owned(),
-            ValueKind::Text => text.to_owned(),
+            ValueKind::Map if dialect == Dialect::DuckDb => {
+                duckdb_map(trimmed).unwrap_or_else(|| text.to_owned())
+            }
+            ValueKind::Map | ValueKind::Text => text.to_owned(),
         })
     }
 
@@ -330,6 +442,9 @@ impl Column<'_> {
                 return Err(self.invalid(format!("'{text}' is not a whole number")));
             }
             // Exact digits: a `VALUES` list with an exponent in it can turn the column float.
+            ValueKind::Decimal if dialect == Dialect::DuckDb && is_wide_integer(trimmed) => {
+                dialect.quote_literal(trimmed)
+            }
             ValueKind::Decimal if is_number(trimmed) => plain_number(trimmed),
             // PostgreSQL's numeric has NaN and (since 14) infinities.
             ValueKind::Decimal if dialect == Dialect::Postgres && is_special_number(trimmed) => {
@@ -405,9 +520,17 @@ impl Column<'_> {
                 };
                 format!("TIMESTAMP {}", dialect.quote_literal(&sql))
             }
-            ValueKind::Timestamp { .. } | ValueKind::Date | ValueKind::Time | ValueKind::Text => {
-                dialect.quote_literal(text)
+            ValueKind::Timestamp { .. } | ValueKind::Date if dialect == Dialect::DuckDb => {
+                dialect.quote_literal(&duckdb_bc(trimmed).unwrap_or_else(|| text.to_owned()))
             }
+            ValueKind::Map if dialect == Dialect::DuckDb => {
+                dialect.quote_literal(&duckdb_map(trimmed).unwrap_or_else(|| text.to_owned()))
+            }
+            ValueKind::Timestamp { .. }
+            | ValueKind::Date
+            | ValueKind::Time
+            | ValueKind::Map
+            | ValueKind::Text => dialect.quote_literal(text),
         })
     }
 
@@ -1124,6 +1247,95 @@ mod tests {
                 default: Some("0"),
             },
         ]
+    }
+
+    #[test]
+    fn sqlite_numeric_columns_take_fractions_whatever_they_hold() {
+        use std::collections::HashMap;
+        let field = |declared: Option<&str>| {
+            let f = Field::new("price", DataType::Int64, true);
+            match declared {
+                Some(d) => {
+                    f.with_metadata(HashMap::from([(META_DB_TYPE.to_owned(), d.to_owned())]))
+                }
+                None => f,
+            }
+        };
+        let kind = |declared, dialect| ValueKind::of_field(&field(declared), dialect);
+        for numeric in [Some("DECIMAL(10,2)"), Some("NUMERIC"), Some("REAL"), None] {
+            assert_eq!(
+                kind(numeric, Dialect::Sqlite),
+                ValueKind::Decimal,
+                "{numeric:?}"
+            );
+        }
+        // Declared numeric but typed text by the driver (no rows): still a number.
+        for declared in ["NUMERIC", "DECIMAL(10,2)", "numeric(5)"] {
+            let text = Field::new("price", DataType::Utf8, true).with_metadata(HashMap::from([(
+                META_DB_TYPE.to_owned(),
+                declared.to_owned(),
+            )]));
+            assert_eq!(
+                ValueKind::of_field(&text, Dialect::Sqlite),
+                ValueKind::Decimal,
+                "{declared}"
+            );
+        }
+        let text = Field::new("name", DataType::Utf8, true).with_metadata(HashMap::from([(
+            META_DB_TYPE.to_owned(),
+            "TEXT".to_owned(),
+        )]));
+        assert_eq!(ValueKind::of_field(&text, Dialect::Sqlite), ValueKind::Text);
+        for whole in ["INTEGER", "bigint", "UNSIGNED BIG INT"] {
+            assert_eq!(
+                kind(Some(whole), Dialect::Sqlite),
+                ValueKind::Integer,
+                "{whole}"
+            );
+        }
+        assert_eq!(
+            kind(Some("DECIMAL(10,2)"), Dialect::Postgres),
+            ValueKind::Integer
+        );
+        let price = Column {
+            name: "price",
+            kind: ValueKind::Decimal,
+            default: None,
+        };
+        assert_eq!(
+            price.literal(Dialect::Sqlite, Some("9.99")).unwrap(),
+            "9.99"
+        );
+    }
+
+    #[test]
+    fn duckdb_reads_maps_dates_and_wide_numbers_as_they_are_shown() {
+        let d = Dialect::DuckDb;
+        let lit = |kind, text| col("c", kind).literal(d, Some(text)).unwrap();
+        assert_eq!(lit(ValueKind::Map, "{k: 1, z: 2}"), "'{k=1, z=2}'");
+        assert_eq!(
+            lit(ValueKind::Map, "{'a b': 'x, y', c: NULL}"),
+            "'{''a b''=''x, y'', c=NULL}'"
+        );
+        assert_eq!(lit(ValueKind::Map, "MAP {'k': 1}"), "'{''k''=1}'");
+        assert_eq!(lit(ValueKind::Map, "{k=1}"), "'{k=1}'");
+        assert_eq!(lit(ValueKind::Map, "{}"), "'{}'");
+        assert_eq!(lit(ValueKind::Map, "nope"), "'nope'");
+        assert_eq!(lit(ValueKind::Date, "0044-03-15 BC"), "'0044-03-15 (BC)'");
+        assert_eq!(
+            lit(
+                ValueKind::Timestamp { zoned: false },
+                "0044-03-15T12:00:00.5 BC"
+            ),
+            "'0044-03-15 (BC) 12:00:00.5'"
+        );
+        assert_eq!(lit(ValueKind::Date, "2024-01-01"), "'2024-01-01'");
+        let max = "340282366920938463463374607431768211455";
+        assert_eq!(lit(ValueKind::Decimal, max), format!("'{max}'"));
+        assert_eq!(lit(ValueKind::Decimal, "12345"), "12345");
+        // Other databases keep a map as plain text.
+        let pg = col("c", ValueKind::Map).literal(Dialect::Postgres, Some("{k: 1}"));
+        assert_eq!(pg.unwrap(), "'{k: 1}'");
     }
 
     #[test]

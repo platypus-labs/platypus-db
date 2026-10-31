@@ -39,7 +39,37 @@ function assertDisjoint(list, what) {
   }
 }
 
-async function drag(page, name, dx, dy) {
+/** A move of table `name`, in screen pixels, that lands it on empty space inside the diagram,
+ *  as close to (`dx`, `dy`) as there is: where the layout puts the other tables depends on
+ *  the window's size, and a box dropped on another would fail the overlap checks. */
+async function freeMove(page, name, dx, dy) {
+  return page.eval(`(() => {
+    const erd = ${visibleErd};
+    // The part of the drawing the canvas shows, without the toolbar and minimap over it.
+    const [c, s] = [erd.querySelector('.erd-canvas').getBoundingClientRect(), erd.querySelector('.erd-canvas > svg').getBoundingClientRect()];
+    const area = { x: Math.max(c.x, s.x), y: Math.max(c.y, s.y), right: Math.min(c.right, s.right), bottom: Math.min(c.bottom, s.bottom) };
+    area.width = area.right - area.x;
+    area.height = area.bottom - area.y;
+    const rects = [...erd.querySelectorAll('.erd-table')].map(g => ({ name: g.querySelector('text').textContent, r: g.querySelector('rect').getBoundingClientRect() }))
+      .concat([...erd.querySelectorAll('.erd-float, .erd-minimap')].map(e => ({ name: '', r: e.getBoundingClientRect() })));
+    const own = rects.find(t => t.name === ${JSON.stringify(name)}).r;
+    const gap = 12;
+    const free = (mx, my) => {
+      const [x, y] = [own.x + mx, own.y + my];
+      if (x < area.x + gap || y < area.y + gap || x + own.width > area.right - gap || y + own.height > area.bottom - gap) return false;
+      return rects.every(t => t.name === ${JSON.stringify(name)} || x + own.width + gap <= t.r.x || t.r.right + gap <= x || y + own.height + gap <= t.r.y || t.r.bottom + gap <= y);
+    };
+    const moves = [];
+    for (let mx = -area.width; mx <= area.width; mx += 20) for (let my = -area.height; my <= area.height; my += 20) moves.push([mx, my]);
+    moves.sort((a, b) => Math.hypot(a[0] - ${dx}, a[1] - ${dy}) - Math.hypot(b[0] - ${dx}, b[1] - ${dy}));
+    return moves.find(([mx, my]) => (mx !== 0 || my !== 0) && free(mx, my)) ?? null;
+  })()`);
+}
+
+async function drag(page, name, wantDx, wantDy) {
+  const move = await freeMove(page, name, wantDx, wantDy);
+  assert.ok(move, `no empty space to drag ${name} to`);
+  const [dx, dy] = move;
   const before = (await transforms(page))[name];
   await page.eval(`[...${visibleErd}.querySelectorAll('.erd-table')].find(g => g.querySelector('text').textContent === ${JSON.stringify(name)}).querySelector('rect').id = 'erd-drag'`);
   const r = await page.rect("#erd-drag");
@@ -72,6 +102,7 @@ export default async function (page, { dir }) {
   const dragged = await transforms(page);
   assert.notEqual(dragged.audit, laidOut.audit);
   for (const name of Object.keys(laidOut).filter((n) => n !== "audit")) assert.equal(dragged[name], laidOut[name], `${name} moved with audit`);
+  assertDisjoint(await page.eval(boxes), "after the drag");
 
   // A table added outside the app (one with a foreign key, one alone), then Refresh.
   ENGINES.sqlite.exec(dir, SRC, `CREATE TABLE invoices (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers(id));

@@ -226,19 +226,38 @@ pub fn session_number(id: &str) -> Result<u64> {
 /// `DBCC`), a line each.
 ///
 /// # Errors
-/// When the statement fails.
+/// When the statement fails, or MySQL answers with `Error` rows (`ANALYZE TABLE` on a table
+/// that does not exist is not a failed statement but a row).
 pub async fn run_maintenance(conn: &dyn Connection, sql: &str) -> Result<Vec<String>> {
     // Messages of earlier statements are not this one's.
     let _ = conn.take_messages();
     let mut lines = Vec::new();
     if let ExecResult::Rows(stream) = conn.execute(sql, &ExecOptions::default()).await? {
+        let mut errors = Vec::new();
         for row in crate::metadata::text_rows(stream).await? {
+            let is_error = is_maintenance_error(&row);
             let cells: Vec<String> = row.into_iter().flatten().collect();
-            lines.push(cells.join(" · "));
+            let line = cells.join(" · ");
+            if is_error {
+                errors.push(cells.last().cloned().unwrap_or(line.clone()));
+            }
+            lines.push(line);
+        }
+        if !errors.is_empty() {
+            return Err(Error::Other(errors.join("; ")));
         }
     }
     lines.extend(conn.take_messages());
     Ok(lines)
+}
+
+/// Whether a maintenance result row is MySQL's `Table`, `Op`, `Msg_type`, `Msg_text` with
+/// `Msg_type` `error` (`status`, `note`, `info` and `warning` are not failures).
+fn is_maintenance_error(row: &[Option<String>]) -> bool {
+    row.len() == 4
+        && row[2]
+            .as_deref()
+            .is_some_and(|t| t.trim().eq_ignore_ascii_case("error"))
 }
 
 /// Sorts `objects` by schema, then each table followed by its indexes.
@@ -270,6 +289,20 @@ mod tests {
         assert_eq!(session_number(" 42 ").unwrap(), 42);
         assert!(session_number("1; DROP TABLE t").is_err());
         assert!(session_number("-1").is_err());
+    }
+
+    #[test]
+    fn only_error_rows_fail_a_maintenance_statement() {
+        let row = |kind: &str| {
+            ["db.t", "analyze", kind, "msg"]
+                .map(|c| Some(c.to_owned()))
+                .to_vec()
+        };
+        assert!(is_maintenance_error(&row("Error")));
+        assert!(!is_maintenance_error(&row("status")));
+        assert!(!is_maintenance_error(&row("note")));
+        assert!(!is_maintenance_error(&row("warning")));
+        assert!(!is_maintenance_error(&[Some("a".to_owned()), None]));
     }
 
     #[test]

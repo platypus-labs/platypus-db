@@ -5720,6 +5720,7 @@ dependencies = [
  "arrow-schema 60.0.0",
  "async-trait",
  "futures",
+ "hmac",
  "platypus-core",
  "platypus-driver-adbc",
  "platypus-driver-cassandra",
@@ -5742,9 +5743,11 @@ dependencies = [
  "platypus-sql",
  "platypus-transfer",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
  "tokio-util",
+ "ureq",
 ]
 
 [[package]]
@@ -5985,6 +5988,7 @@ dependencies = [
  "platypus-core",
  "platypus-sql",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
@@ -6164,6 +6168,8 @@ dependencies = [
  "platypus-plugins",
  "platypus-sql",
  "platypus-store",
+ "platypus-sync",
+ "ring",
  "rmcp",
  "rusqlite",
  "schemars 1.2.3",
@@ -6253,6 +6259,7 @@ dependencies = [
  "chrono",
  "keyring",
  "platypus-core",
+ "platypus-sql",
  "ring",
  "rusqlite",
  "serde",

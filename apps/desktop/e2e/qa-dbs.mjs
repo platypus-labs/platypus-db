@@ -2,7 +2,7 @@
 // libSQL, Trino, CockroachDB, YugabyteDB and TimescaleDB containers of docker/compose.yml
 // (added to the grid helpers' databases, so `connections`, `expand`, `openEditor`, `run`…
 // work on them), and SQL run on them from outside the app.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { cpSync, existsSync, writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { dirname, join, resolve } from "node:path";
@@ -32,7 +32,7 @@ Object.assign(DBS, {
   cockroach: {
     port: 56257,
     password: "",
-    toml: `driver = "postgres"\nhost = "localhost"\nport = 56257\ndatabase = "platypus"\nuser = "root"\nssl_mode = "disable"\npassword_command = "cmd /c echo."`,
+    toml: `driver = "postgres"\nhost = "localhost"\nport = 56257\ndatabase = "platypus"\nuser = "root"\nssl_mode = "disable"\npassword_command = "echo x"`,
     shell: ["exec", "-i", "platypus-db-cockroach-1", "cockroach", "sql", "--insecure", "-d", "platypus", "--format=tsv"],
     noPrompt: true,
   },

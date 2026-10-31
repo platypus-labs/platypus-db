@@ -10,8 +10,8 @@ use platypus_core::ObjectKind;
 use platypus_sql::{Dialect, Lexer, ObjectName, Token, TokenKind};
 
 use crate::{
-    ColumnDesign, ConstraintDesign, ConstraintType, ForeignKeyDesign, IndexDesign, Script,
-    TableDesign,
+    ColumnDesign, ConstraintDesign, ConstraintType, ForeignKeyDesign, IndexDesign, PartitionDesign,
+    Script, TableDesign,
 };
 
 /// The script that turns `original` into `design` in `schema`, or creates `design` when
@@ -84,6 +84,8 @@ pub(crate) fn phased(
             script
                 .statements
                 .push(ddl.create_table(design, &design.name));
+            ddl.disable_constraints(design, &design.name, &mut script);
+            ddl.create_partitions(&design.name, &design.partitions, &mut script.statements);
             ddl.indexes_and_comments(design, &design.name, &mut script);
         }
         Some(old) => {
@@ -105,19 +107,16 @@ pub(crate) fn phased(
     Ok(script)
 }
 
-/// `ALTER TABLE .. ADD` of the foreign key `fk` of `schema.table`.
+/// `ALTER TABLE .. ADD` of the foreign key `fk` of `schema.table`, and what disables it
+/// where it is disabled.
 pub(crate) fn add_foreign_key(
     dialect: Dialect,
     schema: &str,
     table: &str,
     fk: &ForeignKeyDesign,
-) -> String {
+) -> Vec<String> {
     let ddl = Ddl { d: dialect, schema };
-    format!(
-        "ALTER TABLE {} ADD {}",
-        ddl.table(table),
-        ddl.foreign_key(fk)
-    )
+    ddl.add_constraint(table, &ddl.foreign_key(fk), &fk.name, fk.disabled)
 }
 
 /// `CREATE INDEX` of `index` on `schema.table`.
@@ -286,7 +285,12 @@ impl<'a> Diff<'a> {
                 &old.indexes,
                 &new.indexes,
                 |i| (i.original.as_deref(), &i.name),
-                |o, n| o.name == n.name && o.unique == n.unique && map(&o.columns) == n.columns,
+                |o, n| {
+                    o.name == n.name
+                        && o.unique == n.unique
+                        && map(&o.columns) == n.columns
+                        && same_index_kind(o, n)
+                },
             ),
             foreign_keys: Parts::new(
                 &old.foreign_keys,
@@ -300,6 +304,8 @@ impl<'a> Diff<'a> {
                         && o.ref_columns == n.ref_columns
                         && o.on_delete == n.on_delete
                         && o.on_update == n.on_update
+                        && (o.deferral, o.disabled) == (n.deferral, n.disabled)
+                        && text(o.match_type.as_ref()) == text(n.match_type.as_ref())
                 },
             ),
             constraints: Parts::new(
@@ -311,6 +317,7 @@ impl<'a> Diff<'a> {
                         && o.kind == n.kind
                         && map(&o.columns) == n.columns
                         && same_check(&o.check, &n.check)
+                        && same_constraint_options(o, n)
                 },
             ),
             kept_columns,
@@ -337,6 +344,26 @@ impl<'a> Diff<'a> {
                         || text(c.default.as_ref()).is_some_and(|d| !constant(d))
                 }))
     }
+}
+
+/// Whether two indexes are the same beyond their name and columns: their key parts, kind,
+/// `INCLUDE` columns and `WHERE`.
+fn same_index_kind(o: &IndexDesign, n: &IndexDesign) -> bool {
+    o.parts == n.parts
+        && text(o.method.as_ref()) == text(n.method.as_ref())
+        && text(o.visibility.as_ref()) == text(n.visibility.as_ref())
+        && o.include == n.include
+        && match (text(o.predicate.as_ref()), text(n.predicate.as_ref())) {
+            (Some(a), Some(b)) => same_check(a, b),
+            (a, b) => a == b,
+        }
+}
+
+/// Whether two constraints are the same beyond their kind, columns and condition: their
+/// deferral, `NULLS NOT DISTINCT`, `ON CONFLICT` and whether they are checked.
+fn same_constraint_options(o: &ConstraintDesign, n: &ConstraintDesign) -> bool {
+    (o.deferral, o.nulls_not_distinct, o.disabled) == (n.deferral, n.nulls_not_distinct, n.disabled)
+        && text(o.on_conflict.as_ref()) == text(n.on_conflict.as_ref())
 }
 
 /// Whether two CHECK conditions are the same, as the database prints them: PostgreSQL
@@ -497,6 +524,34 @@ fn constant(default: &str) -> bool {
             .any(|k| d.eq_ignore_ascii_case(k))
 }
 
+/// Whether SQLite takes `default` after `DEFAULT` without parentheses: a literal, signed or
+/// not, a blob or one of the `CURRENT_*` keywords.
+fn sqlite_literal(default: &str) -> bool {
+    let d = default.trim();
+    // One quoted string: `'a'`, `'it''s'`, not `'a' || 'b'`.
+    let quoted = |s: &str| {
+        s.len() >= 2
+            && s.starts_with('\'')
+            && s.ends_with('\'')
+            && !s[1..s.len() - 1].replace("''", "").contains('\'')
+    };
+    let blob = d.starts_with(['x', 'X']) && quoted(&d[1..]);
+    let unsigned = d.strip_prefix(['+', '-']).unwrap_or(d);
+    quoted(d)
+        || blob
+        || unsigned.parse::<f64>().is_ok()
+        || [
+            "NULL",
+            "TRUE",
+            "FALSE",
+            "CURRENT_TIME",
+            "CURRENT_DATE",
+            "CURRENT_TIMESTAMP",
+        ]
+        .iter()
+        .any(|k| d.eq_ignore_ascii_case(k))
+}
+
 fn primary_key(design: &TableDesign) -> Vec<String> {
     design
         .columns
@@ -504,6 +559,37 @@ fn primary_key(design: &TableDesign) -> Vec<String> {
         .filter(|c| c.primary_key)
         .map(|c| c.name.clone())
         .collect()
+}
+
+/// Whether MySQL changes the primary key in one statement (`DROP PRIMARY KEY, ADD PRIMARY KEY`):
+/// dropping it alone fails while an `AUTO_INCREMENT` column needs it. Not when a column of the
+/// old key is dropped, which takes the key with it.
+fn swaps_primary_key(old: &TableDesign, new: &TableDesign, diff: &Diff<'_>) -> bool {
+    let old_key = primary_key(old);
+    diff.primary_key_changed
+        && !old_key.is_empty()
+        && !primary_key(new).is_empty()
+        && !diff
+            .dropped_columns
+            .iter()
+            .any(|c| old_key.contains(&c.name))
+}
+
+/// The partition of `list` named `name`.
+fn partition<'p>(list: &'p [PartitionDesign], name: &str) -> Option<&'p PartitionDesign> {
+    list.iter().find(|p| p.name == name)
+}
+
+/// The start and increment of a PostgreSQL identity, as [`crate::load`] writes them:
+/// `GENERATED ALWAYS AS IDENTITY (START WITH 10 INCREMENT BY 5)`.
+fn identity_options(identity: &str) -> Option<(&str, &str)> {
+    let after = |word: &str| {
+        let at = identity.find(word)? + word.len();
+        identity[at..]
+            .split(|c: char| c.is_whitespace() || c == ')')
+            .find(|w| !w.is_empty())
+    };
+    Some((after("START WITH ")?, after("INCREMENT BY ")?))
 }
 
 fn type_changed(o: &ColumnDesign, n: &ColumnDesign) -> bool {
@@ -585,6 +671,10 @@ impl Ddl<'_> {
     }
 
     fn column(&self, c: &ColumnDesign) -> String {
+        // A computed column of SQL Server has no type, nullability or default of its own.
+        if let (Dialect::SqlServer, Some(clause)) = (self.d, text(c.generated.as_ref())) {
+            return format!("{} {clause}", self.q(&c.name));
+        }
         // ClickHouse writes nullability in the type.
         let clickhouse = self.d == Dialect::ClickHouse;
         let ty = if clickhouse {
@@ -603,8 +693,11 @@ impl Ddl<'_> {
         if self.d == Dialect::Sqlite && extra == Some("AUTOINCREMENT") {
             def.push_str(" PRIMARY KEY AUTOINCREMENT");
         }
-        // Oracle's identity: `GENERATED BY DEFAULT AS IDENTITY`.
-        if let (Dialect::Oracle, Some(extra)) = (self.d, extra) {
+        // The identity of Oracle and PostgreSQL (`GENERATED BY DEFAULT AS IDENTITY`) and of
+        // SQL Server (`IDENTITY(1,1)`).
+        if let (Dialect::Oracle | Dialect::Postgres | Dialect::SqlServer, Some(extra)) =
+            (self.d, extra)
+        {
             def.push(' ');
             def.push_str(extra);
         }
@@ -626,6 +719,11 @@ impl Ddl<'_> {
             // ClickHouse's other kinds of default are their own keyword.
             Some(default) if clickhouse && clickhouse_default_kind(default) => {
                 format!(" {default}")
+            }
+            // SQLite takes a literal as it is, anything else in parentheses:
+            // `DEFAULT (datetime('now'))`. Its catalog reports the expression without them.
+            Some(default) if self.d == Dialect::Sqlite && !sqlite_literal(default) => {
+                format!(" DEFAULT {}", crate::catalog::parenthesized(default))
             }
             Some(default) => format!(" DEFAULT {default}"),
             None => String::new(),
@@ -660,11 +758,82 @@ impl Ddl<'_> {
     }
 
     fn constraint(&self, c: &ConstraintDesign) -> String {
-        match c.kind {
+        let named = self.named(&c.name);
+        let mut sql = match c.kind {
             ConstraintType::Unique => {
-                format!("{}UNIQUE ({})", self.named(&c.name), self.list(&c.columns))
+                let nulls = if c.nulls_not_distinct {
+                    " NULLS NOT DISTINCT"
+                } else {
+                    ""
+                };
+                format!("{named}UNIQUE{nulls} ({})", self.list(&c.columns))
             }
-            ConstraintType::Check => format!("{}CHECK ({})", self.named(&c.name), c.check.trim()),
+            ConstraintType::Check => format!("{named}CHECK ({})", c.check.trim()),
+            ConstraintType::Exclusion => format!("{named}EXCLUDE {}", c.check.trim()),
+        };
+        if let Some(resolution) = text(c.on_conflict.as_ref()) {
+            let _ = write!(sql, " ON CONFLICT {resolution}");
+        }
+        if let Some(deferral) = c.deferral.clause() {
+            let _ = write!(sql, " {deferral}");
+        }
+        if c.disabled && c.kind == ConstraintType::Check && self.d == Dialect::MySql {
+            sql.push_str(" NOT ENFORCED");
+        }
+        sql
+    }
+
+    /// `ALTER TABLE .. NOCHECK CONSTRAINT` of the key or constraint `name` (SQL Server), which
+    /// the database then leaves unchecked.
+    fn nocheck(&self, table: &str, name: &str) -> String {
+        format!(
+            "ALTER TABLE {} NOCHECK CONSTRAINT {}",
+            self.table(table),
+            self.q(name)
+        )
+    }
+
+    /// `ALTER TABLE .. ADD` of the constraint or key `what` (the clause after `ADD`) of
+    /// `table`, then, when it is `disabled` (SQL Server), the statement that disables it: added
+    /// without checking the rows there either.
+    fn add_constraint(&self, table: &str, what: &str, name: &str, disabled: bool) -> Vec<String> {
+        let t = self.table(table);
+        if disabled && self.d == Dialect::SqlServer && !name.trim().is_empty() {
+            vec![
+                format!("ALTER TABLE {t} WITH NOCHECK ADD {what}"),
+                self.nocheck(table, name),
+            ]
+        } else {
+            vec![format!("ALTER TABLE {t} ADD {what}")]
+        }
+    }
+
+    /// The statements that disable the disabled keys and constraints of `design`, created as
+    /// `table` (SQL Server). One without a name cannot be disabled, which a warning says.
+    fn disable_constraints(&self, design: &TableDesign, table: &str, script: &mut Script) {
+        if self.d != Dialect::SqlServer {
+            return;
+        }
+        let disabled = design
+            .foreign_keys
+            .iter()
+            .filter(|f| f.disabled)
+            .map(|f| &f.name)
+            .chain(
+                design
+                    .constraints
+                    .iter()
+                    .filter(|c| c.disabled)
+                    .map(|c| &c.name),
+            );
+        for name in disabled {
+            if name.trim().is_empty() {
+                script.warnings.push(format!(
+                    "A disabled (NOCHECK) constraint of {table} has no name of its own: it is created enabled; disable it by hand."
+                ));
+            } else {
+                script.statements.push(self.nocheck(table, name));
+            }
         }
     }
 
@@ -688,10 +857,16 @@ impl Ddl<'_> {
         if !f.ref_columns.is_empty() {
             let _ = write!(sql, " ({})", self.list(&f.ref_columns));
         }
+        if let Some(match_type) = text(f.match_type.as_ref()) {
+            let _ = write!(sql, " MATCH {match_type}");
+        }
         for (event, action) in [("DELETE", &f.on_delete), ("UPDATE", &f.on_update)] {
             if let Some(action) = text(action.as_ref()) {
                 let _ = write!(sql, " ON {event} {action}");
             }
+        }
+        if let Some(deferral) = f.deferral.clause() {
+            let _ = write!(sql, " {deferral}");
         }
         sql
     }
@@ -704,11 +879,27 @@ impl Ddl<'_> {
                 .columns
                 .iter()
                 .any(|c| c.primary_key && text(c.extra.as_ref()) == Some("AUTOINCREMENT"));
-        if !key.is_empty() && !inline_key {
-            parts.push(format!("PRIMARY KEY ({})", self.list(&key)));
+        // ClickHouse's engine clause has the primary key (or the sorting key standing for it).
+        let engine_key = self.d == Dialect::ClickHouse && text(design.options.as_ref()).is_some();
+        // SQL Server clusters the primary key unless another index is the clustered one.
+        let clustered_index = self.d == Dialect::SqlServer
+            && design
+                .indexes
+                .iter()
+                .any(|i| text(i.method.as_ref()).is_some_and(|m| m.starts_with("CLUSTERED")));
+        if !key.is_empty() && !inline_key && !engine_key {
+            let kind = if clustered_index { " NONCLUSTERED" } else { "" };
+            parts.push(format!("PRIMARY KEY{kind} ({})", self.list(&key)));
         }
         parts.extend(design.constraints.iter().map(|c| self.constraint(c)));
         parts.extend(design.foreign_keys.iter().map(|f| self.foreign_key(f)));
+        if let Some(period) = &design.system_time {
+            parts.push(format!(
+                "PERIOD FOR SYSTEM_TIME ({}, {})",
+                self.q(&period.start),
+                self.q(&period.end)
+            ));
+        }
         let mut sql = format!(
             "CREATE TABLE {} (\n  {}\n)",
             self.table(name),
@@ -717,21 +908,67 @@ impl Ddl<'_> {
         if let Some(options) = text(design.options.as_ref()) {
             let _ = write!(sql, " {options}");
         }
+        // SQL Server creates the history table, in the schema of the table.
+        let history = design.system_time.as_ref().and_then(|s| s.history.as_ref());
+        if let (Dialect::SqlServer, Some(history)) = (self.d, history) {
+            let _ = write!(
+                sql,
+                " WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = {}))",
+                self.table(history)
+            );
+        }
         sql
     }
 
     fn create_index(&self, table: &str, i: &IndexDesign) -> String {
+        let keys = if i.parts.is_empty() {
+            self.list(&i.columns)
+        } else {
+            i.parts.join(", ")
+        };
+        let method = text(i.method.as_ref());
+        if self.d == Dialect::ClickHouse {
+            // A data skipping index: its expression and `TYPE .. GRANULARITY ..`.
+            let mut sql = format!(
+                "ALTER TABLE {} ADD INDEX {} {keys}",
+                self.table(table),
+                self.q(&i.name)
+            );
+            if let Some(method) = method {
+                let _ = write!(sql, " {method}");
+            }
+            return sql;
+        }
         let unique = if i.unique { "UNIQUE " } else { "" };
+        // MySQL's FULLTEXT and SPATIAL, SQL Server's CLUSTERED, before INDEX.
+        let kind = match (self.d, method) {
+            (Dialect::MySql | Dialect::SqlServer, Some(m)) => format!("{m} "),
+            _ => String::new(),
+        };
         // SQLite qualifies the index, not its table.
         let (index, on) = if self.d == Dialect::Sqlite {
             (self.table(&i.name), self.q(table))
         } else {
             (self.q(&i.name), self.table(table))
         };
-        format!(
-            "CREATE {unique}INDEX {index} ON {on} ({})",
-            self.list(&i.columns)
-        )
+        let mut sql = format!("CREATE {unique}{kind}INDEX {index} ON {on}");
+        if let (Dialect::Postgres, Some(m)) = (self.d, method) {
+            let _ = write!(sql, " USING {m}");
+        }
+        // A clustered columnstore index takes every column.
+        if !kind.starts_with("CLUSTERED COLUMNSTORE") {
+            let _ = write!(sql, " ({keys})");
+        }
+        if let Some(visibility) = text(i.visibility.as_ref()) {
+            let _ = write!(sql, " {visibility}");
+        }
+        if !i.include.is_empty() {
+            let _ = write!(sql, " INCLUDE ({})", self.list(&i.include));
+        }
+        if let Some(predicate) = text(i.predicate.as_ref()) {
+            let _ = write!(sql, " WHERE {predicate}");
+        }
+        sql
     }
 
     fn drop_index(&self, table: &str, name: &str) -> String {
@@ -739,14 +976,55 @@ impl Ddl<'_> {
             Dialect::MySql | Dialect::SqlServer => {
                 format!("DROP INDEX {} ON {}", self.q(name), self.table(table))
             }
+            Dialect::ClickHouse => {
+                format!(
+                    "ALTER TABLE {} DROP INDEX {}",
+                    self.table(table),
+                    self.q(name)
+                )
+            }
             _ => format!("DROP INDEX {}", self.table(name)),
         }
+    }
+
+    /// The partitions of `design` (PostgreSQL), created after it.
+    fn create_partitions<'p>(
+        &self,
+        table: &str,
+        partitions: impl IntoIterator<Item = &'p PartitionDesign>,
+        out: &mut Vec<String>,
+    ) {
+        for p in partitions {
+            out.push(format!(
+                "CREATE TABLE {} PARTITION OF {} {}",
+                self.table(&p.name),
+                self.table(table),
+                p.bound.trim()
+            ));
+        }
+    }
+
+    /// Whether the index `i` is one a design cannot write, which a warning says: SQL Server's
+    /// XML and spatial indexes, whose `CREATE` takes what the catalog read leaves out (the
+    /// primary XML index, a bounding box).
+    fn skips_index(&self, i: &IndexDesign, warnings: &mut Vec<String>) -> bool {
+        let skip = self.d == Dialect::SqlServer
+            && text(i.method.as_ref()).is_some_and(|m| matches!(m, "XML" | "SPATIAL"));
+        if skip {
+            warnings.push(format!(
+                "Index {} is an XML or spatial index: create it again by hand.",
+                i.name
+            ));
+        }
+        skip
     }
 
     /// The indexes of `design` on `table` and the comments of its columns.
     fn indexes_and_comments(&self, design: &TableDesign, table: &str, script: &mut Script) {
         for i in &design.indexes {
-            script.statements.push(self.create_index(table, i));
+            if !self.skips_index(i, &mut script.warnings) {
+                script.statements.push(self.create_index(table, i));
+            }
         }
         let commented: Vec<&ColumnDesign> = design
             .columns
@@ -983,7 +1261,8 @@ impl Ddl<'_> {
         for i in &diff.indexes.dropped {
             out.push(self.drop_index(name, i.original.as_deref().unwrap_or(&i.name)));
         }
-        if diff.primary_key_changed && !primary_key(old).is_empty() {
+        let swap_key = self.d == Dialect::MySql && swaps_primary_key(old, new, diff);
+        if diff.primary_key_changed && !primary_key(old).is_empty() && !swap_key {
             match (self.d, &old.primary_key_name) {
                 (Dialect::MySql, _) => out.push(format!("ALTER TABLE {t} DROP PRIMARY KEY")),
                 (_, Some(key)) => {
@@ -994,15 +1273,83 @@ impl Ddl<'_> {
                     .push("The primary key has no known name: drop it by hand.".to_owned()),
             }
         }
+        // A column that leaves the key to take NULL changes once the key is swapped: MySQL
+        // refuses NULL in a column of the key.
+        let leaving: Vec<&(&ColumnDesign, &ColumnDesign)> = if swap_key {
+            let old_key = primary_key(old);
+            diff.kept_columns
+                .iter()
+                .filter(|(o, n)| old_key.contains(&o.name) && !n.primary_key && n.nullable)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.alter_columns(name, diff, script, &leaving);
+        let out = &mut script.statements;
+        let key = primary_key(new);
+        if diff.primary_key_changed && !key.is_empty() {
+            // One statement, so that an AUTO_INCREMENT column is never without its key.
+            let drop = if swap_key { "DROP PRIMARY KEY, " } else { "" };
+            out.push(format!(
+                "ALTER TABLE {t} {drop}ADD PRIMARY KEY ({})",
+                self.list(&key)
+            ));
+        }
+        for (o, n) in leaving {
+            self.alter_column(name, o, n, &mut script.statements, &mut script.warnings);
+        }
+        self.alter_options(old, new, script);
+        let out = &mut script.statements;
+        for c in &diff.constraints.added {
+            out.extend(self.add_constraint(name, &self.constraint(c), &c.name, c.disabled));
+        }
+        for f in &diff.foreign_keys.added {
+            let add = self.add_constraint(name, &self.foreign_key(f), &f.name, f.disabled);
+            keys.as_deref_mut()
+                .map_or(&mut *out, |k| &mut k.added)
+                .extend(add);
+        }
+        for i in &diff.indexes.added {
+            if !self.skips_index(i, &mut script.warnings) {
+                script.statements.push(self.create_index(name, i));
+            }
+        }
+        let commented: Vec<&ColumnDesign> = diff
+            .kept_columns
+            .iter()
+            .filter(|(o, n)| comment_changed(o, n))
+            .map(|(_, n)| *n)
+            .chain(
+                diff.added_columns
+                    .iter()
+                    .copied()
+                    .filter(|c| text(c.comment.as_ref()).is_some()),
+            )
+            .collect();
+        self.comments(name, &commented, Some(old), script);
+    }
+
+    /// Drops, redefines and adds the columns of `table` (its new name), all but the kept ones
+    /// `later` redefines.
+    fn alter_columns(
+        &self,
+        table: &str,
+        diff: &Diff<'_>,
+        script: &mut Script,
+        later: &[&(&ColumnDesign, &ColumnDesign)],
+    ) {
+        let t = self.table(table);
         let out = &mut script.statements;
         for c in &diff.dropped_columns {
             if self.d == Dialect::SqlServer && c.default.is_some() {
-                out.push(self.drop_mssql_default(name, &c.name));
+                out.push(self.drop_mssql_default(table, &c.name));
             }
             out.push(format!("ALTER TABLE {t} DROP COLUMN {}", self.q(&c.name)));
         }
         for (o, n) in &diff.kept_columns {
-            self.alter_column(name, o, n, out);
+            if !later.iter().any(|(l, _)| l.name == o.name) {
+                self.alter_column(table, o, n, out, &mut script.warnings);
+            }
         }
         for c in &diff.added_columns {
             if self.d == Dialect::Oracle {
@@ -1022,42 +1369,80 @@ impl Ddl<'_> {
             };
             out.push(format!("ALTER TABLE {t} {add} {}{values}", self.column(c)));
         }
-        let key = primary_key(new);
-        if diff.primary_key_changed && !key.is_empty() {
-            out.push(format!(
-                "ALTER TABLE {t} ADD PRIMARY KEY ({})",
-                self.list(&key)
-            ));
-        }
-        for c in &diff.constraints.added {
-            out.push(format!("ALTER TABLE {t} ADD {}", self.constraint(c)));
-        }
-        for f in &diff.foreign_keys.added {
-            let add = format!("ALTER TABLE {t} ADD {}", self.foreign_key(f));
-            keys.as_deref_mut()
-                .map_or(&mut *out, |k| &mut k.added)
-                .push(add);
-        }
-        for i in &diff.indexes.added {
-            out.push(self.create_index(name, i));
-        }
-        let commented: Vec<&ColumnDesign> = diff
-            .kept_columns
-            .iter()
-            .filter(|(o, n)| comment_changed(o, n))
-            .map(|(_, n)| *n)
-            .chain(
-                diff.added_columns
-                    .iter()
-                    .copied()
-                    .filter(|c| text(c.comment.as_ref()).is_some()),
-            )
-            .collect();
-        self.comments(name, &commented, Some(old), script);
     }
 
-    /// Renames and redefines a kept column, on `table` (its new name).
-    fn alter_column(&self, table: &str, o: &ColumnDesign, n: &ColumnDesign, out: &mut Vec<String>) {
+    /// What can change of a table's options in place: PostgreSQL's partitions are created and
+    /// detached (they stay as tables, with their rows); its partitioning, ClickHouse's engine
+    /// clause, MySQL's table options and SQL Server's system versioning cannot change, which a
+    /// warning says.
+    fn alter_options(&self, old: &TableDesign, new: &TableDesign, script: &mut Script) {
+        if old.system_time != new.system_time {
+            script.warnings.push(format!(
+                "The system versioning of {} differs and cannot be changed in place: create the table again by hand.",
+                new.name
+            ));
+        }
+        if self.d == Dialect::MySql && text(old.options.as_ref()) != text(new.options.as_ref()) {
+            script.warnings.push(format!(
+                "The table options of {} (engine, character set, partitioning, versioning) differ and cannot be changed in place: change them by hand.",
+                new.name
+            ));
+        }
+        if !matches!(self.d, Dialect::Postgres | Dialect::ClickHouse) {
+            return;
+        }
+        if text(old.options.as_ref()) != text(new.options.as_ref()) {
+            script.warnings.push(if self.d == Dialect::ClickHouse {
+                format!(
+                    "The engine clause (ORDER BY, PARTITION BY, TTL) of {} differs and cannot be changed in place: create the table again by hand.",
+                    new.name
+                )
+            } else {
+                format!(
+                    "The partitioning of {} differs and cannot be changed in place: create the table again by hand.",
+                    new.name
+                )
+            });
+            return;
+        }
+        let find = partition;
+        for p in &old.partitions {
+            match find(&new.partitions, &p.name) {
+                None => {
+                    script.statements.push(format!(
+                        "ALTER TABLE {} DETACH PARTITION {}",
+                        self.table(&new.name),
+                        self.table(&p.name)
+                    ));
+                    script.warnings.push(format!(
+                        "Detaches partition {}: it stays as a table of its own, with its rows; drop it by hand if it is not needed.",
+                        p.name
+                    ));
+                }
+                Some(n) if n.bound.trim() != p.bound.trim() => script.warnings.push(format!(
+                    "The bound of partition {} differs: change it by hand (detach it and attach it again).",
+                    p.name
+                )),
+                Some(_) => {}
+            }
+        }
+        let added = new
+            .partitions
+            .iter()
+            .filter(|p| find(&old.partitions, &p.name).is_none());
+        self.create_partitions(&new.name, added, &mut script.statements);
+    }
+
+    /// Renames and redefines a kept column, on `table` (its new name). What cannot change in
+    /// place goes to `warnings`.
+    fn alter_column(
+        &self,
+        table: &str,
+        o: &ColumnDesign,
+        n: &ColumnDesign,
+        out: &mut Vec<String>,
+        warnings: &mut Vec<String>,
+    ) {
         let t = self.table(table);
         if self.d == Dialect::MySql {
             if o.name != n.name || definition_changed(o, n) || comment_changed(o, n) {
@@ -1085,34 +1470,74 @@ impl Ddl<'_> {
             });
         }
         let c = self.q(&n.name);
-        let ty = n.data_type.trim();
-        if self.d == Dialect::SqlServer {
-            if type_changed(o, n) || o.nullable != n.nullable {
-                let null = if n.nullable { "NULL" } else { "NOT NULL" };
-                out.push(format!("ALTER TABLE {t} ALTER COLUMN {c} {ty} {null}"));
-            }
-            if default_changed(o, n) {
-                if o.default.is_some() {
-                    out.push(self.drop_mssql_default(table, &n.name));
-                }
-                if let Some(default) = text(n.default.as_ref()) {
-                    out.push(format!("ALTER TABLE {t} ADD DEFAULT {default} FOR {c}"));
-                }
-            }
+        match self.d {
+            Dialect::SqlServer => self.alter_mssql_column(table, o, n, out, warnings),
+            Dialect::ClickHouse => Self::alter_clickhouse_column(&t, &c, o, n, out),
+            Dialect::Oracle => Self::alter_oracle_column(&t, &c, o, n, out),
+            // PostgreSQL; SQLite and DuckDB rebuild instead.
+            _ => Self::alter_postgres_column(&t, &c, o, n, out, warnings),
+        }
+    }
+
+    /// SQL Server's `ALTER COLUMN`, with the collation the column has (without it the column
+    /// takes the database's), between dropping the column's default and adding it back: SQL
+    /// Server does not alter a column a default constraint depends on.
+    fn alter_mssql_column(
+        &self,
+        table: &str,
+        o: &ColumnDesign,
+        n: &ColumnDesign,
+        out: &mut Vec<String>,
+        warnings: &mut Vec<String>,
+    ) {
+        let (t, c) = (self.table(table), self.q(&n.name));
+        if text(o.generated.as_ref()) != text(n.generated.as_ref()) || o.extra != n.extra {
+            warnings.push(format!(
+                "Column {}: its identity or computation cannot be changed in place: drop it and add it again by hand.",
+                n.name
+            ));
+        }
+        if text(n.generated.as_ref()).is_some() {
             return;
         }
-        if self.d == Dialect::ClickHouse {
-            Self::alter_clickhouse_column(&t, &c, o, n, out);
-            return;
+        let collation = text(n.collation.as_ref());
+        let retype = type_changed(o, n)
+            || o.nullable != n.nullable
+            || text(o.collation.as_ref()) != collation;
+        let redefault = default_changed(o, n) || (retype && text(o.default.as_ref()).is_some());
+        if redefault && o.default.is_some() {
+            out.push(self.drop_mssql_default(table, &n.name));
         }
-        if self.d == Dialect::Oracle {
-            Self::alter_oracle_column(&t, &c, o, n, out);
-            return;
-        }
-        // PostgreSQL; SQLite and DuckDB rebuild instead.
-        if type_changed(o, n) {
+        if retype {
+            let ty = n.data_type.trim();
+            let collate = collation.map_or_else(String::new, |x| format!(" COLLATE {x}"));
+            let null = if n.nullable { "NULL" } else { "NOT NULL" };
             out.push(format!(
-                "ALTER TABLE {t} ALTER COLUMN {c} TYPE {ty} USING {c}::{ty}"
+                "ALTER TABLE {t} ALTER COLUMN {c} {ty}{collate} {null}"
+            ));
+        }
+        if let Some(default) = text(n.default.as_ref()).filter(|_| redefault) {
+            out.push(format!("ALTER TABLE {t} ADD DEFAULT {default} FOR {c}"));
+        }
+    }
+
+    /// PostgreSQL's `ALTER COLUMN`s: type and collation, nullability, default, identity and
+    /// the expression of a generated column (dropped; another one goes to `warnings`).
+    fn alter_postgres_column(
+        t: &str,
+        c: &str,
+        o: &ColumnDesign,
+        n: &ColumnDesign,
+        out: &mut Vec<String>,
+        warnings: &mut Vec<String>,
+    ) {
+        let ty = n.data_type.trim();
+        let collation = text(n.collation.as_ref());
+        if type_changed(o, n) || text(o.collation.as_ref()) != collation {
+            // Without COLLATE the column takes the type's collation.
+            let collate = collation.map_or_else(String::new, |x| format!(" COLLATE {x}"));
+            out.push(format!(
+                "ALTER TABLE {t} ALTER COLUMN {c} TYPE {ty}{collate} USING {c}::{ty}"
             ));
         }
         if o.nullable != n.nullable {
@@ -1124,6 +1549,42 @@ impl Ddl<'_> {
                 Some(default) => format!("ALTER TABLE {t} ALTER COLUMN {c} SET DEFAULT {default}"),
                 None => format!("ALTER TABLE {t} ALTER COLUMN {c} DROP DEFAULT"),
             });
+        }
+        let alter = |what: &str| format!("ALTER TABLE {t} ALTER COLUMN {c} {what}");
+        match (text(o.extra.as_ref()), text(n.extra.as_ref())) {
+            (Some(_), None) => out.push(alter("DROP IDENTITY")),
+            (None, Some(identity)) => out.push(alter(&format!("ADD {identity}"))),
+            (Some(was), Some(now)) if was != now => {
+                let kind = |s: &str| {
+                    if s.contains("BY DEFAULT") {
+                        "BY DEFAULT"
+                    } else {
+                        "ALWAYS"
+                    }
+                };
+                if kind(was) != kind(now) {
+                    out.push(alter(&format!("SET GENERATED {}", kind(now))));
+                }
+                let (from, to) = (
+                    identity_options(was).unwrap_or(("1", "1")),
+                    identity_options(now).unwrap_or(("1", "1")),
+                );
+                if from != to {
+                    let (start, step) = to;
+                    out.push(alter(&format!(
+                        "SET START WITH {start} SET INCREMENT BY {step}"
+                    )));
+                }
+            }
+            _ => {}
+        }
+        match (text(o.generated.as_ref()), text(n.generated.as_ref())) {
+            (Some(_), None) => out.push(alter("DROP EXPRESSION")),
+            (was, now) if was != now => warnings.push(format!(
+                "Column {}: its identity or computation cannot be changed in place: drop it and add it again by hand.",
+                n.name
+            )),
+            _ => {}
         }
     }
 
@@ -1208,6 +1669,22 @@ impl Ddl<'_> {
         if copy {
             out.push(format!("CREATE TABLE {rows} AS SELECT * FROM {table}"));
         }
+        // Dropping the table drops its AUTOINCREMENT counter, which copying the rows would set
+        // back to the highest id left: it is kept aside and set again.
+        let autoincrement = |t: &TableDesign| {
+            t.columns
+                .iter()
+                .any(|c| c.primary_key && text(c.extra.as_ref()) == Some("AUTOINCREMENT"))
+        };
+        let counter = (self.d == Dialect::Sqlite && autoincrement(old) && autoincrement(new))
+            .then(|| self.table(&format!("_platypus_seq_{}", old.name)));
+        let sequence = self.table("sqlite_sequence");
+        if let Some(counter) = &counter {
+            out.push(format!(
+                "CREATE TABLE {counter} AS SELECT seq FROM {sequence} WHERE name = {}",
+                self.d.quote_string(&old.name)
+            ));
+        }
         out.push(format!("DROP TABLE {table}"));
         out.push(self.create_table(new, &new.name));
         if copy {
@@ -1226,6 +1703,19 @@ impl Ddl<'_> {
             ));
             out.push(format!("DROP TABLE {rows}"));
         }
+        if let Some(counter) = &counter {
+            let name = self.d.quote_string(&new.name);
+            out.push(format!(
+                "UPDATE {sequence} SET seq = (SELECT max(seq) FROM {counter}) \
+                 WHERE name = {name} AND seq < (SELECT max(seq) FROM {counter})"
+            ));
+            out.push(format!(
+                "INSERT INTO {sequence} (name, seq) SELECT {name}, max(seq) FROM {counter} \
+                 HAVING max(seq) IS NOT NULL \
+                 AND NOT EXISTS (SELECT 1 FROM {sequence} WHERE name = {name})"
+            ));
+            out.push(format!("DROP TABLE {counter}"));
+        }
         let database = if self.d == Dialect::Sqlite {
             "SQLite"
         } else {
@@ -1239,7 +1729,7 @@ impl Ddl<'_> {
             match self.index_as_written(old, new, diff, i) {
                 Some(sql) => script.statements.push(sql),
                 // The drivers list an expression index's key parts as `(expression)`.
-                None if i.columns.iter().any(|c| c == "(expression)") => {
+                None if i.parts.is_empty() && i.columns.iter().any(|c| c == "(expression)") => {
                     script.warnings.push(format!(
                         "Index {} is on an expression: create it again by hand.",
                         i.name
@@ -1321,6 +1811,7 @@ impl Ddl<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Deferral;
 
     fn column(name: &str, data_type: &str) -> ColumnDesign {
         ColumnDesign {
@@ -1350,7 +1841,7 @@ mod tests {
                 name: "orders_total".to_owned(),
                 columns: vec!["total".to_owned()],
                 unique: false,
-                sql: None,
+                ..IndexDesign::default()
             }],
             ..TableDesign::default()
         }
@@ -1508,10 +1999,73 @@ mod tests {
             mysql.statements[0],
             "DROP INDEX orders_total ON shop.orders"
         );
+        // Dropping the key alone fails while an AUTO_INCREMENT column needs it.
         assert_eq!(
-            mysql.statements[1],
-            "ALTER TABLE shop.orders DROP PRIMARY KEY"
+            mysql.statements[2],
+            "ALTER TABLE shop.orders DROP PRIMARY KEY, ADD PRIMARY KEY (id, total)"
         );
+        assert_eq!(
+            mysql
+                .statements
+                .iter()
+                .filter(|s| s.contains("PRIMARY KEY"))
+                .count(),
+            1,
+            "{mysql:?}"
+        );
+        // A column that leaves the key and takes NULL changes after the swap, out of the key.
+        let mut nullable = old.clone();
+        nullable.columns[1].primary_key = true;
+        nullable.columns[1].nullable = false;
+        let mut left = nullable.clone();
+        left.columns[1].primary_key = false;
+        left.columns[1].nullable = true;
+        let mysql = script(Dialect::MySql, "shop", Some(&nullable), &left).unwrap();
+        let at = |s: &str| mysql.statements.iter().position(|x| x.starts_with(s));
+        let swap = at("ALTER TABLE shop.orders DROP PRIMARY KEY, ADD PRIMARY KEY (id)");
+        let modify = at("ALTER TABLE shop.orders CHANGE COLUMN total total");
+        assert!(swap.is_some() && modify > swap, "{mysql:?}");
+        // A column of the old key dropped takes the key with it: dropped first, as before.
+        let mut gone = new.clone();
+        gone.columns[0].primary_key = false;
+        gone.columns.remove(0);
+        let mysql = script(Dialect::MySql, "shop", Some(&old), &gone).unwrap();
+        assert!(
+            mysql
+                .statements
+                .contains(&"ALTER TABLE shop.orders DROP PRIMARY KEY".to_owned()),
+            "{mysql:?}"
+        );
+    }
+
+    #[test]
+    fn mssql_xml_and_spatial_indexes_are_left_out_with_a_warning() {
+        let mut design = orders();
+        for (name, method) in [("o_xml", "XML"), ("o_geo", "SPATIAL")] {
+            design.indexes.push(IndexDesign {
+                name: name.to_owned(),
+                columns: vec!["note".to_owned()],
+                method: Some(method.to_owned()),
+                ..IndexDesign::default()
+            });
+        }
+        let created = script(Dialect::SqlServer, "dbo", None, &design).unwrap();
+        let altered = script(Dialect::SqlServer, "dbo", Some(&orders()), &design).unwrap();
+        for s in [created, altered] {
+            assert!(
+                s.statements
+                    .iter()
+                    .all(|x| !x.contains("XML") && !x.contains("SPATIAL")),
+                "{s:?}"
+            );
+            assert_eq!(
+                s.warnings,
+                [
+                    "Index o_xml is an XML or spatial index: create it again by hand.",
+                    "Index o_geo is an XML or spatial index: create it again by hand."
+                ]
+            );
+        }
     }
 
     #[test]
@@ -1546,11 +2100,20 @@ mod tests {
             s.statements,
             [
                 "CREATE TABLE main._platypus_orders AS SELECT * FROM main.orders",
+                // The AUTOINCREMENT counter is kept, or ids of deleted rows come back.
+                "CREATE TABLE main._platypus_seq_orders AS SELECT seq FROM main.sqlite_sequence \
+                 WHERE name = 'orders'",
                 "DROP TABLE main.orders",
                 "CREATE TABLE main.purchases (\n  id integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n  \
                  total numeric(10,2) NOT NULL\n)",
                 "INSERT INTO main.purchases (id, total) SELECT id, total FROM main._platypus_orders",
                 "DROP TABLE main._platypus_orders",
+                "UPDATE main.sqlite_sequence SET seq = (SELECT max(seq) FROM main._platypus_seq_orders) \
+                 WHERE name = 'purchases' AND seq < (SELECT max(seq) FROM main._platypus_seq_orders)",
+                "INSERT INTO main.sqlite_sequence (name, seq) SELECT 'purchases', max(seq) \
+                 FROM main._platypus_seq_orders HAVING max(seq) IS NOT NULL \
+                 AND NOT EXISTS (SELECT 1 FROM main.sqlite_sequence WHERE name = 'purchases')",
+                "DROP TABLE main._platypus_seq_orders",
                 "CREATE INDEX main.orders_total ON purchases (total)",
             ]
         );
@@ -2039,5 +2602,468 @@ mod tests {
             "([status]='new' OR [status]='paid')",
             "[status] = 'new' or [status] = 'paid'"
         ));
+    }
+
+    /// A table with what the catalogs read beyond the details: identity, generated columns,
+    /// a collation and indexes that are more than their columns.
+    fn rich(identity: &str, generated: &str, collation: &str) -> TableDesign {
+        let mut t = orders();
+        t.columns[0].extra = Some(identity.to_owned());
+        t.columns.push(ColumnDesign {
+            generated: Some(generated.to_owned()),
+            ..column("twice", "integer")
+        });
+        t.columns[2].collation = Some(collation.to_owned());
+        t
+    }
+
+    #[test]
+    fn postgres_creates_identity_generated_partitioned_tables_and_rich_indexes() {
+        let mut t = rich(
+            "GENERATED ALWAYS AS IDENTITY (START WITH 10 INCREMENT BY 5)",
+            "GENERATED ALWAYS AS ((total * 2)) STORED",
+            "\"C\"",
+        );
+        t.columns[3].default = Some("(total * 2)".to_owned());
+        t.options = Some("PARTITION BY RANGE (id)".to_owned());
+        t.partitions.push(PartitionDesign {
+            name: "orders_low".to_owned(),
+            bound: "FOR VALUES FROM (0) TO (100)".to_owned(),
+        });
+        t.indexes = vec![
+            IndexDesign {
+                name: "o_lower".to_owned(),
+                columns: vec!["lower(note)".to_owned()],
+                parts: vec!["lower(note)".to_owned()],
+                ..IndexDesign::default()
+            },
+            IndexDesign {
+                name: "o_part".to_owned(),
+                columns: vec!["note".to_owned()],
+                unique: true,
+                include: vec!["total".to_owned()],
+                predicate: Some("(id > 5)".to_owned()),
+                ..IndexDesign::default()
+            },
+            IndexDesign {
+                name: "o_brin".to_owned(),
+                columns: vec!["id".to_owned()],
+                method: Some("brin".to_owned()),
+                ..IndexDesign::default()
+            },
+        ];
+        for i in &mut t.indexes {
+            i.original = Some(i.name.clone());
+        }
+        let s = script(Dialect::Postgres, "public", None, &t).unwrap();
+        assert_eq!(
+            s.statements[..5],
+            [
+                "CREATE TABLE public.orders (\n  \
+                 id integer GENERATED ALWAYS AS IDENTITY (START WITH 10 INCREMENT BY 5) NOT NULL,\n  \
+                 total numeric(10,2),\n  note text COLLATE \"C\",\n  \
+                 twice integer GENERATED ALWAYS AS ((total * 2)) STORED,\n  PRIMARY KEY (id)\n) \
+                 PARTITION BY RANGE (id)",
+                "CREATE TABLE public.orders_low PARTITION OF public.orders FOR VALUES FROM (0) TO (100)",
+                "CREATE INDEX o_lower ON public.orders (lower(note))",
+                "CREATE UNIQUE INDEX o_part ON public.orders (note) INCLUDE (total) WHERE (id > 5)",
+                "CREATE INDEX o_brin ON public.orders USING brin (id)",
+            ]
+        );
+        let mut other = t.clone();
+        other.indexes[2].method = None;
+        let s = script(Dialect::Postgres, "public", Some(&t), &other).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "DROP INDEX public.o_brin",
+                "CREATE INDEX o_brin ON public.orders (id)"
+            ],
+            "an index of another kind is another index"
+        );
+        assert_eq!(
+            script(Dialect::Postgres, "public", Some(&t), &t)
+                .unwrap()
+                .statements,
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn postgres_alters_identity_collation_and_partitions_in_place() {
+        let old = rich(
+            "GENERATED ALWAYS AS IDENTITY",
+            "GENERATED ALWAYS AS ((total * 2)) STORED",
+            "\"C\"",
+        );
+        let mut new = old.clone();
+        new.columns[0].extra =
+            Some("GENERATED BY DEFAULT AS IDENTITY (START WITH 10 INCREMENT BY 5)".to_owned());
+        new.columns[2].data_type = "varchar(20)".to_owned();
+        new.columns[3].generated = None;
+        let s = script(Dialect::Postgres, "public", Some(&old), &new).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "ALTER TABLE public.orders ALTER COLUMN id SET GENERATED BY DEFAULT",
+                "ALTER TABLE public.orders ALTER COLUMN id SET START WITH 10 SET INCREMENT BY 5",
+                "ALTER TABLE public.orders ALTER COLUMN note TYPE varchar(20) COLLATE \"C\" USING note::varchar(20)",
+                "ALTER TABLE public.orders ALTER COLUMN twice DROP EXPRESSION",
+            ]
+        );
+        let mut plain = old.clone();
+        plain.columns[0].extra = None;
+        assert_eq!(
+            script(Dialect::Postgres, "public", Some(&old), &plain)
+                .unwrap()
+                .statements,
+            ["ALTER TABLE public.orders ALTER COLUMN id DROP IDENTITY"]
+        );
+        assert_eq!(
+            script(Dialect::Postgres, "public", Some(&plain), &old)
+                .unwrap()
+                .statements,
+            ["ALTER TABLE public.orders ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY"]
+        );
+
+        let mut parted = old.clone();
+        parted.options = Some("PARTITION BY RANGE (id)".to_owned());
+        let s = script(Dialect::Postgres, "public", Some(&old), &parted).unwrap();
+        assert_eq!(s.statements, Vec::<String>::new());
+        assert!(
+            s.warnings[0].starts_with("The partitioning of orders differs"),
+            "{s:?}"
+        );
+        let mut more = parted.clone();
+        more.partitions.push(PartitionDesign {
+            name: "orders_all".to_owned(),
+            bound: "DEFAULT".to_owned(),
+        });
+        let s = script(Dialect::Postgres, "public", Some(&parted), &more).unwrap();
+        assert_eq!(
+            s.statements,
+            ["CREATE TABLE public.orders_all PARTITION OF public.orders DEFAULT"]
+        );
+        let s = script(Dialect::Postgres, "public", Some(&more), &parted).unwrap();
+        // A partition no longer there is detached, its rows kept.
+        assert_eq!(
+            s.statements,
+            ["ALTER TABLE public.orders DETACH PARTITION public.orders_all"]
+        );
+        assert!(
+            s.warnings[0].starts_with("Detaches partition orders_all: it stays"),
+            "{s:?}"
+        );
+    }
+
+    #[test]
+    fn mssql_creates_identity_computed_collated_columns_and_clustered_filtered_indexes() {
+        let mut t = rich(
+            "IDENTITY(10,5)",
+            "AS ([total]*(2)) PERSISTED",
+            "Latin1_General_CS_AS",
+        );
+        t.indexes = vec![
+            IndexDesign {
+                name: "o_note".to_owned(),
+                columns: vec!["note".to_owned()],
+                method: Some("CLUSTERED".to_owned()),
+                ..IndexDesign::default()
+            },
+            IndexDesign {
+                name: "o_total".to_owned(),
+                columns: vec!["total".to_owned()],
+                parts: vec!["[total] DESC".to_owned()],
+                include: vec!["note".to_owned()],
+                predicate: Some("([total]>(0))".to_owned()),
+                ..IndexDesign::default()
+            },
+        ];
+        let s = script(Dialect::SqlServer, "dbo", None, &t).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "CREATE TABLE dbo.orders (\n  id integer IDENTITY(10,5) NOT NULL,\n  \
+                 total numeric(10,2) NULL,\n  note text COLLATE Latin1_General_CS_AS NULL,\n  \
+                 twice AS ([total]*(2)) PERSISTED,\n  PRIMARY KEY NONCLUSTERED (id)\n)",
+                "CREATE CLUSTERED INDEX o_note ON dbo.orders (note)",
+                "CREATE INDEX o_total ON dbo.orders ([total] DESC) INCLUDE (note) WHERE ([total]>(0))",
+            ]
+        );
+    }
+
+    #[test]
+    fn mssql_alter_column_keeps_the_collation_and_moves_the_default_aside() {
+        let mut old = orders();
+        old.columns[2].collation = Some("Latin1_General_CS_AS".to_owned());
+        old.columns[1].default = Some("((5))".to_owned());
+        let mut new = old.clone();
+        new.columns[2].nullable = false;
+        new.columns[1].data_type = "numeric(12,2)".to_owned();
+        let s = script(Dialect::SqlServer, "dbo", Some(&old), &new).unwrap();
+        assert_eq!(s.statements.len(), 4, "{s:?}");
+        assert!(
+            s.statements[0].starts_with("EXEC(N'DECLARE @n sysname"),
+            "{s:?}"
+        );
+        assert_eq!(
+            s.statements[1..],
+            [
+                "ALTER TABLE dbo.orders ALTER COLUMN total numeric(12,2) NULL",
+                "ALTER TABLE dbo.orders ADD DEFAULT ((5)) FOR total",
+                "ALTER TABLE dbo.orders ALTER COLUMN note text COLLATE Latin1_General_CS_AS NOT NULL",
+            ]
+        );
+        let mut identity = old.clone();
+        identity.columns[0].extra = Some("IDENTITY(1,1)".to_owned());
+        let s = script(Dialect::SqlServer, "dbo", Some(&old), &identity).unwrap();
+        assert_eq!(s.statements, Vec::<String>::new());
+        assert!(
+            s.warnings[0].starts_with("Column id: its identity"),
+            "{s:?}"
+        );
+    }
+
+    #[test]
+    fn mysql_and_clickhouse_indexes_keep_their_kind_and_key_parts() {
+        let mut t = orders();
+        t.indexes = vec![
+            IndexDesign {
+                name: "d_body".to_owned(),
+                columns: vec!["note".to_owned()],
+                parts: vec!["`note`(50)".to_owned()],
+                ..IndexDesign::default()
+            },
+            IndexDesign {
+                name: "d_ft".to_owned(),
+                columns: vec!["note".to_owned()],
+                method: Some("FULLTEXT".to_owned()),
+                ..IndexDesign::default()
+            },
+        ];
+        let s = script(Dialect::MySql, "shop", None, &t).unwrap();
+        assert_eq!(
+            s.statements[1..],
+            [
+                "CREATE INDEX d_body ON shop.orders (`note`(50))",
+                "CREATE FULLTEXT INDEX d_ft ON shop.orders (note)",
+            ]
+        );
+        let mut ch = orders();
+        ch.options =
+            Some("ENGINE = MergeTree PRIMARY KEY id ORDER BY (id, total) TTL now()".to_owned());
+        ch.indexes = vec![IndexDesign {
+            name: "skip".to_owned(),
+            columns: vec!["lower(note)".to_owned()],
+            parts: vec!["lower(note)".to_owned()],
+            method: Some("TYPE bloom_filter GRANULARITY 1".to_owned()),
+            ..IndexDesign::default()
+        }];
+        let s = script(Dialect::ClickHouse, "shop", None, &ch).unwrap();
+        assert_eq!(
+            s.statements,
+            [
+                "CREATE TABLE shop.orders (\n  id integer,\n  total Nullable(numeric(10,2)),\n  \
+                 note Nullable(text)\n) ENGINE = MergeTree PRIMARY KEY id ORDER BY (id, total) TTL now()",
+                "ALTER TABLE shop.orders ADD INDEX skip lower(note) TYPE bloom_filter GRANULARITY 1",
+            ]
+        );
+        let mut other = ch.clone();
+        other.options = Some("ENGINE = MergeTree ORDER BY id".to_owned());
+        let s = script(Dialect::ClickHouse, "shop", Some(&ch), &other).unwrap();
+        assert!(s.warnings[0].starts_with("The engine clause"), "{s:?}");
+    }
+
+    #[test]
+    fn sqlite_defaults_that_are_expressions_get_parentheses() {
+        let with = |default: &str| TableDesign {
+            name: "t".to_owned(),
+            columns: vec![ColumnDesign {
+                default: Some(default.to_owned()),
+                ..column("c", "TEXT")
+            }],
+            ..TableDesign::default()
+        };
+        for (default, written) in [
+            ("datetime('now')", "DEFAULT (datetime('now'))"),
+            ("1+2", "DEFAULT (1+2)"),
+            ("'a' || 'b'", "DEFAULT ('a' || 'b')"),
+            ("(1 + 2)", "DEFAULT (1 + 2)"),
+            ("'it''s'", "DEFAULT 'it''s'"),
+            ("-1.5", "DEFAULT -1.5"),
+            ("X'0F'", "DEFAULT X'0F'"),
+            ("CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
+            ("NULL", "DEFAULT NULL"),
+        ] {
+            let s = statements(Dialect::Sqlite, None, &with(default));
+            assert!(s[0].contains(&format!("c TEXT {written}\n")), "{s:?}");
+        }
+        // Other databases take the expression as it is.
+        let pg = statements(Dialect::Postgres, None, &with("now()"));
+        assert!(pg[0].contains("c TEXT DEFAULT now()"), "{pg:?}");
+    }
+
+    #[test]
+    fn keys_and_constraints_keep_their_options() {
+        let mut design = orders();
+        design.foreign_keys.push(ForeignKeyDesign {
+            name: "fk".to_owned(),
+            columns: vec!["note".to_owned()],
+            ref_table: "customers".to_owned(),
+            ref_columns: vec!["code".to_owned()],
+            on_delete: Some("SET NULL".to_owned()),
+            deferral: Deferral::Deferred,
+            match_type: Some("FULL".to_owned()),
+            ..ForeignKeyDesign::default()
+        });
+        design.constraints = vec![
+            ConstraintDesign {
+                name: "u".to_owned(),
+                columns: vec!["total".to_owned(), "note".to_owned()],
+                nulls_not_distinct: true,
+                deferral: Deferral::Immediate,
+                ..ConstraintDesign::default()
+            },
+            ConstraintDesign {
+                name: "ex".to_owned(),
+                kind: ConstraintType::Exclusion,
+                check: "USING gist (total WITH =)".to_owned(),
+                ..ConstraintDesign::default()
+            },
+        ];
+        let s = statements(Dialect::Postgres, None, &design);
+        assert!(
+            s[0].contains(
+                "CONSTRAINT u UNIQUE NULLS NOT DISTINCT (total, note) DEFERRABLE INITIALLY IMMEDIATE,\n  \
+                 CONSTRAINT ex EXCLUDE USING gist (total WITH =),\n  \
+                 CONSTRAINT fk FOREIGN KEY (note) REFERENCES public.customers (code) MATCH FULL \
+                 ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED\n)"
+            ),
+            "{s:?}"
+        );
+        // Only the deferral changed: the key is dropped and added again.
+        let mut immediate = design.clone();
+        immediate.foreign_keys[0].original = Some("fk".to_owned());
+        for c in &mut immediate.constraints {
+            c.original = Some(c.name.clone());
+        }
+        let mut deferred = immediate.clone();
+        deferred.foreign_keys[0].deferral = Deferral::NotDeferrable;
+        let s = statements(Dialect::Postgres, Some(&immediate), &deferred);
+        assert_eq!(s.len(), 2, "{s:?}");
+        assert!(s[1].ends_with("ON DELETE SET NULL"), "{s:?}");
+
+        let mut sqlite = orders();
+        sqlite.constraints = vec![ConstraintDesign {
+            columns: vec!["note".to_owned()],
+            on_conflict: Some("REPLACE".to_owned()),
+            ..ConstraintDesign::default()
+        }];
+        let s = statements(Dialect::Sqlite, None, &sqlite);
+        assert!(s[0].contains("UNIQUE (note) ON CONFLICT REPLACE"), "{s:?}");
+    }
+
+    #[test]
+    fn mysql_writes_not_enforced_checks_invisible_indexes_and_table_options() {
+        let mut design = orders();
+        design.indexes[0].visibility = Some("INVISIBLE".to_owned());
+        design.options = Some("ENGINE=MyISAM DEFAULT CHARSET=latin1".to_owned());
+        design.constraints.push(ConstraintDesign {
+            original: Some("w".to_owned()),
+            name: "w".to_owned(),
+            kind: ConstraintType::Check,
+            check: "total < 100".to_owned(),
+            disabled: true,
+            ..ConstraintDesign::default()
+        });
+        let s = statements(Dialect::MySql, None, &design);
+        assert!(
+            s[0].ends_with(
+                "CONSTRAINT w CHECK (total < 100) NOT ENFORCED\n) ENGINE=MyISAM DEFAULT CHARSET=latin1"
+            ),
+            "{s:?}"
+        );
+        assert_eq!(
+            s[1],
+            "CREATE INDEX orders_total ON public.orders (total) INVISIBLE"
+        );
+        let mut other = design.clone();
+        other.options = Some("ENGINE=InnoDB".to_owned());
+        let s = script(Dialect::MySql, "shop", Some(&design), &other).unwrap();
+        assert!(s.statements.is_empty(), "{s:?}");
+        assert!(
+            s.warnings[0].starts_with("The table options of orders"),
+            "{s:?}"
+        );
+    }
+
+    #[test]
+    fn sqlserver_disables_nocheck_constraints_and_creates_temporal_tables() {
+        let mut design = orders();
+        design.columns.push(ColumnDesign {
+            nullable: false,
+            extra: Some("GENERATED ALWAYS AS ROW START HIDDEN".to_owned()),
+            ..column("vf", "datetime2(7)")
+        });
+        design.columns.push(ColumnDesign {
+            nullable: false,
+            extra: Some("GENERATED ALWAYS AS ROW END".to_owned()),
+            ..column("vt", "datetime2(7)")
+        });
+        design.system_time = Some(crate::SystemTime {
+            start: "vf".to_owned(),
+            end: "vt".to_owned(),
+            history: Some("orders_hist".to_owned()),
+        });
+        design.foreign_keys.push(ForeignKeyDesign {
+            name: "fk".to_owned(),
+            columns: vec!["note".to_owned()],
+            ref_table: "customers".to_owned(),
+            disabled: true,
+            ..ForeignKeyDesign::default()
+        });
+        design.constraints.push(ConstraintDesign {
+            kind: ConstraintType::Check,
+            check: "total > 0".to_owned(),
+            disabled: true,
+            ..ConstraintDesign::default()
+        });
+        let s = script(Dialect::SqlServer, "dbo", None, &design).unwrap();
+        assert!(
+            s.statements[0]
+                .contains("vf datetime2(7) GENERATED ALWAYS AS ROW START HIDDEN NOT NULL"),
+            "{s:?}"
+        );
+        assert!(
+            s.statements[0].ends_with(
+                "PERIOD FOR SYSTEM_TIME (vf, vt)\n) WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = dbo.orders_hist))"
+            ),
+            "{s:?}"
+        );
+        assert_eq!(
+            s.statements[1],
+            "ALTER TABLE dbo.orders NOCHECK CONSTRAINT fk"
+        );
+        assert!(s.warnings[0].starts_with("A disabled (NOCHECK) constraint of orders"));
+
+        let mut there = design.clone();
+        there.system_time = None;
+        there.foreign_keys.clear();
+        let mut wanted = there.clone();
+        wanted.foreign_keys = design.foreign_keys.clone();
+        wanted.system_time.clone_from(&design.system_time);
+        let s = script(Dialect::SqlServer, "dbo", Some(&there), &wanted).unwrap();
+        assert!(
+            s.statements.ends_with(&[
+                "ALTER TABLE dbo.orders WITH NOCHECK ADD CONSTRAINT fk FOREIGN KEY (note) REFERENCES dbo.customers"
+                    .to_owned(),
+                "ALTER TABLE dbo.orders NOCHECK CONSTRAINT fk".to_owned(),
+            ]),
+            "{s:?}"
+        );
+        assert!(
+            s.warnings[0].starts_with("The system versioning of orders"),
+            "{s:?}"
+        );
     }
 }

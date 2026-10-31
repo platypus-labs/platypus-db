@@ -7,7 +7,7 @@
 // Steps: row 1 has name '' and note NULL; copy name..note of row 1, paste over row 2.
 // Expected: row 2 gets name '' and note NULL. Actual: name = NULL.
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL, SHIFT, assert, connections, copied, editBar, expand, focusCell, openData, previewSql, stubClipboard } from "../qa-grid.mjs";
 

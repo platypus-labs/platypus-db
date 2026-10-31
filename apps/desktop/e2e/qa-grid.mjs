@@ -2,7 +2,7 @@
 // docker/compose.yml, SQL run on them through `docker exec` (to seed and check tables
 // outside the app), and the grid's usual gestures.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
@@ -136,10 +136,11 @@ export async function openEditor(page, name, db, child) {
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content') != null`, 30_000);
 }
 
-/** Opens a tree row's context menu and runs `item`. */
-export async function treeMenu(page, label, item) {
-  await page.waitFor(`${treeRow(label)} !== undefined`, 15_000);
-  await page.eval(`document.querySelectorAll('#qa-row').forEach(e => e.removeAttribute('id')); ${treeRow(label)}.id = 'qa-row'; document.getElementById('qa-row').scrollIntoView({ block: 'center' })`);
+/** Opens a tree row's context menu and runs `item`. `row` picks the row when the first one
+ *  labelled `label` is not it (the same table under two connections): `rowIn(chain, label)`. */
+export async function treeMenu(page, label, item, row = treeRow(label)) {
+  await page.waitFor(`${row} !== undefined`, 15_000);
+  await page.eval(`document.querySelectorAll('#qa-row').forEach(e => e.removeAttribute('id')); ${row}.id = 'qa-row'; document.getElementById('qa-row').scrollIntoView({ block: 'center' })`);
   await page.sleep(100);
   const r = await page.rect("#qa-row");
   await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
@@ -234,10 +235,21 @@ export async function rows(page) {
   return text === "" ? [] : text.split("\n").map((l) => l.split("\t"));
 }
 
+/** Presses F2 on the focused cell until an editor matching `selector` shows: right after the
+ *  table opens the column metadata may still be loading, and F2 is then ignored. */
+export async function pressF2(page, selector = ".cell-editor, .cell-popup-text") {
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await page.key("F2", "F2", 113);
+    for (let i = 0; i < 20; i++) {
+      if (await page.eval(`document.querySelector(${JSON.stringify(selector)}) !== null`)) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+  await page.waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`, 1000);
+}
 /** Types `text` in the focused cell's editor (F2) and commits it with Enter. */
 export async function editCell(page, text) {
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor, .cell-popup-text') !== null`);
+  await pressF2(page);
   await page.eval(`(() => {
     const el = document.querySelector('.cell-editor, .cell-popup-text');
     el.focus();
@@ -251,8 +263,7 @@ export async function editCell(page, text) {
 /** Sets the focused cell to `text` through its editor (F2), whatever the editor: the inline
  *  input, a select (bool, enum) or the popup (JSON, long text); returns the editor's kind. */
 export async function setCell(page, text) {
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor, .cell-popup-text, .list-editor') !== null`);
+  await pressF2(page, ".cell-editor, .cell-popup-text, .list-editor");
   const kind = await page.eval(`(() => {
     const el = document.querySelector('.cell-editor, .cell-popup-text');
     if (!el) return 'list';
@@ -289,15 +300,19 @@ export async function save(page) {
   // A notice left by an edit (cells a mass edit skipped) is not the save's.
   await page.eval(`${visibleTab}.querySelector('.edit-error button')?.click()`);
   await page.eval(`${visibleTab}.querySelector('.edit-bar button.primary').click()`);
+  // The outcome is read in the same check that sees it: the grid reloads after a save, and
+  // the edit bar read a moment later may be gone.
+  await page.eval(`window.__saveOutcome = null`);
   await page.waitFor(
-    `${editBar}.includes('to edit a cell') || ${visibleTab}.querySelector('.edit-bar .error, .edit-error, .notice.error') != null || document.querySelector('.modal .error') != null`,
+    `(window.__saveOutcome = (() => {
+      const tab = ${visibleTab};
+      const err = tab?.querySelector('.edit-bar .error, .edit-error, .notice.error') ?? document.querySelector('.modal .error');
+      if (err) return 'ERROR: ' + err.textContent;
+      return ${editBar}.includes('to edit a cell') ? ${editBar} : null;
+    })()) !== null`,
     60_000,
   );
-  return page.eval(`(() => {
-    const tab = ${visibleTab};
-    const err = tab.querySelector('.edit-bar .error, .edit-error, .notice.error') ?? document.querySelector('.modal .error');
-    return err ? 'ERROR: ' + err.textContent : tab.querySelector('.edit-bar:not([hidden])')?.textContent;
-  })()`);
+  return page.eval(`window.__saveOutcome`);
 }
 
 export const shotter = (page, shots, prefix) => async (name) => {

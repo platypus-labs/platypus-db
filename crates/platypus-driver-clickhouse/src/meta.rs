@@ -211,6 +211,7 @@ pub async fn table_details(
             primary: true,
             partial: false,
             size: None,
+            detail: None,
         });
         details.constraints.push(ConstraintMeta {
             name: "PRIMARY KEY".to_owned(),
@@ -227,6 +228,7 @@ pub async fn table_details(
             primary: false,
             partial: false,
             size: None,
+            detail: None,
         });
     }
     details.indexes.extend(skipping.iter().map(|r| IndexMeta {
@@ -236,6 +238,7 @@ pub async fn table_details(
         primary: false,
         partial: false,
         size: r.number(2),
+        detail: None,
     }));
     if kind_of(&keys.text(2)) == ObjectKind::Table {
         let ddl = show_create(conn, schema, table, ObjectKind::Table).await?;

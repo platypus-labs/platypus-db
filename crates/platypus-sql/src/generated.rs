@@ -73,7 +73,71 @@ pub fn query(dialect: Dialect, schema: &str, table: &str) -> Option<String> {
                AND i.TABLE_NAME = c.TABLE_NAME AND i.COLUMN_NAME = c.COLUMN_NAME
              WHERE c.OWNER = {s} AND c.TABLE_NAME = {t} AND c.HIDDEN_COLUMN = 'NO'"
         ),
+        // The catalog does not tell a generated column from one with a default: the table's
+        // own `CREATE TABLE` does (`GENERATED ALWAYS AS`). The schema is one of the current
+        // database, or the `main` schema of the attached database of that name.
+        Dialect::DuckDb => format!(
+            "SELECT c.column_name, c.column_default, t.sql
+             FROM duckdb_columns() c
+             JOIN duckdb_tables() t ON t.database_oid = c.database_oid AND t.table_oid = c.table_oid
+             WHERE c.table_name = {t}
+               AND ((c.database_name = current_database() AND c.schema_name = {s})
+                 OR (c.database_name = {s} AND c.schema_name = 'main' AND NOT EXISTS (
+                       SELECT 1 FROM duckdb_schemas() x
+                       WHERE x.database_name = current_database() AND x.schema_name = {s})))"
+        ),
         _ => return None,
+    })
+}
+
+/// Whether the `CREATE TABLE` statement `sql` (as DuckDB prints it) defines `column` as
+/// `GENERATED ALWAYS AS (...)`.
+fn duckdb_computed(sql: &str, column: &str) -> bool {
+    let Some(open) = sql.find('(') else {
+        return false;
+    };
+    let (mut definitions, mut current) = (Vec::new(), String::new());
+    let (mut depth, mut quote) = (0_u32, None::<char>);
+    for c in sql[open + 1..].chars() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => match c {
+                '\'' | '"' => quote = Some(c),
+                '(' => depth += 1,
+                ')' if depth == 0 => break,
+                ')' => depth -= 1,
+                ',' if depth == 0 => {
+                    definitions.push(std::mem::take(&mut current));
+                    continue;
+                }
+                _ => {}
+            },
+        }
+        current.push(c);
+    }
+    definitions.push(current);
+    definitions.iter().any(|definition| {
+        let definition = definition.trim();
+        let (name, rest) = match definition.strip_prefix('"') {
+            Some(quoted) => match quoted.find('"') {
+                Some(end) => (&quoted[..end], &quoted[end + 1..]),
+                None => return false,
+            },
+            None => definition
+                .split_once(char::is_whitespace)
+                .unwrap_or((definition, "")),
+        };
+        name.eq_ignore_ascii_case(column)
+            && rest
+                .to_ascii_uppercase()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|w| w == ["GENERATED", "ALWAYS"])
     })
 }
 
@@ -138,6 +202,15 @@ fn generated(dialect: Dialect, row: &TextRow) -> Option<Generated> {
             (_, t) if t.starts_with("BY DEFAULT") => Some(Generated::Numbered),
             _ => None,
         },
+        Dialect::DuckDb => {
+            if duckdb_computed(&row.text(2), &row.text(0)) {
+                Some(Generated::Computed)
+            } else if row.opt(1).is_some_and(|d| d.starts_with("nextval(")) {
+                Some(Generated::Numbered)
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -273,6 +346,24 @@ mod tests {
                 ("id".to_owned(), Generated::Identity),
                 ("c".to_owned(), Generated::Computed),
                 ("rv".to_owned(), Generated::Computed),
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_duckdb_generated_columns_and_sequences() {
+        let table = "CREATE TABLE m(id INTEGER DEFAULT(nextval('s')) PRIMARY KEY, \"g, x\" INTEGER GENERATED ALWAYS AS((n * 2)), n INTEGER, d INTEGER DEFAULT(5));";
+        let rows = [
+            row(&[Some("id"), Some("nextval('s')"), Some(table)]),
+            row(&[Some("g, x"), Some("CAST((n * 2) AS INTEGER)"), Some(table)]),
+            row(&[Some("n"), None, Some(table)]),
+            row(&[Some("d"), Some("5"), Some(table)]),
+        ];
+        assert_eq!(
+            kinds(Dialect::DuckDb, &rows),
+            [
+                ("id".to_owned(), Generated::Numbered),
+                ("g, x".to_owned(), Generated::Computed),
             ]
         );
     }

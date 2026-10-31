@@ -40,19 +40,36 @@ pub(crate) fn command(
     let mut push = |items: &[&str]| args.extend(items.iter().map(|&s| s.to_owned()));
     let program = match kind.as_str() {
         "kubernetes" => {
-            let target = required(K8S_TARGET, "the service or pod, e.g. svc/postgres")?;
+            let target = kubernetes_target(required(
+                K8S_TARGET,
+                "the service or pod, e.g. svc/postgres",
+            )?)?;
             push(&["port-forward", "--address", "127.0.0.1"]);
             if let Some(context) = option(K8S_CONTEXT) {
-                push(&["--context", context]);
+                push(&[
+                    "--context",
+                    cli::argument("the Kubernetes context", context)?,
+                ]);
             }
             if let Some(namespace) = option(K8S_NAMESPACE) {
-                push(&["--namespace", namespace]);
+                push(&["--namespace", kubernetes_name("namespace", namespace)?]);
             }
-            push(&[target, &format!("{local_port}:{port}")]);
+            // After `--` nothing is a flag, whatever the target says.
+            push(&["--", target, &format!("{local_port}:{port}")]);
             "kubectl"
         }
         "ssm" => {
-            let target = required(SSM_TARGET, "the EC2 instance, e.g. i-0123456789abcdef0")?;
+            let target = cli::argument(
+                "the EC2 instance",
+                required(SSM_TARGET, "the EC2 instance, e.g. i-0123456789abcdef0")?,
+            )?;
+            // The host is one of the document's comma-separated parameters.
+            if config.host.contains([',', '=']) {
+                return Err(Error::Config(
+                    "the host of a port forward may not hold `,` or `=`".to_owned(),
+                ));
+            }
+            cli::argument("the host", &config.host)?;
             push(&[
                 "ssm",
                 "start-session",
@@ -66,12 +83,65 @@ pub(crate) fn command(
                     config.host
                 ),
             ]);
-            args.extend(cli::aws_flags(config));
+            args.extend(cli::aws_flags(config)?);
             "aws"
         }
         other => return Err(Error::Config(format!("unknown port forward `{other}`"))),
     };
     Ok(Some((program.to_owned(), args)))
+}
+
+/// The kinds `kubectl port-forward` forwards to, as `kind/name`.
+const KUBERNETES_KINDS: &[&str] = &[
+    "po",
+    "pod",
+    "pods",
+    "svc",
+    "service",
+    "services",
+    "deploy",
+    "deployment",
+    "deployments",
+    "rs",
+    "replicaset",
+    "replicasets",
+    "sts",
+    "statefulset",
+    "statefulsets",
+];
+
+/// `name`, if it is a Kubernetes object's name (lowercase letters, digits, `-` and `.`,
+/// starting and ending with a letter or digit): anything else, such as a flag, is refused.
+fn kubernetes_name<'a>(what: &str, name: &'a str) -> Result<&'a str> {
+    let fits = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
+    let valid = name.len() <= 253
+        && name.starts_with(fits)
+        && name.ends_with(fits)
+        && name.chars().all(|c| fits(c) || c == '-' || c == '.');
+    if valid {
+        Ok(name)
+    } else {
+        Err(Error::Config(format!(
+            "the Kubernetes {what} `{}` is not a valid name: lowercase letters, digits, `-` and `.`",
+            name.escape_debug()
+        )))
+    }
+}
+
+/// The target of `kubectl port-forward`: `kind/name` (`svc/postgres`, `pod/db-0`,
+/// `deployment/db`) or a pod's bare name.
+fn kubernetes_target(target: &str) -> Result<&str> {
+    match target.split_once('/') {
+        Some((kind, name)) if KUBERNETES_KINDS.contains(&kind.to_ascii_lowercase().as_str()) => {
+            kubernetes_name("target", name).map(|_| target)
+        }
+        Some(_) => Err(Error::Config(format!(
+            "the Kubernetes target `{}` is not a pod, service, deployment, replica set or \
+             stateful set, e.g. svc/postgres",
+            target.escape_debug()
+        ))),
+        None => kubernetes_name("target", target),
+    }
 }
 
 /// A free port on the loopback, for the CLI to listen on.
@@ -180,7 +250,7 @@ mod tests {
         assert_eq!(program, "kubectl");
         assert_eq!(
             args.join(" "),
-            "port-forward --address 127.0.0.1 --context prod --namespace data svc/postgres 40000:5432"
+            "port-forward --address 127.0.0.1 --context prod --namespace data -- svc/postgres 40000:5432"
         );
     }
 
@@ -203,6 +273,58 @@ mod tests {
             "{args}"
         );
         assert!(args.ends_with("--profile prod"), "{args}");
+    }
+
+    #[test]
+    fn targets_that_would_be_flags_are_refused() {
+        let kube =
+            |target: &str| command(&config(&[(FORWARD, "kubernetes"), (K8S_TARGET, target)]), 1);
+        for target in [
+            "--kubeconfig=\\\\evil\\share\\kc",
+            "-n",
+            "svc/--x",
+            "secret/x",
+            "svc/Postgres",
+            "svc/",
+            "pod/a b",
+        ] {
+            assert!(kube(target).is_err(), "{target}");
+        }
+        for target in [
+            "svc/postgres",
+            "pod/db-0",
+            "deployment/db.v2",
+            "db-0",
+            "SVC/pg",
+        ] {
+            assert!(kube(target).is_ok(), "{target}");
+        }
+        let with = |key: &str, value: &str| {
+            command(
+                &config(&[
+                    (FORWARD, "kubernetes"),
+                    (K8S_TARGET, "svc/pg"),
+                    (key, value),
+                ]),
+                1,
+            )
+        };
+        assert!(with(K8S_NAMESPACE, "--kubeconfig=x").is_err());
+        assert!(with(K8S_CONTEXT, "--kubeconfig=x").is_err());
+        assert!(with(K8S_CONTEXT, "arn:aws:eks:eu-west-1:1:cluster/prod").is_ok());
+        let ssm = |options: &[(&str, &str)]| command(&config(options), 1);
+        assert!(ssm(&[(FORWARD, "ssm"), (SSM_TARGET, "--debug")]).is_err());
+        assert!(
+            ssm(&[
+                (FORWARD, "ssm"),
+                (SSM_TARGET, "i-0abc"),
+                (AWS_PROFILE, "-x")
+            ])
+            .is_err()
+        );
+        let mut config = config(&[(FORWARD, "ssm"), (SSM_TARGET, "i-0abc")]);
+        config.host = "db,localPortNumber=22".to_owned();
+        assert!(command(&config, 1).is_err());
     }
 
     #[test]

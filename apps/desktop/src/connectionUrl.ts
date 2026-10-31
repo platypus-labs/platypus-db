@@ -1,7 +1,7 @@
 /** Connections pasted as a URL or a connection string, and copied back as a URL. The parsing
  *  is the backend's (`parse_connection_url`); this decides when to ask it and applies its
  *  answer to the form. */
-import type { DriverKind, ParsedConnection, SavedConnection } from "./api";
+import type { DriverKind, ParsedConnection, SavedConnection, SavedSsh } from "./api";
 
 /** `scheme://…`, `jdbc:…`, `key=value;key=value` (ADO.NET, ODBC) or `key=value key=value`
  *  (libpq): worth reading as a connection rather than pasting as text. A single `a=b;` is
@@ -56,6 +56,39 @@ export function splitLogin(text: string): { user: string; password: string | nul
   return { user, password, host: address.replace(/^\[|\]$/g, ""), port: null };
 }
 
+/** A file path without the blanks and the quotes around it ("Copy as path" adds them). */
+export function cleanFilePath(text: string): string {
+  const s = text.trim();
+  const quoted = /^(["'])(.*)\1$/s.exec(s);
+  return quoted ? quoted[2]!.trim() : s;
+}
+
+/** SQL Server's `host,port` (SSMS, ADO.NET `Server=tcp:db,1433`) as its two fields; `null`
+ *  when the host has no such port. */
+export function splitSqlServerHost(text: string): { host: string; port: number } | null {
+  const m = /^(?:tcp:)?\s*([^,\s]+)\s*,\s*(\d{1,5})$/i.exec(text.trim());
+  const port = m ? Number(m[2]) : 0;
+  return m && port >= 1 && port <= 65535 ? { host: m[1]!, port } : null;
+}
+
+/** The servers whose connection may leave the host empty, as the backend reads it
+ *  (`DriverKind::needs_host`, whose test checks this list): the ADBC databases find theirs in
+ *  their options, Oracle in a net service name or connect descriptor, ODBC in a data source
+ *  or connection string, a plugin in its manifest. */
+export const HOST_OPTIONAL: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino", "adbc", "oracle", "odbc", "plugin"];
+
+/** Whether the server connection of `driver` can be tried without a host. */
+export const hostOptional = (driver: DriverKind) => HOST_OPTIONAL.includes(driver);
+
+/** What an SSH tunnel's servers lack to be tried: the first host or user left empty. */
+export function sshMissing(ssh: SavedSsh | null | undefined): "host" | "user" | null {
+  for (let s = ssh; s; s = s.jump) {
+    if (!s.host.trim()) return "host";
+    if (!s.user.trim()) return "user";
+  }
+  return null;
+}
+
 /** Whether a port typed in the form can be one; none is fine (the driver's default). */
 export const validPort = (port: number | null) => port === null || (Number.isInteger(port) && port >= 1 && port <= 65535);
 
@@ -78,7 +111,13 @@ export function withParsed(conn: SavedConnection, parsed: ParsedConnection): Sav
     ...(parsed.driver !== "postgres" && conn.pgpass ? { pgpass: false, save_password: true } : {}),
   };
   const fileName = parsed.database.split(/[\\/]/).pop() ?? "";
-  const named = parsed.driver === "sqlite" || parsed.driver === "duckdb" ? fileName : parsed.database.split("?")[0];
+  // Redis' database is a number (/3): it does not name the server.
+  const named =
+    parsed.driver === "sqlite" || parsed.driver === "duckdb"
+      ? fileName
+      : parsed.driver === "redis"
+        ? ""
+        : parsed.database.split("?")[0];
   return { ...next, name: conn.name || named || parsed.host };
 }
 

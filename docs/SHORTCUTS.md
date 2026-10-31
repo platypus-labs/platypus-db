@@ -5,10 +5,16 @@
 On macOS use `Cmd` instead of `Ctrl`. Every shortcut can be changed in Settings › Keyboard
 shortcuts.
 
+On keyboards that type a character with Shift (`/` is `Shift+7` on Italian and German ones)
+the shortcut takes Shift too: `Ctrl+/` is `Ctrl+Shift+7` there. `AltGr` always types its
+character: Windows reports it as `Ctrl+Alt`, so `Ctrl+Alt` with a symbol (`[`, `@`, `{`, `\`...) is
+never a shortcut outside macOS.
+
 | Keys | Action |
 |---|---|
 | `Ctrl+Enter` | Run the statement under the cursor (or the selection) |
 | `Alt+X`, `Ctrl+Shift+Enter` | Run the script |
+| `Ctrl+.` | Cancel the running statement (also in the command palette) |
 | `Ctrl+\` | Run into a new result tab |
 | `Ctrl+Space` | Autocomplete |
 | `Ctrl+/` | Comment / uncomment |
@@ -20,6 +26,7 @@ shortcuts.
 | `Alt+Up`, `Alt+Down` | Move the line |
 | `Ctrl+Shift+K` | Delete the line |
 | `Ctrl+Alt+Up`, `Ctrl+Alt+Down` | Add a cursor above / below |
+| `Ctrl+Alt+F`, `Ctrl+Alt+Shift+F` (macOS: `⌘⌥[`, `⌘⌥]`) | Fold / unfold everything |
 | `Ctrl+D`, `Ctrl+Shift+L` | Select the next / every occurrence |
 | `Alt+drag` | Rectangular selection |
 | `Ctrl+F` | Find and replace |

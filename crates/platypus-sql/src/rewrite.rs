@@ -617,6 +617,27 @@ pub fn set_order_by(sql: &str, dialect: Dialect, order: Option<(&str, bool)>) ->
     put_order_by(sql, dialect, clause)
 }
 
+/// [`set_order_by`] on the result column at `position` (from 1): `ORDER BY 2 DESC`. For the
+/// columns a name cannot point to: one of two `id` of a join, or an expression without a name
+/// (`?column?`, `COUNT(*)`). Every SQL dialect reads a number there as the select list's column.
+#[must_use]
+pub fn set_order_by_position(
+    sql: &str,
+    dialect: Dialect,
+    position: usize,
+    desc: bool,
+) -> Option<String> {
+    if position == 0 {
+        return None;
+    }
+    let direction = if desc { "DESC" } else { "ASC" };
+    put_order_by(
+        sql,
+        dialect,
+        Some(format!("ORDER BY {position} {direction}")),
+    )
+}
+
 /// The top-level `ORDER BY` of `sql` as written, from `ORDER` to its last token; `None` when
 /// it has none or cannot be read with certainty. What `restore_order_by` puts back.
 #[must_use]

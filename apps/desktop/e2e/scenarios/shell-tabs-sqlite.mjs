@@ -50,6 +50,20 @@ const pick = (label, value) => `(() => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 })()`;
 
+/** Repeats a drag until its effect shows: a press that lands while the editor is still busy
+ *  with the previous drop (slow CI runners) is lost. */
+async function dropUntil(page, drop, options, condition) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await drop(options);
+    try {
+      await page.waitFor(condition, 5000);
+      return;
+    } catch {
+      // try the drag again
+    }
+  }
+  await page.waitFor(condition);
+}
 export default async function (page, { dir, shots }) {
   await page.waitFor(`${row(NAME)} !== undefined`);
   await page.eval(`${row(NAME)}.id = 'e2e-conn'`);
@@ -137,11 +151,9 @@ export default async function (page, { dir, shots }) {
   assert.match(await page.eval(editorText(editor)), /FROM .*orders/);
   assert.equal(await page.eval(`document.querySelector('.drag-ghost') === null`), true);
   // Into text: the name, where it is dropped.
-  await drop();
-  await page.waitFor(`(${editorText(editor)}.match(/orders/g) ?? []).length === 2`);
+  await dropUntil(page, drop, {}, `(${editorText(editor)}.match(/orders/g) ?? []).length === 2`);
   // With Shift held: a query of it, even into text.
-  await drop({ modifiers: SHIFT });
-  await page.waitFor(`(${editorText(editor)}.match(/FROM/g) ?? []).length === 2`);
+  await dropUntil(page, drop, { modifiers: SHIFT }, `(${editorText(editor)}.match(/FROM/g) ?? []).length === 2`);
   // Escape cancels: nothing is dropped.
   const text = await page.eval(editorText(editor));
   await drop({ before: () => page.key("Escape", "Escape", 27) });

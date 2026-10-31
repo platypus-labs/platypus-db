@@ -11,7 +11,7 @@ import {
 } from "../api";
 import { parseConfig } from "../analysis/chartConfig";
 import { svgText } from "../analysis/chartExport";
-import { loadAll } from "../analysis/QueryWithSql";
+import { loadAll, noteZones } from "../analysis/QueryWithSql";
 import { resultCatalog, settled, withEvent } from "../analysis/sqlField";
 import { describe, type Result } from "../components/ResultPanel";
 import { withDriver } from "../drivers/DriverPopup";
@@ -55,7 +55,7 @@ declare module "../tabs/registry" {
 }
 
 /** Rows of each result the HTML export writes. */
-const EXPORT_ROWS = 500;
+const EXPORT_ROWS = 5000;
 
 /** The in-memory copy of the cells' rows that cells on the results query, and its session. */
 interface Copy {
@@ -196,6 +196,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
       throw e;
     });
     copy.current = { connection: { ...opened.connection, read_only: true }, sessionId: made.session_id, tables, partial: opened.partial };
+    noteZones(opened.zones);
     return made.session_id;
   }
 
@@ -371,6 +372,11 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
             table = {
               columns: result.columns.map((c) => c.name),
               rows: Array.from({ length: page.rows }, (_, r) => page.columns.map((col) => col[r] ?? null)),
+              // A table that is not the whole result says so, instead of passing for it.
+              note:
+                result.rows > page.rows
+                  ? t("Only the first {shown} of {total} rows are in this export.", { shown: page.rows.toLocaleString(), total: result.rows.toLocaleString() })
+                  : null,
             };
           }
         }

@@ -147,7 +147,7 @@ interface Props {
   /** Bumped whenever the cache receives rows. */
   version: number;
   /** Server-side sort shown in the header (data viewer). */
-  sort?: { column: string; desc: boolean } | null;
+  sort?: { column: string; desc: boolean; position?: number } | null;
   /** Makes headers clickable, e.g. to sort. */
   onHeaderClick?: (column: number) => void;
   /** The tooltip of column `col`'s header, e.g. its comment and note. */
@@ -573,7 +573,7 @@ export function DataGrid({
       ctx.fillStyle = t.muted;
       ctx.fillText(column.name, x + PAD, 14);
       const sorted = props.current.sort;
-      if (sorted?.column === column.name) {
+      if (sorted?.column === column.name && (sorted.position === undefined || sorted.position === c + 1)) {
         ctx.fillStyle = t.focus;
         ctx.textAlign = "right";
         ctx.fillText(sorted.desc ? "▼" : "▲", x + cw - PAD, 14);

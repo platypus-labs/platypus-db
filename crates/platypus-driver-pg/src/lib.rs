@@ -59,11 +59,28 @@ impl Driver for PgDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
-        let conn: Box<dyn Connection> = Box::new(PgConnection::connect(config).await?);
+        let pg = PgConnection::connect(config).await?;
+        let pooled = pg.unnamed_statements;
+        let conn: Box<dyn Connection> = Box::new(pg);
         platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        // A read-only connection's transactions are read-only on the server too (CockroachDB
+        // and YugabyteDB take the same setting), so a function that writes fails there. Set
+        // after the setup, which cannot undo it. Behind a pooler in transaction mode the
+        // setting would stay on a server session that other clients get: there, as on a
+        // server that refuses it, only the statement check applies.
+        if config.read_only && !pooled {
+            let read_only = platypus_core::SessionInit {
+                statements: vec![READ_ONLY_SESSION.to_owned()],
+                ..platypus_core::SessionInit::default()
+            };
+            let _ = platypus_core::run_init(&*conn, &read_only, self.kind()).await;
+        }
         Ok(conn)
     }
 }
+
+/// What makes every transaction of a read-only connection's session read-only.
+const READ_ONLY_SESSION: &str = "SET default_transaction_read_only = on";
 
 #[derive(Debug)]
 pub struct PgConnection {
@@ -95,6 +112,9 @@ fn copies_through_client(sql: &str) -> bool {
     words.first().is_some_and(|w| w == "COPY")
         && words.iter().any(|w| w == "STDOUT" || w == "STDIN")
 }
+
+/// How long [`Connection::check_alive`] waits for the server's answer.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What manual-commit mode sets before each statement.
 const SAVEPOINT: &str = "SAVEPOINT platypus_statement";
@@ -372,6 +392,26 @@ impl Connection for PgConnection {
 
     fn is_closed(&self) -> bool {
         self.client.is_closed()
+    }
+
+    /// An empty simple query, outside the transaction tracking: it opens no transaction, and
+    /// an answer (even an error, in a transaction a failed statement aborted) means alive. A
+    /// server stopped or killed closes the socket, which the connection task sees at once;
+    /// a link that went silent (a network cut, a sleeping laptop) does not, and the probe
+    /// left unanswered finds it before the next statement would hang.
+    async fn check_alive(&self) -> bool {
+        if self.is_closed() {
+            return false;
+        }
+        // A statement holds the session: in use, so alive.
+        let Ok(_guard) = self.busy.try_lock() else {
+            return true;
+        };
+        match tokio::time::timeout(PING_TIMEOUT, self.client.simple_query("")).await {
+            Ok(Ok(_)) => true,
+            Ok(Err(e)) => e.as_db_error().is_some() && !self.is_closed(),
+            Err(_) => false,
+        }
     }
 
     async fn schemas(&self) -> Result<Vec<SchemaMeta>> {

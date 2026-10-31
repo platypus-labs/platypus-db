@@ -66,6 +66,32 @@ test("column rules follow the type", () => {
   assert.ok(!loadsFromFile(columnRule(info("INTEGER", { numeric: true }), undefined)));
 });
 
+test("an empty value is NULL where the column holds no empty text", () => {
+  const empty = (db_type, extra) => columnRule(info(db_type, extra), undefined).emptyIsNull;
+  for (const type of ["date", "time", "timestamp without time zone", "timestamptz", "datetime2(7)", "Nullable(DateTime64(3))", "interval", "year", "uuid", "inet", "boolean", "jsonb"]) {
+    assert.ok(empty(type), type);
+  }
+  assert.ok(empty("integer", { numeric: true }));
+  for (const type of ["text", "character varying(20)", "xml", "bytea", "point", "text[]"]) {
+    assert.ok(!empty(type, type === "bytea" ? { binary: true } : {}), type);
+  }
+  const date = columnRule(info("date"), meta("date"));
+  assert.deepEqual(setValue([cell(0, 0, value("2024-01-01"))], () => date, value(" ")).changes[0].value, NULL);
+});
+
+test("SQLite keeps an empty value but in integer and real columns", () => {
+  const sqlite = (db_type, extra) => columnRule(info(db_type, extra), meta(db_type, { nullable: false }), true);
+  for (const type of ["DATE", "DATETIME", "JSON", "BOOLEAN", "NUMERIC", "DECIMAL(10,2)", "TEXT", "UUID"]) {
+    assert.ok(!sqlite(type).emptyIsNull, type);
+  }
+  for (const type of ["INTEGER", "BIGINT", "REAL", "DOUBLE", "FLOAT"]) {
+    assert.ok(sqlite(type, { numeric: true }).emptyIsNull, type);
+  }
+  // Clearing a NOT NULL date writes '', not a NULL the table refuses.
+  const date = sqlite("DATE");
+  assert.deepEqual(setValue([cell(0, 0, value("2024-01-01"))], () => date, value("")).changes[0].value, value(""));
+});
+
 test("values are checked as saving checks them", () => {
   const rule = (db_type, extra, m) => columnRule(info(db_type, extra), m);
   const int = rule("integer", { numeric: true }, meta("integer", { nullable: false }));

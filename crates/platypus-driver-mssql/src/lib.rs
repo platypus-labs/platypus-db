@@ -18,6 +18,7 @@ mod bulk;
 #[doc(hidden)]
 pub mod columns;
 mod ddl;
+mod hierarchyid;
 mod meta;
 mod monitor;
 mod security;
@@ -288,13 +289,20 @@ impl Connection for MssqlConnection {
             let open = trancount(&mut session, &self.closed).await? > 0;
             self.tx.set_open(open);
         }
-        if self.tx.needs_begin(prepared.effect) {
+        // Switching the commit mode opens no transaction.
+        let typed = platypus_core::typed_autocommit(&sql);
+        if typed.is_none() && self.tx.needs_begin(prepared.effect) {
             run_simple(&mut session, "BEGIN TRANSACTION", &self.closed).await?;
             self.tx.set_open(true);
         }
         let result = self.start(session, sql.into_owned(), options).await;
-        // DDL is transactional in SQL Server.
-        self.tx.after(prepared.effect, false);
+        match typed {
+            // `SET IMPLICIT_TRANSACTIONS ON` makes the next change wait for COMMIT, as the
+            // toolbar's manual mode does; `OFF` leaves an open transaction open.
+            Some(on) if result.is_ok() => self.tx.typed_autocommit(on, false),
+            // DDL is transactional in SQL Server.
+            _ => self.tx.after(prepared.effect, false),
+        }
         if prepared.effect == platypus_core::TxEffect::End
             && matches!(result, Ok(ExecResult::Affected { .. }))
         {
@@ -446,6 +454,11 @@ impl Connection for MssqlConnection {
 
     async fn set_autocommit(&self, on: bool) -> Result<()> {
         self.tx.ensure_closed()?;
+        if on {
+            // A typed `SET IMPLICIT_TRANSACTIONS ON` would keep opening transactions unseen.
+            let mut session = self.session.lock().await;
+            run_simple(&mut session, "SET IMPLICIT_TRANSACTIONS OFF", &self.closed).await?;
+        }
         self.tx.set_autocommit(on);
         Ok(())
     }

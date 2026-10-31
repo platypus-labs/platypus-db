@@ -4,9 +4,9 @@
 //! `source` or `:r`.
 
 use std::process::{Output, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use platypus_core::{Auth, ConnectionConfig, DriverKind, SslMode};
+use platypus_core::{Auth, ConnectionConfig, DriverKind, ExecOptions, ExecResult, SslMode};
 use platypus_net::Tunnel;
 use serde::Serialize;
 use tauri::State;
@@ -82,6 +82,30 @@ fn program(driver: DriverKind) -> CommandResult<&'static str> {
 /// Arguments and environment of a command-line tool.
 pub(super) type Invocation = (Vec<String>, Vec<(&'static str, String)>);
 
+/// The database name as the PostgreSQL tools' `-d` takes it: a connection string of the
+/// name alone, quoted. Given bare, a name holding `=` (or a URI) would be read as a
+/// connection string of its own, able to point the tools, and the password, at another host.
+fn pg_database(name: &str) -> String {
+    if name.is_empty() {
+        return String::new();
+    }
+    format!(
+        "dbname='{}'",
+        name.replace('\\', r"\\").replace('\'', r"\'")
+    )
+}
+
+/// `value` as an argument that a client cannot take for one of its options.
+pub(super) fn not_an_option<'a>(what: &str, value: &'a str) -> CommandResult<&'a str> {
+    if value.starts_with('-') {
+        return Err(CommandError::new(
+            "invalid",
+            format!("the {what} cannot start with '-': {value}"),
+        ));
+    }
+    Ok(value)
+}
+
 /// What the PostgreSQL tools (`psql`, `pg_dump`, `pg_restore`) need to reach `config`'s
 /// database at `host:port`: the password and TLS go in the environment.
 pub(super) fn pg_connection(
@@ -89,16 +113,12 @@ pub(super) fn pg_connection(
     host: &str,
     port: Option<u16>,
 ) -> Invocation {
-    let mut args: Vec<String> = [
-        "-h",
-        host,
-        "-U",
-        config.user.as_str(),
-        "-d",
-        config.database.as_str(),
-    ]
-    .map(str::to_owned)
-    .into();
+    let mut args: Vec<String> = vec![
+        format!("--host={host}"),
+        format!("--username={}", config.user),
+        "-d".to_owned(),
+        pg_database(&config.database),
+    ];
     if let Some(port) = port {
         args.extend(["-p".to_owned(), port.to_string()]);
     }
@@ -132,9 +152,8 @@ pub(super) fn mysql_connection(
     host: &str,
     port: Option<u16>,
 ) -> Invocation {
-    let mut args: Vec<String> = ["-h", host, "-u", config.user.as_str()]
-        .map(str::to_owned)
-        .into();
+    // `--name=value`, which no value can turn into another option.
+    let mut args: Vec<String> = vec![format!("--host={host}"), format!("--user={}", config.user)];
     if let Some(port) = port {
         args.push(format!("--port={port}"));
     }
@@ -213,14 +232,13 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
             let (connection, mysql_env) = mysql_connection(config, host, port);
             args.extend(connection);
             if !config.database.is_empty() {
-                args.push(config.database.clone());
+                args.push(format!("--database={}", config.database));
             }
             env = mysql_env;
         }
         DriverKind::Sqlite | DriverKind::DuckDb | DriverKind::Libsql => {
-            args.extend(
-                ["-bail", "-header", "-column", config.database.as_str()].map(str::to_owned),
-            );
+            args.extend(["-bail", "-header", "-column"].map(str::to_owned));
+            args.push(sqlite_file(&config.database));
         }
         DriverKind::SqlServer => {
             args = sqlcmd_args(config, host, port);
@@ -249,6 +267,16 @@ fn invocation(config: &ConnectionConfig, host: &str, port: Option<u16>) -> Invoc
         | DriverKind::Plugin => {}
     }
     (args, env)
+}
+
+/// The database file as `sqlite3` takes it: a path starting with `-` would be read as an
+/// option (older shells know no `--`), so it goes as `./-…`, the same file.
+fn sqlite_file(path: &str) -> String {
+    if path.starts_with('-') {
+        format!("./{path}")
+    } else {
+        path.to_owned()
+    }
 }
 
 /// `sqlcmd` stops at the first error, with quoted identifiers on (it turns them off by
@@ -352,7 +380,7 @@ pub async fn run_cli(
     state.may_run(session_id, &script)?;
     let (stop, cancel) = oneshot::channel();
     lock(&state.clis).insert(run_id, stop);
-    let out = run(&state, session_id, script, cancel).await;
+    let out = run(&state, session_id, run_id, script, cancel).await;
     lock(&state.clis).remove(&run_id);
     out
 }
@@ -364,19 +392,26 @@ pub(super) fn stopped(program: &str) -> CommandError {
 async fn run(
     state: &AppState,
     session_id: u64,
+    run_id: u64,
     script: String,
     mut cancel: oneshot::Receiver<()>,
 ) -> CommandResult<CliOutput> {
-    let mut config = state.session(session_id)?.config;
-    let program = program(config.driver)?;
+    let session = state.session(session_id)?.config;
+    let program = program(session.driver)?;
+    let mut config = session.clone();
     // The tunnel or proxy stays open while the client runs.
     let (tunnel, host, port) = reach(&mut config).await?;
     if cancel.try_recv().is_ok() {
         return Err(stopped(program));
     }
-    let (args, env) = invocation(&config, &host, port);
+    let (args, mut env) = invocation(&config, &host, port);
+    let name = client_name(run_id);
+    if config.driver == DriverKind::Postgres {
+        env.push(("PGAPPNAME", name.clone()));
+    }
     let started = Instant::now();
     let mut child = spawn(program, (args.clone(), env), true)?;
+    let pid = child.id();
     if let Some(mut stdin) = child.stdin.take() {
         // Written alongside the reads, so a client that prints a lot cannot block the script;
         // one that exits early closes its input, and its output says why.
@@ -386,9 +421,25 @@ async fn run(
     }
     let out = wait_or_cancel(child, cancel).await;
     drop(tunnel);
-    let out = out
-        .ok_or_else(|| stopped(program))?
-        .map_err(|e| CommandError::new("cli", format!("{program}: {e}")))?;
+    let Some(out) = out else {
+        // The client is killed, but its statement runs on in the server: ended there too.
+        tauri::async_runtime::spawn(async move {
+            let ended =
+                tokio::time::timeout(Duration::from_secs(30), end_on_server(&session, &name, pid))
+                    .await;
+            if let Ok(Err(e)) = ended {
+                crate::applog::write(
+                    "WARN",
+                    &format!(
+                        "{program} was stopped; its statement may still run on the server: {}",
+                        e.message()
+                    ),
+                );
+            }
+        });
+        return Err(stopped(program));
+    };
+    let out = out.map_err(|e| CommandError::new("cli", format!("{program}: {e}")))?;
     let mut output = String::from_utf8_lossy(&out.stdout).into_owned();
     output.push_str(&String::from_utf8_lossy(&out.stderr));
     Ok(CliOutput {
@@ -397,6 +448,75 @@ async fn run(
         output,
         elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
+}
+
+/// The name a client run gives its session on the server (PostgreSQL's `application_name`),
+/// so that a cancel finds it: no other run of this app, nor another app, uses it.
+fn client_name(run_id: u64) -> String {
+    format!("PlatypusDB script {}-{run_id}", std::process::id())
+}
+
+/// The query that lists the server's sessions of the killed client process `pid` (named
+/// `name`): by name on PostgreSQL, by the process id the client tells the server elsewhere.
+/// MySQL and SQL Server show other sessions of the account (MySQL) or of the server (SQL
+/// Server, with VIEW SERVER STATE) only to some; the others find none. `None` for a client
+/// whose statements end with it (`sqlite3`, `redis-cli`).
+fn client_sessions(driver: DriverKind, name: &str, pid: Option<u32>) -> Option<String> {
+    match (driver, pid) {
+        (DriverKind::Postgres, _) => Some(format!(
+            "SELECT pid FROM pg_stat_activity WHERE application_name = '{}' AND pid <> pg_backend_pid()",
+            name.replace('\'', "''")
+        )),
+        (DriverKind::MySql, Some(pid)) => Some(format!(
+            "SELECT a.PROCESSLIST_ID FROM performance_schema.session_account_connect_attrs a \
+             JOIN performance_schema.session_account_connect_attrs p \
+             ON p.PROCESSLIST_ID = a.PROCESSLIST_ID AND p.ATTR_NAME = 'program_name' \
+             AND p.ATTR_VALUE IN ('mysql', 'mariadb') \
+             WHERE a.ATTR_NAME = '_pid' AND a.ATTR_VALUE = '{pid}' \
+             AND a.PROCESSLIST_ID <> CONNECTION_ID()"
+        )),
+        (DriverKind::SqlServer, Some(pid)) => Some(format!(
+            "SELECT session_id FROM sys.dm_exec_sessions WHERE host_process_id = {pid} \
+             AND program_name LIKE '%sqlcmd%' AND session_id <> @@SPID"
+        )),
+        _ => None,
+    }
+}
+
+/// The statement that ends server session `id`, with what it was running.
+fn end_session(driver: DriverKind, id: u64) -> String {
+    match driver {
+        DriverKind::Postgres => format!("SELECT pg_terminate_backend({id})"),
+        _ => format!("KILL {id}"),
+    }
+}
+
+/// Ends on the server the sessions of the client process `pid` (named `name`) that was
+/// killed: the client sent no cancel, so its statement would run on to its end. On a
+/// connection of its own, with `config`'s settings; returns how many it ended.
+async fn end_on_server(
+    config: &ConnectionConfig,
+    name: &str,
+    pid: Option<u32>,
+) -> CommandResult<usize> {
+    let Some(find) = client_sessions(config.driver, name, pid) else {
+        return Ok(0);
+    };
+    let conn = super::connect(config).await?;
+    let ids: Vec<u64> = platypus_core::query_text(conn.as_ref(), &find)
+        .await?
+        .iter()
+        .filter_map(|row| row.first()?.as_deref()?.trim().parse().ok())
+        .collect();
+    for &id in &ids {
+        let result = conn
+            .execute(&end_session(config.driver, id), &ExecOptions::default())
+            .await?;
+        if let ExecResult::Rows(rows) = result {
+            platypus_core::text_rows(rows).await?;
+        }
+    }
+    Ok(ids.len())
 }
 
 /// Stops a script running in a command-line client; nothing when it has ended.
@@ -432,6 +552,119 @@ mod tests {
     }
 
     #[test]
+    fn finds_the_killed_client_on_the_server() {
+        let name = client_name(7);
+        assert_ne!(name, client_name(8), "each run has its own name");
+        let pg = client_sessions(DriverKind::Postgres, &name, None).unwrap();
+        assert!(pg.contains(&format!("application_name = '{name}'")), "{pg}");
+        let mysql = client_sessions(DriverKind::MySql, &name, Some(42)).unwrap();
+        assert!(mysql.contains("ATTR_VALUE = '42'"), "{mysql}");
+        let sql_server = client_sessions(DriverKind::SqlServer, &name, Some(42)).unwrap();
+        assert!(sql_server.contains("host_process_id = 42"), "{sql_server}");
+        // Without the process id there is nothing to find it by; sqlite3 and redis-cli end
+        // their statements with them.
+        assert_eq!(client_sessions(DriverKind::MySql, &name, None), None);
+        assert_eq!(client_sessions(DriverKind::Sqlite, &name, Some(42)), None);
+        assert_eq!(client_sessions(DriverKind::Redis, &name, Some(42)), None);
+        assert_eq!(
+            end_session(DriverKind::Postgres, 9),
+            "SELECT pg_terminate_backend(9)"
+        );
+        assert_eq!(end_session(DriverKind::MySql, 9), "KILL 9");
+        assert_eq!(end_session(DriverKind::SqlServer, 9), "KILL 9");
+    }
+
+    /// Whether `program` runs here, and the server at `port` answers.
+    fn available(program: &str, port: u16) -> bool {
+        let found = std::process::Command::new(program)
+            .arg("--version")
+            .output()
+            .is_ok_and(|o| o.status.success());
+        let up = std::net::TcpStream::connect(("127.0.0.1", port)).is_ok();
+        if !found || !up {
+            eprintln!("skipping {program}: not installed, or no server on {port}");
+        }
+        found && up
+    }
+
+    /// How many statements holding the test's marker `watcher` sees running, its own aside.
+    async fn running(watcher: &dyn platypus_core::Connection, driver: DriverKind) -> String {
+        let sql = if driver == DriverKind::Postgres {
+            "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%platypus_cli_cancel%' \
+             AND state = 'active' AND pid <> pg_backend_pid()"
+        } else {
+            "SELECT count(*) FROM information_schema.PROCESSLIST \
+             WHERE INFO LIKE '%platypus_cli_cancel%' AND ID <> CONNECTION_ID()"
+        };
+        let rows = platypus_core::query_text(watcher, sql).await.unwrap();
+        rows[0][0].clone().unwrap()
+    }
+
+    /// Polls `running` for up to ten seconds until it says `count`.
+    async fn wait_running(
+        watcher: &dyn platypus_core::Connection,
+        driver: DriverKind,
+        count: &str,
+    ) {
+        for _ in 0..100 {
+            if running(watcher, driver).await == count {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!(
+            "{driver:?}: {} statements running, not {count}",
+            running(watcher, driver).await
+        );
+    }
+
+    /// psql and mysql against the dev databases: a long statement, the client killed, and
+    /// the statement gone from the server, which would otherwise run it to its end.
+    #[tokio::test]
+    async fn cancelling_ends_the_statement_on_the_server() {
+        for (url, port, script) in [
+            (
+                "postgres://platypus:platypus@127.0.0.1:55432/platypus?sslmode=disable",
+                55432,
+                "SELECT pg_sleep(60) AS platypus_cli_cancel;\n",
+            ),
+            (
+                "mysql://platypus:platypus@127.0.0.1:53306/platypus",
+                53306,
+                "SELECT SLEEP(60) AS platypus_cli_cancel;\n",
+            ),
+        ] {
+            let config = ConnectionConfig::from_url(url).unwrap();
+            let program = program(config.driver).unwrap();
+            if !available(program, port) {
+                continue;
+            }
+            let watcher = super::super::connect(&config).await.unwrap();
+            let name = client_name(1);
+            let (args, mut env) = invocation(&config, "127.0.0.1", Some(port));
+            if config.driver == DriverKind::Postgres {
+                env.push(("PGAPPNAME", name.clone()));
+            }
+            let mut child = spawn(program, (args, env), true).unwrap();
+            let pid = child.id();
+            let mut stdin = child.stdin.take().unwrap();
+            stdin.write_all(script.as_bytes()).await.unwrap();
+            wait_running(watcher.as_ref(), config.driver, "1").await;
+
+            let (stop, cancel) = oneshot::channel();
+            stop.send(()).unwrap();
+            assert!(wait_or_cancel(child, cancel).await.is_none());
+            drop(stdin);
+            assert_eq!(
+                end_on_server(&config, &name, pid).await.unwrap(),
+                1,
+                "{program}"
+            );
+            wait_running(watcher.as_ref(), config.driver, "0").await;
+        }
+    }
+
+    #[test]
     fn passes_the_password_in_the_environment() {
         let mut config = ConnectionConfig::new(DriverKind::Postgres);
         config.user = "app".to_owned();
@@ -444,7 +677,7 @@ mod tests {
 
         config.driver = DriverKind::MySql;
         let (args, env) = invocation(&config, "db", None);
-        assert_eq!(args.last().map(String::as_str), Some("shop"));
+        assert_eq!(args.last().map(String::as_str), Some("--database=shop"));
         assert!(
             !args.iter().any(|a| a.starts_with("--ssl-mode")),
             "default SSL mode"
@@ -461,6 +694,47 @@ mod tests {
         );
         assert!(!args.iter().any(|a| a.contains("s3cret")));
         assert!(env.contains(&("SQLCMDPASSWORD", "s3cret".to_owned())));
+    }
+
+    #[test]
+    fn no_name_turns_into_an_option_of_the_client() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.user = "-U".to_owned();
+        config.database = "x host=evil.example port=1 '\\".to_owned();
+        let (args, _) = invocation(&config, "-h", None);
+        assert!(args.contains(&"--host=-h".to_owned()), "{args:?}");
+        assert!(args.contains(&"--username=-U".to_owned()), "{args:?}");
+        // The whole name is the database's, quoted: no host of its own.
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["-d", r"dbname='x host=evil.example port=1 \'\\'"]),
+            "{args:?}"
+        );
+        config.database = String::new();
+        let (args, _) = invocation(&config, "db", None);
+        assert!(args.windows(2).any(|w| w == ["-d", ""]), "{args:?}");
+
+        config.driver = DriverKind::MySql;
+        config.database = "--init-command=DROP DATABASE x".to_owned();
+        let (args, _) = invocation(&config, "--skip-ssl", None);
+        assert!(args.contains(&"--host=--skip-ssl".to_owned()), "{args:?}");
+        assert!(args.contains(&"--user=-U".to_owned()), "{args:?}");
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("--database=--init-command=DROP DATABASE x")
+        );
+        assert!(!args.iter().any(|a| a.starts_with("--init-command")));
+
+        config.driver = DriverKind::Sqlite;
+        config.database = "-cmd".to_owned();
+        let (args, _) = invocation(&config, "", None);
+        assert_eq!(args.last().map(String::as_str), Some("./-cmd"));
+        config.database = "/data/app.db".to_owned();
+        let (args, _) = invocation(&config, "", None);
+        assert_eq!(args.last().map(String::as_str), Some("/data/app.db"));
+
+        assert!(not_an_option("database", "-x").is_err());
+        assert_eq!(not_an_option("database", "shop").ok(), Some("shop"));
     }
 
     #[test]

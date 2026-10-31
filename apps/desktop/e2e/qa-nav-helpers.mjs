@@ -1,7 +1,7 @@
 // What the navigator QA scenarios (`scenarios/qa-nav-*.mjs`) share: saved connections to the
 // docker/compose.yml databases, SQL run straight in their containers to seed objects, and
 // driving the navigator tree (rows, context menus, the visible tab).
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";

@@ -10,7 +10,7 @@
 // of a key column, a row without a key, a counter and a value of the wrong type are refused.
 // Skipped when Cassandra is not running.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";

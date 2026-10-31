@@ -29,13 +29,13 @@ pub(crate) fn command(config: &ConnectionConfig) -> Result<Option<(&'static str,
                 "rds",
                 "generate-db-auth-token",
                 "--hostname",
-                &config.host,
+                cli::argument("the host", &config.host)?,
                 "--port",
                 &port.to_string(),
                 "--username",
-                &config.user,
+                cli::argument("the user name", &config.user)?,
             ]);
-            args.extend(cli::aws_flags(config));
+            args.extend(cli::aws_flags(config)?);
             ("aws", args)
         }
         Auth::GcpIam => ("gcloud", args(&["sql", "generate-login-token"])),
@@ -100,6 +100,24 @@ mod tests {
             args.join(" "),
             "rds generate-db-auth-token --hostname db.abc.eu-west-1.rds.amazonaws.com --port 5432 --username app --region eu-west-1"
         );
+    }
+
+    #[test]
+    fn values_that_would_be_flags_are_refused() {
+        let aws = || config(DriverKind::Postgres, "aws_iam");
+        let mut flagged = aws();
+        flagged.user = "--debug".to_owned();
+        let error = command(&flagged).unwrap_err().to_string();
+        assert!(error.contains("user name"), "{error}");
+        let mut flagged = aws();
+        flagged.options.insert(
+            AWS_REGION.to_owned(),
+            "--endpoint-url=http://evil".to_owned(),
+        );
+        assert!(command(&flagged).is_err());
+        let mut flagged = aws();
+        flagged.host = "-h".to_owned();
+        assert!(command(&flagged).is_err());
     }
 
     #[test]

@@ -569,3 +569,157 @@ async fn bulk_load_follows_the_search_path() {
     assert_eq!(loaded, 1);
     assert_eq!(decoded(&conn, "SELECT id FROM sales.t").await[0].2, "7");
 }
+
+#[tokio::test]
+async fn unsigned_128_bit_numbers_keep_their_top_half() {
+    crate::testing::load();
+    let conn = memory().await;
+    let got = decoded(
+        &conn,
+        "SELECT 340282366920938463463374607431768211455::UHUGEINT,
+                170141183460469231731687303715884105728::UHUGEINT, 5::UHUGEINT, NULL::UHUGEINT",
+    )
+    .await;
+    let texts: Vec<_> = got
+        .iter()
+        .map(|(t, db, text)| (t.clone(), db.as_str(), text.as_str()))
+        .collect();
+    let wide = DataType::Decimal256(39, 0);
+    assert_eq!(
+        texts,
+        [
+            (
+                wide.clone(),
+                "UHUGEINT",
+                "340282366920938463463374607431768211455"
+            ),
+            (
+                wide.clone(),
+                "UHUGEINT",
+                "170141183460469231731687303715884105728"
+            ),
+            (wide.clone(), "UHUGEINT", "5"),
+            (wide, "UHUGEINT", "NULL"),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn times_with_a_zone_keep_their_offset() {
+    crate::testing::load();
+    let conn = memory().await;
+    let got = decoded(
+        &conn,
+        "SELECT TIMETZ '03:04:05+02' AS t, TIMETZ '03:04:05+02'::VARCHAR AS s",
+    )
+    .await;
+    assert_eq!(got[0].1, "TIME WITH TIME ZONE");
+    assert_eq!(got[0].2, "03:04:05+02");
+    assert_eq!(got[1].2, "03:04:05+02");
+    // Through a CTE with a trailing comment and semicolon, and with other columns around it.
+    let got = decoded(
+        &conn,
+        "WITH x AS (SELECT 1 AS a, TIMETZ '10:00:00-05:30' AS t, 2 AS b) SELECT * FROM x; -- done",
+    )
+    .await;
+    assert_eq!(got[0].2, "1");
+    assert_eq!(
+        (got[1].1.as_str(), got[1].2.as_str()),
+        ("TIME WITH TIME ZONE", "10:00:00-05:30")
+    );
+    assert_eq!(got[2].2, "2");
+    // The query runs once: its sequence moves by one.
+    run(&conn, "CREATE SEQUENCE once_seq").await;
+    let got = decoded(
+        &conn,
+        "SELECT nextval('once_seq') AS n, TIMETZ '01:02:03+01' AS t",
+    )
+    .await;
+    assert_eq!((got[0].2.as_str(), got[1].2.as_str()), ("1", "01:02:03+01"));
+    let got = decoded(&conn, "SELECT currval('once_seq') AS c").await;
+    assert_eq!(got[0].2, "1");
+    // A statement that is no plain query keeps its TIMETZ column as it is.
+    let got = decoded(&conn, "EXPLAIN SELECT TIMETZ '01:02:03+01'").await;
+    assert_eq!(got.len(), 2, "{got:?}");
+}
+
+/// The text the grid shows for a value, written back with the data editor's literals, is the
+/// value again: the deleted row of an undo script, an edit of a shown value.
+#[tokio::test]
+async fn shown_values_write_back_as_themselves() {
+    use platypus_sql::dml::{Column, ValueKind};
+    crate::testing::load();
+    let conn = memory().await;
+    run(
+        &conn,
+        "CREATE TABLE src (mp MAP(VARCHAR, INTEGER), mt MAP(VARCHAR, VARCHAR), d DATE,
+                           ts TIMESTAMP, u UHUGEINT, z TIMETZ);
+         INSERT INTO src VALUES (MAP {'k': 1, 'a b': NULL}, MAP {'x y': 'it''s'},
+           DATE '0044-03-15 (BC)', TIMESTAMP '0044-03-15 (BC) 12:00:00.5',
+           340282366920938463463374607431768211455::UHUGEINT, TIMETZ '03:04:05+02');
+         CREATE TABLE dst AS SELECT * FROM src WHERE false;",
+    )
+    .await;
+    let batches = rows(&conn, "SELECT * FROM src").await;
+    let batch = &batches[0];
+    let options = arrow_cast::display::FormatOptions::default();
+    let literals: Vec<String> = batch
+        .schema()
+        .fields()
+        .iter()
+        .zip(batch.columns())
+        .map(|(field, column)| {
+            let text = platypus_core::special::formatter(column.as_ref(), &options)
+                .unwrap()
+                .value(0)
+                .to_string();
+            let column = Column {
+                name: field.name(),
+                kind: ValueKind::of(field.data_type()),
+                default: None,
+            };
+            column
+                .literal(platypus_sql::Dialect::DuckDb, Some(&text))
+                .unwrap()
+        })
+        .collect();
+    run(
+        &conn,
+        &format!("INSERT INTO dst VALUES ({})", literals.join(", ")),
+    )
+    .await;
+    assert_eq!(value(&conn, "SELECT count(*) FROM dst").await, "1");
+    assert_eq!(
+        value(
+            &conn,
+            "SELECT count(*) FROM (SELECT * FROM src EXCEPT SELECT * FROM dst)"
+        )
+        .await,
+        "0"
+    );
+}
+
+/// A column the table fills from an expression is left out of the inserts of a copied row.
+#[tokio::test]
+async fn generated_columns_are_read_from_the_table_definition() {
+    use platypus_sql::generated::{Generated, generated_columns};
+    crate::testing::load();
+    let conn = memory().await;
+    run(
+        &conn,
+        "CREATE SEQUENCE q4s; CREATE TABLE q4g (id INTEGER DEFAULT nextval('q4s') PRIMARY KEY,
+           n INTEGER, g INTEGER GENERATED ALWAYS AS (n * 2), d INTEGER DEFAULT 5)",
+    )
+    .await;
+    let found = generated_columns(&conn, platypus_sql::Dialect::DuckDb, "main", "q4g")
+        .await
+        .unwrap();
+    let found: Vec<_> = found.into_iter().map(|c| (c.name, c.generated)).collect();
+    assert_eq!(
+        found,
+        [
+            ("id".to_owned(), Generated::Numbered),
+            ("g".to_owned(), Generated::Computed)
+        ]
+    );
+}

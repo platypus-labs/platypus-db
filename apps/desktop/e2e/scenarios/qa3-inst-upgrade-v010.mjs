@@ -79,7 +79,7 @@ export default async function (page, { dir }) {
     `${invoke("list_connections")}.then(cs => window.__TAURI_INTERNALS__.invoke("save_connection", { connection: cs.find(c => c.id === ${JSON.stringify(LEGACY)}), password: { action: "keep" }, sshSecrets: {}, projects: null }))`,
   );
   const text = readFileSync(join(dir, "connections.toml"), "utf8");
-  assert.match(text, /^version = 7$/m, text);
+  assert.match(text, /^version = 8$/m, text);
   assert.match(text, /agent_access = "read_only"/, text);
   assert.match(text, /name = "Legacy SQLite"/, text);
 }

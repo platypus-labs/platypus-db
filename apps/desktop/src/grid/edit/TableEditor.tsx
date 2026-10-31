@@ -317,13 +317,15 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   const writable = (col: number) => keys?.columns[col] !== undefined && !fixedByDatabase(keys.generated[col]);
 
   /** What each result column takes, for mass edits and loading files. */
+  const driver = target?.connection.driver;
+  const sqlite = driver === "sqlite" || driver === "libsql";
   const rules = useMemo(
     () =>
       columns.map((c, i) => {
         const columnMeta = keys?.columns[i];
-        return columnMeta && !fixedByDatabase(keys?.generated[i]) ? columnRule(c, columnMeta) : undefined;
+        return columnMeta && !fixedByDatabase(keys?.generated[i]) ? columnRule(c, columnMeta, sqlite) : undefined;
       }),
-    [columns, keys],
+    [columns, keys, sqlite],
   );
   // Stable across renders: the mass edit dialogs work out their preview again when these change.
   const ruleOf = useCallback((col: number) => rules[col], [rules]);
@@ -675,7 +677,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       fields={columnMeta?.fields ?? []}
       nullable={columnMeta?.nullable ?? true}
       json={isJson(column, columnMeta)}
-      numeric={column.numeric}
+      emptyIsNull={rules[editing.cell.col]?.emptyIsNull ?? column.numeric}
       options={editing.options}
       onLoadFile={
         loadsFromFile(rules[editing.cell.col])

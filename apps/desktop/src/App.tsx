@@ -57,6 +57,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { TopBar } from "./shell/TopBar";
 import { pickDataFile, Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
+import { moveTab } from "./shell/tabOrder";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { settingsLoadError, useSetting } from "./settings";
 import { useSidebarCollapsed } from "./shell/sidebar";
@@ -651,14 +652,20 @@ export function App() {
             }),
           );
         }
+        // An editor opened later skips the catalog while the password is unknown: the navigator
+        // session, opened with the typed password, loads it for them.
+        if (side && typed !== undefined) setTimeout(() => requestCatalog(connection, false, database));
         return session.session_id;
       } catch (e) {
-        passwords.current.delete(connection.id);
         const error = toCommandError(e);
         if (error.kind !== "auth") {
+          // A server that does not answer says nothing of the password: the next attempt, once
+          // it is back, uses the one typed instead of asking again.
+          if (typed !== undefined) passwords.current.set(connection.id, typed);
           setToast(`${connection.name}: ${error.message}`);
           return null;
         }
+        passwords.current.delete(connection.id);
         const entered = await askPassword(connection, error.message);
         if (entered === null) return null;
         password = entered;
@@ -1066,6 +1073,10 @@ export function App() {
     setTabs((all) => all.map((t) => (t.key === key ? ({ ...t, ...patch } as TabModel) : t)));
   }
 
+  function reorderTab(dragged: number, over: number, after: boolean) {
+    setTabs((all) => moveTab(all, dragged, over, after));
+  }
+
   function tabTitle(tab: TabModel) {
     const connection = connectionById(tab.connectionId);
     // Another database than the saved one is part of the name.
@@ -1157,6 +1168,7 @@ export function App() {
             connectionName={connectionName}
             onActivate={(t) => setActiveTab(t.key)}
             onClose={closeTab}
+            onMove={reorderTab}
             onMenu={(t, x, y) => setMenu({ x, y, target: { scope: "tab", arg: { tab: t } } })}
           />
         )}

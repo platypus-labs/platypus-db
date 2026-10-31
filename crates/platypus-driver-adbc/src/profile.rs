@@ -15,6 +15,16 @@ pub const PASSWORD: &str = "password";
 /// The `options` key of the generic driver that names its library; not passed on.
 pub const DRIVER_FILE: &str = "driver_file";
 
+/// The `options` key of the generic driver that names the library's entrypoint symbol; not
+/// passed on. Without it the ADBC standard (`AdbcDriverInit`) is used, or the name the library
+/// file suggests.
+pub const ENTRYPOINT: &str = "entrypoint";
+
+/// The entrypoint symbol the user named for the generic driver, if any.
+pub fn entrypoint(config: &ConnectionConfig) -> Option<String> {
+    option(config, ENTRYPOINT).map(str::to_owned)
+}
+
 fn option<'a>(config: &'a ConnectionConfig, key: &str) -> Option<&'a str> {
     config
         .options
@@ -90,7 +100,12 @@ pub fn options(config: &ConnectionConfig) -> Result<Vec<(String, String)>> {
                 push(PASSWORD, &p);
             }
             for (k, v) in &config.options {
-                if k != DRIVER_FILE && k != URI && k != "dialect" && !v.trim().is_empty() {
+                if k != DRIVER_FILE
+                    && k != ENTRYPOINT
+                    && k != URI
+                    && k != "dialect"
+                    && !v.trim().is_empty()
+                {
                     push(k, v.trim());
                 }
             }
@@ -330,8 +345,10 @@ mod tests {
                 (URI, "grpc://host:1234"),
                 ("adbc.flight.sql.rpc.call_header.x", "1"),
                 ("dialect", "ansi"),
+                (ENTRYPOINT, " duckdb_adbc_init "),
             ],
         );
+        assert_eq!(entrypoint(&c).as_deref(), Some("duckdb_adbc_init"));
         c.user = "u".to_owned();
         let o = options(&c).unwrap();
         assert_eq!(get(&o, URI), Some("grpc://host:1234"));
@@ -339,6 +356,9 @@ mod tests {
         assert_eq!(get(&o, "adbc.flight.sql.rpc.call_header.x"), Some("1"));
         assert_eq!(get(&o, DRIVER_FILE), None);
         assert_eq!(get(&o, "dialect"), None);
+        assert_eq!(get(&o, ENTRYPOINT), None);
+        c.options.insert(ENTRYPOINT.to_owned(), "  ".to_owned());
+        assert_eq!(entrypoint(&c), None);
         assert!(options(&config(DriverKind::Postgres, &[])).is_err());
     }
 }

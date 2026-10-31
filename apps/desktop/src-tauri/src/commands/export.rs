@@ -87,9 +87,16 @@ pub struct TableRef {
     pub name: String,
 }
 
-/// `name` as a file name: the characters Windows refuses become `_`.
+/// Characters kept of a table name in its file name: the file system's limit is 255 bytes
+/// for the whole name, and a Windows path is short.
+const FILE_NAME_CHARS: usize = 100;
+
+/// `name` as a file name: the characters Windows refuses become `_`, a name too long is cut,
+/// trailing dots and spaces go, and a device name (`CON`, `nul.txt`) gets a `_` in front.
 fn file_name(name: &str) -> String {
-    name.chars()
+    let cleaned: String = name
+        .chars()
+        .take(FILE_NAME_CHARS)
         .map(|c| {
             if r#"<>:"/\|?*"#.contains(c) || c.is_control() {
                 '_'
@@ -97,7 +104,25 @@ fn file_name(name: &str) -> String {
                 c
             }
         })
-        .collect()
+        .collect();
+    let trimmed = cleaned.trim_end_matches(['.', ' ']);
+    if trimmed.is_empty() {
+        return "_".to_owned();
+    }
+    let stem = trimmed.split('.').next().unwrap_or(trimmed).trim_end();
+    let device = ["CON", "PRN", "AUX", "NUL"]
+        .iter()
+        .any(|d| stem.eq_ignore_ascii_case(d))
+        || ["COM", "LPT"].iter().any(|p| {
+            stem.len() == 4
+                && stem.as_bytes()[..3].eq_ignore_ascii_case(p.as_bytes())
+                && stem.as_bytes()[3].is_ascii_digit()
+        });
+    if device {
+        format!("_{trimmed}")
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 /// `name` made unique among `taken` (which it joins), ignoring case as Windows and macOS do:
@@ -179,6 +204,16 @@ mod tests {
     fn file_names_of_tables() {
         assert_eq!(super::file_name("a/b:c"), "a_b_c");
         assert_eq!(super::file_name("Orders 2024"), "Orders 2024");
+        assert_eq!(
+            super::file_name(&"x".repeat(250)).len(),
+            super::FILE_NAME_CHARS
+        );
+        assert_eq!(super::file_name("t. ."), "t");
+        assert_eq!(super::file_name("..."), "_");
+        assert_eq!(super::file_name("nul"), "_nul");
+        assert_eq!(super::file_name("Com1.data"), "_Com1.data");
+        assert_eq!(super::file_name("console"), "console");
+        assert_eq!(super::file_name("abé"), "abé");
         let mut taken = std::collections::HashSet::new();
         let names: Vec<_> = ["Mix", "mix", "a_b", "a/b", "MIX"]
             .into_iter()

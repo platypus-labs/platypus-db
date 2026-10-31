@@ -1,6 +1,8 @@
 //! The script that makes one schema like another: tables created, altered with [`script`] and
 //! dropped, in an order the foreign keys allow.
 
+use std::borrow::Cow;
+
 use platypus_sql::Dialect;
 
 use crate::ddl::{Keys, add_foreign_key, phased, same_check, transactional, warn_one_by_one};
@@ -21,6 +23,8 @@ pub fn compare(
     wanted: &[TableDesign],
     current: &[TableDesign],
 ) -> Result<Script, String> {
+    // The history tables of system-versioned tables come and go with them.
+    let (wanted, current) = (&*without_history(wanted), &*without_history(current));
     let in_place = keys_in_place(dialect);
     let mut keys = Keys::default();
     let mut altered = Script::default();
@@ -64,6 +68,12 @@ pub fn compare(
     let created = missing_sequences(schema, sequences, wanted, current);
     out.statements.splice(0..0, created.statements);
     out.warnings.extend(created.warnings);
+    // Before all, for the columns of the tables created and altered to take them.
+    if dialect == Dialect::Postgres {
+        let types = missing_types((schema, wanted_schema), wanted, current);
+        out.statements.splice(0..0, types.statements);
+        out.warnings.extend(types.warnings);
+    }
     add(&mut out, altered);
     out.statements.extend(later);
     out.statements.append(&mut keys.added);
@@ -113,6 +123,27 @@ fn find<'a>(tables: &'a [TableDesign], name: &str) -> Option<&'a TableDesign> {
     tables.iter().find(|t| t.name == name)
 }
 
+/// The history table of `table` when it is system-versioned (SQL Server).
+fn history(table: &TableDesign) -> Option<&str> {
+    table.system_time.as_ref()?.history.as_deref()
+}
+
+/// `tables` without the history tables of the system-versioned ones: the database creates,
+/// changes and keeps them with their table.
+fn without_history(tables: &[TableDesign]) -> Cow<'_, [TableDesign]> {
+    let histories: Vec<&str> = tables.iter().filter_map(history).collect();
+    if histories.is_empty() {
+        return Cow::Borrowed(tables);
+    }
+    Cow::Owned(
+        tables
+            .iter()
+            .filter(|t| !histories.contains(&t.name.as_str()))
+            .cloned()
+            .collect(),
+    )
+}
+
 /// The script that drops the tables of `current` that `wanted` has not, those that
 /// reference others first.
 fn drop_gone(
@@ -135,14 +166,24 @@ fn drop_gone(
         );
     }
     for table in ordered.into_iter().chain(cycle) {
-        out.statements.push(format!(
-            "DROP TABLE {}",
-            dialect.qualified(Some(schema), &table.name)
-        ));
-        out.warnings.push(format!(
-            "Drops the table {}: its rows are lost.",
-            table.name
-        ));
+        let name = dialect.qualified(Some(schema), &table.name);
+        // A system-versioned table is dropped once it is not, then its history table.
+        let history = history(table).filter(|_| dialect == Dialect::SqlServer);
+        if history.is_some() {
+            out.statements
+                .push(format!("ALTER TABLE {name} SET (SYSTEM_VERSIONING = OFF)"));
+        }
+        out.statements.push(format!("DROP TABLE {name}"));
+        for dropped in std::iter::once(table.name.as_str()).chain(history) {
+            out.warnings
+                .push(format!("Drops the table {dropped}: its rows are lost."));
+        }
+        if let Some(history) = history {
+            out.statements.push(format!(
+                "DROP TABLE {}",
+                dialect.qualified(Some(schema), history)
+            ));
+        }
     }
     Ok(out)
 }
@@ -162,6 +203,15 @@ fn create_new(
     let mut later = Vec::new();
     let mut new = Vec::new();
     for w in wanted.iter().filter(|w| find(current, &w.name).is_none()) {
+        if dialect == Dialect::ClickHouse
+            && let Some(path) = w.options.as_deref().and_then(shared_keeper_path)
+        {
+            out.warnings.push(format!(
+                "The table {} is not created: its engine replicates through the keeper path {path}, which a copy would share with the source table and join its replicas. Create it by hand with a path of its own (one with the uuid or database macro).",
+                w.name
+            ));
+            continue;
+        }
         let mut t = matched(dialect, w, None, (schema, wanted_schema), sequences);
         if in_place {
             let (now, after): (Vec<_>, Vec<_>) = std::mem::take(&mut t.foreign_keys)
@@ -171,7 +221,7 @@ fn create_new(
             later.extend(
                 after
                     .iter()
-                    .map(|f| add_foreign_key(dialect, schema, &t.name, f)),
+                    .flat_map(|f| add_foreign_key(dialect, schema, &t.name, f)),
             );
         }
         new.push(t);
@@ -193,6 +243,41 @@ fn create_new(
     }
     keys.added.append(&mut later);
     Ok(keys.added)
+}
+
+/// The keeper path of a ClickHouse `Replicated*` engine in the table options `options`
+/// (`ENGINE = ReplicatedMergeTree('/clickhouse/tables/t', '{replica}') ORDER BY id`) that a
+/// copy of the table in another database would share: one naming neither the table's
+/// `{uuid}` nor its `{database}`. `None` for other engines, and one without arguments, which
+/// takes the server's default path.
+fn shared_keeper_path(options: &str) -> Option<String> {
+    let engine = options
+        .trim_start()
+        .strip_prefix("ENGINE")?
+        .trim_start()
+        .strip_prefix('=')?
+        .trim_start();
+    let name_end = engine
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .unwrap_or(engine.len());
+    if !engine[..name_end].starts_with("Replicated") {
+        return None;
+    }
+    let quoted = engine[name_end..]
+        .trim_start()
+        .strip_prefix('(')?
+        .trim_start()
+        .strip_prefix('\'')?;
+    let mut path = String::new();
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => path.extend(chars.next()),
+            '\'' => break,
+            c => path.push(c),
+        }
+    }
+    (!path.contains("{uuid}") && !path.contains("{database}")).then_some(path)
 }
 
 /// Whether the database gave the constraint `name` itself: SQLite's have none, SQL Server
@@ -287,7 +372,117 @@ fn matched(
         c.original = before.and_then(|o| o.original.clone());
     }
     t.primary_key_name = old.and_then(|o| o.primary_key_name.clone());
+    if dialect == Dialect::Postgres && schema != wanted_schema {
+        retarget_types(&mut t, schema, wanted_schema);
+    }
     t
+}
+
+/// The columns of `t` with the types of `wanted_schema` they use taken from `schema` instead,
+/// where the comparison creates them.
+fn retarget_types(t: &mut TableDesign, schema: &str, wanted_schema: &str) {
+    let d = Dialect::Postgres;
+    let names: Vec<String> = t
+        .types
+        .iter()
+        .filter(|u| u.schema == wanted_schema)
+        .map(|u| u.name.clone())
+        .collect();
+    for name in &names {
+        let from = d.qualified(Some(wanted_schema), name);
+        let to = d.qualified(Some(schema), name);
+        let bare = d.quote_ident(name).into_owned();
+        let cast = (format!("::{bare}"), format!("::{to}"));
+        for c in &mut t.columns {
+            // A type on the search path is written without its schema.
+            let data_type = replace_name(&c.data_type, &from, &to);
+            c.data_type = match data_type.strip_prefix(&bare) {
+                Some(rest) if rest.is_empty() || rest.starts_with('[') => format!("{to}{rest}"),
+                _ => data_type,
+            };
+            for text in [&mut c.default, &mut c.generated].into_iter().flatten() {
+                *text = replace_name(&replace_name(text, &from, &to), &cast.0, &cast.1);
+            }
+        }
+    }
+    for u in &mut t.types {
+        u.body = names.iter().fold(u.body.clone(), |body, name| {
+            replace_name(
+                &body,
+                &d.qualified(Some(wanted_schema), name),
+                &d.qualified(Some(schema), name),
+            )
+        });
+        if u.schema == wanted_schema {
+            schema.clone_into(&mut u.schema);
+        }
+    }
+}
+
+/// `text` with `from` replaced by `to` where it is a whole name: not part of a longer one.
+fn replace_name(text: &str, from: &str, to: &str) -> String {
+    let word = |c: char| c.is_alphanumeric() || matches!(c, '_' | '$' | '"' | '.');
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(from) {
+        let before = rest[..at]
+            .chars()
+            .next_back()
+            .or_else(|| out.chars().next_back());
+        let after = rest[at + from.len()..].chars().next();
+        let whole = !before.is_some_and(word) && !after.is_some_and(word);
+        out.push_str(&rest[..at]);
+        out.push_str(if whole { to } else { from });
+        rest = &rest[at + from.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// What creates the user-defined types the tables `wanted` use in `wanted_schema` that the
+/// tables `current` do not in `schema`: each one in a block that leaves a type there already
+/// (used by no table) as it is. A type of the same name that differs is left to the user.
+fn missing_types(
+    (schema, wanted_schema): (&str, &str),
+    wanted: &[TableDesign],
+    current: &[TableDesign],
+) -> Script {
+    let mut types: Vec<crate::UserType> = Vec::new();
+    for t in wanted {
+        let mut t = t.clone();
+        if schema != wanted_schema {
+            retarget_types(&mut t, schema, wanted_schema);
+        }
+        for u in t.types.into_iter().filter(|u| u.schema == schema) {
+            if !types.iter().any(|x| x.name == u.name) {
+                types.push(u);
+            }
+        }
+    }
+    // Enums and the other types before the domains that may be over them.
+    types.sort_by_key(|u| (u.kind == "DOMAIN", !u.body.starts_with("AS ENUM")));
+    let mut out = Script::default();
+    for u in types {
+        let there = current
+            .iter()
+            .flat_map(|t| &t.types)
+            .find(|c| c.schema == schema && c.name == u.name);
+        let name = Dialect::Postgres.qualified(Some(schema), &u.name);
+        match there {
+            Some(c) if c.kind != u.kind || c.body.trim() != u.body.trim() => {
+                out.warnings.push(format!(
+                    "The type {name} differs from the one compared with: change it by hand."
+                ));
+            }
+            Some(_) => {}
+            None => out.statements.push(format!(
+                "DO $platypus$ BEGIN CREATE {} {name} {}; \
+                 EXCEPTION WHEN duplicate_object THEN NULL; END $platypus$",
+                u.kind, u.body
+            )),
+        }
+    }
+    out
 }
 
 /// The part of `parts` named `original`, if any.
@@ -533,6 +728,38 @@ mod tests {
                 .collect(),
             ..TableDesign::default()
         }
+    }
+
+    #[test]
+    fn clickhouse_tables_replicated_through_the_source_path_are_not_created() {
+        let engine = |e: &str| TableDesign {
+            options: Some(format!("ENGINE = {e} ORDER BY id")),
+            ..table("r", vec![column("id", "UInt64")], &[], "src")
+        };
+        let shared = engine("ReplicatedMergeTree('/clickhouse/tables/{shard}/r', '{replica}')");
+        let s = compare(Dialect::ClickHouse, "dst", "src", &[shared], &[]).unwrap();
+        assert!(s.statements.is_empty(), "{s:?}");
+        assert!(
+            s.warnings[0].starts_with(
+                "The table r is not created: its engine replicates through the keeper path /clickhouse/tables/{shard}/r, which"
+            ),
+            "{s:?}"
+        );
+        // Paths of their own in the target, and the server's default path, are fine.
+        for e in [
+            "ReplicatedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')",
+            "ReplicatedReplacingMergeTree('/t/{database}/r', '{replica}', v)",
+            "ReplicatedMergeTree",
+            "ReplicatedMergeTree()",
+            "MergeTree",
+        ] {
+            let s = compare(Dialect::ClickHouse, "dst", "src", &[engine(e)], &[]).unwrap();
+            assert_eq!(s.statements.len(), 1, "{e}: {s:?}");
+        }
+        assert_eq!(
+            shared_keeper_path("ENGINE = ReplicatedMergeTree('/a\\'b', 'r')"),
+            Some("/a'b".to_owned())
+        );
     }
 
     #[test]
@@ -1083,5 +1310,112 @@ mod tests {
         let current = [table("a", vec![column("id", "integer")], &[], "public")];
         let s = edited_script(Dialect::Sqlite, "main", &current, &[], &[]).unwrap();
         assert_eq!(s.statements, Vec::<String>::new());
+    }
+
+    #[test]
+    fn user_types_are_taken_from_the_target_schema_and_created_there() {
+        let mood = |schema: &str| crate::UserType {
+            schema: schema.to_owned(),
+            name: "mood".to_owned(),
+            kind: "TYPE".to_owned(),
+            body: "AS ENUM ('sad', 'ok')".to_owned(),
+        };
+        let mut e = table(
+            "e",
+            vec![ColumnDesign {
+                default: Some("'ok'::src.mood".to_owned()),
+                ..column("m", "src.mood")
+            }],
+            &[],
+            "src",
+        );
+        e.columns.push(column("ms", "src.mood[]"));
+        e.columns.push(column("moody", "src.moody"));
+        e.types.push(mood("src"));
+        let s = compare(
+            Dialect::Postgres,
+            "dst",
+            "src",
+            std::slice::from_ref(&e),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            s.statements[0],
+            "DO $platypus$ BEGIN CREATE TYPE dst.mood AS ENUM ('sad', 'ok'); \
+             EXCEPTION WHEN duplicate_object THEN NULL; END $platypus$"
+        );
+        assert!(
+            s.statements[1].contains("m dst.mood DEFAULT 'ok'::dst.mood"),
+            "{s:?}"
+        );
+        assert!(s.statements[1].contains("ms dst.mood[]"), "{s:?}");
+        assert!(s.statements[1].contains("moody src.moody"), "{s:?}");
+
+        // Once there, the type and the table are the same.
+        let mut there = e.clone();
+        for c in &mut there.columns {
+            if c.name != "moody" {
+                c.data_type = c.data_type.replace("src.mood", "dst.mood");
+            }
+            c.default = c.default.as_ref().map(|d| d.replace("src.", "dst."));
+        }
+        there.types = vec![mood("dst")];
+        let again = compare(
+            Dialect::Postgres,
+            "dst",
+            "src",
+            std::slice::from_ref(&e),
+            &[there.clone()],
+        );
+        assert_eq!(again.unwrap().statements, Vec::<String>::new());
+        there.types[0].body = "AS ENUM ('sad')".to_owned();
+        let differs = compare(Dialect::Postgres, "dst", "src", &[e], &[there]).unwrap();
+        assert_eq!(
+            differs.warnings,
+            ["The type dst.mood differs from the one compared with: change it by hand."]
+        );
+    }
+
+    #[test]
+    fn history_tables_come_and_go_with_their_system_versioned_table() {
+        let mut tmp = table("tmp", vec![column("id", "int")], &[], "s");
+        tmp.system_time = Some(crate::SystemTime {
+            start: "vf".to_owned(),
+            end: "vt".to_owned(),
+            history: Some("tmp_hist".to_owned()),
+        });
+        let hist = table("tmp_hist", vec![column("id", "int")], &[], "s");
+        let wanted = [tmp.clone(), hist.clone()];
+        let s = compare(Dialect::SqlServer, "d", "s", &wanted, &[]).unwrap();
+        assert_eq!(s.statements.len(), 1, "{s:?}");
+        assert!(
+            s.statements[0].ends_with("WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = d.tmp_hist))"),
+            "{s:?}"
+        );
+        let same = compare(Dialect::SqlServer, "d", "s", &wanted, &wanted).unwrap();
+        assert_eq!(same.statements, Vec::<String>::new());
+        let dropped = compare(Dialect::SqlServer, "d", "s", &[], &wanted).unwrap();
+        assert_eq!(
+            dropped.statements,
+            [
+                "ALTER TABLE d.tmp SET (SYSTEM_VERSIONING = OFF)",
+                "DROP TABLE d.tmp",
+                "DROP TABLE d.tmp_hist",
+            ]
+        );
+        assert_eq!(dropped.warnings.len(), 2, "{dropped:?}");
+    }
+
+    #[test]
+    fn names_are_replaced_whole() {
+        assert_eq!(
+            replace_name("a.mood, a.moody, xa.mood", "a.mood", "b.mood"),
+            "b.mood, a.moody, xa.mood"
+        );
+        assert_eq!(
+            replace_name("'ok'::mood", "::mood", "::b.mood"),
+            "'ok'::b.mood"
+        );
     }
 }

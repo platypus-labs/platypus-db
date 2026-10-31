@@ -9,7 +9,7 @@ import { ComparePlans } from "./ComparePlans";
 import { stepName } from "./compare";
 import { PlanDialog } from "./PlanDialog";
 import { PlanGraph } from "./PlanGraph";
-import { createIndexSql, filterColumns } from "./indexSql";
+import { createIndexSql, filterKeys } from "./indexSql";
 
 export type ExplainView = "tree" | "graph" | "text" | "table" | "compare";
 
@@ -303,7 +303,7 @@ export function ExplainTab({ tab, connection, active, ensureSession, onChange }:
           const key = `${s.table}
 ${s.filter}`;
           if (dismissed.has(key)) return null;
-          const columns = filterColumns(s.filter);
+          const columns = filterKeys(s.filter);
           return (
             <div key={key} className="notice warn small explain-suggestion">
               <span className="explain-suggestion-text">

@@ -986,6 +986,51 @@ async fn count(b: &Backend, conn: &dyn Connection) -> String {
     cell(&rows[0], 0, 0).unwrap()
 }
 
+/// A commit mode switched by a typed statement (MySQL's `SET autocommit = 0`, SQL Server's
+/// `SET IMPLICIT_TRANSACTIONS ON`) is followed: the next change waits for COMMIT. `t` holds
+/// two rows.
+async fn typed_commit_modes(b: &Backend, conn: &dyn Connection, t: &str) {
+    let (off, on) = match b.config.driver {
+        DriverKind::MySql => ("SET autocommit = 0", "SET autocommit = 1"),
+        DriverKind::SqlServer => (
+            "SET IMPLICIT_TRANSACTIONS ON",
+            "SET IMPLICIT_TRANSACTIONS OFF",
+        ),
+        _ => return,
+    };
+    let insert = format!("INSERT INTO {t} VALUES (5)");
+    let delete = format!("DELETE FROM {t} WHERE id = 5");
+    run(conn, off).await.unwrap();
+    assert!(!conn.transaction().autocommit, "{}: {off}", b.name);
+    assert!(
+        !conn.transaction().open,
+        "{}: {off} changes nothing",
+        b.name
+    );
+    affected(b, conn, &insert).await;
+    assert!(conn.transaction().open, "{}: a change after {off}", b.name);
+    conn.rollback().await.unwrap();
+    assert_eq!(count(b, conn).await, "2", "{}: rolled back", b.name);
+    conn.rollback().await.unwrap();
+    run(conn, on).await.unwrap();
+    let state = conn.transaction();
+    assert!(state.autocommit && !state.open, "{}: {on}", b.name);
+    affected(b, conn, &insert).await;
+    assert!(!conn.transaction().open, "{}: autocommit again", b.name);
+    affected(b, conn, &delete).await;
+    // The toolbar's switch back to autocommit undoes a typed manual mode too.
+    run(conn, off).await.unwrap();
+    conn.set_autocommit(true).await.unwrap();
+    affected(b, conn, &insert).await;
+    affected(b, conn, &delete).await;
+    assert!(
+        !conn.transaction().open,
+        "{}: {off}, then autocommit",
+        b.name
+    );
+    assert_eq!(count(b, conn).await, "2", "{}: committed", b.name);
+}
+
 #[tokio::test]
 async fn manual_commit_and_rollback() {
     let _serial = SERIAL.lock().await;
@@ -1069,6 +1114,8 @@ async fn manual_commit_and_rollback() {
             conn.rollback().await.unwrap();
             conn.set_autocommit(true).await.unwrap();
         }
+
+        typed_commit_modes(&b, conn, &t).await;
 
         // DDL as the first statement opens the transaction too, where DDL is transactional.
         let mysql = b.config.driver == DriverKind::MySql;
@@ -1459,7 +1506,12 @@ async fn suggests_indexes_for_large_scans() {
             .explain("SELECT * FROM conf_big WHERE id = 42", true)
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
-        let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
+        // A plan names a table with its schema (a temporary one in `pg_temp`): compare the name alone.
+        let tables: Vec<_> = plan
+            .suggestions
+            .iter()
+            .map(|s| s.table.rsplit('.').next().unwrap_or(&s.table))
+            .collect();
         // Only some plans have the row counts to judge a table by.
         let expected: &[&str] = if plans_suggest(&b) {
             &["conf_big"]
@@ -2940,14 +2992,26 @@ async fn change_an_attribute(b: &Backend, conn: &dyn Connection, user: &str, hos
     let changed = find_principal(conn, user).await.unwrap();
     match b.config.driver {
         DriverKind::Postgres => assert_eq!(changed.connection_limit, Some(3), "{}", b.name),
-        DriverKind::ClickHouse => assert!(
-            changed
-                .valid_until
-                .as_deref()
-                .is_some_and(|v| v.starts_with("2035")),
-            "{}: {changed:?}",
-            b.name
-        ),
+        DriverKind::ClickHouse => {
+            assert!(
+                changed
+                    .valid_until
+                    .as_deref()
+                    .is_some_and(|v| v.starts_with("2035")),
+                "{}: {changed:?}",
+                b.name
+            );
+            // Clearing the date: "never" reads back as no expiry, not as 1970.
+            let clear = PrincipalSpec {
+                name: user.to_owned(),
+                kind: PrincipalKind::User,
+                valid_until: Some(String::new()),
+                ..PrincipalSpec::default()
+            };
+            change_security(b, conn, &SecurityChange::Alter { spec: clear }).await;
+            let cleared = find_principal(conn, user).await.unwrap();
+            assert_eq!(cleared.valid_until, None, "{}: {cleared:?}", b.name);
+        }
         _ => assert!(
             changed.has(PrincipalFlag::Locked),
             "{}: {changed:?}",
@@ -4678,6 +4742,191 @@ async fn sizes_tables_and_nests_partitions() {
     }
 }
 
+/// The DDL of a PostgreSQL table with a collation, a `serial` column, storage parameters, row
+/// level security, a policy and a parent runs on its own, and is the same once run.
+#[tokio::test]
+async fn postgres_table_ddl_runs_standalone() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = &b.schema;
+        let (parent, kid) = (
+            format!("probe_ddl_parent{}", std::process::id()),
+            format!("probe_ddl_kid{}", std::process::id()),
+        );
+        let drop = format!("DROP TABLE IF EXISTS {s}.{kid}, {s}.{parent} CASCADE");
+        run(&*conn, &drop).await.unwrap();
+        for sql in [
+            format!(
+                "CREATE TABLE {s}.{parent} (id serial PRIMARY KEY, note text COLLATE \"C\", owner text)
+                 WITH (fillfactor = 70)"
+            ),
+            format!("ALTER TABLE {s}.{parent} ENABLE ROW LEVEL SECURITY"),
+            format!(
+                "CREATE POLICY p_owner ON {s}.{parent} FOR SELECT USING (owner = current_user)"
+            ),
+            format!("CREATE TABLE {s}.{kid} (extra int) INHERITS ({s}.{parent})"),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
+        let ddl_of = |name: String| {
+            let conn = &conn;
+            let schema = s.clone();
+            async move {
+                conn.object_ddl(&ObjectRef {
+                    schema: &schema,
+                    name: &name,
+                    kind: ObjectKind::Table,
+                    parent: None,
+                })
+                .await
+                .unwrap()
+            }
+        };
+        let (parent_ddl, kid_ddl) = (ddl_of(parent.clone()).await, ddl_of(kid.clone()).await);
+        for part in [
+            "CREATE SEQUENCE",
+            "COLLATE \"C\"",
+            "WITH (fillfactor=70)",
+            "ENABLE ROW LEVEL SECURITY",
+            "CREATE POLICY p_owner",
+            "OWNED BY",
+        ] {
+            assert!(parent_ddl.contains(part), "{part} in {parent_ddl}");
+        }
+        assert!(kid_ddl.contains("INHERITS ("), "{kid_ddl}");
+        // Run alone, in a database that has none of it.
+        run(&*conn, &drop).await.unwrap();
+        for script in [&parent_ddl, &kid_ddl] {
+            for statement in platypus_sql::split(script, platypus_sql::Dialect::Postgres) {
+                run(&*conn, statement.text(script)).await.unwrap();
+            }
+        }
+        assert_eq!(ddl_of(parent.clone()).await, parent_ddl);
+        assert_eq!(ddl_of(kid.clone()).await, kid_ddl);
+        run(&*conn, &drop).await.unwrap();
+    }
+}
+
+/// The index and foreign key lists of PostgreSQL say what the DDL says: the predicate, the
+/// sort order, the included columns and the referential actions.
+#[tokio::test]
+async fn postgres_details_show_index_and_key_options() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = &b.schema;
+        let (parent, child) = (
+            format!("probe_det_parent{}", std::process::id()),
+            format!("probe_det_child{}", std::process::id()),
+        );
+        let drop = format!("DROP TABLE IF EXISTS {s}.{child}, {s}.{parent} CASCADE");
+        run(&*conn, &drop).await.unwrap();
+        for sql in [
+            format!("CREATE TABLE {s}.{parent} (id int PRIMARY KEY)"),
+            format!(
+                "CREATE TABLE {s}.{child} (id int PRIMARY KEY, pa int, pb int, amount int,
+                 CONSTRAINT fk_pa FOREIGN KEY (pa) REFERENCES {s}.{parent} (id)
+                     ON DELETE SET NULL ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED)"
+            ),
+            format!("CREATE UNIQUE INDEX ix_part ON {s}.{child} (pa) WHERE pb IS NULL"),
+            format!(
+                "CREATE INDEX ix_order ON {s}.{child} (amount DESC NULLS LAST, pb NULLS FIRST) INCLUDE (pa)"
+            ),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
+        let details = conn.table_details(s, &child).await.unwrap();
+        let index = |name: &str| {
+            details
+                .indexes
+                .iter()
+                .find(|i| i.name == name)
+                .and_then(|i| i.detail.clone())
+                .unwrap_or_default()
+        };
+        assert!(index("ix_part").contains("WHERE"), "{:?}", details.indexes);
+        let ordered = index("ix_order");
+        assert!(ordered.contains("amount DESC NULLS LAST"), "{ordered}");
+        assert!(ordered.contains("pb NULLS FIRST"), "{ordered}");
+        assert!(ordered.contains("INCLUDE (pa)"), "{ordered}");
+        assert_eq!(index("probe_none"), "");
+        let key = details.foreign_keys[0].detail.clone().unwrap_or_default();
+        assert_eq!(
+            key,
+            "ON DELETE SET NULL ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED"
+        );
+        run(&*conn, &drop).await.unwrap();
+    }
+}
+
+/// The DDL of a SQL Server table with a column collation, a SPARSE column, a named default and
+/// descriptions runs on its own and is the same once run.
+#[tokio::test]
+async fn sqlserver_table_ddl_runs_standalone() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.config.driver != DriverKind::SqlServer {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = &b.schema;
+        let table = format!("probe_ddl{}", std::process::id());
+        let drop = format!("DROP TABLE IF EXISTS {s}.{table}");
+        run(&*conn, &drop).await.unwrap();
+        let create = format!(
+            "CREATE TABLE {s}.{table} (id INT PRIMARY KEY,
+                name NVARCHAR(50) COLLATE Latin1_General_CS_AS NOT NULL,
+                extra INT SPARSE NULL,
+                qty INT NOT NULL CONSTRAINT df_probe_qty DEFAULT (7))"
+        );
+        run(&*conn, &create).await.unwrap();
+        for (column, text) in [(None, "Orders"), (Some("name"), "Who orders")] {
+            let level2 = column.map_or(String::new(), |c| {
+                format!(", @level2type = N'COLUMN', @level2name = N'{c}'")
+            });
+            let sql = format!(
+                "EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'{text}',
+                 @level0type = N'SCHEMA', @level0name = N'{s}',
+                 @level1type = N'TABLE', @level1name = N'{table}'{level2}"
+            );
+            run(&*conn, &sql).await.unwrap();
+        }
+        let ddl_of = || async {
+            conn.object_ddl(&ObjectRef {
+                schema: s,
+                name: &table,
+                kind: ObjectKind::Table,
+                parent: None,
+            })
+            .await
+            .unwrap()
+        };
+        let ddl = ddl_of().await;
+        for part in [
+            "COLLATE Latin1_General_CS_AS",
+            "SPARSE",
+            "CONSTRAINT df_probe_qty DEFAULT",
+            "sp_addextendedproperty",
+            "Who orders",
+        ] {
+            assert!(ddl.contains(part), "{part} in {ddl}");
+        }
+        run(&*conn, &drop).await.unwrap();
+        for statement in platypus_sql::split(&ddl, platypus_sql::Dialect::SqlServer) {
+            run(&*conn, statement.text(&ddl)).await.unwrap();
+        }
+        assert_eq!(ddl_of().await, ddl);
+        run(&*conn, &drop).await.unwrap();
+    }
+}
+
 /// The geometry in a cell: binary values as (E)WKB, others as text.
 fn shape(batch: &RecordBatch, column: usize) -> Option<geometry::Shape> {
     let array = batch.column(column);
@@ -4917,6 +5166,146 @@ async fn agents_read_in_read_only_transactions() {
     }
 }
 
+/// A read-only ClickHouse session (a read-only connection, a read-only agent) runs with
+/// `readonly = 1`: table functions that reach other servers or files are refused by the
+/// server itself, before any request leaves it; local ones, `SET` and `USE` still run.
+#[tokio::test]
+async fn clickhouse_read_only_sessions_refuse_remote_table_functions() {
+    let _serial = SERIAL.lock().await;
+    let Some(b) = clickhouse_backend().await else {
+        return;
+    };
+    let mut config = b.config.clone();
+    config.read_only = true;
+    let conn = ClickHouseDriver.connect(&config).await.unwrap();
+    let conn = &*conn;
+    // An address that never answers: a request that left would hang, not fail at once.
+    for sql in [
+        "SELECT * FROM url('http://10.255.255.1:9/x.csv', CSV, 'a String')",
+        "SELECT * FROM deltaLake('http://10.255.255.1:9/bucket/t/', 'k', 's')",
+        "SELECT * FROM iceberg('http://10.255.255.1:9/bucket/t/', 'k', 's')",
+        "SELECT * FROM hudi('http://10.255.255.1:9/bucket/t/', 'k', 's')",
+        "SELECT * FROM fileCluster('default', 'x.csv')",
+        "SELECT * FROM file('x.csv')",
+        "INSERT INTO orders VALUES (99, 1, 1)",
+    ] {
+        let refused = tokio::time::timeout(Duration::from_secs(20), run(conn, sql))
+            .await
+            .unwrap_or_else(|_| panic!("{sql}: the server made the request"));
+        let message = refused.expect_err(sql).to_string();
+        assert!(message.contains("readonly"), "{sql}: {message}");
+    }
+    run(conn, "SET max_threads = 2").await.unwrap();
+    run(conn, "USE platypus").await.unwrap();
+    let rows = collect(&b, conn, "SELECT count() FROM numbers(3)").await;
+    assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("3"));
+    // The same server, not read-only: the setting belongs to the session's requests only.
+    let open = b.connect().await;
+    let rows = collect(&b, &*open, "SELECT getSetting('readonly')").await;
+    assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("0"));
+}
+
+/// A function that writes a row into `table`, called as a query, and the statement that drops
+/// it: on the servers that have stored functions written in SQL.
+fn writing_function(b: &Backend, table: &str) -> Option<(String, &'static str, &'static str)> {
+    let call = "SELECT read_only_session_write()";
+    match b.config.driver {
+        DriverKind::Postgres => Some((
+            format!(
+                "CREATE FUNCTION read_only_session_write() RETURNS int LANGUAGE sql AS \
+                 $$ INSERT INTO {table} VALUES (2) RETURNING 1 $$"
+            ),
+            call,
+            "DROP FUNCTION IF EXISTS read_only_session_write()",
+        )),
+        DriverKind::MySql => Some((
+            format!(
+                "CREATE FUNCTION read_only_session_write() RETURNS INT MODIFIES SQL DATA \
+                 BEGIN INSERT INTO {table} VALUES (2); RETURN 1; END"
+            ),
+            call,
+            "DROP FUNCTION IF EXISTS read_only_session_write",
+        )),
+        _ => None,
+    }
+}
+
+/// A read-only connection's session refuses writes on the server, where the database can: a
+/// statement that got past the app's check fails, and so does a function that writes, which
+/// the check reads as a query. SQL Server and libSQL have no such session: only the check.
+#[tokio::test]
+async fn read_only_connections_refuse_writes_on_the_server() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        if matches!(b.config.driver, DriverKind::SqlServer | DriverKind::Libsql) {
+            continue;
+        }
+        let table = "read_only_session_probe";
+        let function = writing_function(&b, table);
+        let mut created = false;
+        {
+            let conn = b.connect().await;
+            let conn = &*conn;
+            if let Some((_, _, drop)) = &function {
+                run(conn, drop)
+                    .await
+                    .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+            }
+            run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+                .await
+                .unwrap();
+            let create = format!("CREATE TABLE {table} (id INT){}", b.table_options("id"));
+            run(conn, &create)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+            if let Some((create, _, _)) = &function {
+                // MySQL with binary logging wants SUPER or log_bin_trust_function_creators.
+                match run(conn, create).await {
+                    Ok(()) => created = true,
+                    Err(e) => eprintln!("{}: no writing function: {e}", b.name),
+                }
+            }
+        }
+        // DuckDB opens a file read-only only when no session holds it already.
+        let mut config = b.config.clone();
+        config.read_only = true;
+        let read_only = driver(b.config.driver)
+            .connect(&config)
+            .await
+            .unwrap_or_else(|e| panic!("{}: cannot connect read-only: {e}", b.name));
+        let insert = format!("INSERT INTO {table} VALUES (1)");
+        assert!(
+            run(&*read_only, &insert).await.is_err(),
+            "{}: the read-only session wrote",
+            b.name
+        );
+        if let Some((_, call, _)) = function.as_ref().filter(|_| created) {
+            assert!(
+                run(&*read_only, call).await.is_err(),
+                "{}: a function wrote in the read-only session",
+                b.name
+            );
+        }
+        let rows = collect(&b, &*read_only, &format!("SELECT count(*) FROM {table}")).await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("0"), "{}", b.name);
+        drop(read_only);
+
+        // Another session writes as before.
+        let conn = b.connect().await;
+        let conn = &*conn;
+        run(conn, &insert)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let rows = collect(&b, conn, &format!("SELECT count(*) FROM {table}")).await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+        if let Some((_, _, drop)) = &function {
+            run(conn, drop).await.unwrap();
+        }
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
 /// An agent's `explain` with analyze runs in the read-only transaction where it refuses
 /// writes: the plan comes back analyzed, a write inside it fails or changes nothing, and
 /// no transaction is left open.
@@ -5137,7 +5526,7 @@ async fn agents_ask_before_a_query_that_writes() {
     }
 }
 
-/// PostgreSQL decodes `U&"…"` names the way the agents' read-only check does, so a function
+/// PostgreSQL decodes `U&"â€¦"` names the way the agents' read-only check does, so a function
 /// spelled with Unicode escapes is the one the check refuses.
 #[tokio::test]
 async fn agents_read_only_check_decodes_postgres_unicode_names() {
@@ -7048,7 +7437,7 @@ CREATE TABLE S.part_refs (id int PRIMARY KEY, a int, b int, CONSTRAINT part_refs
 CREATE TABLE S.ca (id int PRIMARY KEY, cb_id int);
 CREATE TABLE S.cb (id int PRIMARY KEY, ca_id int, CONSTRAINT cb_ca FOREIGN KEY (ca_id) REFERENCES S.ca(id));
 ALTER TABLE S.ca ADD CONSTRAINT ca_cb FOREIGN KEY (cb_id) REFERENCES S.cb(id);
-CREATE TABLE S.`Odd Table` (`Weird Col` int PRIMARY KEY, `select` text, `è` int);
+CREATE TABLE S.`Odd Table` (`Weird Col` int PRIMARY KEY, `select` text, `Ã¨` int);
 CREATE VIEW S.v_orders AS SELECT id, total FROM S.orders"
         }
         _ => {
@@ -7061,7 +7450,7 @@ CREATE TABLE S.part_refs (id int PRIMARY KEY, a int, b int, CONSTRAINT part_refs
 CREATE TABLE S.ca (id int PRIMARY KEY, cb_id int);
 CREATE TABLE S.cb (id int PRIMARY KEY, ca_id int, CONSTRAINT cb_ca FOREIGN KEY (ca_id) REFERENCES S.ca(id));
 ALTER TABLE S.ca ADD CONSTRAINT ca_cb FOREIGN KEY (cb_id) REFERENCES S.cb(id);
-CREATE TABLE S.[Odd Table] ([Weird Col] int PRIMARY KEY, [select] nvarchar(max), [è] int);
+CREATE TABLE S.[Odd Table] ([Weird Col] int PRIMARY KEY, [select] nvarchar(max), [Ã¨] int);
 CREATE VIEW S.v_orders AS SELECT id, total FROM S.orders"
         }
     }
@@ -7489,5 +7878,312 @@ async fn reads_the_ddl_of_many_tables_together() {
         run(&*conn, "DROP SCHEMA conf_many_ddl CASCADE")
             .await
             .unwrap();
+    }
+}
+
+/// ClickHouse has no transaction: an import into an existing table goes through a staging
+/// table, so a failure leaves the table as it was, a NULL for a column that refuses it fails
+/// instead of becoming 0, and a date the column cannot hold is refused instead of clamped.
+#[tokio::test]
+#[allow(clippy::too_many_lines, clippy::type_complexity)]
+async fn clickhouse_imports_all_or_nothing() {
+    use arrow_array::{Date32Array, Int64Array, StringArray};
+    use arrow_schema::{DataType, Field, Schema};
+    use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import_rows};
+    use std::sync::Arc;
+
+    let all = backends().await;
+    let Some(b) = all
+        .iter()
+        .find(|b| b.config.driver == DriverKind::ClickHouse)
+    else {
+        return;
+    };
+    let conn = b.connect().await;
+    let _ = run(&*conn, "DROP TABLE conf_ch_stage").await;
+    run(
+        &*conn,
+        "CREATE TABLE conf_ch_stage (id Int32, n Int32, d Date32) ENGINE = MergeTree ORDER BY id",
+    )
+    .await
+    .unwrap();
+    run(
+        &*conn,
+        "INSERT INTO conf_ch_stage VALUES (0, 0, '2000-01-01')",
+    )
+    .await
+    .unwrap();
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int64, true),
+        Field::new("n", DataType::Utf8, true),
+        Field::new("d", DataType::Date32, true),
+    ]));
+    let plan = ImportPlan {
+        source_table: String::new(),
+        source_schema: None,
+        schema: Some(b.schema.clone()),
+        table: "conf_ch_stage".to_owned(),
+        create: false,
+        mode: ImportMode::Append,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: ["id", "n", "d"]
+            .iter()
+            .map(|c| ImportColumn {
+                source: (*c).to_owned(),
+                target: (*c).to_owned(),
+                data_type: None,
+                not_null: false,
+                default: None,
+            })
+            .collect(),
+    };
+    let load = |mode: ImportMode, batches: Vec<(Vec<i64>, Vec<Option<&str>>, Vec<i32>)>| {
+        let schema = schema.clone();
+        let plan = ImportPlan {
+            mode,
+            ..plan.clone()
+        };
+        let conn = &conn;
+        let batches: Vec<_> = batches
+            .into_iter()
+            .map(|(id, n, d)| {
+                Ok(RecordBatch::try_new(
+                    schema.clone(),
+                    vec![
+                        Arc::new(Int64Array::from(id)),
+                        Arc::new(StringArray::from(n)),
+                        Arc::new(Date32Array::from(d)),
+                    ],
+                )
+                .unwrap())
+            })
+            .collect();
+        async move {
+            let stream = platypus_core::RecordBatchStream::new(
+                schema.clone(),
+                futures::stream::iter(batches).boxed(),
+            );
+            import_rows(stream, (&**conn, Dialect::ClickHouse), &plan, |_| true).await
+        }
+    };
+    let count = || async {
+        let sql = "SELECT count(), (SELECT count() FROM system.tables WHERE database = currentDatabase() AND name LIKE 'conf_ch_stage%') FROM conf_ch_stage";
+        let batches = collect(b, &*conn, sql).await;
+        (
+            cell(&batches[0], 0, 0).unwrap(),
+            cell(&batches[0], 1, 0).unwrap(),
+        )
+    };
+    let day = 19_723; // 2024-01-01
+
+    // A bad value in the second batch: the first one is not left behind.
+    let bad = load(
+        ImportMode::Append,
+        vec![
+            (vec![1, 2], vec![Some("5"), Some("6")], vec![day, day]),
+            (vec![3], vec![Some("abc")], vec![day]),
+        ],
+    )
+    .await;
+    assert!(bad.is_err(), "a bad number");
+    assert_eq!(count().await, ("1".to_owned(), "1".to_owned()), "undone");
+
+    // A NULL for a column that does not take it.
+    let null = load(ImportMode::Append, vec![(vec![4], vec![None], vec![day])]).await;
+    assert!(null.is_err(), "NULL stored as 0");
+    assert_eq!(count().await.0, "1");
+
+    // Dates the column cannot hold (1000-01-01, 9999-12-31).
+    for out in [-354_285, 2_932_896] {
+        let err = load(
+            ImportMode::Append,
+            vec![(vec![5], vec![Some("1")], vec![out])],
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("outside the range"), "{err}");
+    }
+    assert_eq!(count().await.0, "1");
+
+    // The good rows go in, appended or replacing the old.
+    let good = vec![(vec![1, 2], vec![Some("5"), Some("6")], vec![day, day])];
+    assert_eq!(load(ImportMode::Append, good.clone()).await.unwrap(), 2);
+    assert_eq!(count().await, ("3".to_owned(), "1".to_owned()));
+    assert_eq!(load(ImportMode::Replace, good).await.unwrap(), 2);
+    assert_eq!(count().await, ("2".to_owned(), "1".to_owned()));
+    run(&*conn, "DROP TABLE conf_ch_stage").await.unwrap();
+}
+
+/// A ClickHouse Replace whose move into the table fails after emptying it keeps the rows in
+/// the staging table and names it; a user who may not create tables still imports, told the
+/// import is not all-or-nothing.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn clickhouse_import_keeps_rows_and_imports_without_create() {
+    use arrow_array::Int64Array;
+    use arrow_schema::{DataType, Field, Schema};
+    use platypus_sql::Dialect;
+    use platypus_transfer::import::{
+        ImportColumn, ImportError, ImportMode, ImportPlan, import_rows,
+    };
+    use std::sync::Arc;
+
+    async fn load(
+        conn: &dyn Connection,
+        plan: ImportPlan,
+        id: Vec<i64>,
+        n: Vec<i64>,
+    ) -> Result<u64, ImportError> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, true),
+            Field::new("n", DataType::Int64, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(id)),
+                Arc::new(Int64Array::from(n)),
+            ],
+        )
+        .unwrap();
+        let stream = platypus_core::RecordBatchStream::new(
+            schema,
+            futures::stream::iter(vec![Ok(batch)]).boxed(),
+        );
+        import_rows(stream, (conn, Dialect::ClickHouse), &plan, |_| true).await
+    }
+
+    let all = backends().await;
+    let Some(b) = all
+        .iter()
+        .find(|b| b.config.driver == DriverKind::ClickHouse)
+    else {
+        return;
+    };
+    let conn = b.connect().await;
+    let user = "conf_ch_insert_only";
+    let staging_tables = "SELECT name FROM system.tables WHERE database = currentDatabase() \
+                  AND name LIKE 'conf_ch_move_platypus_stage%'";
+    let drop_stages = || async {
+        for batch in collect(b, &*conn, staging_tables).await {
+            for row in 0..batch.num_rows() {
+                let name = cell(&batch, 0, row).unwrap();
+                run(&*conn, &format!("DROP TABLE {name}")).await.unwrap();
+            }
+        }
+    };
+    drop_stages().await;
+    for sql in [
+        "DROP TABLE IF EXISTS conf_ch_move_mv".to_owned(),
+        "DROP TABLE IF EXISTS conf_ch_move".to_owned(),
+        format!("DROP USER IF EXISTS {user}"),
+        // A Log table, which cannot trade places with a copy; its view refuses n = 99, so
+        // the rows load into the staging table and fail on the move.
+        "CREATE TABLE conf_ch_move (id Int32, n Int32) ENGINE = Log".to_owned(),
+        "CREATE MATERIALIZED VIEW conf_ch_move_mv ENGINE = Memory \
+         AS SELECT throwIf(n = 99) AS x FROM conf_ch_move"
+            .to_owned(),
+        "INSERT INTO conf_ch_move VALUES (0, 0)".to_owned(),
+    ] {
+        run(&*conn, &sql).await.unwrap();
+    }
+    let plan = |mode| ImportPlan {
+        source_table: String::new(),
+        source_schema: None,
+        schema: Some(b.schema.clone()),
+        table: "conf_ch_move".to_owned(),
+        create: false,
+        mode,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: ["id", "n"]
+            .iter()
+            .map(|c| ImportColumn {
+                source: (*c).to_owned(),
+                target: (*c).to_owned(),
+                data_type: None,
+                not_null: false,
+                default: None,
+            })
+            .collect(),
+    };
+    let staged = || async {
+        let batches = collect(b, &*conn, staging_tables).await;
+        let name = batches
+            .iter()
+            .find(|b| b.num_rows() > 0)
+            .and_then(|b| cell(b, 0, 0))?;
+        let sql = format!("SELECT count() FROM {name}");
+        let rows = cell(&collect(b, &*conn, &sql).await[0], 0, 0).unwrap();
+        Some((name, rows))
+    };
+
+    let failed = load(&*conn, plan(ImportMode::Replace), vec![1, 2], vec![1, 99])
+        .await
+        .unwrap_err();
+    let (name, rows) = staged().await.expect("the staging table stays");
+    assert_eq!(rows, "2", "every imported row is in {name}");
+    assert!(
+        matches!(&failed, ImportError::Plan(m) if m.contains(&name) && m.contains("kept in")),
+        "{failed}"
+    );
+    drop_stages().await;
+
+    // A user who may insert into the table but create nothing.
+    run(
+        &*conn,
+        &format!("CREATE USER {user} IDENTIFIED BY 'Conf-Ins-2026!x'"),
+    )
+    .await
+    .unwrap();
+    run(
+        &*conn,
+        &format!(
+            "GRANT SELECT, INSERT ON {}.conf_ch_move TO {user}",
+            b.schema
+        ),
+    )
+    .await
+    .unwrap();
+    let mut config = b.config.clone();
+    user.clone_into(&mut config.user);
+    config.password = Some(platypus_core::Secret::new("Conf-Ins-2026!x"));
+    let limited = driver(DriverKind::ClickHouse)
+        .connect(&config)
+        .await
+        .unwrap();
+    run(&*conn, "TRUNCATE TABLE conf_ch_move").await.unwrap();
+    let written = load(&*limited, plan(ImportMode::Append), vec![3, 4], vec![3, 4])
+        .await
+        .unwrap();
+    assert_eq!(written, 2);
+    let refused = load(&*limited, plan(ImportMode::Append), vec![5], vec![99])
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("went straight into"),
+        "{refused}"
+    );
+    assert!(staged().await.is_none(), "no staging table");
+    let count = collect(
+        b,
+        &*conn,
+        "SELECT count() FROM conf_ch_move WHERE id IN (3, 4)",
+    )
+    .await;
+    assert_eq!(cell(&count[0], 0, 0).unwrap(), "2");
+
+    for sql in [
+        format!("DROP USER {user}"),
+        "DROP TABLE conf_ch_move_mv".to_owned(),
+        "DROP TABLE conf_ch_move".to_owned(),
+    ] {
+        run(&*conn, &sql).await.unwrap();
     }
 }

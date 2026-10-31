@@ -15,7 +15,7 @@ import { useSyncExternalStore } from "react";
 import { getStored, setStored, useSettingsVersion } from "./settings";
 import type { GridActionContext } from "./grid/DataGrid";
 import { language } from "./i18n";
-import { keyName, labelParts, sameKey, splitShortcuts } from "./shortcutKeys";
+import { keyName, labelParts, matchesShortcut, splitShortcuts } from "./shortcutKeys";
 
 export interface ActionScopes {
   /** Anywhere in the window; shortcuts are captured before the editor sees them. */
@@ -170,28 +170,18 @@ export function shortcutOf(e: KeyboardEvent): string | null {
   return parts.join("+");
 }
 
-function matches(shortcut: string, e: KeyboardEvent): boolean {
-  const parts = shortcut.split("+");
-  const key = sameKey(parts.pop()!);
-  const mods = new Set(parts.map((p) => p.toLowerCase()));
-  const mod = isMac ? e.metaKey : e.ctrlKey;
-  return (
-    // `+` and `,` separate keys and shortcuts, so those keys are written `Plus` and `Comma`.
-    sameKey(e.key) === key &&
-    mod === mods.has("mod") &&
-    e.shiftKey === mods.has("shift") &&
-    e.altKey === mods.has("alt") &&
-    (isMac ? e.ctrlKey === mods.has("ctrl") : true)
-  );
-}
-
-/** The action of `scope` whose shortcut is `e`, if any applies to `arg`. */
+/** The action of `scope` whose shortcut is `e`, if any applies to `arg`: one written with the
+ *  keys pressed, else one whose character needed Shift on this keyboard (`Mod+/` pressed as
+ *  Ctrl+Shift+7 on an Italian one). */
 export function actionForKey<S extends ActionScope>(
   scope: S,
   arg: ActionScopes[S],
   e: KeyboardEvent,
 ): Action<S> | undefined {
-  return actionsFor(scope, arg).find((a) => shortcutsOf(a).some((s) => matches(s, e)));
+  const actions = actionsFor(scope, arg);
+  const find = (loose: boolean) =>
+    actions.find((a) => shortcutsOf(a).some((s) => matchesShortcut(s, e, isMac, loose)));
+  return find(false) ?? (e.shiftKey ? find(true) : undefined);
 }
 
 /** While the Settings record a new shortcut, the keys go to them and run nothing. */

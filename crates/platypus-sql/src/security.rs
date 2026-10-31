@@ -6,6 +6,7 @@
 //! password is in the statement that runs, and nowhere else.
 
 use std::borrow::Cow;
+use std::fmt::Write as _;
 
 use platypus_core::{
     DropOptions, GrantAction, GrantTarget, Grantee, PrincipalFlag, PrincipalKind, PrincipalSpec,
@@ -890,28 +891,170 @@ pub fn involves_roles(change: &SecurityChange) -> bool {
     }
 }
 
-/// `sql` with the passwords of its `CREATE`/`ALTER` `USER`/`ROLE`/`LOGIN` and
-/// `SET PASSWORD` statements replaced by `'********'`, so that it can go to a log. Other
-/// statements are returned as they are: a `WHERE password = 'x'` is data, not a
-/// credential. A literal it cannot tell the end of is masked to the end of the statement.
+/// `sql` with its credentials replaced by `'********'`, so that it can go to a log: the
+/// passwords of `CREATE`/`ALTER` `USER`/`ROLE`/`LOGIN` and `SET PASSWORD` statements, the
+/// secrets of `DuckDB`'s `CREATE SECRET` and SQL Server's `CREATE CREDENTIAL`, the keys and
+/// passwords passed to `ClickHouse`'s table functions and engines (`s3`, `mysql`,
+/// `postgresql`, `remote`…), and those of Redis's `AUTH`, `HELLO … AUTH`, `CONFIG SET
+/// requirepass`/`masterauth` and `ACL SETUSER … >password`. Other statements are returned as
+/// they are: a `WHERE password = 'x'` is data, not a credential. A literal it cannot tell the
+/// end of is masked to the end of the statement.
 #[must_use]
 pub fn mask_secrets(sql: &str) -> Cow<'_, str> {
-    let lower = sql.to_ascii_lowercase();
-    if !lower.contains("password") && !lower.contains("identified") {
-        return Cow::Borrowed(sql);
+    match masked(sql) {
+        Some((out, _)) if out != sql => Cow::Owned(out),
+        _ => Cow::Borrowed(sql),
     }
-    Cow::Owned(Masker::new(sql).run().0)
 }
 
 /// The secrets [`mask_secrets`] hides from `sql`, as typed and with their escapes undone:
 /// a server error about a statement can quote either form.
 #[must_use]
 pub fn secrets_of(sql: &str) -> Vec<String> {
+    masked(sql).map(|(_, secrets)| secrets).unwrap_or_default()
+}
+
+/// `sql` masked and the secrets taken out of it; `None` when it names nothing a credential
+/// could follow.
+fn masked(sql: &str) -> Option<(String, Vec<String>)> {
+    const HINTS: [&str; 16] = [
+        "password",
+        "identified",
+        "secret",
+        "auth",
+        "requirepass",
+        "setuser",
+        "s3",
+        "gcs",
+        "oss",
+        "cosn",
+        "mysql",
+        "postgresql",
+        "mongodb",
+        "remote",
+        "azureblobstorage",
+        "redis",
+    ];
     let lower = sql.to_ascii_lowercase();
-    if !lower.contains("password") && !lower.contains("identified") {
-        return Vec::new();
+    if !HINTS.iter().any(|hint| lower.contains(hint)) {
+        return None;
     }
-    Masker::new(sql).run().1
+    let (redis, mut secrets) = mask_redis(sql);
+    let (out, more) = Masker::new(&redis).run();
+    secrets.extend(more);
+    Some((out, secrets))
+}
+
+/// `sql` with the passwords of the Redis commands that carry one masked, a command a line,
+/// and the passwords taken out. A line that is not one of them is kept as it is.
+fn mask_redis(sql: &str) -> (Cow<'_, str>, Vec<String>) {
+    let mut secrets = Vec::new();
+    let mut out = String::new();
+    let mut changed = false;
+    for line in sql.split_inclusive('\n') {
+        let tokens = redis_tokens(line);
+        let words: Vec<String> = tokens.iter().map(|t| t.value.clone()).collect();
+        let mut found = redis_secrets(&words);
+        found.sort_unstable();
+        found.dedup();
+        let mut at = 0;
+        for (index, keep) in found {
+            let Some(token) = tokens.get(index) else {
+                continue;
+            };
+            out.push_str(&line[at..token.start]);
+            let prefix: String = token.value.chars().take(keep).collect();
+            let _ = write!(out, "{prefix}********");
+            secrets.push(line[token.start..token.end].to_owned());
+            secrets.push(token.value.clone());
+            secrets.push(token.value.chars().skip(keep).collect());
+            at = token.end;
+            changed = true;
+        }
+        out.push_str(&line[at..]);
+    }
+    if changed {
+        (Cow::Owned(out), secrets)
+    } else {
+        (Cow::Borrowed(sql), Vec::new())
+    }
+}
+
+/// A word of a Redis command line: where it is, and its text with its quotes undone.
+struct RedisToken {
+    start: usize,
+    end: usize,
+    value: String,
+}
+
+/// The words of a Redis command line as `redis-cli` splits them: by blanks, a `"…"` word
+/// with its backslash escapes, a `'…'` one as it is.
+fn redis_tokens(line: &str) -> Vec<RedisToken> {
+    let mut tokens = Vec::new();
+    let mut chars = line.char_indices().peekable();
+    while let Some(&(start, c)) = chars.peek() {
+        if c.is_whitespace() {
+            chars.next();
+            continue;
+        }
+        let mut value = String::new();
+        let mut quote = None;
+        let mut end = start;
+        while let Some(&(at, c)) = chars.peek() {
+            if quote.is_none() && c.is_whitespace() {
+                break;
+            }
+            chars.next();
+            end = at + c.len_utf8();
+            match quote {
+                None if c == '"' || c == '\'' => quote = Some(c),
+                Some('"') if c == '\\' => {
+                    if let Some((at, next)) = chars.next() {
+                        value.push(next);
+                        end = at + next.len_utf8();
+                    }
+                }
+                Some(q) if c == q => quote = None,
+                _ => value.push(c),
+            }
+        }
+        tokens.push(RedisToken { start, end, value });
+    }
+    tokens
+}
+
+/// The words of a Redis command that are passwords, each with how many of its leading
+/// characters are not (the `>` of `ACL SETUSER u >password`).
+fn redis_secrets(words: &[String]) -> Vec<(usize, usize)> {
+    let upper = |i: usize| words.get(i).map(|w| w.to_ascii_uppercase());
+    let after = |keyword: &str, skip: usize| {
+        (1..words.len())
+            .find(|&i| words[i].eq_ignore_ascii_case(keyword))
+            .map(|i| (i + skip, 0))
+    };
+    match upper(0).as_deref() {
+        // `AUTH password` and `AUTH user password`.
+        Some("AUTH") if words.len() > 1 => vec![(words.len() - 1, 0)],
+        Some("HELLO") => after("AUTH", 2).into_iter().collect(),
+        Some("MIGRATE") => after("AUTH", 1)
+            .into_iter()
+            .chain(after("AUTH2", 2))
+            .collect(),
+        Some("CONFIG") if upper(1).as_deref() == Some("SET") => (2..words.len())
+            .step_by(2)
+            .filter(|&i| {
+                ["requirepass", "masterauth"]
+                    .iter()
+                    .any(|p| words[i].eq_ignore_ascii_case(p))
+            })
+            .map(|i| (i + 1, 0))
+            .collect(),
+        Some("ACL") if upper(1).as_deref() == Some("SETUSER") => (3..words.len())
+            .filter(|&i| words[i].starts_with(['>', '<', '#']))
+            .map(|i| (i, 1))
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// `text` with each of `secrets` replaced by `********`, for the error of a statement that
@@ -928,9 +1071,23 @@ pub fn hide_secrets(text: &str, secrets: &[String]) -> String {
     out
 }
 
+/// Which arguments of a call are secrets, by their position from 0.
+type SecretArguments = fn(usize) -> bool;
+
+/// A call being read whose arguments can be credentials (`s3(url, key, secret)`).
+struct Call {
+    /// The parenthesis depth of its arguments.
+    depth: usize,
+    /// The argument being read.
+    argument: usize,
+    secret: SecretArguments,
+}
+
 /// Walks a script statement by statement. A statement is armed when it is one that sets
-/// credentials; in an armed statement the literal after `PASSWORD`, `IDENTIFIED BY` and
-/// the like is the secret.
+/// credentials; in an armed statement the literal after `PASSWORD`, `IDENTIFIED BY`,
+/// `SECRET` and the like is the secret. In any statement the literal arguments of a call
+/// to a `ClickHouse` table function or engine that takes credentials are, where they are
+/// credentials.
 struct Masker<'a> {
     sql: &'a str,
     out: String,
@@ -942,6 +1099,12 @@ struct Masker<'a> {
     secret_next: bool,
     /// The secrets read so far.
     secrets: Vec<String>,
+    /// How deep in parentheses the masker is.
+    depth: usize,
+    /// The word just read names a call that takes credentials, if `(` follows.
+    callee: Option<SecretArguments>,
+    /// The calls with credentials being read, innermost last.
+    calls: Vec<Call>,
 }
 
 impl<'a> Masker<'a> {
@@ -954,6 +1117,9 @@ impl<'a> Masker<'a> {
             identified: false,
             secret_next: false,
             secrets: Vec::new(),
+            depth: 0,
+            callee: None,
+            calls: Vec::new(),
         }
     }
 
@@ -962,12 +1128,39 @@ impl<'a> Masker<'a> {
         self.armed = false;
         self.identified = false;
         self.secret_next = false;
+        self.depth = 0;
+        self.calls.clear();
+    }
+
+    /// The call whose argument is read at this depth, if it takes credentials.
+    fn call_here(&mut self) -> Option<&mut Call> {
+        let depth = self.depth;
+        self.calls.last_mut().filter(|call| call.depth == depth)
+    }
+
+    fn open(&mut self, callee: Option<SecretArguments>) {
+        self.depth += 1;
+        if let Some(secret) = callee {
+            self.calls.push(Call {
+                depth: self.depth,
+                argument: 0,
+                secret,
+            });
+        }
+    }
+
+    fn close(&mut self) {
+        if self.call_here().is_some() {
+            self.calls.pop();
+        }
+        self.depth = self.depth.saturating_sub(1);
     }
 
     fn run(mut self) -> (String, Vec<String>) {
         let b = self.sql.as_bytes();
         let mut i = 0;
         while i < b.len() {
+            let callee = self.callee.take();
             i = match b[i] {
                 b';' => {
                     self.out.push(';');
@@ -989,8 +1182,26 @@ impl<'a> Masker<'a> {
                         self.armed && self.words.first().is_some_and(|w| w == "SET");
                     self.copy_to(i, i + 1)
                 }
-                b'(' => self.copy_to(i, i + 1),
-                c if c.is_ascii_whitespace() => self.copy_to(i, i + 1),
+                b'(' => {
+                    self.open(callee);
+                    self.copy_to(i, i + 1)
+                }
+                c if c.is_ascii_whitespace() => {
+                    self.callee = callee;
+                    self.copy_to(i, i + 1)
+                }
+                b')' => {
+                    self.secret_next = false;
+                    self.close();
+                    self.copy_to(i, i + 1)
+                }
+                b',' => {
+                    self.secret_next = false;
+                    if let Some(call) = self.call_here() {
+                        call.argument += 1;
+                    }
+                    self.copy_to(i, i + 1)
+                }
                 _ => {
                     self.secret_next = false;
                     // Copy the whole character: slicing inside a UTF-8 sequence panics.
@@ -1066,7 +1277,12 @@ impl<'a> Masker<'a> {
         while !self.sql.is_char_boundary(end) {
             end += 1;
         }
-        if self.secret_next {
+        let depth = self.depth;
+        let in_call = self
+            .calls
+            .last()
+            .is_some_and(|call| call.depth == depth && (call.secret)(call.argument));
+        if self.secret_next || in_call {
             let terminated = end > quote + 1 && b[end - 1] == close && end - 1 > quote;
             let inner = &self.sql[quote + 1..if terminated { end - 1 } else { end }];
             self.secrets.push(inner.to_owned());
@@ -1095,26 +1311,61 @@ impl<'a> Masker<'a> {
         }
         let word = self.sql[from..end].to_ascii_uppercase();
         self.classify(&word);
+        self.callee = credential_call(&word);
         self.copy_to(from, end)
     }
 
     fn classify(&mut self, word: &str) {
-        if self.words.len() < 2 {
+        let mut arming = false;
+        if !self.armed && self.words.len() < 6 {
             self.words.push(word.to_owned());
-            self.armed = self.armed || is_credential_statement(&self.words);
+            arming = is_credential_statement(&self.words);
+            self.armed = arming;
         }
         // `SET PASSWORD FOR …` keeps its secret for the `=`.
         self.secret_next = false;
-        if !self.armed {
+        // The `SECRET` of `CREATE SECRET name` says what is created, not what follows.
+        if !self.armed || arming && word == "SECRET" {
             return;
         }
         match word {
-            "PASSWORD" | "OLD_PASSWORD" => self.secret_next = true,
+            "PASSWORD"
+            | "OLD_PASSWORD"
+            | "SECRET"
+            | "SESSION_TOKEN"
+            | "TOKEN"
+            | "BEARER_TOKEN"
+            | "CLIENT_SECRET"
+            | "CONNECTION_STRING"
+            | "ACCOUNT_KEY"
+            | "HTTP_PROXY_PASSWORD" => {
+                self.secret_next = true;
+            }
             "IDENTIFIED" => self.identified = true,
             "BY" | "AS" | "REPLACE" if self.identified => self.secret_next = true,
             _ => {}
         }
     }
+}
+
+/// The arguments that are credentials in a call to the `ClickHouse` table function or
+/// table engine `word` (upper case), if it takes any. Where a position may hold either a
+/// credential or something else, it is masked: the log loses a format name, never a key.
+fn credential_call(word: &str) -> Option<SecretArguments> {
+    Some(match word {
+        // `s3(url, access_key_id, secret_access_key[, session_token], …)`.
+        "S3" | "GCS" | "OSS" | "COSN" => |a| a == 2 || a == 3,
+        "S3CLUSTER" => |a| a == 3 || a == 4,
+        // `mysql(host, database, table, user, password, …)`, and the like.
+        "MYSQL" | "POSTGRESQL" | "MONGODB" | "REDIS" | "MATERIALIZEDPOSTGRESQL" => |a| a == 4,
+        // `remote(address, database, table, user, password)` or with `database.table`, one
+        // argument less: the user may be masked with the password.
+        "REMOTE" | "REMOTESECURE" => |a| a >= 3,
+        // `azureBlobStorage(connection_string | url, container, blob, account, key, …)`.
+        "AZUREBLOBSTORAGE" => |a| a == 0 || a == 4,
+        "AZUREBLOBSTORAGECLUSTER" => |a| a == 1 || a == 5,
+        _ => return None,
+    })
 }
 
 /// `inner`, the text of a literal closed by `close`, as the server reads it: a doubled quote
@@ -1139,17 +1390,32 @@ fn is_word(c: u8) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, b'_' | b'$' | b'@' | b'#')
 }
 
-/// Whether a statement that starts with `words` sets a credential.
+/// Whether a statement that starts with `words` sets a credential: `GRANT`, `SET PASSWORD`,
+/// and `CREATE`/`ALTER` of a user, role, login, secret (`DuckDB`'s `CREATE OR REPLACE
+/// PERSISTENT SECRET`) or credential (SQL Server's `DATABASE SCOPED CREDENTIAL`).
 fn is_credential_statement(words: &[String]) -> bool {
-    match words {
-        [first] => first == "GRANT",
-        [first, second, ..] => match first.as_str() {
-            "CREATE" | "ALTER" => matches!(second.as_str(), "USER" | "ROLE" | "LOGIN"),
-            "SET" => second == "PASSWORD",
-            "GRANT" => true,
-            _ => false,
-        },
-        [] => false,
+    let Some((first, rest)) = words.split_first() else {
+        return false;
+    };
+    match first.as_str() {
+        "GRANT" => true,
+        "SET" => rest.first().is_some_and(|w| w == "PASSWORD"),
+        "CREATE" | "ALTER" => {
+            let mut rest = rest.iter().map(String::as_str).peekable();
+            while let Some(word) = rest.next() {
+                match word {
+                    "OR" | "REPLACE" | "PERSISTENT" | "TEMPORARY" | "TEMP" => {}
+                    "DATABASE" if rest.peek() == Some(&"SCOPED") => {
+                        rest.next();
+                    }
+                    _ => {
+                        return matches!(word, "USER" | "ROLE" | "LOGIN" | "SECRET" | "CREDENTIAL");
+                    }
+                }
+            }
+            false
+        }
+        _ => false,
     }
 }
 
@@ -1740,6 +2006,130 @@ mod tests {
             ),
         ] {
             assert_eq!(mask_secrets(sql), expected, "{sql}");
+        }
+    }
+
+    #[test]
+    fn masks_redis_passwords() {
+        for (sql, expected) in [
+            ("AUTH hunter2", "AUTH ********"),
+            ("auth default \"hun ter2\"", "auth default ********"),
+            (
+                "HELLO 3 AUTH default hunter2 SETNAME app",
+                "HELLO 3 AUTH default ******** SETNAME app",
+            ),
+            (
+                "CONFIG SET requirepass hunter2",
+                "CONFIG SET requirepass ********",
+            ),
+            (
+                "config set maxmemory 1gb masterauth 'pw' masteruser m",
+                "config set maxmemory 1gb masterauth ******** masteruser m",
+            ),
+            (
+                "ACL SETUSER app on >hunter2 <old #0a1b ~* +@all",
+                "ACL SETUSER app on >******** <******** #******** ~* +@all",
+            ),
+            (
+                "MIGRATE h 6379 k 0 5000 AUTH2 u pw KEYS a",
+                "MIGRATE h 6379 k 0 5000 AUTH2 u ******** KEYS a",
+            ),
+            ("GET k\nAUTH pw\nGET j", "GET k\nAUTH ********\nGET j"),
+        ] {
+            assert_eq!(mask_secrets(sql), expected, "{sql}");
+        }
+        let secrets = secrets_of("ACL SETUSER app >hunter2");
+        assert!(secrets.contains(&"hunter2".to_owned()), "{secrets:?}");
+        assert!(secrets.contains(&">hunter2".to_owned()), "{secrets:?}");
+        // Commands that carry no password, and a password missing, are kept.
+        for sql in [
+            "GET auth",
+            "AUTH",
+            "CONFIG SET maxmemory 1gb",
+            "ACL SETUSER app on",
+        ] {
+            assert_eq!(mask_secrets(sql), sql, "{sql}");
+        }
+    }
+
+    #[test]
+    fn masks_duckdb_secrets_and_sql_server_credentials() {
+        for (sql, expected) in [
+            (
+                "CREATE SECRET (TYPE s3, KEY_ID 'AKIA', SECRET 'x/y', REGION 'eu')",
+                "CREATE SECRET (TYPE s3, KEY_ID 'AKIA', SECRET '********', REGION 'eu')",
+            ),
+            (
+                "CREATE OR REPLACE PERSISTENT SECRET s3s (TYPE s3, SECRET 'a', SESSION_TOKEN 'b')",
+                "CREATE OR REPLACE PERSISTENT SECRET s3s (TYPE s3, SECRET '********', SESSION_TOKEN '********')",
+            ),
+            (
+                "CREATE SECRET hf (TYPE huggingface, TOKEN 'hf_x'); CREATE SECRET \"s\" (TYPE azure, CONNECTION_STRING 'k=v')",
+                "CREATE SECRET hf (TYPE huggingface, TOKEN '********'); CREATE SECRET \"s\" (TYPE azure, CONNECTION_STRING '********')",
+            ),
+            (
+                "CREATE CREDENTIAL c WITH IDENTITY = 'app', SECRET = 'pw'",
+                "CREATE CREDENTIAL c WITH IDENTITY = 'app', SECRET = '********'",
+            ),
+            (
+                "ALTER DATABASE SCOPED CREDENTIAL c WITH IDENTITY = 'app', SECRET = N'pw'",
+                "ALTER DATABASE SCOPED CREDENTIAL c WITH IDENTITY = 'app', SECRET = '********'",
+            ),
+        ] {
+            assert_eq!(mask_secrets(sql), expected, "{sql}");
+        }
+        for sql in [
+            "SELECT secret FROM t WHERE secret = 'x'",
+            "CREATE TABLE secret (token text DEFAULT 'x')",
+            "CREATE DATABASE user WITH OWNER = 'x'",
+        ] {
+            assert_eq!(mask_secrets(sql), sql, "{sql}");
+        }
+    }
+
+    #[test]
+    fn masks_clickhouse_table_function_credentials() {
+        for (sql, expected) in [
+            (
+                "SELECT * FROM s3('https://b/k.csv', 'AKIA', 'sec', 'CSV')",
+                "SELECT * FROM s3('https://b/k.csv', 'AKIA', '********', '********')",
+            ),
+            (
+                "INSERT INTO FUNCTION mysql('h:3306', 'db', 't', 'u', 'pw') SELECT 1",
+                "INSERT INTO FUNCTION mysql('h:3306', 'db', 't', 'u', '********') SELECT 1",
+            ),
+            (
+                "SELECT * FROM postgresql('h:5432', 'db', 't', 'u', 'p''w', 'public')",
+                "SELECT * FROM postgresql('h:5432', 'db', 't', 'u', '********', 'public')",
+            ),
+            (
+                "SELECT * FROM remote('h:9000', db.t, 'u', 'pw')",
+                "SELECT * FROM remote('h:9000', db.t, 'u', '********')",
+            ),
+            (
+                "SELECT * FROM remoteSecure('h', 'db', 't', 'u', 'pw')",
+                "SELECT * FROM remoteSecure('h', 'db', 't', '********', '********')",
+            ),
+            (
+                "CREATE TABLE t (a Int8) ENGINE = MySQL('h:3306', 'db', 't', 'u', 'pw')",
+                "CREATE TABLE t (a Int8) ENGINE = MySQL('h:3306', 'db', 't', 'u', '********')",
+            ),
+            // A nested call's literals are its own: only the password is the function's.
+            (
+                "SELECT * FROM s3(concat('https://', 'b'), 'k', 's')",
+                "SELECT * FROM s3(concat('https://', 'b'), 'k', '********')",
+            ),
+        ] {
+            assert_eq!(mask_secrets(sql), expected, "{sql}");
+        }
+        let secrets = secrets_of("SELECT * FROM mysql('h', 'db', 't', 'u', 'hunter2')");
+        assert!(secrets.contains(&"hunter2".to_owned()), "{secrets:?}");
+        for sql in [
+            "SELECT * FROM t CROSS JOIN u WHERE a = 'x'",
+            "SELECT * FROM mysql.user WHERE user = 'x'",
+            "SELECT s3, 'x' FROM t",
+        ] {
+            assert_eq!(mask_secrets(sql), sql, "{sql}");
         }
     }
 

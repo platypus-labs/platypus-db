@@ -602,6 +602,15 @@
   background: var(--conn, transparent);
 }
 
+/* Where a dragged tab would land: a line on the side it would go. */
+.tab.drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.tab.drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+
 .tab:hover {
   color: var(--fg);
 }

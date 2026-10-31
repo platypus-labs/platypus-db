@@ -279,8 +279,8 @@ pub use sql_browser::SqlBrowser;
 pub use tds::{
     // PlatypusDB: the column metadata of `Client::bulk_columns`.
     codec::{
-        BaseMetaDataColumn, BulkLoadRequest, ColumnData, ColumnFlag, FixedLenType, IntoRow,
-        MetaDataColumn, TokenRow, TypeInfo, TypeLength, VarLenContext, VarLenType,
+        BaseMetaDataColumn, BulkLoadRequest, ClrType, ColumnData, ColumnFlag, FixedLenType,
+        IntoRow, MetaDataColumn, TokenRow, TypeInfo, TypeLength, VarLenContext, VarLenType,
     },
     numeric,
     stream::QueryStream,

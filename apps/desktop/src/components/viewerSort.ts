@@ -36,14 +36,29 @@ export function statementRange(result: { sql: string; offset: number }, text: st
 export function sortOf(sorts: readonly ViewerSort[] | undefined, sql: string): ShownSort | null {
   const key = queryKey(sql);
   const sort = sorts?.find((s) => s.query === key);
-  return sort ? { column: sort.column, desc: sort.desc, original: sort.original ?? null } : null;
+  return sort ? { column: sort.column, desc: sort.desc, original: sort.original ?? null, ...at(sort.position) } : null;
 }
 
-/** The sort after a click on `column`'s header: ascending, then descending, then none (the
- *  statement's original ORDER BY, if it had one). */
-export function nextSort(current: Sort | null, column: string): Sort | null {
-  if (current?.column !== column) return { column, desc: false };
-  return current.desc ? null : { column, desc: true };
+const at = (position: number | undefined) => (position === undefined ? {} : { position });
+
+/** A name the sort can write: one that is no expression's text (`?column?`, `COUNT(*)`), which
+ *  the database would not read as the column, or as another column. */
+const PLAIN_NAME = /^[\p{L}_][\p{L}\p{N}_$]*$/u;
+
+/** The place (from 1) of result column `index` when the sort must name it by it: its name is
+ *  shared with another column (two `id` of a join) or is no plain name. `undefined` when the
+ *  name is enough. */
+export function sortPosition(columns: readonly { name: string }[], index: number): number | undefined {
+  const name = columns[index]?.name ?? "";
+  const shared = columns.some((c, i) => i !== index && c.name.toLowerCase() === name.toLowerCase());
+  return shared || !PLAIN_NAME.test(name) ? index + 1 : undefined;
+}
+
+/** The sort after a click on `column`'s header (at `position` when the name is not enough):
+ *  ascending, then descending, then none (the statement's original ORDER BY, if it had one). */
+export function nextSort(current: Sort | null, column: string, position?: number): Sort | null {
+  if (current?.column !== column || current.position !== position) return { column, desc: false, ...at(position) };
+  return current.desc ? null : { column, desc: true, ...at(position) };
 }
 
 /** A click on `column`'s header, from the shown statement's sort: the sort to write and the
@@ -53,8 +68,9 @@ export async function clickSort(
   current: ShownSort | null,
   column: string,
   ownOrder: () => Promise<string | null>,
+  position?: number,
 ): Promise<{ sort: ShownSort | null; original: string | null }> {
-  const next = nextSort(current, column);
+  const next = nextSort(current, column, position);
   const original = current ? current.original : await ownOrder();
   return { sort: next && { ...next, original }, original };
 }
@@ -64,7 +80,9 @@ export async function clickSort(
 export function withSort(sorts: readonly ViewerSort[] | undefined, sql: string, sort: ShownSort | null): ViewerSort[] {
   const query = queryKey(sql);
   const others = (sorts ?? []).filter((s) => s.query !== query);
-  const all = sort ? [...others, { column: sort.column, desc: sort.desc, query, original: sort.original }] : others;
+  const all = sort
+    ? [...others, { column: sort.column, desc: sort.desc, query, original: sort.original, ...at(sort.position) }]
+    : others;
   return all.slice(-KEPT_SORTS);
 }
 
@@ -74,12 +92,13 @@ export function savedSorts(sorts: unknown, single: unknown): ViewerSort[] {
   const list: unknown[] = Array.isArray(sorts) ? sorts : single ? [single] : [];
   return list.filter((s): s is ViewerSort => {
     if (!s || typeof s !== "object") return false;
-    const { column, desc, query, original } = s as Record<string, unknown>;
+    const { column, desc, query, original, position } = s as Record<string, unknown>;
     return (
       typeof column === "string" &&
       typeof desc === "boolean" &&
       typeof query === "string" &&
-      (original === undefined || original === null || typeof original === "string")
+      (original === undefined || original === null || typeof original === "string") &&
+      (position === undefined || (typeof position === "number" && Number.isInteger(position) && position > 0))
     );
   });
 }

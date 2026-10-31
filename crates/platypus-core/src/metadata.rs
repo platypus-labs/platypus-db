@@ -124,6 +124,9 @@ pub struct IndexMeta {
     pub primary: bool,
     /// Covers only the rows of a condition (`WHERE`): unique among those only.
     pub partial: bool,
+    /// What the definition adds to the key columns, as the database writes it: sort order,
+    /// `INCLUDE` columns, the `WHERE` predicate. `None` when the driver does not tell.
+    pub detail: Option<String>,
     /// Bytes on disk; `None` when the driver does not know.
     pub size: Option<u64>,
 }
@@ -135,6 +138,9 @@ pub struct ForeignKeyMeta {
     pub ref_schema: String,
     pub ref_table: String,
     pub ref_columns: Vec<String>,
+    /// The referential actions and deferral as the database writes them (`ON DELETE SET NULL`,
+    /// `DEFERRABLE`). `None` when the driver does not tell, or they are the defaults.
+    pub detail: Option<String>,
 }
 
 /// A foreign key of another table that points at a table: the rows that reference it.

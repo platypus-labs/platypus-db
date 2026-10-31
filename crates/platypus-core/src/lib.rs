@@ -65,7 +65,7 @@ pub use security::{
 };
 pub use transaction::{
     TransactionState, TxControl, TxEffect, TxTracker, classify, leading_words,
-    open_transaction_error,
+    open_transaction_error, typed_autocommit,
 };
 
 pub use version::{ServerVersion, minimum_version};

@@ -64,7 +64,9 @@ pub(super) fn push(store: &ConnectionStore, seen: &Seen) {
         let Ok(file) = shared::parse(&text) else {
             continue;
         };
-        let built = shared::build(store, project, link.share_user);
+        let mut built = shared::build(store, project, link.share_user);
+        // Agent access is this computer's own: the file keeps what it gives.
+        shared::keep_agent_access(&mut built, &file);
         if built == file {
             continue;
         }
@@ -91,6 +93,9 @@ pub struct SharedNotice {
     retargeted: usize,
     /// Connections whose safety settings the file loosened: this computer's were kept.
     kept_stricter: usize,
+    /// Connections whose new `${env:…}` references were held: they connect as written until
+    /// the user edits them.
+    held_references: usize,
     message: Option<String>,
 }
 
@@ -105,6 +110,7 @@ impl SharedNotice {
             changed: 0,
             retargeted: 0,
             kept_stricter: 0,
+            held_references: 0,
             message: Some(message),
         }
     }
@@ -135,12 +141,18 @@ fn reconcile(store: &mut ConnectionStore, seen: &Seen, project: &Project) -> Opt
     };
     let before = shared::build(store, project, link.share_user);
     let diff = shared::compare(&before, &file);
-    let mut guarded = (0, 0);
+    let mut guarded = (0, 0, 0);
     if !diff.is_empty() {
         let share_user = file.connections.iter().any(|c| c.user.is_some());
         let link = SharedLink { share_user, ..link };
         match shared::apply(store, Some(project.id), &file, link) {
-            Ok(applied) => guarded = (applied.retargeted, applied.kept_stricter),
+            Ok(applied) => {
+                guarded = (
+                    applied.retargeted,
+                    applied.kept_stricter,
+                    applied.held_references,
+                );
+            }
             Err(e) => return Some(SharedNotice::problem(project, "invalid", e.to_string())),
         }
     }
@@ -154,6 +166,7 @@ fn reconcile(store: &mut ConnectionStore, seen: &Seen, project: &Project) -> Opt
         changed: diff.changed,
         retargeted: guarded.0,
         kept_stricter: guarded.1,
+        held_references: guarded.2,
         message: None,
     })
 }
@@ -336,6 +349,20 @@ mod tests {
         shared::write_text(&team, &text).unwrap();
         let seen = Mutex::new(HashMap::from([(pid, text)]));
         (s, seen, pid, team)
+    }
+
+    /// What agents may do here stays here: turning them off writes nothing to the team's file.
+    #[test]
+    fn agent_access_is_not_written_to_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, seen, _pid, team) = linked(dir.path());
+        let before = std::fs::read_to_string(team.join(PROJECT_FILE)).unwrap();
+        let mut c = s.list()[0].clone();
+        c.agent_access = platypus_store::AgentAccess::Off;
+        s.save(c, PasswordUpdate::Keep).unwrap();
+        push(&s, &seen);
+        let after = std::fs::read_to_string(team.join(PROJECT_FILE)).unwrap();
+        assert_eq!(after, before);
     }
 
     #[test]

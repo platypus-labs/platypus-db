@@ -53,6 +53,9 @@ pub struct AcrossTable {
 pub struct OpenedAcross {
     connection: SavedConnection,
     tables: Vec<AcrossTable>,
+    /// The time zones the tables' timestamps name, when more than one: SQL shows their
+    /// instants in the first.
+    zones: Vec<String>,
 }
 
 /// The statement that reads a source: the whole table, or the rows `filter` keeps. A filter
@@ -185,8 +188,12 @@ pub async fn open_across_db(
 ) -> CommandResult<OpenedAcross> {
     let read = read_all(&state, &sources).await?;
     let tables = describe(&read);
-    let connection = fill_new(&state, &name, read).await?;
-    Ok(OpenedAcross { connection, tables })
+    let (connection, zones) = fill_new(&state, &name, read).await?;
+    Ok(OpenedAcross {
+        connection,
+        tables,
+        zones,
+    })
 }
 
 /// Reads the sources again into the database of temporary connection `connection_id`,

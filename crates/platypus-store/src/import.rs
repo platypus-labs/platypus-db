@@ -87,8 +87,8 @@ pub enum ProjectNote {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkippedConnection {
     pub name: String,
-    /// The tool's own ids of the database and its driver, e.g. DBeaver's `oracle` and
-    /// `oracle_thin`.
+    /// The tool's own ids of the database and its driver, e.g. DBeaver's `db2` and
+    /// `db2_luw`.
     pub provider: String,
     pub driver: String,
 }
@@ -222,7 +222,14 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
             source,
         })
     };
-    let read_text = |p: &Path| read(p).map(|b| String::from_utf8_lossy(&b).into_owned());
+    // Windows editors save a byte order mark, which is not part of the text.
+    let read_text = |p: &Path| {
+        read(p).map(|b| {
+            String::from_utf8_lossy(&b)
+                .trim_start_matches('\u{feff}')
+                .to_owned()
+        })
+    };
     let invalid = |message: String| StoreError::Format {
         path: path.to_owned(),
         message,
@@ -322,7 +329,13 @@ fn read_jdbc(url: &str) -> Option<JdbcUrl> {
     JdbcUrl::parse(url).ok().filter(|u| {
         matches!(
             u.config.driver,
-            DriverKind::Postgres | DriverKind::MySql | DriverKind::Sqlite | DriverKind::SqlServer
+            DriverKind::Postgres
+                | DriverKind::MySql
+                | DriverKind::Sqlite
+                | DriverKind::SqlServer
+                | DriverKind::ClickHouse
+                | DriverKind::DuckDb
+                | DriverKind::Oracle
         )
     })
 }
@@ -490,6 +503,16 @@ fn dbeaver_driver(provider: &str, driver: &str) -> Option<DriverKind> {
         "postgresql" => Some(DriverKind::Postgres),
         "mysql" | "mariadb" => Some(DriverKind::MySql),
         "sqlserver" | "mssql" => Some(DriverKind::SqlServer),
+        "clickhouse" => Some(DriverKind::ClickHouse),
+        "duckdb" => Some(DriverKind::DuckDb),
+        "oracle" => Some(DriverKind::Oracle),
+        "libsql" | "turso" => Some(DriverKind::Libsql),
+        "snowflake" => Some(DriverKind::Snowflake),
+        _ if driver.contains("clickhouse") => Some(DriverKind::ClickHouse),
+        _ if driver.contains("duckdb") => Some(DriverKind::DuckDb),
+        _ if driver.contains("oracle") => Some(DriverKind::Oracle),
+        _ if driver.contains("libsql") => Some(DriverKind::Libsql),
+        _ if driver.contains("snowflake") => Some(DriverKind::Snowflake),
         _ if driver.contains("sqlite") => Some(DriverKind::Sqlite),
         _ if sqlserver_driver(&driver) => Some(DriverKind::SqlServer),
         _ => None,
@@ -692,8 +715,9 @@ fn pg_service(ini: &str) -> Vec<SavedConnection> {
             continue;
         }
         if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            // Without `dbname` libpq connects to the database named like the user.
             let mut c = connection(name, DriverKind::Postgres);
-            name.clone_into(&mut c.database);
+            c.database.clear();
             out.push(c);
             continue;
         }
@@ -709,6 +733,16 @@ fn pg_service(ini: &str) -> Vec<SavedConnection> {
             "sslmode" => c.ssl_mode = value.parse().unwrap_or(c.ssl_mode),
             "sslrootcert" => c.ssl_root_cert = Some(PathBuf::from(value)),
             _ => {}
+        }
+    }
+    for c in &mut out {
+        // Without a user either, the service name is the best guess left.
+        if c.database.is_empty() {
+            c.database = if c.user.is_empty() {
+                c.name.clone()
+            } else {
+                c.user.clone()
+            };
         }
     }
     out
@@ -788,14 +822,14 @@ mod tests {
               {"host": "bastion", "port": "2222", "user": "ops", "authType": "PUBLIC_KEY", "keyPath": "C:/k/id"}}}}},
             "sqlite-1": {"provider": "generic", "driver": "sqlite_jdbc", "name": "Local",
               "configuration": {"url": "jdbc:sqlite:C:/data/app.db"}},
-            "oracle-1": {"provider": "oracle", "name": "Skip me", "configuration": {"url": "jdbc:oracle:thin:@x"}}
+            "db2-1": {"provider": "db2", "name": "Skip me", "configuration": {"url": "jdbc:db2://x:50000/y"}}
         }}"#;
         let project = dbeaver(json, &Credentials::Missing).unwrap();
         assert_eq!(
             project.skipped,
             [SkippedConnection {
                 name: "Skip me".to_owned(),
-                provider: "oracle".to_owned(),
+                provider: "db2".to_owned(),
                 driver: String::new(),
             }]
         );
@@ -847,6 +881,35 @@ mod tests {
             ("r.example.com", Some(5440), "rep")
         );
         assert_eq!(services[1].database, "local");
+
+        // Without `dbname` libpq connects to the database named like the user.
+        let services = pg_service("[app]\nhost=h\nuser=carol\n[bare]\nhost=h2\n");
+        assert_eq!(services[0].database, "carol");
+        assert_eq!(services[1].database, "bare");
+    }
+
+    #[test]
+    fn text_files_with_byte_order_mark() {
+        let dir = std::env::temp_dir().join(format!("pdb-bom-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("pg_service.conf");
+        std::fs::write(
+            &file,
+            "\u{feff}[first]\nhost=a\ndbname=d\n[second]\nhost=b\n",
+        )
+        .unwrap();
+        let found = import(ImportSource::PgService, &file).unwrap();
+        assert_eq!(found[0].connections.len(), 2);
+        assert_eq!(found[0].connections[0].name, "first");
+        let file = dir.join("servers.json");
+        std::fs::write(
+            &file,
+            "\u{feff}{\"Servers\": {\"1\": {\"Name\": \"A\", \"Host\": \"a\", \"Port\": 5432, \"Username\": \"v\"}}}",
+        )
+        .unwrap();
+        let found = import(ImportSource::Pgadmin, &file).unwrap();
+        assert_eq!(found[0].connections.len(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -1432,10 +1495,49 @@ mod tests {
     }
 
     #[test]
+    fn dbeaver_clickhouse_duckdb_oracle_libsql_and_snowflake_are_imported() {
+        let json = r#"{"connections": {
+            "a": {"provider": "clickhouse", "driver": "com_clickhouse", "name": "ch",
+              "configuration": {"host": "ch.example.com", "port": "8123", "database": "logs",
+              "url": "jdbc:clickhouse://ch.example.com:8123/logs"}},
+            "b": {"provider": "duckdb", "driver": "duckdb_jdbc", "name": "duck",
+              "configuration": {"url": "jdbc:duckdb:C:/data/a.duckdb"}},
+            "c": {"provider": "oracle", "driver": "oracle_thin", "name": "ora",
+              "configuration": {"url": "jdbc:oracle:thin:@//db:1521/svc"}},
+            "d": {"provider": "generic", "driver": "libsql", "name": "lib",
+              "configuration": {"host": "x.turso.io", "port": "443"}},
+            "e": {"provider": "snowflake", "driver": "snowflake_jdbc", "name": "snow",
+              "configuration": {"host": "acme.snowflakecomputing.com"}}
+        }}"#;
+        let project = dbeaver(json, &Credentials::Missing).unwrap();
+        assert_eq!(project.skipped, []);
+        let drivers: Vec<_> = ["ch", "duck", "ora", "lib", "snow"]
+            .iter()
+            .map(|n| named(&project, n).driver)
+            .collect();
+        assert_eq!(
+            drivers,
+            [
+                DriverKind::ClickHouse,
+                DriverKind::DuckDb,
+                DriverKind::Oracle,
+                DriverKind::Libsql,
+                DriverKind::Snowflake
+            ]
+        );
+        let ch = named(&project, "ch");
+        assert_eq!(
+            (ch.host.as_str(), ch.port, ch.database.as_str()),
+            ("ch.example.com", Some(8123), "logs")
+        );
+        assert_eq!(named(&project, "ora").database, "svc");
+    }
+
+    #[test]
     fn dbp_entry_paths() {
         let dir = tempfile::tempdir().unwrap();
-        let other = br#"{"connections": {"o": {"provider": "oracle", "driver": "oracle_thin",
-            "name": "Ora", "configuration": {"url": "jdbc:oracle:thin:@o:1521/x"}}}}"#;
+        let other = br#"{"connections": {"o": {"provider": "db2", "driver": "db2_luw",
+            "name": "Db2", "configuration": {"url": "jdbc:db2://o:50000/x"}}}}"#;
         let file = zip_of(
             dir.path(),
             &[
@@ -1443,16 +1545,16 @@ mod tests {
                 ("projects\\Win\\.dbeaver\\data-sources.json", URL_ONLY),
                 ("workspace6/General/.dbeaver/data-sources-2.json", URL_ONLY),
                 // Only a connection that is left out: the project stays, to say why.
-                ("projects/Only Oracle/.dbeaver/data-sources.json", other),
+                ("projects/Only Db2/.dbeaver/data-sources.json", other),
             ],
         );
         let projects = import(ImportSource::Dbeaver, &file).unwrap();
         let names: Vec<_> = projects.iter().map(|p| p.name.as_deref()).collect();
-        assert_eq!(names, [Some("General"), Some("Only Oracle"), Some("Win")]);
+        assert_eq!(names, [Some("General"), Some("Only Db2"), Some("Win")]);
         assert_eq!(projects[0].connections.len(), 1);
         assert_eq!(projects[2].connections.len(), 1);
         assert_eq!(projects[1].connections.len(), 0);
-        assert_eq!(projects[1].skipped[0].driver, "oracle_thin");
+        assert_eq!(projects[1].skipped[0].driver, "db2_luw");
     }
 
     #[test]
@@ -1506,6 +1608,6 @@ mod tests {
                 ImportNote::WindowsAuth
             ]
         );
-        assert_eq!(project.skipped[0].name, "Legacy Oracle");
+        assert_eq!(project.skipped[0].name, "Legacy DB2");
     }
 }

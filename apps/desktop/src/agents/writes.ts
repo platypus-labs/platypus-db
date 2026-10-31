@@ -62,6 +62,77 @@ export function estimatedRows(rows: number | null): number | null {
   return rows > 0 && rows < 1 ? 1 : Math.round(rows);
 }
 
+/** A piece of a statement as the dialog shows it: its text, a run of blank lines or of
+ *  spaces collapsed into a visible marker, or an invisible format character (a bidi control,
+ *  a zero-width one) by its code point, `U+202E`. */
+export type StatementPart = { text: string } | { gap: "lines" | "spaces"; count: number } | { invisible: string };
+
+/** Blank lines in a row, and spaces in a row inside a line, from which they are collapsed. */
+export const GAP_LINES = 2;
+export const GAP_SPACES = 16;
+
+/** Line breaks, whatever the platform or the Unicode separator. */
+const BREAKS = new RegExp("\\r\\n|[\\n\\r\\u000b\\u000c\\u0085\\u2028\\u2029]");
+/** Space that shows nothing: blanks, tabs and Unicode's invisible ones. */
+const BLANK = "[ \\t\\u00a0\\u1680\\u180e\\u2000-\\u200d\\u202f\\u205f\\u2060\\u3000\\ufeff]";
+const BLANK_LINE = new RegExp(`^${BLANK}*$`);
+const SPACE_RUN = new RegExp(`${BLANK}{${GAP_SPACES},}`, "g");
+/** Format characters: bidi embeddings, overrides, isolates and marks reorder what the
+ *  dialog shows, so the SQL read could differ from the SQL run; zero-width ones hide. */
+const FORMAT = /\p{Cf}/gu;
+
+/** `char` as `U+XXXX`. */
+function codePoint(char: string): string {
+  return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
+}
+
+/** `statement` as the dialog shows it: padding cannot push its end out of sight, so runs of
+ *  blank lines and of spaces become markers that say how many there are, and no format
+ *  character can reorder or hide its text: each becomes a marker with its code point.
+ *  Everything else is kept as it is. */
+export function statementParts(statement: string): StatementPart[] {
+  const parts: StatementPart[] = [];
+  const plain = (s: string) => {
+    if (!s) return;
+    const last = parts[parts.length - 1];
+    if (last && "text" in last) last.text += s;
+    else parts.push({ text: s });
+  };
+  const text = (s: string) => {
+    let at = 0;
+    for (const format of s.matchAll(FORMAT)) {
+      const start = format.index ?? 0;
+      plain(s.slice(at, start));
+      parts.push({ invisible: codePoint(format[0]) });
+      at = start + format[0].length;
+    }
+    plain(s.slice(at));
+  };
+  const lines = statement.split(BREAKS);
+  for (let i = 0; i < lines.length; ) {
+    let blank = 0;
+    while (i + blank < lines.length && BLANK_LINE.test(lines[i + blank] ?? "")) blank++;
+    if (blank >= GAP_LINES) {
+      parts.push({ gap: "lines", count: blank });
+      i += blank;
+      if (i < lines.length) text("\n");
+      continue;
+    }
+    const line = lines[i] ?? "";
+    let at = 0;
+    for (const run of line.matchAll(SPACE_RUN)) {
+      const start = run.index ?? 0;
+      text(line.slice(at, start));
+      parts.push({ gap: "spaces", count: run[0].length });
+      at = start + run[0].length;
+    }
+    text(line.slice(at));
+    i++;
+    if (i < lines.length) text("\n");
+  }
+  return parts;
+}
+
 /** The verdict of a refusal, with its reason when one was typed. */
 export function denial(reason: string): Denial {
   const trimmed = reason.trim();

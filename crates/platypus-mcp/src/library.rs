@@ -215,10 +215,9 @@ impl Agent {
     }
 
     fn visible(&self) -> Result<Visible> {
-        let store = self.profile().connections()?;
+        let (_, connections) = self.connections()?;
         Ok(Visible(
-            store
-                .list()
+            connections
                 .iter()
                 .filter(|c| may_use(c))
                 .map(|c| (c.id, c.name.clone()))

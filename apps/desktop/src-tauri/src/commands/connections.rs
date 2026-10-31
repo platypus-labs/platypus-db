@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use platypus_core::{
-    Capabilities, Connection, ConnectionConfig, DriverKind, ParseNote, ParsedConnection, Secret,
-    ServerInfo, SslMode,
+    Capabilities, Connection, ConnectionConfig, DriverKind, Error, ParseNote, ParsedConnection,
+    Secret, ServerInfo, SslMode,
 };
 use platypus_sql::Dialect;
 use platypus_store::{
@@ -65,6 +65,8 @@ pub struct ParsedForm {
 /// [`ConnectionConfig::parse_any_for`]). Nothing is logged: the input may hold a password.
 #[tauri::command]
 pub fn parse_connection_url(input: &str, driver: Option<DriverKind>) -> CommandResult<ParsedForm> {
+    // A URL copied from a sentence or a `.env` line carries its `;` or `,`.
+    let input = platypus_store::trim_url_tail(input);
     let ParsedConnection { config, notes } = ConnectionConfig::parse_any_for(input, driver)?;
     Ok(ParsedForm {
         driver: config.driver,
@@ -159,7 +161,8 @@ fn config_of(
     password: Option<Secret>,
     ssh: &SshSecrets,
 ) -> ConnectionConfig {
-    let saved = store.effective(saved);
+    let mut saved = store.effective(saved);
+    platypus_store::tidy_address(&mut saved);
     let mut config = saved.config(password);
     config.ssh = saved.ssh.as_ref().map(|s| ssh_config(store, s, ssh));
     let script = &saved.init.statements;
@@ -237,11 +240,21 @@ fn update_ssh_secrets(
 #[tauri::command]
 pub fn save_connection(
     state: State<'_, AppState>,
-    connection: SavedConnection,
+    mut connection: SavedConnection,
     password: PasswordInput,
     ssh_secrets: Option<SshSecrets>,
     projects: Option<Vec<Uuid>>,
 ) -> CommandResult<Vec<SavedConnection>> {
+    platypus_store::tidy_address(&mut connection);
+    state.with_store(|s| {
+        if platypus_store::name_taken(s.list(), &connection) {
+            return Err(platypus_store::StoreError::Invalid(format!(
+                "a connection named \"{}\" exists already",
+                connection.name.trim()
+            )));
+        }
+        Ok(())
+    })?;
     let id = connection.id;
     let update = match password {
         PasswordInput::Keep => PasswordUpdate::Keep,
@@ -264,7 +277,9 @@ pub fn save_connection(
             )
         })?;
     }
-    state.with_store(|s| {
+    let access = connection.agent_access;
+    let before = state.with_store(|s| Ok(s.get(id).map(|c| c.agent_access)))?;
+    let saved = state.with_store(|s| {
         let old = s.get(connection.id).and_then(|c| c.ssh.clone());
         let new = connection.ssh.clone();
         s.save(connection, update)?;
@@ -279,7 +294,10 @@ pub fn save_connection(
             s.set_projects_of(id, &projects)?;
         }
         Ok(s.list().to_vec())
-    })
+    })?;
+    // The agent access chosen here is the user's: agents get it (see `agent_policy`).
+    state.approve_agent_access(id, before, access);
+    Ok(saved)
 }
 
 /// Connection files of other tools found where they keep them.
@@ -383,48 +401,155 @@ pub async fn test_connection(
     Ok(conn.server_info().clone())
 }
 
+/// The option names that point a driver at its server (a URL, a DSN, an account…).
+const ADDRESS_OPTIONS: [&str; 12] = [
+    "host",
+    "url",
+    "uri",
+    "dsn",
+    "connection",
+    "account",
+    "endpoint",
+    "server",
+    "proxy",
+    "port",
+    "domain",
+    "region",
+];
+
+/// Whether the form `form` still reaches the server of the saved connection `saved`: the
+/// same driver, host, port, database, tunnel (SSH chain, network profile) and options that
+/// name the server. Only then may the password kept for `saved` go with it; a form pointed
+/// elsewhere is tested with a typed password only.
+fn same_target(form: &SavedConnection, saved: &SavedConnection) -> bool {
+    let address = |c: &SavedConnection| -> Vec<(String, String)> {
+        c.options
+            .iter()
+            .filter(|(k, _)| {
+                let k = k.to_ascii_lowercase();
+                // `connect_timeout` and the like change how, not where.
+                !k.contains("timeout") && ADDRESS_OPTIONS.iter().any(|a| k.contains(a))
+            })
+            .map(|(k, v)| (k.clone(), v.trim().to_owned()))
+            .collect()
+    };
+    form.driver == saved.driver
+        && form.host.trim() == saved.host.trim()
+        && form.port == saved.port
+        && form.database.trim() == saved.database.trim()
+        && form.ssh == saved.ssh
+        && form.network_profile == saved.network_profile
+        && address(form) == address(saved)
+}
+
+/// The form's SSH secrets `typed`, where each server of the form's chain that would use its
+/// kept password or passphrase does so only when the saved connection `saved` has it with the
+/// same host, port, user and sign-in: like the database password ([`same_target`]), a kept
+/// SSH secret never goes to a server the form changed to (nor to one a new connection's form
+/// names by another connection's `secret_id`).
+fn kept_ssh_secrets(
+    form: &SavedConnection,
+    saved: Option<&SavedConnection>,
+    mut typed: SshSecrets,
+) -> SshSecrets {
+    let saved: Vec<&SavedSsh> = saved
+        .and_then(|s| s.ssh.as_ref())
+        .into_iter()
+        .flat_map(SavedSsh::chain)
+        .collect();
+    for hop in form.ssh.iter().flat_map(SavedSsh::chain) {
+        let keeps = matches!(typed.get(&hop.secret_id), None | Some(PasswordInput::Keep));
+        let same = saved.iter().any(|s| {
+            s.secret_id == hop.secret_id
+                && s.host.trim() == hop.host.trim()
+                && s.port == hop.port
+                && s.user.trim() == hop.user.trim()
+                && s.auth == hop.auth
+                && s.key_path == hop.key_path
+        });
+        if keeps && !same {
+            typed.insert(hop.secret_id, PasswordInput::Clear);
+        }
+    }
+    typed
+}
+
 /// Opens the connection `connection` describes, with the password the form typed, else the
-/// one it keeps; shared by the connection test and the driver compatibility probe.
+/// one it keeps when the form still reaches the saved server ([`same_target`]), and the SSH
+/// secrets alike ([`kept_ssh_secrets`]); shared by the connection test and the driver
+/// compatibility probe.
 pub(crate) async fn open_for_test(
     state: &AppState,
     connection: &SavedConnection,
     password: PasswordInput,
     ssh: SshSecrets,
 ) -> CommandResult<Box<dyn Connection>> {
+    // A connection that was never saved has nothing stored yet.
+    let saved = state.with_store(|s| Ok(s.get(connection.id).cloned()))?;
     let secret = match password {
         PasswordInput::Set(p) => Some(Secret::new(p)),
         PasswordInput::Clear => None,
         PasswordInput::Keep => match external_password(connection).await? {
             Some(secret) => Some(secret),
-            // A connection that was never saved has nothing stored yet.
-            None => state.with_store(|s| match s.get(connection.id) {
-                Some(_) => s.password(connection.id),
-                None => Ok(None),
-            })?,
+            None => match &saved {
+                Some(saved) if same_target(connection, saved) => {
+                    state.with_store(|s| s.password(connection.id))?
+                }
+                _ => None,
+            },
         },
     };
+    let ssh = kept_ssh_secrets(connection, saved.as_ref(), ssh);
     let config = state
         .with_store(|s| Ok(config_of(s, connection, secret, &ssh)))?
         .with_env()?;
-    if !config.driver.is_embedded() {
-        config.check_host()?;
-    }
+    check_address(&config)?;
     Ok(connect(&config).await?)
 }
 
+/// What a connection needs to be tried at all, said at once rather than by the TLS or the
+/// network layer: a host, and the host and user of each SSH server.
+fn check_address(config: &ConnectionConfig) -> CommandResult<()> {
+    if config.driver.is_embedded() {
+        return Ok(());
+    }
+    if config.driver.needs_host() && config.host.trim().is_empty() {
+        return Err(Error::Config("the host is missing".to_owned()).into());
+    }
+    config.check_host()?;
+    let mut ssh = config.ssh.as_ref();
+    while let Some(server) = ssh {
+        if server.host.trim().is_empty() {
+            return Err(Error::Config("the SSH host is missing".to_owned()).into());
+        }
+        if server.user.trim().is_empty() {
+            return Err(Error::Config("the SSH user is missing".to_owned()).into());
+        }
+        ssh = server.jump.as_deref();
+    }
+    Ok(())
+}
+
 /// Whether a failed login is about the credentials, so that asking for the password again
-/// may help. The drivers word it their own way.
+/// may help. The drivers word it their own way: libSQL answers "Unauthorized", a plugin
+/// may pass on its server's HTTP 401.
 fn login_refused(e: &CommandError) -> bool {
     let text = e.message().to_ascii_lowercase();
-    [
-        "password",
-        "authenticat",
-        "access denied",
-        "login failed",
-        "credentials",
-    ]
-    .iter()
-    .any(|word| text.contains(word))
+    let status_401 = text.match_indices("401").any(|(at, _)| {
+        let digit = |c: Option<char>| c.is_some_and(|c| c.is_ascii_digit());
+        !digit(text[..at].chars().next_back()) && !digit(text[at + 3..].chars().next())
+    });
+    status_401
+        || [
+            "password",
+            "authenticat",
+            "access denied",
+            "login failed",
+            "credentials",
+            "unauthorized",
+        ]
+        .iter()
+        .any(|word| text.contains(word))
 }
 
 #[derive(Debug, Serialize)]
@@ -580,9 +705,7 @@ pub(crate) async fn saved_config(
     let mut config = state
         .with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?
         .with_env()?;
-    if !config.driver.is_embedded() {
-        config.check_host()?;
-    }
+    check_address(&config)?;
     let label = match &database {
         Some(database) => format!("{} · {database}", saved.name),
         None => saved.name.clone(),
@@ -683,6 +806,242 @@ mod tests {
     use crate::commands::analysis::error_kind;
 
     use super::*;
+
+    /// The kept password goes only to the server it was kept for: a form pointed at another
+    /// host, port, database, driver, tunnel or URL option is tested without it.
+    #[test]
+    fn the_kept_password_goes_only_to_its_own_server() {
+        let mut saved = SavedConnection::new("Shop", DriverKind::Postgres);
+        saved.host = "db.internal".to_owned();
+        saved.port = Some(5432);
+        saved.database = "shop".to_owned();
+        saved
+            .options
+            .insert("connect_timeout".to_owned(), "10".to_owned());
+        let mut form = saved.clone();
+        form.name = "Shop renamed".to_owned();
+        form.user = "other".to_owned();
+        form.read_only = true;
+        form.options
+            .insert("connect_timeout".to_owned(), "30".to_owned());
+        assert!(
+            same_target(&form, &saved),
+            "only the name and settings changed"
+        );
+        form.host = " db.internal ".to_owned();
+        assert!(same_target(&form, &saved));
+
+        let changes: [fn(&mut SavedConnection); 7] = [
+            |c| c.host = "attacker.example".to_owned(),
+            |c| c.port = Some(6543),
+            |c| c.database = "other".to_owned(),
+            |c| c.driver = DriverKind::MySql,
+            |c| c.network_profile = Some(Uuid::new_v4()),
+            |c| {
+                c.ssh = Some(SavedSsh {
+                    host: "jump.example".to_owned(),
+                    port: 22,
+                    user: "me".to_owned(),
+                    auth: platypus_store::SshAuthKind::Agent,
+                    key_path: None,
+                    secret_id: Uuid::nil(),
+                    jump: None,
+                });
+            },
+            |c| {
+                c.options
+                    .insert("url".to_owned(), "postgres://attacker.example/x".to_owned());
+            },
+        ];
+        for (i, change) in changes.iter().enumerate() {
+            let mut form = saved.clone();
+            change(&mut form);
+            assert!(!same_target(&form, &saved), "change {i}");
+        }
+    }
+
+    /// A kept SSH password or passphrase goes only to the SSH server it was kept for.
+    #[test]
+    fn kept_ssh_secrets_go_only_to_their_own_server() {
+        let jump = SavedSsh {
+            host: "jump.internal".to_owned(),
+            port: 22,
+            user: "me".to_owned(),
+            auth: platypus_store::SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        };
+        let bastion = SavedSsh {
+            host: "bastion.internal".to_owned(),
+            secret_id: Uuid::new_v4(),
+            jump: Some(Box::new(jump.clone())),
+            ..jump.clone()
+        };
+        let mut saved = SavedConnection::new("Shop", DriverKind::Postgres);
+        saved.ssh = Some(bastion.clone());
+        let cleared = |form: &SavedConnection, typed: SshSecrets| -> Vec<Uuid> {
+            let mut ids: Vec<Uuid> = kept_ssh_secrets(form, Some(&saved), typed)
+                .into_iter()
+                .filter(|(_, input)| matches!(input, PasswordInput::Clear))
+                .map(|(id, _)| id)
+                .collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(cleared(&saved, SshSecrets::new()), Vec::<Uuid>::new());
+
+        // The bastion moved to another host: its kept password stays home, the jump's goes.
+        let mut form = saved.clone();
+        form.ssh.as_mut().unwrap().host = "attacker.example".to_owned();
+        assert_eq!(cleared(&form, SshSecrets::new()), [bastion.secret_id]);
+        // A password typed for it is the user's own choice.
+        let typed = SshSecrets::from([(bastion.secret_id, PasswordInput::Set("x".to_owned()))]);
+        assert_eq!(cleared(&form, typed), Vec::<Uuid>::new());
+
+        let changes: [fn(&mut SavedSsh); 4] = [
+            |s| s.port = 2222,
+            |s| s.user = "root".to_owned(),
+            |s| s.auth = platypus_store::SshAuthKind::Key,
+            |s| s.key_path = Some("/tmp/other".into()),
+        ];
+        for (i, change) in changes.iter().enumerate() {
+            let mut form = saved.clone();
+            change(form.ssh.as_mut().unwrap().jump.as_mut().unwrap());
+            assert_eq!(
+                cleared(&form, SshSecrets::new()),
+                [jump.secret_id],
+                "change {i}"
+            );
+        }
+
+        // A form that was never saved keeps no SSH secret, whatever ids it names.
+        let mut ids = vec![bastion.secret_id, jump.secret_id];
+        ids.sort();
+        let fresh = kept_ssh_secrets(&saved, None, SshSecrets::new());
+        let mut cleared_fresh: Vec<Uuid> = fresh.into_keys().collect();
+        cleared_fresh.sort();
+        assert_eq!(cleared_fresh, ids);
+    }
+
+    #[test]
+    fn a_connection_without_a_host_or_an_ssh_host_is_refused_at_once() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.host.clear();
+        assert!(
+            check_address(&config)
+                .unwrap_err()
+                .message()
+                .contains("host is missing")
+        );
+        config.host = "db.internal".to_owned();
+        assert!(check_address(&config).is_ok());
+        let ssh = |host: &str, user: &str| platypus_core::SshConfig {
+            host: host.to_owned(),
+            port: 22,
+            user: user.to_owned(),
+            auth: platypus_core::SshAuth::Agent,
+            jump: None,
+        };
+        config.ssh = Some(ssh("", "ops"));
+        assert!(
+            check_address(&config)
+                .unwrap_err()
+                .message()
+                .contains("SSH host")
+        );
+        config.ssh = Some(ssh("bastion", ""));
+        assert!(
+            check_address(&config)
+                .unwrap_err()
+                .message()
+                .contains("SSH user")
+        );
+        config.ssh = Some(ssh("bastion", "ops"));
+        assert!(check_address(&config).is_ok());
+        // A server reached by a URL or an account has no host field.
+        assert!(check_address(&ConnectionConfig::new(DriverKind::Snowflake)).is_ok());
+        // An ODBC data source or connection string holds the server, an Oracle net service
+        // name or connect descriptor too, and a plugin may know its endpoint.
+        for driver in [DriverKind::Odbc, DriverKind::Oracle, DriverKind::Plugin] {
+            let mut config = ConnectionConfig::new(driver);
+            config.host.clear();
+            assert!(check_address(&config).is_ok(), "{driver:?}");
+        }
+        // ClickHouse is not assumed on this machine.
+        let mut config = ConnectionConfig::new(DriverKind::ClickHouse);
+        config.host = " ".to_owned();
+        assert!(check_address(&config).is_err());
+    }
+
+    #[test]
+    fn a_refused_login_is_told_by_the_words_of_each_driver() {
+        let refused = |message: &str| {
+            let e: CommandError = Error::Config(message.to_owned()).into();
+            login_refused(&e)
+        };
+        for message in [
+            "password authentication failed for user \"app\"",
+            "Access denied for user 'app'@'%'",
+            "Login failed for user 'sa'.",
+            "server returned 401 Unauthorized",
+            "HTTP status 401",
+            "Unauthorized",
+            "invalid credentials",
+        ] {
+            assert!(refused(message), "{message}");
+        }
+        for message in [
+            "connection refused",
+            "could not connect to 10.0.0.1:4010",
+            "error at line 1401",
+            "HTTP status 503",
+        ] {
+            assert!(!refused(message), "{message}");
+        }
+    }
+
+    /// The connection form refuses an empty host for the drivers the backend does.
+    #[test]
+    fn the_form_and_the_backend_agree_on_the_drivers_without_a_host() {
+        let source = include_str!("../../../src/connectionUrl.ts");
+        let list = source
+            .split_once("HOST_OPTIONAL: readonly DriverKind[] = [")
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .map(|(list, _)| list)
+            .expect("HOST_OPTIONAL in connectionUrl.ts");
+        let form: Vec<DriverKind> = list
+            .split(',')
+            .map(|name| serde_json::from_str(name.trim()).unwrap())
+            .collect();
+        let all = [
+            DriverKind::Postgres,
+            DriverKind::MySql,
+            DriverKind::SqlServer,
+            DriverKind::ClickHouse,
+            DriverKind::Libsql,
+            DriverKind::Mongo,
+            DriverKind::Redis,
+            DriverKind::Elasticsearch,
+            DriverKind::Cassandra,
+            DriverKind::Snowflake,
+            DriverKind::BigQuery,
+            DriverKind::Databricks,
+            DriverKind::Trino,
+            DriverKind::Adbc,
+            DriverKind::Oracle,
+            DriverKind::Db2,
+            DriverKind::Odbc,
+            DriverKind::Plugin,
+        ];
+        for driver in all {
+            assert_eq!(
+                form.contains(&driver),
+                !driver.needs_host(),
+                "{driver:?} in HOST_OPTIONAL"
+            );
+        }
+    }
 
     fn none<T>() -> Result<T, String> {
         Err("not opened in tests".to_owned())

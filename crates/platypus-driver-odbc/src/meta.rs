@@ -199,6 +199,7 @@ pub fn table_details(
             primary: true,
             partial: false,
             size: None,
+            detail: None,
         })
         .into_iter()
         .collect();
@@ -210,6 +211,7 @@ pub fn table_details(
             ref_schema: key[0].pk_schema.clone(),
             ref_table: key[0].pk_table.clone(),
             ref_columns: key.iter().map(|r| r.pk_column.clone()).collect(),
+            detail: None,
         })
         .collect();
     TableDetails {

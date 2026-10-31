@@ -183,7 +183,7 @@ export function OutputOptions(props: {
   );
 }
 
-/** The CSV delimiter and header row of `options`. */
+/** The CSV delimiter, header row and formula guard of `options`. */
 export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; onChange: (o: ExportOptions) => void }) {
   const { options, disabled, onChange } = props;
   return (
@@ -201,6 +201,19 @@ export function CsvOptions(props: { options: ExportOptions; disabled?: boolean; 
       <label className="check">
         <input type="checkbox" checked={options.header} disabled={disabled} onChange={(e) => onChange({ ...options, header: e.target.checked })} />
         {t("Header row")}
+      </label>
+      <label
+        className="check"
+        title={t("A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.")}
+      >
+        <input
+          type="checkbox"
+          data-field="formulas_as_text"
+          checked={options.formulas_as_text !== false}
+          disabled={disabled}
+          onChange={(e) => onChange({ ...options, formulas_as_text: e.target.checked })}
+        />
+        {t("Formulas as text, for spreadsheets")}
       </label>
     </div>
   );

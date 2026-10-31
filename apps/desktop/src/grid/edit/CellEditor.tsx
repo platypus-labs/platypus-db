@@ -28,8 +28,8 @@ interface Props {
   fields: FieldMeta[];
   nullable: boolean;
   json: boolean;
-  /** Number columns: an empty value means NULL. */
-  numeric: boolean;
+  /** Columns without an empty text (numbers, dates, booleans, JSON): an empty value means NULL. */
+  emptyIsNull: boolean;
   /** Foreign keys: `[key, label]` rows of the table they point to, offered while typing. */
   options?: [string, string | null][];
   /** Binary and text columns: closes the editor and loads the cell from a file instead;
@@ -57,7 +57,7 @@ export function CellEditor({
   fields,
   nullable,
   json,
-  numeric,
+  emptyIsNull,
   options,
   onLoadFile,
   onCommit,
@@ -94,7 +94,7 @@ export function CellEditor({
     }
     const empty = value.trim() === "";
     onCommit(
-      value === NULL_OPTION || ((numeric || kind === "lookup") && empty) ? { kind: "null" } : { kind: "value", text: value },
+      value === NULL_OPTION || ((emptyIsNull || kind === "lookup") && empty) ? { kind: "null" } : { kind: "value", text: value },
       move,
     );
   }

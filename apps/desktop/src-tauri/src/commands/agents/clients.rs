@@ -206,8 +206,18 @@ fn snippet(format: ConfigFormat, entry: &ServerEntry) -> String {
     }
 }
 
+/// The byte-order mark `text` starts with (Notepad and Windows PowerShell 5.1 write one),
+/// or none, and the text after it: neither `serde_json` nor TOML reads the mark.
+fn split_bom(text: &str) -> (&'static str, &str) {
+    match text.strip_prefix('\u{feff}') {
+        Some(body) => ("\u{feff}", body),
+        None => ("", text),
+    }
+}
+
 /// The `platypus` server of a file's `text`, as JSON; `Err` when the text does not parse.
 fn installed_server(format: ConfigFormat, text: &str) -> Result<Option<Value>, String> {
+    let (_, text) = split_bom(text);
     match format {
         ConfigFormat::Json => {
             let doc = parse_json(text)?;
@@ -272,22 +282,23 @@ pub fn list(home: &Path, config: &Path, entry: &ServerEntry) -> Vec<AgentClient>
         .collect()
 }
 
-/// `text` with the `platypus` server set to `entry`, everything else as it was.
+/// `text` with the `platypus` server set to `entry`, everything else as it was, its
+/// byte-order mark too: the file stays as the tool that wrote it reads it.
 pub fn with_entry(format: ConfigFormat, text: &str, entry: &ServerEntry) -> Result<String, String> {
+    let (bom, text) = split_bom(text);
+    let mut out = String::from(bom);
     match format {
         ConfigFormat::Json => {
-            let mut doc = parse_json(text)?;
-            let servers = doc
-                .as_object_mut()
-                .map(|o| o.entry("mcpServers").or_insert_with(|| json!({})));
-            match servers.and_then(Value::as_object_mut) {
-                Some(servers) => {
-                    servers.insert(SERVER_NAME.to_owned(), entry.json());
-                }
-                None => return Err("its `mcpServers` is not an object".to_owned()),
+            let doc = parse_json(text)?;
+            if doc.get("mcpServers").is_some_and(|s| !s.is_object()) {
+                return Err("its `mcpServers` is not an object".to_owned());
             }
-            let mut out = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
-            out.push('\n');
+            if text.trim().is_empty() {
+                out.push_str(&snippet(format, entry));
+                out.push('\n');
+                return Ok(out);
+            }
+            out.push_str(&json_with_entry(text, entry)?);
             Ok(out)
         }
         ConfigFormat::Toml => {
@@ -302,9 +313,211 @@ pub fn with_entry(format: ConfigFormat, text: &str, entry: &ServerEntry) -> Resu
                 .as_table_mut()
                 .ok_or_else(|| "its `mcp_servers` is not a table".to_owned())?;
             servers.insert(SERVER_NAME, toml_edit::Item::Table(entry.toml()));
-            Ok(doc.to_string())
+            out.push_str(&doc.to_string());
+            Ok(out)
         }
     }
+}
+
+/// A JSON object in a text: where its braces are, and its members.
+struct JsonObject {
+    open: usize,
+    close: usize,
+    members: Vec<JsonMember>,
+}
+
+struct JsonMember {
+    key: String,
+    /// Where the member's value is in the text.
+    value: std::ops::Range<usize>,
+}
+
+fn skip_space(b: &[u8], at: &mut usize) {
+    while b.get(*at).is_some_and(u8::is_ascii_whitespace) {
+        *at += 1;
+    }
+}
+
+/// Moves `at` past the string it is on.
+fn skip_string(b: &[u8], at: &mut usize) -> Result<(), String> {
+    *at += 1;
+    while let Some(&c) = b.get(*at) {
+        *at += if c == b'\\' { 2 } else { 1 };
+        if c == b'"' {
+            return Ok(());
+        }
+    }
+    Err("a string does not end".to_owned())
+}
+
+/// Moves `at` past the value it is on.
+fn skip_value(b: &[u8], at: &mut usize) -> Result<(), String> {
+    match b.get(*at) {
+        Some(b'"') => skip_string(b, at),
+        Some(b'{' | b'[') => {
+            let mut depth = 0usize;
+            while let Some(&c) = b.get(*at) {
+                match c {
+                    b'"' => {
+                        skip_string(b, at)?;
+                        continue;
+                    }
+                    b'{' | b'[' => depth += 1,
+                    b'}' | b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            *at += 1;
+                            return Ok(());
+                        }
+                    }
+                    _ => {}
+                }
+                *at += 1;
+            }
+            Err("an object or array does not end".to_owned())
+        }
+        Some(_) => {
+            while b
+                .get(*at)
+                .is_some_and(|c| !c.is_ascii_whitespace() && !matches!(c, b',' | b'}' | b']'))
+            {
+                *at += 1;
+            }
+            Ok(())
+        }
+        None => Err("a value is missing".to_owned()),
+    }
+}
+
+/// The object whose `{` is at `open` in `text`, which `serde_json` read already.
+fn object_at(text: &str, open: usize) -> Result<JsonObject, String> {
+    let b = text.as_bytes();
+    if b.get(open) != Some(&b'{') {
+        return Err("not an object".to_owned());
+    }
+    let mut at = open + 1;
+    let mut members = Vec::new();
+    loop {
+        skip_space(b, &mut at);
+        match b.get(at) {
+            Some(b'}') => {
+                return Ok(JsonObject {
+                    open,
+                    close: at,
+                    members,
+                });
+            }
+            Some(b',') => at += 1,
+            Some(b'"') => {
+                let start = at;
+                skip_string(b, &mut at)?;
+                let key = serde_json::from_str(&text[start..at]).map_err(|e| e.to_string())?;
+                skip_space(b, &mut at);
+                if b.get(at) != Some(&b':') {
+                    return Err("a key has no value".to_owned());
+                }
+                at += 1;
+                skip_space(b, &mut at);
+                let from = at;
+                skip_value(b, &mut at)?;
+                members.push(JsonMember {
+                    key,
+                    value: from..at,
+                });
+            }
+            _ => return Err("not a JSON object".to_owned()),
+        }
+    }
+}
+
+/// The spaces or tabs that start the line `at` is on.
+fn line_indent(text: &str, at: usize) -> &str {
+    let line = &text[text[..at].rfind('\n').map_or(0, |i| i + 1)..];
+    &line[..line.len() - line.trim_start_matches([' ', '\t']).len()]
+}
+
+/// `object` of `text` with member `key` set to `value`: in place when it has one (the last
+/// one, as a JSON reader takes it), else after its last member. The rest of the text is kept
+/// as it was, byte for byte: numbers a reader does not keep exactly (`1E5`, an integer longer
+/// than 64 bits), the members' order, the indentation.
+fn with_member(
+    text: &str,
+    object: &JsonObject,
+    key: &str,
+    value: &Value,
+    unit: &str,
+) -> Result<String, String> {
+    let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let pretty = |indent: &str| -> Result<String, String> {
+        let mut buf = Vec::new();
+        let formatter = serde_json::ser::PrettyFormatter::with_indent(unit.as_bytes());
+        let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
+        value.serialize(&mut ser).map_err(|e| e.to_string())?;
+        let text = String::from_utf8(buf).map_err(|e| e.to_string())?;
+        Ok(text.replace('\n', &format!("{nl}{indent}")))
+    };
+    let name = serde_json::to_string(key).map_err(|e| e.to_string())?;
+    let (range, insert) = match (
+        object.members.iter().rev().find(|m| m.key == key),
+        object.members.last(),
+    ) {
+        (Some(member), _) => (
+            member.value.clone(),
+            pretty(line_indent(text, member.value.start))?,
+        ),
+        (None, Some(last)) => {
+            let indent = line_indent(text, last.value.start);
+            let value = pretty(indent)?;
+            (
+                last.value.end..last.value.end,
+                format!(",{nl}{indent}{name}: {value}"),
+            )
+        }
+        (None, None) => {
+            let outer = line_indent(text, object.open);
+            let indent = format!("{outer}{unit}");
+            let value = pretty(&indent)?;
+            (
+                object.open + 1..object.close,
+                format!("{nl}{indent}{name}: {value}{nl}{outer}"),
+            )
+        }
+    };
+    Ok(format!(
+        "{}{insert}{}",
+        &text[..range.start],
+        &text[range.end..]
+    ))
+}
+
+/// A JSON file's `text` (an object) with the `platypus` server set to `entry`, edited where the
+/// entry goes only: reading and writing the whole document would rewrite its numbers.
+fn json_with_entry(text: &str, entry: &ServerEntry) -> Result<String, String> {
+    let unit = text
+        .lines()
+        .map(|l| &l[..l.len() - l.trim_start_matches([' ', '\t']).len()])
+        .find(|i| !i.is_empty())
+        .unwrap_or("  ");
+    let top = object_at(text, text.len() - text.trim_start().len())?;
+    let edited = match top.members.iter().rev().find(|m| m.key == "mcpServers") {
+        Some(servers) => with_member(
+            text,
+            &object_at(text, servers.value.start)?,
+            SERVER_NAME,
+            &entry.json(),
+            unit,
+        )?,
+        None => with_member(
+            text,
+            &top,
+            "mcpServers",
+            &json!({ SERVER_NAME: entry.json() }),
+            unit,
+        )?,
+    };
+    // Written only as JSON that reads back.
+    serde_json::from_str::<Value>(&edited).map_err(|e| e.to_string())?;
+    Ok(edited)
 }
 
 /// What an install did.
@@ -422,6 +635,57 @@ mod tests {
     }
 
     #[test]
+    fn json_files_keep_their_numbers_and_layout() {
+        let text = "{\n    \"big\": 123456789012345678901234567890,\n    \"e\": 1E5,\n    \"f\": 1.50,\n    \"mcpServers\": {\n        \"other\": { \"command\": \"npx\" }\n    }\n}\n";
+        let new = with_entry(ConfigFormat::Json, text, &entry()).unwrap();
+        for kept in [
+            "\"big\": 123456789012345678901234567890,",
+            "\"e\": 1E5,",
+            "\"f\": 1.50,",
+            "\"other\": { \"command\": \"npx\" },\n        \"platypus\": {\n            \"command\"",
+        ] {
+            assert!(new.contains(kept), "{kept} in {new}");
+        }
+        assert!(new.ends_with("}\n"), "{new}");
+        assert_eq!(
+            state_of(ConfigFormat::Json, Some(&new), &entry()),
+            InstallState::Installed
+        );
+        // Installed again with another entry: replaced in place, nothing else changes.
+        let other = ServerEntry {
+            command: "/new/platypus-db".to_owned(),
+            ..entry()
+        };
+        let again = with_entry(ConfigFormat::Json, &new, &other).unwrap();
+        assert_eq!(again.matches("\"platypus\"").count(), 1, "{again}");
+        assert!(again.contains("\"big\": 123456789012345678901234567890,"));
+        assert_eq!(
+            state_of(ConfigFormat::Json, Some(&again), &other),
+            InstallState::Installed
+        );
+        // No servers yet, an empty object, CRLF line ends, a string with braces and quotes.
+        for text in [
+            "{\r\n  \"x\": \"a } \\\" {\",\r\n  \"mcpServers\": {}\r\n}\r\n",
+            "{}",
+            "  { \"k\": [1, {\"a\": [2]}] }  ",
+        ] {
+            let new = with_entry(ConfigFormat::Json, text, &entry()).unwrap();
+            assert_eq!(
+                state_of(ConfigFormat::Json, Some(&new), &entry()),
+                InstallState::Installed,
+                "{new}"
+            );
+        }
+        let crlf = with_entry(
+            ConfigFormat::Json,
+            "{\r\n  \"mcpServers\": {}\r\n}\r\n",
+            &entry(),
+        )
+        .unwrap();
+        assert!(!crlf.replace("\r\n", "").contains('\n'), "{crlf:?}");
+    }
+
+    #[test]
     fn toml_files_keep_their_comments() {
         let text = "# my settings\nmodel = \"o3\"\n\n[mcp_servers.other]\ncommand = \"npx\"\n";
         let new = with_entry(ConfigFormat::Toml, text, &entry()).unwrap();
@@ -502,5 +766,39 @@ mod tests {
         let codex = listed.iter().find(|c| c.id == "codex").unwrap();
         assert!(!codex.exists);
         assert_eq!(codex.state, InstallState::Missing);
+    }
+
+    /// Notepad and Windows PowerShell 5.1 start a UTF-8 file with a byte-order mark.
+    #[test]
+    fn reads_and_keeps_a_byte_order_mark() {
+        let home = tempfile::tempdir().unwrap();
+        let config = home.path().join("config");
+        let cursor = home.path().join(".cursor").join("mcp.json");
+        std::fs::create_dir_all(cursor.parent().unwrap()).unwrap();
+        std::fs::write(
+            &cursor,
+            "\u{feff}{\"mcpServers\": {\"other\": {\"command\": \"npx\"}}}\r\n",
+        )
+        .unwrap();
+        let listed = list(home.path(), &config, &entry());
+        let card = listed.iter().find(|c| c.id == "cursor").unwrap();
+        assert_eq!(card.state, InstallState::Missing);
+        install("cursor", home.path(), &config, &entry(), "1").unwrap();
+        let text = std::fs::read_to_string(&cursor).unwrap();
+        let body = text.strip_prefix('\u{feff}').expect("the mark is kept");
+        let doc: Value = serde_json::from_str(body).unwrap();
+        assert!(doc["mcpServers"]["other"].is_object());
+        assert!(doc["mcpServers"][SERVER_NAME].is_object());
+        let listed = list(home.path(), &config, &entry());
+        let card = listed.iter().find(|c| c.id == "cursor").unwrap();
+        assert_eq!(card.state, InstallState::Installed);
+        // TOML too, and a file without the mark gets none.
+        let toml = with_entry(ConfigFormat::Toml, "\u{feff}model = \"x\"\n", &entry()).unwrap();
+        assert!(toml.starts_with("\u{feff}model = \"x\""), "{toml}");
+        assert!(
+            !with_entry(ConfigFormat::Json, "{}", &entry())
+                .unwrap()
+                .starts_with('\u{feff}')
+        );
     }
 }

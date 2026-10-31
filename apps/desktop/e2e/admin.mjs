@@ -1,7 +1,7 @@
 // Helpers of the Server activity scenarios (group J): the admin tab, its session rows and
 // details, and sessions of the dev databases run in the background from a shell in their
 // container.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "./proc.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import { DBS, assert, expand, treeMenu } from "./qa-grid.mjs";
 
@@ -190,9 +190,10 @@ export async function statisticsFlow(page, { db, name, table, slow, path, operat
 /**
  * Back up and Restore of `name`'s database (group J): Back up… writes `file` with the
  * database's tool, counting the tables; a table dropped then comes back with Restore…, asked
- * first; Cancel on the question changes nothing.
+ * first; Cancel on the question changes nothing. `clean` ticks "Drop the archive's objects first":
+ * pg_restore stops at the first error, and the archive's CREATE SCHEMA fails on a schema that is there.
  */
-export async function backupFlow(page, { db, name, file, table, count, dropTable }) {
+export async function backupFlow(page, { db, name, file, table, count, dropTable, clean = false }) {
   const { answerSave } = await import("./qa-xfer.mjs");
   const dialog = `document.querySelector('.backup-dialog')`;
   const result = `${dialog}?.querySelector('[data-field="result"]')`;
@@ -220,6 +221,7 @@ export async function backupFlow(page, { db, name, file, table, count, dropTable
   await answerSave(page, file, "plugin:dialog|open");
   await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Choose file…').click()`);
   await page.waitFor(`${dialog}.querySelector('[data-field="path"]').value === ${JSON.stringify(file)}`);
+  if (clean) await page.eval(`${dialog}.querySelector('[data-field="clean"]').click()`);
   // Asked first: Cancel leaves the database as it is.
   await page.eval(`${dialog}.querySelector('button.primary').click()`);
   await page.waitFor(`document.querySelector('.modal.confirm') !== null`);

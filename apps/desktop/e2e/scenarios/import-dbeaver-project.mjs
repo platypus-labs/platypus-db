@@ -99,7 +99,7 @@ async function importSqlServer(page) {
   assert.match(notes[1], /Signs in with Windows/);
   const skipped = await page.eval(`[...${dialog}.querySelectorAll('.import-row.skipped')].map(r => r.textContent)`);
   assert.equal(skipped.length, 1, JSON.stringify(skipped));
-  assert.match(skipped[0], /Legacy Oracle.*oracle · oracle_thin/);
+  assert.match(skipped[0], /Legacy DB2.*db2 · db2_luw/);
 
   await page.waitFor(`[...${dialog}.querySelectorAll('button')].some(b => b.textContent.trim() === 'Import 2')`);
   await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent.trim() === 'Import 2').click()`);

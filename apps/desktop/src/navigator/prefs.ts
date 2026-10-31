@@ -103,6 +103,26 @@ export function renameBookmarks(
   if (changed) write({ ...prefs, bookmarks });
 }
 
+/** The bookmarks left once an object is dropped: its own, and its triggers when it is a
+ *  table. */
+export function withoutObject(
+  bookmarks: Bookmark[],
+  where: Pick<Bookmark, "connectionId" | "database" | "schema" | "kind">,
+  name: string,
+): Bookmark[] {
+  return bookmarks.filter((b) => {
+    if (b.connectionId !== where.connectionId || b.database !== where.database || b.schema !== where.schema) return true;
+    if (b.kind === where.kind && b.name === name) return false;
+    return !(b.kind === "trigger" && where.kind === "table" && b.parent === name);
+  });
+}
+
+/** Removes the bookmarks of an object that was dropped. */
+export function removeBookmarks(where: Pick<Bookmark, "connectionId" | "database" | "schema" | "kind">, name: string) {
+  const bookmarks = withoutObject(prefs.bookmarks, where, name);
+  if (bookmarks.length !== prefs.bookmarks.length) write({ ...prefs, bookmarks });
+}
+
 export const navigatorFilter =(connectionId: string): NavigatorFilter | undefined => prefs.filters[connectionId];
 
 /** `null` or empty patterns remove the connection's filter. */

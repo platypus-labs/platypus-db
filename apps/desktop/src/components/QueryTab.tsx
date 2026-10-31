@@ -26,10 +26,11 @@ import {
   type ObjectTarget,
 } from "../api";
 import { asksPassword, isProduction } from "../connections";
+import { selectionAsScript } from "./selectionRun";
 import type { NotesScope } from "../grid/ResultGrid";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
-import { cliName } from "../editor/actions";
+import { cliName, runningStatement } from "../editor/actions";
 import { OutlinePanel } from "../editor/OutlinePanel";
 import { ParamsDialog } from "../editor/ParamsDialog";
 import { type ExportTarget, expandVariables, parameterKeys, parseCommand, resolvePath, substitute } from "../editor/params";
@@ -84,7 +85,8 @@ import { ChartToggle } from "../analysis/ChartView";
 import { chartOf, type SavedChart, withChart } from "../analysis/chartConfig";
 import { runGate } from "./runGate";
 import { RunMemory, rerunsUnasked } from "./rerun";
-import { requestNavigatorRefresh } from "../navigatorEvents";
+import { asksMore } from "./filledChecks";
+import { onDataAgain, requestNavigatorRefresh } from "../navigatorEvents";
 import {
   type ShownSort,
   type ViewerSort,
@@ -151,6 +153,9 @@ export interface QueryTabModel extends TabBase {
   ddlDone?: number;
   /** Values of `${name}` and `:name`, kept with the tab. */
   variables?: Record<string, string>;
+  /** The variables a shared query came with whose values the user did not confirm yet: a
+   *  `${name}` value goes into the SQL as it is, so the next run asks for them, filled in. */
+  unconfirmedVariables?: string[];
   /** "Query with SQL": where the tables of this tab came from. Not persisted: the temporary
    *  connection does not outlive the app. */
   resultSource?: ResultSource;
@@ -228,6 +233,10 @@ interface Seen {
 /** How often the results of a run are drawn while it goes on. */
 const RENDER_EVERY_MS = 60;
 
+/** What an export says when it is done: "Exported 1 row to a.csv in 3 ms". */
+const exported = (rows: number, path: string, ms: number) =>
+  plural(rows, "Exported {n} row to {path} in {time}", "Exported {n} rows to {path} in {time}", { path, time: formatMs(ms) });
+
 /** `all` with `added` placed right after the result `id` (at the end when it is gone). */
 function withAfter(all: Result[], id: number, added: Result[]): Result[] {
   const at = all.findIndex((r) => r.id === id);
@@ -250,6 +259,9 @@ function plannedOf(text: string, spans: StatementSpan[], offset: number, depth =
     };
   });
 }
+
+/** Whether `p` has `${name}` variables, whose values go into its text as they are. */
+const writesRaw = (p: Planned) => p.params.some((s) => s.kind === "variable");
 
 /** What a group of statements sent together does, for the checks and the run: a query only
  *  if each is one. */
@@ -435,6 +447,8 @@ export function QueryTab({
     keys: string[];
     raw: Set<string>;
     initial: Record<string, string>;
+    /** Keys whose value came with a shared query, offered for the user to check. */
+    suggested: string[];
     resolve: (values: Record<string, string> | null) => void;
   } | null>(null);
   const [terminalLog, setTerminalLog] = useState<TerminalBlock[]>([]);
@@ -512,6 +526,16 @@ export function QueryTab({
     void run("statement");
   }, []);
 
+  // "Open data" on the table again: a data viewer whose read failed (or never started, its
+  // session not opening while the server was down) reads its rows again.
+  const dataAgain = useRef(() => {});
+  dataAgain.current = () => {
+    if (!tab.table || running) return;
+    if (shown && shown.status.kind !== "error") return;
+    void run("statement");
+  };
+  useEffect(() => onDataAgain((key) => key === tab.key && dataAgain.current()), [tab.key]);
+
   // A data viewer restored at start reads its table's rows again once shown, as it did when
   // opened: only while the editor holds one of the viewer's own queries, which only read.
   const restoreRows = useRef(!tab.autorun && !!tab.table && viewerOwn.has(tab.sql));
@@ -568,9 +592,10 @@ export function QueryTab({
     const analysis = await api.analyzeSql(scope.text, connection.driver, from - scope.offset);
     const statements = analysis.statements;
     const all = plannedOf(scope.text, statements, scope.offset);
-    // A selection runs as typed, even if it holds several statements, unless it has client
-    // commands: those run one by one, as a script.
-    if (mode === "script" || (from !== to && statements.some((s) => s.kind === "command"))) {
+    // A selection runs as typed where several statements sent together return a result each;
+    // elsewhere, and with client commands, its statements run one by one, as a script.
+    const asScript = selectionAsScript(statements.map((s) => s.kind), connection.driver);
+    if (mode === "script" || (from !== to && asScript)) {
       return scriptOf(scope.text, analysis, all, scope.offset);
     }
     if (from !== to) {
@@ -742,13 +767,19 @@ export function QueryTab({
   ): Promise<Record<string, string> | null> {
     const keys = parameterKeys(p.params);
     const raw = new Set(p.params.filter((s) => s.kind === "variable").map((s) => s.name));
-    const ask = [...new Set(keys)].filter((k) => (raw.has(k) ? !(k in variables) : !defined.has(k)));
+    // The values a shared query came with are asked once, filled in, before they run.
+    const unconfirmed = new Set(tab.unconfirmedVariables ?? []);
+    const ask = [...new Set(keys)].filter((k) =>
+      raw.has(k) ? !(k in variables) || (unconfirmed.has(k) && !defined.has(k)) : !defined.has(k),
+    );
     if (ask.length === 0) return variables;
+    const suggested = ask.filter((k) => unconfirmed.has(k));
     const answer = await new Promise<Record<string, string> | null>((resolve) =>
-      setAsking({ sql: p.sql, keys: ask, raw, initial: variables, resolve }),
+      setAsking({ sql: p.sql, keys: ask, raw, initial: variables, suggested, resolve }),
     );
     setAsking(null);
     if (!answer) return null;
+    if (suggested.length > 0) onChange({ unconfirmedVariables: [...unconfirmed].filter((k) => !suggested.includes(k)) });
     Object.assign(lastAnswers.current, answer);
     for (const k of ask) if (!k.startsWith("?")) defined.add(k);
     return { ...variables, ...answer };
@@ -772,9 +803,8 @@ export function QueryTab({
       api
         .exportQuery(sessionId, sql, path, options, (event) => {
           if (event.type === "done") {
-            const rows = fmt.format(event.rows);
-            const text = t("Exported {rows} rows to {path} in {time}", { rows, path, time: formatMs(event.elapsed_ms) });
-            resolve({ kind: "message", summary: t("Exported {rows} rows", { rows }), text });
+            const text = exported(event.rows, path, event.elapsed_ms);
+            resolve({ kind: "message", summary: plural(event.rows, "Exported {n} row", "Exported {n} rows"), text });
           } else if (event.type === "failed") {
             resolve({ kind: "error", error: event.error });
           } else if (event.type === "cancelled") {
@@ -799,6 +829,21 @@ export function QueryTab({
   async function confirmed(planned: Planned[]): Promise<boolean> {
     const request = await check(connection, planned.flatMap((p) => p.checks), sideSession);
     return !request || new Promise<boolean>((resolve) => setGuard({ request, resolve }));
+  }
+
+  /** `p`, whose `${name}` values went into its text as `sql`, judged again as it runs: the
+   *  values may make a read a change, or drop its WHERE. The read-only check applies to `sql`
+   *  (unless `force`, the tab's own Run anyway), and the confirmations the values add are
+   *  asked. The status to show instead of running it, or `null` to run it. */
+  async function filledRefusal(p: Planned, sql: string, force: boolean): Promise<ResultStatus | null> {
+    const analysis = await api.analyzeSql(sql, connection.driver, 0);
+    const filled = plannedOf(sql, analysis.statements, -1);
+    if (connection.read_only && !force && filled.some((f) => !f.readOnly)) {
+      return { kind: "error", error: clientError(t("{name} is read-only and this may modify data.", { name: connection.name })) };
+    }
+    const checks = filled.flatMap((f) => f.checks);
+    if (asksMore(p.checks, checks) && !(await confirmed([{ ...p, sql, checks }]))) return cancelled();
+    return null;
   }
 
   /** Runs what `mode` selects in the editor, or `again` (statements that ran before). With
@@ -970,8 +1015,11 @@ export function QueryTab({
         status = await command(p, i);
       } else {
         const filled = p.params.length ? await fillParams(p, variables, defined) : variables;
+        const refused = filled && writesRaw(p) ? await filledRefusal(p, substitute(p.sql, p.params, filled, connection.driver), force) : null;
         if (!filled) {
           status = cancelled();
+        } else if (refused) {
+          status = refused;
         } else {
           values = filled;
           if (p.params.length) {
@@ -1337,13 +1385,19 @@ export function QueryTab({
 
   /** Header clicks cycle a column of the shown statement through ascending, descending and
    *  back to the ORDER BY the statement had before the first click, or unsorted. */
-  async function sortBy(column: string) {
+  async function sortBy(column: string, position: number | undefined) {
     if (!shown) return;
     const statement = shown.sql;
-    const { sort, original } = await clickSort(shownSort, column, () =>
-      api.sqlOrderClause(statement, connection.driver).catch(() => null),
+    const { sort, original } = await clickSort(
+      shownSort,
+      column,
+      () => api.sqlOrderClause(statement, connection.driver).catch(() => null),
+      position,
     );
-    rewriteShown((sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false, original), sort);
+    rewriteShown(
+      (sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false, original, sort?.position ?? null),
+      sort,
+    );
   }
 
   /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement,
@@ -1403,7 +1457,7 @@ export function QueryTab({
       setExporting({ exportId: null, rows: result.rows, done: null, failed: false });
       try {
         const rows = await api.exportRows(result.jobId, path, options);
-        finish(t("Exported {rows} rows to {path} in {time}", { rows: fmt.format(rows), path: file, time: formatMs(Math.round(performance.now() - started)) }));
+        finish(exported(rows, file, Math.round(performance.now() - started)));
       } catch (e) {
         finish(t("Export failed: {message}", { message: toCommandError(e).message }), true);
       }
@@ -1423,7 +1477,7 @@ export function QueryTab({
             setExporting((e) => e && { ...e, rows: event.rows });
             break;
           case "done":
-            finish(t("Exported {rows} rows to {path} in {time}", { rows: fmt.format(event.rows), path: file, time: formatMs(event.elapsed_ms) }));
+            finish(exported(event.rows, file, event.elapsed_ms));
             break;
           case "failed":
             finish(t("Export failed: {message}", { message: event.error.message }), true);
@@ -1671,6 +1725,18 @@ export function QueryTab({
   const sensitiveIn = useSensitive(rowsResult ? notesScope(rowsResult) : null);
   const exportSensitive = rowsResult?.columns?.filter(sensitiveIn).map((c) => c.name) ?? [];
   const masking = useSetting(maskSetting);
+  // The palette's Cancel and its shortcut stop this tab's run while it is shown.
+  const cancelNow = useRef(cancel);
+  cancelNow.current = cancel;
+  const stoppable = running || readingRows;
+  useEffect(() => {
+    if (!active || !stoppable) return;
+    const own = () => void cancelNow.current();
+    runningStatement.cancel = own;
+    return () => {
+      if (runningStatement.cancel === own) runningStatement.cancel = null;
+    };
+  }, [active, stoppable]);
 
   return (
     <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
@@ -1707,7 +1773,7 @@ export function QueryTab({
             <button
               onClick={() => void cancel()}
               disabled={!running && !readingRows}
-              title={t("Cancel the running statement")}
+              title={titleWithKeys(t("Cancel the running statement"), "editor.cancel")}
               aria-label={t("Cancel")}
             >
               {toolbar.label("cancel", t("Cancel"))}
@@ -2162,6 +2228,7 @@ export function QueryTab({
           keys={asking.keys}
           raw={asking.raw}
           initial={asking.initial}
+          suggested={asking.suggested}
           onRun={asking.resolve}
           onCancel={() => asking.resolve(null)}
         />

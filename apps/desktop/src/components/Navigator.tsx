@@ -18,6 +18,8 @@ import { defineSetting, getSetting, useSetting } from "../settings";
 import { dropCached, loadCached, pruneCached, saveCached } from "../navigator/diskCache";
 import { FilterDialog } from "../navigator/FilterDialog";
 import { ROW_HEIGHT, rowWindow, scrollToRow, stepAt } from "../navigator/rowWindow";
+import { routineBase } from "../sqlIdent";
+import { textFilter } from "../navigator/filter";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
@@ -37,7 +39,7 @@ import { testConnections } from "./TestConnectionsDialog";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
-import { openObjectTab, showsData } from "../objects/open";
+import { focusData, openObjectTab } from "../objects/open";
 import { EmptyState } from "../ui/State";
 import type { Point } from "../ui/pointerDrag";
 import { useDrag } from "../ui/useDrag";
@@ -217,6 +219,8 @@ export function Navigator(props: Props) {
   /** The selected rows; `anchor` is where a Shift+click range starts. */
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const anchor = useRef<string | null>(null);
+  /** The far end of a range grown with Shift+arrow keys from `anchor`: where the keys move from. */
+  const extent = useRef<{ anchor: string; key: string } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const signatures = useRef(new Map<string, string>());
   /** The row and zone a dragged connection or folder would land in. */
@@ -419,7 +423,7 @@ export function Navigator(props: Props) {
 
   /** Opens a table's data, or goes back to the tab already showing it. */
   function openData(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta, target: string) {
-    if (workbench().focusTab((t) => showsData(t, c.id, db, target))) return;
+    if (focusData(c.id, db, target)) return;
     onOpenTab(c, {
       sql: viewerSql(c.driver, target),
       autorun: true,
@@ -668,6 +672,7 @@ export function Navigator(props: Props) {
     const hidden = prefs.filters[c.id];
     const hiddenSchema = nameMatcher(hidden?.schemas);
     const hiddenObject = nameMatcher(hidden?.objects);
+    const text = textFilter(needle);
     // User schemas first, catalog schemas after them.
     const ordered = schemas
       .filter((s) => !(simple && s.system) && !hiddenSchema(s.name))
@@ -677,13 +682,13 @@ export function Navigator(props: Props) {
       const objects = loaded<ObjectMeta[]>(skey);
       const matches = objects?.filter(
         (o) =>
-          (!needle || o.name.toLowerCase().includes(needle)) &&
+          text.matches(schema.name, o.name) &&
           (needTags.length === 0 ||
             needTags.every((t) => catalogEntry(c.id, catalogKey(db, schema.name, o.name))?.tags.includes(t))) &&
           (!simple || SIMPLE_KINDS.has(o.kind)) &&
           !hiddenObject(o.name),
       );
-      if ((needle || needTags.length > 0) && objects && matches?.length === 0) continue;
+      if ((needle || needTags.length > 0) && objects && matches?.length === 0 && !text.wholeSchema(schema.name)) continue;
       const sOpen = expanded.has(skey) || ((!!needle || needTags.length > 0) && !!matches?.length);
       out.push({
         key: skey,
@@ -812,7 +817,8 @@ export function Navigator(props: Props) {
           marked,
           onOpen: () => openObject(c, db, schema, object),
           menu,
-          sql: { name: target },
+          // A routine is dragged as a call: its name quoted, without the signature.
+          sql: { name: object.kind === "function" || object.kind === "procedure" ? `${qualifiedName(c.driver, schema, routineBase(object.name))}()` : target },
         },
       ];
     }
@@ -938,11 +944,13 @@ export function Navigator(props: Props) {
       return;
     }
     anchor.current = key;
+    extent.current = null;
     setSelected(e.ctrlKey || e.metaKey ? toggled(selected, key) : new Set([key]));
   }
 
   /** The row the keys move from: the one clicked or reached last, if still shown. */
-  const current = anchor.current !== null && rows.some((r) => r.key === anchor.current) ? anchor.current : null;
+  const reached = extent.current && extent.current.anchor === anchor.current ? extent.current.key : anchor.current;
+  const current = reached !== null && rows.some((r) => r.key === reached) ? reached : null;
 
   // A row moved by a shortcut loses the focus when React moves its element: give it back,
   // shortly after the key only, so a later click elsewhere keeps its own. A connection just
@@ -1011,10 +1019,19 @@ export function Navigator(props: Props) {
       moved.current = { key: row.key, at: Date.now() };
       return;
     }
-    const go = (i: number) => {
+    // Shift grows the selection from the anchor to the row reached, as a Shift+click does.
+    const go = (i: number, extend = e.shiftKey) => {
       const index = Math.max(0, Math.min(rows.length - 1, i));
-      anchor.current = rows[index]!.key;
-      setSelected(new Set([rows[index]!.key]));
+      const origin = rows.findIndex((r) => r.key === anchor.current);
+      if (extend && origin >= 0) {
+        extent.current = { anchor: anchor.current!, key: rows[index]!.key };
+        const keys = rows.slice(Math.min(origin, index), Math.max(origin, index) + 1).map((r) => r.key);
+        setSelected(new Set(keys));
+      } else {
+        anchor.current = rows[index]!.key;
+        extent.current = null;
+        setSelected(new Set([rows[index]!.key]));
+      }
       const li = e.currentTarget.querySelector<HTMLElement>(`[data-row="${index}"]`);
       if (li) {
         li.focus();
@@ -1028,11 +1045,20 @@ export function Navigator(props: Props) {
       for (let i = at - 1; i >= 0; i--) if (rows[i]!.depth < row.depth) return i;
       return at;
     };
+    // A page: the rows that fit in the tree, less one for context.
+    const page = Math.max(1, Math.floor(e.currentTarget.clientHeight / ROW_HEIGHT) - 1);
     if (e.key === "ArrowDown") go(at + 1);
     else if (e.key === "ArrowUp") go(at - 1);
+    else if (e.key === "PageDown") go(at + page);
+    else if (e.key === "PageUp") go(at - page);
     else if (e.key === "Home") go(0);
     else if (e.key === "End") go(rows.length - 1);
-    else if (e.key === "ArrowRight") {
+    else if (e.key === " " && (e.ctrlKey || e.metaKey)) {
+      // Ctrl+Space adds or removes the current row, as Ctrl+click does.
+      anchor.current = row.key;
+      extent.current = null;
+      setSelected(toggled(selected, row.key));
+    } else if (e.key === "ArrowRight") {
       if (row.expanded === false) row.onToggle?.();
       else if (row.expanded) go(at + 1);
     } else if (e.key === "ArrowLeft") {
@@ -1054,6 +1080,7 @@ export function Navigator(props: Props) {
     const target = row.menu;
     if (!selected.has(row.key)) {
       anchor.current = row.key;
+      extent.current = null;
       setSelected(new Set([row.key]));
       return target;
     }
@@ -1527,13 +1554,8 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "copy",
       order: 40,
       multiple: true,
-      // Routines are copied bare, as before: their call syntax differs from a table's.
-      run: (arg) =>
-        copy(
-          (arg.selection ?? [arg])
-            .map(({ object, target }) => (isRelation(object.kind) ? target : object.name))
-            .join("\n"),
-        ),
+      // The bare name, as for a column; Copy qualified name has the schema and the quotes.
+      run: (arg) => copy((arg.selection ?? [arg]).map(({ object }) => object.name).join("\n")),
     }),
     registerAction({
       id: "object.bookmark",

@@ -48,15 +48,19 @@ pub fn pgpass_password(
     };
     let port = port.to_string();
     let wanted = [host, port.as_str(), database, user];
-    Ok(text.lines().find_map(|line| {
-        let fields = pgpass_fields(line)?;
-        let matches = fields[..4]
-            .iter()
-            .zip(wanted)
-            .all(|(field, value)| field == "*" || field == value);
-        let [.., password] = fields;
-        matches.then(|| Secret::new(password))
-    }))
+    // A byte order mark from a Windows editor would hide the first line.
+    Ok(text
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .find_map(|line| {
+            let fields = pgpass_fields(line)?;
+            let matches = fields[..4]
+                .iter()
+                .zip(wanted)
+                .all(|(field, value)| field == "*" || field == value);
+            let [.., password] = fields;
+            matches.then(|| Secret::new(password))
+        }))
 }
 
 /// The five fields of a `.pgpass` line, with `\:` and `\\` unescaped; `None` for comments
@@ -137,7 +141,8 @@ fn run_command(command: &str, output: bool) -> Result<Secret> {
         use std::os::windows::process::CommandExt as _;
         shell
             .args(["/D", "/S", "/C"])
-            .raw_arg(format!("\"{command}\""));
+            .raw_arg(format!("\"{command}\""))
+            .creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up.
     }
     #[cfg(not(windows))]
     shell.arg("-c").arg(command);
@@ -208,6 +213,18 @@ fn password_of(stdout: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pgpass_with_byte_order_mark() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pgpass.conf");
+        std::fs::write(&path, "\u{feff}localhost:5432:db:ada:secret\n").unwrap();
+        let found = pgpass_password(&path, "localhost", 5432, "db", "ada").unwrap();
+        assert_eq!(
+            found.map(|s| s.expose().to_owned()).as_deref(),
+            Some("secret")
+        );
+    }
 
     #[test]
     fn reads_pgpass_like_libpq() {

@@ -156,8 +156,11 @@ command("add_cursor_above", msg("Add cursor above"), "Mod+Alt+ArrowUp", "cursors
 command("add_cursor_below", msg("Add cursor below"), "Mod+Alt+ArrowDown", "cursors", 31, addCursorBelow, false);
 command("select_next", msg("Select next occurrence"), "Mod+D", "cursors", 32, selectNextOccurrence, false);
 command("select_all_matches", msg("Select all occurrences"), "Mod+Shift+L", "cursors", 33, selectSelectionMatches, false);
-command("fold_all", msg("Fold all"), "Mod+Alt+[", "folding", 40, foldAll, false);
-command("unfold_all", msg("Unfold all"), "Mod+Alt+]", "folding", 41, unfoldAll, false);
+// Not Ctrl+Alt+[ outside macOS: that is AltGr+[ there, how Italian, German, Spanish and French
+// keyboards type the bracket (shortcutKeys.ts `altGraphText`). Not Ctrl+Alt+U either: plugins
+// use it (the sql-tools example in docs/PLUGINS.md), and a built-in shortcut comes first.
+command("fold_all", msg("Fold all"), isMac ? "Mod+Alt+[" : "Mod+Alt+F", "folding", 40, foldAll, false);
+command("unfold_all", msg("Unfold all"), isMac ? "Mod+Alt+]" : "Mod+Alt+Shift+F", "folding", 41, unfoldAll, false);
 
 /** DuckDB has none: its client cannot open a file the session holds. ClickHouse neither:
  *  clickhouse-client speaks the native protocol, not HTTP. */
@@ -196,6 +199,21 @@ registerAction({
   order: 2,
   when: ({ commands }) => !!commands?.run,
   run: ({ commands }) => commands?.run?.("script"),
+});
+
+/** The Cancel of the editor tab shown while its statement runs (or its rows still arrive):
+ *  set by that tab, `null` when nothing there can be stopped. */
+export const runningStatement: { cancel: (() => void) | null } = { cancel: null };
+
+// Global: the palette lists it and its keys work wherever the focus is, also with the
+// toolbar's Cancel button hidden.
+registerAction({
+  id: "editor.cancel",
+  scope: "global",
+  title: "Cancel the running statement",
+  shortcut: "Mod+.",
+  when: () => runningStatement.cancel !== null,
+  run: () => runningStatement.cancel?.(),
 });
 
 registerAction({

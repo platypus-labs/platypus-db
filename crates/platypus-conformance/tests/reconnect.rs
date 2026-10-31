@@ -172,6 +172,28 @@ async fn qa_fixconn_probe_opens_no_transaction() {
 }
 
 #[tokio::test]
+async fn qa_fixconn_probe_answers_inside_a_failed_transaction() {
+    for s in servers().await {
+        let conn = connect(&s.config).await;
+        conn.set_autocommit(false).await.unwrap();
+        run(&*conn, "SELECT 1").await;
+        assert!(
+            conn.execute(
+                "SELECT * FROM qa_fixconn_no_such_table",
+                &ExecOptions::default()
+            )
+            .await
+            .is_err()
+        );
+        // The session answers, though its transaction may refuse statements now.
+        assert!(conn.check_alive().await, "{}", s.name);
+        assert!(!conn.is_closed(), "{}", s.name);
+        conn.rollback().await.unwrap();
+        assert_eq!(scalar(&*conn, "SELECT 1").await, "1", "{}", s.name);
+    }
+}
+
+#[tokio::test]
 async fn qa_fixconn_mysql_sessions_past_wait_timeout_are_found() {
     for s in servers().await {
         if s.config.driver != DriverKind::MySql {

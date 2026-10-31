@@ -17,7 +17,7 @@ export type Inline =
 export type Block =
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; children: Inline[] }
   | { kind: "paragraph"; children: Inline[] }
-  | { kind: "list"; ordered: boolean; items: Inline[][] }
+  | { kind: "list"; ordered: boolean; /** The number the first item has (ordered lists). */ start: number; items: Inline[][] }
   | { kind: "quote"; children: Block[] }
   | { kind: "code"; lang: string; text: string }
   | { kind: "rule" };
@@ -26,7 +26,7 @@ const FENCE = /^\s*(```|~~~)\s*([\w+-]*)\s*$/;
 const HEADING = /^\s*(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
-const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
+const NUMBERED = /^\s*(\d+)[.)]\s+(.*)$/;
 const QUOTE = /^\s*>\s?(.*)$/;
 
 /** Whether `line` starts a block other than a paragraph, which ends the paragraph before. */
@@ -74,13 +74,15 @@ export function parseMarkdown(text: string): Block[] {
     const item = ordered ? NUMBERED : BULLET;
     if (item.test(line)) {
       const items: Inline[][] = [];
+      const start = ordered ? Number(NUMBERED.exec(line)![1]) : 1;
       while (i < lines.length && item.test(lines[i]!)) {
-        let content = item.exec(lines[i++]!)![1]!;
+        const match = item.exec(lines[i++]!)!;
+        let content = match[ordered ? 2 : 1]!;
         // Indented lines continue the item.
         while (i < lines.length && /^\s{2,}\S/.test(lines[i]!) && !startsBlock(lines[i]!)) content += ` ${lines[i++]!.trim()}`;
         items.push(parseInline(content));
       }
-      blocks.push({ kind: "list", ordered, items });
+      blocks.push({ kind: "list", ordered, start, items });
       continue;
     }
     const body: string[] = [];
@@ -178,7 +180,8 @@ function blockHtml(block: Block): string {
       return `<p>${inlineHtml(block.children)}</p>`;
     case "list": {
       const tag = block.ordered ? "ol" : "ul";
-      return `<${tag}>${block.items.map((item) => `<li>${inlineHtml(item)}</li>`).join("")}</${tag}>`;
+      const start = block.ordered && block.start !== 1 ? ` start="${block.start}"` : "";
+      return `<${tag}${start}>${block.items.map((item) => `<li>${inlineHtml(item)}</li>`).join("")}</${tag}>`;
     }
     case "quote":
       return `<blockquote>${block.children.map(blockHtml).join("")}</blockquote>`;
@@ -205,7 +208,7 @@ export type ExportCell =
       name: string;
       sql: string;
       /** Its rows (as text, `null` for SQL NULL), at most those the export takes. */
-      table: { columns: string[]; rows: (string | null)[][] } | null;
+      table: { columns: string[]; rows: (string | null)[][]; /** Said under the table when it holds only part of the result. */ note?: string | null } | null;
       /** What ran: the rows, or the error. */
       summary: string;
       failed: boolean;
@@ -227,7 +230,8 @@ function tableHtml(table: NonNullable<Extract<ExportCell, { kind: "sql" }>["tabl
   const body = table.rows
     .map((row) => `<tr>${row.map((v) => (v === null ? '<td class="null">NULL</td>' : `<td>${escapeHtml(v)}</td>`)).join("")}</tr>`)
     .join("\n");
-  return `<table><thead><tr>${head}</tr></thead><tbody>\n${body}\n</tbody></table>`;
+  const note = table.note ? `\n<div class="summary">${escapeHtml(table.note)}</div>` : "";
+  return `<table><thead><tr>${head}</tr></thead><tbody>\n${body}\n</tbody></table>${note}`;
 }
 
 function planHtml(lines: PlanLine[]): string {

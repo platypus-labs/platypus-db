@@ -3,6 +3,7 @@
  * every few minutes, and the shared projects' folders when the window gets focus. Both can
  * also be asked for by hand (`runSync`, `refreshShared`); what they find is shown as a notice.
  */
+import { checkAgentPolicy } from "../agents/policyWatch";
 import { api, toCommandError, type SharedNotice, type SyncReport } from "../api";
 import { plural, t } from "../i18n";
 import { scriptsChanged } from "../scripts/scripts";
@@ -17,6 +18,8 @@ export function syncErrorText(e: unknown): string {
       return t("Wrong sync passphrase, or the sync file is damaged. Nothing was changed.");
     case "sync_passphrase_empty":
       return t("Enter the sync passphrase.");
+    case "sync_passphrase_short":
+      return t("A new sync passphrase must be at least 8 characters long.");
     case "sync_newer":
       return t("The sync file was written by a newer PlatypusDB. Update the app on this computer; nothing was changed.");
     case "sync_not_file":
@@ -151,6 +154,13 @@ function sharedSummary(n: SharedNotice): string {
               "{n} connections keep this computer's stricter safety settings.",
             )
           : "",
+        n.held_references > 0
+          ? plural(
+              n.held_references,
+              "{n} connection has environment variable references from the file, not read until you edit them in its settings.",
+              "{n} connections have environment variable references from the file, not read until you edit them in their settings.",
+            )
+          : "",
       ]
         .filter(Boolean)
         .join(" ");
@@ -186,7 +196,14 @@ export async function refreshShared(): Promise<SharedNotice[]> {
 export function startBackground(): () => void {
   stopped = false;
   void scheduleSync(true);
-  const onFocus = () => void refreshShared().catch((e: unknown) => console.warn("shared projects", e));
+  const onFocus = () => {
+    void refreshShared().catch((e: unknown) => console.warn("shared projects", e));
+    // Edits of the profile's files that give agents more wait for the user's yes.
+    void checkAgentPolicy(async () => {
+      await loadSettings();
+      await reloadWorkspace();
+    });
+  };
   onFocus();
   window.addEventListener("focus", onFocus);
   return () => {

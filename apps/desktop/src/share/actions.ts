@@ -15,13 +15,16 @@ import { shareErrorMessage } from "./messages";
 import { SHARE_EXTENSION, type SharedQuery, decodeFile, decodeLink, isShareLink } from "./shareQuery";
 import type { SavedConnection } from "../api";
 
-/** Opens a query tab with the shared SQL on `connection`: parameters filled in, title kept,
- *  a notice asking for a review, and nothing run. */
+/** Opens a query tab with the shared SQL on `connection`: parameters filled in (and asked
+ *  once at the first run, as a `${name}` value goes into the SQL as it is), title kept, a
+ *  notice asking for a review, and nothing run. */
 function openShared(query: SharedQuery, connection: SavedConnection) {
+  const names = Object.keys(query.parameters);
   workbench().openTab("query", connection.id, {
     sql: query.sql,
     title: query.title || null,
-    variables: Object.keys(query.parameters).length > 0 ? query.parameters : undefined,
+    variables: names.length > 0 ? query.parameters : undefined,
+    unconfirmedVariables: names.length > 0 ? names : undefined,
     shared: true,
   });
 }

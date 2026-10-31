@@ -168,3 +168,18 @@ test("the export is a page with every cell", () => {
   assert.ok(page.includes("Seq Scan on t  (rows=2 cost=1.5)"));
   assert.ok(page.includes('class="summary failed">no such column'));
 });
+
+test("a numbered list keeps the number it starts at", () => {
+  const [list] = parseMarkdown("3. three\n4. four");
+  assert.equal(list.start, 3);
+  assert.deepEqual(list.items.length, 2);
+  assert.match(markdownHtml("Steps:\n\n3. three\n4. four"), /<ol start="3"><li>three<\/li><li>four<\/li><\/ol>/);
+  assert.match(markdownHtml("1. a\n2. b"), /<ol><li>a<\/li>/);
+  assert.match(markdownHtml("- a"), /<ul><li>a<\/li>/);
+});
+
+test("a table that is part of the result says so in the export", () => {
+  const sql = (note) => ({ kind: "sql", name: "c1", sql: "select 1", summary: "1,200 rows", failed: false, chart: null, plan: null, table: { columns: ["a"], rows: [["1"]], note } });
+  assert.match(notebookHtml("T", [sql("Only the first 1 of 1,200 rows are in this export.")]), /<\/table>\n<div class="summary">Only the first 1 of 1,200 rows are in this export\.<\/div>/);
+  assert.doesNotMatch(notebookHtml("T", [sql(null)]), /in this export/);
+});

@@ -492,6 +492,7 @@ impl SavedConnection {
         config.init.schema.clone_from(&self.init.schema);
         config.init.time_zone.clone_from(&self.init.time_zone);
         config.options.clone_from(&self.options);
+        config.read_only = self.read_only;
         config
     }
 
@@ -582,8 +583,8 @@ impl ConnectionStore {
         let (version, mut projects, mut project_folders, network_profiles, connections) =
             match std::fs::read_to_string(&path) {
                 Ok(text) => {
-                    let file: ConnectionsFile =
-                        toml::from_str(&text).map_err(|e| StoreError::Format {
+                    let file: ConnectionsFile = toml::from_str(text.trim_start_matches('\u{feff}'))
+                        .map_err(|e| StoreError::Format {
                             path: path.clone(),
                             message: e.to_string(),
                         })?;
@@ -1484,8 +1485,11 @@ SET b = 2;"
         assert_eq!(c.effective_agent_access(), AgentAccess::Off);
         c.connection_type = Some(ConnectionType::Test);
         c.agent_access = AgentAccess::ReadWrite;
+        assert!(!c.config(None).read_only);
         c.read_only = true;
         assert_eq!(c.effective_agent_access(), AgentAccess::ReadOnly);
+        // The driver is told too: ClickHouse then runs the session with `readonly = 1`.
+        assert!(c.config(None).read_only);
     }
 
     #[test]

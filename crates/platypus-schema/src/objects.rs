@@ -605,6 +605,9 @@ fn postgres_trigger(schema: &str, trigger: &TriggerSpec) -> Vec<String> {
         "\nRETURN NULL;".to_string()
     } else if events == [Event::Delete] {
         "\nRETURN OLD;".to_string()
+    } else if events.contains(&Event::Delete) {
+        // NEW is NULL on DELETE: returning it from a BEFORE trigger cancels the delete.
+        "\nIF TG_OP = 'DELETE' THEN RETURN OLD; END IF;\nRETURN NEW;".to_string()
     } else {
         "\nRETURN NEW;".to_string()
     };
@@ -1142,7 +1145,21 @@ mod tests {
             &trig(Timing::After, &[Event::Delete, Event::Insert], None, false),
         )
         .unwrap();
-        assert!(both[0].contains("RETURN NEW;"));
+        assert!(
+            both[0].contains("IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;\nRETURN NEW;"),
+            "{}",
+            both[0]
+        );
+        let before_delete = run(
+            Dialect::Postgres,
+            &trig(Timing::Before, &[Event::Insert, Event::Delete], None, true),
+        )
+        .unwrap();
+        assert!(
+            before_delete[0].contains("THEN RETURN OLD; END IF;"),
+            "{}",
+            before_delete[0]
+        );
         let ObjectForm::Trigger {
             name,
             table,

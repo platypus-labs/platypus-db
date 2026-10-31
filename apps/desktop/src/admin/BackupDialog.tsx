@@ -81,7 +81,23 @@ export function BackupDialog({ mode, connection, database, schema, onClose }: Pr
       if (mode === "backup") {
         await api.backupDatabase(sid, id, { path: path.trim(), format, schema, structure_only: structureOnly }, onEvent);
       } else {
-        await api.restoreDatabase(sid, id, { path: path.trim(), clean }, onEvent);
+        const restore = (allow: boolean) =>
+          api.restoreDatabase(sid, id, { path: path.trim(), clean, allow_client_commands: allow }, onEvent);
+        try {
+          await restore(false);
+        } catch (e) {
+          const error = toCommandError(e);
+          if (error.kind !== "client_commands") throw e;
+          // The file runs commands on this computer, not only on the server: the user sees them first.
+          const tool = postgres ? "psql" : "mysql";
+          const message = [
+            t("This file has commands for {tool} itself, which can run programs and write files on this computer:", { tool }),
+            error.message,
+            t("Restore the file with these commands?"),
+          ].join("\n\n");
+          if (!(await ask(message, { confirm: t("Run these commands"), danger: true }))) return setStatus({ state: "idle" });
+          await restore(true);
+        }
       }
     } catch (e) {
       const error = toCommandError(e);

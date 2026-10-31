@@ -153,10 +153,10 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
                 StatementSpan {
                     start: map.to_utf16(s.start),
                     end: map.to_utf16(sent_end(&sql, dialect, *s)),
-                    read_only: matches!(
-                        analysis.kind,
-                        StatementKind::Query | StatementKind::Command
-                    ),
+                    // As [`only_reads`] judges it: a query calling what acts outside does not.
+                    read_only: analysis.kind == StatementKind::Command
+                        || (analysis.kind == StatementKind::Query
+                            && platypus_mcp::access::outside_effect(text, dialect).is_none()),
                     kind: match analysis.kind {
                         StatementKind::Query => "query",
                         StatementKind::Dml => "dml",
@@ -193,8 +193,11 @@ pub fn analyze_sql(sql: String, driver: DriverKind, cursor: usize) -> SqlAnalysi
     }
 }
 
-/// Whether every statement of `sql` only reads, by the analysis the editor shows: what a
-/// read-only connection lets run.
+/// Whether every statement of `sql` only reads, by the analysis the editor shows, and calls
+/// nothing that acts outside the transaction or on the server's files (as agents' read-only
+/// access checks it: `pg_terminate_backend`, `dblink_exec`, `LOAD_FILE`…): what a read-only
+/// connection lets run. Where the server can, the session is read-only there too
+/// ([`platypus_core::ConnectionConfig::read_only`]).
 pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
     use platypus_driver_mongo::shell::{self, StatementKind as Kind};
     if driver == DriverKind::Mongo {
@@ -227,9 +230,11 @@ pub(crate) fn only_reads(sql: &str, driver: DriverKind) -> bool {
             });
     }
     let dialect = Dialect::from(driver);
-    platypus_sql::split(sql, dialect)
-        .iter()
-        .all(|s| platypus_sql::analyze(s.text(sql), dialect).kind == StatementKind::Query)
+    platypus_sql::split(sql, dialect).iter().all(|s| {
+        let text = s.text(sql);
+        platypus_sql::analyze(text, dialect).kind == StatementKind::Query
+            && platypus_mcp::access::outside_effect(text, dialect).is_none()
+    })
 }
 
 /// [`analyze_sql`] for mongosh statements, which have no parameters.
@@ -702,6 +707,72 @@ mod tests {
         assert!(!only_reads("db.a.find(", DriverKind::Mongo));
     }
 
+    /// A query that acts outside the transaction, on other sessions or on the server's files
+    /// is no read, though the analysis sees a `SELECT`: as for read-only agents.
+    #[test]
+    fn a_read_only_connection_runs_nothing_that_acts_outside() {
+        for (driver, sql) in [
+            (DriverKind::Postgres, "select pg_terminate_backend(42)"),
+            (
+                DriverKind::Postgres,
+                "select dblink_exec('host=x', 'drop table t')",
+            ),
+            (DriverKind::Postgres, "select 1; select pg_advisory_lock(1)"),
+            (DriverKind::MySql, "SELECT GET_LOCK('x', 10)"),
+            (DriverKind::MySql, "SELECT LOAD_FILE('/etc/passwd')"),
+            (
+                DriverKind::Oracle,
+                "select utl_http.request('http://x') from dual",
+            ),
+            (DriverKind::Snowflake, "select system$cancel_query('01a')"),
+            (DriverKind::Sqlite, "select load_extension('x')"),
+            (DriverKind::DuckDb, "SELECT * FROM read_text('/etc/passwd')"),
+            (
+                DriverKind::Trino,
+                "SELECT * FROM TABLE(system.query(query => 'DELETE FROM t'))",
+            ),
+        ] {
+            assert!(!only_reads(sql, driver), "{driver:?}: {sql}");
+            let analysis = analyze_sql(sql.to_owned(), driver, 0);
+            assert!(
+                analysis.statements.iter().any(|s| !s.read_only),
+                "{driver:?}: {sql}"
+            );
+        }
+        assert!(only_reads(
+            "select pg_backend_pid(), now()",
+            DriverKind::Postgres
+        ));
+        assert!(only_reads(
+            "select dbms_lob.substr(c, 10, 1) from t",
+            DriverKind::Oracle
+        ));
+    }
+
+    /// The maintenance statements the Maintenance dialog runs, typed in the editor, a script,
+    /// a schedule or the command-line client: none runs on a read-only connection.
+    #[test]
+    fn maintenance_is_no_read() {
+        for (driver, sql) in [
+            (DriverKind::Postgres, "VACUUM (VERBOSE) demo.t"),
+            (DriverKind::Postgres, "VACUUM FULL"),
+            (DriverKind::Postgres, "ANALYZE demo.t"),
+            (DriverKind::Postgres, "REINDEX TABLE demo.t"),
+            (DriverKind::Postgres, "CLUSTER demo.t"),
+            (DriverKind::MySql, "OPTIMIZE TABLE t"),
+            (DriverKind::MySql, "ANALYZE TABLE t"),
+            (DriverKind::MySql, "CHECK TABLE t"),
+            (DriverKind::MySql, "REPAIR TABLE t"),
+            (DriverKind::SqlServer, "UPDATE STATISTICS dbo.t"),
+            (DriverKind::SqlServer, "ALTER INDEX ALL ON dbo.t REBUILD"),
+            (DriverKind::SqlServer, "DBCC CHECKTABLE ('dbo.t')"),
+            (DriverKind::Sqlite, "VACUUM"),
+            (DriverKind::Sqlite, "REINDEX t"),
+        ] {
+            assert!(!only_reads(sql, driver), "{driver:?}: {sql}");
+        }
+    }
+
     #[test]
     fn sql_server_statements_keep_their_semicolon_and_batches() {
         let sql = "@set x = 1;\nDECLARE @a int = 1;\nMERGE t USING s ON 1 = 1 WHEN MATCHED THEN DELETE;\nGO 2\nSELECT 1"
@@ -911,8 +982,10 @@ fn rewritable(sql: &str, driver: DriverKind) -> bool {
 
 /// `sql` sorted by `column` (descending when `desc`) or, with no column, without the
 /// viewer's sort: back to `original`, the `ORDER BY` it had before (see `sql_order_clause`),
-/// or unsorted. The rest of the text stays as written. `None` when `sql` is not a read-only
-/// query the sort can be placed in. The data viewer's header sort.
+/// or unsorted. With `position` (from 1), the sort names the column by its place in the
+/// select list, for a column its name cannot point to (two `id` of a join, an expression).
+/// The rest of the text stays as written. `None` when `sql` is not a read-only query the sort
+/// can be placed in. The data viewer's header sort.
 #[tauri::command]
 pub fn sql_order_by(
     sql: String,
@@ -920,6 +993,7 @@ pub fn sql_order_by(
     column: Option<String>,
     desc: bool,
     original: Option<String>,
+    position: Option<usize>,
 ) -> Option<String> {
     let order = column.as_deref().map(|c| (c, desc));
     if driver == DriverKind::Mongo {
@@ -929,8 +1003,11 @@ pub fn sql_order_by(
         return None;
     }
     let dialect = Dialect::from(driver);
-    match (order, original) {
-        (None, Some(clause)) => platypus_sql::restore_order_by(&sql, dialect, &clause),
+    match (order, original, position) {
+        (None, Some(clause), _) => platypus_sql::restore_order_by(&sql, dialect, &clause),
+        (Some(_), _, Some(position)) => {
+            platypus_sql::set_order_by_position(&sql, dialect, position, desc)
+        }
         _ => platypus_sql::set_order_by(&sql, dialect, order),
     }
 }
@@ -948,7 +1025,7 @@ pub fn sql_order_clause(sql: String, driver: DriverKind) -> Option<String> {
 /// Whether the header sort can rewrite `sql`.
 #[tauri::command]
 pub fn sql_sortable(sql: String, driver: DriverKind) -> bool {
-    sql_order_by(sql, driver, Some("x".to_owned()), false, None).is_some()
+    sql_order_by(sql, driver, Some("x".to_owned()), false, None, None).is_some()
 }
 
 /// The query that counts the rows of `sql` (`SELECT COUNT(*)…`, or `countDocuments`); `None`

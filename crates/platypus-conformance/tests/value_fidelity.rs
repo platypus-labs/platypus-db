@@ -390,6 +390,64 @@ async fn mssql_money_and_times_are_exact_and_keys_save() {
     run(conn, "DROP TABLE #qa_fixdrv_keys").await;
 }
 
+#[tokio::test]
+async fn mssql_clr_types_read_with_the_columns_around_them() {
+    let Some(conn) = connect(&MssqlDriver, MSSQL).await else {
+        return;
+    };
+    let conn = &*conn;
+    run(
+        conn,
+        "CREATE TABLE #qa_fixdrv_clr (id int, node hierarchyid, place geography, name nvarchar(20))",
+    )
+    .await;
+    run(
+        conn,
+        "INSERT INTO #qa_fixdrv_clr VALUES (1, '/1/2.3/', geography::Point(1, 2, 4326), N'a'), \
+         (2, NULL, NULL, N'b'), (3, '/', NULL, N'c'), (4, '/-7/12345.0.9/', NULL, N'd')",
+    )
+    .await;
+    let rows = texts(
+        conn,
+        "SELECT id, node, name, place FROM #qa_fixdrv_clr ORDER BY id",
+    )
+    .await;
+    let cells = |i: usize| rows.iter().map(|r| r[i].clone()).collect::<Vec<_>>();
+    assert_eq!(
+        cells(1),
+        [
+            Some("/1/2.3/".to_owned()),
+            None,
+            Some("/".to_owned()),
+            Some("/-7/12345.0.9/".to_owned())
+        ]
+    );
+    assert_eq!(
+        cells(2),
+        [
+            Some("a".into()),
+            Some("b".into()),
+            Some("c".into()),
+            Some("d".into())
+        ]
+    );
+    // geography stays its bytes.
+    assert!(
+        rows[0][3].as_deref().is_some_and(|g| g.len() > 8),
+        "{rows:?}"
+    );
+    // The text written back finds the row, as an edit's key does.
+    assert_eq!(
+        run(
+            conn,
+            "UPDATE #qa_fixdrv_clr SET name = N'z' WHERE node = '/-7/12345.0.9/'"
+        )
+        .await,
+        1
+    );
+    run(conn, "DROP TABLE #qa_fixdrv_clr").await;
+}
+
 /// The columns of the bulk copy tests: every type SQL Server's bulk copy writes.
 const MSSQL_BULK_COLUMNS: &[(&str, &str)] = &[
     ("id", "int IDENTITY PRIMARY KEY"),
@@ -815,5 +873,112 @@ async fn duckdb_special_values_and_bits() {
             "170141183460469231731687303715884105727",
             "-170141183460469231731687303715884105727"
         ])]
+    );
+}
+
+#[tokio::test]
+async fn duckdb_unsigned_128_bit_numbers_and_zoned_times_keep_their_value() {
+    platypus_driver_duckdb::testing::load();
+    let dir = tempfile::tempdir().unwrap();
+    let conn = file_connection(
+        &DuckDbDriver,
+        DriverKind::DuckDb,
+        &dir.path().join("qa.duckdb"),
+    )
+    .await;
+    let conn = &*conn;
+    assert_eq!(
+        texts(
+            conn,
+            "SELECT 340282366920938463463374607431768211455::UHUGEINT, \
+             170141183460469231731687303715884105728::UHUGEINT, \
+             TIMETZ '03:04:05+02', TIMETZ '23:59:59.5-05:30'"
+        )
+        .await,
+        [row(&[
+            "340282366920938463463374607431768211455",
+            "170141183460469231731687303715884105728",
+            "03:04:05+02",
+            "23:59:59.5-05:30"
+        ])]
+    );
+    // Stored in a table, the same.
+    run(conn, "CREATE TABLE qa_fix_wide (u UHUGEINT, z TIMETZ)").await;
+    run(
+        conn,
+        "INSERT INTO qa_fix_wide VALUES (340282366920938463463374607431768211455, '03:04:05+02')",
+    )
+    .await;
+    assert_eq!(
+        texts(conn, "SELECT u, z FROM qa_fix_wide").await,
+        [row(&[
+            "340282366920938463463374607431768211455",
+            "03:04:05+02"
+        ])]
+    );
+}
+
+#[tokio::test]
+async fn sqlite_numeric_columns_of_whole_numbers_still_take_fractions() {
+    use platypus_sql::dml::{Column, ValueKind};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("qa.db");
+    std::fs::File::create(&path).unwrap();
+    let conn = file_connection(&SqliteDriver, DriverKind::Sqlite, &path).await;
+    let conn = &*conn;
+    run(
+        conn,
+        "CREATE TABLE qa_fix_prices (id INTEGER PRIMARY KEY, price DECIMAL(10,2), loose, qty INT)",
+    )
+    .await;
+    run(
+        conn,
+        "INSERT INTO qa_fix_prices VALUES (1, 10, 5, 1), (2, 20, 6, 2)",
+    )
+    .await;
+    let (types, rows) =
+        texts_with(conn, "SELECT id, price, loose, qty FROM qa_fix_prices", 10).await;
+    // The values stay the integers they are...
+    assert_eq!(types[1], DataType::Int64);
+    assert_eq!(rows[0], row(&["1", "10", "5", "1"]));
+    // ...and the editor writes fractions into the numeric columns, whole numbers into the others.
+    let ExecResult::Rows(stream) = conn
+        .execute(
+            "SELECT id, price, loose, qty FROM qa_fix_prices",
+            &ExecOptions::default(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("no rows");
+    };
+    let kinds: Vec<_> = stream
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| ValueKind::of_field(f, Dialect::Sqlite))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ValueKind::Integer,
+            ValueKind::Decimal,
+            ValueKind::Decimal,
+            ValueKind::Integer
+        ]
+    );
+    let price = Column {
+        name: "price",
+        kind: kinds[1],
+        default: None,
+    };
+    let sql = format!(
+        "UPDATE qa_fix_prices SET price = {} WHERE id = 1",
+        price.literal(Dialect::Sqlite, Some("9.99")).unwrap()
+    );
+    run(conn, &sql).await;
+    assert_eq!(
+        texts(conn, "SELECT price FROM qa_fix_prices WHERE id = 1").await,
+        [row(&["9.99"])]
     );
 }
