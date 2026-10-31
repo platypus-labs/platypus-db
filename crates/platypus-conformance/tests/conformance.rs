@@ -5020,6 +5020,107 @@ async fn clickhouse_read_only_sessions_refuse_remote_table_functions() {
     assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("0"));
 }
 
+/// A function that writes a row into `table`, called as a query, and the statement that drops
+/// it: on the servers that have stored functions written in SQL.
+fn writing_function(b: &Backend, table: &str) -> Option<(String, &'static str, &'static str)> {
+    let call = "SELECT read_only_session_write()";
+    match b.config.driver {
+        DriverKind::Postgres => Some((
+            format!(
+                "CREATE FUNCTION read_only_session_write() RETURNS int LANGUAGE sql AS \
+                 $$ INSERT INTO {table} VALUES (2) RETURNING 1 $$"
+            ),
+            call,
+            "DROP FUNCTION IF EXISTS read_only_session_write()",
+        )),
+        DriverKind::MySql => Some((
+            format!(
+                "CREATE FUNCTION read_only_session_write() RETURNS INT MODIFIES SQL DATA \
+                 BEGIN INSERT INTO {table} VALUES (2); RETURN 1; END"
+            ),
+            call,
+            "DROP FUNCTION IF EXISTS read_only_session_write",
+        )),
+        _ => None,
+    }
+}
+
+/// A read-only connection's session refuses writes on the server, where the database can: a
+/// statement that got past the app's check fails, and so does a function that writes, which
+/// the check reads as a query. SQL Server and libSQL have no such session: only the check.
+#[tokio::test]
+async fn read_only_connections_refuse_writes_on_the_server() {
+    let _serial = SERIAL.lock().await;
+
+    for b in backends().await {
+        if matches!(b.config.driver, DriverKind::SqlServer | DriverKind::Libsql) {
+            continue;
+        }
+        let table = "read_only_session_probe";
+        let function = writing_function(&b, table);
+        let mut created = false;
+        {
+            let conn = b.connect().await;
+            let conn = &*conn;
+            if let Some((_, _, drop)) = &function {
+                run(conn, drop)
+                    .await
+                    .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+            }
+            run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+                .await
+                .unwrap();
+            let create = format!("CREATE TABLE {table} (id INT){}", b.table_options("id"));
+            run(conn, &create)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+            if let Some((create, _, _)) = &function {
+                // MySQL with binary logging wants SUPER or log_bin_trust_function_creators.
+                match run(conn, create).await {
+                    Ok(()) => created = true,
+                    Err(e) => eprintln!("{}: no writing function: {e}", b.name),
+                }
+            }
+        }
+        // DuckDB opens a file read-only only when no session holds it already.
+        let mut config = b.config.clone();
+        config.read_only = true;
+        let read_only = driver(b.config.driver)
+            .connect(&config)
+            .await
+            .unwrap_or_else(|e| panic!("{}: cannot connect read-only: {e}", b.name));
+        let insert = format!("INSERT INTO {table} VALUES (1)");
+        assert!(
+            run(&*read_only, &insert).await.is_err(),
+            "{}: the read-only session wrote",
+            b.name
+        );
+        if let Some((_, call, _)) = function.as_ref().filter(|_| created) {
+            assert!(
+                run(&*read_only, call).await.is_err(),
+                "{}: a function wrote in the read-only session",
+                b.name
+            );
+        }
+        let rows = collect(&b, &*read_only, &format!("SELECT count(*) FROM {table}")).await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("0"), "{}", b.name);
+        drop(read_only);
+
+        // Another session writes as before.
+        let conn = b.connect().await;
+        let conn = &*conn;
+        run(conn, &insert)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let rows = collect(&b, conn, &format!("SELECT count(*) FROM {table}")).await;
+        assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("1"), "{}", b.name);
+        if let Some((_, _, drop)) = &function {
+            run(conn, drop).await.unwrap();
+        }
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
 /// An agent's `explain` with analyze runs in the read-only transaction where it refuses
 /// writes: the plan comes back analyzed, a write inside it fails or changes nothing, and
 /// no transaction is left open.

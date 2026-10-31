@@ -368,8 +368,10 @@ fn clickhouse_table_starts(src: &str, tokens: &[Token]) -> Vec<bool> {
 }
 
 /// The first name in `statement` that reaches outside a read-only transaction in
-/// `dialect`, however the server reads the statement and decodes its quoted names.
-fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
+/// `dialect`, however the server reads the statement and decodes its quoted names: what a
+/// read-only connection or agent may not run, though the statement only reads.
+#[must_use]
+pub fn outside_effect(statement: &str, dialect: Dialect) -> Option<String> {
     let outside = Outside::of(dialect);
     Lexer::readings(statement, dialect)
         .into_iter()

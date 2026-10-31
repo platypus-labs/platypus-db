@@ -53,6 +53,17 @@ impl Driver for MySqlDriver {
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
         let conn: Box<dyn Connection> = Box::new(MySqlConnection::connect(config).await?);
         platypus_core::run_init(&*conn, &config.init, self.kind()).await?;
+        // A read-only connection's transactions are read-only on the server too, so a stored
+        // function that writes fails there; set after the setup, which cannot undo it. `TiDB`
+        // only pretends to take it (or refuses it), and a server that refuses it keeps the
+        // statement check alone.
+        if config.read_only && !conn.server_info().version.contains("TiDB") {
+            let read_only = platypus_core::SessionInit {
+                statements: vec!["SET SESSION TRANSACTION READ ONLY".to_owned()],
+                ..platypus_core::SessionInit::default()
+            };
+            let _ = platypus_core::run_init(&*conn, &read_only, self.kind()).await;
+        }
         Ok(conn)
     }
 }

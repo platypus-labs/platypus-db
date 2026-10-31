@@ -458,8 +458,15 @@ mod tests {
         .unwrap();
         let read_secret = format!("SELECT * FROM read_text('{}')", secret.display());
 
-        let conn = duckdb_for_agents(dir.path(), &dir.path().join("agent.duckdb")).await;
+        // A read-only agent opens the file read-only, which DuckDB does only to a database
+        // that exists.
+        let database = dir.path().join("agent.duckdb");
+        let mut create = ConnectionConfig::new(DriverKind::DuckDb);
+        create.database = database.display().to_string();
+        drop(DuckDbDriver.connect(&create).await.unwrap());
+        let conn = duckdb_for_agents(dir.path(), &database).await;
         run(&*conn, "SELECT 42").await.unwrap();
+        assert!(run(&*conn, "CREATE TABLE t (a INT)").await.is_err());
         for sql in [
             read_secret.as_str(),
             &format!("SELECT * FROM glob('{}/*')", dir.path().display()),
