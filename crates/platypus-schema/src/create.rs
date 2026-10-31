@@ -12,6 +12,18 @@ pub struct Definition {
     pub options: Option<String>,
     /// Whether a column is `AUTOINCREMENT` (SQLite).
     pub autoincrement: bool,
+    /// The plain, `FULLTEXT` and `SPATIAL` indexes of MySQL's `SHOW CREATE TABLE`.
+    pub indexes: Vec<IndexDefinition>,
+}
+
+/// An index of MySQL's `SHOW CREATE TABLE`, a `KEY`, a `FULLTEXT KEY` or a `SPATIAL KEY`.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct IndexDefinition {
+    pub name: String,
+    /// `FULLTEXT` or `SPATIAL`; `None` for a plain index.
+    pub method: Option<String>,
+    /// The key parts as written: `` `body`(50) ``, `` `a` DESC ``, `(lower(`b`))`.
+    pub parts: Vec<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -117,7 +129,11 @@ pub fn parse(sql: &str, dialect: Dialect) -> Definition {
     for (from, to) in items {
         let index =
             dialect == Dialect::MySql && MYSQL_INDEX_WORDS.iter().any(|w| t.is_word(from, w));
-        if from >= to || index || CONSTRAINT_WORDS.iter().any(|w| t.is_word(from, w)) {
+        if index && from < to {
+            out.indexes.extend(mysql_index(&t, from, to));
+            continue;
+        }
+        if from >= to || CONSTRAINT_WORDS.iter().any(|w| t.is_word(from, w)) {
             continue;
         }
         out.autoincrement |= (from..to).any(|i| t.is_word(i, "AUTOINCREMENT"));
@@ -133,6 +149,31 @@ pub fn parse(sql: &str, dialect: Dialect) -> Definition {
         out.options = Some(t.source(close + 1, end - 1).to_owned());
     }
     out
+}
+
+/// The index defined by the tokens `from..to`: `[FULLTEXT | SPATIAL] KEY name (parts) ..`.
+fn mysql_index(t: &Tokens<'_>, from: usize, to: usize) -> Option<IndexDefinition> {
+    let method = ["FULLTEXT", "SPATIAL"]
+        .into_iter()
+        .find(|w| t.is_word(from, w))
+        .map(str::to_owned);
+    let mut i = from + usize::from(method.is_some());
+    if t.is_word(i, "KEY") || t.is_word(i, "INDEX") {
+        i += 1;
+    }
+    let name = unquote(t.text(i));
+    let open = (i..to).find(|&j| t.text(j) == "(")?;
+    let close = t.closing(open).filter(|&c| c < to)?;
+    let parts = if close > open + 1 {
+        crate::catalog::split_list(t.source(open + 1, close - 1))
+    } else {
+        Vec::new()
+    };
+    Some(IndexDefinition {
+        name,
+        method,
+        parts,
+    })
 }
 
 /// The column defined by the tokens `from..to`.
@@ -226,6 +267,37 @@ mod tests {
         );
         assert_eq!(d.columns[3].collation.as_deref(), Some("utf8mb4_bin"));
         assert_eq!(d.columns.len(), 4);
+    }
+
+    #[test]
+    fn reads_mysql_index_kinds_and_key_parts() {
+        let d = parse(
+            "CREATE TABLE `d` (\n  `id` int NOT NULL,\n  `body` text,\n  PRIMARY KEY (`id`),\n  \
+             KEY `d_body` (`body`(50)),\n  KEY `d_two` (`id` DESC,(lower(`body`))),\n  \
+             FULLTEXT KEY `d_ft` (`body`)\n) ENGINE=InnoDB",
+            Dialect::MySql,
+        );
+        assert_eq!(d.columns.len(), 2);
+        assert_eq!(
+            d.indexes,
+            [
+                IndexDefinition {
+                    name: "d_body".into(),
+                    method: None,
+                    parts: vec!["`body`(50)".into()],
+                },
+                IndexDefinition {
+                    name: "d_two".into(),
+                    method: None,
+                    parts: vec!["`id` DESC".into(), "(lower(`body`))".into()],
+                },
+                IndexDefinition {
+                    name: "d_ft".into(),
+                    method: Some("FULLTEXT".into()),
+                    parts: vec!["`body`".into()],
+                },
+            ]
+        );
     }
 
     #[test]

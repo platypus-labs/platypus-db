@@ -1424,10 +1424,15 @@ export interface TableDesign {
   foreign_keys: ForeignKeyDesign[];
   /** UNIQUE and CHECK constraints. */
   constraints: ConstraintDesign[];
-  /** SQLite's `WITHOUT ROWID`, `STRICT`, kept from the database. */
+  /** What follows the column list, kept from the database: SQLite's `WITHOUT ROWID`,
+   *  PostgreSQL's `PARTITION BY`, ClickHouse's engine clause. */
   options?: string | null;
   /** The table's `CREATE TRIGGER` statements (SQLite), run again when it is rebuilt. */
   triggers?: string[];
+  /** The partitions of a partitioned table (PostgreSQL). */
+  partitions?: { name: string; bound: string }[];
+  /** The user-defined types its columns use (PostgreSQL). */
+  types?: { schema: string; name: string; kind: string; body: string }[];
 }
 
 export interface ColumnDesign {
@@ -1454,6 +1459,15 @@ export interface IndexDesign {
   unique: boolean;
   /** Its own `CREATE INDEX` (SQLite), run again while the index is unchanged. */
   sql?: string | null;
+  /** Key parts that say more than their column (`lower(name)`, a prefix length, `DESC`); emptied
+   *  when the columns are edited. */
+  parts?: string[];
+  /** A kind other than the default: `brin`, `FULLTEXT`, `CLUSTERED`. */
+  method?: string | null;
+  /** Columns carried without keying on them (`INCLUDE`). */
+  include?: string[];
+  /** The condition of a partial index, without `WHERE`. */
+  predicate?: string | null;
 }
 
 export interface ForeignKeyDesign {

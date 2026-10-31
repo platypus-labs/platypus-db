@@ -1608,6 +1608,16 @@ const it: Record<string, string> = {
   "The primary key has no known name: drop it by hand.": "La chiave primaria non ha un nome noto: va eliminata a mano.",
   "SQLite has no table comments: it is not saved.": "SQLite non ha commenti sulle tabelle: non viene salvato.",
   "SQLite has no column comments: they are not saved.": "SQLite non ha commenti sulle colonne: non vengono salvati.",
+  "The partitioning of {table} differs and cannot be changed in place: create the table again by hand.":
+    "Il partizionamento di {table} è diverso e non si può cambiare sul posto: la tabella va ricreata a mano.",
+  "The engine clause (ORDER BY, PARTITION BY, TTL) of {table} differs and cannot be changed in place: create the table again by hand.":
+    "La clausola del motore (ORDER BY, PARTITION BY, TTL) di {table} è diversa e non si può cambiare sul posto: la tabella va ricreata a mano.",
+  "The bound of partition {table} differs: change it by hand (detach it and attach it again).":
+    "Il limite della partizione {table} è diverso: va cambiato a mano (staccarla e riattaccarla).",
+  "Column {column}: its identity or computation cannot be changed in place: drop it and add it again by hand.":
+    "Colonna {column}: l'identità o il calcolo non si possono cambiare sul posto: va eliminata e aggiunta di nuovo a mano.",
+  "The type {type} differs from the one compared with: change it by hand.":
+    "Il tipo {type} è diverso da quello confrontato: va cambiato a mano.",
   "Drops the table {table}: its rows are lost.": "Elimina la tabella {table}: le sue righe vanno perse.",
   "Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval).":
     "Crea la sequenza {sequence}, che parte da 1: se le sue colonne hanno già dei valori, va portata oltre (setval).",

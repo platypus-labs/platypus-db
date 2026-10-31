@@ -1608,6 +1608,16 @@ const es: Record<string, string> = {
   "The primary key has no known name: drop it by hand.": "La clave primaria no tiene un nombre conocido: elimínala a mano.",
   "SQLite has no table comments: it is not saved.": "SQLite no tiene comentarios de tabla: no se guarda.",
   "SQLite has no column comments: they are not saved.": "SQLite no tiene comentarios de columna: no se guardan.",
+  "The partitioning of {table} differs and cannot be changed in place: create the table again by hand.":
+    "El particionado de {table} es distinto y no se puede cambiar en el sitio: vuelve a crear la tabla a mano.",
+  "The engine clause (ORDER BY, PARTITION BY, TTL) of {table} differs and cannot be changed in place: create the table again by hand.":
+    "La cláusula del motor (ORDER BY, PARTITION BY, TTL) de {table} es distinta y no se puede cambiar en el sitio: vuelve a crear la tabla a mano.",
+  "The bound of partition {table} differs: change it by hand (detach it and attach it again).":
+    "El límite de la partición {table} es distinto: cámbialo a mano (sepárala y vuelve a adjuntarla).",
+  "Column {column}: its identity or computation cannot be changed in place: drop it and add it again by hand.":
+    "Columna {column}: su identidad o su cálculo no se pueden cambiar en el sitio: elimínala y vuelve a añadirla a mano.",
+  "The type {type} differs from the one compared with: change it by hand.":
+    "El tipo {type} es distinto del comparado: cámbialo a mano.",
   "Drops the table {table}: its rows are lost.": "Elimina la tabla {table}: sus filas se pierden.",
   "Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval).":
     "Crea la secuencia {sequence}, que empieza en 1: si sus columnas ya tienen valores, llévala más allá de ellos (setval).",

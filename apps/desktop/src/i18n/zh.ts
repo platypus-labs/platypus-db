@@ -1608,6 +1608,16 @@ const zh: Record<string, string> = {
   "The primary key has no known name: drop it by hand.": "主键没有已知的名称：请手动删除。",
   "SQLite has no table comments: it is not saved.": "SQLite 不支持表注释：不会保存。",
   "SQLite has no column comments: they are not saved.": "SQLite 不支持列注释：不会保存。",
+  "The partitioning of {table} differs and cannot be changed in place: create the table again by hand.":
+    "{table} 的分区方式不同，无法就地更改：请手动重新创建该表。",
+  "The engine clause (ORDER BY, PARTITION BY, TTL) of {table} differs and cannot be changed in place: create the table again by hand.":
+    "{table} 的引擎子句（ORDER BY、PARTITION BY、TTL）不同，无法就地更改：请手动重新创建该表。",
+  "The bound of partition {table} differs: change it by hand (detach it and attach it again).":
+    "分区 {table} 的边界不同：请手动更改（先分离再重新附加）。",
+  "Column {column}: its identity or computation cannot be changed in place: drop it and add it again by hand.":
+    "列 {column}：其标识或计算无法就地更改：请手动删除后重新添加。",
+  "The type {type} differs from the one compared with: change it by hand.":
+    "类型 {type} 与所比较的类型不同：请手动更改。",
   "Drops the table {table}: its rows are lost.": "删除表 {table}：其中的行将丢失。",
   "Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval).":
     "创建序列 {sequence}，从 1 开始：如果其列中已有值，请将序列移到这些值之后（setval）。",

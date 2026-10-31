@@ -13,6 +13,11 @@ const TEMPLATES = [
   msg("SQLite has no column comments: they are not saved."),
   msg("Drops the table {table}: its rows are lost."),
   msg("Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval)."),
+  msg("The partitioning of {table} differs and cannot be changed in place: create the table again by hand."),
+  msg("The engine clause (ORDER BY, PARTITION BY, TTL) of {table} differs and cannot be changed in place: create the table again by hand."),
+  msg("The bound of partition {table} differs: change it by hand (detach it and attach it again)."),
+  msg("Column {column}: its identity or computation cannot be changed in place: drop it and add it again by hand."),
+  msg("The type {type} differs from the one compared with: change it by hand."),
 ];
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

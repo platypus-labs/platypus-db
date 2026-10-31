@@ -64,6 +64,12 @@ pub fn compare(
     let created = missing_sequences(schema, sequences, wanted, current);
     out.statements.splice(0..0, created.statements);
     out.warnings.extend(created.warnings);
+    // Before all, for the columns of the tables created and altered to take them.
+    if dialect == Dialect::Postgres {
+        let types = missing_types((schema, wanted_schema), wanted, current);
+        out.statements.splice(0..0, types.statements);
+        out.warnings.extend(types.warnings);
+    }
     add(&mut out, altered);
     out.statements.extend(later);
     out.statements.append(&mut keys.added);
@@ -287,7 +293,117 @@ fn matched(
         c.original = before.and_then(|o| o.original.clone());
     }
     t.primary_key_name = old.and_then(|o| o.primary_key_name.clone());
+    if dialect == Dialect::Postgres && schema != wanted_schema {
+        retarget_types(&mut t, schema, wanted_schema);
+    }
     t
+}
+
+/// The columns of `t` with the types of `wanted_schema` they use taken from `schema` instead,
+/// where the comparison creates them.
+fn retarget_types(t: &mut TableDesign, schema: &str, wanted_schema: &str) {
+    let d = Dialect::Postgres;
+    let names: Vec<String> = t
+        .types
+        .iter()
+        .filter(|u| u.schema == wanted_schema)
+        .map(|u| u.name.clone())
+        .collect();
+    for name in &names {
+        let from = d.qualified(Some(wanted_schema), name);
+        let to = d.qualified(Some(schema), name);
+        let bare = d.quote_ident(name).into_owned();
+        let cast = (format!("::{bare}"), format!("::{to}"));
+        for c in &mut t.columns {
+            // A type on the search path is written without its schema.
+            let data_type = replace_name(&c.data_type, &from, &to);
+            c.data_type = match data_type.strip_prefix(&bare) {
+                Some(rest) if rest.is_empty() || rest.starts_with('[') => format!("{to}{rest}"),
+                _ => data_type,
+            };
+            for text in [&mut c.default, &mut c.generated].into_iter().flatten() {
+                *text = replace_name(&replace_name(text, &from, &to), &cast.0, &cast.1);
+            }
+        }
+    }
+    for u in &mut t.types {
+        u.body = names.iter().fold(u.body.clone(), |body, name| {
+            replace_name(
+                &body,
+                &d.qualified(Some(wanted_schema), name),
+                &d.qualified(Some(schema), name),
+            )
+        });
+        if u.schema == wanted_schema {
+            schema.clone_into(&mut u.schema);
+        }
+    }
+}
+
+/// `text` with `from` replaced by `to` where it is a whole name: not part of a longer one.
+fn replace_name(text: &str, from: &str, to: &str) -> String {
+    let word = |c: char| c.is_alphanumeric() || matches!(c, '_' | '$' | '"' | '.');
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(from) {
+        let before = rest[..at]
+            .chars()
+            .next_back()
+            .or_else(|| out.chars().next_back());
+        let after = rest[at + from.len()..].chars().next();
+        let whole = !before.is_some_and(word) && !after.is_some_and(word);
+        out.push_str(&rest[..at]);
+        out.push_str(if whole { to } else { from });
+        rest = &rest[at + from.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// What creates the user-defined types the tables `wanted` use in `wanted_schema` that the
+/// tables `current` do not in `schema`: each one in a block that leaves a type there already
+/// (used by no table) as it is. A type of the same name that differs is left to the user.
+fn missing_types(
+    (schema, wanted_schema): (&str, &str),
+    wanted: &[TableDesign],
+    current: &[TableDesign],
+) -> Script {
+    let mut types: Vec<crate::UserType> = Vec::new();
+    for t in wanted {
+        let mut t = t.clone();
+        if schema != wanted_schema {
+            retarget_types(&mut t, schema, wanted_schema);
+        }
+        for u in t.types.into_iter().filter(|u| u.schema == schema) {
+            if !types.iter().any(|x| x.name == u.name) {
+                types.push(u);
+            }
+        }
+    }
+    // Enums and the other types before the domains that may be over them.
+    types.sort_by_key(|u| (u.kind == "DOMAIN", !u.body.starts_with("AS ENUM")));
+    let mut out = Script::default();
+    for u in types {
+        let there = current
+            .iter()
+            .flat_map(|t| &t.types)
+            .find(|c| c.schema == schema && c.name == u.name);
+        let name = Dialect::Postgres.qualified(Some(schema), &u.name);
+        match there {
+            Some(c) if c.kind != u.kind || c.body.trim() != u.body.trim() => {
+                out.warnings.push(format!(
+                    "The type {name} differs from the one compared with: change it by hand."
+                ));
+            }
+            Some(_) => {}
+            None => out.statements.push(format!(
+                "DO $platypus$ BEGIN CREATE {} {name} {}; \
+                 EXCEPTION WHEN duplicate_object THEN NULL; END $platypus$",
+                u.kind, u.body
+            )),
+        }
+    }
+    out
 }
 
 /// The part of `parts` named `original`, if any.
@@ -1083,5 +1199,82 @@ mod tests {
         let current = [table("a", vec![column("id", "integer")], &[], "public")];
         let s = edited_script(Dialect::Sqlite, "main", &current, &[], &[]).unwrap();
         assert_eq!(s.statements, Vec::<String>::new());
+    }
+
+    #[test]
+    fn user_types_are_taken_from_the_target_schema_and_created_there() {
+        let mood = |schema: &str| crate::UserType {
+            schema: schema.to_owned(),
+            name: "mood".to_owned(),
+            kind: "TYPE".to_owned(),
+            body: "AS ENUM ('sad', 'ok')".to_owned(),
+        };
+        let mut e = table(
+            "e",
+            vec![ColumnDesign {
+                default: Some("'ok'::src.mood".to_owned()),
+                ..column("m", "src.mood")
+            }],
+            &[],
+            "src",
+        );
+        e.columns.push(column("ms", "src.mood[]"));
+        e.columns.push(column("moody", "src.moody"));
+        e.types.push(mood("src"));
+        let s = compare(
+            Dialect::Postgres,
+            "dst",
+            "src",
+            std::slice::from_ref(&e),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            s.statements[0],
+            "DO $platypus$ BEGIN CREATE TYPE dst.mood AS ENUM ('sad', 'ok'); \
+             EXCEPTION WHEN duplicate_object THEN NULL; END $platypus$"
+        );
+        assert!(
+            s.statements[1].contains("m dst.mood DEFAULT 'ok'::dst.mood"),
+            "{s:?}"
+        );
+        assert!(s.statements[1].contains("ms dst.mood[]"), "{s:?}");
+        assert!(s.statements[1].contains("moody src.moody"), "{s:?}");
+
+        // Once there, the type and the table are the same.
+        let mut there = e.clone();
+        for c in &mut there.columns {
+            if c.name != "moody" {
+                c.data_type = c.data_type.replace("src.mood", "dst.mood");
+            }
+            c.default = c.default.as_ref().map(|d| d.replace("src.", "dst."));
+        }
+        there.types = vec![mood("dst")];
+        let again = compare(
+            Dialect::Postgres,
+            "dst",
+            "src",
+            std::slice::from_ref(&e),
+            &[there.clone()],
+        );
+        assert_eq!(again.unwrap().statements, Vec::<String>::new());
+        there.types[0].body = "AS ENUM ('sad')".to_owned();
+        let differs = compare(Dialect::Postgres, "dst", "src", &[e], &[there]).unwrap();
+        assert_eq!(
+            differs.warnings,
+            ["The type dst.mood differs from the one compared with: change it by hand."]
+        );
+    }
+
+    #[test]
+    fn names_are_replaced_whole() {
+        assert_eq!(
+            replace_name("a.mood, a.moody, xa.mood", "a.mood", "b.mood"),
+            "b.mood, a.moody, xa.mood"
+        );
+        assert_eq!(
+            replace_name("'ok'::mood", "::mood", "::b.mood"),
+            "'ok'::b.mood"
+        );
     }
 }

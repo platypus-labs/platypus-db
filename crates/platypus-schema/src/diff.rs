@@ -2,6 +2,7 @@
 //! schema history shows beside the script that [`crate::compare`] writes.
 
 use std::collections::BTreeSet;
+use std::fmt::Write;
 
 use serde::Serialize;
 
@@ -182,7 +183,21 @@ fn column_changes(table: &str, o: &ColumnDesign, n: &ColumnDesign, out: &mut Vec
 /// The name of an index and what it is, to tell an index of the same name that changed.
 fn index_key(i: &IndexDesign) -> (String, String) {
     let unique = if i.unique { "unique " } else { "" };
-    (i.name.clone(), format!("{unique}{}", i.columns.join(",")))
+    let mut definition = format!("{unique}{}", i.columns.join(","));
+    for (what, value) in [
+        ("using", i.method.clone()),
+        ("keys", (!i.parts.is_empty()).then(|| i.parts.join(","))),
+        (
+            "include",
+            (!i.include.is_empty()).then(|| i.include.join(",")),
+        ),
+        ("where", i.predicate.clone()),
+    ] {
+        if let Some(value) = value {
+            let _ = write!(definition, " {what} {value}");
+        }
+    }
+    (i.name.clone(), definition)
 }
 
 fn foreign_key_key(f: &ForeignKeyDesign) -> (String, String) {

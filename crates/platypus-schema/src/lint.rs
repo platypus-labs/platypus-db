@@ -106,7 +106,7 @@ pub fn lint(dialect: Dialect, schema: &str, tables: &[SchemaTable]) -> Vec<Findi
                     name: free_name(d, &index_name(&table.name, &fk.columns)),
                     columns: fk.columns.clone(),
                     unique: false,
-                    sql: None,
+                    ..IndexDesign::default()
                 };
                 let text = Text::new(
                     "No index on the foreign key columns ({columns}).",

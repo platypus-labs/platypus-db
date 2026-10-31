@@ -1,0 +1,596 @@
+//! What the schema designs read from each database's catalog beyond the table details, and
+//! what the schema comparison and the table editor do with it: identity and generated
+//! columns, collations, indexes on expressions, with a prefix, a kind, `INCLUDE` or `WHERE`,
+//! partitioned tables, ClickHouse's engine clause, PostgreSQL's user-defined types, SQLite's
+//! AUTOINCREMENT counter.
+//!
+//! The servers come from `docker/compose.yml`, at the same addresses as `conformance.rs`
+//! (and the same `PLATYPUS_TEST_*_URL` variables); one that cannot be reached is skipped.
+
+use futures::TryStreamExt;
+use platypus_core::{
+    Connection, ConnectionConfig, Driver, DriverKind, Error, ExecOptions, ExecResult, TextRowExt,
+};
+use platypus_driver_clickhouse::ClickHouseDriver;
+use platypus_driver_mssql::MssqlDriver;
+use platypus_driver_mysql::MySqlDriver;
+use platypus_driver_pg::PgDriver;
+use platypus_driver_sqlite::SqliteDriver;
+use platypus_schema::{TableDesign, compare, load, load_designs};
+use platypus_sql::Dialect;
+
+const SRC: &str = "qa4c_src";
+const DST: &str = "qa4c_dst";
+
+fn driver(kind: DriverKind) -> &'static dyn Driver {
+    match kind {
+        DriverKind::Postgres => &PgDriver,
+        DriverKind::MySql => &MySqlDriver,
+        DriverKind::SqlServer => &MssqlDriver,
+        DriverKind::ClickHouse => &ClickHouseDriver,
+        _ => &SqliteDriver,
+    }
+}
+
+/// A connection to the server of `env` (or `default`), `None` when it cannot be reached.
+async fn connect(env: &str, default: &str) -> Option<Box<dyn Connection>> {
+    let url = std::env::var(env).unwrap_or_else(|_| default.to_owned());
+    let config = ConnectionConfig::from_url(&url).unwrap();
+    match driver(config.driver).connect(&config).await {
+        Ok(conn) => Some(conn),
+        Err(e) => {
+            eprintln!("skipping {default}: {e}");
+            None
+        }
+    }
+}
+
+async fn run(conn: &dyn Connection, sql: &str) -> Result<(), Error> {
+    match conn.execute(sql, &ExecOptions::default()).await? {
+        ExecResult::Rows(stream) => stream.try_for_each(|_| async { Ok(()) }).await,
+        ExecResult::Affected { .. } => Ok(()),
+    }
+}
+
+async fn run_all(conn: &dyn Connection, statements: &[String]) {
+    for s in statements {
+        run(conn, s).await.unwrap_or_else(|e| panic!("{s}: {e}"));
+    }
+}
+
+/// The first value of the first row of `sql`.
+async fn value(conn: &dyn Connection, sql: &str) -> String {
+    platypus_core::query_text(conn, sql)
+        .await
+        .unwrap_or_else(|e| panic!("{sql}: {e}"))
+        .first()
+        .map(|r| r.text(0))
+        .unwrap_or_default()
+}
+
+fn statements(list: &[&str], schema: &str) -> Vec<String> {
+    list.iter()
+        .map(|s| s.replace("S.", &format!("{schema}.")))
+        .collect()
+}
+
+async fn designs(conn: &dyn Connection, d: Dialect, schema: &str) -> Vec<TableDesign> {
+    load_designs(conn, d, schema)
+        .await
+        .unwrap_or_else(|e| panic!("{schema}: {e}"))
+}
+
+/// The comparison that makes `DST` like `SRC`, run as the SQL editor runs its text; a second
+/// comparison must find nothing. Returns the text of the script.
+async fn round_trip(conn: &dyn Connection, d: Dialect) -> String {
+    let wanted = designs(conn, d, SRC).await;
+    let current = designs(conn, d, DST).await;
+    let script = compare(d, DST, SRC, &wanted, &current).unwrap();
+    let text = script.text(d);
+    assert!(!text.contains(SRC), "{d:?} names the source:\n{text}");
+    for s in text.split(";\n").filter(|s| !s.trim().is_empty()) {
+        run(conn, s)
+            .await
+            .unwrap_or_else(|e| panic!("{d:?}: {s}: {e}\n{text}"));
+    }
+    let again = compare(
+        d,
+        DST,
+        SRC,
+        &designs(conn, d, SRC).await,
+        &designs(conn, d, DST).await,
+    )
+    .unwrap();
+    assert_eq!(
+        again.statements,
+        Vec::<String>::new(),
+        "{d:?}: a second comparison after\n{text}"
+    );
+    text
+}
+
+#[tokio::test]
+async fn postgres_compares_identity_generated_columns_rich_indexes_types_and_partitions() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_PG_URL",
+        "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let d = Dialect::Postgres;
+    for schema in [SRC, DST] {
+        run_all(
+            conn,
+            &[
+                format!("DROP SCHEMA IF EXISTS {schema} CASCADE"),
+                format!("CREATE SCHEMA {schema}"),
+            ],
+        )
+        .await;
+    }
+    let source = [
+        "CREATE TYPE S.mood AS ENUM ('sad', 'ok')",
+        "CREATE DOMAIN S.positive AS integer CHECK (VALUE > 0)",
+        "CREATE TABLE S.t (id int GENERATED ALWAYS AS IDENTITY (START WITH 10 INCREMENT BY 5) PRIMARY KEY,
+            a int NOT NULL, g int GENERATED ALWAYS AS (a * 2) STORED, name text COLLATE \"C\",
+            ts timestamptz, m S.mood NOT NULL DEFAULT 'ok', p S.positive)",
+        "CREATE TABLE S.u (id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY)",
+        "CREATE INDEX t_lower ON S.t (lower(name))",
+        "CREATE UNIQUE INDEX t_part ON S.t (name DESC) INCLUDE (a) WHERE id > 5",
+        "CREATE INDEX t_brin ON S.t USING brin (ts)",
+        "CREATE TABLE S.ev (id int, ts date NOT NULL, PRIMARY KEY (id, ts)) PARTITION BY RANGE (ts)",
+        "CREATE TABLE S.ev_2024 PARTITION OF S.ev FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')",
+        "CREATE TABLE S.ev_2025 PARTITION OF S.ev FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')",
+    ];
+    run_all(conn, &statements(&source, SRC)).await;
+
+    postgres_source_design(conn).await;
+
+    let text = round_trip(conn, d).await;
+    run(conn, &format!("INSERT INTO {DST}.t (a, p) VALUES (3, 1)"))
+        .await
+        .unwrap_or_else(|e| panic!("{e}\n{text}"));
+    assert_eq!(
+        value(
+            conn,
+            &format!("SELECT id || ':' || g || ':' || m FROM {DST}.t")
+        )
+        .await,
+        "10:6:ok"
+    );
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT string_agg(relname || ':' || relkind::text, ',' ORDER BY relname) FROM pg_class
+                 WHERE relnamespace = '{DST}'::regnamespace AND relname LIKE 'ev%' AND relkind IN ('r', 'p')"
+            )
+        )
+        .await,
+        "ev:p,ev_2024:r,ev_2025:r"
+    );
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT count(*) || ':' || (SELECT format_type(atttypid, NULL) FROM pg_attribute
+                     WHERE attrelid = '{DST}.t'::regclass AND attname = 'm')
+                 FROM pg_index WHERE indrelid = '{DST}.t'::regclass AND NOT indisprimary"
+            )
+        )
+        .await,
+        format!("3:{DST}.mood"),
+        "three indexes, and the type in the target"
+    );
+    // The target depends on nothing of the source: dropping it leaves every column.
+    run_all(conn, &[format!("DROP SCHEMA {SRC} CASCADE")]).await;
+    assert_eq!(
+        value(
+            conn,
+            &format!("SELECT count(*) FROM information_schema.columns WHERE table_schema = '{DST}' AND table_name = 't'")
+        )
+        .await,
+        "7"
+    );
+    postgres_editor_keeps_identity_and_collation(conn).await;
+    run_all(conn, &[format!("DROP SCHEMA {DST} CASCADE")]).await;
+}
+
+/// What the design of the PostgreSQL source reads beyond the table details.
+async fn postgres_source_design(conn: &dyn Connection) {
+    let d = Dialect::Postgres;
+    let t = load(conn, d, SRC, "t").await.unwrap();
+    let column = |name: &str| t.columns.iter().find(|c| c.name == name).unwrap();
+    assert_eq!(
+        column("id").extra.as_deref(),
+        Some("GENERATED ALWAYS AS IDENTITY (START WITH 10 INCREMENT BY 5)")
+    );
+    assert_eq!(
+        column("g").generated.as_deref(),
+        Some("GENERATED ALWAYS AS (a * 2) STORED")
+    );
+    assert_eq!(column("g").default, None);
+    assert_eq!(column("name").collation.as_deref(), Some("\"C\""));
+    let index = |name: &str| t.indexes.iter().find(|i| i.name == name).unwrap();
+    assert_eq!(index("t_lower").parts, ["lower(name)"]);
+    assert_eq!(index("t_brin").method.as_deref(), Some("brin"));
+    assert_eq!(index("t_part").include, ["a"]);
+    assert_eq!(index("t_part").predicate.as_deref(), Some("(id > 5)"));
+    let types: Vec<&str> = t.types.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(types, ["mood", "positive"]);
+    let ev = load(conn, d, SRC, "ev").await.unwrap();
+    assert_eq!(ev.options.as_deref(), Some("PARTITION BY RANGE (ts)"));
+    assert_eq!(ev.partitions.len(), 2);
+}
+
+/// The table editor keeps the identity and the collation of the columns it does not touch.
+async fn postgres_editor_keeps_identity_and_collation(conn: &dyn Connection) {
+    let d = Dialect::Postgres;
+    let old = load(conn, d, DST, "t").await.unwrap();
+    let mut new = old.clone();
+    let name = new.columns.iter_mut().find(|c| c.name == "name").unwrap();
+    "varchar(40)".clone_into(&mut name.data_type);
+    let script = platypus_schema::script(d, DST, Some(&old), &new).unwrap();
+    platypus_schema::apply(conn, &script).await.unwrap();
+    let after = load(conn, d, DST, "t").await.unwrap();
+    let name = after.columns.iter().find(|c| c.name == "name").unwrap();
+    assert_eq!(name.collation.as_deref(), Some("\"C\""), "{script:?}");
+    assert_eq!(after.columns[0].extra, old.columns[0].extra);
+}
+#[tokio::test]
+async fn postgres_row_triggers_on_delete_and_another_event_let_the_delete_happen() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_PG_URL",
+        "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let schema = "qa4c_trigger";
+    run_all(
+        conn,
+        &[
+            format!("DROP SCHEMA IF EXISTS {schema} CASCADE"),
+            format!("CREATE SCHEMA {schema}"),
+            format!("CREATE TABLE {schema}.t (id int PRIMARY KEY, v text)"),
+            format!("CREATE TABLE {schema}.audit (op text)"),
+            format!("INSERT INTO {schema}.t VALUES (1, 'a'), (2, 'b')"),
+        ],
+    )
+    .await;
+    let form = platypus_schema::ObjectForm::Trigger {
+        name: "t_audit".into(),
+        table: "t".into(),
+        timing: platypus_schema::Timing::Before,
+        events: vec![
+            platypus_schema::Event::Insert,
+            platypus_schema::Event::Delete,
+        ],
+        for_each_row: true,
+        when: None,
+        body: format!("INSERT INTO {schema}.audit VALUES (TG_OP)"),
+        replace: false,
+    };
+    let sql = platypus_schema::create_object(Dialect::Postgres, schema, &form).unwrap();
+    run_all(conn, &sql).await;
+    run_all(
+        conn,
+        &[
+            format!("DELETE FROM {schema}.t WHERE id = 1"),
+            format!("INSERT INTO {schema}.t VALUES (3, 'c')"),
+        ],
+    )
+    .await;
+    assert_eq!(
+        value(
+            conn,
+            &format!("SELECT string_agg(id::text, ',' ORDER BY id) FROM {schema}.t")
+        )
+        .await,
+        "2,3"
+    );
+    assert_eq!(
+        value(
+            conn,
+            &format!("SELECT string_agg(op, ',' ORDER BY op) FROM {schema}.audit")
+        )
+        .await,
+        "DELETE,INSERT"
+    );
+    run_all(conn, &[format!("DROP SCHEMA {schema} CASCADE")]).await;
+}
+
+#[tokio::test]
+async fn mysql_and_mariadb_compare_prefix_and_fulltext_indexes_json_and_widen_keys() {
+    for (env, url) in [
+        (
+            "PLATYPUS_TEST_MYSQL_ROOT_URL",
+            "mysql://root:platypus@localhost:53306/platypus",
+        ),
+        (
+            "PLATYPUS_TEST_MARIADB_ROOT_URL",
+            "mysql://root:platypus@localhost:53307/platypus",
+        ),
+    ] {
+        let Some(conn) = connect(env, url).await else {
+            continue;
+        };
+        let conn = &*conn;
+        let d = Dialect::MySql;
+        for schema in [SRC, DST] {
+            run_all(
+                conn,
+                &[
+                    format!("DROP DATABASE IF EXISTS {schema}"),
+                    format!("CREATE DATABASE {schema}"),
+                ],
+            )
+            .await;
+        }
+        let source = [
+            "CREATE TABLE S.d (id int NOT NULL AUTO_INCREMENT PRIMARY KEY, a int NOT NULL DEFAULT 0,
+                body text, j json, KEY d_body (body(50)), FULLTEXT KEY d_ft (body))",
+        ];
+        run_all(conn, &statements(&source, SRC)).await;
+        let text = round_trip(conn, d).await;
+        assert_eq!(
+            value(
+                conn,
+                &format!(
+                    "SELECT GROUP_CONCAT(CONCAT(INDEX_NAME, ':', INDEX_TYPE, ':', IFNULL(SUB_PART, '-'))
+                     ORDER BY INDEX_NAME) FROM information_schema.STATISTICS
+                     WHERE TABLE_SCHEMA = '{DST}' AND TABLE_NAME = 'd' AND INDEX_NAME <> 'PRIMARY'"
+                )
+            )
+            .await,
+            "d_body:BTREE:50,d_ft:FULLTEXT:-",
+            "{url}\n{text}"
+        );
+
+        // Widening the key of an AUTO_INCREMENT column, as the table editor does.
+        let old = load(conn, d, DST, "d").await.unwrap();
+        let mut new = old.clone();
+        new.columns
+            .iter_mut()
+            .find(|c| c.name == "a")
+            .unwrap()
+            .primary_key = true;
+        let script = platypus_schema::script(d, DST, Some(&old), &new).unwrap();
+        assert_eq!(script.statements.len(), 1, "{script:?}");
+        platypus_schema::apply(conn, &script)
+            .await
+            .unwrap_or_else(|e| panic!("{url}: {}: {}", e.statement, e.error));
+        assert_eq!(
+            value(
+                conn,
+                &format!(
+                    "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = '{DST}' AND TABLE_NAME = 'd' AND CONSTRAINT_NAME = 'PRIMARY'"
+                )
+            )
+            .await,
+            "id,a"
+        );
+        for schema in [SRC, DST] {
+            run_all(conn, &[format!("DROP DATABASE {schema}")]).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn sqlserver_compares_identity_computed_collated_columns_and_rich_indexes() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_MSSQL_URL",
+        "sqlserver://sa:Platypus-2026@localhost:51433/platypus?sslmode=require",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let d = Dialect::SqlServer;
+    for schema in [SRC, DST] {
+        run_all(
+            conn,
+            &[
+                format!(
+                    "IF OBJECT_ID('{schema}.t') IS NOT NULL DROP TABLE {schema}.t;
+                     IF SCHEMA_ID('{schema}') IS NOT NULL DROP SCHEMA {schema}"
+                ),
+                format!("CREATE SCHEMA {schema}"),
+            ],
+        )
+        .await;
+    }
+    let source = [
+        "CREATE TABLE S.t (id int IDENTITY(10,5) PRIMARY KEY NONCLUSTERED, a int NOT NULL,
+            g AS (a * 2) PERSISTED, h AS (a + 1),
+            d varchar(10) COLLATE Latin1_General_CS_AS NULL, q int NOT NULL DEFAULT 5)",
+        "CREATE CLUSTERED INDEX t_a ON S.t (a)",
+        "CREATE INDEX t_d ON S.t (d DESC) INCLUDE (q) WHERE d IS NOT NULL",
+    ];
+    run_all(conn, &statements(&source, SRC)).await;
+    let text = round_trip(conn, d).await;
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT STRING_AGG(name + ':' + CAST(is_identity AS varchar) + CAST(is_computed AS varchar)
+                   + ':' + ISNULL(collation_name, '-'), ',') WITHIN GROUP (ORDER BY column_id)
+                 FROM sys.columns WHERE object_id = OBJECT_ID('{DST}.t')"
+            )
+        )
+        .await,
+        "id:10:-,a:00:-,g:01:-,h:01:-,d:00:Latin1_General_CS_AS,q:00:-",
+        "{text}"
+    );
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT STRING_AGG(name COLLATE DATABASE_DEFAULT + ':' + type_desc COLLATE DATABASE_DEFAULT + ':'
+                   + ISNULL(filter_definition, '-') COLLATE DATABASE_DEFAULT, ',')
+                   WITHIN GROUP (ORDER BY name)
+                 FROM sys.indexes WHERE object_id = OBJECT_ID('{DST}.t') AND is_primary_key = 0"
+            )
+        )
+        .await,
+        "t_a:CLUSTERED:-,t_d:NONCLUSTERED:([d] IS NOT NULL)",
+        "{text}"
+    );
+
+    // The table editor keeps the collation and moves the default out of the type's way.
+    // (SQL Server alters no column an index is on.)
+    run_all(conn, &[format!("DROP INDEX t_d ON {DST}.t")]).await;
+    let old = load(conn, d, DST, "t").await.unwrap();
+    let mut new = old.clone();
+    for c in &mut new.columns {
+        match c.name.as_str() {
+            "d" => "varchar(20)".clone_into(&mut c.data_type),
+            "q" => "bigint".clone_into(&mut c.data_type),
+            _ => {}
+        }
+    }
+    let script = platypus_schema::script(d, DST, Some(&old), &new).unwrap();
+    platypus_schema::apply(conn, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}", e.statement, e.error));
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT c.collation_name + ':' + TYPE_NAME(q.system_type_id) + ':' + dc.definition
+                 FROM sys.columns c, sys.columns q
+                 JOIN sys.default_constraints dc ON dc.object_id = q.default_object_id
+                 WHERE c.object_id = OBJECT_ID('{DST}.t') AND c.name = 'd'
+                   AND q.object_id = c.object_id AND q.name = 'q'"
+            )
+        )
+        .await,
+        "Latin1_General_CS_AS:bigint:((5))"
+    );
+    for schema in [SRC, DST] {
+        run_all(
+            conn,
+            &[
+                format!("DROP TABLE {schema}.t"),
+                format!("DROP SCHEMA {schema}"),
+            ],
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn clickhouse_compares_the_engine_clause_and_skipping_indexes() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_CLICKHOUSE_URL",
+        "clickhouse://platypus:platypus@localhost:58123/platypus",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let d = Dialect::ClickHouse;
+    for schema in [SRC, DST] {
+        run_all(
+            conn,
+            &[
+                format!("DROP DATABASE IF EXISTS {schema}"),
+                format!("CREATE DATABASE {schema}"),
+            ],
+        )
+        .await;
+    }
+    let source = [
+        "CREATE TABLE S.t (id UInt64, ts DateTime, s String, INDEX s_bloom s TYPE bloom_filter GRANULARITY 1)
+         ENGINE = MergeTree PARTITION BY toYYYYMM(ts) PRIMARY KEY id ORDER BY (id, ts)
+         TTL ts + INTERVAL 30 DAY",
+    ];
+    run_all(conn, &statements(&source, SRC)).await;
+    let t = load(conn, d, SRC, "t").await.unwrap();
+    assert!(
+        t.indexes.iter().all(|i| i.name != "ORDER BY"),
+        "{:?}",
+        t.indexes
+    );
+    let text = round_trip(conn, d).await;
+    let keys = |db: &str| {
+        format!(
+            "SELECT concat(sorting_key, '|', partition_key, '|', primary_key, '|',
+                    toString(length(extractAll(create_table_query, 'TTL'))))
+             FROM system.tables WHERE database = '{db}' AND name = 't'"
+        )
+    };
+    assert_eq!(
+        value(conn, &keys(DST)).await,
+        value(conn, &keys(SRC)).await,
+        "{text}"
+    );
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT concat(name, ':', type) FROM system.data_skipping_indices WHERE database = '{DST}'"
+            )
+        )
+        .await,
+        "s_bloom:bloom_filter"
+    );
+    for schema in [SRC, DST] {
+        run_all(conn, &[format!("DROP DATABASE {schema}")]).await;
+    }
+}
+
+#[tokio::test]
+async fn sqlite_rebuilds_keep_the_autoincrement_counter() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("seq.db");
+    std::fs::File::create(&path).unwrap();
+    let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+    config.database = path.to_string_lossy().into_owned();
+    let conn = SqliteDriver.connect(&config).await.unwrap();
+    let conn = &*conn;
+    run_all(
+        conn,
+        &[
+            "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)".to_owned(),
+            "INSERT INTO t (v) VALUES ('a'), ('b'), ('c')".to_owned(),
+            "DELETE FROM t WHERE id = 3".to_owned(),
+        ],
+    )
+    .await;
+    let d = Dialect::Sqlite;
+    let old = load(conn, d, "main", "t").await.unwrap();
+    let mut new = old.clone();
+    new.columns.push(platypus_schema::ColumnDesign {
+        name: "z".to_owned(),
+        data_type: "TEXT".to_owned(),
+        default: Some("'q'".to_owned()),
+        ..platypus_schema::ColumnDesign::default()
+    });
+    let script = platypus_schema::script(d, "main", Some(&old), &new).unwrap();
+    platypus_schema::apply(conn, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}", e.statement, e.error));
+    run_all(conn, &["INSERT INTO t (v) VALUES ('d')".to_owned()]).await;
+    assert_eq!(
+        value(conn, "SELECT max(id) FROM t").await,
+        "4",
+        "{script:?}"
+    );
+    assert_eq!(
+        value(
+            conn,
+            "SELECT count(*) FROM sqlite_master WHERE name LIKE '_platypus%'"
+        )
+        .await,
+        "0"
+    );
+}

@@ -180,7 +180,7 @@ export function DesignForm({ driver, design, onChange, schema, catalog, section,
             head={[t("Name"), t("Columns"), t("Unique"), ""]}
             rows={design.indexes.map((x, i) => [
               <input value={x.name} onChange={(e) => setPart("indexes", i, { name: e.target.value })} aria-label={t("Index name")} />,
-              <NamesInput value={x.columns} onChange={(columns) => setPart("indexes", i, { columns })} hint={columnNames} />,
+              <NamesInput value={x.columns} onChange={(columns) => setPart("indexes", i, { columns, parts: [] })} hint={columnNames} />,
               <input type="checkbox" checked={x.unique} onChange={(e) => setPart("indexes", i, { unique: e.target.checked })} aria-label={t("Unique")} />,
               <RemoveButton onClick={() => removePart("indexes", i)} />,
             ])}

@@ -3,6 +3,7 @@
 //! `CREATE TABLE` for a new table. [`apply`] runs that script. A whole schema is read with
 //! [`read_tables`] for the ER diagram and [`lint`].
 
+mod catalog;
 mod changelog;
 mod compare;
 mod create;
@@ -50,14 +51,41 @@ pub struct TableDesign {
     /// The table's comment; `None` for none.
     #[serde(default)]
     pub comment: Option<String>,
-    /// What follows the column list of SQLite's `CREATE TABLE`, kept when the table is created
-    /// again: `WITHOUT ROWID`, `STRICT`.
+    /// What follows the column list of `CREATE TABLE`, kept when the table is created again:
+    /// SQLite's `WITHOUT ROWID`, `STRICT`; PostgreSQL's `PARTITION BY RANGE (ts)`;
+    /// ClickHouse's `ENGINE = MergeTree ORDER BY .. PARTITION BY .. TTL ..`.
     #[serde(default)]
     pub options: Option<String>,
     /// The `CREATE TRIGGER` statements of the table (SQLite), run again after it is created
     /// again.
     #[serde(default)]
     pub triggers: Vec<String>,
+    /// The partitions of a partitioned table (PostgreSQL), created with it.
+    #[serde(default)]
+    pub partitions: Vec<PartitionDesign>,
+    /// The user-defined types its columns use (PostgreSQL's enums, domains, composite and
+    /// range types), which a schema comparison creates where they are missing.
+    #[serde(default)]
+    pub types: Vec<UserType>,
+}
+
+/// A partition of a partitioned table: its name and its bound, `FOR VALUES FROM (..) TO (..)`
+/// or `DEFAULT`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartitionDesign {
+    pub name: String,
+    pub bound: String,
+}
+
+/// A user-defined type, as `CREATE {kind} schema.name {body}` creates it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserType {
+    pub schema: String,
+    pub name: String,
+    /// `TYPE` or `DOMAIN`.
+    pub kind: String,
+    /// What follows the name: `AS ENUM ('sad', 'ok')`, `AS integer CHECK (VALUE > 0)`.
+    pub body: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,11 +101,14 @@ pub struct ColumnDesign {
     pub comment: Option<String>,
     /// What the database keeps with the column beyond its type, written again whenever the
     /// column is redefined: MySQL's `auto_increment` and `on update CURRENT_TIMESTAMP`,
-    /// SQLite's `AUTOINCREMENT`.
+    /// SQLite's `AUTOINCREMENT`, the identity of PostgreSQL and Oracle
+    /// (`GENERATED ALWAYS AS IDENTITY (START WITH 10 INCREMENT BY 5)`) and SQL Server
+    /// (`IDENTITY(10,5)`).
     #[serde(default)]
     pub extra: Option<String>,
     /// The clause that computes a generated column, as the column definition writes it:
-    /// `GENERATED ALWAYS AS (a * 2) VIRTUAL`. Such a column has no default.
+    /// `GENERATED ALWAYS AS (a * 2) VIRTUAL`, SQL Server's `AS ([a]*(2)) PERSISTED`. Such a
+    /// column has no default.
     #[serde(default)]
     pub generated: Option<String>,
     /// The column's collation where it is not the default one: `NOCASE`, `utf8mb4_bin`.
@@ -95,6 +126,23 @@ pub struct IndexDesign {
     /// expression, a `WHERE`, a collation): run again as it is while the index is unchanged.
     #[serde(default)]
     pub sql: Option<String>,
+    /// The key parts as the database writes them, where one says more than its column: an
+    /// expression (`lower(name)`), a prefix length (`` `body`(50) ``), an order (`ts DESC`).
+    /// Written in place of the columns; empty when the columns say it all, and emptied when
+    /// the columns are edited.
+    #[serde(default)]
+    pub parts: Vec<String>,
+    /// The kind of index where it is not the default one: PostgreSQL's access method
+    /// (`brin`, `gin`), MySQL's `FULLTEXT` or `SPATIAL`, SQL Server's `CLUSTERED`,
+    /// ClickHouse's `TYPE minmax GRANULARITY 1`.
+    #[serde(default)]
+    pub method: Option<String>,
+    /// The columns the index carries without keying on them (`INCLUDE`).
+    #[serde(default)]
+    pub include: Vec<String>,
+    /// The condition of a partial (filtered) index, without `WHERE`.
+    #[serde(default)]
+    pub predicate: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,6 +233,9 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
     // SQLite reports every unique index as a constraint; only its automatic indexes are
     // constraints of the table.
     let sqlite_index = |name: &str| dialect == Dialect::Sqlite && !name.starts_with("sqlite_");
+    // ClickHouse's driver lists a sorting key longer than the primary key as an index; it is
+    // part of the table's engine clause (`options`).
+    let sorting_key = |name: &str| dialect == Dialect::ClickHouse && name == "ORDER BY";
     TableDesign {
         name: table.to_owned(),
         columns: details
@@ -211,13 +262,17 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
         indexes: details
             .indexes
             .iter()
-            .filter(|i| !i.primary && (!constraint_named(&i.name) || sqlite_index(&i.name)))
+            .filter(|i| {
+                !i.primary
+                    && !sorting_key(&i.name)
+                    && (!constraint_named(&i.name) || sqlite_index(&i.name))
+            })
             .map(|i| IndexDesign {
                 original: Some(i.name.clone()),
                 name: i.name.clone(),
                 columns: i.columns.clone(),
                 unique: i.unique,
-                sql: None,
+                ..IndexDesign::default()
             })
             .collect(),
         foreign_keys: details
@@ -273,6 +328,8 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
         comment: None,
         options: None,
         triggers: Vec::new(),
+        partitions: Vec::new(),
+        types: Vec::new(),
     }
 }
 
@@ -312,7 +369,8 @@ fn balanced(text: &str) -> bool {
 
 /// Reads the design of `schema.table`: its details, and what they leave out that the script
 /// must not lose (foreign key actions, MySQL's column extras and literal defaults, SQLite's
-/// `AUTOINCREMENT`).
+/// `AUTOINCREMENT`, identity and generated columns, collations, index kinds and expressions,
+/// partitioning and engine clauses: see [`catalog`]).
 pub async fn load(
     conn: &dyn Connection,
     dialect: Dialect,
@@ -382,11 +440,16 @@ pub async fn load(
                 dialect.qualified(Some(schema), table)
             );
             if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(1)) {
-                apply_definition(&mut design, &create::parse(&create, dialect));
+                let definition = create::parse(&create, dialect);
+                apply_definition(&mut design, &definition);
+                catalog::mysql(&mut design, &definition);
             }
             // ENGINE and the like stay as they are: MySQL alters tables in place.
             design.options = None;
         }
+        Dialect::Postgres => catalog::postgres(conn, &mut design, schema, table).await,
+        Dialect::SqlServer => catalog::sqlserver(conn, &mut design, schema, table).await?,
+        Dialect::ClickHouse => catalog::clickhouse(conn, &mut design, schema, table).await?,
         Dialect::Sqlite => sqlite_definitions(conn, &mut design, schema, &t).await?,
         // An identity column reports the sequence Oracle made for it as its default.
         Dialect::Oracle => {
