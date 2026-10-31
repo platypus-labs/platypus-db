@@ -504,3 +504,29 @@ services:
       timeout: 10s
       retries: 60
       start_period: 20s
+
+  # An S3-compatible object store on 49000 (SeaweedFS: MinIO no longer publishes pinned images),
+  # with the bucket `platypus` created at start and the keys platypus / platypus-secret
+  # (docker/seaweedfs/s3.json): the export's upload to a bucket
+  # (crates/platypus-conformance/tests/upload.rs).
+  s3:
+    image: chrislusf/seaweedfs:4.00
+    profiles: [s3]
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        weed server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+        -master.volumeSizeLimitMB=64 &
+        until echo s3.bucket.list | weed shell -master=localhost:9333 2>/dev/null | grep -q platypus;
+        do echo s3.bucket.create -name platypus | weed shell -master=localhost:9333 >/dev/null 2>&1; sleep 1; done;
+        wait
+    ports:
+      - "49000:8333"
+    volumes:
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/status || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 40

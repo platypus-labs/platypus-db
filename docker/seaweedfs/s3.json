@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "platypus",
+      "credentials": [{ "accessKey": "platypus", "secretKey": "platypus-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
