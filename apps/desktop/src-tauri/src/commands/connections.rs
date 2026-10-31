@@ -442,27 +442,64 @@ fn same_target(form: &SavedConnection, saved: &SavedConnection) -> bool {
         && address(form) == address(saved)
 }
 
+/// The form's SSH secrets `typed`, where each server of the form's chain that would use its
+/// kept password or passphrase does so only when the saved connection `saved` has it with the
+/// same host, port, user and sign-in: like the database password ([`same_target`]), a kept
+/// SSH secret never goes to a server the form changed to (nor to one a new connection's form
+/// names by another connection's `secret_id`).
+fn kept_ssh_secrets(
+    form: &SavedConnection,
+    saved: Option<&SavedConnection>,
+    mut typed: SshSecrets,
+) -> SshSecrets {
+    let saved: Vec<&SavedSsh> = saved
+        .and_then(|s| s.ssh.as_ref())
+        .into_iter()
+        .flat_map(SavedSsh::chain)
+        .collect();
+    for hop in form.ssh.iter().flat_map(SavedSsh::chain) {
+        let keeps = matches!(typed.get(&hop.secret_id), None | Some(PasswordInput::Keep));
+        let same = saved.iter().any(|s| {
+            s.secret_id == hop.secret_id
+                && s.host.trim() == hop.host.trim()
+                && s.port == hop.port
+                && s.user.trim() == hop.user.trim()
+                && s.auth == hop.auth
+                && s.key_path == hop.key_path
+        });
+        if keeps && !same {
+            typed.insert(hop.secret_id, PasswordInput::Clear);
+        }
+    }
+    typed
+}
+
 /// Opens the connection `connection` describes, with the password the form typed, else the
-/// one it keeps when the form still reaches the saved server ([`same_target`]); shared by the
-/// connection test and the driver compatibility probe.
+/// one it keeps when the form still reaches the saved server ([`same_target`]), and the SSH
+/// secrets alike ([`kept_ssh_secrets`]); shared by the connection test and the driver
+/// compatibility probe.
 pub(crate) async fn open_for_test(
     state: &AppState,
     connection: &SavedConnection,
     password: PasswordInput,
     ssh: SshSecrets,
 ) -> CommandResult<Box<dyn Connection>> {
+    // A connection that was never saved has nothing stored yet.
+    let saved = state.with_store(|s| Ok(s.get(connection.id).cloned()))?;
     let secret = match password {
         PasswordInput::Set(p) => Some(Secret::new(p)),
         PasswordInput::Clear => None,
         PasswordInput::Keep => match external_password(connection).await? {
             Some(secret) => Some(secret),
-            // A connection that was never saved has nothing stored yet.
-            None => state.with_store(|s| match s.get(connection.id) {
-                Some(saved) if same_target(connection, saved) => s.password(connection.id),
-                _ => Ok(None),
-            })?,
+            None => match &saved {
+                Some(saved) if same_target(connection, saved) => {
+                    state.with_store(|s| s.password(connection.id))?
+                }
+                _ => None,
+            },
         },
     };
+    let ssh = kept_ssh_secrets(connection, saved.as_ref(), ssh);
     let config = state
         .with_store(|s| Ok(config_of(s, connection, secret, &ssh)))?
         .with_env()?;
@@ -821,6 +858,70 @@ mod tests {
             change(&mut form);
             assert!(!same_target(&form, &saved), "change {i}");
         }
+    }
+
+    /// A kept SSH password or passphrase goes only to the SSH server it was kept for.
+    #[test]
+    fn kept_ssh_secrets_go_only_to_their_own_server() {
+        let jump = SavedSsh {
+            host: "jump.internal".to_owned(),
+            port: 22,
+            user: "me".to_owned(),
+            auth: platypus_store::SshAuthKind::Password,
+            key_path: None,
+            secret_id: Uuid::new_v4(),
+            jump: None,
+        };
+        let bastion = SavedSsh {
+            host: "bastion.internal".to_owned(),
+            secret_id: Uuid::new_v4(),
+            jump: Some(Box::new(jump.clone())),
+            ..jump.clone()
+        };
+        let mut saved = SavedConnection::new("Shop", DriverKind::Postgres);
+        saved.ssh = Some(bastion.clone());
+        let cleared = |form: &SavedConnection, typed: SshSecrets| -> Vec<Uuid> {
+            let mut ids: Vec<Uuid> = kept_ssh_secrets(form, Some(&saved), typed)
+                .into_iter()
+                .filter(|(_, input)| matches!(input, PasswordInput::Clear))
+                .map(|(id, _)| id)
+                .collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(cleared(&saved, SshSecrets::new()), Vec::<Uuid>::new());
+
+        // The bastion moved to another host: its kept password stays home, the jump's goes.
+        let mut form = saved.clone();
+        form.ssh.as_mut().unwrap().host = "attacker.example".to_owned();
+        assert_eq!(cleared(&form, SshSecrets::new()), [bastion.secret_id]);
+        // A password typed for it is the user's own choice.
+        let typed = SshSecrets::from([(bastion.secret_id, PasswordInput::Set("x".to_owned()))]);
+        assert_eq!(cleared(&form, typed), Vec::<Uuid>::new());
+
+        let changes: [fn(&mut SavedSsh); 4] = [
+            |s| s.port = 2222,
+            |s| s.user = "root".to_owned(),
+            |s| s.auth = platypus_store::SshAuthKind::Key,
+            |s| s.key_path = Some("/tmp/other".into()),
+        ];
+        for (i, change) in changes.iter().enumerate() {
+            let mut form = saved.clone();
+            change(form.ssh.as_mut().unwrap().jump.as_mut().unwrap());
+            assert_eq!(
+                cleared(&form, SshSecrets::new()),
+                [jump.secret_id],
+                "change {i}"
+            );
+        }
+
+        // A form that was never saved keeps no SSH secret, whatever ids it names.
+        let mut ids = vec![bastion.secret_id, jump.secret_id];
+        ids.sort();
+        let fresh = kept_ssh_secrets(&saved, None, SshSecrets::new());
+        let mut cleared_fresh: Vec<Uuid> = fresh.into_keys().collect();
+        cleared_fresh.sort();
+        assert_eq!(cleared_fresh, ids);
     }
 
     #[test]
