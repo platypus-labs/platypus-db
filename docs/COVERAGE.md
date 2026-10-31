@@ -361,7 +361,7 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 
 | # | Buco | Stato | Test da scrivere |
 |---|---|---|---|
-| 1 | Installer di Windows e aggiornamento vero: installare, aggiornare da una versione pubblicata, disinstallare, con connessioni, password del keychain, script e impostazioni che restano | ❌ | Procedura di collaudo su macchina vera (gruppo S, "Installer e aggiornamento"), con uno script che prepara il profilo della versione vecchia; `qa4-inst-upgrade-real-installer` |
+| 1 | Installer di Windows e aggiornamento vero: installare, aggiornare da una versione pubblicata, disinstallare, con connessioni, password del keychain, script e impostazioni che restano | ❌ | Lista scritta in [COLLAUDO.md](COLLAUDO.md) (sezione 1), con lo script `scripts/collaudo-profile.ps1` che copia e confronta il profilo della versione vecchia; da spuntare su macchina vera; `qa4-inst-upgrade-real-installer` |
 | 2 | Copia portatile: cartella `data` accanto all'eseguibile, dati e log lì dentro, aggiornamento sostituendo l'eseguibile | ❌ | E2E `portable-data-folder` (avvio con `data` vuota, una connessione e uno script salvati, riavvio, controllo dei file) |
 | 3 | Blocco per inattività con master password (chiude le connessioni di produzione) | 🟡 | E2E `app-lock-idle-sqlite` con i minuti ridotti da impostazione di prova |
 | 4 | Attività pianificate: backup PostgreSQL / MySQL, fuso orario, ritentativo dopo un errore, esecuzione di un orario perso alla riapertura | ❌ | E2E `schedules-backup-postgres`, `schedules-missed-run-sqlite` |
@@ -372,7 +372,7 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | 9 | Import da DataGrip, pgAdmin e `pg_service.conf`; password da `.pgpass` | 🟡 | E2E `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` con file di prova |
 | 10 | Export Markdown, HTML, Parquet, Excel, JSON, SQL INSERT: uno scenario che li scrive tutti e li rilegge (anche su un database di rete); compressione zstd | 🟡 | E2E `export-formats-postgres` con riletture; conformance `exports_every_format_and_reads_it_back` |
 | 11 | Import Parquet ed Excel (fogli come tabelle) e dati da file come database (JSON, Parquet, Excel) | 🟡 | E2E `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` |
-| 12 | Notifica di sistema per una query lunga; icona nel vassoio (Quick query); Linux e macOS | ❌ | Collaudo a mano con lista scritta (non automatizzabile con CDP); `windows-sqlite` già prova la finestra |
+| 12 | Notifica di sistema per una query lunga; icona nel vassoio (Quick query); Linux e macOS | ❌ | Liste scritte in [COLLAUDO.md](COLLAUDO.md) (sezioni 2, 3 e 4: sistema, Linux, macOS), da spuntare su macchina vera; `windows-sqlite` già prova la finestra |
 | 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | 🟡 | ADBC generico: fatto con il driver di SQLite del registro (`adbc_generic.rs`, anche quello di DuckDB con l'entrypoint `duckdb_adbc_init`). Db2: non pratico (driver ODBC manuale, container di oltre 2 GB). Snowflake, BigQuery, Databricks: solo a mano |
 | 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 | E2E `editor-cli-script-postgres` (il client c'è già nell'immagine di prova) |
 | 15 | Migration status con Liquibase, Prisma, Alembic | 🟡 | Estendere `schema-migrations-sqlite` con tre cartelle di prova |
