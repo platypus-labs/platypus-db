@@ -1070,6 +1070,47 @@ async fn manual_commit_and_rollback() {
             conn.set_autocommit(true).await.unwrap();
         }
 
+        // A typed switch to manual commit is followed: the next change waits for COMMIT.
+        let typed = match b.config.driver {
+            DriverKind::MySql => Some(("SET autocommit = 0", "SET autocommit = 1")),
+            DriverKind::SqlServer => Some((
+                "SET IMPLICIT_TRANSACTIONS ON",
+                "SET IMPLICIT_TRANSACTIONS OFF",
+            )),
+            _ => None,
+        };
+        if let Some((off, on)) = typed {
+            run(conn, off).await.unwrap();
+            assert!(!conn.transaction().autocommit, "{}: {off}", b.name);
+            assert!(
+                !conn.transaction().open,
+                "{}: {off} changes nothing",
+                b.name
+            );
+            affected(&b, conn, &insert(5)).await;
+            assert!(conn.transaction().open, "{}: a change after {off}", b.name);
+            conn.rollback().await.unwrap();
+            assert_eq!(count(&b, conn).await, "2", "{}: rolled back", b.name);
+            conn.rollback().await.unwrap();
+            run(conn, on).await.unwrap();
+            let state = conn.transaction();
+            assert!(state.autocommit && !state.open, "{}: {on}", b.name);
+            affected(&b, conn, &insert(5)).await;
+            assert!(!conn.transaction().open, "{}: autocommit again", b.name);
+            affected(&b, conn, &format!("DELETE FROM {t} WHERE id = 5")).await;
+            // The toolbar's switch back to autocommit undoes a typed manual mode too.
+            run(conn, off).await.unwrap();
+            conn.set_autocommit(true).await.unwrap();
+            affected(&b, conn, &insert(5)).await;
+            affected(&b, conn, &format!("DELETE FROM {t} WHERE id = 5")).await;
+            assert!(
+                !conn.transaction().open,
+                "{}: {off}, then autocommit",
+                b.name
+            );
+            assert_eq!(count(&b, conn).await, "2", "{}: committed", b.name);
+        }
+
         // DDL as the first statement opens the transaction too, where DDL is transactional.
         let mysql = b.config.driver == DriverKind::MySql;
         let d = platypus_sql::Dialect::from(b.config.driver);

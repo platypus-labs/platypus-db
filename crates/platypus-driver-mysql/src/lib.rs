@@ -305,7 +305,12 @@ impl Connection for MySqlConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         let effect = classify(sql);
         let result = self.start(sql, options).await;
-        self.tx.after(effect, true);
+        // A typed `SET autocommit = 0` makes the next change wait for COMMIT, as the
+        // toolbar's manual mode does; `= 1` commits what is open.
+        match platypus_core::typed_autocommit(sql) {
+            Some(on) if result.is_ok() => self.tx.typed_autocommit(on, true),
+            _ => self.tx.after(effect, true),
+        }
         result
     }
 

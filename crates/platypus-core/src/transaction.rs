@@ -83,6 +83,27 @@ pub fn classify(sql: &str) -> TxEffect {
     }
 }
 
+/// The commit mode a typed statement sets for the session: MySQL's `SET autocommit = 0`
+/// (`SESSION`, `@@autocommit`, `ON`/`OFF` too) and Transact-SQL's
+/// `SET IMPLICIT_TRANSACTIONS ON`, which turns autocommit off. `None` for any other statement,
+/// `SET GLOBAL autocommit` included: it changes the next sessions, not this one.
+#[must_use]
+pub fn typed_autocommit(sql: &str) -> Option<bool> {
+    // `@@session.autocommit := 0` as words: SESSION AUTOCOMMIT 0.
+    let words = leading_words(&sql.replace(['@', '.', '=', ':'], " "), 4);
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    let value = |v: &str| match v {
+        "1" | "ON" | "TRUE" => Some(true),
+        "0" | "OFF" | "FALSE" => Some(false),
+        _ => None,
+    };
+    match words.as_slice() {
+        ["SET", "AUTOCOMMIT", v, ..] | ["SET", "SESSION" | "LOCAL", "AUTOCOMMIT", v] => value(v),
+        ["SET", "IMPLICIT_TRANSACTIONS", v, ..] => value(v).map(|on| !on),
+        _ => None,
+    }
+}
+
 /// A transaction statement that drivers run through their client API instead of sending it:
 /// ODBC drivers take `BEGIN` differently or not at all, and Oracle reads a bare `BEGIN` as
 /// the start of a PL/SQL block.
@@ -174,6 +195,16 @@ impl TxTracker {
 
     pub fn set_open(&self, open: bool) {
         self.open.store(open, Ordering::Release);
+    }
+
+    /// After a typed statement that set the commit mode (see [`typed_autocommit`]): back in
+    /// autocommit mode, an open transaction ends where the server `commits` it on the switch
+    /// (MySQL) and stays open where it does not (SQL Server keeps `@@TRANCOUNT`).
+    pub fn typed_autocommit(&self, on: bool, commits: bool) {
+        self.set_autocommit(on);
+        if on && commits {
+            self.set_open(false);
+        }
     }
 
     /// Whether `effect` needs a `BEGIN` sent first: manual mode, nothing open yet, and a
@@ -293,5 +324,49 @@ mod tests {
         assert!(tx.state().open, "PostgreSQL DDL is transactional");
         tx.after(TxEffect::End, false);
         assert!(!tx.state().open);
+    }
+
+    #[test]
+    fn reads_typed_commit_modes() {
+        assert_eq!(typed_autocommit("SET autocommit = 0"), Some(false));
+        assert_eq!(typed_autocommit("set autocommit=1;"), Some(true));
+        assert_eq!(
+            typed_autocommit("SET SESSION autocommit = OFF"),
+            Some(false)
+        );
+        assert_eq!(typed_autocommit("-- x\nSET @@autocommit := ON"), Some(true));
+        assert_eq!(
+            typed_autocommit("SET @@session.autocommit = 0"),
+            Some(false)
+        );
+        assert_eq!(
+            typed_autocommit("SET IMPLICIT_TRANSACTIONS ON"),
+            Some(false)
+        );
+        assert_eq!(
+            typed_autocommit("set implicit_transactions off"),
+            Some(true)
+        );
+        assert_eq!(typed_autocommit("SET GLOBAL autocommit = 0"), None);
+        assert_eq!(typed_autocommit("SET @@global.autocommit = 0"), None);
+        assert_eq!(typed_autocommit("SET NOCOUNT ON"), None);
+        assert_eq!(typed_autocommit("SET autocommit = @x"), None);
+        assert_eq!(typed_autocommit("SELECT 'SET autocommit = 0'"), None);
+    }
+
+    #[test]
+    fn typed_commit_modes_follow_the_server() {
+        let tx = TxTracker::default();
+        tx.typed_autocommit(false, true);
+        assert!(!tx.state().autocommit);
+        tx.after(TxEffect::None, true);
+        assert!(
+            tx.state().open,
+            "the INSERT after SET autocommit = 0 waits for COMMIT"
+        );
+        tx.typed_autocommit(true, false);
+        assert!(tx.state().open, "SQL Server keeps the transaction open");
+        tx.typed_autocommit(true, true);
+        assert!(!tx.state().open, "MySQL commits it");
     }
 }
