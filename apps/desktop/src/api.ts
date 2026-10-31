@@ -1732,6 +1732,9 @@ export interface ExportOptions {
   format: ExportFormat;
   delimiter: string;
   header: boolean;
+  /** CSV: cells a spreadsheet would run as formulas (`=`, `+`, `-`, `@`…) get a leading `'`;
+   *  numbers stay. On when left out. */
+  formulas_as_text?: boolean;
   /** SQL: the table the INSERT statements write to. */
   table?: string;
   /** SQL: the database the statements are written for. */

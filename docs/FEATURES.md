@@ -502,6 +502,10 @@ then run the SELECT or open it in the editor.
   streamed straight to the file; several tables or a whole schema at once. Optional gzip or
   zstd compression, and upload to a signed URL or to an S3, GCS (HMAC keys), R2 or MinIO
   bucket; the secret key is never saved (a saved profile keeps it in the password store).
+  CSV cells that a spreadsheet would run as a formula (starting with `=`, `+`, `-`, `@` or a
+  tab, numbers aside) get a leading `'` by default (*Formulas as text, for spreadsheets*), so
+  that a shared file cannot run commands or send data when opened in Excel or LibreOffice;
+  turn it off for a file read by another program.
 - **Import** CSV, TSV, JSON, NDJSON, Parquet and Excel into a table, with a preview and a
   mapping of columns, adding the rows, replacing them or updating those with the same key; or
   into a new table created with the types DuckDB infers. *Paste CSV as a new table…* imports

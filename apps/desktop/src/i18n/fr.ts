@@ -3057,6 +3057,8 @@ const fr: Record<string, string> = {
   "A new sync passphrase must be at least 8 characters long.": "Une nouvelle phrase secrète de synchronisation doit comporter au moins 8 caractères.",
   "the master password cannot be empty": "le mot de passe principal ne peut pas être vide",
   "the master password must be at least 8 characters long": "le mot de passe principal doit comporter au moins 8 caractères",
+  "Formulas as text, for spreadsheets": "Formules en texte, pour les tableurs",
+  "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "Une cellule qui commence par =, +, -, @ ou une tabulation reçoit un ' devant, pour qu'un tableur l'affiche comme du texte au lieu de l'exécuter comme une formule. Les nombres restent tels quels. Désactivez-le pour un fichier lu par un autre programme.",
 };
 
 export default fr;
