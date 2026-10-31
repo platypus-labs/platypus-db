@@ -1,7 +1,7 @@
 // Unit tests of the queue of agents' changes waiting for the user (src/agents/writes.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ANSWER_MS, denial, enqueue, estimatedRows, settle, timeLeft } from "../src/agents/writes.ts";
+import { ANSWER_MS, denial, enqueue, estimatedRows, settle, statementParts, timeLeft } from "../src/agents/writes.ts";
 
 const request = (id) => ({
   id,
@@ -51,4 +51,16 @@ test("estimates read as whole rows", () => {
 test("a refusal keeps the reason typed, trimmed", () => {
   assert.deepEqual(denial("  wrong table "), { answer: "deny", reason: "wrong table" });
   assert.deepEqual(denial("   "), { answer: "deny", reason: null });
+});
+
+test("padding cannot push the end of a statement out of sight", () => {
+  const tail = statementParts(`UPDATE orders SET status = 'x' WHERE id = 1${"\n".repeat(60)}OR 1 = 1`);
+  assert.deepEqual(tail, [{ text: "UPDATE orders SET status = 'x' WHERE id = 1\n" }, { gap: "lines", count: 59 }, { text: "\nOR 1 = 1" }]);
+  // Spaces, tabs and invisible ones in a line, other line breaks, blank lines at the end.
+  const wide = statementParts(`DELETE FROM t WHERE a = 1${" \t\u00a0\u200b".repeat(10)}OR 1 = 1\r\n\u2028\r\n`);
+  assert.deepEqual(wide, [{ text: "DELETE FROM t WHERE a = 1" }, { gap: "spaces", count: 40 }, { text: "OR 1 = 1\n" }, { gap: "lines", count: 3 }]);
+  // What a person writes is kept as it is: indentation, one blank line between parts.
+  const sql = "UPDATE t\n   SET a = 1\n\n WHERE id = 2";
+  assert.deepEqual(statementParts(sql), [{ text: sql }]);
+  assert.deepEqual(statementParts(""), []);
 });

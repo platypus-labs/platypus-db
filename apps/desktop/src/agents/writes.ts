@@ -62,6 +62,57 @@ export function estimatedRows(rows: number | null): number | null {
   return rows > 0 && rows < 1 ? 1 : Math.round(rows);
 }
 
+/** A piece of a statement as the dialog shows it: its text, or a run of blank lines or of
+ *  spaces collapsed into a visible marker. */
+export type StatementPart = { text: string } | { gap: "lines" | "spaces"; count: number };
+
+/** Blank lines in a row, and spaces in a row inside a line, from which they are collapsed. */
+export const GAP_LINES = 2;
+export const GAP_SPACES = 16;
+
+/** Line breaks, whatever the platform or the Unicode separator. */
+const BREAKS = new RegExp("\\r\\n|[\\n\\r\\u000b\\u000c\\u0085\\u2028\\u2029]");
+/** Space that shows nothing: blanks, tabs and Unicode's invisible ones. */
+const BLANK = "[ \\t\\u00a0\\u1680\\u180e\\u2000-\\u200d\\u202f\\u205f\\u2060\\u3000\\ufeff]";
+const BLANK_LINE = new RegExp(`^${BLANK}*$`);
+const SPACE_RUN = new RegExp(`${BLANK}{${GAP_SPACES},}`, "g");
+
+/** `statement` as the dialog shows it: padding cannot push its end out of sight, so runs of
+ *  blank lines and of spaces become markers that say how many there are. Everything else is
+ *  kept as it is. */
+export function statementParts(statement: string): StatementPart[] {
+  const parts: StatementPart[] = [];
+  const text = (s: string) => {
+    if (!s) return;
+    const last = parts[parts.length - 1];
+    if (last && "text" in last) last.text += s;
+    else parts.push({ text: s });
+  };
+  const lines = statement.split(BREAKS);
+  for (let i = 0; i < lines.length; ) {
+    let blank = 0;
+    while (i + blank < lines.length && BLANK_LINE.test(lines[i + blank] ?? "")) blank++;
+    if (blank >= GAP_LINES) {
+      parts.push({ gap: "lines", count: blank });
+      i += blank;
+      if (i < lines.length) text("\n");
+      continue;
+    }
+    const line = lines[i] ?? "";
+    let at = 0;
+    for (const run of line.matchAll(SPACE_RUN)) {
+      const start = run.index ?? 0;
+      text(line.slice(at, start));
+      parts.push({ gap: "spaces", count: run[0].length });
+      at = start + run[0].length;
+    }
+    text(line.slice(at));
+    i++;
+    if (i < lines.length) text("\n");
+  }
+  return parts;
+}
+
 /** The verdict of a refusal, with its reason when one was typed. */
 export function denial(reason: string): Denial {
   const trimmed = reason.trim();
