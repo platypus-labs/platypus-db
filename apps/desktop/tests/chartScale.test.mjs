@@ -108,3 +108,11 @@ test("long labels are cut", () => {
   assert.equal(truncate("abcdef", 4), "abc…");
   assert.equal(truncate("abc", 4), "abc");
 });
+
+test("numbers under 0.01 keep their significant digits instead of reading 0", () => {
+  assert.equal(formatNumber(0.000001, "en-US"), "1E-6");
+  assert.equal(formatNumber(0.0000035, "en-US"), "3.5E-6");
+  assert.equal(formatNumber(-0.004, "en-US"), "-4E-3");
+  assert.equal(formatNumber(0, "en-US"), "0");
+  assert.equal(formatNumber(0.01, "en-US"), "0.01");
+});
