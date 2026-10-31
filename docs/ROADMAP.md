@@ -89,7 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| `sql-file-dump-sqlite`: "N statements ran before" di Esegui un file SQL viene dagli eventi di avanzamento limitati di `run_sql_file` e conta 1 invece di 2 | 2026-10-31, gruppo R |
 | `editor-multi-run-sqlite`: dopo l'esecuzione su più connessioni `open_result_db` cerca le sessioni dei job che il dialog ha già chiuso ("session 2 not found") e la scheda dei risultati uniti non si apre | 2026-10-31, gruppo R |
 
 ### Lock dei gruppi

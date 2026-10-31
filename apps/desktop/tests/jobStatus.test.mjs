@@ -19,6 +19,13 @@ test("a failed or stopped job keeps the rows written before", () => {
   assert.deepEqual(afterEvent(running, { type: "cancelled" }), { state: "cancelled", rows: 0 });
 });
 
+test("the count a failure or a stop carries wins over a lagging progress", () => {
+  const busy = afterEvent(running, { type: "progress", rows: 1 });
+  assert.deepEqual(afterEvent(busy, { type: "failed", error: { message: "no such table" }, rows: 2 }), { state: "failed", message: "no such table", rows: 2 });
+  assert.deepEqual(afterEvent(busy, { type: "cancelled", rows: 5 }), { state: "cancelled", rows: 5 });
+  assert.deepEqual(afterEvent(running, { type: "failed", error: { message: "x" }, rows: 0 }), { state: "failed", message: "x", rows: 0 });
+});
+
 test("a file's progress keeps the bytes read", () => {
   const reading = afterEvent(running, { type: "progress", rows: 2, bytes: [10, 40] });
   assert.deepEqual(reading, { ...running, rows: 2, bytes: [10, 40] });

@@ -71,7 +71,7 @@ async function chooseAndRun(page, path, action) {
 
 async function close(page) {
   await page.waitFor(
-    `${button(modal, "Close") ?? button(modal, "Cancel")} !== undefined`,
+    `(${button(modal, "Close")} ?? ${button(modal, "Cancel")}) !== undefined`,
   );
   await page.eval(
     `(${button(modal, "Close")} ?? ${button(modal, "Cancel")}).click()`,

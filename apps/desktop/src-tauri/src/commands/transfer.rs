@@ -537,6 +537,8 @@ pub fn run_sql_file(
             // A file of small statements reports a few times a second, not after each.
             let mut reported: Option<std::time::Instant> = None;
             let ran = run_file(&*conn, dialect, &path, transaction, |p| {
+                // Exact, for the count a failure or a stop tells.
+                job.done(p.statements);
                 if reported.is_none_or(|at| at.elapsed() >= PROGRESS_INTERVAL) {
                     job.progress_bytes(p.statements, p.read, p.total);
                     reported = Some(std::time::Instant::now());

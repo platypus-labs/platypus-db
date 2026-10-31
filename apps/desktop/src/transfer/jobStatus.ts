@@ -17,9 +17,9 @@ export function afterEvent(status: JobStatus, event: ExportEvent): JobStatus {
       if (status.state !== "running") return status;
       return event.bytes ? { ...status, rows: event.rows, bytes: event.bytes } : { ...status, rows: event.rows };
     case "failed":
-      return { state: "failed", message: event.error.message, rows };
+      return { state: "failed", message: event.error.message, rows: event.rows ?? rows };
     case "cancelled":
-      return { state: "cancelled", rows };
+      return { state: "cancelled", rows: event.rows ?? rows };
     case "done":
       return { state: "done", rows: event.rows, warnings: event.warnings ?? [] };
   }
