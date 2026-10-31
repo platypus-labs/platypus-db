@@ -1,6 +1,7 @@
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, type TableDesign, type SchemaTable, toCommandError } from "../api";
 import { type ChartColors, useChartColors } from "../analysis/Chart";
+import { truncate } from "../analysis/chartScale";
 import { exportChart } from "../analysis/chartExport";
 import { commentHeader } from "../schema/script";
 import { translateWarning } from "../schema/warnings";
@@ -81,6 +82,12 @@ const HANDLE = 5;
 
 /** The label in the head of a table that edits changed. */
 const TAGS: Record<TableState, string> = { plain: "", new: msg("new"), changed: msg("changed"), dropped: msg("dropped") };
+
+/** The characters of a column row that the name has: the box less the key mark, the type and
+ *  the margins. */
+const nameChars = (width: number, type: string) => Math.max(4, Math.floor((width - MARK - 6 - 10 - 8 - type.length * 6.5) / CHAR));
+
+const typeText = (type: string) => truncate(type, 24);
 
 const boxWidth = (table: Drawn) => {
   const tag = table.state === "plain" ? 0 : t(TAGS[table.state]).length + 1;
@@ -713,7 +720,7 @@ function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }:
       <rect className="erd-head" width={b.width} height={HEAD} rx={4} fill={head} fillOpacity={table.state === "plain" ? 0.14 : 0.4} />
       <path className="erd-rule" d={`M 0 ${HEAD} H ${b.width}`} stroke={colors.grid} />
       <text x={10} y={18} fill={colors.text} fontWeight={600} textDecoration={dropped ? "line-through" : undefined}>
-        {table.name}
+        {truncate(table.name, Math.max(4, Math.floor((b.width - 20 - (table.state === "plain" ? 0 : (t(TAGS[table.state]).length + 1) * 6)) / CHAR)))}
       </text>
       {table.state !== "plain" && (
         <text x={b.width - 10} y={18} fill={colors.muted} fontSize={10} textAnchor="end" className="erd-tag">
@@ -725,10 +732,10 @@ function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }:
           {c.primary_key && <KeyMark label="PK" fill={colors.series[0]!} />}
           {!c.primary_key && keys.has(c.name) && <KeyMark label="FK" fill={colors.series[4]!} />}
           <text x={MARK + 6} y={15} fill={c.primary_key ? colors.series[0] : colors.text} fontWeight={c.primary_key ? 600 : 400}>
-            {`${c.name}${c.nullable ? "" : " *"}`}
+            {truncate(c.name, nameChars(b.width, typeText(c.data_type)) - (c.nullable ? 0 : 2)) + (c.nullable ? "" : " *")}
           </text>
           <text x={b.width - (editing && !dropped ? 22 : 10)} y={15} fill={colors.muted} fontSize={11} textAnchor="end">
-            {c.data_type.length > 24 ? `${c.data_type.slice(0, 23)}…` : c.data_type}
+            {typeText(c.data_type)}
           </text>
           {editing && !dropped && c.name !== "" && (
             <circle
