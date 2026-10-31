@@ -31,6 +31,9 @@ pub fn load(
     batches: &[RecordBatch],
 ) -> Result<usize, LocalError> {
     register(conn)?;
+    // The zone the grid shows the instants in, so SQL on the result agrees with the screen. A
+    // database built without the time zone data keeps its own zone.
+    let _ = conn.execute_batch(&format!("SET TimeZone = '{}'", session_zone(schema)));
     let rows = storable(schema, batches)?;
     let name = quote(table);
     let select = format!("SELECT {} FROM {SCAN}(?)", rows.select);
@@ -45,6 +48,31 @@ pub fn load(
         insert.execute([&registration])?;
     }
     Ok(count)
+}
+
+/// The time zone the result's zoned timestamps are shown in: the one the first of them names
+/// (a fixed offset becomes an `Etc/GMT` zone), UTC when none does.
+fn session_zone(schema: &Schema) -> String {
+    let zone = schema.fields().iter().find_map(|f| match f.data_type() {
+        DataType::Timestamp(_, Some(zone)) => Some(zone.as_ref()),
+        _ => None,
+    });
+    zone.and_then(zone_name).unwrap_or_else(|| "UTC".into())
+}
+
+/// A DuckDB time zone for an Arrow one: names pass, whole-hour offsets become `Etc/GMT`
+/// zones (whose sign is inverted); other offsets have no zone, `None`.
+fn zone_name(zone: &str) -> Option<String> {
+    let Some(sign) = zone.chars().next().filter(|c| matches!(c, '+' | '-')) else {
+        return (!zone.is_empty() && !zone.contains('\'')).then(|| zone.to_string());
+    };
+    let (hours, minutes) = zone[1..].split_once(':').unwrap_or((&zone[1..], "0"));
+    let (hours, minutes): (u32, u32) = (hours.parse().ok()?, minutes.parse().ok()?);
+    match (hours, minutes) {
+        (0, 0) => Some("UTC".into()),
+        (1..=14, 0) => Some(format!("Etc/GMT{}{hours}", if sign == '+' { '-' } else { '+' })),
+        _ => None,
+    }
 }
 
 /// Drops `table` from `conn` if it is there.
@@ -419,6 +447,37 @@ mod tests {
 
     fn one(conn: &duckdb::Connection, sql: &str) -> i64 {
         conn.query_row(sql, [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn zoned_timestamps_read_in_the_zone_the_grid_shows() {
+        platypus_driver_duckdb::testing::load();
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        conn.execute_batch("SET TimeZone = 'Europe/Rome'").unwrap();
+        let schema: SchemaRef = Arc::new(Schema::new(vec![Field::new(
+            "ts",
+            DataType::Timestamp(TimeUnit::Microsecond, Some("+00:00".into())),
+            true,
+        )]));
+        // 2024-03-31 01:30:00 UTC.
+        let at = arrow_array::TimestampMicrosecondArray::from(vec![1_711_848_600_000_000_i64])
+            .with_timezone("+00:00");
+        let batch = RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(at)]).unwrap();
+        load(&conn, "result", &schema, &[batch]).unwrap();
+        let hour: String = conn
+            .query_row("SELECT strftime(ts, '%H:%M') FROM result", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(hour, "01:30");
+    }
+
+    #[test]
+    fn arrow_zones_become_duckdb_zones() {
+        assert_eq!(zone_name("+00:00").as_deref(), Some("UTC"));
+        assert_eq!(zone_name("+02:00").as_deref(), Some("Etc/GMT-2"));
+        assert_eq!(zone_name("-05:00").as_deref(), Some("Etc/GMT+5"));
+        assert_eq!(zone_name("+05:30"), None);
+        assert_eq!(zone_name("Europe/Rome").as_deref(), Some("Europe/Rome"));
+        assert_eq!(zone_name("UTC").as_deref(), Some("UTC"));
     }
 
     #[test]
