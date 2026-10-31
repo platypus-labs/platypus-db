@@ -2,14 +2,19 @@
 // (applied, edited since applied, pending, pending but older than the latest applied, failed,
 // recorded with no file, repeatable) and a Rails one, the folder picked with the system dialog
 // and remembered, the status counts, the "Only problems" filter, a missing folder, an empty
-// folder, and a double click on a `.sql` migration opening it in the editor.
+// folder, and a double click on a `.sql` migration opening it in the editor. A second database
+// has the history tables of Liquibase (XML, YAML and formatted SQL changelogs), Prisma (applied,
+// edited, failed, rolled back, pending, recorded with no file) and Alembic (a chain with a
+// branch), each shown in its own section with its own statuses.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { answerSave } from "../qa-xfer.mjs";
+import { answerSave, menu as menuAt } from "../qa-xfer.mjs";
 
 const NAME = "Migrations db";
+const NAME2 = "Migrations db 2";
 const row = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const dialog = `document.querySelector('.modal.schema-migrations')`;
@@ -85,6 +90,7 @@ export function setup({ dir }) {
   for (const v of ["20260101000000", "20260102000000", "20250101000000"]) db.prepare("INSERT INTO schema_migrations VALUES (?)").run(v);
   db.close();
 
+  seedOtherTools(dir);
   writeFileSync(
     join(dir, "connections.toml"),
     `version = 1
@@ -94,9 +100,134 @@ name = "${NAME}"
 driver = "sqlite"
 database = '${join(dir, "app.db")}'
 save_password = false
+
+[[connections]]
+id = "00000000-0000-4000-8000-000000000042"
+name = "${NAME2}"
+driver = "sqlite"
+database = '${join(dir, "app2.db")}'
+save_password = false
 `,
   );
 }
+
+const OTHER = {
+  "changelog/db.changelog.xml": `<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog">
+  <changeSet id="1" author="ann"><createTable tableName="a"><column name="id" type="int"/></createTable></changeSet>
+  <changeSet id="2" author="ann"><addColumn tableName="a"><column name="b" type="int"/></addColumn></changeSet>
+  <changeSet id="3" author="bob"><createTable tableName="c"><column name="id" type="int"/></createTable></changeSet>
+</databaseChangeLog>
+`,
+  "changelog/extra.sql": "--liquibase formatted sql\n--changeset carl:10\nCREATE TABLE d (id INTEGER);\n",
+  "changelog/more.yaml": "databaseChangeLog:\n  - changeSet:\n      id: y1\n      author: dana\n      changes: []\n",
+  "prisma/migrations/migration_lock.toml": 'provider = "sqlite"\n',
+  "prisma/migrations/20260101000000_init/migration.sql": "CREATE TABLE users (id INTEGER PRIMARY KEY);\n",
+  "prisma/migrations/20260102000000_add_posts/migration.sql": "CREATE TABLE posts (id INTEGER PRIMARY KEY); -- edited\n",
+  "prisma/migrations/20260103000000_failed/migration.sql": "CREATE TABLE oops (;\n",
+  "prisma/migrations/20260104000000_rolled/migration.sql": "CREATE TABLE rolled (id INTEGER);\n",
+  "prisma/migrations/20260105000000_new/migration.sql": "CREATE TABLE fresh (id INTEGER);\n",
+  "alembic/versions/aaa111_create.py": '"""create tables"""\nrevision = "aaa111"\ndown_revision = None\n',
+  "alembic/versions/bbb222_add_col.py": '"""add a column"""\nrevision: str = "bbb222"\ndown_revision: str = "aaa111"\n',
+  "alembic/versions/ccc333_more.py": '"""more"""\nrevision = "ccc333"\ndown_revision = "bbb222"\n',
+  "alembic/versions/ddd444_branch.py": '"""a branch"""\nrevision = "ddd444"\ndown_revision = "aaa111"\n',
+};
+const sha256 = (text) => createHash("sha256").update(text).digest("hex");
+
+/** A second project and database: Liquibase, Prisma and Alembic. */
+function seedOtherTools(dir) {
+  const project = join(dir, "project2");
+  for (const [rel, text] of Object.entries(OTHER)) {
+    const path = join(project, rel);
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, text);
+  }
+  const db = new DatabaseSync(join(dir, "app2.db"));
+  db.exec(`CREATE TABLE DATABASECHANGELOG (ID TEXT, AUTHOR TEXT, FILENAME TEXT, DATEEXECUTED TEXT, ORDEREXECUTED INTEGER, EXECTYPE TEXT);
+    CREATE TABLE _prisma_migrations (id TEXT, checksum TEXT, finished_at TEXT, migration_name TEXT, rolled_back_at TEXT);
+    CREATE TABLE alembic_version (version_num TEXT PRIMARY KEY);`);
+  const lb = db.prepare("INSERT INTO DATABASECHANGELOG VALUES (?, ?, ?, ?, ?, ?)");
+  lb.run("1", "ann", "classpath:changelog/db.changelog.xml", "2026-02-01 10:00:00", 1, "EXECUTED");
+  lb.run("2", "ann", "changelog/db.changelog.xml", "2026-02-01 10:00:01", 2, "RERAN");
+  // Recorded, and its changelog is gone.
+  lb.run("9", "zed", "changelog/old.xml", "2026-02-01 10:00:02", 3, "EXECUTED");
+  const pr = db.prepare("INSERT INTO _prisma_migrations VALUES (?, ?, ?, ?, ?)");
+  const migration = (name) => OTHER[`prisma/migrations/${name}/migration.sql`];
+  pr.run("p1", sha256(migration("20260101000000_init")), "2026-03-01 10:00:00", "20260101000000_init", null);
+  // Applied with the text before the edit.
+  pr.run("p2", sha256("CREATE TABLE posts (id INTEGER PRIMARY KEY);\n"), "2026-03-02 10:00:00", "20260102000000_add_posts", null);
+  // Started and never finished.
+  pr.run("p3", sha256(migration("20260103000000_failed")), null, "20260103000000_failed", null);
+  pr.run("p4", sha256(migration("20260104000000_rolled")), "2026-03-04 10:00:00", "20260104000000_rolled", "2026-03-04 11:00:00");
+  pr.run("p0", "abc", "2025-12-01 10:00:00", "20250101000000_ghost", null);
+  db.prepare("INSERT INTO alembic_version VALUES ('bbb222')").run();
+  db.close();
+}
+
+/** Liquibase, Prisma and Alembic against the second database. */
+async function otherTools(page, dir) {
+  const project = join(dir, "project2");
+  await page.eval(`${row(NAME2)}.querySelector('.twisty').click()`);
+  await page.waitFor(`${row(NAME2)}.getAttribute('aria-expanded') === 'true'`, 15_000);
+  await menuAt(page, "main", "Migration status", dialog, NAME2);
+  await page.waitFor(`${dialog} !== null`);
+  await page.eval(fill(field("folder"), project));
+  await page.waitFor(`${field("folder")}.value === ${JSON.stringify(project)}`);
+  await check(page);
+  await page.waitFor(`${dialog}.querySelectorAll('section[data-tool]').length === 3`, 15_000);
+  assert.deepEqual((await page.eval(sections)).sort(), ["alembic", "liquibase", "prisma"], "Flyway and Rails have no history here");
+
+  // Liquibase: the changeset is told apart by id, author and file, whatever prefix the database
+  // wrote before the file name; XML, YAML and formatted SQL changelogs are all read.
+  const liquibase = { 1: "applied", 2: "applied", 3: "pending", 9: "missing", 10: "pending", y1: "pending" };
+  for (const [id, status] of Object.entries(liquibase)) {
+    assert.equal(await page.eval(statusOf("liquibase", id)), status, `Liquibase ${id}`);
+  }
+  assert.equal(await page.eval(`${dialog}.querySelectorAll('section[data-tool="liquibase"] tbody tr').length`), 6);
+  assert.match((await page.eval(cells("liquibase", "2")))[5], /run again/i);
+  assert.match((await page.eval(cells("liquibase", "9")))[5], /no file in the folder/);
+  assert.match((await page.eval(cells("liquibase", "10")))[2], /extra\.sql$/);
+  assert.match((await page.eval(cells("liquibase", "y1")))[2], /more\.yaml$/);
+  assert.match(await page.eval(`${dialog}.querySelector('section[data-tool="liquibase"] h3').textContent`), /DATABASECHANGELOG/);
+
+  // Prisma: the SHA-256 of the file is the checksum; a started and unfinished run failed; a
+  // rolled back run is pending again.
+  const prisma = {
+    "20250101000000_ghost": "missing",
+    "20260101000000_init": "applied",
+    "20260102000000_add_posts": "divergent",
+    "20260103000000_failed": "failed",
+    "20260104000000_rolled": "pending",
+    "20260105000000_new": "pending",
+  };
+  for (const [id, status] of Object.entries(prisma)) {
+    assert.equal(await page.eval(statusOf("prisma", id)), status, `Prisma ${id}`);
+  }
+  assert.match((await page.eval(cells("prisma", "20260102000000_add_posts")))[5], /checksum differs/);
+  assert.match((await page.eval(cells("prisma", "20260104000000_rolled")))[5], /rolled back/);
+
+  // Alembic: the head in the database and all it follows ran; the files after it are pending
+  // and, two of them being heads, say so.
+  const alembic = { aaa111: "applied", bbb222: "applied", ccc333: "pending", ddd444: "pending" };
+  for (const [id, status] of Object.entries(alembic)) {
+    assert.equal(await page.eval(statusOf("alembic", id)), status, `Alembic ${id}`);
+  }
+  assert.match((await page.eval(cells("alembic", "bbb222")))[5], /head/);
+  assert.match((await page.eval(cells("alembic", "ccc333")))[5], /branch head/);
+  assert.match((await page.eval(cells("alembic", "ddd444")))[5], /branch head/);
+  assert.equal((await page.eval(cells("alembic", "aaa111")))[1], "create tables");
+
+  // The counts over the three tools.
+  const count = (s) => `${dialog}.querySelector('[data-count="${s}"]').textContent.replace(/\\s+/g, ' ').trim()`;
+  assert.equal(await page.eval(count("applied")), "Applied 5");
+  assert.equal(await page.eval(count("pending")), "Pending 7");
+  assert.equal(await page.eval(count("divergent")), "Divergent 1");
+  assert.equal(await page.eval(count("failed")), "Failed 1");
+  assert.equal(await page.eval(count("missing")), "Missing 2");
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent.trim() === 'Close').click()`);
+  await page.waitFor(`${dialog} === null`);
+}
+
 
 /** Runs the context-menu entry starting with `title` on the navigator row `label`. */
 async function menu(page, label, title) {
@@ -227,4 +358,6 @@ export default async function (page, { dir, shots }) {
   await page.waitFor(`${statusOf("flyway", "2")} === 'divergent'`, 15_000);
   await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent.trim() === 'Close').click()`);
   await page.waitFor(`${dialog} === null`);
+
+  await otherTools(page, dir);
 }
