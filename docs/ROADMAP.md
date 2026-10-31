@@ -125,7 +125,7 @@ blocco cade.
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ completato |
 | O — Collaborazione e sync | ✅ completato |
-| P — Piattaforma, qualità e release | libero |
+| P — Piattaforma, qualità e release | ⛔ bloccato |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ✅ completato |
 | S — Collaudo finale | 🔒 Delfa · group-s-collaudo · 2026-10-31 |
@@ -1196,14 +1196,14 @@ la macchina ferma e lo schermo non toccato per una decina di minuti.
 
 | Attività | Prio |
 |---|---|
-| Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
+| ⛔ bloccato (serve un desktop Linux con GPU) — Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
 | ⏭ serve un Mac — Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma | P3 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0; v0.2.1 solo Windows, compilata in locale perché i minuti di Actions erano finiti) | P1 |
-| Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
-| Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
+| ⛔ bloccato (serve una release pubblicata dopo la 0.2.1: i minuti di Actions sono finiti fino al 2 novembre 2026 e le release partono solo su richiesta) — Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
+| ⛔ bloccato (serve acquistare o ottenere il certificato) — Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
 | ⏭ serve un Mac — Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
-| Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
+| ⛔ bloccato (serve il PC libero per una ventina di minuti, con i container di Docker fermi: le misure fatte mentre lo si usa non sono valide) — Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
 | ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
 | ✅ Crash report opt-in e log su file con rotazione | P2 |
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |

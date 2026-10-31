@@ -26,7 +26,7 @@ rispettate anche quelle.
    scegliere un gruppo disponibile, con le dipendenze pronte, seguendo le "Ondate consigliate".
    **Disponibile** vuol dire `libero` **oppure** `✅ fatto (…)`: un gruppo fatto in parte si prende
    per le funzionalità che restano, alla pari di uno libero. Non si prendono solo i gruppi
-   `✅ completato`, quelli con un lock valido (`🔒`) e quelli `⏸ in attesa`.
+   `✅ completato`, quelli con un lock valido (`🔒`), quelli `⏸ in attesa` e quelli `⛔ bloccato`.
    Tra i disponibili si sceglie quello che ha più senso: prima l'ondata più bassa, poi le
    priorità più alte ancora da fare (P1, poi P2), poi quello con più funzionalità aperte.
    Un lock è scaduto se il branch indicato non ha commit da più di **3 giorni**
