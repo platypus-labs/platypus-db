@@ -1506,7 +1506,12 @@ async fn suggests_indexes_for_large_scans() {
             .explain("SELECT * FROM conf_big WHERE id = 42", true)
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
-        let tables: Vec<_> = plan.suggestions.iter().map(|s| s.table.as_str()).collect();
+        // A plan names a table with its schema (a temporary one in `pg_temp`): compare the name alone.
+        let tables: Vec<_> = plan
+            .suggestions
+            .iter()
+            .map(|s| s.table.rsplit('.').next().unwrap_or(&s.table))
+            .collect();
         // Only some plans have the row counts to judge a table by.
         let expected: &[&str] = if plans_suggest(&b) {
             &["conf_big"]
@@ -5235,7 +5240,7 @@ async fn agents_ask_before_a_query_that_writes() {
     }
 }
 
-/// PostgreSQL decodes `U&"…"` names the way the agents' read-only check does, so a function
+/// PostgreSQL decodes `U&"â€¦"` names the way the agents' read-only check does, so a function
 /// spelled with Unicode escapes is the one the check refuses.
 #[tokio::test]
 async fn agents_read_only_check_decodes_postgres_unicode_names() {
@@ -7146,7 +7151,7 @@ CREATE TABLE S.part_refs (id int PRIMARY KEY, a int, b int, CONSTRAINT part_refs
 CREATE TABLE S.ca (id int PRIMARY KEY, cb_id int);
 CREATE TABLE S.cb (id int PRIMARY KEY, ca_id int, CONSTRAINT cb_ca FOREIGN KEY (ca_id) REFERENCES S.ca(id));
 ALTER TABLE S.ca ADD CONSTRAINT ca_cb FOREIGN KEY (cb_id) REFERENCES S.cb(id);
-CREATE TABLE S.`Odd Table` (`Weird Col` int PRIMARY KEY, `select` text, `è` int);
+CREATE TABLE S.`Odd Table` (`Weird Col` int PRIMARY KEY, `select` text, `Ã¨` int);
 CREATE VIEW S.v_orders AS SELECT id, total FROM S.orders"
         }
         _ => {
@@ -7159,7 +7164,7 @@ CREATE TABLE S.part_refs (id int PRIMARY KEY, a int, b int, CONSTRAINT part_refs
 CREATE TABLE S.ca (id int PRIMARY KEY, cb_id int);
 CREATE TABLE S.cb (id int PRIMARY KEY, ca_id int, CONSTRAINT cb_ca FOREIGN KEY (ca_id) REFERENCES S.ca(id));
 ALTER TABLE S.ca ADD CONSTRAINT ca_cb FOREIGN KEY (cb_id) REFERENCES S.cb(id);
-CREATE TABLE S.[Odd Table] ([Weird Col] int PRIMARY KEY, [select] nvarchar(max), [è] int);
+CREATE TABLE S.[Odd Table] ([Weird Col] int PRIMARY KEY, [select] nvarchar(max), [Ã¨] int);
 CREATE VIEW S.v_orders AS SELECT id, total FROM S.orders"
         }
     }
