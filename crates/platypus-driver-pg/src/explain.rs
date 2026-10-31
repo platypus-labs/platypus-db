@@ -482,5 +482,10 @@ mod tests {
             "Planning".into(),
             "Shared Hit Blocks 262, Shared Read Blocks 0".into()
         )));
-        assert!(root.properties.iter().all(|(k, v)| k != "Triggers" && !v.is_empty()));
-    }}
+        assert!(
+            root.properties
+                .iter()
+                .all(|(k, v)| k != "Triggers" && !v.is_empty())
+        );
+    }
+}

@@ -70,7 +70,10 @@ fn zone_name(zone: &str) -> Option<String> {
     let (hours, minutes): (u32, u32) = (hours.parse().ok()?, minutes.parse().ok()?);
     match (hours, minutes) {
         (0, 0) => Some("UTC".into()),
-        (1..=14, 0) => Some(format!("Etc/GMT{}{hours}", if sign == '+' { '-' } else { '+' })),
+        (1..=14, 0) => Some(format!(
+            "Etc/GMT{}{hours}",
+            if sign == '+' { '-' } else { '+' }
+        )),
         _ => None,
     }
 }
