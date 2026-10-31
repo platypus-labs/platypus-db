@@ -144,7 +144,6 @@ export function Users({ connection, active, refresh, sideSession }: Props) {
         <PrincipalDetails
           principal={chosen}
           principals={all}
-          connection={connection}
           sideSession={sideSession}
           readOnly={!!why}
           roles={options?.roles !== false}
@@ -249,7 +248,6 @@ function PrincipalTable({
 function PrincipalDetails({
   principal,
   principals,
-  connection,
   sideSession,
   readOnly,
   roles,
@@ -259,7 +257,6 @@ function PrincipalDetails({
 }: {
   principal: Principal | null;
   principals: Principal[];
-  connection: SavedConnection;
   sideSession: () => Promise<number | null>;
   readOnly: boolean;
   /** Whether the server has roles. */
@@ -393,7 +390,6 @@ function PrincipalDetails({
       {grants && groups.length === 0 && !grantsError && <p className="muted small">{t("No privileges of its own.")}</p>}
       <PrivilegeGroups
         groups={groups}
-        driver={connection.driver}
         onRevoke={
           readOnly
             ? undefined
@@ -466,11 +462,9 @@ function MemberChips({
 
 function PrivilegeGroups({
   groups,
-  driver,
   onRevoke,
 }: {
   groups: PrivilegeGroup[];
-  driver: string;
   onRevoke?: (group: PrivilegeGroup) => void;
 }) {
   if (groups.length === 0) return null;
@@ -482,7 +476,7 @@ function PrivilegeGroups({
             <td className="users-object">
               <span className="muted small">{t(KIND_LABEL[g.kind])}</span>
               <br />
-              {g.label || (driver === "sqlserver" ? t("this database") : "")}
+              {g.label || (g.kind === "database" ? t("this database") : "")}
             </td>
             <td className="users-grants">
               {g.privileges.map((p) => (
