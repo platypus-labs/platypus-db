@@ -103,6 +103,11 @@
   white-space: nowrap;
   font-family: var(--font-mono);
 }
+/* A list of figures wraps between them rather than losing the last ones to the ellipsis. */
+.tp-card dd.tp-quartiles,
+.tp-card dd.tp-lengths {
+  white-space: normal;
+}
 .tp-kind {
   margin-left: auto;
 }
