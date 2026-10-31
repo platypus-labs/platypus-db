@@ -103,6 +103,10 @@ column is known by its name only: the names of Settings › Safety (emails, phon
 count, and so do the columns the user marked sensitive in the app; a column marked not
 sensitive is still masked where the rules name it, since the text does not say which table it
 is. When the app's catalog cannot be read, the tools fail rather than show the values.
+The history and the agents' call log never keep a password a statement sets
+(`CREATE ROLE … PASSWORD '…'`, `IDENTIFIED BY '…'`, `SET PASSWORD`): it is stored as
+`'********'`, in the statement, in a call's arguments and in the error, whether the app or an
+agent ran it.
 
 Clients that read MCP resources find the schema there too: `resources/list` has one resource
 per connection agents may use (`platypus://<connection>`, its schemas), and two templates,
