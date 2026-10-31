@@ -18,6 +18,7 @@ mod bulk;
 #[doc(hidden)]
 pub mod columns;
 mod ddl;
+mod hierarchyid;
 mod meta;
 mod monitor;
 mod security;

@@ -43,12 +43,38 @@ pub enum TypeInfo {
     },
 }
 
+/// PlatypusDB: the CLR type of a `udt` column, from the type name its metadata gives.
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub enum ClrType {
+    /// `hierarchyid`.
+    HierarchyId,
+    /// `geography`.
+    Geography,
+    /// `geometry`.
+    Geometry,
+    /// A CLR type of a user assembly.
+    Other,
+}
+
+impl ClrType {
+    fn named(name: &str) -> Self {
+        match name.to_ascii_lowercase().as_str() {
+            "hierarchyid" => Self::HierarchyId,
+            "geography" => Self::Geography,
+            "geometry" => Self::Geometry,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// A type with a length, and the collation of a string type.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct VarLenContext {
     r#type: VarLenType,
     len: usize,
     collation: Option<Collation>,
+    /// PlatypusDB: the CLR type of a `udt`.
+    clr: Option<ClrType>,
 }
 
 impl VarLenContext {
@@ -58,7 +84,13 @@ impl VarLenContext {
             r#type,
             len,
             collation,
+            clr: None,
         }
+    }
+
+    /// PlatypusDB: the CLR type of a `udt` column.
+    pub fn clr(&self) -> Option<ClrType> {
+        self.clr
     }
 
     /// Get the var len context's r#type.
@@ -304,6 +336,7 @@ impl TypeInfo {
                 })
             }
             Ok(ty) => {
+                let mut clr = None;
                 let len = match ty {
                     #[cfg(feature = "tds73")]
                     VarLenType::Timen | VarLenType::DatetimeOffsetn | VarLenType::Datetime2 => {
@@ -329,12 +362,13 @@ impl TypeInfo {
                         src.read_u32_le().await? as usize
                     }
                     // PlatypusDB: UDT_INFO is the maximum size followed by the type's
-                    // database, schema, name and assembly; values travel as varbinary.
+                    // database, schema, name and assembly; values travel as their
+                    // serialized bytes, always partially length-prefixed.
                     VarLenType::Udt => {
                         let len = src.read_u16_le().await? as usize;
                         src.read_b_varchar().await?;
                         src.read_b_varchar().await?;
-                        src.read_b_varchar().await?;
+                        clr = Some(ClrType::named(&src.read_b_varchar().await?));
                         src.read_us_varchar().await?;
                         len
                     }
@@ -375,7 +409,8 @@ impl TypeInfo {
                         }
                     }
                     _ => {
-                        let cx = VarLenContext::new(ty, len, collation);
+                        let mut cx = VarLenContext::new(ty, len, collation);
+                        cx.clr = clr;
                         TypeInfo::VarLenSized(cx)
                     }
                 };

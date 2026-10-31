@@ -390,6 +390,64 @@ async fn mssql_money_and_times_are_exact_and_keys_save() {
     run(conn, "DROP TABLE #qa_fixdrv_keys").await;
 }
 
+#[tokio::test]
+async fn mssql_clr_types_read_with_the_columns_around_them() {
+    let Some(conn) = connect(&MssqlDriver, MSSQL).await else {
+        return;
+    };
+    let conn = &*conn;
+    run(
+        conn,
+        "CREATE TABLE #qa_fixdrv_clr (id int, node hierarchyid, place geography, name nvarchar(20))",
+    )
+    .await;
+    run(
+        conn,
+        "INSERT INTO #qa_fixdrv_clr VALUES (1, '/1/2.3/', geography::Point(1, 2, 4326), N'a'), \
+         (2, NULL, NULL, N'b'), (3, '/', NULL, N'c'), (4, '/-7/12345.0.9/', NULL, N'd')",
+    )
+    .await;
+    let rows = texts(
+        conn,
+        "SELECT id, node, name, place FROM #qa_fixdrv_clr ORDER BY id",
+    )
+    .await;
+    let cells = |i: usize| rows.iter().map(|r| r[i].clone()).collect::<Vec<_>>();
+    assert_eq!(
+        cells(1),
+        [
+            Some("/1/2.3/".to_owned()),
+            None,
+            Some("/".to_owned()),
+            Some("/-7/12345.0.9/".to_owned())
+        ]
+    );
+    assert_eq!(
+        cells(2),
+        [
+            Some("a".into()),
+            Some("b".into()),
+            Some("c".into()),
+            Some("d".into())
+        ]
+    );
+    // geography stays its bytes.
+    assert!(
+        rows[0][3].as_deref().is_some_and(|g| g.len() > 8),
+        "{rows:?}"
+    );
+    // The text written back finds the row, as an edit's key does.
+    assert_eq!(
+        run(
+            conn,
+            "UPDATE #qa_fixdrv_clr SET name = N'z' WHERE node = '/-7/12345.0.9/'"
+        )
+        .await,
+        1
+    );
+    run(conn, "DROP TABLE #qa_fixdrv_clr").await;
+}
+
 /// The columns of the bulk copy tests: every type SQL Server's bulk copy writes.
 const MSSQL_BULK_COLUMNS: &[(&str, &str)] = &[
     ("id", "int IDENTITY PRIMARY KEY"),

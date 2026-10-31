@@ -4,10 +4,10 @@ import type { DriverKind } from "../../api";
 
 /** PostgreSQL types without `=` (json, xml, the geometric ones), and arrays of them. */
 const PG_TEXT = /^(json|xml|point|line|lseg|box|path|polygon|circle)(\[\])?$/i;
-/** SQL Server types that `=` does not take, compared as text or as bytes; CLR types
- *  (geography, geometry, hierarchyid) come as `udt` in a result. */
+/** SQL Server types that `=` does not take, compared as text or as bytes: the spatial and other
+ *  CLR types are shown as their bytes (`hierarchyid`, shown as its path, compares with it). */
 const MSSQL_TEXT = /^(n?text|xml|sql_variant)$/i;
-const MSSQL_BYTES = /^(image|udt|geography|geometry|hierarchyid)$/i;
+const MSSQL_BYTES = /^(image|udt|geography|geometry)$/i;
 
 /**
  * The expression a condition on column `name` (already quoted) of type `dbType` compares

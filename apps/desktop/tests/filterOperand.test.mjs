@@ -21,6 +21,7 @@ test("other columns are compared as they are, so that their indexes serve", () =
   assert.equal(filterOperand("postgres", "jsonb", "doc"), "doc");
   assert.equal(filterOperand("postgres", "text", "t"), "t");
   assert.equal(filterOperand("sqlserver", "nvarchar(20)", "[n]"), "[n]");
+  assert.equal(filterOperand("sqlserver", "hierarchyid", "[h]"), "[h]");
   assert.equal(filterOperand("sqlite", "json", "j"), "j");
   assert.equal(filterOperand("duckdb", "JSON", "j"), "j");
 });

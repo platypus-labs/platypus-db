@@ -20,8 +20,8 @@ use arrow_array::builder::{
     Time64NanosecondBuilder, TimestampMicrosecondBuilder, UInt8Builder,
 };
 use arrow_schema::{DataType, Field, TimeUnit};
-use tiberius::ColumnData;
 use tiberius::ColumnType as T;
+use tiberius::{ClrType, ColumnData};
 
 /// `datetimeoffset` values are instants, kept in this zone.
 pub const UTC: &str = "+00:00";
@@ -41,6 +41,8 @@ pub struct ColumnSpec {
     pub scale: Option<u8>,
     /// Bytes; `None` for `max` types.
     pub max_length: Option<usize>,
+    /// The CLR type of a `udt` column.
+    pub clr: Option<ClrType>,
 }
 
 impl From<&tiberius::Column> for ColumnSpec {
@@ -51,6 +53,7 @@ impl From<&tiberius::Column> for ColumnSpec {
             precision: c.precision(),
             scale: c.scale(),
             max_length: c.max_length(),
+            clr: c.clr_type(),
         }
     }
 }
@@ -103,8 +106,14 @@ impl ColumnSpec {
             T::Text => "text".to_owned(),
             T::NText => "ntext".to_owned(),
             T::Image => "image".to_owned(),
-            // geometry, geography, hierarchyid and CLR types, as their serialized bytes.
-            T::Udt => "udt".to_owned(),
+            T::Udt => match self.clr {
+                Some(ClrType::HierarchyId) => "hierarchyid",
+                Some(ClrType::Geography) => "geography",
+                Some(ClrType::Geometry) => "geometry",
+                // CLR types of user assemblies, as their serialized bytes.
+                Some(ClrType::Other) | None => "udt",
+            }
+            .to_owned(),
             T::SSVariant => "sql_variant".to_owned(),
         }
     }
@@ -129,6 +138,8 @@ pub enum ColumnBuilder {
     Timestamp(TimestampMicrosecondBuilder, bool),
     Text(StringBuilder),
     Binary(BinaryBuilder),
+    /// `hierarchyid`, shown as its path (`/1/2.3/`) as `ToString()` writes it.
+    Hierarchy(StringBuilder),
 }
 
 /// The Arrow field and an empty builder for a result column.
@@ -155,6 +166,9 @@ pub fn column_builder(spec: &ColumnSpec) -> (Field, ColumnBuilder) {
         }
         T::Datetime4 | T::Datetime | T::Datetimen | T::Datetime2 => {
             ColumnBuilder::Timestamp(TimestampMicrosecondBuilder::new(), false)
+        }
+        T::Udt if spec.clr == Some(ClrType::HierarchyId) => {
+            ColumnBuilder::Hierarchy(StringBuilder::new())
         }
         T::BigVarBin | T::BigBinary | T::Image | T::Udt => {
             ColumnBuilder::Binary(BinaryBuilder::new())
@@ -403,7 +417,7 @@ impl ColumnBuilder {
             Self::Timestamp(_, zoned) => {
                 DataType::Timestamp(TimeUnit::Microsecond, zoned.then(|| Arc::from(UTC)))
             }
-            Self::Text(_) => DataType::Utf8,
+            Self::Text(_) | Self::Hierarchy(_) => DataType::Utf8,
             Self::Binary(_) => DataType::Binary,
         }
     }
@@ -421,7 +435,7 @@ impl ColumnBuilder {
             Self::Date(b) => b.append_null(),
             Self::Time(b) => b.append_null(),
             Self::Timestamp(b, _) => b.append_null(),
-            Self::Text(b) => b.append_null(),
+            Self::Text(b) | Self::Hierarchy(b) => b.append_null(),
             Self::Binary(b) => b.append_null(),
         }
     }
@@ -488,6 +502,14 @@ impl ColumnBuilder {
                 ColumnData::String(Some(s)) => b.append_value(s.as_bytes()),
                 _ => return Err(wrong()),
             },
+            // A path it cannot read stays its bytes, as other CLR values are shown.
+            Self::Hierarchy(b) => match value {
+                ColumnData::Binary(Some(bytes)) => b.append_value(
+                    crate::hierarchyid::path(bytes)
+                        .unwrap_or_else(|| text(value).unwrap_or_default()),
+                ),
+                _ => return Err(wrong()),
+            },
         }
         Ok(())
     }
@@ -521,7 +543,7 @@ impl ColumnBuilder {
                     array
                 })
             }
-            Self::Text(b) => Arc::new(b.finish()),
+            Self::Text(b) | Self::Hierarchy(b) => Arc::new(b.finish()),
             Self::Binary(b) => Arc::new(b.finish()),
         }
     }
@@ -550,6 +572,7 @@ mod tests {
             precision: None,
             scale: None,
             max_length: None,
+            clr: None,
         }
     }
 
