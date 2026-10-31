@@ -56,8 +56,9 @@ const APP_PATTERNS: [RegExp, string, string[]][] = [
     msg("{path} not found: a relative path is not created, give the full path of the file"),
     ["path"],
   ],
-  [/^cannot open (.*): unable to open database file$/s, msg("cannot open {path}: unable to open database file"), ["path"]],
-  [/^cannot open (.*): file is not a database$/s, msg("cannot open {path}: file is not a database"), ["path"]],
+  // SQLite may repeat the path after its reason: "…: unable to open database file: D:\x".
+  [/^cannot open (.*?): unable to open database file(?:: .*)?$/s, msg("cannot open {path}: unable to open database file"), ["path"]],
+  [/^cannot open (.*?): file is not a database(?:: .*)?$/s, msg("cannot open {path}: file is not a database"), ["path"]],
   [/^invalid Redis database `(.*)`: a number, such as 0$/s, msg("invalid Redis database `{name}`: a number, such as 0"), ["name"]],
   [/^(.*) is read-only: nothing that may change it runs there$/s, msg("{name} is read-only: nothing that may change it runs there"), ["name"]],
   [
