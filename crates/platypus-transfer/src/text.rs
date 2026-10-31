@@ -41,6 +41,9 @@ pub struct TextSink {
     json: Vec<JsonKind>,
     /// For Excel: the date or time columns, written as Excel dates.
     dates: Vec<Option<DateCell>>,
+    /// For SQL in ClickHouse: the type of the lists, maps and tuples, which it reads back
+    /// only as its own literals, `map('k', 1)` and `(1, 'x')`.
+    nested: Vec<Option<DataType>>,
     settings: Settings,
     out: Out,
     rows: u32,
@@ -150,6 +153,54 @@ fn xlsx_text(v: &str) -> std::borrow::Cow<'_, str> {
     format!("{}{note}", &v[..end]).into()
 }
 
+/// The ClickHouse literal of the JSON text `json` of a list, map or tuple of `data_type`:
+/// `[1, 2]`, `map('k', 1)`, `(1, 'x')`. `None` for text that is not that JSON.
+fn clickhouse_nested(data_type: &DataType, json: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    nested_literal(data_type, &value)
+}
+
+fn nested_literal(data_type: &DataType, value: &serde_json::Value) -> Option<String> {
+    use serde_json::Value;
+    let quote = |s: &str| Dialect::ClickHouse.quote_literal(s);
+    Some(match (data_type, value) {
+        (_, Value::Null) => "NULL".to_owned(),
+        (DataType::List(item) | DataType::LargeList(item), Value::Array(items)) => {
+            let items = items
+                .iter()
+                .map(|v| nested_literal(item.data_type(), v))
+                .collect::<Option<Vec<_>>>()?;
+            format!("[{}]", items.join(", "))
+        }
+        (DataType::Struct(fields), Value::Object(object)) => {
+            let items = fields
+                .iter()
+                .map(|f| nested_literal(f.data_type(), object.get(f.name())?))
+                .collect::<Option<Vec<_>>>()?;
+            format!("({})", items.join(", "))
+        }
+        (DataType::Map(entries, _), Value::Object(object)) => {
+            let DataType::Struct(kv) = entries.data_type() else {
+                return None;
+            };
+            let [key, item] = kv.iter().collect::<Vec<_>>()[..] else {
+                return None;
+            };
+            let mut args = Vec::with_capacity(object.len() * 2);
+            for (k, v) in object {
+                let number = k.parse::<f64>().is_ok() && key.data_type().is_numeric();
+                args.push(if number { k.clone() } else { quote(k) });
+                args.push(nested_literal(item.data_type(), v)?);
+            }
+            format!("map({})", args.join(", "))
+        }
+        (_, Value::String(s)) => quote(s),
+        (_, Value::Number(n)) => n.to_string(),
+        (_, Value::Bool(b)) => b.to_string(),
+        _ => return None,
+    })
+}
+
 fn markdown_cell(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('|', "\\|")
@@ -176,6 +227,19 @@ impl TextSink {
             .iter()
             .map(|f| DateCell::of(f.data_type()))
             .collect();
+        let nested = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                (format == Format::Sql
+                    && settings.sql.0 == Dialect::ClickHouse
+                    && matches!(
+                        f.data_type(),
+                        DataType::List(_) | DataType::Struct(_) | DataType::Map(..)
+                    ))
+                .then(|| f.data_type().clone())
+            })
+            .collect();
         let out = if format == Format::Xlsx {
             let mut workbook = Workbook::new();
             let sheet = workbook.add_worksheet_with_constant_memory()?;
@@ -194,6 +258,7 @@ impl TextSink {
             kinds,
             json,
             dates,
+            nested,
             settings,
             out,
             rows: 0,
@@ -333,7 +398,17 @@ impl TextSink {
             Format::Sql => {
                 let (dialect, table) = &self.settings.sql;
                 let mut literals = Vec::with_capacity(row.len());
-                for ((name, kind), v) in self.names.iter().zip(&self.kinds).zip(row) {
+                for (i, ((name, kind), v)) in
+                    self.names.iter().zip(&self.kinds).zip(row).enumerate()
+                {
+                    let nested = self.nested[i]
+                        .as_ref()
+                        .zip(v.as_deref())
+                        .and_then(|(t, json)| clickhouse_nested(t, json));
+                    if let Some(lit) = nested {
+                        literals.push(lit);
+                        continue;
+                    }
                     let column = Column {
                         name,
                         kind: *kind,
@@ -497,6 +572,46 @@ mod tests {
              <field name=\"n\">tab\tand &lt;tag&gt;</field>\n    \
              <field name=\"z\" null=\"true\"/>\n"
         );
+    }
+
+    #[test]
+    fn clickhouse_reads_maps_and_tuples_as_functions_and_tuples() {
+        use arrow_schema::Field;
+        use std::sync::Arc;
+        let entries = Field::new(
+            "entries",
+            DataType::Struct(
+                vec![
+                    Field::new("key", DataType::Utf8, false),
+                    Field::new("value", DataType::Int32, true),
+                ]
+                .into(),
+            ),
+            false,
+        );
+        let map = DataType::Map(Arc::new(entries), false);
+        assert_eq!(
+            clickhouse_nested(&map, r#"{"k":1,"it's":null}"#).as_deref(),
+            Some("map('k', 1, 'it''s', NULL)")
+        );
+        assert_eq!(clickhouse_nested(&map, "{}").as_deref(), Some("map()"));
+        let tuple = DataType::Struct(
+            vec![
+                Field::new("1", DataType::Int32, true),
+                Field::new("2", DataType::Utf8, true),
+            ]
+            .into(),
+        );
+        assert_eq!(
+            clickhouse_nested(&tuple, r#"{"1":1,"2":"x"}"#).as_deref(),
+            Some("(1, 'x')")
+        );
+        let list = DataType::List(Arc::new(Field::new("item", tuple, true)));
+        assert_eq!(
+            clickhouse_nested(&list, r#"[{"1":1,"2":"x"}]"#).as_deref(),
+            Some("[(1, 'x')]")
+        );
+        assert_eq!(clickhouse_nested(&map, "nope"), None);
     }
 
     #[test]
