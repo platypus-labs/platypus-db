@@ -935,8 +935,10 @@ fn rewritable(sql: &str, driver: DriverKind) -> bool {
 
 /// `sql` sorted by `column` (descending when `desc`) or, with no column, without the
 /// viewer's sort: back to `original`, the `ORDER BY` it had before (see `sql_order_clause`),
-/// or unsorted. The rest of the text stays as written. `None` when `sql` is not a read-only
-/// query the sort can be placed in. The data viewer's header sort.
+/// or unsorted. With `position` (from 1), the sort names the column by its place in the
+/// select list, for a column its name cannot point to (two `id` of a join, an expression).
+/// The rest of the text stays as written. `None` when `sql` is not a read-only query the sort
+/// can be placed in. The data viewer's header sort.
 #[tauri::command]
 pub fn sql_order_by(
     sql: String,
@@ -944,6 +946,7 @@ pub fn sql_order_by(
     column: Option<String>,
     desc: bool,
     original: Option<String>,
+    position: Option<usize>,
 ) -> Option<String> {
     let order = column.as_deref().map(|c| (c, desc));
     if driver == DriverKind::Mongo {
@@ -953,8 +956,11 @@ pub fn sql_order_by(
         return None;
     }
     let dialect = Dialect::from(driver);
-    match (order, original) {
-        (None, Some(clause)) => platypus_sql::restore_order_by(&sql, dialect, &clause),
+    match (order, original, position) {
+        (None, Some(clause), _) => platypus_sql::restore_order_by(&sql, dialect, &clause),
+        (Some(_), _, Some(position)) => {
+            platypus_sql::set_order_by_position(&sql, dialect, position, desc)
+        }
         _ => platypus_sql::set_order_by(&sql, dialect, order),
     }
 }
@@ -972,7 +978,7 @@ pub fn sql_order_clause(sql: String, driver: DriverKind) -> Option<String> {
 /// Whether the header sort can rewrite `sql`.
 #[tauri::command]
 pub fn sql_sortable(sql: String, driver: DriverKind) -> bool {
-    sql_order_by(sql, driver, Some("x".to_owned()), false, None).is_some()
+    sql_order_by(sql, driver, Some("x".to_owned()), false, None, None).is_some()
 }
 
 /// The query that counts the rows of `sql` (`SELECT COUNT(*)…`, or `countDocuments`); `None`

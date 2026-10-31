@@ -25,6 +25,25 @@ fn filtered(sql: &str, dialect: Dialect, condition: &str) -> String {
 }
 
 #[test]
+fn sorts_by_position_where_a_name_is_ambiguous() {
+    let join = "SELECT a.id, b.id FROM a JOIN b ON b.a_id = a.id";
+    assert_eq!(
+        set_order_by_position(join, PG, 2, true).unwrap(),
+        format!("{join}\nORDER BY 2 DESC")
+    );
+    assert_eq!(
+        set_order_by_position("SELECT TOP (5) a.*, b.name FROM a, b ORDER BY a.id", MS, 1, false)
+            .unwrap(),
+        "SELECT TOP (5) a.*, b.name FROM a, b ORDER BY 1 ASC"
+    );
+    assert_eq!(
+        set_order_by_position("SELECT count(*) FROM t LIMIT 3", MY, 1, false).unwrap(),
+        "SELECT count(*) FROM t\nORDER BY 1 ASC LIMIT 3"
+    );
+    assert_eq!(set_order_by_position(join, PG, 0, false), None);
+}
+
+#[test]
 fn adds_to_a_plain_query() {
     assert_eq!(
         sort(

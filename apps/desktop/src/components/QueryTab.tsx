@@ -1342,13 +1342,19 @@ export function QueryTab({
 
   /** Header clicks cycle a column of the shown statement through ascending, descending and
    *  back to the ORDER BY the statement had before the first click, or unsorted. */
-  async function sortBy(column: string) {
+  async function sortBy(column: string, position: number | undefined) {
     if (!shown) return;
     const statement = shown.sql;
-    const { sort, original } = await clickSort(shownSort, column, () =>
-      api.sqlOrderClause(statement, connection.driver).catch(() => null),
+    const { sort, original } = await clickSort(
+      shownSort,
+      column,
+      () => api.sqlOrderClause(statement, connection.driver).catch(() => null),
+      position,
     );
-    rewriteShown((sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false, original), sort);
+    rewriteShown(
+      (sql) => api.sqlOrderBy(sql, connection.driver, sort?.column ?? null, sort?.desc ?? false, original, sort?.position ?? null),
+      sort,
+    );
   }
 
   /** Quick filter of the grid: adds `condition` to the WHERE of the shown result's statement,

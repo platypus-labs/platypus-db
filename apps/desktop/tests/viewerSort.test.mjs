@@ -7,6 +7,7 @@ import {
   queryKey,
   savedSorts,
   sortOf,
+  sortPosition,
   statementRange,
   viewerQueries,
   withSort,
@@ -19,6 +20,23 @@ test("a click cycles ascending, descending, none; another column starts ascendin
   assert.deepEqual(nextSort({ column: "id", desc: false }, "id"), { column: "id", desc: true });
   assert.equal(nextSort({ column: "id", desc: true }, "id"), null);
   assert.deepEqual(nextSort({ column: "id", desc: true }, "name"), { column: "name", desc: false });
+});
+
+test("a column its name cannot point to is sorted by its place in the select list", () => {
+  const join = [{ name: "id" }, { name: "ID" }, { name: "name" }, { name: "?column?" }, { name: "" }, { name: "COUNT(*)" }];
+  assert.equal(sortPosition(join, 0), 1);
+  assert.equal(sortPosition(join, 1), 2);
+  assert.equal(sortPosition(join, 2), undefined);
+  assert.equal(sortPosition(join, 3), 4);
+  assert.equal(sortPosition(join, 4), 5);
+  assert.equal(sortPosition(join, 5), 6);
+  // The two `id` are two columns: a click on the other starts ascending.
+  assert.deepEqual(nextSort({ column: "id", desc: false, position: 1 }, "id", 1), { column: "id", desc: true, position: 1 });
+  assert.deepEqual(nextSort({ column: "id", desc: false, position: 1 }, "id", 2), { column: "id", desc: false, position: 2 });
+  const sorts = withSort([], "SELECT 1", { column: "id", desc: true, original: null, position: 2 });
+  assert.deepEqual(sortOf(sorts, "SELECT 1"), { column: "id", desc: true, original: null, position: 2 });
+  assert.equal(savedSorts(sorts, null).length, 1);
+  assert.equal(savedSorts([{ ...sorts[0], position: "2" }], null).length, 0);
 });
 
 test("the sort holds for the statement it was written into only", () => {

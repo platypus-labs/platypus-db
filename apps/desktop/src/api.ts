@@ -2642,9 +2642,16 @@ export const api = {
   lintSql: (sql: string, driver: DriverKind) => invoke<SqlLint>("lint_sql", { sql, driver }),
   /** `sql` sorted by `column` or, with `null`, back to `original` (the ORDER BY it had before
    *  the viewer's sort, from `sqlOrderClause`) or unsorted: only its top-level ORDER BY changes.
+   *  With `position` (from 1), the sort names the column by its place in the select list.
    *  `null` when it is not a read-only query the sort can be placed in with certainty. */
-  sqlOrderBy: (sql: string, driver: DriverKind, column: string | null, desc: boolean, original: string | null = null) =>
-    invoke<string | null>("sql_order_by", { sql, driver, column, desc, original }),
+  sqlOrderBy: (
+    sql: string,
+    driver: DriverKind,
+    column: string | null,
+    desc: boolean,
+    original: string | null = null,
+    position: number | null = null,
+  ) => invoke<string | null>("sql_order_by", { sql, driver, column, desc, original, position }),
   /** The top-level ORDER BY of `sql` as written; `null` when it has none. */
   sqlOrderClause: (sql: string, driver: DriverKind) => invoke<string | null>("sql_order_clause", { sql, driver }),
   /** Whether a header click may rewrite `sql` (see `sqlOrderBy`). */
