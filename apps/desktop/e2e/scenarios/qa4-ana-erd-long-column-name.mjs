@@ -31,11 +31,13 @@ export default async function (page) {
   })()`);
   assert.equal(bad, 0, "no text leaves the table's rectangle");
   const overlap = await page.eval(`(() => {
-    const t = [...${visibleErd}.querySelector('.erd-table').querySelectorAll('text')].map(e => e.getBBox());
+    // Screen boxes: each column row is a group of its own, so getBBox would compare local
+    // coordinates of different rows.
+    const t = [...${visibleErd}.querySelector('.erd-table').querySelectorAll('text')].map(e => e.getBoundingClientRect());
     let n = 0;
     for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) {
       const a = t[i], b = t[j];
-      if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) n++;
+      if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) n++;
     }
     return n;
   })()`);
