@@ -1,4 +1,4 @@
-﻿// QA4 grid2 libSQL (same as the SQLite scenario, medium: a normal edit is refused). SQLite types a value by what is stored,
+// QA4 grid2 libSQL (same as the SQLite scenario, medium: a normal edit is refused). SQLite types a value by what is stored,
 // and the grid types a column of a result from the values it holds (crates/platypus-driver-sqlite/
 // src/columns.rs and the libSQL driver, Seen::kind): a column declared DECIMAL(10,2) / NUMERIC whose rows all hold whole
 // numbers (SQLite keeps 10 as an INTEGER there) is a whole-number column for the editor, so a
@@ -28,7 +28,8 @@ export default async function (page) {
   await setCell(page, "9.99");
   const result = await save(page);
   assert.doesNotMatch(result, /not a whole number/, result);
-  assert.equal(Number(libsql("SELECT price FROM q4g_prices WHERE id = 1")[0][0].value), 9.99);
+  // The HTTP API gives the rows as arrays of plain values.
+  assert.deepEqual(libsql("SELECT price, typeof(price) FROM q4g_prices WHERE id = 1"), [[9.99, "real"]]);
   } finally {
     libsql("DROP TABLE IF EXISTS q4g_prices");
   }
