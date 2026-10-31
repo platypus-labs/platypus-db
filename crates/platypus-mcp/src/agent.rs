@@ -416,14 +416,15 @@ impl Agent {
     }
 
     /// Asks the user, in the open app, to let `statement` change `saved` for `origin`, unless
-    /// they allowed the changes of `session` there already or need not be asked.
+    /// they allowed the changes of `session` there already or need not be asked. A query that
+    /// acts outside the transaction is asked about as a change ([`access::asks_first`]).
     async fn allow_change(
         &self,
         (store, saved): (&ConnectionStore, &SavedConnection),
         statement: &str,
         (origin, session): (&str, &str),
     ) -> Result<()> {
-        if !self.confirms_changes() || !access::changes(statement, saved.driver) {
+        if !self.confirms_changes() || !access::asks_first(statement, saved.driver) {
             return Ok(());
         }
         self.ask((store, saved), statement, (origin, session)).await
@@ -780,11 +781,12 @@ impl Agent {
 
     /// Whether `statement`, which reads, runs in a read-only transaction on `saved` so that
     /// a write it makes through a function is asked about: changes are asked about, the
-    /// user did not allow those of `session`, and the database refuses writes there.
+    /// user did not allow those of `session` nor this statement already, and the database
+    /// refuses writes there.
     fn watches_queries(&self, saved: &SavedConnection, statement: &str, session: &str) -> bool {
         query::refuses_writes_when_read_only(saved.driver)
             && self.confirms_changes()
-            && !access::changes(statement, saved.driver)
+            && !access::asks_first(statement, saved.driver)
             && !locked(&self.allowed).contains(&(session.to_owned(), saved.id))
     }
 
@@ -1211,6 +1213,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count(&alone).await, "0");
+    }
+
+    /// On a read-write connection a query that acts outside the transaction is asked about
+    /// like a change: no read-only transaction would stop it.
+    #[tokio::test]
+    async fn queries_that_act_outside_are_asked_about() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("db.sqlite");
+        sqlite(&db, 1);
+        save_connection(dir.path(), "sqlite", &db);
+        let toml = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap();
+        std::fs::write(
+            dir.path().join("connections.toml"),
+            toml + "agent_access = \"read_write\"\n",
+        )
+        .unwrap();
+        let outside = change("SELECT load_extension('x')");
+        let alone = Agent::new(Profile::at(dir.path()));
+        let refused = alone.run_query(&outside, "test").await.unwrap_err();
+        assert!(refused.to_string().contains("cannot ask"), "{refused}");
+
+        let app = Arc::new(FakeApp {
+            verdict: Verdict::Deny { reason: None },
+            asked: Mutex::default(),
+        });
+        let agent = Agent::new(Profile::at(dir.path())).with_link(app.clone());
+        let refused = agent.run_query(&outside, "claude").await.unwrap_err();
+        assert_eq!(refused.to_string(), "the user refused this change");
+        assert_eq!(count(&agent).await, "1");
+        let asked = locked(&app.asked);
+        assert_eq!(asked.len(), 1, "a plain query is not asked about");
+        assert_eq!(asked[0].statement, "SELECT load_extension('x')");
     }
 
     #[tokio::test]
