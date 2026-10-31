@@ -57,6 +57,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { TopBar } from "./shell/TopBar";
 import { pickDataFile, Welcome } from "./shell/Welcome";
 import { TabBar, barOrder, groupTabsSetting } from "./shell/TabBar";
+import { moveTab } from "./shell/tabOrder";
 import { SidebarResizer, useSidebarWidth } from "./shell/SidebarResizer";
 import { settingsLoadError, useSetting } from "./settings";
 import { useSidebarCollapsed } from "./shell/sidebar";
@@ -1066,6 +1067,10 @@ export function App() {
     setTabs((all) => all.map((t) => (t.key === key ? ({ ...t, ...patch } as TabModel) : t)));
   }
 
+  function reorderTab(dragged: number, over: number, after: boolean) {
+    setTabs((all) => moveTab(all, dragged, over, after));
+  }
+
   function tabTitle(tab: TabModel) {
     const connection = connectionById(tab.connectionId);
     // Another database than the saved one is part of the name.
@@ -1157,6 +1162,7 @@ export function App() {
             connectionName={connectionName}
             onActivate={(t) => setActiveTab(t.key)}
             onClose={closeTab}
+            onMove={reorderTab}
             onMenu={(t, x, y) => setMenu({ x, y, target: { scope: "tab", arg: { tab: t } } })}
           />
         )}
