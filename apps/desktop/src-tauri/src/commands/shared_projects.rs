@@ -64,7 +64,9 @@ pub(super) fn push(store: &ConnectionStore, seen: &Seen) {
         let Ok(file) = shared::parse(&text) else {
             continue;
         };
-        let built = shared::build(store, project, link.share_user);
+        let mut built = shared::build(store, project, link.share_user);
+        // Agent access is this computer's own: the file keeps what it gives.
+        shared::keep_agent_access(&mut built, &file);
         if built == file {
             continue;
         }
@@ -336,6 +338,20 @@ mod tests {
         shared::write_text(&team, &text).unwrap();
         let seen = Mutex::new(HashMap::from([(pid, text)]));
         (s, seen, pid, team)
+    }
+
+    /// What agents may do here stays here: turning them off writes nothing to the team's file.
+    #[test]
+    fn agent_access_is_not_written_to_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, seen, _pid, team) = linked(dir.path());
+        let before = std::fs::read_to_string(team.join(PROJECT_FILE)).unwrap();
+        let mut c = s.list()[0].clone();
+        c.agent_access = platypus_store::AgentAccess::Off;
+        s.save(c, PasswordUpdate::Keep).unwrap();
+        push(&s, &seen);
+        let after = std::fs::read_to_string(team.join(PROJECT_FILE)).unwrap();
+        assert_eq!(after, before);
     }
 
     #[test]

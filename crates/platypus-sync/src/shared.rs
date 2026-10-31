@@ -12,8 +12,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use platypus_store::{
-    ConnectionFolder, ConnectionStore, LINKS_FILE, Project, SavedSsh, SharedLink, SyncBatch,
-    initials_of,
+    AgentAccess, ConnectionFolder, ConnectionStore, LINKS_FILE, Project, SavedSsh, SharedLink,
+    SyncBatch, initials_of,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -66,6 +66,17 @@ pub fn build(store: &ConnectionStore, project: &Project, share_user: bool) -> Sh
         color: project.color.clone(),
         folders: project.folders.clone(),
         connections,
+    }
+}
+
+/// Agent access is each computer's own: `built`, this computer's form of the project, keeps
+/// the access `file` gives the connections it lists already, so that a choice made here (a
+/// connection new here starts with agents kept out, see [`apply`]) does not reach the team.
+pub fn keep_agent_access(built: &mut SharedProject, file: &SharedProject) {
+    for c in &mut built.connections {
+        if let Some(theirs) = file.connections.iter().find(|f| f.id == c.id) {
+            c.agent_access = theirs.agent_access;
+        }
     }
 }
 
@@ -277,6 +288,11 @@ pub fn apply(
                 );
             }
             applied.kept_stricter += usize::from(guarded.kept_stricter);
+        } else {
+            // What agents may do on this computer is this computer's say: a connection new
+            // here starts with agents kept out, whatever the file grants, until the user
+            // changes it. Read-only, production and restrictions only make it stricter.
+            saved.agent_access = AgentAccess::Off;
         }
         connections.push(saved);
     }
@@ -368,7 +384,9 @@ mod tests {
             .find(|p| p.id == pid)
             .unwrap()
             .clone();
-        let shared = build(&origin, &project, true);
+        let mut shared = build(&origin, &project, true);
+        // The file would let agents write: here they start kept out of every connection.
+        shared.connections[0].agent_access = AgentAccess::ReadWrite;
         let mut mine = store(&dir.path().join("b"));
         let link = SharedLink {
             path: dir.path().join("team"),
@@ -383,8 +401,20 @@ mod tests {
         let prod = mine.get(shared.connections[0].id).unwrap();
         assert!(prod.save_password && prod.password_command.is_none());
         assert!(!mine.has_password(prod.id).unwrap());
-        // What the app builds from it is what was read: no write-back, no churn in Git.
-        assert_eq!(build(&mine, &opened, true), shared);
+        for c in &shared.connections {
+            assert_eq!(mine.get(c.id).unwrap().agent_access, AgentAccess::Off);
+        }
+        // What the app builds from it is what was read: no write-back, no churn in Git (the
+        // file keeps the agent access it gives).
+        let mut built = build(&mine, &opened, true);
+        keep_agent_access(&mut built, &shared);
+        assert_eq!(built, shared);
+        // An update leaves them out still: the file never loosens this computer's choice.
+        apply(&mut mine, Some(id), &shared, link.clone()).unwrap();
+        assert_eq!(
+            mine.get(shared.connections[0].id).unwrap().agent_access,
+            AgentAccess::Off
+        );
         let writes = mine.revision();
         apply(&mut mine, Some(id), &shared, link).unwrap();
         assert_eq!(mine.projects().len(), 1);
