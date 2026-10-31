@@ -1,5 +1,8 @@
 // The Appearance settings: a theme preset, a custom accent color, grid density and interface
 // size apply at once and are saved; the sidebar button cycles system, Platypus Light and Dark.
+// The High contrast theme: black on white-on-black variables, the contrast ratios of its text,
+// borders, accent, status colors and syntax colors on the surfaces they sit on (WCAG AAA for
+// text), kept by a custom accent and saved.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -201,4 +204,48 @@ export default async function (page, { dir, shots }) {
   await page.eval(`${toggle}.click()`);
   await page.waitFor(`${toggle}.title.startsWith('Theme: Platypus Dark')`);
   await page.waitFor(`${cssVar("--bg")} === '#16191b'`);
+
+  await highContrast(page, dir);
 }
+
+/** The High contrast preset: its variables, and the contrast between them. */
+async function highContrast(page, dir) {
+  const css = (name) => page.eval(cssVar(name));
+  const rgb = async (name) => JSON.parse(await page.eval(rgbOf(name)));
+  const ratio = async (a, b) => contrast(await rgb(a), await rgb(b));
+  await page.key(",", "Comma", 188, CTRL);
+  await page.waitFor(`document.querySelector('.modal.settings') !== null`);
+  await page.settingsTab("Appearance", "Theme");
+  await page.eval(`[...document.querySelectorAll('.theme-card')].find(c => c.textContent === 'High contrast').click()`);
+  await page.waitFor(`${cssVar("--bg")} === '#000000'`);
+  await saved(dir, /theme = "high_contrast"/);
+  assert.equal(await css("--fg"), "#ffffff");
+  assert.equal(await css("--accent"), "#ffd400");
+  assert.equal(await page.eval(`document.documentElement.style.colorScheme`), "dark");
+
+  // Text: AAA (7:1) for the main and the secondary text on every surface they sit on.
+  for (const surface of ["--bg", "--bg-sidebar", "--bg-input", "--grid-bg", "--grid-bg-alt", "--grid-header"]) {
+    assert.ok((await ratio("--fg", surface)) >= 7, `--fg on ${surface}`);
+    assert.ok((await ratio("--fg-muted", surface)) >= 7, `--fg-muted on ${surface}: ${(await ratio("--fg-muted", surface)).toFixed(2)}`);
+  }
+  // Borders are seen (3:1 for interface components), the accent reads as text, the accent's own
+  // text reads on it, and the status colors read on their backgrounds.
+  assert.ok((await ratio("--border", "--bg")) >= 3, "border");
+  assert.ok((await ratio("--accent", "--bg")) >= 7, "accent on the background");
+  assert.ok((await ratio("--accent-fg", "--accent")) >= 7, "text on the accent");
+  assert.ok((await ratio("--error", "--error-bg")) >= 7, "error");
+  assert.ok((await ratio("--ok", "--ok-bg")) >= 7, "ok");
+  // The code on the grid and editor background.
+  for (const v of ["--syn-keyword", "--syn-string", "--syn-number", "--syn-comment", "--syn-type", "--syn-ident"]) {
+    assert.ok((await ratio(v, "--grid-bg")) >= 7, v);
+  }
+
+  // A custom accent on it still reads, with the right text color on it; Reset gives yellow back.
+  await page.eval(change(`${setting("Accent color")}.querySelector('input[type=color]')`, "#0044ff"));
+  await page.waitFor(`${cssVar("--accent")} === '#0044ff'`);
+  assert.ok((await ratio("--accent-fg", "--accent")) >= 4.5, "text on a custom accent");
+  await page.eval(`[...${setting("Accent color")}.querySelectorAll('button')].find(b => b.textContent === 'Reset').click()`);
+  await page.waitFor(`${cssVar("--accent")} === '#ffd400'`);
+  await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
+}
+
