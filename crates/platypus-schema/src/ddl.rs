@@ -1208,6 +1208,22 @@ impl Ddl<'_> {
         if copy {
             out.push(format!("CREATE TABLE {rows} AS SELECT * FROM {table}"));
         }
+        // Dropping the table drops its AUTOINCREMENT counter, which copying the rows would set
+        // back to the highest id left: it is kept aside and set again.
+        let autoincrement = |t: &TableDesign| {
+            t.columns
+                .iter()
+                .any(|c| c.primary_key && text(c.extra.as_ref()) == Some("AUTOINCREMENT"))
+        };
+        let counter = (self.d == Dialect::Sqlite && autoincrement(old) && autoincrement(new))
+            .then(|| self.table(&format!("_platypus_seq_{}", old.name)));
+        let sequence = self.table("sqlite_sequence");
+        if let Some(counter) = &counter {
+            out.push(format!(
+                "CREATE TABLE {counter} AS SELECT seq FROM {sequence} WHERE name = {}",
+                self.d.quote_string(&old.name)
+            ));
+        }
         out.push(format!("DROP TABLE {table}"));
         out.push(self.create_table(new, &new.name));
         if copy {
@@ -1225,6 +1241,19 @@ impl Ddl<'_> {
                 self.list(&from),
             ));
             out.push(format!("DROP TABLE {rows}"));
+        }
+        if let Some(counter) = &counter {
+            let name = self.d.quote_string(&new.name);
+            out.push(format!(
+                "UPDATE {sequence} SET seq = (SELECT max(seq) FROM {counter}) \
+                 WHERE name = {name} AND seq < (SELECT max(seq) FROM {counter})"
+            ));
+            out.push(format!(
+                "INSERT INTO {sequence} (name, seq) SELECT {name}, max(seq) FROM {counter} \
+                 HAVING max(seq) IS NOT NULL \
+                 AND NOT EXISTS (SELECT 1 FROM {sequence} WHERE name = {name})"
+            ));
+            out.push(format!("DROP TABLE {counter}"));
         }
         let database = if self.d == Dialect::Sqlite {
             "SQLite"
@@ -1546,11 +1575,20 @@ mod tests {
             s.statements,
             [
                 "CREATE TABLE main._platypus_orders AS SELECT * FROM main.orders",
+                // The AUTOINCREMENT counter is kept, or ids of deleted rows come back.
+                "CREATE TABLE main._platypus_seq_orders AS SELECT seq FROM main.sqlite_sequence \
+                 WHERE name = 'orders'",
                 "DROP TABLE main.orders",
                 "CREATE TABLE main.purchases (\n  id integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n  \
                  total numeric(10,2) NOT NULL\n)",
                 "INSERT INTO main.purchases (id, total) SELECT id, total FROM main._platypus_orders",
                 "DROP TABLE main._platypus_orders",
+                "UPDATE main.sqlite_sequence SET seq = (SELECT max(seq) FROM main._platypus_seq_orders) \
+                 WHERE name = 'purchases' AND seq < (SELECT max(seq) FROM main._platypus_seq_orders)",
+                "INSERT INTO main.sqlite_sequence (name, seq) SELECT 'purchases', max(seq) \
+                 FROM main._platypus_seq_orders HAVING max(seq) IS NOT NULL \
+                 AND NOT EXISTS (SELECT 1 FROM main.sqlite_sequence WHERE name = 'purchases')",
+                "DROP TABLE main._platypus_seq_orders",
                 "CREATE INDEX main.orders_total ON purchases (total)",
             ]
         );
