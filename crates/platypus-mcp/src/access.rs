@@ -330,9 +330,11 @@ fn clickhouse_table_starts(src: &str, tokens: &[Token]) -> Vec<bool> {
         let prev_word = prev.and_then(word);
         let array_join = prev_word.as_deref() == Some("JOIN")
             && i.checked_sub(2).and_then(word).as_deref() == Some("ARRAY");
+        // `a IS [NOT] DISTINCT FROM b` compares: what follows is no table.
+        let compares = i.checked_sub(2).and_then(word).as_deref() == Some("DISTINCT");
         let (tables, in_from) = *levels.last().unwrap_or(&(true, false));
         starts.push(match prev_word.as_deref() {
-            Some("FROM") => tables,
+            Some("FROM") => tables && !compares,
             Some("JOIN") => !array_join,
             Some("DESCRIBE" | "DESC" | "TABLE") => true,
             _ => prev.is_some_and(|p| symbol(p, ",")) && in_from,
@@ -353,7 +355,7 @@ fn clickhouse_table_starts(src: &str, tokens: &[Token]) -> Vec<bool> {
             && let Some(level) = levels.last_mut()
         {
             match w.as_str() {
-                "FROM" => level.1 = level.0,
+                "FROM" => level.1 = level.0 && prev_word.as_deref() != Some("DISTINCT"),
                 "JOIN" => level.1 = prev_word.as_deref() != Some("ARRAY"),
                 "SELECT" | "WHERE" | "PREWHERE" | "GROUP" | "HAVING" | "ORDER" | "LIMIT"
                 | "SETTINGS" | "FORMAT" | "UNION" | "WINDOW" | "QUALIFY" | "ARRAY" | "ON"
@@ -1199,9 +1201,17 @@ mod tests {
             "SELECT a FROM t ARRAY JOIN arrayMap(x -> x, [1]) AS a",
             "SELECT * FROM t JOIN u ON t.id = u.id WHERE f(1) > 0",
             "SELECT count() FROM (SELECT 1)",
+            "SELECT * FROM t WHERE a IS NOT DISTINCT FROM lower(b)",
+            "SELECT * FROM t WHERE (a, b) IS DISTINCT FROM lower(c)",
+            "SELECT a IS DISTINCT FROM upper(b) FROM t, u",
         ] {
             assert!(ro(sql).is_ok(), "{sql}: {:?}", ro(sql));
         }
+        // A table after a comparison is still one.
+        let message = denied(ro(
+            "SELECT a IS DISTINCT FROM b FROM t, deltaLake('http://h/b/')",
+        ));
+        assert!(message.contains("outside the transaction"), "{message}");
     }
 
     #[test]
