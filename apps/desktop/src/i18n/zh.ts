@@ -1495,6 +1495,7 @@ const zh: Record<string, string> = {
   "Find and replace": "查找和替换",
   "Show completions": "显示补全",
   "A key that types a character needs Ctrl or Alt.": "输入字符的按键需要配合 Ctrl 或 Alt。",
+  "A key typed with AltGr is a character, not a shortcut.": "用 AltGr 输入的按键是字符，不是快捷键。",
   // Closing tabs
   "Save the changes to {file}?": "保存对 {file} 的更改？",
   "Don't save": "不保存",

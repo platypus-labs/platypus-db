@@ -1495,6 +1495,7 @@ const de: Record<string, string> = {
   "Find and replace": "Suchen und ersetzen",
   "Show completions": "Vervollständigungen anzeigen",
   "A key that types a character needs Ctrl or Alt.": "Eine Taste, die ein Zeichen eingibt, braucht Ctrl oder Alt.",
+  "A key typed with AltGr is a character, not a shortcut.": "Eine mit AltGr eingegebene Taste ist ein Zeichen, kein Tastenkürzel.",
   // Closing tabs
   "Save the changes to {file}?": "Änderungen an {file} speichern?",
   "Don't save": "Nicht speichern",

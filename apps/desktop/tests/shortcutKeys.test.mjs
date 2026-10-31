@@ -1,7 +1,19 @@
 // Unit tests of shortcuts as text (src/shortcutKeys.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bindingKey, keyName, labelParts, sameKey, splitShortcuts, typesText, withoutKeys } from "../src/shortcutKeys.ts";
+import {
+  altGraphText,
+  bindingKey,
+  keyName,
+  labelParts,
+  matchesShortcut,
+  onAltGraph,
+  sameKey,
+  shiftTyped,
+  splitShortcuts,
+  typesText,
+  withoutKeys,
+} from "../src/shortcutKeys.ts";
 
 test("the comma key has a name, and a stored list keeps it", () => {
   assert.equal(keyName(","), "Comma");
@@ -81,4 +93,63 @@ test("only a bare Backspace or Delete removes a shortcut while recording", async
   assert.equal(removesShortcut(press("Delete", { shiftKey: true })), false);
   assert.equal(removesShortcut(press("Backspace", { ctrlKey: true })), false);
   assert.equal(removesShortcut(press("a")), false);
+});
+
+const key = (k, mods = {}) => ({ key: k, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods });
+
+test("AltGr characters are text, also when Windows reports them as Ctrl+Alt", () => {
+  // Italian AltGr+è, German AltGr+8 and AltGr+Q, French AltGr+E: Ctrl+Alt without the AltGraph state.
+  for (const c of ["[", "]", "@", "#", "€", "{", "}", "\\", "|", "~", "ą"]) {
+    assert.equal(altGraphText(key(c, { ctrlKey: true, altKey: true }), false), true, c);
+  }
+  // Linux reports the AltGraph state alone.
+  assert.equal(altGraphText(key("[", { getModifierState: (m) => m === "AltGraph" }), false), true);
+  // Ctrl+Alt with a Latin letter or digit, a named key or a plain symbol is not AltGr.
+  assert.equal(altGraphText(key("d", { ctrlKey: true, altKey: true }), false), false);
+  assert.equal(altGraphText(key("0", { ctrlKey: true, altKey: true }), false), false);
+  assert.equal(altGraphText(key("ArrowUp", { ctrlKey: true, altKey: true }), false), false);
+  assert.equal(altGraphText(key("[", { ctrlKey: true }), false), false);
+  assert.equal(altGraphText(key("[", { altKey: true }), false), false);
+  // macOS has no AltGr: Cmd+Option+[ is a shortcut.
+  assert.equal(altGraphText(key("[", { ctrlKey: true, altKey: true }), true), false);
+});
+
+test("a shortcut never takes an AltGr character", () => {
+  assert.equal(matchesShortcut("Mod+Alt+[", key("[", { ctrlKey: true, altKey: true }), false), false);
+  assert.equal(matchesShortcut("Mod+Alt+[", key("[", { metaKey: true, altKey: true }), true), true);
+  assert.equal(matchesShortcut("Mod+Alt+D", key("d", { ctrlKey: true, altKey: true }), false), true);
+  assert.equal(matchesShortcut("Mod+Alt+ArrowUp", key("ArrowUp", { ctrlKey: true, altKey: true }), false), true);
+  // German AltGr+M types µ: no shortcut on M runs.
+  assert.equal(matchesShortcut("Mod+Alt+M", key("µ", { ctrlKey: true, altKey: true }), false), false);
+});
+
+test("a character typed with Shift matches its shortcut in the loose pass only", () => {
+  // Italian `/` is Shift+7.
+  const slash = key("/", { ctrlKey: true, shiftKey: true });
+  assert.equal(matchesShortcut("Mod+/", slash, false), false);
+  assert.equal(matchesShortcut("Mod+/", slash, false, true), true);
+  assert.equal(matchesShortcut("Mod+Shift+/", slash, false), true);
+  assert.equal(matchesShortcut("Mod+/", key("/", { ctrlKey: true }), false), true);
+  // French digits need Shift; `+` needs it on US keyboards.
+  assert.equal(matchesShortcut("Mod+1", key("1", { ctrlKey: true, shiftKey: true }), false, true), true);
+  assert.equal(matchesShortcut("Mod+Plus", key("+", { ctrlKey: true, shiftKey: true }), false, true), true);
+  // Shift makes a letter another shortcut.
+  assert.equal(matchesShortcut("Mod+K", key("K", { ctrlKey: true, shiftKey: true }), false, true), false);
+  assert.equal(shiftTyped("K"), false);
+  assert.equal(shiftTyped("Comma"), true);
+  assert.equal(shiftTyped("Space"), false);
+  assert.equal(shiftTyped("ArrowUp"), false);
+  assert.equal(shiftTyped("F2"), false);
+});
+
+test("CodeMirror bindings on AltGr characters give way outside macOS", () => {
+  assert.equal(onAltGraph("Ctrl-Alt-[", false), true);
+  assert.equal(onAltGraph("Mod-Alt-\\", false), true);
+  assert.equal(onAltGraph("Mod-Alt-ArrowUp", false), false);
+  assert.equal(onAltGraph("Ctrl-Shift-[", false), false);
+  assert.equal(onAltGraph("Ctrl-Alt-[", true), false);
+  const run = () => true;
+  const bindings = [{ key: "Ctrl-Alt-[", run }, { key: "Mod-Alt-\\", run }, { key: "Mod-Alt-ArrowUp", run }];
+  assert.deepEqual(withoutKeys(bindings, new Set(), false, true).map((b) => b.key), ["Mod-Alt-ArrowUp"]);
+  assert.equal(withoutKeys(bindings, new Set(), true, false).length, 3);
 });

@@ -4,6 +4,7 @@ import {
   type ActionScope,
   allActions,
   bindableActions,
+  isMac,
   keyCapture,
   setShortcut,
   shortcutChanged,
@@ -13,7 +14,7 @@ import {
 } from "../actions";
 import { toCommandError } from "../api";
 import { useSettingsVersion } from "../settings";
-import { removesShortcut, typesText } from "../shortcutKeys";
+import { altGraphText, removesShortcut, typesText } from "../shortcutKeys";
 import { msg, t } from "../i18n";
 import { fold } from "../ui/textSearch";
 
@@ -85,6 +86,8 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
       save(action, "");
       return setRecording(null);
     }
+    // AltGr types the character: as a shortcut it would never run.
+    if (altGraphText(e.nativeEvent, isMac)) return setError(t("A key typed with AltGr is a character, not a shortcut."));
     const shortcut = shortcutOf(e.nativeEvent);
     if (!shortcut) return;
     // A letter alone would run the action instead of being typed: still recording.

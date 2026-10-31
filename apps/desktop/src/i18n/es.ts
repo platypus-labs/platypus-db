@@ -1495,6 +1495,7 @@ const es: Record<string, string> = {
   "Find and replace": "Buscar y reemplazar",
   "Show completions": "Mostrar las sugerencias",
   "A key that types a character needs Ctrl or Alt.": "Una tecla que escribe un carácter requiere Ctrl o Alt.",
+  "A key typed with AltGr is a character, not a shortcut.": "Una tecla escrita con AltGr es un carácter, no un atajo.",
   // Closing tabs
   "Save the changes to {file}?": "¿Guardar los cambios en {file}?",
   "Don't save": "No guardar",
