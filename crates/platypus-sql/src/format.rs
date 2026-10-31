@@ -1,4 +1,4 @@
-//! The editor's SQL formatter (Ctrl+Shift+F). It works on tokens, not a parse tree, so
+﻿//! The editor's SQL formatter (Ctrl+Shift+F). It works on tokens, not a parse tree, so
 //! half-typed or dialect-specific SQL still formats. Clauses start new lines. Items of
 //! `SELECT`, `SET`, `GROUP BY`, `ORDER BY` and `VALUES`, and the columns of `CREATE TABLE`,
 //! get a line each. Subqueries are indented. Only whitespace and the case of keywords
@@ -195,8 +195,69 @@ const NAME_KEYWORDS: &[&str] = &["EXISTS", "INTO", "REFERENCES", "TABLE", "VIEW"
 /// Operators of several characters, longest first.
 const OPERATORS: &[&str] = &[
     "->>", "#>>", "!~*", "<=>", "<>", "<=", ">=", "!=", "||", "->", "#>", "@>", "<@", "&&", "::",
-    "=>", ":=", "~*", "!~", "!<", "!>", "?|", "?&", "<<", ">>", "~~",
+    "=>", ":=", "~*", "!~", "!<", "!>", "?|", "?&", "<<", ">>", "~~", "+=", "-=", "*=", "/=", "%=",
+    "&=", "|=", "^=", "?#", "@?",
 ];
+
+/// Characters of the operators PostgreSQL lets users define (`<->`, `#-`, `~~*`, `@?`).
+const OPERATOR_CHARS: &str = "+-*/<>=~!@#%^&|";
+
+/// A run of these characters is one operator (`<->`, `<#>`, `#-`, `!~~*`).
+const OPERATOR_MARKS: &str = "~!@#%^&|<>";
+
+/// The user-defined operator that starts at `i`: the contiguous run of operator
+/// characters, when it has a mark in it. Like PostgreSQL, a trailing `+` or `-` is
+/// not part of it, and nor is a `@` or `#` that starts a name (`=@var`, `=#tmp`).
+/// Returns the index after it.
+fn custom_operator(src: &str, tokens: &[Token], i: usize) -> Option<usize> {
+    let is_char = |t: &Token| {
+        t.kind == TokenKind::Symbol
+            && t.text(src).len() == 1
+            && OPERATOR_CHARS.contains(t.text(src))
+    };
+    if !is_char(&tokens[i]) {
+        return None;
+    }
+    let mut end = run_end(tokens, i, is_char);
+    let starts_name = |j: usize| {
+        tokens
+            .get(j)
+            .is_some_and(|n| n.start == tokens[j - 1].end && n.kind == TokenKind::Word)
+    };
+    let has_sign_mark = |end: usize| (i..end).any(|j| "~!@#%^&|".contains(tokens[j].text(src)));
+    while end > i + 1 {
+        let last = tokens[end - 1].text(src);
+        if (matches!(last, "+" | "-") && !has_sign_mark(end))
+            || (matches!(last, "@" | "#") && starts_name(end))
+        {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    let marked = (i..end).any(|j| OPERATOR_MARKS.contains(tokens[j].text(src)));
+    (end > i + 1 && marked).then_some(end)
+}
+
+/// Index after a number's exponent sign and digits (`1e-7`, `2E+3`), when `end` is
+/// where the contiguous number tokens `[i, end)` stopped just after an `e`.
+fn exponent_end(src: &str, tokens: &[Token], i: usize, end: usize) -> usize {
+    let number = &src[tokens[i].start..tokens[end - 1].end];
+    let hex = number.starts_with("0x") || number.starts_with("0X");
+    let touching = |j: usize| tokens.get(j).is_some_and(|n| n.start == tokens[j - 1].end);
+    if !hex
+        && number.ends_with(['e', 'E'])
+        && touching(end)
+        && matches!(tokens[end].text(src), "+" | "-")
+        && touching(end + 1)
+        && is_digit(src, &tokens[end + 1])
+    {
+        return run_end(tokens, end + 1, |n| {
+            n.kind == TokenKind::Word || is_digit(src, n) || n.text(src) == "."
+        });
+    }
+    end
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -247,7 +308,10 @@ fn symbol(src: &str, tokens: &[Token], i: usize) -> (Kind, usize) {
         let end = run_end(tokens, i, |n| {
             n.kind == TokenKind::Word || is_digit(src, n) || n.text(src) == "."
         });
-        return (Kind::Literal, end);
+        return (Kind::Literal, exponent_end(src, tokens, i, end));
+    }
+    if let Some(end) = custom_operator(src, tokens, i) {
+        return (Kind::Operator, end);
     }
     if let Some(op) = OPERATORS.iter().find(|op| {
         rest.starts_with(*op)
@@ -274,6 +338,7 @@ fn symbol(src: &str, tokens: &[Token], i: usize) -> (Kind, usize) {
                 n.kind == TokenKind::Word || matches!(n.text(src), "@" | ".")
             }),
         ),
+        "$" if next.is_some_and(|n| n.kind == TokenKind::Word) => (Kind::Literal, i + 2),
         "?" => single(Kind::Literal),
         "(" | "[" => single(Kind::Open),
         ")" | "]" => single(Kind::Close),
@@ -284,7 +349,7 @@ fn symbol(src: &str, tokens: &[Token], i: usize) -> (Kind, usize) {
     }
 }
 
-/// Whether the word at `i` is the `U` of `U&'…'` or `U&"…"`, the three tokens touching.
+/// Whether the word at `i` is the `U` of `U&'â€¦'` or `U&"â€¦"`, the three tokens touching.
 fn unicode_escape(src: &str, tokens: &[Token], i: usize) -> bool {
     let Some([u, amp, quoted]) = tokens.get(i..i + 3) else {
         return false;
@@ -1028,6 +1093,75 @@ mod tests {
                     formatted,
                     "{d:?}: formatting twice changes nothing"
                 );
+            }
+        }
+    }
+
+    /// Runs of touching operator characters and `$name` variables, as typed: the
+    /// char-level token check above cannot see a space inserted inside `<->`.
+    fn glued(src: &str, d: Dialect) -> Vec<String> {
+        let toks: Vec<Token> = Lexer::new(src, d)
+            .filter(|t| t.kind == TokenKind::Symbol || t.kind == TokenKind::Word)
+            .collect();
+        let mut runs: Vec<(bool, String)> = Vec::new();
+        for (k, t) in toks.iter().enumerate() {
+            let text = t.text(src);
+            let op = t.kind == TokenKind::Symbol && OPERATOR_CHARS.contains(text);
+            let touching = k > 0 && toks[k - 1].end == t.start;
+            match runs.last_mut() {
+                Some((was_op, run)) if touching && op && *was_op => run.push_str(text),
+                Some((_, run)) if touching && toks[k - 1].text(src) == "$" => run.push_str(text),
+                _ => runs.push((op || text == "$", text.to_owned())),
+            }
+        }
+        runs.into_iter()
+            .map(|(_, r)| r.to_ascii_uppercase())
+            .filter(|r| r.len() > 1 && !r.starts_with(|c: char| c.is_alphanumeric()))
+            .collect()
+    }
+
+    #[test]
+    fn operators_numbers_and_variables_stay_in_one_piece() {
+        let pg = [
+            "select a <-> b, a <#> b, a <=> b, j #- '{a}', j @? '$.a', a ~~* 'x', a !~~ 'x', a !~~* 'x' from t",
+            "select a@>b, a<@b, a&&b, a||b, a->>'k', a#>>'{k}', a?|b, a?&b, a!~*b, a<<b, a>>b",
+            "select a<<|b, a|>>b, a&<b, a&>b, a-|-b, a @-@ b, ~a, !!a, |/a, ||/a from t",
+        ];
+        let mysql = [
+            "select a<=>b, a<>b, a<=b, a>=b, a!=b, a<<2, a>>2, a^b, a|b, a&b, ~a from t",
+            "select @a:=1, @@global.sql_mode, a->'$.k', a->>'$.k' from t",
+        ];
+        let tsql = [
+            "set @a += 1; set @a -= 1; set @a *= 2; set @a /= 2; set @a %= 3; set @a &= 3; set @a |= 3; set @a ^= 3",
+            "merge t using s on t.id = s.id when matched then update set a = s.a output $action, inserted.id",
+            "select a from t where b !< 2 and c !> 3 and d <> 1 and e != 2",
+        ];
+        for (d, corpus) in [
+            (Dialect::Postgres, &pg[..]),
+            (Dialect::DuckDb, &pg[..]),
+            (Dialect::MySql, &mysql[..]),
+            (Dialect::SqlServer, &tsql[..]),
+        ] {
+            for sql in corpus {
+                let formatted = format(sql, d, FormatOptions::default());
+                let after = glued(&formatted, d);
+                for run in glued(sql, d) {
+                    assert!(after.contains(&run), "{d:?}: {run} split in\n{formatted}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn signed_exponents_stay_in_one_piece() {
+        for d in [Dialect::Postgres, Dialect::MySql, Dialect::SqlServer] {
+            let out = format(
+                "select 1e-7, 2E+3, 1.5e-10, .5e-3, 3e5 - 1, 0x1e-1 from t",
+                d,
+                FormatOptions::default(),
+            );
+            for num in ["1e-7", "2E+3", "1.5e-10", ".5e-3", "3e5 - 1", "0x1e - 1"] {
+                assert!(out.contains(num), "{d:?}: {num} in\n{out}");
             }
         }
     }
