@@ -19,7 +19,7 @@ async fn rows(conn: &dyn Connection, sql: &str) -> Vec<TextRow> {
 }
 
 /// `expr` in parentheses, unless it is already all in a pair of them.
-fn parenthesized(expr: &str) -> String {
+pub(crate) fn parenthesized(expr: &str) -> String {
     let expr = expr.trim();
     match expr.strip_prefix('(').and_then(|e| e.strip_suffix(')')) {
         Some(inner) if crate::balanced(inner) => expr.to_owned(),
@@ -73,8 +73,9 @@ fn index_keys(definition: &str) -> Option<&str> {
     None
 }
 
-/// The key parts of `index` worth keeping: none when each is just its column, quoted only when\n/// it needs it (PostgreSQL) or always (MySQL's `SHOW CREATE TABLE`).
-fn kept_parts(dialect: Dialect, index: &IndexDesign, parts: Vec<String>) -> Vec<String> {
+/// The key parts of `index` worth keeping: none when each is just its column, quoted only when
+/// it needs it (PostgreSQL, SQLite) or always (MySQL's `SHOW CREATE TABLE`).
+pub(crate) fn kept_parts(dialect: Dialect, index: &IndexDesign, parts: Vec<String>) -> Vec<String> {
     let plain = parts.len() == index.columns.len()
         && parts
             .iter()
@@ -282,7 +283,8 @@ pub(crate) async fn sqlserver(
     let sql = format!(
         "SELECT c.name, c.is_identity, CAST(ic.seed_value AS nvarchar(40)),
                 CAST(ic.increment_value AS nvarchar(40)), cc.definition, cc.is_persisted,
-                c.collation_name, CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128))
+                c.collation_name, CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)),
+                c.generated_always_type, c.is_hidden
          FROM sys.columns c
          LEFT JOIN sys.identity_columns ic
            ON ic.object_id = c.object_id AND ic.column_id = c.column_id
@@ -297,6 +299,16 @@ pub(crate) async fn sqlserver(
         if row.flag(1) {
             column.extra = Some(format!("IDENTITY({},{})", row.text(2), row.text(3)));
             column.default = None;
+        }
+        // The period columns of a temporal table.
+        let bound = match row.text(8).as_str() {
+            "1" => Some("START"),
+            "2" => Some("END"),
+            _ => None,
+        };
+        if let Some(bound) = bound {
+            let hidden = if row.flag(9) { " HIDDEN" } else { "" };
+            column.extra = Some(format!("GENERATED ALWAYS AS ROW {bound}{hidden}"));
         }
         if let Some(expr) = row.opt(4) {
             let persisted = if row.flag(5) { " PERSISTED" } else { "" };
@@ -348,6 +360,40 @@ pub(crate) async fn sqlserver(
             index.parts = if descending { parts } else { Vec::new() };
         }
     }
+    sqlserver_table(conn, design, &id).await
+}
+
+/// SQL Server: the CHECK constraints disabled with `NOCHECK`, and the period and history
+/// table of a system-versioned table.
+async fn sqlserver_table(conn: &dyn Connection, design: &mut TableDesign, id: &str) -> Result<()> {
+    let sql = format!(
+        "SELECT name FROM sys.check_constraints WHERE parent_object_id = {id} AND is_disabled = 1"
+    );
+    for row in query_text(conn, &sql).await? {
+        if let Some(c) = design
+            .constraints
+            .iter_mut()
+            .find(|c| c.name == row.text(0))
+        {
+            c.disabled = true;
+        }
+    }
+    let sql = format!(
+        "SELECT COL_NAME(p.object_id, p.start_column_id), COL_NAME(p.object_id, p.end_column_id),
+                CASE WHEN t.temporal_type = 2 THEN h.name END
+         FROM sys.periods p
+         JOIN sys.tables t ON t.object_id = p.object_id
+         LEFT JOIN sys.tables h ON h.object_id = t.history_table_id
+         WHERE p.object_id = {id}"
+    );
+    design.system_time = query_text(conn, &sql)
+        .await?
+        .first()
+        .map(|r| crate::SystemTime {
+            start: r.text(0),
+            end: r.text(1),
+            history: r.opt(2),
+        });
     Ok(())
 }
 
@@ -388,6 +434,7 @@ pub(crate) fn mysql(design: &mut TableDesign, definition: &create::Definition) {
     for parsed in &definition.indexes {
         if let Some(index) = design.indexes.iter_mut().find(|i| i.name == parsed.name) {
             index.method.clone_from(&parsed.method);
+            index.visibility.clone_from(&parsed.visibility);
             index.parts = kept_parts(Dialect::MySql, index, parsed.parts.clone());
         }
     }

@@ -17,7 +17,8 @@ mod objects;
 use std::fmt::Write;
 
 use platypus_core::{
-    Connection, ConstraintKind, Error, ExecOptions, Result, TableDetails, TextRowExt, query_text,
+    Connection, ConstraintKind, ConstraintMeta, Error, ExecOptions, Result, TableDetails,
+    TextRowExt, query_text,
 };
 use platypus_sql::Dialect;
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,62 @@ pub struct TableDesign {
     /// range types), which a schema comparison creates where they are missing.
     #[serde(default)]
     pub types: Vec<UserType>,
+    /// The period of a system-versioned (temporal) table of SQL Server, written in its
+    /// column list, and its history table.
+    #[serde(default)]
+    pub system_time: Option<SystemTime>,
+}
+
+/// `PERIOD FOR SYSTEM_TIME (start, end)` and, when the table is versioned,
+/// `SYSTEM_VERSIONING = ON (HISTORY_TABLE = history)`: the history table, in the table's
+/// schema, which the database creates and keeps by itself.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemTime {
+    pub start: String,
+    pub end: String,
+    pub history: Option<String>,
+}
+
+/// When a constraint is checked: at the end of each statement, or (PostgreSQL, SQLite) at the
+/// end of the transaction when it is deferrable and deferred.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Deferral {
+    #[default]
+    NotDeferrable,
+    /// `DEFERRABLE INITIALLY IMMEDIATE`.
+    Immediate,
+    /// `DEFERRABLE INITIALLY DEFERRED`.
+    Deferred,
+}
+
+impl Deferral {
+    #[must_use]
+    pub fn of(deferrable: bool, deferred: bool) -> Self {
+        match (deferrable, deferred) {
+            (false, _) => Self::NotDeferrable,
+            (true, false) => Self::Immediate,
+            (true, true) => Self::Deferred,
+        }
+    }
+
+    /// The clause that ends the constraint, `None` for one that is not deferrable.
+    #[must_use]
+    pub fn clause(self) -> Option<&'static str> {
+        match self {
+            Self::NotDeferrable => None,
+            Self::Immediate => Some("DEFERRABLE INITIALLY IMMEDIATE"),
+            Self::Deferred => Some("DEFERRABLE INITIALLY DEFERRED"),
+        }
+    }
+
+    /// The deferral a definition the database printed ends with (`UNIQUE (a) DEFERRABLE
+    /// INITIALLY DEFERRED`).
+    fn in_definition(definition: &str) -> Self {
+        let upper = definition.to_ascii_uppercase();
+        let deferrable = upper.contains("DEFERRABLE") && !upper.contains("NOT DEFERRABLE");
+        Self::of(deferrable, upper.contains("INITIALLY DEFERRED"))
+    }
 }
 
 /// A partition of a partitioned table: its name and its bound, `FOR VALUES FROM (..) TO (..)`
@@ -143,6 +200,10 @@ pub struct IndexDesign {
     /// The condition of a partial (filtered) index, without `WHERE`.
     #[serde(default)]
     pub predicate: Option<String>,
+    /// The word that hides the index from the optimizer, written after its key parts:
+    /// MySQL's `INVISIBLE`, MariaDB's `IGNORED`; `None` for a visible index.
+    #[serde(default)]
+    pub visibility: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +220,16 @@ pub struct ForeignKeyDesign {
     pub on_delete: Option<String>,
     #[serde(default)]
     pub on_update: Option<String>,
+    /// `DEFERRABLE ..` (PostgreSQL, SQLite).
+    #[serde(default)]
+    pub deferral: Deferral,
+    /// PostgreSQL's `MATCH FULL` or `MATCH PARTIAL`: `FULL`, `PARTIAL`; `None` for the default
+    /// `MATCH SIMPLE`.
+    #[serde(default)]
+    pub match_type: Option<String>,
+    /// A key the database does not check: SQL Server's `NOCHECK`.
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +238,8 @@ pub enum ConstraintType {
     #[default]
     Unique,
     Check,
+    /// PostgreSQL's `EXCLUDE`, its definition in `check`.
+    Exclusion,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,8 +249,22 @@ pub struct ConstraintDesign {
     pub kind: ConstraintType,
     /// The columns of a UNIQUE constraint.
     pub columns: Vec<String>,
-    /// The condition of a CHECK, without `CHECK` and its parentheses.
+    /// The condition of a CHECK, without `CHECK` and its parentheses; what follows `EXCLUDE`
+    /// in an exclusion constraint (`USING gist (r WITH &&)`).
     pub check: String,
+    /// `DEFERRABLE ..` of a UNIQUE or EXCLUDE (PostgreSQL).
+    #[serde(default)]
+    pub deferral: Deferral,
+    /// PostgreSQL's `UNIQUE NULLS NOT DISTINCT`: one NULL at most.
+    #[serde(default)]
+    pub nulls_not_distinct: bool,
+    /// SQLite's `ON CONFLICT` resolution of a UNIQUE: `REPLACE`, `IGNORE`, `ABORT`, ..
+    #[serde(default)]
+    pub on_conflict: Option<String>,
+    /// A constraint the database does not check: MySQL's `NOT ENFORCED`, SQL Server's
+    /// `NOCHECK`.
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 /// The statements that change a table, as [`apply`] runs them.
@@ -290,47 +377,77 @@ pub fn design_of(dialect: Dialect, table: &str, details: &TableDetails) -> Table
                     .filter(|c| !c.is_empty())
                     .cloned()
                     .collect(),
-                on_delete: None,
-                on_update: None,
+                ..ForeignKeyDesign::default()
             })
             .collect(),
         constraints: details
             .constraints
             .iter()
-            .filter_map(|c| {
-                let kind = match c.kind {
-                    ConstraintKind::Unique if !sqlite_index(&c.name) => ConstraintType::Unique,
-                    ConstraintKind::Check => ConstraintType::Check,
-                    _ => return None,
-                };
-                Some(ConstraintDesign {
-                    original: Some(c.name.clone()),
-                    // SQLite names its automatic indexes; the constraint itself has no name.
-                    name: if c.name.starts_with("sqlite_autoindex_") {
-                        String::new()
-                    } else {
-                        c.name.clone()
-                    },
-                    kind,
-                    columns: if kind == ConstraintType::Unique {
-                        c.columns.clone()
-                    } else {
-                        Vec::new()
-                    },
-                    check: if kind == ConstraintType::Check {
-                        check_condition(&c.definition)
-                    } else {
-                        String::new()
-                    },
-                })
-            })
+            .filter_map(|c| constraint_of(dialect, c, sqlite_index(&c.name)))
             .collect(),
-        comment: None,
-        options: None,
-        triggers: Vec::new(),
-        partitions: Vec::new(),
-        types: Vec::new(),
+        ..TableDesign::default()
     }
+}
+
+/// The UNIQUE, CHECK or EXCLUDE constraint `c` as the design holds it; `None` for a primary
+/// key, and for a unique index SQLite lists as a constraint (`index`).
+fn constraint_of(dialect: Dialect, c: &ConstraintMeta, index: bool) -> Option<ConstraintDesign> {
+    let kind = match c.kind {
+        ConstraintKind::Unique if !index => ConstraintType::Unique,
+        ConstraintKind::Check => ConstraintType::Check,
+        ConstraintKind::Exclusion => ConstraintType::Exclusion,
+        ConstraintKind::Unique | ConstraintKind::PrimaryKey => return None,
+    };
+    // PostgreSQL prints the options of a UNIQUE or EXCLUDE in its definition.
+    let printed = dialect == Dialect::Postgres && kind != ConstraintType::Check;
+    Some(ConstraintDesign {
+        original: Some(c.name.clone()),
+        // SQLite names its automatic indexes; the constraint itself has no name.
+        name: if c.name.starts_with("sqlite_autoindex_") {
+            String::new()
+        } else {
+            c.name.clone()
+        },
+        kind,
+        columns: if kind == ConstraintType::Unique {
+            c.columns.clone()
+        } else {
+            Vec::new()
+        },
+        check: match kind {
+            ConstraintType::Check => check_condition(&c.definition),
+            ConstraintType::Exclusion => exclusion_body(&c.definition),
+            ConstraintType::Unique => String::new(),
+        },
+        deferral: if printed {
+            Deferral::in_definition(&c.definition)
+        } else {
+            Deferral::NotDeferrable
+        },
+        nulls_not_distinct: printed
+            && c.definition
+                .to_ascii_uppercase()
+                .contains("NULLS NOT DISTINCT"),
+        ..ConstraintDesign::default()
+    })
+}
+
+/// What follows `EXCLUDE` in an exclusion constraint as PostgreSQL prints it, without the
+/// deferral it ends with: `EXCLUDE USING gist (r WITH &&) DEFERRABLE` gives
+/// `USING gist (r WITH &&)`.
+fn exclusion_body(definition: &str) -> String {
+    let mut text = definition.trim();
+    if text.len() >= 7 && text[..7].eq_ignore_ascii_case("EXCLUDE") {
+        text = text[7..].trim_start();
+    }
+    for suffix in [" INITIALLY DEFERRED", " INITIALLY IMMEDIATE", " DEFERRABLE"] {
+        if text.len() >= suffix.len()
+            && text[text.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+        {
+            text = text[..text.len() - suffix.len()].trim_end();
+        }
+    }
+    text.to_owned()
 }
 
 /// The condition of a CHECK as the database prints it: `CHECK ((total >= 0))` gives
@@ -380,11 +497,71 @@ pub async fn load(
     let details = conn.table_details(schema, table).await?;
     let mut design = design_of(dialect, table, &details);
     design.comment = conn.object_comment(schema, table).await?;
+    key_options(conn, dialect, &mut design, schema, table).await?;
     let (s, t) = (dialect.quote_literal(schema), dialect.quote_literal(table));
+    match dialect {
+        Dialect::MySql => {
+            mysql_columns(conn, &mut design, &s, &t).await?;
+            let sql = format!(
+                "SHOW CREATE TABLE {}",
+                dialect.qualified(Some(schema), table)
+            );
+            if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(1)) {
+                let definition = create::parse(&create, dialect);
+                apply_definition(&mut design, &definition);
+                mysql_unique_keys(&mut design, &definition);
+                catalog::mysql(&mut design, &definition);
+            }
+        }
+        Dialect::Postgres => catalog::postgres(conn, &mut design, schema, table).await,
+        Dialect::SqlServer => catalog::sqlserver(conn, &mut design, schema, table).await?,
+        Dialect::ClickHouse => catalog::clickhouse(conn, &mut design, schema, table).await?,
+        Dialect::Sqlite => sqlite_definitions(conn, &mut design, schema, &t).await?,
+        // An identity column reports the sequence Oracle made for it as its default.
+        Dialect::Oracle => {
+            let sql = format!(
+                "SELECT COLUMN_NAME, GENERATION_TYPE FROM ALL_TAB_IDENTITY_COLS
+                 WHERE OWNER = {s} AND TABLE_NAME = {t}"
+            );
+            for row in query_text(conn, &sql).await? {
+                if let Some(c) = design.columns.iter_mut().find(|c| c.name == row.text(0)) {
+                    c.default = None;
+                    c.extra = Some(format!("GENERATED {} AS IDENTITY", row.text(1)));
+                }
+            }
+        }
+        Dialect::DuckDb => {
+            let sql = format!(
+                "SELECT sql FROM duckdb_tables()
+                 WHERE database_name = current_database() AND schema_name = {s} AND table_name = {t}"
+            );
+            if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(0)) {
+                apply_definition(&mut design, &create::parse(&create, dialect));
+            }
+        }
+        _ => {}
+    }
+    Ok(design)
+}
+
+/// What the catalogs say of the foreign keys of `design` beyond their columns: their actions,
+/// and where the database has them whether they are deferrable and deferred, their match type
+/// and whether they are disabled.
+async fn key_options(
+    conn: &dyn Connection,
+    dialect: Dialect,
+    design: &mut TableDesign,
+    schema: &str,
+    table: &str,
+) -> Result<()> {
+    let (s, t) = (dialect.quote_literal(schema), dialect.quote_literal(table));
+    // The name and actions of each key; then whether it is deferrable and deferred, its
+    // match type and whether it is disabled, where the database has them.
     let actions = match dialect {
         Dialect::Postgres => Some(format!(
-            "SELECT conname, confdeltype, confupdtype FROM pg_constraint
-             WHERE contype = 'f' AND conrelid = {}::regclass",
+            "SELECT conname, confdeltype, confupdtype, condeferrable, condeferred,
+                    confmatchtype::text
+             FROM pg_constraint WHERE contype = 'f' AND conrelid = {}::regclass",
             dialect.quote_literal(&dialect.qualified(Some(schema), table))
         )),
         Dialect::MySql => Some(format!(
@@ -394,7 +571,8 @@ pub async fn load(
              WHERE CONSTRAINT_SCHEMA = {s} AND TABLE_NAME = {t}"
         )),
         Dialect::SqlServer => Some(format!(
-            "SELECT name, delete_referential_action_desc, update_referential_action_desc
+            "SELECT name, delete_referential_action_desc, update_referential_action_desc,
+                    NULL, NULL, NULL, is_disabled
              FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID({})",
             dialect.quote_literal(&dialect.qualified(Some(schema), table))
         )),
@@ -429,54 +607,17 @@ pub async fn load(
             {
                 fk.on_delete = action(&row.text(1));
                 fk.on_update = action(&row.text(2));
+                fk.deferral = Deferral::of(row.flag(3), row.flag(4));
+                fk.match_type = match row.text(5).as_str() {
+                    "f" => Some("FULL".to_owned()),
+                    "p" => Some("PARTIAL".to_owned()),
+                    _ => None,
+                };
+                fk.disabled = row.flag(6);
             }
         }
     }
-    match dialect {
-        Dialect::MySql => {
-            mysql_columns(conn, &mut design, &s, &t).await?;
-            let sql = format!(
-                "SHOW CREATE TABLE {}",
-                dialect.qualified(Some(schema), table)
-            );
-            if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(1)) {
-                let definition = create::parse(&create, dialect);
-                apply_definition(&mut design, &definition);
-                mysql_unique_keys(&mut design, &definition);
-                catalog::mysql(&mut design, &definition);
-            }
-            // ENGINE and the like stay as they are: MySQL alters tables in place.
-            design.options = None;
-        }
-        Dialect::Postgres => catalog::postgres(conn, &mut design, schema, table).await,
-        Dialect::SqlServer => catalog::sqlserver(conn, &mut design, schema, table).await?,
-        Dialect::ClickHouse => catalog::clickhouse(conn, &mut design, schema, table).await?,
-        Dialect::Sqlite => sqlite_definitions(conn, &mut design, schema, &t).await?,
-        // An identity column reports the sequence Oracle made for it as its default.
-        Dialect::Oracle => {
-            let sql = format!(
-                "SELECT COLUMN_NAME, GENERATION_TYPE FROM ALL_TAB_IDENTITY_COLS
-                 WHERE OWNER = {s} AND TABLE_NAME = {t}"
-            );
-            for row in query_text(conn, &sql).await? {
-                if let Some(c) = design.columns.iter_mut().find(|c| c.name == row.text(0)) {
-                    c.default = None;
-                    c.extra = Some(format!("GENERATED {} AS IDENTITY", row.text(1)));
-                }
-            }
-        }
-        Dialect::DuckDb => {
-            let sql = format!(
-                "SELECT sql FROM duckdb_tables()
-                 WHERE database_name = current_database() AND schema_name = {s} AND table_name = {t}"
-            );
-            if let Some(create) = query_text(conn, &sql).await?.first().and_then(|r| r.opt(0)) {
-                apply_definition(&mut design, &create::parse(&create, dialect));
-            }
-        }
-        _ => {}
-    }
-    Ok(design)
+    Ok(())
 }
 
 /// MySQL: a unique key on a prefix (`` `email`(20) ``), an expression or in descending order
@@ -544,6 +685,11 @@ async fn sqlite_definitions(
             }
             "index" => {
                 if let Some(index) = design.indexes.iter_mut().find(|i| i.name == name) {
+                    // Its expressions, orders and `WHERE`, for a comparison to write.
+                    if let Some(parsed) = create::index(&text, Dialect::Sqlite) {
+                        index.parts = catalog::kept_parts(Dialect::Sqlite, index, parsed.parts);
+                        index.predicate = parsed.predicate;
+                    }
                     index.sql = Some(text);
                 }
             }
@@ -567,6 +713,38 @@ fn apply_definition(design: &mut TableDesign, definition: &create::Definition) {
         column.collation.clone_from(&parsed.collation);
     }
     design.options.clone_from(&definition.options);
+    // What the catalogs leave out of the keys and constraints: SQLite's deferral, MATCH and
+    // ON CONFLICT, MySQL's NOT ENFORCED. Unnamed there, keys and UNIQUEs are found by their
+    // columns.
+    let same = |a: &[String], b: &[String]| {
+        a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.eq_ignore_ascii_case(y))
+    };
+    for key in &definition.foreign_keys {
+        if let Some(fk) = design.foreign_keys.iter_mut().find(|f| {
+            same(&f.columns, &key.columns) && f.ref_table.eq_ignore_ascii_case(&key.ref_table)
+        }) {
+            fk.deferral = key.deferral;
+            fk.match_type.clone_from(&key.match_type);
+        }
+    }
+    for unique in &definition.uniques {
+        if let Some(c) = design
+            .constraints
+            .iter_mut()
+            .find(|c| c.kind == ConstraintType::Unique && same(&c.columns, &unique.columns))
+        {
+            c.on_conflict.clone_from(&unique.on_conflict);
+        }
+    }
+    for check in definition.checks.iter().filter(|c| c.not_enforced) {
+        if let Some(c) = design
+            .constraints
+            .iter_mut()
+            .find(|c| c.kind == ConstraintType::Check && c.name == check.name)
+        {
+            c.disabled = true;
+        }
+    }
 }
 
 /// A referential action as the catalogs name it (`c`, `CASCADE`, `SET_NULL`), or `None` for
@@ -744,7 +922,7 @@ mod tests {
             name: name.to_owned(),
             kind: ConstraintType::Unique,
             columns: columns.iter().map(|&c| c.to_owned()).collect(),
-            check: String::new(),
+            ..ConstraintDesign::default()
         };
         let mut design = TableDesign {
             constraints: vec![
@@ -796,6 +974,87 @@ mod tests {
             "(a > 0) AND (b > 0)"
         );
         assert_eq!(check_condition("a IN ('(', 'b')"), "a IN ('(', 'b')");
+    }
+
+    #[test]
+    fn postgres_constraints_keep_the_options_their_definition_prints() {
+        let meta = |kind, definition: &str| ConstraintMeta {
+            name: "c".into(),
+            kind,
+            columns: vec!["a1".into(), "a2".into()],
+            definition: definition.into(),
+        };
+        let unique = constraint_of(
+            Dialect::Postgres,
+            &meta(
+                ConstraintKind::Unique,
+                "UNIQUE NULLS NOT DISTINCT (a1, a2) DEFERRABLE INITIALLY DEFERRED",
+            ),
+            false,
+        )
+        .unwrap();
+        assert!(unique.nulls_not_distinct);
+        assert_eq!(unique.deferral, Deferral::Deferred);
+        let exclusion = constraint_of(
+            Dialect::Postgres,
+            &meta(
+                ConstraintKind::Exclusion,
+                "EXCLUDE USING gist (r WITH &&) DEFERRABLE",
+            ),
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                exclusion.kind,
+                exclusion.check.as_str(),
+                exclusion.deferral,
+                exclusion.columns.len()
+            ),
+            (
+                ConstraintType::Exclusion,
+                "USING gist (r WITH &&)",
+                Deferral::Immediate,
+                0
+            )
+        );
+        // Another database's definition says nothing of them.
+        let mysql = constraint_of(
+            Dialect::MySql,
+            &meta(ConstraintKind::Unique, "DEFERRABLE"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(mysql.deferral, Deferral::NotDeferrable);
+        assert!(constraint_of(Dialect::Sqlite, &meta(ConstraintKind::Unique, ""), true).is_none());
+    }
+
+    #[test]
+    fn sqlite_keys_and_uniques_take_what_the_create_table_says() {
+        let mut design = TableDesign {
+            foreign_keys: vec![ForeignKeyDesign {
+                name: "fk_t_0".into(),
+                columns: vec!["r".into()],
+                ref_table: "f0".into(),
+                ..ForeignKeyDesign::default()
+            }],
+            constraints: vec![ConstraintDesign {
+                columns: vec!["U".into()],
+                ..ConstraintDesign::default()
+            }],
+            ..TableDesign::default()
+        };
+        let definition = create::parse(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, r INT REFERENCES F0(id) DEFERRABLE INITIALLY DEFERRED,
+               u TEXT UNIQUE ON CONFLICT REPLACE)",
+            Dialect::Sqlite,
+        );
+        apply_definition(&mut design, &definition);
+        assert_eq!(design.foreign_keys[0].deferral, Deferral::Deferred);
+        assert_eq!(
+            design.constraints[0].on_conflict.as_deref(),
+            Some("REPLACE")
+        );
     }
 
     #[test]

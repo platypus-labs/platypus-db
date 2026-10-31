@@ -84,6 +84,7 @@ pub(crate) fn phased(
             script
                 .statements
                 .push(ddl.create_table(design, &design.name));
+            ddl.disable_constraints(design, &design.name, &mut script);
             ddl.create_partitions(&design.name, &design.partitions, &mut script.statements);
             ddl.indexes_and_comments(design, &design.name, &mut script);
         }
@@ -106,19 +107,16 @@ pub(crate) fn phased(
     Ok(script)
 }
 
-/// `ALTER TABLE .. ADD` of the foreign key `fk` of `schema.table`.
+/// `ALTER TABLE .. ADD` of the foreign key `fk` of `schema.table`, and what disables it
+/// where it is disabled.
 pub(crate) fn add_foreign_key(
     dialect: Dialect,
     schema: &str,
     table: &str,
     fk: &ForeignKeyDesign,
-) -> String {
+) -> Vec<String> {
     let ddl = Ddl { d: dialect, schema };
-    format!(
-        "ALTER TABLE {} ADD {}",
-        ddl.table(table),
-        ddl.foreign_key(fk)
-    )
+    ddl.add_constraint(table, &ddl.foreign_key(fk), &fk.name, fk.disabled)
 }
 
 /// `CREATE INDEX` of `index` on `schema.table`.
@@ -306,6 +304,8 @@ impl<'a> Diff<'a> {
                         && o.ref_columns == n.ref_columns
                         && o.on_delete == n.on_delete
                         && o.on_update == n.on_update
+                        && (o.deferral, o.disabled) == (n.deferral, n.disabled)
+                        && text(o.match_type.as_ref()) == text(n.match_type.as_ref())
                 },
             ),
             constraints: Parts::new(
@@ -317,6 +317,7 @@ impl<'a> Diff<'a> {
                         && o.kind == n.kind
                         && map(&o.columns) == n.columns
                         && same_check(&o.check, &n.check)
+                        && same_constraint_options(o, n)
                 },
             ),
             kept_columns,
@@ -350,11 +351,19 @@ impl<'a> Diff<'a> {
 fn same_index_kind(o: &IndexDesign, n: &IndexDesign) -> bool {
     o.parts == n.parts
         && text(o.method.as_ref()) == text(n.method.as_ref())
+        && text(o.visibility.as_ref()) == text(n.visibility.as_ref())
         && o.include == n.include
         && match (text(o.predicate.as_ref()), text(n.predicate.as_ref())) {
             (Some(a), Some(b)) => same_check(a, b),
             (a, b) => a == b,
         }
+}
+
+/// Whether two constraints are the same beyond their kind, columns and condition: their
+/// deferral, `NULLS NOT DISTINCT`, `ON CONFLICT` and whether they are checked.
+fn same_constraint_options(o: &ConstraintDesign, n: &ConstraintDesign) -> bool {
+    (o.deferral, o.nulls_not_distinct, o.disabled) == (n.deferral, n.nulls_not_distinct, n.disabled)
+        && text(o.on_conflict.as_ref()) == text(n.on_conflict.as_ref())
 }
 
 /// Whether two CHECK conditions are the same, as the database prints them: PostgreSQL
@@ -513,6 +522,34 @@ fn constant(default: &str) -> bool {
         || ["NULL", "TRUE", "FALSE"]
             .iter()
             .any(|k| d.eq_ignore_ascii_case(k))
+}
+
+/// Whether SQLite takes `default` after `DEFAULT` without parentheses: a literal, signed or
+/// not, a blob or one of the `CURRENT_*` keywords.
+fn sqlite_literal(default: &str) -> bool {
+    let d = default.trim();
+    // One quoted string: `'a'`, `'it''s'`, not `'a' || 'b'`.
+    let quoted = |s: &str| {
+        s.len() >= 2
+            && s.starts_with('\'')
+            && s.ends_with('\'')
+            && !s[1..s.len() - 1].replace("''", "").contains('\'')
+    };
+    let blob = d.starts_with(['x', 'X']) && quoted(&d[1..]);
+    let unsigned = d.strip_prefix(['+', '-']).unwrap_or(d);
+    quoted(d)
+        || blob
+        || unsigned.parse::<f64>().is_ok()
+        || [
+            "NULL",
+            "TRUE",
+            "FALSE",
+            "CURRENT_TIME",
+            "CURRENT_DATE",
+            "CURRENT_TIMESTAMP",
+        ]
+        .iter()
+        .any(|k| d.eq_ignore_ascii_case(k))
 }
 
 fn primary_key(design: &TableDesign) -> Vec<String> {
@@ -683,6 +720,11 @@ impl Ddl<'_> {
             Some(default) if clickhouse && clickhouse_default_kind(default) => {
                 format!(" {default}")
             }
+            // SQLite takes a literal as it is, anything else in parentheses:
+            // `DEFAULT (datetime('now'))`. Its catalog reports the expression without them.
+            Some(default) if self.d == Dialect::Sqlite && !sqlite_literal(default) => {
+                format!(" DEFAULT {}", crate::catalog::parenthesized(default))
+            }
             Some(default) => format!(" DEFAULT {default}"),
             None => String::new(),
         };
@@ -716,11 +758,82 @@ impl Ddl<'_> {
     }
 
     fn constraint(&self, c: &ConstraintDesign) -> String {
-        match c.kind {
+        let named = self.named(&c.name);
+        let mut sql = match c.kind {
             ConstraintType::Unique => {
-                format!("{}UNIQUE ({})", self.named(&c.name), self.list(&c.columns))
+                let nulls = if c.nulls_not_distinct {
+                    " NULLS NOT DISTINCT"
+                } else {
+                    ""
+                };
+                format!("{named}UNIQUE{nulls} ({})", self.list(&c.columns))
             }
-            ConstraintType::Check => format!("{}CHECK ({})", self.named(&c.name), c.check.trim()),
+            ConstraintType::Check => format!("{named}CHECK ({})", c.check.trim()),
+            ConstraintType::Exclusion => format!("{named}EXCLUDE {}", c.check.trim()),
+        };
+        if let Some(resolution) = text(c.on_conflict.as_ref()) {
+            let _ = write!(sql, " ON CONFLICT {resolution}");
+        }
+        if let Some(deferral) = c.deferral.clause() {
+            let _ = write!(sql, " {deferral}");
+        }
+        if c.disabled && c.kind == ConstraintType::Check && self.d == Dialect::MySql {
+            sql.push_str(" NOT ENFORCED");
+        }
+        sql
+    }
+
+    /// `ALTER TABLE .. NOCHECK CONSTRAINT` of the key or constraint `name` (SQL Server), which
+    /// the database then leaves unchecked.
+    fn nocheck(&self, table: &str, name: &str) -> String {
+        format!(
+            "ALTER TABLE {} NOCHECK CONSTRAINT {}",
+            self.table(table),
+            self.q(name)
+        )
+    }
+
+    /// `ALTER TABLE .. ADD` of the constraint or key `what` (the clause after `ADD`) of
+    /// `table`, then, when it is `disabled` (SQL Server), the statement that disables it: added
+    /// without checking the rows there either.
+    fn add_constraint(&self, table: &str, what: &str, name: &str, disabled: bool) -> Vec<String> {
+        let t = self.table(table);
+        if disabled && self.d == Dialect::SqlServer && !name.trim().is_empty() {
+            vec![
+                format!("ALTER TABLE {t} WITH NOCHECK ADD {what}"),
+                self.nocheck(table, name),
+            ]
+        } else {
+            vec![format!("ALTER TABLE {t} ADD {what}")]
+        }
+    }
+
+    /// The statements that disable the disabled keys and constraints of `design`, created as
+    /// `table` (SQL Server). One without a name cannot be disabled, which a warning says.
+    fn disable_constraints(&self, design: &TableDesign, table: &str, script: &mut Script) {
+        if self.d != Dialect::SqlServer {
+            return;
+        }
+        let disabled = design
+            .foreign_keys
+            .iter()
+            .filter(|f| f.disabled)
+            .map(|f| &f.name)
+            .chain(
+                design
+                    .constraints
+                    .iter()
+                    .filter(|c| c.disabled)
+                    .map(|c| &c.name),
+            );
+        for name in disabled {
+            if name.trim().is_empty() {
+                script.warnings.push(format!(
+                    "A disabled (NOCHECK) constraint of {table} has no name of its own: it is created enabled; disable it by hand."
+                ));
+            } else {
+                script.statements.push(self.nocheck(table, name));
+            }
         }
     }
 
@@ -744,10 +857,16 @@ impl Ddl<'_> {
         if !f.ref_columns.is_empty() {
             let _ = write!(sql, " ({})", self.list(&f.ref_columns));
         }
+        if let Some(match_type) = text(f.match_type.as_ref()) {
+            let _ = write!(sql, " MATCH {match_type}");
+        }
         for (event, action) in [("DELETE", &f.on_delete), ("UPDATE", &f.on_update)] {
             if let Some(action) = text(action.as_ref()) {
                 let _ = write!(sql, " ON {event} {action}");
             }
+        }
+        if let Some(deferral) = f.deferral.clause() {
+            let _ = write!(sql, " {deferral}");
         }
         sql
     }
@@ -774,6 +893,13 @@ impl Ddl<'_> {
         }
         parts.extend(design.constraints.iter().map(|c| self.constraint(c)));
         parts.extend(design.foreign_keys.iter().map(|f| self.foreign_key(f)));
+        if let Some(period) = &design.system_time {
+            parts.push(format!(
+                "PERIOD FOR SYSTEM_TIME ({}, {})",
+                self.q(&period.start),
+                self.q(&period.end)
+            ));
+        }
         let mut sql = format!(
             "CREATE TABLE {} (\n  {}\n)",
             self.table(name),
@@ -781,6 +907,15 @@ impl Ddl<'_> {
         );
         if let Some(options) = text(design.options.as_ref()) {
             let _ = write!(sql, " {options}");
+        }
+        // SQL Server creates the history table, in the schema of the table.
+        let history = design.system_time.as_ref().and_then(|s| s.history.as_ref());
+        if let (Dialect::SqlServer, Some(history)) = (self.d, history) {
+            let _ = write!(
+                sql,
+                " WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = {}))",
+                self.table(history)
+            );
         }
         sql
     }
@@ -823,6 +958,9 @@ impl Ddl<'_> {
         // A clustered columnstore index takes every column.
         if !kind.starts_with("CLUSTERED COLUMNSTORE") {
             let _ = write!(sql, " ({keys})");
+        }
+        if let Some(visibility) = text(i.visibility.as_ref()) {
+            let _ = write!(sql, " {visibility}");
         }
         if !i.include.is_empty() {
             let _ = write!(sql, " INCLUDE ({})", self.list(&i.include));
@@ -1160,16 +1298,16 @@ impl Ddl<'_> {
         for (o, n) in leaving {
             self.alter_column(name, o, n, &mut script.statements, &mut script.warnings);
         }
-        self.alter_partitioning(old, new, script);
+        self.alter_options(old, new, script);
         let out = &mut script.statements;
         for c in &diff.constraints.added {
-            out.push(format!("ALTER TABLE {t} ADD {}", self.constraint(c)));
+            out.extend(self.add_constraint(name, &self.constraint(c), &c.name, c.disabled));
         }
         for f in &diff.foreign_keys.added {
-            let add = format!("ALTER TABLE {t} ADD {}", self.foreign_key(f));
+            let add = self.add_constraint(name, &self.foreign_key(f), &f.name, f.disabled);
             keys.as_deref_mut()
                 .map_or(&mut *out, |k| &mut k.added)
-                .push(add);
+                .extend(add);
         }
         for i in &diff.indexes.added {
             if !self.skips_index(i, &mut script.warnings) {
@@ -1234,9 +1372,22 @@ impl Ddl<'_> {
     }
 
     /// What can change of a table's options in place: PostgreSQL's partitions are created and
-    /// detached (they stay as tables, with their rows); its partitioning and ClickHouse's
-    /// engine clause cannot change, which a warning says.
-    fn alter_partitioning(&self, old: &TableDesign, new: &TableDesign, script: &mut Script) {
+    /// detached (they stay as tables, with their rows); its partitioning, ClickHouse's engine
+    /// clause, MySQL's table options and SQL Server's system versioning cannot change, which a
+    /// warning says.
+    fn alter_options(&self, old: &TableDesign, new: &TableDesign, script: &mut Script) {
+        if old.system_time != new.system_time {
+            script.warnings.push(format!(
+                "The system versioning of {} differs and cannot be changed in place: create the table again by hand.",
+                new.name
+            ));
+        }
+        if self.d == Dialect::MySql && text(old.options.as_ref()) != text(new.options.as_ref()) {
+            script.warnings.push(format!(
+                "The table options of {} (engine, character set, partitioning, versioning) differ and cannot be changed in place: change them by hand.",
+                new.name
+            ));
+        }
         if !matches!(self.d, Dialect::Postgres | Dialect::ClickHouse) {
             return;
         }
@@ -1578,7 +1729,7 @@ impl Ddl<'_> {
             match self.index_as_written(old, new, diff, i) {
                 Some(sql) => script.statements.push(sql),
                 // The drivers list an expression index's key parts as `(expression)`.
-                None if i.columns.iter().any(|c| c == "(expression)") => {
+                None if i.parts.is_empty() && i.columns.iter().any(|c| c == "(expression)") => {
                     script.warnings.push(format!(
                         "Index {} is on an expression: create it again by hand.",
                         i.name
@@ -1660,6 +1811,7 @@ impl Ddl<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Deferral;
 
     fn column(name: &str, data_type: &str) -> ColumnDesign {
         ColumnDesign {
@@ -2720,5 +2872,198 @@ mod tests {
         other.options = Some("ENGINE = MergeTree ORDER BY id".to_owned());
         let s = script(Dialect::ClickHouse, "shop", Some(&ch), &other).unwrap();
         assert!(s.warnings[0].starts_with("The engine clause"), "{s:?}");
+    }
+
+    #[test]
+    fn sqlite_defaults_that_are_expressions_get_parentheses() {
+        let with = |default: &str| TableDesign {
+            name: "t".to_owned(),
+            columns: vec![ColumnDesign {
+                default: Some(default.to_owned()),
+                ..column("c", "TEXT")
+            }],
+            ..TableDesign::default()
+        };
+        for (default, written) in [
+            ("datetime('now')", "DEFAULT (datetime('now'))"),
+            ("1+2", "DEFAULT (1+2)"),
+            ("'a' || 'b'", "DEFAULT ('a' || 'b')"),
+            ("(1 + 2)", "DEFAULT (1 + 2)"),
+            ("'it''s'", "DEFAULT 'it''s'"),
+            ("-1.5", "DEFAULT -1.5"),
+            ("X'0F'", "DEFAULT X'0F'"),
+            ("CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
+            ("NULL", "DEFAULT NULL"),
+        ] {
+            let s = statements(Dialect::Sqlite, None, &with(default));
+            assert!(s[0].contains(&format!("c TEXT {written}\n")), "{s:?}");
+        }
+        // Other databases take the expression as it is.
+        let pg = statements(Dialect::Postgres, None, &with("now()"));
+        assert!(pg[0].contains("c TEXT DEFAULT now()"), "{pg:?}");
+    }
+
+    #[test]
+    fn keys_and_constraints_keep_their_options() {
+        let mut design = orders();
+        design.foreign_keys.push(ForeignKeyDesign {
+            name: "fk".to_owned(),
+            columns: vec!["note".to_owned()],
+            ref_table: "customers".to_owned(),
+            ref_columns: vec!["code".to_owned()],
+            on_delete: Some("SET NULL".to_owned()),
+            deferral: Deferral::Deferred,
+            match_type: Some("FULL".to_owned()),
+            ..ForeignKeyDesign::default()
+        });
+        design.constraints = vec![
+            ConstraintDesign {
+                name: "u".to_owned(),
+                columns: vec!["total".to_owned(), "note".to_owned()],
+                nulls_not_distinct: true,
+                deferral: Deferral::Immediate,
+                ..ConstraintDesign::default()
+            },
+            ConstraintDesign {
+                name: "ex".to_owned(),
+                kind: ConstraintType::Exclusion,
+                check: "USING gist (total WITH =)".to_owned(),
+                ..ConstraintDesign::default()
+            },
+        ];
+        let s = statements(Dialect::Postgres, None, &design);
+        assert!(
+            s[0].contains(
+                "CONSTRAINT u UNIQUE NULLS NOT DISTINCT (total, note) DEFERRABLE INITIALLY IMMEDIATE,\n  \
+                 CONSTRAINT ex EXCLUDE USING gist (total WITH =),\n  \
+                 CONSTRAINT fk FOREIGN KEY (note) REFERENCES public.customers (code) MATCH FULL \
+                 ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED\n)"
+            ),
+            "{s:?}"
+        );
+        // Only the deferral changed: the key is dropped and added again.
+        let mut immediate = design.clone();
+        immediate.foreign_keys[0].original = Some("fk".to_owned());
+        for c in &mut immediate.constraints {
+            c.original = Some(c.name.clone());
+        }
+        let mut deferred = immediate.clone();
+        deferred.foreign_keys[0].deferral = Deferral::NotDeferrable;
+        let s = statements(Dialect::Postgres, Some(&immediate), &deferred);
+        assert_eq!(s.len(), 2, "{s:?}");
+        assert!(s[1].ends_with("ON DELETE SET NULL"), "{s:?}");
+
+        let mut sqlite = orders();
+        sqlite.constraints = vec![ConstraintDesign {
+            columns: vec!["note".to_owned()],
+            on_conflict: Some("REPLACE".to_owned()),
+            ..ConstraintDesign::default()
+        }];
+        let s = statements(Dialect::Sqlite, None, &sqlite);
+        assert!(s[0].contains("UNIQUE (note) ON CONFLICT REPLACE"), "{s:?}");
+    }
+
+    #[test]
+    fn mysql_writes_not_enforced_checks_invisible_indexes_and_table_options() {
+        let mut design = orders();
+        design.indexes[0].visibility = Some("INVISIBLE".to_owned());
+        design.options = Some("ENGINE=MyISAM DEFAULT CHARSET=latin1".to_owned());
+        design.constraints.push(ConstraintDesign {
+            original: Some("w".to_owned()),
+            name: "w".to_owned(),
+            kind: ConstraintType::Check,
+            check: "total < 100".to_owned(),
+            disabled: true,
+            ..ConstraintDesign::default()
+        });
+        let s = statements(Dialect::MySql, None, &design);
+        assert!(
+            s[0].ends_with(
+                "CONSTRAINT w CHECK (total < 100) NOT ENFORCED\n) ENGINE=MyISAM DEFAULT CHARSET=latin1"
+            ),
+            "{s:?}"
+        );
+        assert_eq!(
+            s[1],
+            "CREATE INDEX orders_total ON public.orders (total) INVISIBLE"
+        );
+        let mut other = design.clone();
+        other.options = Some("ENGINE=InnoDB".to_owned());
+        let s = script(Dialect::MySql, "shop", Some(&design), &other).unwrap();
+        assert!(s.statements.is_empty(), "{s:?}");
+        assert!(
+            s.warnings[0].starts_with("The table options of orders"),
+            "{s:?}"
+        );
+    }
+
+    #[test]
+    fn sqlserver_disables_nocheck_constraints_and_creates_temporal_tables() {
+        let mut design = orders();
+        design.columns.push(ColumnDesign {
+            nullable: false,
+            extra: Some("GENERATED ALWAYS AS ROW START HIDDEN".to_owned()),
+            ..column("vf", "datetime2(7)")
+        });
+        design.columns.push(ColumnDesign {
+            nullable: false,
+            extra: Some("GENERATED ALWAYS AS ROW END".to_owned()),
+            ..column("vt", "datetime2(7)")
+        });
+        design.system_time = Some(crate::SystemTime {
+            start: "vf".to_owned(),
+            end: "vt".to_owned(),
+            history: Some("orders_hist".to_owned()),
+        });
+        design.foreign_keys.push(ForeignKeyDesign {
+            name: "fk".to_owned(),
+            columns: vec!["note".to_owned()],
+            ref_table: "customers".to_owned(),
+            disabled: true,
+            ..ForeignKeyDesign::default()
+        });
+        design.constraints.push(ConstraintDesign {
+            kind: ConstraintType::Check,
+            check: "total > 0".to_owned(),
+            disabled: true,
+            ..ConstraintDesign::default()
+        });
+        let s = script(Dialect::SqlServer, "dbo", None, &design).unwrap();
+        assert!(
+            s.statements[0]
+                .contains("vf datetime2(7) GENERATED ALWAYS AS ROW START HIDDEN NOT NULL"),
+            "{s:?}"
+        );
+        assert!(
+            s.statements[0].ends_with(
+                "PERIOD FOR SYSTEM_TIME (vf, vt)\n) WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = dbo.orders_hist))"
+            ),
+            "{s:?}"
+        );
+        assert_eq!(
+            s.statements[1],
+            "ALTER TABLE dbo.orders NOCHECK CONSTRAINT fk"
+        );
+        assert!(s.warnings[0].starts_with("A disabled (NOCHECK) constraint of orders"));
+
+        let mut there = design.clone();
+        there.system_time = None;
+        there.foreign_keys.clear();
+        let mut wanted = there.clone();
+        wanted.foreign_keys = design.foreign_keys.clone();
+        wanted.system_time.clone_from(&design.system_time);
+        let s = script(Dialect::SqlServer, "dbo", Some(&there), &wanted).unwrap();
+        assert!(
+            s.statements.ends_with(&[
+                "ALTER TABLE dbo.orders WITH NOCHECK ADD CONSTRAINT fk FOREIGN KEY (note) REFERENCES dbo.customers"
+                    .to_owned(),
+                "ALTER TABLE dbo.orders NOCHECK CONSTRAINT fk".to_owned(),
+            ]),
+            "{s:?}"
+        );
+        assert!(
+            s.warnings[0].starts_with("The system versioning of orders"),
+            "{s:?}"
+        );
     }
 }

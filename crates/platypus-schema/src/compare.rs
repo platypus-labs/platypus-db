@@ -1,6 +1,8 @@
 //! The script that makes one schema like another: tables created, altered with [`script`] and
 //! dropped, in an order the foreign keys allow.
 
+use std::borrow::Cow;
+
 use platypus_sql::Dialect;
 
 use crate::ddl::{Keys, add_foreign_key, phased, same_check, transactional, warn_one_by_one};
@@ -21,6 +23,8 @@ pub fn compare(
     wanted: &[TableDesign],
     current: &[TableDesign],
 ) -> Result<Script, String> {
+    // The history tables of system-versioned tables come and go with them.
+    let (wanted, current) = (&*without_history(wanted), &*without_history(current));
     let in_place = keys_in_place(dialect);
     let mut keys = Keys::default();
     let mut altered = Script::default();
@@ -119,6 +123,27 @@ fn find<'a>(tables: &'a [TableDesign], name: &str) -> Option<&'a TableDesign> {
     tables.iter().find(|t| t.name == name)
 }
 
+/// The history table of `table` when it is system-versioned (SQL Server).
+fn history(table: &TableDesign) -> Option<&str> {
+    table.system_time.as_ref()?.history.as_deref()
+}
+
+/// `tables` without the history tables of the system-versioned ones: the database creates,
+/// changes and keeps them with their table.
+fn without_history(tables: &[TableDesign]) -> Cow<'_, [TableDesign]> {
+    let histories: Vec<&str> = tables.iter().filter_map(history).collect();
+    if histories.is_empty() {
+        return Cow::Borrowed(tables);
+    }
+    Cow::Owned(
+        tables
+            .iter()
+            .filter(|t| !histories.contains(&t.name.as_str()))
+            .cloned()
+            .collect(),
+    )
+}
+
 /// The script that drops the tables of `current` that `wanted` has not, those that
 /// reference others first.
 fn drop_gone(
@@ -141,14 +166,24 @@ fn drop_gone(
         );
     }
     for table in ordered.into_iter().chain(cycle) {
-        out.statements.push(format!(
-            "DROP TABLE {}",
-            dialect.qualified(Some(schema), &table.name)
-        ));
-        out.warnings.push(format!(
-            "Drops the table {}: its rows are lost.",
-            table.name
-        ));
+        let name = dialect.qualified(Some(schema), &table.name);
+        // A system-versioned table is dropped once it is not, then its history table.
+        let history = history(table).filter(|_| dialect == Dialect::SqlServer);
+        if history.is_some() {
+            out.statements
+                .push(format!("ALTER TABLE {name} SET (SYSTEM_VERSIONING = OFF)"));
+        }
+        out.statements.push(format!("DROP TABLE {name}"));
+        for dropped in std::iter::once(table.name.as_str()).chain(history) {
+            out.warnings
+                .push(format!("Drops the table {dropped}: its rows are lost."));
+        }
+        if let Some(history) = history {
+            out.statements.push(format!(
+                "DROP TABLE {}",
+                dialect.qualified(Some(schema), history)
+            ));
+        }
     }
     Ok(out)
 }
@@ -186,7 +221,7 @@ fn create_new(
             later.extend(
                 after
                     .iter()
-                    .map(|f| add_foreign_key(dialect, schema, &t.name, f)),
+                    .flat_map(|f| add_foreign_key(dialect, schema, &t.name, f)),
             );
         }
         new.push(t);
@@ -1340,6 +1375,36 @@ mod tests {
             differs.warnings,
             ["The type dst.mood differs from the one compared with: change it by hand."]
         );
+    }
+
+    #[test]
+    fn history_tables_come_and_go_with_their_system_versioned_table() {
+        let mut tmp = table("tmp", vec![column("id", "int")], &[], "s");
+        tmp.system_time = Some(crate::SystemTime {
+            start: "vf".to_owned(),
+            end: "vt".to_owned(),
+            history: Some("tmp_hist".to_owned()),
+        });
+        let hist = table("tmp_hist", vec![column("id", "int")], &[], "s");
+        let wanted = [tmp.clone(), hist.clone()];
+        let s = compare(Dialect::SqlServer, "d", "s", &wanted, &[]).unwrap();
+        assert_eq!(s.statements.len(), 1, "{s:?}");
+        assert!(
+            s.statements[0].ends_with("WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = d.tmp_hist))"),
+            "{s:?}"
+        );
+        let same = compare(Dialect::SqlServer, "d", "s", &wanted, &wanted).unwrap();
+        assert_eq!(same.statements, Vec::<String>::new());
+        let dropped = compare(Dialect::SqlServer, "d", "s", &[], &wanted).unwrap();
+        assert_eq!(
+            dropped.statements,
+            [
+                "ALTER TABLE d.tmp SET (SYSTEM_VERSIONING = OFF)",
+                "DROP TABLE d.tmp",
+                "DROP TABLE d.tmp_hist",
+            ]
+        );
+        assert_eq!(dropped.warnings.len(), 2, "{dropped:?}");
     }
 
     #[test]

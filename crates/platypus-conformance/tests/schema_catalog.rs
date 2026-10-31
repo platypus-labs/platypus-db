@@ -83,11 +83,16 @@ async fn designs(conn: &dyn Connection, d: Dialect, schema: &str) -> Vec<TableDe
 /// The comparison that makes `DST` like `SRC`, run as the SQL editor runs its text; a second
 /// comparison must find nothing. Returns the text of the script.
 async fn round_trip(conn: &dyn Connection, d: Dialect) -> String {
-    let wanted = designs(conn, d, SRC).await;
-    let current = designs(conn, d, DST).await;
-    let script = compare(d, DST, SRC, &wanted, &current).unwrap();
+    round_trip_between(conn, d, SRC, DST).await
+}
+
+/// [`round_trip`] from the schema `src` to `dst`.
+async fn round_trip_between(conn: &dyn Connection, d: Dialect, src: &str, dst: &str) -> String {
+    let wanted = designs(conn, d, src).await;
+    let current = designs(conn, d, dst).await;
+    let script = compare(d, dst, src, &wanted, &current).unwrap();
     let text = script.text(d);
-    assert!(!text.contains(SRC), "{d:?} names the source:\n{text}");
+    assert!(!text.contains(src), "{d:?} names the source:\n{text}");
     for s in text.split(";\n").filter(|s| !s.trim().is_empty()) {
         run(conn, s)
             .await
@@ -95,12 +100,17 @@ async fn round_trip(conn: &dyn Connection, d: Dialect) -> String {
     }
     let again = compare(
         d,
-        DST,
-        SRC,
-        &designs(conn, d, SRC).await,
-        &designs(conn, d, DST).await,
+        dst,
+        src,
+        &designs(conn, d, src).await,
+        &designs(conn, d, dst).await,
     )
     .unwrap();
+    assert_eq!(
+        again.warnings,
+        Vec::<String>::new(),
+        "{d:?}: a second comparison warns after\n{text}"
+    );
     assert_eq!(
         again.statements,
         Vec::<String>::new(),
@@ -806,5 +816,370 @@ async fn sqlserver_compare_leaves_out_xml_and_spatial_indexes() {
             ],
         )
         .await;
+    }
+}
+
+/// A SQLite database in `dir`, created empty.
+async fn sqlite_file(dir: &std::path::Path, name: &str) -> Box<dyn Connection> {
+    let path = dir.join(name);
+    std::fs::File::create(&path).unwrap();
+    let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+    config.database = path.to_string_lossy().into_owned();
+    SqliteDriver.connect(&config).await.unwrap()
+}
+
+/// The comparison that makes the SQLite database `dst` like `src`, run on `dst`; a second
+/// comparison must find nothing. Returns the text of the script.
+async fn sqlite_round_trip(src: &dyn Connection, dst: &dyn Connection) -> String {
+    let d = Dialect::Sqlite;
+    let script = compare(
+        d,
+        "main",
+        "main",
+        &designs(src, d, "main").await,
+        &designs(dst, d, "main").await,
+    )
+    .unwrap();
+    platypus_schema::apply(dst, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}\n{script:?}", e.statement, e.error));
+    let again = compare(
+        d,
+        "main",
+        "main",
+        &designs(src, d, "main").await,
+        &designs(dst, d, "main").await,
+    )
+    .unwrap();
+    assert_eq!(again.statements, Vec::<String>::new(), "after {script:?}");
+    script.text(d)
+}
+
+#[tokio::test]
+async fn sqlite_compare_and_rebuild_keep_expressions_conditions_deferral_and_conflicts() {
+    let dir = tempfile::tempdir().unwrap();
+    let (src, dst) = (
+        sqlite_file(dir.path(), "src.db").await,
+        sqlite_file(dir.path(), "dst.db").await,
+    );
+    let (src, dst) = (&*src, &*dst);
+    let d = Dialect::Sqlite;
+    run_all(
+        src,
+        &[
+            "CREATE TABLE f0 (id INTEGER PRIMARY KEY)".to_owned(),
+            "CREATE TABLE f1 (id INTEGER PRIMARY KEY, created TEXT DEFAULT (datetime('now')),
+               r INT REFERENCES f0(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+               u TEXT UNIQUE ON CONFLICT REPLACE, n INT, name TEXT, live INT)"
+                .to_owned(),
+            "CREATE INDEX f1_e ON f1 (lower(name), n DESC)".to_owned(),
+            "CREATE UNIQUE INDEX f1_p ON f1 (n) WHERE live = 1".to_owned(),
+        ],
+    )
+    .await;
+    let text = sqlite_round_trip(src, dst).await;
+    let sql = |name: &str| format!("SELECT sql FROM sqlite_master WHERE name = '{name}'");
+    let f1 = value(dst, &sql("f1")).await;
+    for kept in [
+        "DEFAULT (datetime('now'))",
+        "DEFERRABLE INITIALLY DEFERRED",
+        "ON CONFLICT REPLACE",
+    ] {
+        assert!(f1.contains(kept), "{kept}: {f1}\n{text}");
+    }
+    assert!(
+        value(dst, &sql("f1_e"))
+            .await
+            .contains("lower(name), n DESC"),
+        "{text}"
+    );
+    // The partial unique index lets rows that are not live repeat.
+    run_all(
+        dst,
+        &["INSERT INTO f1 (id, n, live) VALUES (1, 5, 0), (2, 5, 0)".to_owned()],
+    )
+    .await;
+
+    // A changed condition is seen, and the index created again.
+    run_all(
+        src,
+        &[
+            "DROP INDEX f1_p".to_owned(),
+            "CREATE UNIQUE INDEX f1_p ON f1 (n) WHERE live = 2".to_owned(),
+        ],
+    )
+    .await;
+    let text = sqlite_round_trip(src, dst).await;
+    assert!(text.contains("WHERE live = 2"), "{text}");
+
+    // The table editor creates the table again with all of it.
+    let old = load(dst, d, "main", "f1").await.unwrap();
+    let mut new = old.clone();
+    let n = new.columns.iter_mut().find(|c| c.name == "n").unwrap();
+    "TEXT".clone_into(&mut n.data_type);
+    n.nullable = true;
+    let name = new.columns.iter_mut().find(|c| c.name == "name").unwrap();
+    name.default = Some("lower('X')".to_owned());
+    let script = platypus_schema::script(d, "main", Some(&old), &new).unwrap();
+    platypus_schema::apply(dst, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}\n{script:?}", e.statement, e.error));
+    let f1 = value(dst, &sql("f1")).await;
+    for kept in [
+        "DEFAULT (datetime('now'))",
+        "DEFAULT (lower('X'))",
+        "DEFERRABLE INITIALLY DEFERRED",
+        "ON CONFLICT REPLACE",
+    ] {
+        assert!(f1.contains(kept), "{kept}: {f1}\n{script:?}");
+    }
+    assert_eq!(value(dst, "SELECT count(*) FROM f1").await, "2");
+    assert!(
+        value(dst, &sql("f1_p")).await.contains("WHERE live = 2"),
+        "{script:?}"
+    );
+}
+
+#[tokio::test]
+async fn postgres_compare_and_editor_keep_deferral_match_nulls_and_exclusions() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_PG_URL",
+        "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let d = Dialect::Postgres;
+    let (src, dst) = ("qa5c_pg_src", "qa5c_pg_dst");
+    for schema in [src, dst] {
+        run_all(
+            conn,
+            &[
+                format!("DROP SCHEMA IF EXISTS {schema} CASCADE"),
+                format!("CREATE SCHEMA {schema}"),
+            ],
+        )
+        .await;
+    }
+    let source = [
+        "CREATE TABLE S.a (id int PRIMARY KEY)",
+        "CREATE TABLE S.p (a int, b int, PRIMARY KEY (a, b))",
+        "CREATE TABLE S.b (id int PRIMARY KEY,
+            a_id int REFERENCES S.a(id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+            x int, y int, FOREIGN KEY (x, y) REFERENCES S.p(a, b) MATCH FULL,
+            u1 int, u2 int, CONSTRAINT b_u UNIQUE NULLS NOT DISTINCT (u1, u2),
+            r int4range, CONSTRAINT b_ex EXCLUDE USING gist (r WITH &&))",
+    ];
+    run_all(conn, &statements(&source, src)).await;
+    let text = round_trip_between(conn, d, src, dst).await;
+    let constraints = |schema: &str| {
+        format!(
+            "SELECT string_agg(contype::text || ':' || condeferrable || condeferred || ':'
+                    || confmatchtype::text || ':' || pg_get_constraintdef(oid), ' | ' ORDER BY contype, conname)
+             FROM pg_constraint WHERE conrelid = '{schema}.b'::regclass AND contype IN ('f', 'u', 'x')"
+        )
+    };
+    assert_eq!(
+        value(conn, &constraints(dst)).await,
+        value(conn, &constraints(src)).await.replace(src, dst),
+        "{text}"
+    );
+
+    // The table editor changes the action and keeps the deferral.
+    let old = load(conn, d, dst, "b").await.unwrap();
+    let mut new = old.clone();
+    let key = new
+        .foreign_keys
+        .iter_mut()
+        .find(|f| f.columns == ["a_id"])
+        .unwrap();
+    key.on_delete = Some("CASCADE".to_owned());
+    let script = platypus_schema::script(d, dst, Some(&old), &new).unwrap();
+    platypus_schema::apply(conn, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}", e.statement, e.error));
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT confdeltype::text || condeferrable || condeferred FROM pg_constraint
+                 WHERE conrelid = '{dst}.b'::regclass AND contype = 'f' AND confrelid = '{dst}.a'::regclass"
+            )
+        )
+        .await,
+        "ctruetrue",
+        "{script:?}"
+    );
+    for schema in [src, dst] {
+        run_all(conn, &[format!("DROP SCHEMA {schema} CASCADE")]).await;
+    }
+}
+
+#[tokio::test]
+async fn mysql_and_mariadb_compare_table_options_hidden_indexes_and_unenforced_checks() {
+    for (env, url, mariadb) in [
+        (
+            "PLATYPUS_TEST_MYSQL_ROOT_URL",
+            "mysql://root:platypus@localhost:53306/platypus",
+            false,
+        ),
+        (
+            "PLATYPUS_TEST_MARIADB_ROOT_URL",
+            "mysql://root:platypus@localhost:53307/platypus",
+            true,
+        ),
+    ] {
+        let Some(conn) = connect(env, url).await else {
+            continue;
+        };
+        let conn = &*conn;
+        let d = Dialect::MySql;
+        let (src, dst) = ("qa5c_my_src", "qa5c_my_dst");
+        for schema in [src, dst] {
+            run_all(
+                conn,
+                &[
+                    format!("DROP DATABASE IF EXISTS {schema}"),
+                    format!("CREATE DATABASE {schema}"),
+                ],
+            )
+            .await;
+        }
+        let source: &[&str] = if mariadb {
+            &[
+                "CREATE TABLE S.sv (id int PRIMARY KEY, v int, KEY sv_v (v) IGNORED) WITH SYSTEM VERSIONING",
+                "CREATE TABLE S.a (id int PRIMARY KEY, v varchar(10)) ENGINE=MyISAM DEFAULT CHARSET=latin1
+                 COLLATE=latin1_general_ci",
+            ]
+        } else {
+            &[
+                "CREATE TABLE S.a (id int PRIMARY KEY, v varchar(10)) ENGINE=MyISAM DEFAULT CHARSET=latin1
+                 COLLATE=latin1_general_ci",
+                "CREATE TABLE S.pt (id int, d date, PRIMARY KEY (id, d)) PARTITION BY RANGE (YEAR(d))
+                 (PARTITION p0 VALUES LESS THAN (2020), PARTITION p1 VALUES LESS THAN MAXVALUE)",
+                "CREATE TABLE S.c (id int PRIMARY KEY, w int, b int, KEY c_b (b) INVISIBLE,
+                 CONSTRAINT w_chk CHECK (w < 100) NOT ENFORCED)",
+            ]
+        };
+        run_all(conn, &statements(source, src)).await;
+        let text = round_trip_between(conn, d, src, dst).await;
+        let tables = |schema: &str| {
+            format!(
+                "SELECT GROUP_CONCAT(CONCAT(TABLE_NAME, ':', ENGINE, ':', TABLE_COLLATION, ':', TABLE_TYPE,
+                        ':', CREATE_OPTIONS) ORDER BY TABLE_NAME)
+                 FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{schema}'"
+            )
+        };
+        assert_eq!(
+            value(conn, &tables(dst)).await,
+            value(conn, &tables(src)).await,
+            "{url}\n{text}"
+        );
+        let hidden = if mariadb {
+            format!("SHOW CREATE TABLE {dst}.sv")
+        } else {
+            format!("SHOW CREATE TABLE {dst}.c")
+        };
+        let create = platypus_core::query_text(conn, &hidden).await.unwrap()[0].text(1);
+        let words: &[&str] = if mariadb {
+            &["IGNORED", "WITH SYSTEM VERSIONING"]
+        } else {
+            &["INVISIBLE", "NOT ENFORCED"]
+        };
+        for word in words {
+            assert!(create.contains(word), "{url}: {word}\n{create}\n{text}");
+        }
+        for schema in [src, dst] {
+            run_all(conn, &[format!("DROP DATABASE {schema}")]).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn sqlserver_compare_keeps_disabled_constraints_and_temporal_tables() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_MSSQL_URL",
+        "sqlserver://sa:Platypus-2026@localhost:51433/platypus?sslmode=require",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let d = Dialect::SqlServer;
+    let (src, dst) = ("qa5c_ms_src", "qa5c_ms_dst");
+    let clear = |schema: &str| {
+        format!(
+            "IF OBJECTPROPERTY(OBJECT_ID('{schema}.tmp'), 'TableTemporalType') = 2
+                 ALTER TABLE {schema}.tmp SET (SYSTEM_VERSIONING = OFF);
+             DROP TABLE IF EXISTS {schema}.tmp, {schema}.tmp_hist, {schema}.b, {schema}.a;
+             IF SCHEMA_ID('{schema}') IS NOT NULL DROP SCHEMA {schema}"
+        )
+    };
+    for schema in [src, dst] {
+        run_all(conn, &[clear(schema), format!("CREATE SCHEMA {schema}")]).await;
+    }
+    let source = [
+        "CREATE TABLE S.a (id int PRIMARY KEY)",
+        "CREATE TABLE S.b (id int PRIMARY KEY, a_id int CONSTRAINT fk_b REFERENCES S.a(id),
+            w int CONSTRAINT w_chk CHECK (w < 100))",
+        "ALTER TABLE S.b NOCHECK CONSTRAINT fk_b",
+        "ALTER TABLE S.b NOCHECK CONSTRAINT w_chk",
+        "CREATE TABLE S.tmp (id int PRIMARY KEY, v int,
+            vf datetime2 GENERATED ALWAYS AS ROW START HIDDEN NOT NULL DEFAULT SYSUTCDATETIME(),
+            vt datetime2 GENERATED ALWAYS AS ROW END HIDDEN NOT NULL
+               DEFAULT CONVERT(datetime2, '9999-12-31 23:59:59.9999999'),
+            PERIOD FOR SYSTEM_TIME (vf, vt)) WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = S.tmp_hist))",
+    ];
+    run_all(conn, &statements(&source, src)).await;
+    let text = round_trip_between(conn, d, src, dst).await;
+    let disabled = format!(
+        "SELECT STRING_AGG(name + ':' + CAST(is_disabled AS varchar), ',') WITHIN GROUP (ORDER BY name)
+         FROM (SELECT name, is_disabled FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID('{dst}.b')
+               UNION ALL SELECT name, is_disabled FROM sys.check_constraints
+               WHERE parent_object_id = OBJECT_ID('{dst}.b')) k"
+    );
+    assert_eq!(value(conn, &disabled).await, "fk_b:1,w_chk:1", "{text}");
+    let versioned = format!(
+        "SELECT t.temporal_type_desc COLLATE DATABASE_DEFAULT + ':' + h.name COLLATE DATABASE_DEFAULT
+         FROM sys.tables t
+         JOIN sys.tables h ON h.object_id = t.history_table_id WHERE t.object_id = OBJECT_ID('{dst}.tmp')"
+    );
+    assert_eq!(
+        value(conn, &versioned).await,
+        "SYSTEM_VERSIONED_TEMPORAL_TABLE:tmp_hist",
+        "{text}"
+    );
+    let hidden = format!(
+        "SELECT STRING_AGG(name + ':' + CAST(is_hidden AS varchar), ',') WITHIN GROUP (ORDER BY name)
+         FROM sys.columns WHERE object_id = OBJECT_ID('{dst}.tmp') AND generated_always_type <> 0"
+    );
+    assert_eq!(value(conn, &hidden).await, "vf:1,vt:1", "{text}");
+    // Gone from the source, the versioned table and its history go from the target.
+    run_all(conn, &[clear(src), format!("CREATE SCHEMA {src}")]).await;
+    let script = compare(
+        d,
+        dst,
+        src,
+        &designs(conn, d, src).await,
+        &designs(conn, d, dst).await,
+    )
+    .unwrap();
+    platypus_schema::apply(conn, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}\n{script:?}", e.statement, e.error));
+    assert_eq!(
+        value(
+            conn,
+            &format!("SELECT count(*) FROM sys.tables WHERE schema_id = SCHEMA_ID('{dst}')")
+        )
+        .await,
+        "0",
+        "{script:?}"
+    );
+    for schema in [src, dst] {
+        run_all(conn, &[clear(schema)]).await;
     }
 }
