@@ -9,6 +9,7 @@ shortcuts.
 |---|---|
 | `Ctrl+Enter` | Run the statement under the cursor (or the selection) |
 | `Alt+X`, `Ctrl+Shift+Enter` | Run the script |
+| `Ctrl+.` | Cancel the running statement (also in the command palette) |
 | `Ctrl+\` | Run into a new result tab |
 | `Ctrl+Space` | Autocomplete |
 | `Ctrl+/` | Comment / uncomment |

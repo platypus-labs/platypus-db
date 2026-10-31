@@ -198,6 +198,21 @@ registerAction({
   run: ({ commands }) => commands?.run?.("script"),
 });
 
+/** The Cancel of the editor tab shown while its statement runs (or its rows still arrive):
+ *  set by that tab, `null` when nothing there can be stopped. */
+export const runningStatement: { cancel: (() => void) | null } = { cancel: null };
+
+// Global: the palette lists it and its keys work wherever the focus is, also with the
+// toolbar's Cancel button hidden.
+registerAction({
+  id: "editor.cancel",
+  scope: "global",
+  title: "Cancel the running statement",
+  shortcut: "Mod+.",
+  when: () => runningStatement.cancel !== null,
+  run: () => runningStatement.cancel?.(),
+});
+
 registerAction({
   id: "editor.save",
   scope: "editor",

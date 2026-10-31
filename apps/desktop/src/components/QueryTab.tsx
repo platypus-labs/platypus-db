@@ -30,7 +30,7 @@ import { selectionAsScript } from "./selectionRun";
 import type { NotesScope } from "../grid/ResultGrid";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
-import { cliName } from "../editor/actions";
+import { cliName, runningStatement } from "../editor/actions";
 import { OutlinePanel } from "../editor/OutlinePanel";
 import { ParamsDialog } from "../editor/ParamsDialog";
 import { type ExportTarget, expandVariables, parameterKeys, parseCommand, resolvePath, substitute } from "../editor/params";
@@ -1676,6 +1676,18 @@ export function QueryTab({
   const sensitiveIn = useSensitive(rowsResult ? notesScope(rowsResult) : null);
   const exportSensitive = rowsResult?.columns?.filter(sensitiveIn).map((c) => c.name) ?? [];
   const masking = useSetting(maskSetting);
+  // The palette's Cancel and its shortcut stop this tab's run while it is shown.
+  const cancelNow = useRef(cancel);
+  cancelNow.current = cancel;
+  const stoppable = running || readingRows;
+  useEffect(() => {
+    if (!active || !stoppable) return;
+    const own = () => void cancelNow.current();
+    runningStatement.cancel = own;
+    return () => {
+      if (runningStatement.cancel === own) runningStatement.cancel = null;
+    };
+  }, [active, stoppable]);
 
   return (
     <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
@@ -1712,7 +1724,7 @@ export function QueryTab({
             <button
               onClick={() => void cancel()}
               disabled={!running && !readingRows}
-              title={t("Cancel the running statement")}
+              title={titleWithKeys(t("Cancel the running statement"), "editor.cancel")}
               aria-label={t("Cancel")}
             >
               {toolbar.label("cancel", t("Cancel"))}
