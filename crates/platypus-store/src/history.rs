@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use platypus_sql::security::{hide_secrets, mask_secrets, secrets_of};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -168,19 +169,24 @@ impl HistoryStore {
         Ok(Self { db })
     }
 
+    /// Adds `entry`, the passwords of a statement that sets credentials masked in its SQL and
+    /// its error ([`mask_secrets`]): the history is shown in the app and to agents.
     pub fn record(&self, entry: &NewHistoryEntry) -> Result<i64> {
+        let secrets = secrets_of(&entry.sql);
+        let error = entry.error.as_deref().map(|e| hide_secrets(e, &secrets));
+        let sql = mask_secrets(&entry.sql);
         self.db
             .execute(
                 "INSERT INTO history (connection_id, sql, started_at, duration_ms, rows, status, error, origin)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     entry.connection_id.to_string(),
-                    entry.sql,
+                    sql.as_ref(),
                     millis(entry.started_at),
                     clamp_i64(u64::try_from(entry.duration.as_millis()).unwrap_or(u64::MAX)),
                     entry.rows.map(clamp_i64),
                     entry.status.as_str(),
-                    entry.error,
+                    error,
                     entry.origin,
                 ],
             )
@@ -318,6 +324,32 @@ mod tests {
             ("by the app", None)
         );
         assert_eq!(search(None).len(), 2);
+    }
+
+    #[test]
+    fn masks_passwords_before_keeping_them() {
+        let h = HistoryStore::open_in_memory().unwrap();
+        h.record(&NewHistoryEntry {
+            error: Some("role \"x\" with password 'Sup3rS3cret' exists".to_owned()),
+            ..entry(
+                Uuid::new_v4(),
+                "CREATE ROLE x LOGIN PASSWORD 'Sup3rS3cret'",
+                HistoryStatus::Error,
+            )
+        })
+        .unwrap();
+        let kept = h
+            .search(&HistoryQuery {
+                limit: 1,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(kept[0].sql, "CREATE ROLE x LOGIN PASSWORD '********'");
+        assert!(
+            !kept[0].error.as_deref().unwrap().contains("Sup3rS3cret"),
+            "{:?}",
+            kept[0].error
+        );
     }
 
     #[test]

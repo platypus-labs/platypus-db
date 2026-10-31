@@ -14,6 +14,7 @@ cbc.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 keyring.workspace = true
 platypus-core.workspace = true
+platypus-sql.workspace = true
 ring.workspace = true
 rusqlite.workspace = true
 serde.workspace = true

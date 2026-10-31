@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use platypus_sql::security::{hide_secrets, mask_secrets, secrets_of};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -144,6 +145,37 @@ fn capped(text: &str, max: usize) -> String {
     }
 }
 
+/// The JSON `arguments` of a call with the passwords of statements that set credentials
+/// masked in each of its strings ([`mask_secrets`]), and the secrets found, to hide from the
+/// error. Arguments that are not JSON are masked as one text.
+fn masked_arguments(arguments: &str) -> (String, Vec<String>) {
+    fn walk(value: &mut serde_json::Value, secrets: &mut Vec<String>) {
+        match value {
+            serde_json::Value::String(s) => {
+                let found = secrets_of(s);
+                if !found.is_empty() {
+                    *s = mask_secrets(s).into_owned();
+                    secrets.extend(found);
+                }
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(|v| walk(v, secrets)),
+            serde_json::Value::Object(map) => map.values_mut().for_each(|v| walk(v, secrets)),
+            _ => {}
+        }
+    }
+    match serde_json::from_str::<serde_json::Value>(arguments) {
+        Ok(mut value) => {
+            let mut secrets = Vec::new();
+            walk(&mut value, &mut secrets);
+            if secrets.is_empty() {
+                return (arguments.to_owned(), secrets);
+            }
+            (value.to_string(), secrets)
+        }
+        Err(_) => (mask_secrets(arguments).into_owned(), secrets_of(arguments)),
+    }
+}
+
 impl AgentCallStore {
     pub fn open(path: &Path) -> Result<Self> {
         let db = open_log(path)?;
@@ -161,7 +193,11 @@ impl AgentCallStore {
         Ok(Self { db })
     }
 
+    /// Adds `call`, the passwords of the statements in its arguments masked, there and in its
+    /// error: the log is shown in the app and exported.
     pub fn record(&self, call: &NewAgentCall) -> Result<i64> {
+        let (arguments, secrets) = masked_arguments(&call.arguments);
+        let error = call.error.as_deref().map(|e| hide_secrets(e, &secrets));
         self.db
             .execute(
                 "INSERT INTO calls (session, agent, tool, connection, arguments, started_at,
@@ -172,11 +208,11 @@ impl AgentCallStore {
                     call.agent,
                     call.tool,
                     call.connection,
-                    capped(&call.arguments, ARGUMENT_CHARS),
+                    capped(&arguments, ARGUMENT_CHARS),
                     millis(call.started_at),
                     i64::try_from(call.duration.as_millis()).unwrap_or(i64::MAX),
                     call.status.as_str(),
-                    call.error.as_deref().map(|e| capped(e, ERROR_CHARS)),
+                    error.as_deref().map(|e| capped(e, ERROR_CHARS)),
                 ],
             )
             .map_err(db_error)?;
@@ -483,6 +519,52 @@ mod tests {
         assert_eq!(search(AgentCallQuery::default()), ["explain"]);
         s.clear().unwrap();
         assert_eq!(search(AgentCallQuery::default()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn masks_passwords_before_keeping_them() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        s.record(&NewAgentCall {
+            arguments:
+                r#"{"connection":"App db","sql":"CREATE ROLE x LOGIN PASSWORD 'Sup3r\"S3cret'"}"#
+                    .to_owned(),
+            error: Some("near 'Sup3r\"S3cret': syntax error".to_owned()),
+            ..call("one", "run_query", HistoryStatus::Error)
+        })
+        .unwrap();
+        s.record(&NewAgentCall {
+            arguments: "ALTER USER a IDENTIFIED BY 'hunter2' {".to_owned(),
+            ..call("one", "run_query", HistoryStatus::Ok)
+        })
+        .unwrap();
+        let calls = s
+            .search(&AgentCallQuery {
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            calls[0].arguments,
+            "ALTER USER a IDENTIFIED BY '********' {"
+        );
+        let args: serde_json::Value = serde_json::from_str(&calls[1].arguments).unwrap();
+        assert_eq!(args["sql"], "CREATE ROLE x LOGIN PASSWORD '********'");
+        assert_eq!(args["connection"], "App db");
+        let error = calls[1].error.as_deref().unwrap();
+        assert!(!error.contains("S3cret"), "{error}");
+        // Arguments with nothing to mask are kept as sent.
+        s.record(&call("one", "run_query", HistoryStatus::Ok))
+            .unwrap();
+        let last = s
+            .search(&AgentCallQuery {
+                limit: 1,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            last[0].arguments,
+            r#"{"connection":"App db","sql":"SELECT 1"}"#
+        );
     }
 
     #[test]

@@ -6257,6 +6257,7 @@ dependencies = [
  "chrono",
  "keyring",
  "platypus-core",
+ "platypus-sql",
  "ring",
  "rusqlite",
  "serde",
