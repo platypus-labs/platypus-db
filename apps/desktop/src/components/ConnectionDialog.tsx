@@ -220,6 +220,17 @@ function PortForwardFields({
   );
 }
 
+/** Enter in a single-line field saves the connection, as in every other dialog: not in a text
+ *  area, a button or a list, and not while an input method is composing text. */
+function enterSaves(e: React.KeyboardEvent): boolean {
+  if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return false;
+  if (e.nativeEvent.isComposing || e.keyCode === 229 || e.defaultPrevented) return false;
+  const target = e.target as HTMLElement;
+  if (target.tagName !== "INPUT") return false;
+  const type = (target as HTMLInputElement).type;
+  return !["checkbox", "radio", "button", "submit", "file", "range", "color"].includes(type);
+}
+
 export function ConnectionDialog({ initial, existing, projects, memberOf, driverChosen, onSaved, onClose }: Props) {
   const [conn, setConn] = useState(initial);
   const [inProjects, setInProjects] = useState(() => new Set(memberOf));
@@ -599,7 +610,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
         <form
           className="modal connection-dialog"
           onSubmit={save}
-          onKeyDown={(e) => e.key === "Escape" && onClose()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+            else if (enterSaves(e)) {
+              // Handled here, so the browser's own implicit submission does not save twice.
+              e.preventDefault();
+              e.currentTarget.requestSubmit();
+            }
+          }}
           // A required field left empty on another tab: show that tab.
           onInvalidCapture={(e) => {
             const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-page]")?.dataset.page;
