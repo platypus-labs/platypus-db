@@ -27,7 +27,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Variabili `${env:NAME}` e file `.env` | connections-env-pooler | ✅ |
 | Pooler in transaction mode (PgBouncer, Supavisor, Neon) | connections-env-pooler; conformance `works_through_a_transaction_pooler`; platypus-driver-pg `tests/pooler.rs`; pooler.test | ✅ |
 | Import da DBeaver (connessioni, `.dbp`, password, tunnel SSH) | import-dbeaver-project, connections-sqlite, qa-conn-reimport-project, qa2-jrn-ok-import-organise, qa2-jrn-import-relative-sqlite | ✅ |
-| Import da DataGrip, pgAdmin e `pg_service.conf` | solo unit in `crates/platypus-store` (`import.rs`, `jdbc.rs`) | 🟡 |
+| Import da DataGrip, pgAdmin e `pg_service.conf` | import-datagrip-sqlite, import-pgadmin-sqlite, import-pg-service-sqlite; unit in `crates/platypus-store` (`import.rs`, `jdbc.rs`) | ✅ |
 | Cartelle di connessioni e di progetti, trascinamento, Alt+Su/Giù | folders-sqlite, projects-folder-field-sqlite, qa-conn-ok-new-in-folder, railDrop.test, pointerDrag.test | ✅ |
 | TLS con `sslmode`, CA | qa-conn-ok-pg-tls-modes, qa-conn-sqlserver-tls-flag, qa-conn-libsql-url-tls, qa3-url-mysql-sslmode | ✅ |
 | Certificati client per PostgreSQL e MySQL | solo unit (`platypus-tls`, `platypus-store` `config.rs`) | 🟡 |
@@ -51,7 +51,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Eliminazione di una connessione; file delle connessioni corrotto | qa-conn-ok-delete-closes-tabs, qa-conn-ok-corrupt-file-kept | ✅ |
 | Istruzioni di init di un progetto condiviso: approvazione del testo esatto | projects-shared-sqlite (`init_approval`) | ✅ |
 | Prima apertura, database di esempio, schermata di benvenuto | sample-database, qa2-jrn-ok-first-day, welcome-recent-scripts-sqlite | ✅ |
-| Copia portatile (cartella `data` accanto all'eseguibile) | nessun E2E; solo riferimenti nei test unitari di `platypus-store` | ❌ |
+| Copia portatile (cartella `data` accanto all'eseguibile) | portable-data-folder | ✅ |
 | Gestori di pacchetti (winget, Homebrew, AUR, Flathub): avviso senza aggiornare | update-banner-package-manager (solo l'avviso) | 🟡 |
 
 ## Navigator e oggetti
@@ -85,7 +85,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Esegui statement (Ctrl+Invio) e script (Alt+X); errore indicato nel testo | smoke-sqlite, editor-sqlite, qa-sql-error-position-emoji, qa-sql-error-position-params; conformance `maps_errors_with_their_position` | ✅ |
 | Completamento: alias, CTE, sottoquery, JOIN dalle chiavi esterne | completion-sqlite, editor-sqlite, qa-sql-completion-schema-dot, sqlScope.test, typedWord.test | ✅ |
 | Formattatore | editor-sqlite, format.test, formatting.test | ✅ |
-| Comandi di riga, cursori multipli, folding, outline, Ctrl+clic su un nome | editor-more-sqlite | 🟡 |
+| Comandi di riga, cursori multipli, folding, outline, Ctrl+clic su un nome | editor-more-sqlite (cursori sopra e sotto, Ctrl+D, Esc; outline con titoli, clic e stato vuoto) | ✅ |
 | Parametri `:id`/`?`, variabili `${}`, `@set`, `@echo`, `@include`, `@export` | editor-more-sqlite, qa-sql-include-nested-relative, qa-sql-pg-include-bom, qa-xfer-export-directive-extension, qa-sql-sqlite-named-params | ✅ |
 | Snippet e storico delle query, file `.sql` | editor-more-sqlite, scripts-builder-sqlite, history.test, qa-sql-ok-history-duckdb, qa-sql-script-file-encodings | ✅ |
 | Ctrl+\ in un nuovo tab di risultato | editor-more-sqlite | ✅ |
@@ -93,7 +93,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Script con `psql`, `mysql`, `sqlcmd`, `sqlite3` locali | nessun E2E; solo unit in `apps/desktop/src-tauri` | 🟡 |
 | Esegui su più connessioni | editor-multi-run-sqlite, multiRun.test | ✅ |
 | Modalità Vim | vim-sqlite | ✅ |
-| Linter (colonne ignote, join senza condizione, `SELECT *` in produzione) e controllo ortografico dei commenti | editor-more-sqlite; conformance `compares_and_lints_schemas` | 🟡 |
+| Linter (colonne ignote, join senza condizione, `SELECT *` in produzione) e controllo ortografico dei commenti | editor-more-sqlite (messaggi al passaggio del mouse, solo produzione per `SELECT *`, impostazione off / commenti / tutto); conformance `compares_and_lints_schemas` | ✅ |
 | Script salvati per progetto (cartelle, trascinamento, connessione associata) | scripts-builder-sqlite, qa3-inst-upgrade-v020, welcome-recent-scripts-sqlite | ✅ |
 | Cancellazione di una query in corso, su ogni database | qa-sql-ok-cancel-sqlite, qa-perf-ok-cancel-postgres, qa-sql-clickhouse-cancel, qa-ora-cancel-plsql; conformance `cancels_running_queries`, `oracle_cancels_a_running_statement`, `cancels_blocking_commands` (Redis), `cancels_a_slow_search_and_goes_on` | ✅ |
 | Script lunghi: velocità, schede di risultato, chiusura del tab con statement in corso | qa-sql-script-throughput, qa-sql-pg-close-tab-running | ✅ |
@@ -107,7 +107,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Creazione di un nuovo tab con Ctrl+T e focus | qa2-jrn-new-editor-focus, qa-ui-project-new-tab | ✅ |
 | Notifica di sistema per una query oltre i 10 secondi con la finestra in secondo piano | nessun test | ❌ |
 | Notebook (celle Markdown/SQL, Run all, `.pnb`, export HTML) | notebook-sqlite, notebook.test | ✅ |
-| Query builder visuale | scripts-builder-sqlite | 🟡 |
+| Query builder visuale | scripts-builder-sqlite, query-builder-sqlite | ✅ |
 | Debugger PL/pgSQL (passo, breakpoint, variabili) | admin-debugger-postgres, debugger.test; conformance `debugger.rs` (`debugs_a_function`, `debugs_a_procedure_to_its_end`, `stopping_leaves_no_blocked_session`) | ✅ |
 
 ## Griglia e modifica
@@ -119,7 +119,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Filtri rapidi sul valore, Count rows | grid-sqlite, grid-more-sqlite | ✅ |
 | Copia con intestazioni, CSV, JSON, Markdown, HTML, INSERT, IN | grid-sqlite, qa-perf-copy-long-cell, qa-perf-copy-unloaded-rows, qa-grid-copy-paste-empty-sqlite | ✅ |
 | Trova nelle righe caricate (Ctrl+F) | grid-sqlite, textSearch.test | ✅ |
-| Pannello valore (F7): testo lungo, JSON, XML, esadecimale, immagini, salva | grid-text-json-sqlite, qa-perf-value-panel-huge, jsonText.test | 🟡 |
+| Pannello valore (F7): testo lungo, JSON, XML, esadecimale, immagini, salva | grid-text-json-sqlite, qa-perf-value-panel-huge, grid-value-panel-binary-sqlite (XML, esadecimale, salva: ok; l'immagine non si vede: bug 1), jsonText.test | 🟡 |
 | Colonne nascoste, bloccate, mosse, ridimensionate, layout per tabella | grid-more-sqlite | ✅ |
 | Formattazione condizionale | grid-formatting-sqlite, formatting.test | ✅ |
 | Colonne calcolate | grid-computed-sqlite, computed.test | ✅ |
@@ -178,14 +178,14 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Caricamento su URL firmato o bucket S3 / GCS / R2 / MinIO | solo unit in `platypus-transfer` (`s3.rs`, `export.rs`) | 🟡 |
 | Export di più tabelle o di uno schema | transfer-sqlite, qa-xfer-export-tables-collide, qa-xfer-mongo-export-tables | ✅ |
 | Import CSV, TSV, JSON, NDJSON | import-sqlite, qa-xfer-csv-ragged-rows, qa-xfer-csv-windows-1252, qa-xfer-csv-quoted-empty, qa-xfer-csv-decimal-precision, qa-xfer-json-nested-import, qa-xfer-ok-import-modes | ✅ |
-| Import Parquet ed Excel | qa-xfer-xlsx-date-in-text-column, qa2-dbs-ok-duckdb-files | 🟡 |
+| Import Parquet ed Excel | import-parquet-xlsx-sqlite (Parquet scritto dall'export, foglio scelto dall'elenco, file illeggibili), qa-xfer-xlsx-date-in-text-column, qa2-dbs-ok-duckdb-files | ✅ |
 | Import in tabella nuova con i tipi inferiti | import-sqlite, qa2-dbs-odbc-import-new-table | ✅ |
 | Modalità di import: aggiungi, sostituisci, aggiorna per chiave | qa-xfer-ok-import-modes, qa-xfer-upsert-repeated-key, qa-ora-import-update-mode, qa-xfer-clickhouse-replace; conformance `imports_data_files`, `check_import_modes` | ✅ |
 | Incolla CSV come tabella nuova | transfer-sqlite | ✅ |
 | Copia di una tabella in un altro database (ogni coppia) | transfer-sqlite, qa-xfer-ok-transfer-mssql, qa-xfer-copy-table-keys, qa-ora-copy-to-oracle, qa-xfer-mongo-copy, qa2-dbs-cockroach-copy-array; conformance `transfers_tables_between_databases` | ✅ |
 | Copia di uno schema con chiavi, indici, CHECK, viste, routine | transfer-sqlite, qa-xfer-migrate-fk-actions, qa-xfer-migrate-check-cast, qa-xfer-migrate-clickhouse-steps; conformance `migrates_tables_between_databases` | ✅ |
 | Profili di trasferimento: salva, rilancia, pianifica, segreti fuori dal file | profiles-export-sqlite, profiles-transfer-sqlite, profiles-schedule-sqlite, transferProfiles.test | ✅ |
-| Dati da file come database (CSV, JSON, Parquet, Excel) | import-sqlite (CSV trascinato), qa2-dbs-ok-duckdb-files | 🟡 |
+| Dati da file come database (CSV, JSON, Parquet, Excel) | data-files-as-databases-sqlite (JSON, NDJSON, Parquet trascinato, un foglio per tabella, file non valido), import-sqlite (CSV trascinato), qa2-dbs-ok-duckdb-files | ✅ |
 | Run SQL file… (file `.sql`, `.gz`, `.zst`) e Dump to SQL file… | sql-file-dump-sqlite; conformance `dumps_and_runs_sql_files`, `dump_round_trip`, `dumps_types_routines_and_sequences`, `delimiter_across_chunks` | ✅ |
 | Caricamenti ottimizzati (`COPY`, `LOAD DATA`, bulk copy SQL Server, appender DuckDB) | qa-perf-mssql-import-speed; conformance `bulk_loads_rows`, `value_fidelity.rs` (`mssql_bulk_*`) | ✅ |
 | Nessuna scrittura su connessioni in sola lettura (import, dati fittizi, copia) | qa-safe-readonly-import, qa-safe-readonly-generate-data, qa-safe-readonly-migrate, restrictions-sqlite | ✅ |
@@ -196,14 +196,14 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Funzionalità | Test che la copre | Stato |
 |---|---|---|
 | Impostazioni in schede, ricerca, ultima scheda ricordata | smoke-sqlite, qa-ui-settings-escape-blank, qa-ui-settings-reset-field, qa-ui-reset-tooltip, qa-ui-integer-settings, qa-ui-corrupt-settings, settingValue.test | ✅ |
-| Temi (Platypus, Classic, Nord, Dracula, Solarized, alto contrasto), colori propri, dimensione, densità, raggio, font | theme-sqlite, theme-upgrade-sqlite, qa-ui-theme-contrast, qa-ui-ok-shell-keys | 🟡 |
+| Temi (Platypus, Classic, Nord, Dracula, Solarized, alto contrasto), colori propri, dimensione, densità, raggio, font | theme-sqlite (anche alto contrasto: rapporti di contrasto), theme-upgrade-sqlite, qa-ui-theme-contrast, qa-ui-ok-shell-keys | ✅ |
 | Layout: navigator, risultati, barra dei tab, pannelli laterali | customize-layout-sqlite, qa-ui-sidebar-width-regrow | ✅ |
 | Icone (Lucide, Tabler, Phosphor) e animazioni | customize-motion-sqlite, iconSets.test | ✅ |
 | File tema: esporta, importa, anteprima | theme-files, themeFile.test | ✅ |
-| Sette lingue; tasti e numeri localizzati | languages-sqlite, qa-ui-live-language, qa-ui-italian-key-names, qa-ui-italian-store-errors, qa2-jrn-it-*, qa3-url-italian | 🟡 |
+| Sette lingue; tasti e numeri localizzati | languages-sqlite (tutte e sette, elenco delle lingue), qa-ui-live-language, qa-ui-italian-key-names, qa-ui-italian-store-errors, qa2-jrn-it-*, qa3-url-italian | 🟡 |
 | Scorciatoie modificabili, conflitti, ricerca per azione | qa-ui-editor-shortcut-unbind, qa-ui-shortcut-clash-scope, qa-ui-shortcut-comma, qa-ui-shortcut-plain-key, qa-ui-shortcuts-behind-modal, qa-ui-tooltip-shortcuts, qa-ui-run-shortcut-listed, shortcutKeys.test | ✅ |
 | Barra dell'editor: icone, nascondi pulsanti | shell-sqlite, qa-ui-toolbar-small-window, qa2-jrn-toolbar-wrap-transaction | ✅ |
-| Zoom dell'interfaccia (`Ctrl+=` / `-` / `0`) e font di editor e griglia | shell-tabs-sqlite | 🟡 |
+| Zoom dell'interfaccia (`Ctrl+=` / `-` / `0`) e font di editor e griglia | qa-ui-zoom-keys (zoom: passi, limiti, tastierino, salvataggio, riavvio), shell-tabs-sqlite; i font di editor e griglia: solo unit | 🟡 |
 | Progetti: rail, connessioni e tab per progetto, `Ctrl+1…` | projects-sqlite, projects-folder-field-sqlite | ✅ |
 | Barra superiore: progetto, connessione, colore del tipo, barra del titolo di sistema | theme-sqlite, visual-sqlite, windowDrag.test | 🟡 |
 | Palette dei comandi (`Ctrl+K`) | shell-sqlite, qa-ui-palette-highlight-emoji, qa2-jrn-palette-new-connection, fuzzy.test | ✅ |
@@ -223,7 +223,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Sync cifrata su cartella | sync-folder-sqlite; unit in `platypus-sync` | ✅ |
 | Progetti condivisi (Share project…, Open shared project…) | projects-shared-sqlite; `git_flow.rs` (`a_shared_projects_scripts_use_the_repository_around_them`) | ✅ |
 | Plugin WebAssembly (azioni, driver HTTP) | plugins-sqlite; `platypus-plugins` `tests/examples.rs` (`sql_tools_actions`, `toy_http_driver`, `a_driver_may_reach_the_host_of_its_connection`) | ✅ |
-| Blocco dell'app per inattività con master password | app-lock-sqlite (solo "Lock PlatypusDB") | 🟡 |
+| Blocco dell'app per inattività con master password | app-lock-idle-sqlite (orologio della pagina spostato), app-lock-sqlite | ✅ |
 
 ## Sicurezza e MCP / agenti
 
@@ -237,7 +237,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Transaction log e Restore… | transaction-log-sqlite, txLog.test | ✅ |
 | Istantanee prima di UPDATE/DELETE e "Snapshots before changes…" | snapshot-sqlite; conformance `snapshots_restore_changed_rows`, `snapshot_round_trip` | ✅ |
 | Mascheramento (Ctrl+Alt+M) | mask-sqlite, maskRules.test | ✅ |
-| Blocco dell'app e chiusura delle connessioni di produzione | app-lock-sqlite | 🟡 |
+| Blocco dell'app e chiusura delle connessioni di produzione | app-lock-idle-sqlite (la produzione si riconnette, lo sviluppo no), app-lock-sqlite | ✅ |
 | Divieto di modifica dei dati (solo SQL) | restrictions-sqlite | ✅ |
 | Segreti mai in chiaro: file, log, anteprime, URL copiati | qa-safe-ok-credentials, qa-conn-ok-copy-url-secrets, qa-conn-host-credentials-leak, adminUsers.test (password mascherate) | ✅ |
 | Server MCP (`platypus-db --mcp`), protocollo e strumenti | qa3-mcp-protocol, qa3-mcp-app-flag, qa3-mcp-app-mode, qa2-jrn-ok-agent-mcp; `platypus-mcp` `tests/stdio.rs` (`lists_tools_and_connections_without_secrets`, `serves_the_tools_over_stdio`, `describes_the_schema`) | ✅ |
@@ -266,7 +266,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Compare with… (script, Flyway, Liquibase) | qa3-schema-ok-roundtrip-sqlite, qa3-schema-ok-roundtrip-mariadb, qa3-schema-compare-*, schema-changelog-sqlite; conformance `qa3_schema_compare_round_trips`, `qa3_oracle_schema_compare_round_trip` | ✅ |
 | Compare data with… | schema-data-compare-sqlite; conformance `compares_table_data` | ✅ |
 | Schema history | schema-history-sqlite, schemaHistory.test | ✅ |
-| Migration status… (Flyway, Liquibase, Prisma, Alembic, Rails) | schema-migrations-sqlite (Flyway e Rails) | 🟡 |
+| Migration status… (Flyway, Liquibase, Prisma, Alembic, Rails) | schema-migrations-sqlite (Flyway, Rails, Liquibase XML / YAML / SQL, Prisma, Alembic) | ✅ |
 | Crea vista / funzione / trigger / sequenza | schema-objects-sqlite, schema-objects-postgres | ✅ |
 | Commenti del database dalla scheda dell'oggetto | comments-postgres; conformance `writes_comments` | ✅ |
 | Schemi di 300 tabelle: prestazioni degli strumenti | qa3-schema-perf-300-pg | ✅ |
@@ -289,7 +289,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Backup… e Restore… (PostgreSQL, MySQL) | admin-backup-postgres, admin-backup-mysql | ✅ |
 | Attività del server su SQL Server (utenti, statistiche, parametri) | admin-sessions-mssql soltanto | 🟡 |
 | Utenti e ruoli su ClickHouse e SQL Server | solo conformance `manages_users_roles_and_privileges`; nessun E2E | 🟡 |
-| Attività pianificate: script, export, backup; Run now, ritenzione, ritentativi | schedules-sqlite, adminSchedules.test, profiles-schedule-sqlite | 🟡 |
+| Attività pianificate: script, export, backup; Run now, ritenzione, ritentativi | schedules-sqlite, schedules-missed-run-sqlite (orari persi, disabilitati, ritentativo registrato; il secondo tentativo non viene atteso), adminSchedules.test, profiles-schedule-sqlite | 🟡 |
 | Attività pianificate: backup di database PostgreSQL / MySQL e fuso orario | nessun test (solo script ed export su SQLite) | ❌ |
 
 ## Driver e database
@@ -328,7 +328,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Download e installazione vera dell'aggiornamento | nessun test (lo scenario non scarica nulla) | ❌ |
 | Installer di Windows (MSI/NSIS), disinstallazione, dati dell'utente conservati | nessun test | ❌ |
 | Aggiornamento da ogni versione pubblicata (connessioni, password nel keychain, script, impostazioni) | solo da 0.1.0 e 0.2.0, con i file e non con l'installer | 🟡 |
-| Copia portatile e suo aggiornamento | nessun test | ❌ |
+| Copia portatile e suo aggiornamento | portable-data-folder (riavvio e sostituzione dell'eseguibile) | ✅ |
 | Pacchetti Linux (AppImage, deb, Flatpak, AUR) e macOS | nessun test (serve Linux / un Mac) | ❌ |
 
 ## Database: quali test li provano
@@ -362,22 +362,30 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | # | Buco | Stato | Test da scrivere |
 |---|---|---|---|
 | 1 | Installer di Windows e aggiornamento vero: installare, aggiornare da una versione pubblicata, disinstallare, con connessioni, password del keychain, script e impostazioni che restano | ❌ | Procedura di collaudo su macchina vera (gruppo S, "Installer e aggiornamento"), con uno script che prepara il profilo della versione vecchia; `qa4-inst-upgrade-real-installer` |
-| 2 | Copia portatile: cartella `data` accanto all'eseguibile, dati e log lì dentro, aggiornamento sostituendo l'eseguibile | ❌ | E2E `portable-data-folder` (avvio con `data` vuota, una connessione e uno script salvati, riavvio, controllo dei file) |
-| 3 | Blocco per inattività con master password (chiude le connessioni di produzione) | 🟡 | E2E `app-lock-idle-sqlite` con i minuti ridotti da impostazione di prova |
-| 4 | Attività pianificate: backup PostgreSQL / MySQL, fuso orario, ritentativo dopo un errore, esecuzione di un orario perso alla riapertura | ❌ | E2E `schedules-backup-postgres`, `schedules-missed-run-sqlite` |
+| 2 | Copia portatile: cartella `data` accanto all'eseguibile, dati e log lì dentro, aggiornamento sostituendo l'eseguibile | ✅ `portable-data-folder` | E2E `portable-data-folder` (avvio con `data` vuota, una connessione e uno script salvati, riavvio, controllo dei file) |
+| 3 | Blocco per inattività con master password (chiude le connessioni di produzione) | ✅ `app-lock-idle-sqlite` | E2E `app-lock-idle-sqlite` con i minuti ridotti da impostazione di prova |
+| 4 | Attività pianificate: backup PostgreSQL / MySQL, fuso orario, ritentativo dopo un errore, esecuzione di un orario perso alla riapertura | 🟡 `schedules-missed-run-sqlite` fatto; resta `schedules-backup-postgres` | E2E `schedules-backup-postgres`, `schedules-missed-run-sqlite` |
 | 5 | Caricamento su bucket (S3, GCS, R2, MinIO) e su URL firmato | 🟡 | Aggiungere MinIO a `docker/compose.yml` (profilo `s3`) ed E2E `qa-xfer-upload-minio`; conformance per l'URL firmato su un server locale |
 | 6 | Manutenzione, parametri, dashboard, utenti e statistiche su SQL Server, MariaDB e ClickHouse; utenti e ruoli solo provati a livello di conformance | 🟡 / ❌ | E2E `admin-users-mssql`, `admin-users-clickhouse`, `admin-parameters-mysql`, `admin-parameters-mssql`, `admin-dashboard-mysql`, `admin-maintenance-{postgres,mysql,mssql}` |
 | 7 | Tunnel SSH con agente SSH, e certificati client per PostgreSQL e MySQL | ❌ / 🟡 | Conformance `ssh_agent_tunnel` in `platypus-net`; conformance `client_certificate_postgres`/`_mysql` con container configurati per il TLS reciproco |
 | 8 | Server MCP su Oracle, SQL Server, ClickHouse, Redis, Elasticsearch, Cassandra (sola lettura e conferma delle scritture) | 🟡 | Estendere `qa3-mcp-readonly-matrix` e `qa-safe-ok-mcp-servers` a tutti i driver; conformance `agents_read_only_*` su ognuno |
-| 9 | Import da DataGrip, pgAdmin e `pg_service.conf`; password da `.pgpass` | 🟡 | E2E `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` con file di prova |
+| 9 | Import da DataGrip, pgAdmin e `pg_service.conf`; password da `.pgpass` | 🟡 import fatti (`import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`); resta `qa-conn-pgpass-postgres` | E2E `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` con file di prova |
 | 10 | Export Markdown, HTML, Parquet, Excel, JSON, SQL INSERT: uno scenario che li scrive tutti e li rilegge (anche su un database di rete); compressione zstd | 🟡 | E2E `export-formats-postgres` con riletture; conformance `exports_every_format_and_reads_it_back` |
-| 11 | Import Parquet ed Excel (fogli come tabelle) e dati da file come database (JSON, Parquet, Excel) | 🟡 | E2E `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` |
+| 11 | Import Parquet ed Excel (fogli come tabelle) e dati da file come database (JSON, Parquet, Excel) | ✅ `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` | E2E `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` |
 | 12 | Notifica di sistema per una query lunga; icona nel vassoio (Quick query); Linux e macOS | ❌ | Collaudo a mano con lista scritta (non automatizzabile con CDP); `windows-sqlite` già prova la finestra |
 | 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | ❌ | Conformance con un server compatibile (DuckDB ADBC come driver di prova per l'ADBC generico); Db2 con il container IBM; gli altri solo a mano |
 | 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 | E2E `editor-cli-script-postgres` (il client c'è già nell'immagine di prova) |
-| 15 | Migration status con Liquibase, Prisma, Alembic | 🟡 | Estendere `schema-migrations-sqlite` con tre cartelle di prova |
+| 15 | Migration status con Liquibase, Prisma, Alembic | ✅ `schema-migrations-sqlite` | Estendere `schema-migrations-sqlite` con tre cartelle di prova |
 | 16 | Query across databases oltre i limiti (512 MB) e con più driver (PostgreSQL con MySQL) | 🟡 / ❌ | E2E `analysis-across-postgres-mysql` |
-| 17 | Pannello mappa su PostGIS e MySQL; pannello valore con XML, immagini e salvataggio | 🟡 | E2E `grid-map-postgres`, `grid-value-panel-binary-sqlite` |
-| 18 | Query builder visuale: filtri, colonne, esecuzione | 🟡 | E2E `query-builder-sqlite` (join, WHERE, esegui, apri nell'editor) |
-| 19 | Temi con alto contrasto, zoom dell'interfaccia, sette lingue (oltre l'italiano) | 🟡 | Estendere `theme-sqlite` e `languages-sqlite`; E2E `qa-ui-zoom-keys` |
-| 20 | Linter e controllo ortografico, outline, cursori multipli | 🟡 | Estendere `editor-more-sqlite` con un caso per ognuno |
+| 17 | Pannello mappa su PostGIS e MySQL; pannello valore con XML, immagini e salvataggio | 🟡 `grid-value-panel-binary-sqlite` fatto (bug 1: l'immagine non si vede); resta `grid-map-postgres` | E2E `grid-map-postgres`, `grid-value-panel-binary-sqlite` |
+| 18 | Query builder visuale: filtri, colonne, esecuzione | ✅ `query-builder-sqlite` | E2E `query-builder-sqlite` (join, WHERE, esegui, apri nell'editor) |
+| 19 | Temi con alto contrasto, zoom dell'interfaccia, sette lingue (oltre l'italiano) | ✅ `theme-sqlite`, `languages-sqlite`, `qa-ui-zoom-keys` | Estendere `theme-sqlite` e `languages-sqlite`; E2E `qa-ui-zoom-keys` |
+| 20 | Linter e controllo ortografico, outline, cursori multipli | ✅ `editor-more-sqlite` | Estendere `editor-more-sqlite` con un caso per ognuno |
+
+## Bug trovati dal collaudo
+
+Scenari scritti dal gruppo S che falliscono perché è l'app a sbagliare: lo scenario resta com'è e documenta il bug. Stato `aperto` finché la correzione non è unita in `main`.
+
+| # | Area | Bug | Scenario | Stato |
+|---|---|---|---|---|
+| 1 | Pannello valore (F7) | Un valore BLOB che è un'immagine (PNG, JPEG, …) non si vede: il pannello la mostra con un URL `blob:` e la CSP di `tauri.conf.json` ha `img-src 'self' data:`, senza `blob:`, quindi la WebView la blocca (l'elemento `img.value-image` resta a larghezza 0). Provato anche a mano: lo stesso PNG con un URL `data:` si carica. Correzione: aggiungere `blob:` a `img-src`, oppure creare l'URL `data:` in `ValuePanel.tsx`. | grid-value-panel-binary-sqlite | aperto |
