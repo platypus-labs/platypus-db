@@ -486,14 +486,35 @@ fn outcome(sql: &str, schema: &Schema) -> Outcome {
     }
 }
 
-/// `sql` prepared and started, with the schema of its result.
+/// `sql` prepared and started, with the schema of its result and its `TIMETZ` columns.
+///
+/// Arrow's time of day has no offset: a query with `TIMETZ` columns runs with them as text.
+/// The prepared statement knows its result types before it runs, so every statement runs
+/// once, and its side effects (`nextval`, a file read) happen once.
 fn open<'c>(
     conn: &'c duckdb::Connection,
     sql: &str,
-) -> duckdb::Result<(duckdb::Statement<'c>, Schema)> {
+) -> duckdb::Result<(duckdb::Statement<'c>, Schema, Vec<usize>)> {
     let mut stmt = conn.prepare(sql)?;
+    let zoned = types::time_tz_columns(&stmt, stmt.column_count());
+    if !zoned.is_empty()
+        && let Some(query) = types::plain_query(sql)
+        && let Some(text) =
+            column_names(conn, query).and_then(|names| types::timetz_query(query, &names, &zoned))
+        && let Ok(text) = conn.prepare(&text)
+    {
+        stmt = text;
+    }
     let schema = stmt.stream_arrow([])?.get_schema();
-    Ok((stmt, Schema::clone(&schema)))
+    Ok((stmt, Schema::clone(&schema), zoned))
+}
+
+/// The names of the result columns of the plain query `query`, from `DESCRIBE`, which binds
+/// it without running it.
+fn column_names(conn: &duckdb::Connection, query: &str) -> Option<Vec<String>> {
+    let mut stmt = conn.prepare(&format!("DESCRIBE {query}")).ok()?;
+    let names = stmt.query_map([], |row| row.get::<_, String>(0)).ok()?;
+    names.collect::<duckdb::Result<_>>().ok()
 }
 
 fn run(conn: &duckdb::Connection, command: Command) {
@@ -503,7 +524,7 @@ fn run(conn: &duckdb::Connection, command: Command) {
         reply,
         ..
     } = command;
-    let (mut stmt, mut schema) = match open(conn, &sql) {
+    let (stmt, schema, zoned_times) = match open(conn, &sql) {
         Ok(opened) => opened,
         Err(e) => {
             let _ = reply.send(Err(map_error(&e, &sql)));
@@ -515,19 +536,6 @@ fn run(conn: &duckdb::Connection, command: Command) {
         kind => {
             let _ = reply.send(row_count(&stmt, kind).map_err(|e| map_error(&e, &sql)));
             return;
-        }
-    }
-    // Arrow's time of day has no offset: a query with `TIMETZ` columns is read with them as
-    // text. DuckDB runs one result per connection, so the first one is closed before.
-    let zoned_times = types::time_tz_columns(&stmt, schema.fields().len());
-    if let Some(text_sql) = types::timetz_query(&sql, &schema, &zoned_times) {
-        drop(stmt);
-        match open(conn, &text_sql).or_else(|_| open(conn, &sql)) {
-            Ok(opened) => (stmt, schema) = opened,
-            Err(e) => {
-                let _ = reply.send(Err(map_error(&e, &sql)));
-                return;
-            }
         }
     }
     let schema = types::tag_schema(&schema, &stmt, &zoned_times);

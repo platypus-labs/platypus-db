@@ -628,6 +628,19 @@ async fn times_with_a_zone_keep_their_offset() {
         ("TIME WITH TIME ZONE", "10:00:00-05:30")
     );
     assert_eq!(got[2].2, "2");
+    // The query runs once: its sequence moves by one.
+    run(&conn, "CREATE SEQUENCE once_seq").await;
+    let got = decoded(
+        &conn,
+        "SELECT nextval('once_seq') AS n, TIMETZ '01:02:03+01' AS t",
+    )
+    .await;
+    assert_eq!((got[0].2.as_str(), got[1].2.as_str()), ("1", "01:02:03+01"));
+    let got = decoded(&conn, "SELECT currval('once_seq') AS c").await;
+    assert_eq!(got[0].2, "1");
+    // A statement that is no plain query keeps its TIMETZ column as it is.
+    let got = decoded(&conn, "EXPLAIN SELECT TIMETZ '01:02:03+01'").await;
+    assert_eq!(got.len(), 2, "{got:?}");
 }
 
 /// The text the grid shows for a value, written back with the data editor's literals, is the

@@ -130,9 +130,9 @@ pub fn time_tz_columns(stmt: &duckdb::Statement<'_>, count: usize) -> Vec<usize>
         .collect()
 }
 
-/// The query `sql` with its `zoned` columns as text (`03:04:05+02`); `None` when `zoned` is
-/// empty or `sql` is no plain query.
-pub fn timetz_query(sql: &str, schema: &Schema, zoned: &[usize]) -> Option<String> {
+/// `sql` up to the end of its statement, without its `;` and what comes after, when it is a
+/// plain query, one that can be read from as a subquery; `None` for other statements.
+pub fn plain_query(sql: &str) -> Option<&str> {
     let tokens: Vec<_> = Lexer::new(sql, Dialect::DuckDb)
         .filter(|t| {
             !matches!(
@@ -142,28 +142,34 @@ pub fn timetz_query(sql: &str, schema: &Schema, zoned: &[usize]) -> Option<Strin
         })
         .collect();
     let first = tokens.first().filter(|t| t.kind == TokenKind::Word)?;
-    if zoned.is_empty()
-        || !["SELECT", "WITH", "FROM", "VALUES", "TABLE"]
-            .contains(&first.text(sql).to_ascii_uppercase().as_str())
+    if !["SELECT", "WITH", "FROM", "VALUES", "TABLE"]
+        .contains(&first.text(sql).to_ascii_uppercase().as_str())
     {
         return None;
     }
-    // Up to the end of the statement, without its `;` and what comes after.
     let end = tokens
         .last()
         .filter(|t| t.text(sql) == ";")
         .map_or(tokens.last()?.end, |t| t.start);
-    let replaced: Vec<String> = zoned
+    Some(&sql[..end])
+}
+
+/// The plain query `query`, whose result columns are `names`, with its `zoned` columns as
+/// text (`03:04:05+02`); `None` when `zoned` is empty or names a column `names` has not.
+pub fn timetz_query(query: &str, names: &[String], zoned: &[usize]) -> Option<String> {
+    if zoned.is_empty() {
+        return None;
+    }
+    let replaced = zoned
         .iter()
         .map(|&i| {
-            let name = Dialect::DuckDb.quote_ident(schema.field(i).name());
-            format!("CAST({name} AS VARCHAR) AS {name}")
+            let name = Dialect::DuckDb.quote_ident(names.get(i)?);
+            Some(format!("CAST({name} AS VARCHAR) AS {name}"))
         })
-        .collect();
+        .collect::<Option<Vec<String>>>()?;
     Some(format!(
-        "SELECT * REPLACE ({}) FROM (\n{}\n)",
-        replaced.join(", "),
-        &sql[..end]
+        "SELECT * REPLACE ({}) FROM (\n{query}\n)",
+        replaced.join(", ")
     ))
 }
 /// The values of a `UNION` column as DuckDB prints them: the value of the member each row
