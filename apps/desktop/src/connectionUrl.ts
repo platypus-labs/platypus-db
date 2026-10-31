@@ -111,7 +111,13 @@ export function withParsed(conn: SavedConnection, parsed: ParsedConnection): Sav
     ...(parsed.driver !== "postgres" && conn.pgpass ? { pgpass: false, save_password: true } : {}),
   };
   const fileName = parsed.database.split(/[\\/]/).pop() ?? "";
-  const named = parsed.driver === "sqlite" || parsed.driver === "duckdb" ? fileName : parsed.database.split("?")[0];
+  // Redis' database is a number (/3): it does not name the server.
+  const named =
+    parsed.driver === "sqlite" || parsed.driver === "duckdb"
+      ? fileName
+      : parsed.driver === "redis"
+        ? ""
+        : parsed.database.split("?")[0];
   return { ...next, name: conn.name || named || parsed.host };
 }
 
