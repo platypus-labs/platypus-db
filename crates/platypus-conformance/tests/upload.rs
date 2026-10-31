@@ -82,7 +82,7 @@ fn amz_now() -> String {
     )
 }
 
-/// `GET /<bucket>/<key>` signed with SigV4 (header form); the status and body.
+/// `GET /{bucket}/{key}` signed with `SigV4` (header form); the status and body.
 fn get_object(endpoint: &str, bucket: &str, key: &str) -> (u16, Vec<u8>) {
     let host = endpoint.trim_start_matches("http://");
     let path = format!("/{bucket}/{key}");
@@ -121,7 +121,7 @@ fn get_object(endpoint: &str, bucket: &str, key: &str) -> (u16, Vec<u8>) {
 fn reachable(endpoint: &str) -> bool {
     use std::net::ToSocketAddrs as _;
     let addr = endpoint.trim_start_matches("http://");
-    addr.to_socket_addrs().ok().is_some_and(|mut all| {
+    addr.to_socket_addrs().is_ok_and(|mut all| {
         all.any(|a| TcpStream::connect_timeout(&a, std::time::Duration::from_secs(2)).is_ok())
     })
 }
@@ -172,7 +172,10 @@ fn uploads_an_export_to_a_bucket_and_reads_it_back() {
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
     assert_eq!(body, std::fs::read(&path).unwrap());
     let text = String::from_utf8(body).unwrap();
-    assert!(text.starts_with("id,name\n1,\"a,b\"\n2,\n3,naive"), "{text}");
+    assert!(
+        text.starts_with("id,name\n1,\"a,b\"\n2,\n3,naive"),
+        "{text}"
+    );
 
     // Without a prefix the object sits at the root of the bucket; a gzip export is uploaded
     // compressed, under the compressed name.
@@ -292,7 +295,9 @@ fn uploads_an_export_to_a_signed_url() {
 
     // Nobody listening: a connection error, again without the signature.
     let options = ExportOptions {
-        upload_url: Some("http://127.0.0.1:1/bucket/out.csv?X-Amz-Signature=secret-signature".to_owned()),
+        upload_url: Some(
+            "http://127.0.0.1:1/bucket/out.csv?X-Amz-Signature=secret-signature".to_owned(),
+        ),
         ..ExportOptions::default()
     };
     let err = export(&dir.path().join("dead.csv"), &options)

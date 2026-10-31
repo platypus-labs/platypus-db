@@ -30,9 +30,9 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Import da DataGrip, pgAdmin e `pg_service.conf` | solo unit in `crates/platypus-store` (`import.rs`, `jdbc.rs`) | 🟡 |
 | Cartelle di connessioni e di progetti, trascinamento, Alt+Su/Giù | folders-sqlite, projects-folder-field-sqlite, qa-conn-ok-new-in-folder, railDrop.test, pointerDrag.test | ✅ |
 | TLS con `sslmode`, CA | qa-conn-ok-pg-tls-modes, qa-conn-sqlserver-tls-flag, qa-conn-libsql-url-tls, qa3-url-mysql-sslmode | ✅ |
-| Certificati client per PostgreSQL e MySQL | solo unit (`platypus-tls`, `platypus-store` `config.rs`) | 🟡 |
+| Certificati client per PostgreSQL e MySQL | conformance `client_certificate.rs` (`client_certificate_postgres`, `client_certificate_mysql`, con i container `postgres-mtls` e `mysql-mtls`, profilo `tls`); unit (`platypus-tls`, `platypus-store` `config.rs`) | ✅ |
 | Tunnel SSH (password, chiave, jump host, `known_hosts`) | platypus-net `tests/tunnel.rs` (`forwards_with_a_password_or_a_key`, `goes_through_a_jump_host`, `refuses_a_changed_server_key`, `connects_databases_through_the_tunnel`); E2E del solo form: connections-sqlite, qa-conn-ssh-port-clear, qa-conn-ssh-timeout | ✅ |
-| Tunnel SSH con agente SSH (e Pageant) | nessun test (il tunnel di prova prova password e chiave) | ❌ |
+| Tunnel SSH con agente SSH (e Pageant) | platypus-net `tests/ssh_agent.rs` (`ssh_agent_tunnel`: agente servito dal test sulla pipe `openssh-ssh-agent` o su `SSH_AUTH_SOCK`; Pageant non provato) | ✅ |
 | Network profiles condivisi fra connessioni | connections-sqlite | 🟡 |
 | Proxy SOCKS5 / HTTP, anche davanti all'SSH | connection-proxy; `tunnel.rs` (`socks5_proxy`, `reaches_the_ssh_server_through_a_proxy`, `forwards_through_a_proxy_alone`) | ✅ |
 | Port forward da `kubectl` e `aws ssm` | cloud-sign-in; conformance `cloud_cli.rs` (`reaches_through_the_forward`) | ✅ |
@@ -175,7 +175,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Export Markdown, HTML, XML | qa-xfer-xml-control-chars; Markdown e HTML senza scenario | 🟡 |
 | Export in streaming, annullato, con limiti, errore col nome giusto | qa-xfer-ok-export-cancel-limits, qa-xfer-export-error-part-path, qa-xfer-cancel-without-notice; conformance `streams_a_million_rows_to_files`, `reads_and_exports_cells_of_tens_of_megabytes` | ✅ |
 | Compressione gzip / zstd | qa-xfer-export-directive-extension (gzip), sql-file-dump-sqlite (gzip); zstd solo unit | 🟡 |
-| Caricamento su URL firmato o bucket S3 / GCS / R2 / MinIO | solo unit in `platypus-transfer` (`s3.rs`, `export.rs`) | 🟡 |
+| Caricamento su URL firmato o bucket S3 / GCS / R2 / MinIO | conformance `upload.rs` (`uploads_an_export_to_a_bucket_and_reads_it_back`, `refuses_wrong_keys_and_a_missing_bucket` su un archivio S3 locale, profilo `s3`; `uploads_an_export_to_a_signed_url` su un server HTTP del test); unit in `platypus-transfer`; manca l'E2E dal form | 🟡 |
 | Export di più tabelle o di uno schema | transfer-sqlite, qa-xfer-export-tables-collide, qa-xfer-mongo-export-tables | ✅ |
 | Import CSV, TSV, JSON, NDJSON | import-sqlite, qa-xfer-csv-ragged-rows, qa-xfer-csv-windows-1252, qa-xfer-csv-quoted-empty, qa-xfer-csv-decimal-precision, qa-xfer-json-nested-import, qa-xfer-ok-import-modes | ✅ |
 | Import Parquet ed Excel | qa-xfer-xlsx-date-in-text-column, qa2-dbs-ok-duckdb-files | 🟡 |
@@ -311,9 +311,9 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Supabase, Neon, AlloyDB (profili del driver PostgreSQL) | connectionUrl.test, pooler.test | 🟡 |
 | Trino (ADBC) | trino-adbc, qa2-dbs-trino-*; conformance `bridges.rs` (`trino_*`, `qa_fixdbs_trino_*`) | ✅ |
 | Snowflake, BigQuery, Databricks | nessun test (servono account cloud) | ❌ |
-| ADBC con una libreria scelta | drivers-registry (registro finto); `platypus-driver-adbc` unit | 🟡 |
+| ADBC con una libreria scelta | conformance `adbc_generic.rs` (driver ADBC di SQLite scaricato dal registro: query, errori, libreria mancante o non valida); drivers-registry (registro finto). Il driver di DuckDB non si carica: vedi "Bug trovati dal collaudo" | 🟡 |
 | Oracle (Instant Client scaricato) | oracle-instantclient, qa-ora-*; conformance `oracle.rs` | ✅ |
-| IBM Db2 (driver ODBC installato al primo uso) | nessun test | ❌ |
+| IBM Db2 (driver ODBC installato al primo uso) | nessun test: serve il driver ODBC di IBM (installazione manuale) e il container `icr.io/db2_community/db2` (oltre 2 GB, avvio di minuti): non pratico in locale | ❌ |
 | ODBC generico | odbc-sqlserver, qa2-dbs-odbc-*; conformance `odbc.rs` | ✅ |
 | Aggiornamento e versioni dei driver scaricati | drivers-versions, drivers-versions-auto, drivers-versions-quiet, drivers-versions-recent | ✅ |
 | Compatibilità dei driver con versioni vecchie del server | driverCompat.test; conformance su `postgres-12`, `postgres-14`, `postgres-16`, `sqlserver-2017`, `mongo-5` (profilo `versions`) | ✅ |
@@ -365,15 +365,15 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | 2 | Copia portatile: cartella `data` accanto all'eseguibile, dati e log lì dentro, aggiornamento sostituendo l'eseguibile | ❌ | E2E `portable-data-folder` (avvio con `data` vuota, una connessione e uno script salvati, riavvio, controllo dei file) |
 | 3 | Blocco per inattività con master password (chiude le connessioni di produzione) | 🟡 | E2E `app-lock-idle-sqlite` con i minuti ridotti da impostazione di prova |
 | 4 | Attività pianificate: backup PostgreSQL / MySQL, fuso orario, ritentativo dopo un errore, esecuzione di un orario perso alla riapertura | ❌ | E2E `schedules-backup-postgres`, `schedules-missed-run-sqlite` |
-| 5 | Caricamento su bucket (S3, GCS, R2, MinIO) e su URL firmato | 🟡 | Aggiungere MinIO a `docker/compose.yml` (profilo `s3`) ed E2E `qa-xfer-upload-minio`; conformance per l'URL firmato su un server locale |
+| 5 | Caricamento su bucket (S3, GCS, R2, MinIO) e su URL firmato | 🟡 | Fatto: servizio `s3` (SeaweedFS: MinIO non pubblica più immagini con tag fisso) in `docker/compose.yml`, profilo `s3`, e conformance `upload.rs`. Resta l'E2E `qa-xfer-upload-minio` dal form |
 | 6 | Manutenzione, parametri, dashboard, utenti e statistiche su SQL Server, MariaDB e ClickHouse; utenti e ruoli solo provati a livello di conformance | 🟡 / ❌ | E2E `admin-users-mssql`, `admin-users-clickhouse`, `admin-parameters-mysql`, `admin-parameters-mssql`, `admin-dashboard-mysql`, `admin-maintenance-{postgres,mysql,mssql}` |
-| 7 | Tunnel SSH con agente SSH, e certificati client per PostgreSQL e MySQL | ❌ / 🟡 | Conformance `ssh_agent_tunnel` in `platypus-net`; conformance `client_certificate_postgres`/`_mysql` con container configurati per il TLS reciproco |
+| 7 | Tunnel SSH con agente SSH, e certificati client per PostgreSQL e MySQL | ✅ | Fatto: `ssh_agent_tunnel` in `platypus-net`; `client_certificate_postgres`/`_mysql` con i container `postgres-mtls` e `mysql-mtls` (profilo `tls`, certificati di prova in `docker/tls`) |
 | 8 | Server MCP su Oracle, SQL Server, ClickHouse, Redis, Elasticsearch, Cassandra (sola lettura e conferma delle scritture) | 🟡 | Estendere `qa3-mcp-readonly-matrix` e `qa-safe-ok-mcp-servers` a tutti i driver; conformance `agents_read_only_*` su ognuno |
 | 9 | Import da DataGrip, pgAdmin e `pg_service.conf`; password da `.pgpass` | 🟡 | E2E `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` con file di prova |
 | 10 | Export Markdown, HTML, Parquet, Excel, JSON, SQL INSERT: uno scenario che li scrive tutti e li rilegge (anche su un database di rete); compressione zstd | 🟡 | E2E `export-formats-postgres` con riletture; conformance `exports_every_format_and_reads_it_back` |
 | 11 | Import Parquet ed Excel (fogli come tabelle) e dati da file come database (JSON, Parquet, Excel) | 🟡 | E2E `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` |
 | 12 | Notifica di sistema per una query lunga; icona nel vassoio (Quick query); Linux e macOS | ❌ | Collaudo a mano con lista scritta (non automatizzabile con CDP); `windows-sqlite` già prova la finestra |
-| 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | ❌ | Conformance con un server compatibile (DuckDB ADBC come driver di prova per l'ADBC generico); Db2 con il container IBM; gli altri solo a mano |
+| 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | 🟡 | ADBC generico: fatto con il driver di SQLite del registro (`adbc_generic.rs`; quello di DuckDB non si carica, bug aperto). Db2: non pratico (driver ODBC manuale, container di oltre 2 GB). Snowflake, BigQuery, Databricks: solo a mano |
 | 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 | E2E `editor-cli-script-postgres` (il client c'è già nell'immagine di prova) |
 | 15 | Migration status con Liquibase, Prisma, Alembic | 🟡 | Estendere `schema-migrations-sqlite` con tre cartelle di prova |
 | 16 | Query across databases oltre i limiti (512 MB) e con più driver (PostgreSQL con MySQL) | 🟡 / ❌ | E2E `analysis-across-postgres-mysql` |
@@ -381,3 +381,10 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | 18 | Query builder visuale: filtri, colonne, esecuzione | 🟡 | E2E `query-builder-sqlite` (join, WHERE, esegui, apri nell'editor) |
 | 19 | Temi con alto contrasto, zoom dell'interfaccia, sette lingue (oltre l'italiano) | 🟡 | Estendere `theme-sqlite` e `languages-sqlite`; E2E `qa-ui-zoom-keys` |
 | 20 | Linter e controllo ortografico, outline, cursori multipli | 🟡 | Estendere `editor-more-sqlite` con un caso per ognuno |
+
+## Bug trovati dal collaudo
+
+| # | Area | Bug | Test | Stato |
+|---|---|---|---|---|
+| B1 | ADBC generico | La libreria scelta deve esportare `AdbcDriverInit`: nel form non c'è il campo "entrypoint", quindi il driver ADBC di DuckDB (`duckdb_adbc_init`) non si carica ("GetProcAddress failed") | `adbc_generic.rs` `generic_adbc_loads_duckdb` (ignorato) | aperto |
+| B2 | Certificati client MySQL | Con un file del certificato client mancante l'errore è "Input/output error: file not found" senza il nome del file (PostgreSQL lo dice) | `client_certificate.rs` `client_certificate_mysql` (il controllo sul nome è solo per PostgreSQL) | aperto |

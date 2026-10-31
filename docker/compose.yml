@@ -530,3 +530,55 @@ services:
       interval: 3s
       timeout: 5s
       retries: 40
+
+  # PostgreSQL that only accepts a client certificate (CN=platypus) signed by the test CA in
+  # docker/tls, on 46433: the client-certificate login (crates/platypus-conformance/tests/
+  # client_certificate.rs). The key is copied so that it can be owned by `postgres` with mode 600.
+  postgres-mtls:
+    image: postgres:17
+    profiles: [tls]
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        mkdir -p /tls && cp /certs/*.crt /certs/*.key /certs/*.conf /tls/ && chown postgres:postgres /tls/* && chmod 600 /tls/server.key
+        && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tls/server.crt
+        -c ssl_key_file=/tls/server.key -c ssl_ca_file=/tls/ca.crt -c hba_file=/tls/pg_hba.conf
+    environment:
+      POSTGRES_USER: platypus
+      POSTGRES_PASSWORD: platypus
+      POSTGRES_DB: platypus
+    ports:
+      - "46433:5432"
+    volumes:
+      - ./tls:/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platypus -d platypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  # MySQL where the `platypus` user needs a client certificate (REQUIRE X509) over TLS, on 46307.
+  mysql-mtls:
+    image: mysql:8.4
+    profiles: [tls]
+    command:
+      - --require_secure_transport=ON
+      - --ssl-ca=/certs/ca.crt
+      - --ssl-cert=/certs/server.crt
+      - --ssl-key=/certs/server.key
+    environment:
+      MYSQL_USER: platypus
+      MYSQL_PASSWORD: platypus
+      MYSQL_DATABASE: platypus
+      MYSQL_ROOT_PASSWORD: platypus
+    ports:
+      - "46307:3306"
+    volumes:
+      - ./tls:/certs:ro
+      - ./tls/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pplatypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
