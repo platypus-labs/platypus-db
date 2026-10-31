@@ -27,6 +27,12 @@ test("a function compared whole is an expression, with its column in it", () => 
   assert.deepEqual(filterKeys("(lower((a)::text) = 'x'::text AND b = 2)"), [{ expression: "lower(a)" }, "b"]);
 });
 
+test("an expression keeps its literals and its functions' schemas, without the table aliases", () => {
+  assert.deepEqual(filterKeys("(concat(o.a, 'x.y', 'it''s o.b') = 'z'::text)"), [{ expression: "concat(a, 'x.y', 'it''s o.b')" }]);
+  assert.deepEqual(filterKeys("(app.normalize((o.email)::text) = 'x'::text)"), [{ expression: "app.normalize(email)" }]);
+  assert.deepEqual(filterKeys(`("s".f(o."Name", util.g (o.b)) > 1)`), [{ expression: `"s".f("Name", util.g (b))` }]);
+});
+
 test("CREATE INDEX statement on an expression and on a table of a schema", () => {
   assert.equal(
     createIndexSql("postgres", "qa4a2e.people", [{ expression: "lower(email)" }]),

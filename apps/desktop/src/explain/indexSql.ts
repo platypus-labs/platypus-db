@@ -27,20 +27,40 @@ function callBefore(text: string, end: number): [number, number] | null {
   for (let i = end - 1; i >= 0; i--) {
     if (text[i] === ")") depth++;
     else if (text[i] === "(" && --depth === 0) {
-      const name = /[A-Za-z_][\w$]*$/.exec(text.slice(0, i));
-      if (!name || NOT_COLUMNS.has(name[0].toLowerCase())) return null;
+      // The function's name, with its schema: `lower`, `app.normalize`, `"s".f`.
+      const name = /(?:(?:[A-Za-z_][\w$]*|"(?:[^"]|"")+")\.)*([A-Za-z_][\w$]*)$/.exec(text.slice(0, i));
+      if (!name || NOT_COLUMNS.has(name[1]!.toLowerCase())) return null;
       return [i - name[0].length, end];
     }
   }
   return null;
 }
 
+/** A cast to text that a plan adds around a column: `(name)::text`, `(o.name)::text`. */
+const TEXT_CAST = /\(("(?:[^"]|"")+"|[A-Za-z_][\w$]*(?:\."(?:[^"]|"")+"|\.[A-Za-z_][\w$]*)?)\)::text/g;
+
+/** A qualifier, `o.` or `"o".`, and what it qualifies: a call (`s.lower(`, its schema) when
+ *  the second group is set, else a column (`o.email`, its table's alias). */
+const QUALIFIER = /(?<![\w$."])(?:[A-Za-z_][\w$]*|"(?:[^"]|"")+")\.(?=("(?:[^"]|"")+"|[A-Za-z_][\w$]*)(\s*\()?)/g;
+
+/** `text` with the matches of `pattern` outside its string literals replaced by `by(match)`. */
+function replaceOutsideLiterals(text: string, pattern: RegExp, by: (m: RegExpMatchArray) => string): string {
+  let out = "";
+  let at = 0;
+  // Masked literals keep their length, and what is outside them reads the same.
+  for (const m of maskLiterals(text).matchAll(pattern)) {
+    out += text.slice(at, m.index) + by(m);
+    at = m.index + m[0].length;
+  }
+  return out + text.slice(at);
+}
+
 /** The expression of a call as an index key: casts to text that a plan adds around a column
- *  and the aliases of the columns are left out, as the index has neither. */
+ *  and the table aliases of the columns are left out, as the index has neither. Literals stay
+ *  as they are, and so does the schema of a function (`s.f(col)`). */
 function expressionOf(call: string): string {
-  return call
-    .replace(/\(("(?:[^"]|"")+"|[A-Za-z_][\w$]*(?:\."(?:[^"]|"")+"|\.[A-Za-z_][\w$]*)?)\)::text/g, "$1")
-    .replace(/(?<![\w$."])(?:[A-Za-z_][\w$]*|"(?:[^"]|"")+")\.(?=["A-Za-z_])/g, "");
+  const uncast = replaceOutsideLiterals(call, TEXT_CAST, (m) => m[1]!);
+  return replaceOutsideLiterals(uncast, QUALIFIER, (m) => (m[2] === undefined ? "" : m[0]));
 }
 
 /** What a plan's filter condition compares, in order of appearance and without repeats: the
