@@ -26,7 +26,7 @@ use platypus_core::{
 use platypus_sql::Dialect;
 use tokio::sync::Mutex;
 
-use crate::http::{Http, result_format, session_params, written_rows};
+use crate::http::{Http, result_format, runs_read_only, session_params, written_rows};
 use crate::stream::Running;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -56,6 +56,8 @@ pub struct ClickHouseConnection {
     server: ServerInfo,
     /// Set when the session expired or the server became unreachable.
     closed: Arc<AtomicBool>,
+    /// Statements run with `readonly = 1` ([`ConnectionConfig::read_only`]).
+    read_only: bool,
 }
 
 impl ClickHouseConnection {
@@ -89,6 +91,7 @@ impl ClickHouseConnection {
             lock: Arc::new(Mutex::new(())),
             current: Arc::new(StdMutex::new(None)),
             closed: Arc::new(AtomicBool::new(false)),
+            read_only: config.read_only,
         };
         if !config.database.is_empty() {
             let sql = format!("USE {}", Dialect::ClickHouse.quote_ident(&config.database));
@@ -118,7 +121,10 @@ impl ClickHouseConnection {
             query_id: query_id.clone(),
             complete: false,
         };
-        let params = session_params(&self.session_id, &query_id, true);
+        let mut params = session_params(&self.session_id, &query_id, true);
+        if self.read_only && runs_read_only(sql) {
+            params.push(("readonly", "1"));
+        }
         let columns = self.describe(sql, &params).await;
         let rewritten = types::arrow_compatible(sql, &columns);
         let sql = rewritten.as_deref().unwrap_or(sql);

@@ -21,7 +21,9 @@ use platypus_driver_search::SearchDriver;
 use platypus_driver_sqlite::SqliteDriver;
 use platypus_plugins::PluginDriver;
 use platypus_sql::Dialect;
-use platypus_store::{ConnectionStore, SavedConnection, SavedSsh, SshAuthKind, StoreError};
+use platypus_store::{
+    AgentAccess, ConnectionStore, SavedConnection, SavedSsh, SshAuthKind, StoreError,
+};
 use uuid::Uuid;
 
 use crate::error::{AgentError, Result};
@@ -177,6 +179,8 @@ pub async fn config_of(
     })?;
     redactor.add_secret(password.as_ref());
     let mut config = effective.config(password);
+    // A read-only agent's session only reads, whatever the connection allows the app.
+    config.read_only |= effective.effective_agent_access() == AgentAccess::ReadOnly;
     if let Some(ssh) = &effective.ssh {
         let secrets = ssh_secrets(store, ssh, &effective.name)?;
         for (_, secret) in &secrets {
@@ -375,6 +379,12 @@ mod tests {
             redactor.apply("bad db-secret / ssh-secret"),
             "bad *** / ***"
         );
+        // Read-only access (the default) makes a read-only session; read-write does not.
+        assert!(config.read_only);
+        let mut writer = saved.clone();
+        writer.agent_access = platypus_store::AgentAccess::ReadWrite;
+        s.save(writer.clone(), PasswordUpdate::Keep).unwrap();
+        assert!(!config_of(&s, &writer).await.unwrap().0.read_only);
     }
 
     #[tokio::test]

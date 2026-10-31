@@ -147,6 +147,17 @@ pub fn result_format(headers: &HeaderMap) -> Option<&str> {
     headers.get("X-ClickHouse-Format")?.to_str().ok()
 }
 
+/// Whether a read-only session sends `sql` with `readonly = 1`, which refuses writes and
+/// every table function that reaches other servers or the server's files (`url`, `s3`,
+/// `deltaLake`, `file`, `remote`…): all statements but `SET`, which the setting refuses
+/// too. A `SET` cannot turn it off: it is a setting of each request, not of the session.
+pub fn runs_read_only(sql: &str) -> bool {
+    let first = platypus_sql::Lexer::new(sql, platypus_sql::Dialect::ClickHouse)
+        .find(|t| !t.is_trivia())
+        .map(|t| t.text(sql).to_ascii_uppercase());
+    first.as_deref() != Some("SET")
+}
+
 /// The query parameters of a statement in the session `session_id`. `check` fails the
 /// statement when the session expired, instead of starting a new, empty one.
 pub fn session_params<'a>(
@@ -207,5 +218,20 @@ mod tests {
         let params = session_params("s", "q", true);
         assert!(params.contains(&("session_check", "1")));
         assert!(!session_params("s", "q", false).contains(&("session_check", "1")));
+    }
+
+    #[test]
+    fn read_only_sessions_restrict_all_but_set() {
+        for sql in [
+            "SELECT * FROM deltaLake('http://h/b/')",
+            "  -- note\n  DESCRIBE url('http://h/x', CSV)",
+            "WITH 1 AS a SELECT a",
+            "USE db",
+            "INSERT INTO t SELECT 1",
+        ] {
+            assert!(runs_read_only(sql), "{sql}");
+        }
+        assert!(!runs_read_only("SET max_threads = 2"));
+        assert!(!runs_read_only("/* x */ set session_timezone = 'UTC'"));
     }
 }

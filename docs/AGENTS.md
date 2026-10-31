@@ -126,7 +126,14 @@ if it is open, else when it starts (within 24 hours).
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB
 and SQL Server roll the transaction back), and functions that act outside it
-(`pg_terminate_backend`, `dblink`, `LOAD_FILE`…) are refused. DuckDB sessions of agents
+(`pg_terminate_backend`, `dblink`, `LOAD_FILE`…) are refused. ClickHouse has no
+transaction: its read-only sessions (read-only agents, and the app's read-only connections)
+send every statement but `SET` with `readonly = 1`, so the server itself refuses writes and
+the table functions that reach other servers or its files (`url`, `s3`, `remote`, `file`,
+`deltaLake`, `iceberg`, `hudi`, `fileCluster`, `ytsaurus`…); an agent's statement is also
+checked against the table functions that read only local data (`numbers`, `zeros`,
+`generateRandom`, `values`, `view`, `merge`, `dictionary`, `null`, `format`, `loop`,
+`generate_series`): any other one in a `FROM` list is refused. DuckDB sessions of agents
 cannot read or write other files nor load extensions, and close after each call so the app
 can open the file. On Redis, the commands that show the server's credentials change nothing
 but are not reads either: `ACL GETUSER` and `ACL LIST` (the hash of every password) and a

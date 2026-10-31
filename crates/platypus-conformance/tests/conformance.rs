@@ -4976,6 +4976,45 @@ async fn agents_read_in_read_only_transactions() {
     }
 }
 
+/// A read-only ClickHouse session (a read-only connection, a read-only agent) runs with
+/// `readonly = 1`: table functions that reach other servers or files are refused by the
+/// server itself, before any request leaves it; local ones, `SET` and `USE` still run.
+#[tokio::test]
+async fn clickhouse_read_only_sessions_refuse_remote_table_functions() {
+    let _serial = SERIAL.lock().await;
+    let Some(b) = clickhouse_backend().await else {
+        return;
+    };
+    let mut config = b.config.clone();
+    config.read_only = true;
+    let conn = ClickHouseDriver.connect(&config).await.unwrap();
+    let conn = &*conn;
+    // An address that never answers: a request that left would hang, not fail at once.
+    for sql in [
+        "SELECT * FROM url('http://10.255.255.1:9/x.csv', CSV, 'a String')",
+        "SELECT * FROM deltaLake('http://10.255.255.1:9/bucket/t/', 'k', 's')",
+        "SELECT * FROM iceberg('http://10.255.255.1:9/bucket/t/', 'k', 's')",
+        "SELECT * FROM hudi('http://10.255.255.1:9/bucket/t/', 'k', 's')",
+        "SELECT * FROM fileCluster('default', 'x.csv')",
+        "SELECT * FROM file('x.csv')",
+        "INSERT INTO orders VALUES (99, 1, 1)",
+    ] {
+        let refused = tokio::time::timeout(Duration::from_secs(20), run(conn, sql))
+            .await
+            .unwrap_or_else(|_| panic!("{sql}: the server made the request"));
+        let message = refused.expect_err(sql).to_string();
+        assert!(message.contains("readonly"), "{sql}: {message}");
+    }
+    run(conn, "SET max_threads = 2").await.unwrap();
+    run(conn, "USE platypus").await.unwrap();
+    let rows = collect(&b, conn, "SELECT count() FROM numbers(3)").await;
+    assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("3"));
+    // The same server, not read-only: the setting belongs to the session's requests only.
+    let open = b.connect().await;
+    let rows = collect(&b, &*open, "SELECT getSetting('readonly')").await;
+    assert_eq!(cell(&rows[0], 0, 0).as_deref(), Some("0"));
+}
+
 /// An agent's `explain` with analyze runs in the read-only transaction where it refuses
 /// writes: the plan comes back analyzed, a write inside it fails or changes nothing, and
 /// no transaction is left open.

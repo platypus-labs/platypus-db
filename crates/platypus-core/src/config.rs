@@ -317,6 +317,11 @@ pub struct ConnectionConfig {
     pub init: SessionInit,
     /// What a driver needs beyond the fields above, e.g. Snowflake's `warehouse`.
     pub options: BTreeMap<String, String>,
+    /// The session only reads: set by the app for a read-only connection and for agents with
+    /// read-only access, never saved. Drivers whose server can refuse what reaches outside a
+    /// read query make it do so (ClickHouse runs such statements with `readonly = 1`); the
+    /// others leave it to the statement check.
+    pub read_only: bool,
 }
 
 /// The option that says a pooler stands between the app and a PostgreSQL server, and its
@@ -425,6 +430,7 @@ impl ConnectionConfig {
             ssh: None,
             init: SessionInit::default(),
             options: BTreeMap::new(),
+            read_only: false,
         }
     }
 
