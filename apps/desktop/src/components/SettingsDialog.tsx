@@ -584,7 +584,7 @@ function Picture({ picture }: { picture: SettingPicture }) {
   return (
     <span className="picture-window" style={{ gridTemplateColumns: picture.columns, gridTemplateRows: picture.rows }}>
       {picture.parts.map((p, i) => (
-        <i key={i} className={p.part} style={{ gridRow: p.row, gridColumn: p.column }} />
+        <i key={i} className={`part-${p.part}`} style={{ gridRow: p.row, gridColumn: p.column }} />
       ))}
     </span>
   );

@@ -37,7 +37,7 @@ registered with `platypus-mcp.exe` by version 0.2 need registering again with th
 the installers no longer ship that second executable.
 
 ```bash
-claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
+claude mcp add -s user platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
 ```
 
 or, with the app open, over HTTP (address and token from Settings → Agents):

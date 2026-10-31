@@ -82,17 +82,31 @@ async function history(page) {
 async function agentsPage(page, shots) {
   await page.key(",", "Comma", 188, CTRL);
   await page.settingsTab("Agents");
-  await page.waitFor(`document.querySelector('.agents-panel [data-field="claude_command"]') !== null`);
+  await page.waitFor(`document.querySelector('.agents-panel [data-client="claude_code"]') !== null`);
+  // Seven cards, each with its logo: an svg, or text where there is no free logo.
+  assert.equal(await page.eval(`document.querySelectorAll('.client-card').length`), 7);
+  assert.equal(await page.eval(`[...document.querySelectorAll('.client-card')].every(c => c.querySelector('.client-logo svg, .client-logo .client-logo-text') !== null)`), true);
+  assert.equal(await page.eval(`document.querySelector('[data-client="codex"] .client-logo').textContent`), '>_');
+  assert.equal(await page.eval(`document.querySelector('[data-client="antigravity"] .client-logo').textContent`), 'A');
+  assert.equal(await page.eval(`document.querySelectorAll('.client-card .client-logo svg').length`), 5);
+  await page.eval(`document.querySelector('[data-client="claude_code"]').click()`);
+  await page.waitFor(`document.querySelector('.client-card.selected')?.dataset.client === 'claude_code'`);
+  await page.waitFor(`document.querySelector('[data-field="claude_command"]') !== null`);
   const claude = await page.eval(`document.querySelector('[data-field="claude_command"]').textContent`);
   // The app runs on a profile folder of its own, which the server is given too.
-  assert.match(claude, /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=.+" -- ".+platypus-db\.exe" --mcp$/);
-  const codex = await page.eval(`document.querySelector('[data-field="codex_config"]').textContent`);
+  assert.match(claude, /^claude mcp add -s user platypus -e "PLATYPUS_DATA_DIR=.+" -- ".+platypus-db\.exe" --mcp$/);
+  await page.eval(`document.querySelector('[data-client="codex"]').click()`);
+  await page.waitFor(`document.querySelector('[data-field="snippet_codex"]') !== null`);
+  assert.equal(await page.eval(`document.querySelector('[data-field="claude_command"]')`), null, 'one By hand block at a time');
+  const codex = await page.eval(`document.querySelector('[data-field="snippet_codex"]').textContent`);
   assert.match(codex, /^\[mcp_servers\.platypus\]$/m);
   assert.match(codex, /^command = .+platypus-db\.exe/m);
   assert.match(codex, /^args = \["--mcp"\]$/m);
   assert.match(codex, /PLATYPUS_DATA_DIR = /);
 
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
+  await page.eval(`document.querySelector('[data-client="claude_code"]').click()`);
+  await page.waitFor(`document.querySelector('[data-copy="claude_command"]') !== null`);
   await page.eval(`document.querySelector('[data-copy="claude_command"]').click()`);
   await page.waitFor(`document.querySelector('[data-copy="claude_command"]').textContent === 'Copied'`);
   assert.equal(await page.eval(`window.__copied`), claude);

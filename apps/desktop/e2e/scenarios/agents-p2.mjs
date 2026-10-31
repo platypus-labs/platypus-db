@@ -21,7 +21,7 @@ const codexFile = (dir) => join(home(dir), ".codex", "config.toml");
 const windsurfFile = (dir) => join(home(dir), ".codeium", "windsurf", "mcp_config.json");
 
 const panel = (name) => `document.querySelector('[data-agents-panel=${JSON.stringify(name)}]')`;
-const client = (id) => `document.querySelector('tr[data-client=${JSON.stringify(id)}]')`;
+const client = (id) => `document.querySelector('.client-card[data-client=${JSON.stringify(id)}]')`;
 const callTools = `[...document.querySelectorAll('.agent-calls tr[data-call]')].map(r => r.dataset.call)`;
 
 /** Sets a React-controlled input or select and tells React, as typing or choosing would. */
@@ -186,7 +186,9 @@ async function clients(page, dir, shots) {
   assert.equal(await page.eval(`${client("cursor")}.dataset.state`), "missing");
   assert.equal(await page.eval(`${client("windsurf")}.dataset.state`), "unreadable");
   assert.equal(await page.eval(`document.querySelector('[data-install="windsurf"]').disabled`), true);
-  assert.match(await page.eval(`${client("cursor")}.textContent`), /\.cursor[\\/]mcp\.json/);
+  await page.eval(`${client("cursor")}.click()`);
+  await page.waitFor(`document.querySelector('[data-detail="cursor"]') !== null`);
+  assert.match(await page.eval(`document.querySelector('[data-detail="cursor"]').textContent`), /\.cursor[\\/]mcp\.json/);
   // The entry to copy by hand follows the chosen client.
   await page.eval(`${client("codex")}.click()`);
   await page.waitFor(`document.querySelector('[data-field="snippet_codex"]')?.textContent.includes('[mcp_servers.platypus]')`);
@@ -226,7 +228,9 @@ async function clients(page, dir, shots) {
   // The broken file is untouched.
   assert.equal(readFileSync(windsurfFile(dir), "utf8"), "{ not json");
   if (shots) await page.screenshot(join(shots, "agents-setup.png"));
-  // The copy blocks for Claude Code and Codex are still there.
+  // Claude Code's command shows once its card is chosen.
+  await page.eval(`document.querySelector('[data-client="claude_code"]').click()`);
+  await page.waitFor(`document.querySelector('[data-field="claude_command"]') !== null`);
   assert.match(await page.eval(`document.querySelector('[data-field="claude_command"]').textContent`), /--mcp$/);
 }
 
@@ -251,7 +255,7 @@ async function clearLog(page) {
 /** An agent proposes a change on the read-only connection: the open app shows it in a new
  *  editor tab, titled as asked, and nothing ran. */
 async function proposal(page, dir, shots) {
-  await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
+  await page.eval(`document.querySelector('.modal.settings > .actions button.primary').click()`);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
   const mcp = await startMcp(dir, "e2e-agent");
   try {

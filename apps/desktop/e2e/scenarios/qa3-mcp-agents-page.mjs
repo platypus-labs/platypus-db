@@ -57,7 +57,9 @@ save_password = false
 async function openAgents(page) {
   await page.key(",", "Comma", 188, CTRL);
   await page.settingsTab("Agents");
-  await page.waitFor(`document.querySelector('.agents-panel [data-field="claude_command"]') !== null`);
+  await page.waitFor(`document.querySelector('.agents-panel [data-client="claude_code"]') !== null`);
+  await page.eval(`document.querySelector('[data-client="claude_code"]').click()`);
+  await page.waitFor(`document.querySelector('[data-field="claude_command"]') !== null`);
   await page.waitFor(`${accessOf(LITE)} !== undefined`);
 }
 
@@ -69,15 +71,16 @@ async function closeSettings(page) {
 /** The server path and profile folder from the copied Claude Code command and Codex table:
  * the app itself, started with `--mcp`. */
 function parseCommands(claude, codex) {
-  const m = /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=(.+?)" -- "(.+)" --mcp$/.exec(claude);
+  const m = /^claude mcp add -s user platypus -e "PLATYPUS_DATA_DIR=(.+?)" -- "(.+)" --mcp$/.exec(claude);
   assert.ok(m, `unexpected Claude Code command: ${claude}`);
   const [, dataDir, exe] = m;
   assert.match(codex, /^args = \["--mcp"\]$/m, "Codex starts the app with --mcp too");
   // The Codex table names the same program and folder (TOML strings: literal or basic).
   const value = (key) => {
-    const line = codex.split("\n").find((l) => l.startsWith(`${key} = `));
-    assert.ok(line, `${key} missing from the Codex table: ${codex}`);
-    const raw = line.slice(key.length + 3).trim();
+    // A top-level key, or one inside the inline `env = { KEY = '...' }` table.
+    const found = new RegExp(`(?:^|[{,]\\s*)${key} = ('[^']*'|"(?:[^"\\\\]|\\\\.)*")`, "m").exec(codex);
+    assert.ok(found, `${key} missing from the Codex table: ${codex}`);
+    const raw = found[1];
     return raw.startsWith("'") ? raw.slice(1, -1) : JSON.parse(raw);
   };
   assert.equal(value("command"), exe, "Claude Code and Codex start the same program");
@@ -98,10 +101,12 @@ async function editAccess(page, name, access) {
 export default async function (page, { dir }) {
   await openAgents(page);
   const claude = await page.eval(`document.querySelector('[data-field="claude_command"]').textContent`);
-  const codex = await page.eval(`document.querySelector('[data-field="codex_config"]').textContent`);
+  await page.eval(`document.querySelector('[data-client="codex"]').click()`);
+  await page.waitFor(`document.querySelector('[data-field="snippet_codex"]') !== null`);
+  const codex = await page.eval(`document.querySelector('[data-field="snippet_codex"]').textContent`);
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
-  await page.eval(`document.querySelector('[data-copy="codex_config"]').click()`);
-  await page.waitFor(`document.querySelector('[data-copy="codex_config"]').textContent === 'Copied'`);
+  await page.eval(`document.querySelector('[data-copy="snippet_codex"]').click()`);
+  await page.waitFor(`document.querySelector('[data-copy="snippet_codex"]').textContent === 'Copied'`);
   assert.equal(await page.eval(`window.__copied`), codex, "Copy puts the Codex table on the clipboard");
   const { exe, dataDir } = parseCommands(claude, codex);
   assert.equal(dataDir, dir, "the commands name the app's profile");

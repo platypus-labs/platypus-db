@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agenti · Configurazione</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<style>
+  .editor-pane { height: 34%; border-bottom: 1px solid var(--border); }
+  .dialog.settings-dlg { width: 1180px; max-width: calc(100vw - 32px); height: calc(100vh - 64px); max-height: calc(100vh - 64px); }
+  .settings-dlg > header { align-items: center; }
+  .settings-dlg > header .input.search { margin-left: auto; width: 280px; }
+  .sbody { flex: 1; display: flex; min-height: 0; padding: 0 var(--sp-6); gap: var(--sp-4); }
+  .sbody .subnav { width: 200px; padding-bottom: var(--sp-4); overflow: auto; }
+  .spane { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; }
+  .spane .phead { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  .spane .subtabs { padding: 0 var(--sp-2); }
+  .pbody { padding: var(--sp-5) var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-5); }
+  .desc { padding: var(--sp-3) var(--sp-2) 0; color: var(--fg-muted); font-size: var(--fs-sm); max-width: 720px; }
+  .desc code, .path code { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--fg); }
+
+  /* Clients: one card each, logo first. */
+  .clients { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--sp-3); }
+  .client { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto auto; column-gap: var(--sp-3); row-gap: 2px;
+            padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-2); background: var(--bg-elev); cursor: default; }
+  .client:hover { border-color: var(--border-strong); }
+  .client.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .logo { grid-row: 1 / span 2; width: 40px; height: 40px; border-radius: var(--r-2); display: grid; place-items: center;
+          background: var(--bg); border: 1px solid var(--border); }
+  .logo svg { width: 22px; height: 22px; fill: currentColor; }
+  .logo .mono { font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-med); }
+  .client .nm { color: var(--fg-strong); font-weight: var(--fw-med); align-self: end; }
+  .client .kind { color: var(--fg-muted); font-size: var(--fs-xs); }
+  .client .foot { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3);
+                  padding-top: var(--sp-2); border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+  .client .foot .st { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); }
+  .client .foot .st.ok { color: var(--fg); }
+  .client .foot .btn { margin-left: auto; }
+
+  /* The selected client: where it reads the server, and what to paste by hand. */
+  .detail { border: 1px solid var(--border); border-radius: var(--r-2); }
+  .detail > header { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); }
+  .detail > header .logo { width: 28px; height: 28px; grid-row: auto; }
+  .detail > header .logo svg { width: 16px; height: 16px; }
+  .detail .db > * { min-width: 0; } .detail .db { padding: var(--sp-4); display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+  .detail .lbl { color: var(--fg-muted); font-size: var(--fs-xs); margin-bottom: var(--sp-2); display: flex; align-items: center; }
+  .detail .lbl .btn { margin-left: auto; }
+  .path { font-size: var(--fs-sm); }
+  .code { margin: 0; padding: var(--sp-3); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-1);
+          font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--fg); white-space: pre-wrap; word-break: break-all; overflow: auto; }
+  .after { text-align: left; margin: 0; padding-left: 18px; color: var(--fg-muted); font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; }
+  .h2s { color: var(--fg-strong); font-weight: var(--fw-med); }
+</style>
+</head>
+<body data-shell="app">
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"><span class="env" style="background:var(--ok)"></span><i data-i="code" class="sm"></i>revenue_by_city.sql<i data-i="x" class="sm x"></i></div>
+    <div class="new"><i data-i="plus" class="sm"></i></div>
+  </div>
+  <div class="toolbar">
+    <button class="btn primary sm"><i data-i="play" class="sm"></i>Esegui<kbd>Ctrl ↵</kbd></button>
+  </div>
+  <div class="editor-pane"><div class="editor">
+    <div class="ln"><b>1</b><span class="co">-- Fatturato per città</span></div>
+  </div></div>
+  <div class="status"><span>Pronto</span></div>
+</div>
+
+<div class="scrim">
+  <div class="dialog settings-dlg">
+    <header>
+      <h2>Impostazioni</h2>
+      <div class="input search"><i data-i="search" class="sm"></i>Cerca nelle impostazioni…</div>
+      <button class="btn icon" title="Chiudi (Esc)"><i data-i="x"></i></button>
+    </header>
+    <div class="sbody">
+      <nav class="subnav" aria-label="Pagine delle impostazioni">
+        <span><i data-i="palette" class="sm"></i>Aspetto</span>
+        <span><i data-i="panel" class="sm"></i>Navigator</span>
+        <span><i data-i="code" class="sm"></i>Editor SQL</span>
+        <span><i data-i="table" class="sm"></i>Risultati</span>
+        <span><i data-i="shield" class="sm"></i>Sicurezza</span>
+        <span><i data-i="plug" class="sm"></i>Connessioni</span>
+        <span><i data-i="key" class="sm"></i>Password principale</span>
+        <span class="on"><i data-i="bot" class="sm"></i>Agenti</span>
+        <span><i data-i="database" class="sm"></i>Driver</span>
+        <span><i data-i="keyboard" class="sm"></i>Scorciatoie</span>
+      </nav>
+
+      <div class="spane">
+        <div class="phead">
+          <div class="pic" style="color:var(--accent)"><i data-i="bot"></i></div>
+          <div>
+            <h1>Agenti</h1>
+            <div class="sub">Collega assistenti e strumenti che lavorano con i tuoi database</div>
+          </div>
+        </div>
+        <div class="desc">Gli agenti usano le connessioni salvate tramite il server MCP di PlatypusDB, cioè l'app stessa avviata con <code>--mcp</code>. Lo avviano da soli, senza finestra. Le password non arrivano mai a loro e le loro query finiscono nella cronologia con il nome dell'agente.</div>
+        <div class="subtabs">
+          <span class="on">Configurazione</span><span>Attività <span class="n">38</span></span><span>Sicurezza</span>
+        </div>
+
+        <div class="pbody">
+          <div class="clients">
+            <div class="client sel">
+              <span class="logo" style="color:#D97757"><svg viewBox="0 0 24 24"><use href="#i-claude"/></svg></span>
+              <span class="nm">Claude Desktop</span><span class="kind">App desktop</span>
+              <div class="foot"><span class="st"><span class="dot"></span>Non installato</span><button class="btn sm primary">Installa</button></div>
+            </div>
+            <div class="client">
+              <span class="logo" style="color:#D97757"><svg viewBox="0 0 24 24"><use href="#i-claude"/></svg></span>
+              <span class="nm">Claude Code</span><span class="kind">Riga di comando</span>
+              <div class="foot"><span class="st ok"><span class="dot ok"></span>Installato</span><button class="btn sm" disabled><i data-i="check" class="sm"></i>Fatto</button></div>
+            </div>
+            <div class="client">
+              <span class="logo"><span class="mono">&gt;_</span></span>
+              <span class="nm">Codex</span><span class="kind">Riga di comando</span>
+              <div class="foot"><span class="st"><span class="dot warn"></span>Con un altro comando</span><button class="btn sm">Aggiorna</button></div>
+            </div>
+            <div class="client">
+              <span class="logo" style="color:var(--fg-strong)"><svg viewBox="0 0 24 24"><use href="#i-cursor"/></svg></span>
+              <span class="nm">Cursor</span><span class="kind">Editor</span>
+              <div class="foot"><span class="st"><span class="dot"></span>Non installato</span><button class="btn sm">Installa</button></div>
+            </div>
+            <div class="client">
+              <span class="logo" style="color:var(--fg-strong)"><svg viewBox="0 0 24 24"><use href="#i-windsurf"/></svg></span>
+              <span class="nm">Windsurf</span><span class="kind">Editor</span>
+              <div class="foot"><span class="st"><span class="dot"></span>Non installato</span><button class="btn sm">Installa</button></div>
+            </div>
+            <div class="client">
+              <span class="logo" style="color:#4285F4"><span class="mono">A</span></span>
+              <span class="nm">Antigravity</span><span class="kind">Editor</span>
+              <div class="foot"><span class="st"><span class="dot"></span>Non installato</span><button class="btn sm">Installa</button></div>
+            </div>
+            <div class="client">
+              <span class="logo" style="color:#8E75B2"><svg viewBox="0 0 24 24"><use href="#i-gemini"/></svg></span>
+              <span class="nm">Gemini CLI</span><span class="kind">Riga di comando</span>
+              <div class="foot"><span class="st"><span class="dot"></span>Non installato</span><button class="btn sm">Installa</button></div>
+            </div>
+          </div>
+
+          <section class="detail">
+            <header>
+              <span class="logo" style="color:#D97757"><svg viewBox="0 0 24 24"><use href="#i-claude"/></svg></span>
+              <span class="h2s grow">Claude Desktop</span>
+              <span class="muted" style="font-size:var(--fs-sm)">Installa scrive il server nel file e ne salva prima una copia accanto</span>
+            </header>
+            <div class="db">
+              <div class="col" style="gap:var(--sp-4)">
+                <div>
+                  <div class="lbl">File di configurazione</div>
+                  <div class="path"><code>C:\Users\andre\AppData\Roaming\Claude\claude_desktop_config.json</code></div>
+                  <div class="muted" style="font-size:var(--fs-xs);margin-top:4px">Non ancora presente: Installa lo crea.</div>
+                </div>
+                <div>
+                  <div class="lbl">Dopo l'installazione</div>
+                  <ol class="after">
+                    <li>Riavvia Claude Desktop.</li>
+                    <li>Gli strumenti di PlatypusDB compaiono tra quelli del server <code>platypus</code>.</li>
+                    <li>Scegli in Sicurezza cosa può fare ogni connessione.</li>
+                  </ol>
+                </div>
+              </div>
+              <div>
+                <div class="lbl">A mano<button class="btn sm ghost"><i data-i="copy" class="sm"></i>Copia</button></div>
+<pre class="code">{
+  "mcpServers": {
+    "platypus": {
+      "command": "C:\\Users\\andre\\AppData\\Local\\PlatypusDB\\platypus-db.exe",
+      "args": ["--mcp"]
+    }
+  }
+}</pre>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <span class="l"><i data-i="check" class="sm" style="color:var(--ok)"></i>Salvato in settings.toml</span>
+      <button class="btn primary">Fatto<kbd>Esc</kbd></button>
+    </footer>
+  </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-claude" viewBox="0 0 24 24"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></symbol>
+  <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/></symbol>
+  <symbol id="i-windsurf" viewBox="0 0 24 24"><path d="M23.55 5.067c-1.2038-.002-2.1806.973-2.1806 2.1765v4.8676c0 .972-.8035 1.7594-1.7597 1.7594-.568 0-1.1352-.286-1.4718-.7659l-4.9713-7.1003c-.4125-.5896-1.0837-.941-1.8103-.941-1.1334 0-2.1533.9635-2.1533 2.153v4.8957c0 .972-.7969 1.7594-1.7596 1.7594-.57 0-1.1363-.286-1.4728-.7658L.4076 5.1598C.2822 4.9798 0 5.0688 0 5.2882v4.2452c0 .2147.0656.4228.1884.599l5.4748 7.8183c.3234.462.8006.8052 1.3509.9298 1.3771.313 2.6446-.747 2.6446-2.0977v-4.893c0-.972.7875-1.7593 1.7596-1.7593h.003a1.798 1.798 0 0 1 1.4718.7658l4.9723 7.0994c.4135.5905 1.05.941 1.8093.941 1.1587 0 2.1515-.9645 2.1515-2.153v-4.8948c0-.972.7875-1.7594 1.7596-1.7594h.194a.22.22 0 0 0 .2204-.2202v-4.622a.22.22 0 0 0-.2203-.2203Z"/></symbol>
+  <symbol id="i-gemini" viewBox="0 0 24 24"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></symbol>
+</svg>
+
+<div class="mk-note" style="left:96px;top:120px"><b>Un riquadro per client, con il suo logo</b>Stato e pulsante in basso. Il riquadro scelto mostra sotto file, passi e testo da copiare.</div>
+<div class="mk-note" style="left:96px;top:690px"><b>Un solo blocco "A mano"</b>Al posto dei tre blocchi in fondo di oggi (file scelto, Claude Code, Codex): per Claude Code il comando <code>claude mcp add</code>, per Codex il TOML.</div>
+<div class="mk-note" style="left:1100px;top:560px"><b>Loghi</b>Simple Icons (CC0): Claude, Cursor, Windsurf, Gemini. OpenAI e Antigravity non ci sono: Codex con <code>&gt;_</code>, Antigravity con la lettera.</div>
+<script src="../assets/mock.js"></script>
+</body>
+</html>
