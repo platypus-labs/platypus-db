@@ -1439,7 +1439,7 @@ export interface TableDesign {
   primary_key_name?: string | null;
   indexes: IndexDesign[];
   foreign_keys: ForeignKeyDesign[];
-  /** UNIQUE and CHECK constraints. */
+  /** UNIQUE, CHECK and EXCLUDE constraints. */
   constraints: ConstraintDesign[];
   /** What follows the column list, kept from the database: SQLite's `WITHOUT ROWID`,
    *  PostgreSQL's `PARTITION BY`, ClickHouse's engine clause. */
@@ -1450,7 +1450,12 @@ export interface TableDesign {
   partitions?: { name: string; bound: string }[];
   /** The user-defined types its columns use (PostgreSQL). */
   types?: { schema: string; name: string; kind: string; body: string }[];
+  /** The period and history table of a system-versioned table (SQL Server). */
+  system_time?: { start: string; end: string; history: string | null } | null;
 }
+
+/** When a key or constraint is checked: `deferred` for `DEFERRABLE INITIALLY DEFERRED`. */
+export type Deferral = "not_deferrable" | "immediate" | "deferred";
 
 export interface ColumnDesign {
   original: string | null;
@@ -1485,6 +1490,8 @@ export interface IndexDesign {
   include?: string[];
   /** The condition of a partial index, without `WHERE`. */
   predicate?: string | null;
+  /** MySQL's `INVISIBLE`, MariaDB's `IGNORED`. */
+  visibility?: string | null;
 }
 
 export interface ForeignKeyDesign {
@@ -1497,15 +1504,25 @@ export interface ForeignKeyDesign {
   /** `null` for NO ACTION. */
   on_delete: string | null;
   on_update: string | null;
+  /** Kept from the database: `DEFERRABLE ..`, `MATCH FULL`, SQL Server's `NOCHECK`. */
+  deferral?: Deferral;
+  match_type?: string | null;
+  disabled?: boolean;
 }
 
 export interface ConstraintDesign {
   original: string | null;
   name: string;
-  kind: "unique" | "check";
+  kind: "unique" | "check" | "exclusion";
   columns: string[];
-  /** The condition of a CHECK, without `CHECK`. */
+  /** The condition of a CHECK, without `CHECK`; what follows `EXCLUDE` in an exclusion. */
   check: string;
+  /** Kept from the database: `DEFERRABLE ..`, `NULLS NOT DISTINCT`, SQLite's `ON CONFLICT`,
+   *  MySQL's `NOT ENFORCED` and SQL Server's `NOCHECK` (`disabled`). */
+  deferral?: Deferral;
+  nulls_not_distinct?: boolean;
+  on_conflict?: string | null;
+  disabled?: boolean;
 }
 
 /** The migration tool whose file `schemaChangelog` writes. */

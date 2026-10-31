@@ -1646,6 +1646,12 @@ const zh: Record<string, string> = {
     "列 {column}：其标识或计算无法就地更改：请手动删除后重新添加。",
   "The type {type} differs from the one compared with: change it by hand.":
     "类型 {type} 与所比较的类型不同：请手动更改。",
+  "The system versioning of {table} differs and cannot be changed in place: create the table again by hand.":
+    "{table} 的系统版本控制不同，无法就地更改：请手动重新创建该表。",
+  "The table options of {table} (engine, character set, partitioning, versioning) differ and cannot be changed in place: change them by hand.":
+    "表 {table} 的选项（引擎、字符集、分区、版本控制）不同，无法就地更改：请手动更改。",
+  "A disabled (NOCHECK) constraint of {table} has no name of its own: it is created enabled; disable it by hand.":
+    "{table} 的一个已禁用（NOCHECK）约束没有自己的名称：它会以启用状态创建；请手动禁用。",
   "Drops the table {table}: its rows are lost.": "删除表 {table}：其中的行将丢失。",
   "Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval).":
     "创建序列 {sequence}，从 1 开始：如果其列中已有值，请将序列移到这些值之后（setval）。",

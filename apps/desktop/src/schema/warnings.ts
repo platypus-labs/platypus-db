@@ -21,6 +21,9 @@ const TEMPLATES = [
   msg("The bound of partition {table} differs: change it by hand (detach it and attach it again)."),
   msg("Column {column}: its identity or computation cannot be changed in place: drop it and add it again by hand."),
   msg("The type {type} differs from the one compared with: change it by hand."),
+  msg("The system versioning of {table} differs and cannot be changed in place: create the table again by hand."),
+  msg("The table options of {table} (engine, character set, partitioning, versioning) differ and cannot be changed in place: change them by hand."),
+  msg("A disabled (NOCHECK) constraint of {table} has no name of its own: it is created enabled; disable it by hand."),
 ];
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

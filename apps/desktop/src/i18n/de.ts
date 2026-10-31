@@ -1646,6 +1646,12 @@ const de: Record<string, string> = {
     "Spalte {column}: Identität oder Berechnung lässt sich nicht direkt ändern: Spalte von Hand löschen und neu hinzufügen.",
   "The type {type} differs from the one compared with: change it by hand.":
     "Der Typ {type} unterscheidet sich vom verglichenen: von Hand ändern.",
+  "The system versioning of {table} differs and cannot be changed in place: create the table again by hand.":
+    "Die Systemversionierung von {table} unterscheidet sich und lässt sich nicht direkt ändern: die Tabelle von Hand neu anlegen.",
+  "The table options of {table} (engine, character set, partitioning, versioning) differ and cannot be changed in place: change them by hand.":
+    "Die Tabellenoptionen von {table} (Engine, Zeichensatz, Partitionierung, Versionierung) unterscheiden sich und lassen sich nicht direkt ändern: von Hand ändern.",
+  "A disabled (NOCHECK) constraint of {table} has no name of its own: it is created enabled; disable it by hand.":
+    "Eine deaktivierte (NOCHECK) Einschränkung von {table} hat keinen eigenen Namen: sie wird aktiv angelegt; von Hand deaktivieren.",
   "Drops the table {table}: its rows are lost.": "Löscht die Tabelle {table}: Ihre Zeilen gehen verloren.",
   "Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval).":
     "Erstellt die Sequenz {sequence}, die bei 1 beginnt: Wenn ihre Spalten bereits Werte haben, sie darüber hinaus setzen (setval).",

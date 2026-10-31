@@ -1646,6 +1646,12 @@ const pt: Record<string, string> = {
     "Coluna {column}: a identidade ou o cálculo não pode ser alterado no local: remova-a e adicione-a de novo manualmente.",
   "The type {type} differs from the one compared with: change it by hand.":
     "O tipo {type} é diferente do comparado: altere-o manualmente.",
+  "The system versioning of {table} differs and cannot be changed in place: create the table again by hand.":
+    "O versionamento de sistema de {table} é diferente e não pode ser alterado no local: recrie a tabela manualmente.",
+  "The table options of {table} (engine, character set, partitioning, versioning) differ and cannot be changed in place: change them by hand.":
+    "As opções da tabela {table} (motor, conjunto de caracteres, particionamento, versionamento) são diferentes e não podem ser alteradas no local: altere-as manualmente.",
+  "A disabled (NOCHECK) constraint of {table} has no name of its own: it is created enabled; disable it by hand.":
+    "Uma restrição desativada (NOCHECK) de {table} não tem nome próprio: é criada ativa; desative-a manualmente.",
   "Drops the table {table}: its rows are lost.": "Exclui a tabela {table}: as linhas dela são perdidas.",
   "Creates the sequence {sequence}, which starts at 1: if its columns have values already, move it past them (setval).":
     "Cria a sequência {sequence}, que começa em 1: se as colunas dela já têm valores, avance-a além deles (setval).",

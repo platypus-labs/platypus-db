@@ -230,6 +230,7 @@ export function DesignForm({ driver, design, onChange, schema, catalog, section,
               <select value={c.kind} onChange={(e) => setPart("constraints", i, { kind: e.target.value as ConstraintDesign["kind"] })} aria-label={t("Kind")}>
                 <option value="unique">UNIQUE</option>
                 <option value="check">CHECK</option>
+                {c.kind === "exclusion" && <option value="exclusion">EXCLUDE</option>}
               </select>,
               c.kind === "unique" ? (
                 <NamesInput value={c.columns} onChange={(columns) => setPart("constraints", i, { columns })} hint={columnNames} />
