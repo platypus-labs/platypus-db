@@ -32,13 +32,25 @@ pub async fn explain(conn: &MySqlConnection, sql: &str, analyze: bool) -> Result
         (true, false) => "EXPLAIN FORMAT=JSON",
         (true, true) => "ANALYZE FORMAT=JSON",
     };
-    let plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
+    let mut plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
+    let mut analyze = analyze;
+    // MySQL cannot analyze a change (UPDATE, DELETE): it answers with a message in place of a
+    // tree. The estimated plan stands in, and the result says it is not analyzed.
+    if analyze && !json && !has_steps(&plan) {
+        analyze = false;
+        plan = explain_document(conn, &format!("EXPLAIN FORMAT=TREE {sql}"), false).await?;
+    }
     let (format, root) = if json {
         (ExplainFormat::Json, json_plan(&plan)?)
     } else {
         (ExplainFormat::Text, tree_plan(&plan))
     };
     Ok(Explain::new(format, plan, root, analyze))
+}
+
+/// Whether a tree plan has steps (`-> …`), not a message of the server in their place.
+fn has_steps(plan: &str) -> bool {
+    plan.lines().any(|l| l.trim_start().starts_with("-> "))
 }
 
 /// A plan pasted or opened from a file: MySQL's tree (`EXPLAIN FORMAT=TREE` or
@@ -52,7 +64,7 @@ pub fn read_plan(document: &str) -> Result<Explain> {
         let root = json_plan(&plan)?;
         return Ok(Explain::read(ExplainFormat::Json, plan, root));
     }
-    if !plan.lines().any(|l| l.trim_start().starts_with("-> ")) {
+    if !has_steps(&plan) {
         return Err(Error::Other("no plan in the text".to_owned()));
     }
     let root = tree_plan(&plan);
@@ -423,5 +435,12 @@ mod tests {
             b.properties
                 .contains(&("possible_keys".into(), "PRIMARY".into()))
         );
+    }
+
+    #[test]
+    fn a_message_of_the_server_is_not_a_plan() {
+        assert!(!has_steps("<not executable by iterator executor>\n"));
+        assert!(has_steps("-> Table scan on t  (cost=1 rows=1)\n"));
+        assert!(has_steps("  -> Filter: (t.a > 1)\n"));
     }
 }
