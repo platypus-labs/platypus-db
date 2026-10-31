@@ -3038,6 +3038,7 @@ const zh: Record<string, string> = {
   "Like the system": "跟随系统",
   "Yes": "是",
   "Reduced": "减少",
+  "Dashboard widget": "仪表板小组件",
 };
 
 export default zh;

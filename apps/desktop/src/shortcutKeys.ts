@@ -91,3 +91,9 @@ export function bindingKey(binding: string, mac: boolean): string {
   }
   return [...["ctrl", "meta", "alt", "shift"].filter((m) => mods.has(m)), sameKey(key)].join("+");
 }
+
+/** Whether a key press while recording removes the shortcut: only a bare Backspace or
+ *  Delete; with a modifier held it is a combination to record. */
+export function removesShortcut(e: { key: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean }): boolean {
+  return (e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey;
+}

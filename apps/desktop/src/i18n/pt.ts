@@ -3038,6 +3038,7 @@ const pt: Record<string, string> = {
   "Like the system": "Como o sistema",
   "Yes": "Sim",
   "Reduced": "Reduzidas",
+  "Dashboard widget": "Widget do painel",
 };
 
 export default pt;

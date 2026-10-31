@@ -3038,6 +3038,7 @@ const de: Record<string, string> = {
   "Like the system": "Wie das System",
   "Yes": "Ja",
   "Reduced": "Reduziert",
+  "Dashboard widget": "Dashboard-Widget",
 };
 
 export default de;

@@ -13,7 +13,7 @@ import {
 } from "../actions";
 import { toCommandError } from "../api";
 import { useSettingsVersion } from "../settings";
-import { typesText } from "../shortcutKeys";
+import { removesShortcut, typesText } from "../shortcutKeys";
 import { msg, t } from "../i18n";
 import { fold } from "../ui/textSearch";
 
@@ -32,6 +32,7 @@ const SCOPES: Record<string, string> = {
   project: msg("Project"),
   "project.folder": msg("Project folder"),
   script: msg("Saved script"),
+  "dashboard.widget": msg("Dashboard widget"),
 };
 
 const scopeLabel = (scope: ActionScope) => t(SCOPES[scope] ?? scope);
@@ -80,7 +81,7 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
     e.preventDefault();
     e.stopPropagation();
     if (e.key === "Escape") return setRecording(null);
-    if (e.key === "Backspace" || e.key === "Delete") {
+    if (removesShortcut(e)) {
       save(action, "");
       return setRecording(null);
     }

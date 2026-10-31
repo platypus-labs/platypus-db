@@ -71,3 +71,14 @@ test("bindings on the editor actions' keys give way", () => {
     ],
   );
 });
+
+test("only a bare Backspace or Delete removes a shortcut while recording", async () => {
+  const { removesShortcut } = await import("../src/shortcutKeys.ts");
+  const press = (key, mods = {}) => ({ key, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods });
+  assert.equal(removesShortcut(press("Delete")), true);
+  assert.equal(removesShortcut(press("Backspace")), true);
+  assert.equal(removesShortcut(press("Delete", { ctrlKey: true })), false);
+  assert.equal(removesShortcut(press("Delete", { shiftKey: true })), false);
+  assert.equal(removesShortcut(press("Backspace", { ctrlKey: true })), false);
+  assert.equal(removesShortcut(press("a")), false);
+});

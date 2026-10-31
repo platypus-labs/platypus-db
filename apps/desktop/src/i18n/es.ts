@@ -3038,6 +3038,7 @@ const es: Record<string, string> = {
   "Like the system": "Como el sistema",
   "Yes": "Sí",
   "Reduced": "Reducidas",
+  "Dashboard widget": "Widget del panel",
 };
 
 export default es;
