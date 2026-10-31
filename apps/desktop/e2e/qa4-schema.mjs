@@ -1,4 +1,4 @@
-// What the schema QA4 scenarios (scenarios/qa4-schema-*.mjs) share: a schema per engine seeded from
+﻿// What the schema QA4 scenarios (scenarios/qa4-schema-*.mjs) share: a schema per engine seeded from
 // the shell (the qa3-schema.mjs engines), and the table editor's backend called straight:
 // table_design reads a table as the form shows it, table_script makes the script of an edit,
 // apply_table_script runs it. What the form shows is the design object; the SQL it writes is
@@ -15,7 +15,7 @@ export function seed(dir, key, sql) {
 
 /** A design handle on the schema `Q4` of `key`. */
 export async function lab(page, dir, key) {
-  const connection = connectionOf(dir, key, Q4);
+  const connection = connectionOf(dir, key, key === "sqlite" ? SRC : Q4);
   const sid = await session(page, connection.id);
   const schema = ENGINES[key].schema(Q4);
   const driver = DRIVER[key];
@@ -42,4 +42,5 @@ export async function lab(page, dir, key) {
 }
 
 export { ENGINES, saveEngines };
+
 
