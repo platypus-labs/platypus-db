@@ -12,9 +12,10 @@ pub enum StatementKind {
     Query,
     /// Changes rows: `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `CALL`, a `SELECT INTO`…
     Dml,
-    /// Changes the schema or permissions: `CREATE`, `ALTER`, `DROP`, `TRUNCATE`, `GRANT`…
+    /// Changes the schema or permissions: `CREATE`, `ALTER`, `DROP`, `TRUNCATE`, `GRANT`…, or
+    /// settings beyond the session: `SET GLOBAL`, `SET PASSWORD`, `PRAGMA user_version = 1`.
     Ddl,
-    /// Neither, e.g. `BEGIN`, `SET`, `USE`.
+    /// Neither, e.g. `BEGIN`, `USE`, a session's `SET`, `PRAGMA table_info(t)`, `ANALYZE`.
     Other,
     /// A command the app runs itself, e.g. `@set x = 1`; the database never sees it.
     Command,
@@ -73,6 +74,70 @@ const OTHER: &[&str] = &[
     "DISCARD",
     "DEALLOCATE",
     "PREPARE",
+];
+/// Transact-SQL words that, inside a batch led by `SET`, `BEGIN`, `USE`…, run something that
+/// may change anything (with [`crate::WRITE_WORDS`]).
+const TSQL_CHANGES: &[&str] = &[
+    "EXEC",
+    "EXECUTE",
+    "SP_EXECUTESQL",
+    "KILL",
+    "SHUTDOWN",
+    "BACKUP",
+    "RESTORE",
+    "DBCC",
+    "RECONFIGURE",
+    "BULK",
+    "WRITETEXT",
+    "UPDATETEXT",
+    "SETUSER",
+];
+/// SQLite pragmas that only act on a connection's statements, never on the file: setting one
+/// is a session's `SET`. `query_only` and `trusted_schema` are not here: turning them off lifts
+/// a protection.
+const SESSION_PRAGMAS: &[&str] = &[
+    "ANALYSIS_LIMIT",
+    "AUTOMATIC_INDEX",
+    "BUSY_TIMEOUT",
+    "CACHE_SIZE",
+    "CACHE_SPILL",
+    "CASE_SENSITIVE_LIKE",
+    "COUNT_CHANGES",
+    "DEFER_FOREIGN_KEYS",
+    "EMPTY_RESULT_CALLBACKS",
+    "FOREIGN_KEYS",
+    "FULL_COLUMN_NAMES",
+    "IGNORE_CHECK_CONSTRAINTS",
+    "MMAP_SIZE",
+    "READ_UNCOMMITTED",
+    "RECURSIVE_TRIGGERS",
+    "REVERSE_UNORDERED_SELECTS",
+    "SHORT_COLUMN_NAMES",
+    "TEMP_STORE",
+    "THREADS",
+];
+/// Pragmas whose argument names what they read (`PRAGMA table_info(t)`), not a value to set.
+const READING_PRAGMAS: &[&str] = &[
+    "FOREIGN_KEY_CHECK",
+    "FOREIGN_KEY_LIST",
+    "INDEX_INFO",
+    "INDEX_LIST",
+    "INDEX_XINFO",
+    "INTEGRITY_CHECK",
+    "QUICK_CHECK",
+    "SHOW",
+    "STORAGE_INFO",
+    "TABLE_INFO",
+    "TABLE_LIST",
+    "TABLE_XINFO",
+];
+/// Pragmas that change the database even without a value.
+const ACTING_PRAGMAS: &[&str] = &[
+    "FORCE_CHECKPOINT",
+    "INCREMENTAL_VACUUM",
+    "OPTIMIZE",
+    "SHRINK_MEMORY",
+    "WAL_CHECKPOINT",
 ];
 /// Words between `UPDATE`/`DELETE` and the table.
 pub(crate) const MODIFIERS: &[&str] = &[
@@ -486,6 +551,72 @@ fn changes(w: &Words<'_>, dialect: Dialect) -> (Vec<Unfiltered>, bool) {
     all
 }
 
+/// Whether `word`, after a statement's first word, runs a change: MariaDB's `SET STATEMENT …
+/// FOR UPDATE …`, a Transact-SQL batch `SET NOCOUNT ON DELETE …` (it needs no `;`).
+fn runs_change(word: &str, dialect: Dialect) -> bool {
+    crate::WRITE_WORDS.contains(&word)
+        || dialect == Dialect::SqlServer
+            && (TSQL_CHANGES.contains(&word) || word.starts_with("XP_"))
+}
+
+/// Whether a `PRAGMA` changes the database: it assigns a value (`= 42`, or SQLite's other
+/// spelling `(42)`) to a pragma that is not one of the session's, or it acts (`optimize`).
+/// Reading a value (`PRAGMA user_version`) or an object (`PRAGMA table_info(t)`) changes nothing.
+fn pragma_changes(w: &Words<'_>) -> bool {
+    let at = if w.symbol(2, ".") { 3 } else { 1 };
+    let Some(name) = w.word(at) else {
+        return false;
+    };
+    if ACTING_PRAGMAS.contains(&name.as_str()) {
+        return true;
+    }
+    let assigns = w.symbol(at + 1, "=");
+    let argument = w.symbol(at + 1, "(");
+    (assigns || argument && !READING_PRAGMAS.contains(&name.as_str()))
+        && !SESSION_PRAGMAS.contains(&name.as_str())
+}
+
+/// Whether a statement led by one of [`OTHER`] changes more than its session: the server's or
+/// a database's settings (MySQL's and DuckDB's `SET GLOBAL`, `SET PERSIST`, `SET @@global.x`),
+/// an account (`SET PASSWORD`, `SET DEFAULT ROLE`), the binary logs or replication (`RESET
+/// MASTER`, `START REPLICA`), the database file (`PRAGMA user_version = 42`, `PRAGMA writable_schema = 1`).
+/// A session's settings (`SET search_path`, `SET NAMES`, `SET @x`, `SET NOCOUNT`) and `ANALYZE`,
+/// which refreshes statistics only, do not.
+fn changes_settings(w: &Words<'_>, sql: &str) -> bool {
+    match w.word(0).as_deref() {
+        Some("SET") => {
+            let lower = sql.to_ascii_lowercase();
+            w.top(1, w.tokens.len())
+                .any(|i| w.is(i, &["GLOBAL", "PERSIST", "PERSIST_ONLY"]))
+                || w.is(1, &["PASSWORD", "RESOURCE"])
+                || w.is(1, &["DEFAULT"]) && w.is(2, &["ROLE"])
+                || lower.contains("@@global")
+                || lower.contains("@@persist")
+        }
+        Some("RESET") => w.is(1, &["MASTER", "SLAVE", "REPLICA", "PERSIST", "BINARY"]),
+        Some("START") => w.is(1, &["SLAVE", "REPLICA", "GROUP_REPLICATION"]),
+        Some("PRAGMA") => pragma_changes(w),
+        _ => false,
+    }
+}
+
+/// The kind of a statement led by one of [`OTHER`], however the server reads it: `Dml` when
+/// it runs a change after its first word, `Ddl` when it changes settings beyond the session
+/// ([`changes_settings`]), else `Other`. A production connection asks before the first two.
+fn other_kind(sql: &str, dialect: Dialect) -> StatementKind {
+    let mut kind = StatementKind::Other;
+    for lexer in Lexer::readings(sql, dialect) {
+        let w = Words::with_lexer(sql, lexer);
+        if (1..w.tokens.len()).any(|i| w.word(i).is_some_and(|word| runs_change(&word, dialect))) {
+            return StatementKind::Dml;
+        }
+        if changes_settings(&w, sql) {
+            kind = StatementKind::Ddl;
+        }
+    }
+    kind
+}
+
 #[must_use]
 pub fn analyze(sql: &str, dialect: Dialect) -> Analysis {
     if sql.trim_start().starts_with('@') {
@@ -506,7 +637,7 @@ pub fn analyze(sql: &str, dialect: Dialect) -> Analysis {
     } else if DDL.contains(&first.as_str()) {
         StatementKind::Ddl
     } else if OTHER.contains(&first.as_str()) && !block {
-        StatementKind::Other
+        other_kind(sql, dialect)
     } else {
         StatementKind::Dml
     };
@@ -838,6 +969,73 @@ mod tests {
         );
         assert_eq!(ora("BEGIN"), StatementKind::Other);
         assert_eq!(ora("COMMIT"), StatementKind::Other);
+    }
+
+    #[test]
+    fn settings_beyond_the_session_are_changes() {
+        let lite = |sql| analyze(sql, Dialect::Sqlite).kind;
+        assert_eq!(lite("PRAGMA user_version = 42"), StatementKind::Ddl);
+        assert_eq!(lite("pragma main.writable_schema = 1"), StatementKind::Ddl);
+        assert_eq!(lite("PRAGMA user_version(42)"), StatementKind::Ddl);
+        assert_eq!(lite("PRAGMA journal_mode = WAL"), StatementKind::Ddl);
+        assert_eq!(lite("PRAGMA optimize"), StatementKind::Ddl);
+        assert_eq!(lite("PRAGMA wal_checkpoint(PASSIVE)"), StatementKind::Ddl);
+        assert_eq!(lite("PRAGMA query_only = 0"), StatementKind::Ddl);
+        // Reads, and the connection's own settings.
+        assert_eq!(lite("PRAGMA user_version"), StatementKind::Other);
+        assert_eq!(lite("PRAGMA table_info(t)"), StatementKind::Other);
+        assert_eq!(lite("PRAGMA main.index_list('t')"), StatementKind::Other);
+        assert_eq!(lite("PRAGMA integrity_check"), StatementKind::Other);
+        assert_eq!(lite("PRAGMA foreign_keys = ON"), StatementKind::Other);
+        assert_eq!(lite("ANALYZE"), StatementKind::Other);
+
+        let my = |sql| analyze(sql, Dialect::MySql).kind;
+        assert_eq!(my("SET GLOBAL max_connections = 10"), StatementKind::Ddl);
+        assert_eq!(my("SET PERSIST max_connections = 10"), StatementKind::Ddl);
+        assert_eq!(my("SET @@global.max_connections = 10"), StatementKind::Ddl);
+        assert_eq!(
+            my("SET sql_mode = '', GLOBAL max_connections = 10"),
+            StatementKind::Ddl
+        );
+        assert_eq!(my("SET PASSWORD FOR 'u'@'%' = 'x'"), StatementKind::Ddl);
+        assert_eq!(my("SET DEFAULT ROLE r TO u"), StatementKind::Ddl);
+        assert_eq!(my("RESET MASTER"), StatementKind::Ddl);
+        assert_eq!(my("START REPLICA"), StatementKind::Ddl);
+        assert_eq!(
+            my("ANALYZE TABLE t UPDATE HISTOGRAM ON a"),
+            StatementKind::Dml
+        );
+        assert_eq!(
+            my("SET STATEMENT max_statement_time = 1 FOR DELETE FROM t"),
+            StatementKind::Dml
+        );
+        assert_eq!(my("SET NAMES utf8mb4"), StatementKind::Other);
+        assert_eq!(my("SET SESSION sql_mode = ''"), StatementKind::Other);
+        assert_eq!(my("SET @x = 1"), StatementKind::Other);
+        assert_eq!(my("START TRANSACTION"), StatementKind::Other);
+        assert_eq!(my("ANALYZE TABLE t"), StatementKind::Other);
+
+        let pg = |sql| analyze(sql, Dialect::Postgres).kind;
+        assert_eq!(pg("SET search_path = public"), StatementKind::Other);
+        assert_eq!(pg("RESET ALL"), StatementKind::Other);
+        assert_eq!(
+            analyze("SET GLOBAL threads = 4", Dialect::DuckDb).kind,
+            StatementKind::Ddl
+        );
+
+        // A Transact-SQL batch needs no `;`: what follows the SET runs too.
+        let ms = |sql| analyze(sql, Dialect::SqlServer).kind;
+        assert_eq!(
+            ms("SET NOCOUNT ON DELETE FROM t WHERE id = 1"),
+            StatementKind::Dml
+        );
+        assert_eq!(ms("SET XACT_ABORT ON EXEC p"), StatementKind::Dml);
+        assert_eq!(
+            ms("BEGIN TRAN UPDATE t SET a = 1 WHERE id = 1"),
+            StatementKind::Dml
+        );
+        assert_eq!(ms("SET NOCOUNT ON"), StatementKind::Other);
+        assert_eq!(ms("BEGIN TRAN"), StatementKind::Other);
     }
 
     #[test]

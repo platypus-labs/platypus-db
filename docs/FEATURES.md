@@ -639,7 +639,10 @@ through the MCP server.
   wait for Commit, with Commit and Rollback.
 - An `UPDATE` or `DELETE` without `WHERE`, or a `TRUNCATE`, asks first and says about how many
   rows it changes.
-- On production connections every change is listed and confirmed before it runs.
+- On production connections every change is listed and confirmed before it runs. That includes
+  settings beyond the session (`SET GLOBAL`, `SET PERSIST`, `SET PASSWORD`, `RESET MASTER`, a
+  `PRAGMA` that writes the file such as `user_version = 42`); a session's `SET`, a `PRAGMA` that
+  reads (`table_info(t)`) or sets the connection only (`foreign_keys`), and `ANALYZE` run as usual.
 - The lock button makes one editor tab read-only without changing the saved connection.
 - Settings › Safety can add a `LIMIT` (`TOP` on SQL Server) to queries run from the editor that
   have no row cap of their own; off by default.
