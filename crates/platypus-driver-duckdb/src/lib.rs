@@ -486,6 +486,16 @@ fn outcome(sql: &str, schema: &Schema) -> Outcome {
     }
 }
 
+/// `sql` prepared and started, with the schema of its result.
+fn open<'c>(
+    conn: &'c duckdb::Connection,
+    sql: &str,
+) -> duckdb::Result<(duckdb::Statement<'c>, Schema)> {
+    let mut stmt = conn.prepare(sql)?;
+    let schema = stmt.stream_arrow([])?.get_schema();
+    Ok((stmt, Schema::clone(&schema)))
+}
+
 fn run(conn: &duckdb::Connection, command: Command) {
     let Command {
         sql,
@@ -493,15 +503,8 @@ fn run(conn: &duckdb::Connection, command: Command) {
         reply,
         ..
     } = command;
-    let mut stmt = match conn.prepare(&sql) {
-        Ok(stmt) => stmt,
-        Err(e) => {
-            let _ = reply.send(Err(map_error(&e, &sql)));
-            return;
-        }
-    };
-    let schema = match stmt.stream_arrow([]) {
-        Ok(arrow) => arrow.get_schema(),
+    let (mut stmt, mut schema) = match open(conn, &sql) {
+        Ok(opened) => opened,
         Err(e) => {
             let _ = reply.send(Err(map_error(&e, &sql)));
             return;
@@ -514,7 +517,20 @@ fn run(conn: &duckdb::Connection, command: Command) {
             return;
         }
     }
-    let schema = types::tag_schema(&schema, &stmt);
+    // Arrow's time of day has no offset: a query with `TIMETZ` columns is read with them as
+    // text. DuckDB runs one result per connection, so the first one is closed before.
+    let zoned_times = types::time_tz_columns(&stmt, schema.fields().len());
+    if let Some(text_sql) = types::timetz_query(&sql, &schema, &zoned_times) {
+        drop(stmt);
+        match open(conn, &text_sql).or_else(|_| open(conn, &sql)) {
+            Ok(opened) => (stmt, schema) = opened,
+            Err(e) => {
+                let _ = reply.send(Err(map_error(&e, &sql)));
+                return;
+            }
+        }
+    }
+    let schema = types::tag_schema(&schema, &stmt, &zoned_times);
     // The first chunk is fetched before answering, so errors raised by the first rows fail
     // the statement itself.
     let mut chunk = match stmt.step() {
@@ -569,6 +585,12 @@ fn conform(schema: &SchemaRef, chunk: &StructArray) -> Result<RecordBatch> {
                 let bits: arrow_array::StringArray =
                     bytes.iter().map(|b| b.and_then(types::bit_text)).collect();
                 Ok(Arc::new(bits) as arrow_array::ArrayRef)
+            } else if let Some(huge) = column
+                .as_any()
+                .downcast_ref::<arrow_array::Decimal128Array>()
+                && *field.data_type() == arrow_schema::DataType::Decimal256(39, 0)
+            {
+                Ok(Arc::new(types::unsigned_huge(huge)?) as arrow_array::ArrayRef)
             } else if let Some(union) = column.as_any().downcast_ref::<arrow_array::UnionArray>() {
                 Ok(Arc::new(types::union_text(union)?) as arrow_array::ArrayRef)
             } else {

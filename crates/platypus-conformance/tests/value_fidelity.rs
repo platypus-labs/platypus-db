@@ -875,3 +875,45 @@ async fn duckdb_special_values_and_bits() {
         ])]
     );
 }
+
+#[tokio::test]
+async fn duckdb_unsigned_128_bit_numbers_and_zoned_times_keep_their_value() {
+    platypus_driver_duckdb::testing::load();
+    let dir = tempfile::tempdir().unwrap();
+    let conn = file_connection(
+        &DuckDbDriver,
+        DriverKind::DuckDb,
+        &dir.path().join("qa.duckdb"),
+    )
+    .await;
+    let conn = &*conn;
+    assert_eq!(
+        texts(
+            conn,
+            "SELECT 340282366920938463463374607431768211455::UHUGEINT, \
+             170141183460469231731687303715884105728::UHUGEINT, \
+             TIMETZ '03:04:05+02', TIMETZ '23:59:59.5-05:30'"
+        )
+        .await,
+        [row(&[
+            "340282366920938463463374607431768211455",
+            "170141183460469231731687303715884105728",
+            "03:04:05+02",
+            "23:59:59.5-05:30"
+        ])]
+    );
+    // Stored in a table, the same.
+    run(conn, "CREATE TABLE qa_fix_wide (u UHUGEINT, z TIMETZ)").await;
+    run(
+        conn,
+        "INSERT INTO qa_fix_wide VALUES (340282366920938463463374607431768211455, '03:04:05+02')",
+    )
+    .await;
+    assert_eq!(
+        texts(conn, "SELECT u, z FROM qa_fix_wide").await,
+        [row(&[
+            "340282366920938463463374607431768211455",
+            "03:04:05+02"
+        ])]
+    );
+}
