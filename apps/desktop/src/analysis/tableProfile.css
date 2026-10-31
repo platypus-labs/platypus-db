@@ -46,7 +46,7 @@
 .tp-card {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: 180px 220px minmax(120px, 1fr) minmax(160px, 240px);
+  grid-template-columns: 160px 300px minmax(80px, 1fr) minmax(140px, 220px);
   column-gap: var(--space-16);
   align-items: start;
   min-width: 0;
