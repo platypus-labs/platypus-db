@@ -9,7 +9,7 @@
 // listed with their sizes; the replication says it could not be read when the app user lacks the
 // right (MySQL) and that the server follows no other once it has it (MariaDB). See the Dashboard
 // component in src/admin/Dashboard.tsx.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import assert from "node:assert/strict";
 import { connections, needs } from "../qa-grid.mjs";
 import {

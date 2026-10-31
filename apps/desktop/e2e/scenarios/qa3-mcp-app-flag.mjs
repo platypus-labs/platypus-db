@@ -7,7 +7,7 @@
 // QA3-MCP-00 (resolved): the app ignored `--mcp` until group P was merged into this round.
 // qa3-mcp-app-mode.mjs drives the same mode further (PostgreSQL, read-only, no window).
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

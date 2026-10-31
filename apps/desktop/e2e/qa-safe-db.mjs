@@ -1,7 +1,7 @@
 // Helpers of the qa-safe scenarios: saved connections to the docker/compose.yml databases
 // (passwords from a password command, so the keychain is never touched), statements run
 // beside the app with the database's own client inside its container, and the guard check.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { connect as tcp } from "node:net";
 import { CTRL } from "./cdp.mjs";
 

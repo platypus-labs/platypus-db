@@ -7,7 +7,7 @@
 // a double quote loses its quotes ('"quoted" word' -> 'quoted word').
 // Expected: text without a tab or a line break is one value for the focused cell, as typed.
 // Actual: it is split as CSV and the values saved are wrong.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL, assert, button, connections, editBar, expand, focusCell, openData, previewSql, visibleTab } from "../qa-grid.mjs";

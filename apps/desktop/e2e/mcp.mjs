@@ -1,7 +1,7 @@
 // A minimal MCP client for scenarios: starts the MCP server agents register, the app itself
 // with `--mcp` (the shipped path: a separate build could go stale), on a profile folder and
 // calls its tools over JSON-RPC on stdio.
-import { spawn } from "node:child_process";
+import { spawn } from "./proc.mjs";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

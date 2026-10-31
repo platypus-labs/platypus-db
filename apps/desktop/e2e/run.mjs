@@ -15,7 +15,8 @@
 // history and settings are never touched. Windows only for now: the page is driven
 // through the WebView2 DevTools protocol.
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn as spawnApp } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -86,7 +87,7 @@ for (const file of scenarios) {
   if (portable) delete env.PLATYPUS_DATA_DIR;
   else env.PLATYPUS_DATA_DIR = dir;
   ctx.env = env;
-  const app = spawn(appExe, [], { env, stdio: ["ignore", "pipe", "pipe"] });
+  const app = spawnApp(appExe, [], { env, stdio: ["ignore", "pipe", "pipe"] });
   ctx.app = app;
   const output = [];
   app.stdout.on("data", (d) => output.push(d));

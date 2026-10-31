@@ -1,7 +1,7 @@
 // Where the scenarios that run a database's own command-line tools (psql, pg_dump, mysql,
 // mysqldump) find them: on the PATH, else in the portable server folders of the dev machine
 // (D:\Dev\Tools\dbs) or in the folders named by PLATYPUS_E2E_PGBIN / PLATYPUS_E2E_MYSQLBIN.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 

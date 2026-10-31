@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn } from "../proc.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 

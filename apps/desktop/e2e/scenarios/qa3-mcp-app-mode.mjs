@@ -10,7 +10,7 @@
 // UESCAPE form get past the read-only check (crates/platypus-mcp/src/access.rs). Collected
 // as problems at the end, so the passing parts above still guard the rest.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

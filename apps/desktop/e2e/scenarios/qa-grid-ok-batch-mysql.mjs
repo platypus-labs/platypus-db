@@ -1,7 +1,7 @@
 // Regression guard (passes): a thousand rows changed at once on MySQL. A value set on every
 // row (with the cells a column cannot take reported), all rows deleted, then a thousand rows
 // pasted as new rows: each save is quick and leaves the table as expected.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { CTRL, SHIFT, assert, button, connections, editBar, expand, focusCell, grid, gridMenu, needs, openData, save, sh } from "../qa-grid.mjs";
 
 export const skip = needs("mysql");

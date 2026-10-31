@@ -2,7 +2,7 @@
 // databases, or two files) per engine seeded from the shell, saved connections to them with the
 // password from a command, the backend called straight for setup checks, and the dialogs of
 // Check schema… and Compare with… driven from the navigator.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";

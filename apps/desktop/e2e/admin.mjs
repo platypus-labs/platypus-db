@@ -1,7 +1,7 @@
 // Helpers of the Server activity scenarios (group J): the admin tab, its session rows and
 // details, and sessions of the dev databases run in the background from a shell in their
 // container.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "./proc.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import { DBS, assert, expand, treeMenu } from "./qa-grid.mjs";
 

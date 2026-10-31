@@ -5,7 +5,7 @@
 // the keychain. The password is a wrong one, so the test never stores a working credential.
 // Skipped when PostgreSQL is not running.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { needs } from "../qa-safe-db.mjs";

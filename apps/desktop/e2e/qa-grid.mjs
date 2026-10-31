@@ -2,7 +2,7 @@
 // docker/compose.yml, SQL run on them through `docker exec` (to seed and check tables
 // outside the app), and the grid's usual gestures.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";

@@ -8,7 +8,7 @@
 // editor without running; run there, the server refuses a read-only variable (datadir) and
 // the value stays. MariaDB lists a read-only variable without a statement and says so.
 // See the Parameters component in src/admin/Parameters.tsx.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import assert from "node:assert/strict";
 import { CTRL, clearStatus, connections, idle, needs, visibleTab } from "../qa-grid.mjs";
 import { editorText } from "../qa-ana.mjs";

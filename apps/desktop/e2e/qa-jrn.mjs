@@ -1,7 +1,8 @@
 // What the user-journey scenarios (qa2-jrn-*) share: a real restart of the app inside one
 // scenario (the window closed as a user closes it, then the executable started again on the
 // same profile), the PostgreSQL container check and a few page probes.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn as spawnApp } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { readFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { dirname, join, resolve } from "node:path";
@@ -82,7 +83,7 @@ export async function launch(ctx, ready = `document.querySelector('.sidebar-head
   // The DevTools port is the old WebView2's until it has gone.
   const deadline = Date.now() + 20_000;
   while (!(await portFree()) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
-  const app = spawn(exe, [], {
+  const app = spawnApp(exe, [], {
     env: {
       ...process.env,
       PLATYPUS_DATA_DIR: ctx.dir,

@@ -1,7 +1,7 @@
 // What the performance scenarios (qa-perf-*) share: saved connections, the SQL editor of a
 // connection, running statements, fetching a whole result, the clipboard and the memory of the
 // app's processes.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";

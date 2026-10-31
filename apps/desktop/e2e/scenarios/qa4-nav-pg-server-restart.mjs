@@ -16,7 +16,7 @@
 // Overlaps the connections area (qa-conn-reconnect-*); kept here because it is the navigator
 // that stays broken. Needs the `pgwire` profile (timescale container).
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { connect as tcp } from "node:net";
 import { DBS, connectTo, expand, menu, row, saveConnections, visibleTab } from "../qa-nav-helpers.mjs";
 

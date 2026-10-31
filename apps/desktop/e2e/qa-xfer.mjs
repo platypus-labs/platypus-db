@@ -1,7 +1,7 @@
 // What the import, export and fake data scenarios (qa-xfer-*) share: connections to the
 // databases of docker/compose.yml, statements run on them through the containers' own
 // clients, and the dialogs of the app driven as a user would.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";

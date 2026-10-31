@@ -5,7 +5,8 @@
 // connection and the script are still there.
 import assert from "node:assert/strict";
 import { copyFileSync, existsSync, readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn as spawnApp } from "node:child_process";
+import { spawnSync } from "../proc.mjs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { connect, CTRL } from "../cdp.mjs";
@@ -63,7 +64,7 @@ async function restart(ctx, before = () => {}) {
   spawnSync("taskkill", ["/pid", String(ctx.app.pid), "/t", "/f"], { stdio: "ignore" });
   await new Promise((r) => setTimeout(r, 3000));
   before();
-  const app = spawn(ctx.exe, [], { env: ctx.env, stdio: "ignore" });
+  const app = spawnApp(ctx.exe, [], { env: ctx.env, stdio: "ignore" });
   ctx.app = app;
   const page = await connect(ctx.port, 60_000);
   await page.waitFor(`document.querySelector('.tree-row') !== null`, 60_000);

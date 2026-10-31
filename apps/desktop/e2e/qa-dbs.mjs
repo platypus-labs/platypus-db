@@ -2,7 +2,7 @@
 // libSQL, Trino, CockroachDB, YugabyteDB and TimescaleDB containers of docker/compose.yml
 // (added to the grid helpers' databases, so `connections`, `expand`, `openEditor`, `run`…
 // work on them), and SQL run on them from outside the app.
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.mjs";
 import { cpSync, existsSync, writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { dirname, join, resolve } from "node:path";

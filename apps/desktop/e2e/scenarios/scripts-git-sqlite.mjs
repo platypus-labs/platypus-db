@@ -4,7 +4,7 @@
 // with "Pull with merge", a merge that stops on conflicts and is aborted, and a failing remote.
 // The other side of the remote is a clone driven with the git command line.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "../proc.mjs";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";

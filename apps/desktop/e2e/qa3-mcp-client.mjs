@@ -2,7 +2,7 @@
 // registers (the app with `--mcp`) on a profile folder and keeps every line it
 // writes, so scenarios can check the protocol itself: malformed input, notifications,
 // concurrent requests, stdout cleanliness, the exit code when stdin closes.
-import { spawn } from "node:child_process";
+import { spawn } from "./proc.mjs";
 import { mcpArgs, mcpExe, noMcp } from "./mcp.mjs";
 
 export { mcpArgs, mcpExe, noMcp };
