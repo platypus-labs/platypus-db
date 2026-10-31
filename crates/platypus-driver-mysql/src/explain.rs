@@ -33,12 +33,13 @@ pub async fn explain(conn: &MySqlConnection, sql: &str, analyze: bool) -> Result
         (true, true) => "ANALYZE FORMAT=JSON",
     };
     let mut plan = explain_document(conn, &format!("{prefix} {sql}"), analyze).await?;
-    let mut analyze = analyze;
-    // MySQL cannot analyze a change (UPDATE, DELETE): it answers with a message in place of a
-    // tree. The estimated plan stands in, and the result says it is not analyzed.
-    if analyze && !json && !has_steps(&plan) {
-        analyze = false;
-        plan = explain_document(conn, &format!("EXPLAIN FORMAT=TREE {sql}"), false).await?;
+    let (mut json, mut analyze) = (json, analyze);
+    // MySQL has no tree for a change (UPDATE, DELETE), analyzed or not: it answers
+    // `-> <not executable by iterator executor>`. Its estimated plan in JSON stands in, and
+    // the result says it is not analyzed.
+    if !json && !has_steps(&plan) {
+        (json, analyze) = (true, false);
+        plan = explain_document(conn, &format!("EXPLAIN FORMAT=JSON {sql}"), false).await?;
     }
     let (format, root) = if json {
         (ExplainFormat::Json, json_plan(&plan)?)
@@ -48,9 +49,14 @@ pub async fn explain(conn: &MySqlConnection, sql: &str, analyze: bool) -> Result
     Ok(Explain::new(format, plan, root, analyze))
 }
 
-/// Whether a tree plan has steps (`-> …`), not a message of the server in their place.
+/// Whether a tree plan has steps (`-> …`), not a message of the server in their place
+/// (`-> <not executable by iterator executor>`).
 fn has_steps(plan: &str) -> bool {
-    plan.lines().any(|l| l.trim_start().starts_with("-> "))
+    plan.lines().any(|l| {
+        l.trim_start()
+            .strip_prefix("-> ")
+            .is_some_and(|step| !step.trim_end().starts_with('<'))
+    })
 }
 
 /// A plan pasted or opened from a file: MySQL's tree (`EXPLAIN FORMAT=TREE` or
@@ -440,6 +446,16 @@ mod tests {
     #[test]
     fn a_message_of_the_server_is_not_a_plan() {
         assert!(!has_steps("<not executable by iterator executor>\n"));
+        // As MySQL 8.4 writes it for an UPDATE, with EXPLAIN ANALYZE and FORMAT=TREE alike.
+        assert!(!has_steps("-> <not executable by iterator executor>\n"));
+        // The JSON plan that stands in reads as a step on the table changed.
+        let update = r#"{"query_block": {"select_id": 1, "table": {"update": true,
+            "table_name": "t", "access_type": "range", "key": "PRIMARY",
+            "rows_examined_per_scan": 1, "attached_condition": "(`p`.`t`.`id` < 3)"}}}"#;
+        let root = json_plan(update).unwrap();
+        let text = format!("{root:?}");
+        assert!(text.contains("\"t\""), "{text}");
+        assert!(!text.contains("not executable"), "{text}");
         assert!(has_steps("-> Table scan on t  (cost=1 rows=1)\n"));
         assert!(has_steps("  -> Filter: (t.a > 1)\n"));
     }
