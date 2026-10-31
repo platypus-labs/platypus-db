@@ -110,13 +110,31 @@ pub(crate) fn option<'a>(config: &'a ConnectionConfig, key: &str) -> Option<&'a 
         .filter(|v| !v.is_empty())
 }
 
+/// `value`, checked to be passed to a CLI as one argument: one starting with `-` would be
+/// read as a flag of its own (a shared project's `--kubeconfig=\\host\share\config` as the
+/// Kubernetes target), and a control character has no place in any of them. `what` names it
+/// in the error.
+pub(crate) fn argument<'a>(what: &str, value: &'a str) -> Result<&'a str> {
+    if value.starts_with('-') || value.chars().any(char::is_control) {
+        return Err(Error::Config(format!(
+            "{what} may not start with `-` or hold control characters"
+        )));
+    }
+    Ok(value)
+}
+
 /// The `aws` flags of `config`'s region and profile, for those set.
-pub(crate) fn aws_flags(config: &ConnectionConfig) -> Vec<String> {
-    [("--region", AWS_REGION), ("--profile", AWS_PROFILE)]
-        .into_iter()
-        .filter_map(|(flag, key)| Some([flag.to_owned(), option(config, key)?.to_owned()]))
-        .flatten()
-        .collect()
+pub(crate) fn aws_flags(config: &ConnectionConfig) -> Result<Vec<String>> {
+    let mut flags = Vec::new();
+    for (flag, key, what) in [
+        ("--region", AWS_REGION, "the AWS region"),
+        ("--profile", AWS_PROFILE, "the AWS profile"),
+    ] {
+        if let Some(value) = option(config, key) {
+            flags.extend([flag.to_owned(), argument(what, value)?.to_owned()]);
+        }
+    }
+    Ok(flags)
 }
 
 /// What a command writes on stderr, read apart from its wait and to the end: a process it
