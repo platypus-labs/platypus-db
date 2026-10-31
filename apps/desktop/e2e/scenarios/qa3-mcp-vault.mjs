@@ -103,6 +103,8 @@ export default async function (page, { dir }) {
 
     await settings(page, "Agents");
     await page.waitFor(`${accessOf(VAULTED)} !== undefined`);
+    // The note comes once the page has asked whether the vault is on: give it the time.
+    await page.waitFor(`document.querySelector('.agents-panel [data-notice="vault"]') !== null`, 10_000).catch(() => {});
     const label = await page.eval(accessOf(VAULTED));
     const panel = await page.eval(`document.querySelector('.agents-panel').textContent`);
     if (!/master password/i.test(panel) && !/password|locked/i.test(label)) {
