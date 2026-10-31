@@ -125,7 +125,7 @@ dialog in the app first. Settings → Agents → Setup registers the server in y
 click.
 
 ```bash
-claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
+claude mcp add -s user platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
 ```
 
 Tools, limits, the HTTP bridge and the `platypus` CLI: [docs/AGENTS.md](docs/AGENTS.md).

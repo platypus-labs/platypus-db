@@ -132,7 +132,7 @@ modifica che un agente vuole eseguire apre prima una finestra di conferma nell'a
 Settings → Agents → Setup registra il server nei tuoi agenti con un clic.
 
 ```bash
-claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
+claude mcp add -s user platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
 ```
 
 Strumenti, limiti, il bridge HTTP e la CLI `platypus`: [docs/AGENTS.md](docs/AGENTS.md)

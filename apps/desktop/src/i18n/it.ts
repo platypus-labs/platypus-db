@@ -1637,6 +1637,8 @@ const it: Record<string, string> = {
   "Command line": "Riga di comando",
   "Editor": "Editor",
   "Not there yet: Install creates it.": "Non ancora presente: Installa lo crea.",
+  "Install creates the file with the server": "Installa crea il file con il server",
+  "The command is not available here: use this entry instead.": "Il comando non è disponibile qui: usa invece questa voce.",
   "After installing": "Dopo l'installazione",
   "By hand": "A mano",
   "Restart {client}.": "Riavvia {client}.",

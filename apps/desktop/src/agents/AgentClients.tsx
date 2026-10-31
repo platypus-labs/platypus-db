@@ -36,9 +36,12 @@ function stateDot(state: AgentInstallState): string {
 }
 
 /** What to paste by hand: Claude Code's command, otherwise the entry in the client's own format. */
-function manualText(client: AgentClient, setup: AgentSetup | null): { text: string; field: string } {
-  if (client.id === "claude_code" && setup) return { text: setup.claude_command, field: "claude_command" };
-  return { text: client.snippet, field: `snippet_${client.id}` };
+function manualText(client: AgentClient, setup: AgentSetup | null): { text: string; field: string; fallback: boolean } {
+  if (client.id === "claude_code") {
+    if (setup) return { text: setup.claude_command, field: "claude_command", fallback: false };
+    return { text: client.snippet, field: `snippet_${client.id}`, fallback: true };
+  }
+  return { text: client.snippet, field: `snippet_${client.id}`, fallback: false };
 }
 
 /** The clients PlatypusDB can be installed in: each with its file and an Install button
@@ -49,18 +52,20 @@ export function AgentClients() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [setup, setSetup] = useState<AgentSetup | null>(null);
+  const [setupFailed, setSetupFailed] = useState(false);
 
   const load = () =>
     api.agentClients().then(
       (list) => {
         setClients(list);
+        setError(null);
         setChosen((c) => c ?? list[0]?.id ?? null);
       },
       (e: unknown) => setError(toCommandError(e).message),
     );
   useEffect(() => {
     void load();
-    api.agentSetup().then(setSetup, (e: unknown) => setError(toCommandError(e).message));
+    api.agentSetup().then(setSetup, () => setSetupFailed(true));
   }, []);
 
   const install = async (client: AgentClient) => {
@@ -107,8 +112,16 @@ export function AgentClients() {
               data-client={c.id}
               data-state={c.state}
               className={`client-card${c.id === chosen ? " selected" : ""}`}
-              aria-current={c.id === chosen ? "true" : undefined}
+              role="button"
+              tabIndex={0}
+              aria-pressed={c.id === chosen}
               onClick={() => setChosen(c.id)}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  setChosen(c.id);
+                }
+              }}
             >
               <ClientLogo id={c.id} />
               <span className="client-name">{c.name}</span>
@@ -141,7 +154,9 @@ export function AgentClients() {
             <ClientLogo id={shown.id} size={28} />
             <strong>{shown.name}</strong>
             <span className="muted small">
-              {t("Install writes the server in the file and first saves a copy of it beside it")}
+              {shown.exists
+                ? t("Install writes the server in the file and first saves a copy of it beside it")
+                : t("Install creates the file with the server")}
             </span>
           </header>
           <div className="client-detail-body">
@@ -166,7 +181,12 @@ export function AgentClients() {
                 </ol>
               </div>
             </div>
-            <CopyBlock label={t("By hand")} text={manual.text} field={manual.field} />
+            <div className="client-detail-col">
+              {manual.fallback && setupFailed && (
+                <div className="muted small">{t("The command is not available here: use this entry instead.")}</div>
+              )}
+              <CopyBlock label={t("By hand")} text={manual.text} field={manual.field} />
+            </div>
           </div>
         </section>
       )}

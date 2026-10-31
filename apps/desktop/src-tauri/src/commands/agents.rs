@@ -72,14 +72,14 @@ impl Launch {
     }
 }
 
-/// `claude mcp add platypus -- "<path>" --mcp`, with the profile's folder when the app uses
+/// `claude mcp add -s user platypus -- "<path>" --mcp`, with the profile's folder when the app uses
 /// one.
 fn claude_command(launch: &Launch, data_dir: Option<&str>) -> String {
     let env = data_dir
         .map(|dir| format!("-e \"{DATA_DIR_ENV}={dir}\" "))
         .unwrap_or_default();
     format!(
-        "claude mcp add platypus {env}-- \"{}\" {}",
+        "claude mcp add -s user platypus {env}-- \"{}\" {}",
         launch.command,
         launch.args.join(" ")
     )
@@ -389,15 +389,15 @@ mod tests {
         let path = r"C:\Program Files\PlatypusDB\platypus-db.exe";
         assert_eq!(
             claude_command(&Launch::app(path), None),
-            r#"claude mcp add platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp"#
+            r#"claude mcp add -s user platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp"#
         );
         assert_eq!(
             claude_command(&Launch::app("/opt/p/platypus-db"), Some("/tmp/profile")),
-            r#"claude mcp add platypus -e "PLATYPUS_DATA_DIR=/tmp/profile" -- "/opt/p/platypus-db" --mcp"#
+            r#"claude mcp add -s user platypus -e "PLATYPUS_DATA_DIR=/tmp/profile" -- "/opt/p/platypus-db" --mcp"#
         );
         assert_eq!(
             claude_command(&Launch::flatpak("dev.platypusdb.desktop"), None),
-            r#"claude mcp add platypus -- "flatpak" run --command=platypus-db dev.platypusdb.desktop --mcp"#
+            r#"claude mcp add -s user platypus -- "flatpak" run --command=platypus-db dev.platypusdb.desktop --mcp"#
         );
         let setup = setup(&Launch::app(path), Some(r"D:\profile"));
         let parsed: toml::Table = toml::from_str(&setup.codex_config).unwrap();

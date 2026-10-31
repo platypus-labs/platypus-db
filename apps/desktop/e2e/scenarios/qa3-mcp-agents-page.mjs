@@ -71,7 +71,7 @@ async function closeSettings(page) {
 /** The server path and profile folder from the copied Claude Code command and Codex table:
  * the app itself, started with `--mcp`. */
 function parseCommands(claude, codex) {
-  const m = /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=(.+?)" -- "(.+)" --mcp$/.exec(claude);
+  const m = /^claude mcp add -s user platypus -e "PLATYPUS_DATA_DIR=(.+?)" -- "(.+)" --mcp$/.exec(claude);
   assert.ok(m, `unexpected Claude Code command: ${claude}`);
   const [, dataDir, exe] = m;
   assert.match(codex, /^args = \["--mcp"\]$/m, "Codex starts the app with --mcp too");

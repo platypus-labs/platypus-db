@@ -94,7 +94,7 @@ async function agentsPage(page, shots) {
   await page.waitFor(`document.querySelector('[data-field="claude_command"]') !== null`);
   const claude = await page.eval(`document.querySelector('[data-field="claude_command"]').textContent`);
   // The app runs on a profile folder of its own, which the server is given too.
-  assert.match(claude, /^claude mcp add platypus -e "PLATYPUS_DATA_DIR=.+" -- ".+platypus-db\.exe" --mcp$/);
+  assert.match(claude, /^claude mcp add -s user platypus -e "PLATYPUS_DATA_DIR=.+" -- ".+platypus-db\.exe" --mcp$/);
   await page.eval(`document.querySelector('[data-client="codex"]').click()`);
   await page.waitFor(`document.querySelector('[data-field="snippet_codex"]') !== null`);
   assert.equal(await page.eval(`document.querySelector('[data-field="claude_command"]')`), null, 'one By hand block at a time');
