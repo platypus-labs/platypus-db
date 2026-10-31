@@ -107,3 +107,17 @@ export async function refusedReadOnly(page, { path, table, operation }) {
   assert.match(r.text, /read-only|read only/i);
   await closeDialog(page);
 }
+
+/** Runs the parts one after the other, all of them even if one fails, and fails with every message. */
+export async function allParts(...parts) {
+  const failures = [];
+  for (const part of parts) {
+    try {
+      await part();
+    } catch (e) {
+      failures.push(e);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new Error(failures.map((e, i) => `[${i + 1}] ${e.message}`).join("\n"));
+}
