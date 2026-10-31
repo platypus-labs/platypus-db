@@ -9,6 +9,7 @@
 //! `settings.toml` through [`SettingsStore`]. Snapshots of a schema's structure, for the
 //! schema history, live in [`SchemaHistoryStore`].
 
+mod address;
 mod agent_calls;
 mod auth;
 mod catalog;
@@ -22,6 +23,7 @@ mod settings;
 mod sqlite;
 mod vault;
 
+pub use address::{clean_file_path, name_taken, tidy_address, trim_url_tail};
 pub use agent_calls::{
     AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
     NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv, rfc3339,

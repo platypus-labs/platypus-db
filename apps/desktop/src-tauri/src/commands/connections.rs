@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use platypus_core::{
-    Capabilities, Connection, ConnectionConfig, DriverKind, ParseNote, ParsedConnection, Secret,
-    ServerInfo, SslMode,
+    Capabilities, Connection, ConnectionConfig, DriverKind, Error, ParseNote, ParsedConnection,
+    Secret, ServerInfo, SslMode,
 };
 use platypus_sql::Dialect;
 use platypus_store::{
@@ -65,6 +65,8 @@ pub struct ParsedForm {
 /// [`ConnectionConfig::parse_any_for`]). Nothing is logged: the input may hold a password.
 #[tauri::command]
 pub fn parse_connection_url(input: &str, driver: Option<DriverKind>) -> CommandResult<ParsedForm> {
+    // A URL copied from a sentence or a `.env` line carries its `;` or `,`.
+    let input = platypus_store::trim_url_tail(input);
     let ParsedConnection { config, notes } = ConnectionConfig::parse_any_for(input, driver)?;
     Ok(ParsedForm {
         driver: config.driver,
@@ -159,7 +161,8 @@ fn config_of(
     password: Option<Secret>,
     ssh: &SshSecrets,
 ) -> ConnectionConfig {
-    let saved = store.effective(saved);
+    let mut saved = store.effective(saved);
+    platypus_store::tidy_address(&mut saved);
     let mut config = saved.config(password);
     config.ssh = saved.ssh.as_ref().map(|s| ssh_config(store, s, ssh));
     let script = &saved.init.statements;
@@ -237,11 +240,21 @@ fn update_ssh_secrets(
 #[tauri::command]
 pub fn save_connection(
     state: State<'_, AppState>,
-    connection: SavedConnection,
+    mut connection: SavedConnection,
     password: PasswordInput,
     ssh_secrets: Option<SshSecrets>,
     projects: Option<Vec<Uuid>>,
 ) -> CommandResult<Vec<SavedConnection>> {
+    platypus_store::tidy_address(&mut connection);
+    state.with_store(|s| {
+        if platypus_store::name_taken(s.list(), &connection) {
+            return Err(platypus_store::StoreError::Invalid(format!(
+                "a connection named \"{}\" exists already",
+                connection.name.trim()
+            )));
+        }
+        Ok(())
+    })?;
     let id = connection.id;
     let update = match password {
         PasswordInput::Keep => PasswordUpdate::Keep,
@@ -406,10 +419,40 @@ pub(crate) async fn open_for_test(
     let config = state
         .with_store(|s| Ok(config_of(s, connection, secret, &ssh)))?
         .with_env()?;
-    if !config.driver.is_embedded() {
-        config.check_host()?;
-    }
+    check_address(&config)?;
     Ok(connect(&config).await?)
+}
+
+/// What a connection needs to be tried at all, said at once rather than by the TLS or the
+/// network layer: a host, and the host and user of each SSH server.
+fn check_address(config: &ConnectionConfig) -> CommandResult<()> {
+    if config.driver.is_embedded() {
+        return Ok(());
+    }
+    let needs_host = !matches!(
+        config.driver,
+        DriverKind::Snowflake
+            | DriverKind::BigQuery
+            | DriverKind::Databricks
+            | DriverKind::Trino
+            | DriverKind::Adbc
+            | DriverKind::Oracle
+    );
+    if needs_host && config.host.trim().is_empty() {
+        return Err(Error::Config("the host is missing".to_owned()).into());
+    }
+    config.check_host()?;
+    let mut ssh = config.ssh.as_ref();
+    while let Some(server) = ssh {
+        if server.host.trim().is_empty() {
+            return Err(Error::Config("the SSH host is missing".to_owned()).into());
+        }
+        if server.user.trim().is_empty() {
+            return Err(Error::Config("the SSH user is missing".to_owned()).into());
+        }
+        ssh = server.jump.as_deref();
+    }
+    Ok(())
 }
 
 /// Whether a failed login is about the credentials, so that asking for the password again
@@ -580,9 +623,7 @@ pub(crate) async fn saved_config(
     let mut config = state
         .with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?
         .with_env()?;
-    if !config.driver.is_embedded() {
-        config.check_host()?;
-    }
+    check_address(&config)?;
     let label = match &database {
         Some(database) => format!("{} · {database}", saved.name),
         None => saved.name.clone(),
@@ -683,6 +724,45 @@ mod tests {
     use crate::commands::analysis::error_kind;
 
     use super::*;
+
+    #[test]
+    fn a_connection_without_a_host_or_an_ssh_host_is_refused_at_once() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.host.clear();
+        assert!(
+            check_address(&config)
+                .unwrap_err()
+                .message()
+                .contains("host is missing")
+        );
+        config.host = "db.internal".to_owned();
+        assert!(check_address(&config).is_ok());
+        let ssh = |host: &str, user: &str| platypus_core::SshConfig {
+            host: host.to_owned(),
+            port: 22,
+            user: user.to_owned(),
+            auth: platypus_core::SshAuth::Agent,
+            jump: None,
+        };
+        config.ssh = Some(ssh("", "ops"));
+        assert!(
+            check_address(&config)
+                .unwrap_err()
+                .message()
+                .contains("SSH host")
+        );
+        config.ssh = Some(ssh("bastion", ""));
+        assert!(
+            check_address(&config)
+                .unwrap_err()
+                .message()
+                .contains("SSH user")
+        );
+        config.ssh = Some(ssh("bastion", "ops"));
+        assert!(check_address(&config).is_ok());
+        // A server reached by a URL or an account has no host field.
+        assert!(check_address(&ConnectionConfig::new(DriverKind::Snowflake)).is_ok());
+    }
 
     fn none<T>() -> Result<T, String> {
         Err("not opened in tests".to_owned())
