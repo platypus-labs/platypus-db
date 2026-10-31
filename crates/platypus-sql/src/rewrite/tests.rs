@@ -32,8 +32,13 @@ fn sorts_by_position_where_a_name_is_ambiguous() {
         format!("{join}\nORDER BY 2 DESC")
     );
     assert_eq!(
-        set_order_by_position("SELECT TOP (5) a.*, b.name FROM a, b ORDER BY a.id", MS, 1, false)
-            .unwrap(),
+        set_order_by_position(
+            "SELECT TOP (5) a.*, b.name FROM a, b ORDER BY a.id",
+            MS,
+            1,
+            false
+        )
+        .unwrap(),
         "SELECT TOP (5) a.*, b.name FROM a, b ORDER BY 1 ASC"
     );
     assert_eq!(

@@ -631,7 +631,11 @@ pub fn set_order_by_position(
         return None;
     }
     let direction = if desc { "DESC" } else { "ASC" };
-    put_order_by(sql, dialect, Some(format!("ORDER BY {position} {direction}")))
+    put_order_by(
+        sql,
+        dialect,
+        Some(format!("ORDER BY {position} {direction}")),
+    )
 }
 
 /// The top-level `ORDER BY` of `sql` as written, from `ORDER` to its last token; `None` when

@@ -178,9 +178,12 @@ async fn qa_fixconn_probe_answers_inside_a_failed_transaction() {
         conn.set_autocommit(false).await.unwrap();
         run(&*conn, "SELECT 1").await;
         assert!(
-            conn.execute("SELECT * FROM qa_fixconn_no_such_table", &ExecOptions::default())
-                .await
-                .is_err()
+            conn.execute(
+                "SELECT * FROM qa_fixconn_no_such_table",
+                &ExecOptions::default()
+            )
+            .await
+            .is_err()
         );
         // The session answers, though its transaction may refuse statements now.
         assert!(conn.check_alive().await, "{}", s.name);
