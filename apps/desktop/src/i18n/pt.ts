@@ -1614,6 +1614,11 @@ const pt: Record<string, string> = {
   "{database} runs each statement by itself: if one fails, the ones before it stay applied.": "{database} executa cada instrução isoladamente: se uma falhar, as anteriores continuam aplicadas.",
   "{database} cannot make these changes in place: the table is created again and its rows copied.": "{database} não consegue fazer essas alterações no lugar: a tabela é criada de novo e as linhas dela são copiadas.",
   "Index {index} is on an expression: create it again by hand.": "O índice {index} é sobre uma expressão: crie-o de novo manualmente.",
+  "Index {index} is an XML or spatial index: create it again by hand.": "O índice {index} é um índice XML ou espacial: crie-o de novo manualmente.",
+  "Detaches partition {table}: it stays as a table of its own, with its rows; drop it by hand if it is not needed.":
+    "Desanexa a partição {table}: ela fica como uma tabela própria, com as suas linhas; exclua-a manualmente se não for necessária.",
+  "The table {table} is not created: its engine replicates through the keeper path {path}, which a copy would share with the source table and join its replicas. Create it by hand with a path of its own (one with the uuid or database macro).":
+    "A tabela {table} não é criada: o motor dela replica pelo caminho de keeper {path}, que uma cópia compartilharia com a tabela de origem, juntando-se às réplicas dela. Crie-a manualmente com um caminho próprio (um com a macro uuid ou database).",
   "Its triggers are created again as they were: check those that use a renamed or dropped column.": "Os triggers dela são criados de novo como eram: confira os que usam uma coluna renomeada ou excluída.",
   "Its triggers are created again.": "Os triggers dela são criados de novo.",
   "The primary key has no known name: drop it by hand.": "A chave primária não tem nome conhecido: exclua-a manualmente.",

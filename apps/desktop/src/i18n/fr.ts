@@ -1614,6 +1614,11 @@ const fr: Record<string, string> = {
   "{database} runs each statement by itself: if one fails, the ones before it stay applied.": "{database} exécute chaque instruction séparément : si l'une échoue, les précédentes restent appliquées.",
   "{database} cannot make these changes in place: the table is created again and its rows copied.": "{database} ne peut pas faire ces modifications sur place : la table est recréée et ses lignes copiées.",
   "Index {index} is on an expression: create it again by hand.": "L'index {index} porte sur une expression : recréez-le à la main.",
+  "Index {index} is an XML or spatial index: create it again by hand.": "L'index {index} est un index XML ou spatial : recréez-le à la main.",
+  "Detaches partition {table}: it stays as a table of its own, with its rows; drop it by hand if it is not needed.":
+    "Détache la partition {table} : elle reste une table à part entière, avec ses lignes ; supprimez-la à la main si elle n'est pas utile.",
+  "The table {table} is not created: its engine replicates through the keeper path {path}, which a copy would share with the source table and join its replicas. Create it by hand with a path of its own (one with the uuid or database macro).":
+    "La table {table} n'est pas créée : son moteur réplique via le chemin keeper {path}, qu'une copie partagerait avec la table source en rejoignant ses réplicas. Créez-la à la main avec un chemin propre (avec la macro uuid ou database).",
   "Its triggers are created again as they were: check those that use a renamed or dropped column.": "Ses triggers sont recréés à l'identique : vérifiez ceux qui utilisent une colonne renommée ou supprimée.",
   "Its triggers are created again.": "Ses triggers sont recréés.",
   "The primary key has no known name: drop it by hand.": "La clé primaire n'a pas de nom connu : supprimez-la à la main.",

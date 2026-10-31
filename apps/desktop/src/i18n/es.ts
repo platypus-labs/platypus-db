@@ -1614,6 +1614,11 @@ const es: Record<string, string> = {
   "{database} runs each statement by itself: if one fails, the ones before it stay applied.": "{database} ejecuta cada sentencia por separado: si una falla, las anteriores siguen aplicadas.",
   "{database} cannot make these changes in place: the table is created again and its rows copied.": "{database} no puede hacer estos cambios directamente: la tabla se vuelve a crear y se copian sus filas.",
   "Index {index} is on an expression: create it again by hand.": "El índice {index} está sobre una expresión: vuelve a crearlo a mano.",
+  "Index {index} is an XML or spatial index: create it again by hand.": "El índice {index} es un índice XML o espacial: vuelve a crearlo a mano.",
+  "Detaches partition {table}: it stays as a table of its own, with its rows; drop it by hand if it is not needed.":
+    "Separa la partición {table}: queda como una tabla propia, con sus filas; elimínala a mano si no se necesita.",
+  "The table {table} is not created: its engine replicates through the keeper path {path}, which a copy would share with the source table and join its replicas. Create it by hand with a path of its own (one with the uuid or database macro).":
+    "La tabla {table} no se crea: su motor replica a través de la ruta de keeper {path}, que una copia compartiría con la tabla de origen uniéndose a sus réplicas. Créala a mano con una ruta propia (una con la macro uuid o database).",
   "Its triggers are created again as they were: check those that use a renamed or dropped column.": "Sus triggers se vuelven a crear como estaban: revisa los que usan una columna renombrada o eliminada.",
   "Its triggers are created again.": "Sus triggers se vuelven a crear.",
   "The primary key has no known name: drop it by hand.": "La clave primaria no tiene un nombre conocido: elimínala a mano.",

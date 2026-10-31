@@ -866,10 +866,27 @@ impl Ddl<'_> {
         }
     }
 
+    /// Whether the index `i` is one a design cannot write, which a warning says: SQL Server's
+    /// XML and spatial indexes, whose `CREATE` takes what the catalog read leaves out (the
+    /// primary XML index, a bounding box).
+    fn skips_index(&self, i: &IndexDesign, warnings: &mut Vec<String>) -> bool {
+        let skip = self.d == Dialect::SqlServer
+            && text(i.method.as_ref()).is_some_and(|m| matches!(m, "XML" | "SPATIAL"));
+        if skip {
+            warnings.push(format!(
+                "Index {} is an XML or spatial index: create it again by hand.",
+                i.name
+            ));
+        }
+        skip
+    }
+
     /// The indexes of `design` on `table` and the comments of its columns.
     fn indexes_and_comments(&self, design: &TableDesign, table: &str, script: &mut Script) {
         for i in &design.indexes {
-            script.statements.push(self.create_index(table, i));
+            if !self.skips_index(i, &mut script.warnings) {
+                script.statements.push(self.create_index(table, i));
+            }
         }
         let commented: Vec<&ColumnDesign> = design
             .columns
@@ -1118,7 +1135,18 @@ impl Ddl<'_> {
                     .push("The primary key has no known name: drop it by hand.".to_owned()),
             }
         }
-        self.alter_columns(name, diff, script);
+        // A column that leaves the key to take NULL changes once the key is swapped: MySQL
+        // refuses NULL in a column of the key.
+        let leaving: Vec<&(&ColumnDesign, &ColumnDesign)> = if swap_key {
+            let old_key = primary_key(old);
+            diff.kept_columns
+                .iter()
+                .filter(|(o, n)| old_key.contains(&o.name) && !n.primary_key && n.nullable)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.alter_columns(name, diff, script, &leaving);
         let out = &mut script.statements;
         let key = primary_key(new);
         if diff.primary_key_changed && !key.is_empty() {
@@ -1128,6 +1156,9 @@ impl Ddl<'_> {
                 "ALTER TABLE {t} {drop}ADD PRIMARY KEY ({})",
                 self.list(&key)
             ));
+        }
+        for (o, n) in leaving {
+            self.alter_column(name, o, n, &mut script.statements, &mut script.warnings);
         }
         self.alter_partitioning(old, new, script);
         let out = &mut script.statements;
@@ -1141,7 +1172,9 @@ impl Ddl<'_> {
                 .push(add);
         }
         for i in &diff.indexes.added {
-            out.push(self.create_index(name, i));
+            if !self.skips_index(i, &mut script.warnings) {
+                script.statements.push(self.create_index(name, i));
+            }
         }
         let commented: Vec<&ColumnDesign> = diff
             .kept_columns
@@ -1158,8 +1191,15 @@ impl Ddl<'_> {
         self.comments(name, &commented, Some(old), script);
     }
 
-    /// Drops, redefines and adds the columns of `table` (its new name).
-    fn alter_columns(&self, table: &str, diff: &Diff<'_>, script: &mut Script) {
+    /// Drops, redefines and adds the columns of `table` (its new name), all but the kept ones
+    /// `later` redefines.
+    fn alter_columns(
+        &self,
+        table: &str,
+        diff: &Diff<'_>,
+        script: &mut Script,
+        later: &[&(&ColumnDesign, &ColumnDesign)],
+    ) {
         let t = self.table(table);
         let out = &mut script.statements;
         for c in &diff.dropped_columns {
@@ -1169,7 +1209,9 @@ impl Ddl<'_> {
             out.push(format!("ALTER TABLE {t} DROP COLUMN {}", self.q(&c.name)));
         }
         for (o, n) in &diff.kept_columns {
-            self.alter_column(table, o, n, out, &mut script.warnings);
+            if !later.iter().any(|(l, _)| l.name == o.name) {
+                self.alter_column(table, o, n, out, &mut script.warnings);
+            }
         }
         for c in &diff.added_columns {
             if self.d == Dialect::Oracle {
@@ -1192,8 +1234,8 @@ impl Ddl<'_> {
     }
 
     /// What can change of a table's options in place: PostgreSQL's partitions are created and
-    /// dropped; its partitioning and ClickHouse's engine clause cannot change, which a warning
-    /// says.
+    /// detached (they stay as tables, with their rows); its partitioning and ClickHouse's
+    /// engine clause cannot change, which a warning says.
     fn alter_partitioning(&self, old: &TableDesign, new: &TableDesign, script: &mut Script) {
         if !matches!(self.d, Dialect::Postgres | Dialect::ClickHouse) {
             return;
@@ -1216,12 +1258,15 @@ impl Ddl<'_> {
         for p in &old.partitions {
             match find(&new.partitions, &p.name) {
                 None => {
-                    script
-                        .statements
-                        .push(format!("DROP TABLE {}", self.table(&p.name)));
-                    script
-                        .warnings
-                        .push(format!("Drops the table {}: its rows are lost.", p.name));
+                    script.statements.push(format!(
+                        "ALTER TABLE {} DETACH PARTITION {}",
+                        self.table(&new.name),
+                        self.table(&p.name)
+                    ));
+                    script.warnings.push(format!(
+                        "Detaches partition {}: it stays as a table of its own, with its rows; drop it by hand if it is not needed.",
+                        p.name
+                    ));
                 }
                 Some(n) if n.bound.trim() != p.bound.trim() => script.warnings.push(format!(
                     "The bound of partition {} differs: change it by hand (detach it and attach it again).",
@@ -1816,6 +1861,18 @@ mod tests {
             1,
             "{mysql:?}"
         );
+        // A column that leaves the key and takes NULL changes after the swap, out of the key.
+        let mut nullable = old.clone();
+        nullable.columns[1].primary_key = true;
+        nullable.columns[1].nullable = false;
+        let mut left = nullable.clone();
+        left.columns[1].primary_key = false;
+        left.columns[1].nullable = true;
+        let mysql = script(Dialect::MySql, "shop", Some(&nullable), &left).unwrap();
+        let at = |s: &str| mysql.statements.iter().position(|x| x.starts_with(s));
+        let swap = at("ALTER TABLE shop.orders DROP PRIMARY KEY, ADD PRIMARY KEY (id)");
+        let modify = at("ALTER TABLE shop.orders CHANGE COLUMN total total");
+        assert!(swap.is_some() && modify > swap, "{mysql:?}");
         // A column of the old key dropped takes the key with it: dropped first, as before.
         let mut gone = new.clone();
         gone.columns[0].primary_key = false;
@@ -1827,6 +1884,36 @@ mod tests {
                 .contains(&"ALTER TABLE shop.orders DROP PRIMARY KEY".to_owned()),
             "{mysql:?}"
         );
+    }
+
+    #[test]
+    fn mssql_xml_and_spatial_indexes_are_left_out_with_a_warning() {
+        let mut design = orders();
+        for (name, method) in [("o_xml", "XML"), ("o_geo", "SPATIAL")] {
+            design.indexes.push(IndexDesign {
+                name: name.to_owned(),
+                columns: vec!["note".to_owned()],
+                method: Some(method.to_owned()),
+                ..IndexDesign::default()
+            });
+        }
+        let created = script(Dialect::SqlServer, "dbo", None, &design).unwrap();
+        let altered = script(Dialect::SqlServer, "dbo", Some(&orders()), &design).unwrap();
+        for s in [created, altered] {
+            assert!(
+                s.statements
+                    .iter()
+                    .all(|x| !x.contains("XML") && !x.contains("SPATIAL")),
+                "{s:?}"
+            );
+            assert_eq!(
+                s.warnings,
+                [
+                    "Index o_xml is an XML or spatial index: create it again by hand.",
+                    "Index o_geo is an XML or spatial index: create it again by hand."
+                ]
+            );
+        }
     }
 
     #[test]
@@ -2506,10 +2593,14 @@ mod tests {
             ["CREATE TABLE public.orders_all PARTITION OF public.orders DEFAULT"]
         );
         let s = script(Dialect::Postgres, "public", Some(&more), &parted).unwrap();
-        assert_eq!(s.statements, ["DROP TABLE public.orders_all"]);
+        // A partition no longer there is detached, its rows kept.
         assert_eq!(
-            s.warnings,
-            ["Drops the table orders_all: its rows are lost."]
+            s.statements,
+            ["ALTER TABLE public.orders DETACH PARTITION public.orders_all"]
+        );
+        assert!(
+            s.warnings[0].starts_with("Detaches partition orders_all: it stays"),
+            "{s:?}"
         );
     }
 

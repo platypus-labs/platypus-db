@@ -168,6 +168,15 @@ fn create_new(
     let mut later = Vec::new();
     let mut new = Vec::new();
     for w in wanted.iter().filter(|w| find(current, &w.name).is_none()) {
+        if dialect == Dialect::ClickHouse
+            && let Some(path) = w.options.as_deref().and_then(shared_keeper_path)
+        {
+            out.warnings.push(format!(
+                "The table {} is not created: its engine replicates through the keeper path {path}, which a copy would share with the source table and join its replicas. Create it by hand with a path of its own (one with the uuid or database macro).",
+                w.name
+            ));
+            continue;
+        }
         let mut t = matched(dialect, w, None, (schema, wanted_schema), sequences);
         if in_place {
             let (now, after): (Vec<_>, Vec<_>) = std::mem::take(&mut t.foreign_keys)
@@ -199,6 +208,41 @@ fn create_new(
     }
     keys.added.append(&mut later);
     Ok(keys.added)
+}
+
+/// The keeper path of a ClickHouse `Replicated*` engine in the table options `options`
+/// (`ENGINE = ReplicatedMergeTree('/clickhouse/tables/t', '{replica}') ORDER BY id`) that a
+/// copy of the table in another database would share: one naming neither the table's
+/// `{uuid}` nor its `{database}`. `None` for other engines, and one without arguments, which
+/// takes the server's default path.
+fn shared_keeper_path(options: &str) -> Option<String> {
+    let engine = options
+        .trim_start()
+        .strip_prefix("ENGINE")?
+        .trim_start()
+        .strip_prefix('=')?
+        .trim_start();
+    let name_end = engine
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .unwrap_or(engine.len());
+    if !engine[..name_end].starts_with("Replicated") {
+        return None;
+    }
+    let quoted = engine[name_end..]
+        .trim_start()
+        .strip_prefix('(')?
+        .trim_start()
+        .strip_prefix('\'')?;
+    let mut path = String::new();
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => path.extend(chars.next()),
+            '\'' => break,
+            c => path.push(c),
+        }
+    }
+    (!path.contains("{uuid}") && !path.contains("{database}")).then_some(path)
 }
 
 /// Whether the database gave the constraint `name` itself: SQLite's have none, SQL Server
@@ -649,6 +693,38 @@ mod tests {
                 .collect(),
             ..TableDesign::default()
         }
+    }
+
+    #[test]
+    fn clickhouse_tables_replicated_through_the_source_path_are_not_created() {
+        let engine = |e: &str| TableDesign {
+            options: Some(format!("ENGINE = {e} ORDER BY id")),
+            ..table("r", vec![column("id", "UInt64")], &[], "src")
+        };
+        let shared = engine("ReplicatedMergeTree('/clickhouse/tables/{shard}/r', '{replica}')");
+        let s = compare(Dialect::ClickHouse, "dst", "src", &[shared], &[]).unwrap();
+        assert!(s.statements.is_empty(), "{s:?}");
+        assert!(
+            s.warnings[0].starts_with(
+                "The table r is not created: its engine replicates through the keeper path /clickhouse/tables/{shard}/r, which"
+            ),
+            "{s:?}"
+        );
+        // Paths of their own in the target, and the server's default path, are fine.
+        for e in [
+            "ReplicatedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')",
+            "ReplicatedReplacingMergeTree('/t/{database}/r', '{replica}', v)",
+            "ReplicatedMergeTree",
+            "ReplicatedMergeTree()",
+            "MergeTree",
+        ] {
+            let s = compare(Dialect::ClickHouse, "dst", "src", &[engine(e)], &[]).unwrap();
+            assert_eq!(s.statements.len(), 1, "{e}: {s:?}");
+        }
+        assert_eq!(
+            shared_keeper_path("ENGINE = ReplicatedMergeTree('/a\\'b', 'r')"),
+            Some("/a'b".to_owned())
+        );
     }
 
     #[test]

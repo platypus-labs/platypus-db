@@ -594,3 +594,217 @@ async fn sqlite_rebuilds_keep_the_autoincrement_counter() {
         "0"
     );
 }
+
+#[tokio::test]
+async fn postgres_compare_detaches_a_partition_the_source_has_not() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_PG_URL",
+        "postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let d = Dialect::Postgres;
+    let (src, dst) = ("qa4c_part_src", "qa4c_part_dst");
+    for schema in [src, dst] {
+        run_all(
+            conn,
+            &[
+                format!("DROP SCHEMA IF EXISTS {schema} CASCADE"),
+                format!("CREATE SCHEMA {schema}"),
+                format!(
+                    "CREATE TABLE {schema}.ev (id int, ts date NOT NULL) PARTITION BY RANGE (ts)"
+                ),
+                format!(
+                    "CREATE TABLE {schema}.ev_2024 PARTITION OF {schema}.ev
+                     FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')"
+                ),
+            ],
+        )
+        .await;
+    }
+    run_all(
+        conn,
+        &[
+            format!(
+                "CREATE TABLE {dst}.ev_2025 PARTITION OF {dst}.ev
+                 FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')"
+            ),
+            format!("INSERT INTO {dst}.ev VALUES (1, '2024-06-01'), (2, '2025-06-01')"),
+        ],
+    )
+    .await;
+    let script = compare(
+        d,
+        dst,
+        src,
+        &designs(conn, d, src).await,
+        &designs(conn, d, dst).await,
+    )
+    .unwrap();
+    assert_eq!(
+        script.statements,
+        [format!(
+            "ALTER TABLE {dst}.ev DETACH PARTITION {dst}.ev_2025"
+        )]
+    );
+    assert!(
+        script.warnings[0].starts_with("Detaches partition ev_2025"),
+        "{script:?}"
+    );
+    platypus_schema::apply(conn, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}", e.statement, e.error));
+    // The partition's rows stay, in a table of its own.
+    assert_eq!(
+        value(
+            conn,
+            &format!(
+                "SELECT (SELECT count(*) FROM {dst}.ev) || ':' || (SELECT count(*) FROM {dst}.ev_2025)
+                 || ':' || (SELECT relispartition FROM pg_class WHERE oid = '{dst}.ev_2025'::regclass)"
+            )
+        )
+        .await,
+        "1:1:false"
+    );
+    for schema in [src, dst] {
+        run_all(conn, &[format!("DROP SCHEMA {schema} CASCADE")]).await;
+    }
+}
+
+#[tokio::test]
+async fn mysql_and_mariadb_take_a_column_out_of_the_key_and_make_it_nullable() {
+    for (env, url) in [
+        (
+            "PLATYPUS_TEST_MYSQL_ROOT_URL",
+            "mysql://root:platypus@localhost:53306/platypus",
+        ),
+        (
+            "PLATYPUS_TEST_MARIADB_ROOT_URL",
+            "mysql://root:platypus@localhost:53307/platypus",
+        ),
+    ] {
+        let Some(conn) = connect(env, url).await else {
+            continue;
+        };
+        let conn = &*conn;
+        let d = Dialect::MySql;
+        let db = "qa4c_pk";
+        run_all(
+            conn,
+            &[
+                format!("DROP DATABASE IF EXISTS {db}"),
+                format!("CREATE DATABASE {db}"),
+                format!(
+                    "CREATE TABLE {db}.t (id int NOT NULL AUTO_INCREMENT, k int NOT NULL,
+                     PRIMARY KEY (id, k))"
+                ),
+                format!("INSERT INTO {db}.t (k) VALUES (1), (2)"),
+            ],
+        )
+        .await;
+        let old = load(conn, d, db, "t").await.unwrap();
+        let mut new = old.clone();
+        let k = new.columns.iter_mut().find(|c| c.name == "k").unwrap();
+        k.primary_key = false;
+        k.nullable = true;
+        let script = platypus_schema::script(d, db, Some(&old), &new).unwrap();
+        platypus_schema::apply(conn, &script)
+            .await
+            .unwrap_or_else(|e| panic!("{url}: {}: {}\n{script:?}", e.statement, e.error));
+        assert_eq!(
+            value(
+                conn,
+                &format!(
+                    "SELECT CONCAT((SELECT GROUP_CONCAT(COLUMN_NAME) FROM information_schema.KEY_COLUMN_USAGE
+                       WHERE TABLE_SCHEMA = '{db}' AND TABLE_NAME = 't' AND CONSTRAINT_NAME = 'PRIMARY'),
+                     ':', (SELECT IS_NULLABLE FROM information_schema.COLUMNS
+                       WHERE TABLE_SCHEMA = '{db}' AND TABLE_NAME = 't' AND COLUMN_NAME = 'k'))"
+                )
+            )
+            .await,
+            "id:YES",
+            "{url}"
+        );
+        run_all(conn, &[format!("DROP DATABASE {db}")]).await;
+    }
+}
+
+#[tokio::test]
+async fn sqlserver_compare_leaves_out_xml_and_spatial_indexes() {
+    let Some(conn) = connect(
+        "PLATYPUS_TEST_MSSQL_URL",
+        "sqlserver://sa:Platypus-2026@localhost:51433/platypus?sslmode=require",
+    )
+    .await
+    else {
+        return;
+    };
+    let conn = &*conn;
+    let d = Dialect::SqlServer;
+    let (src, dst) = ("qa4c_xml_src", "qa4c_xml_dst");
+    for schema in [src, dst] {
+        run_all(
+            conn,
+            &[
+                format!(
+                    "IF OBJECT_ID('{schema}.x') IS NOT NULL DROP TABLE {schema}.x;
+                     IF SCHEMA_ID('{schema}') IS NOT NULL DROP SCHEMA {schema}"
+                ),
+                format!("CREATE SCHEMA {schema}"),
+            ],
+        )
+        .await;
+    }
+    run_all(
+        conn,
+        &[
+            format!("CREATE TABLE {src}.x (id int PRIMARY KEY CLUSTERED, doc xml, g geometry)"),
+            format!("CREATE PRIMARY XML INDEX x_doc ON {src}.x (doc)"),
+            format!(
+                "CREATE SPATIAL INDEX x_geo ON {src}.x (g) USING GEOMETRY_GRID
+                 WITH (BOUNDING_BOX = (0, 0, 100, 100))"
+            ),
+        ],
+    )
+    .await;
+    let script = compare(
+        d,
+        dst,
+        src,
+        &designs(conn, d, src).await,
+        &designs(conn, d, dst).await,
+    )
+    .unwrap();
+    platypus_schema::apply(conn, &script)
+        .await
+        .unwrap_or_else(|e| panic!("{}: {}\n{script:?}", e.statement, e.error));
+    for index in ["x_doc", "x_geo"] {
+        assert!(
+            script.warnings.contains(&format!(
+                "Index {index} is an XML or spatial index: create it again by hand."
+            )),
+            "{script:?}"
+        );
+    }
+    assert_eq!(
+        value(
+            conn,
+            &format!("SELECT count(*) FROM sys.columns WHERE object_id = OBJECT_ID('{dst}.x')")
+        )
+        .await,
+        "3"
+    );
+    for schema in [src, dst] {
+        run_all(
+            conn,
+            &[
+                format!("DROP TABLE {schema}.x"),
+                format!("DROP SCHEMA {schema}"),
+            ],
+        )
+        .await;
+    }
+}

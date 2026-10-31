@@ -1614,6 +1614,11 @@ const de: Record<string, string> = {
   "{database} runs each statement by itself: if one fails, the ones before it stay applied.": "{database} führt jede Anweisung einzeln aus: Schlägt eine fehl, bleiben die vorherigen angewendet.",
   "{database} cannot make these changes in place: the table is created again and its rows copied.": "{database} kann diese Änderungen nicht direkt vornehmen: Die Tabelle wird neu erstellt und ihre Zeilen kopiert.",
   "Index {index} is on an expression: create it again by hand.": "Index {index} liegt auf einem Ausdruck: von Hand neu erstellen.",
+  "Index {index} is an XML or spatial index: create it again by hand.": "Index {index} ist ein XML- oder räumlicher Index: von Hand neu erstellen.",
+  "Detaches partition {table}: it stays as a table of its own, with its rows; drop it by hand if it is not needed.":
+    "Löst die Partition {table}: Sie bleibt als eigene Tabelle mit ihren Zeilen erhalten; von Hand löschen, wenn sie nicht gebraucht wird.",
+  "The table {table} is not created: its engine replicates through the keeper path {path}, which a copy would share with the source table and join its replicas. Create it by hand with a path of its own (one with the uuid or database macro).":
+    "Die Tabelle {table} wird nicht erstellt: Ihre Engine repliziert über den Keeper-Pfad {path}, den eine Kopie mit der Quelltabelle teilen und so deren Replikaten beitreten würde. Von Hand mit einem eigenen Pfad erstellen (einem mit dem Makro uuid oder database).",
   "Its triggers are created again as they were: check those that use a renamed or dropped column.": "Ihre Trigger werden wie zuvor neu erstellt: diejenigen prüfen, die eine umbenannte oder gelöschte Spalte verwenden.",
   "Its triggers are created again.": "Ihre Trigger werden neu erstellt.",
   "The primary key has no known name: drop it by hand.": "Der Primärschlüssel hat keinen bekannten Namen: von Hand löschen.",

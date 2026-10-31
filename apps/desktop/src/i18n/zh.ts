@@ -1614,6 +1614,11 @@ const zh: Record<string, string> = {
   "{database} runs each statement by itself: if one fails, the ones before it stay applied.": "{database} 单独运行每条语句：如果某条失败，之前的语句仍保持生效。",
   "{database} cannot make these changes in place: the table is created again and its rows copied.": "{database} 无法就地进行这些更改：将重新创建该表并复制其行。",
   "Index {index} is on an expression: create it again by hand.": "索引 {index} 基于表达式：请手动重新创建。",
+  "Index {index} is an XML or spatial index: create it again by hand.": "索引 {index} 是 XML 或空间索引：请手动重新创建。",
+  "Detaches partition {table}: it stays as a table of its own, with its rows; drop it by hand if it is not needed.":
+    "分离分区 {table}：它将作为独立的表保留，其中的行也会保留；如不需要，请手动删除。",
+  "The table {table} is not created: its engine replicates through the keeper path {path}, which a copy would share with the source table and join its replicas. Create it by hand with a path of its own (one with the uuid or database macro).":
+    "不创建表 {table}：其引擎通过 keeper 路径 {path} 进行复制，副本会与源表共用该路径并加入其副本组。请手动以自己的路径创建（包含 uuid 或 database 宏的路径）。",
   "Its triggers are created again as they were: check those that use a renamed or dropped column.": "其触发器将按原样重新创建：请检查使用了已重命名或已删除列的触发器。",
   "Its triggers are created again.": "其触发器将重新创建。",
   "The primary key has no known name: drop it by hand.": "主键没有已知的名称：请手动删除。",
