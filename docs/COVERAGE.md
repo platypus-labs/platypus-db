@@ -281,14 +281,14 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Lock e catene di attesa | admin-sessions-mysql, admin-sessions-mariadb, admin-sessions-mssql; conformance `shows_blocking_chains` | ✅ |
 | Statement più costosi | admin-statistics-postgres, admin-statistics-mysql, admin-statistics-mariadb; conformance `reads_server_statistics_and_maintains_tables` | 🟡 |
 | Tabelle e indici (dimensioni, scansioni, dead rows, "Only those worth a look") | admin-statistics-postgres, admin-statistics-mysql | ✅ |
-| Manutenzione (VACUUM, ANALYZE, REINDEX, OPTIMIZE, CHECK TABLE, UPDATE STATISTICS, DBCC) | conformance `reads_server_statistics_and_maintains_tables`; E2E solo PostgreSQL e MySQL | 🟡 |
+| Manutenzione (VACUUM, ANALYZE, REINDEX, OPTIMIZE, CHECK TABLE, UPDATE STATISTICS, DBCC) | conformance `reads_server_statistics_and_maintains_tables`; admin-maintenance-postgres, admin-maintenance-mysql, admin-maintenance-mssql | ✅ |
 | Parametri del server | admin-parameters-postgres, adminParameters.test; conformance `reads_server_parameters` | 🟡 |
 | Dashboard del server | admin-dashboard-postgres, adminDashboard.test; conformance `reads_server_metrics` | 🟡 |
 | Utenti e ruoli: crea, modifica, elimina, privilegi | admin-users-postgres, admin-users-mysql, adminUsers.test; conformance `manages_users_roles_and_privileges` | 🟡 |
 | Debug… di una funzione PL/pgSQL | admin-debugger-postgres; `debugger.rs` | ✅ |
 | Backup… e Restore… (PostgreSQL, MySQL) | admin-backup-postgres, admin-backup-mysql | ✅ |
-| Attività del server su SQL Server (utenti, statistiche, parametri) | admin-sessions-mssql soltanto | 🟡 |
-| Utenti e ruoli su ClickHouse e SQL Server | solo conformance `manages_users_roles_and_privileges`; nessun E2E | 🟡 |
+| Attività del server su SQL Server (utenti, statistiche, parametri) | admin-sessions-mssql, admin-parameters-mssql, qa4-admin-mssql-ft-unit, qa4-admin-activity-connect-failed, qa4-admin-mysql-emoji-statement, qa4-admin-mariadb-emoji-statement | ✅ |
+| Utenti e ruoli su ClickHouse e SQL Server | admin-users-mssql, admin-users-clickhouse; conformance `manages_users_roles_and_privileges` | ✅ |
 | Attività pianificate: script, export, backup; Run now, ritenzione, ritentativi | schedules-sqlite, schedules-missed-run-sqlite (orari persi, disabilitati, ritentativo registrato; il secondo tentativo non viene atteso), adminSchedules.test, profiles-schedule-sqlite | 🟡 |
 | Attività pianificate: backup di database PostgreSQL / MySQL e fuso orario | schedules-backup-postgres (pg_dump e mysqldump veri: archivio PGDMP, SQL di uno schema, ritenzione, cartella impossibile, cartella mancante, schema inesistente, password sbagliata con ritentativo automatico al secondo giro, fuso orario di Tokyo) | ✅ |
 
@@ -366,7 +366,7 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | 3 | Blocco per inattività con master password (chiude le connessioni di produzione) | ✅ `app-lock-idle-sqlite` | E2E `app-lock-idle-sqlite` con i minuti ridotti da impostazione di prova |
 | 4 | Attività pianificate: backup PostgreSQL / MySQL, fuso orario, ritentativo dopo un errore, esecuzione di un orario perso alla riapertura | ✅ `schedules-missed-run-sqlite`, `schedules-backup-postgres` | E2E `schedules-backup-postgres`, `schedules-missed-run-sqlite` |
 | 5 | Caricamento su bucket (S3, GCS, R2, MinIO) e su URL firmato | ✅ | Fatto: servizio `s3` (SeaweedFS: MinIO non pubblica più immagini con tag fisso) in `docker/compose.yml`, profilo `s3`, e conformance `upload.rs`. E2E `qa-xfer-upload-s3` dal form: fatto |
-| 6 | Manutenzione, parametri, dashboard, utenti e statistiche su SQL Server, MariaDB e ClickHouse; utenti e ruoli solo provati a livello di conformance | 🟡 | Fatti e verdi: `admin-users-mssql`, `admin-parameters-mysql` (anche MariaDB), `admin-parameters-mssql`, `admin-dashboard-mysql` (anche MariaDB). Scritti ma rossi per bug: `admin-maintenance-postgres`, `-mysql`, `-mssql` (B5, B6), `admin-users-clickhouse` (B7) |
+| 6 | Manutenzione, parametri, dashboard, utenti e statistiche su SQL Server, MariaDB e ClickHouse; utenti e ruoli solo provati a livello di conformance | ✅ | Fatti e verdi: `admin-users-mssql`, `admin-parameters-mysql` (anche MariaDB), `admin-parameters-mssql`, `admin-dashboard-mysql` (anche MariaDB). Scritti prima rossi per bug, ora corretti: `admin-maintenance-postgres`, `-mysql`, `-mssql` (B5, B6), `admin-users-clickhouse` (B7) |
 | 7 | Tunnel SSH con agente SSH, e certificati client per PostgreSQL e MySQL | ✅ | Fatto: `ssh_agent_tunnel` in `platypus-net`; `client_certificate_postgres`/`_mysql` con i container `postgres-mtls` e `mysql-mtls` (profilo `tls`, certificati di prova in `docker/tls`) |
 | 8 | Server MCP su Oracle, SQL Server, ClickHouse, Redis, Elasticsearch, Cassandra (sola lettura e conferma delle scritture) | 🟡 | Fatto `qa-mcp-drivers-matrix` per SQL Server, ClickHouse e Redis (sola lettura rifiuta DML, DDL, TRUNCATE e comandi Redis; la conferma chiede prima delle scritture). Oracle scritto ma salta senza Instant Client (`PLATYPUS_E2E_ORACLE_DRIVERS`); Cassandra ed Elasticsearch non coperti (container solo nei loro profili) |
 | 9 | Import da DataGrip, pgAdmin e `pg_service.conf`; password da `.pgpass` | ✅ `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` | E2E `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` con file di prova |
@@ -374,17 +374,17 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | 11 | Import Parquet ed Excel (fogli come tabelle) e dati da file come database (JSON, Parquet, Excel) | ✅ `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` | E2E `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` |
 | 12 | Notifica di sistema per una query lunga; icona nel vassoio (Quick query); Linux e macOS | ❌ | Liste scritte in [COLLAUDO.md](COLLAUDO.md) (sezioni 2, 3 e 4: sistema, Linux, macOS), da spuntare su macchina vera; `windows-sqlite` già prova la finestra |
 | 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | 🟡 | ADBC generico: fatto con il driver di SQLite del registro (`adbc_generic.rs`, anche quello di DuckDB con l'entrypoint `duckdb_adbc_init`). Db2: non pratico (driver ODBC manuale, container di oltre 2 GB). Snowflake, BigQuery, Databricks: solo a mano |
-| 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 `editor-cli-script-postgres` fatto con il psql vero (cartella dei client in `clients.mjs`; salta se non c'è); bug B4 aperto | E2E `editor-cli-script-postgres`; restano `mysql`, `sqlcmd`, `sqlite3` |
+| 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 `editor-cli-script-postgres` fatto con il psql vero (cartella dei client in `clients.mjs`; salta se non c'è); bug B4 risolto | E2E `editor-cli-script-postgres`; restano `mysql`, `sqlcmd`, `sqlite3` |
 | 15 | Migration status con Liquibase, Prisma, Alembic | ✅ `schema-migrations-sqlite` | Estendere `schema-migrations-sqlite` con tre cartelle di prova |
 | 16 | Query across databases oltre i limiti (512 MB) e con più driver (PostgreSQL con MySQL) | ✅ `analysis-across-postgres-mysql` | Join tra PostgreSQL e MySQL, NULL, UTF-8, date, tabella mancante, tipi diversi, filtro errato, sorgente eliminata, taglio a 512 MB con il messaggio "Partial" |
-| 17 | Pannello mappa su PostGIS e MySQL; pannello valore con XML, immagini e salvataggio | 🟡 `grid-value-panel-binary-sqlite` fatto (bug B3: l'immagine non si vede), `grid-map-postgres` fatto senza PostGIS vero (nessuna immagine di prova lo ha: EWKB e WKB inviati come testo/bytea) | E2E `grid-map-postgres`, `grid-value-panel-binary-sqlite` |
+| 17 | Pannello mappa su PostGIS e MySQL; pannello valore con XML, immagini e salvataggio | 🟡 `grid-value-panel-binary-sqlite` fatto (bug B3 risolto), `grid-map-postgres` fatto senza PostGIS vero (nessuna immagine di prova lo ha: EWKB e WKB inviati come testo/bytea) | E2E `grid-map-postgres`, `grid-value-panel-binary-sqlite` |
 | 18 | Query builder visuale: filtri, colonne, esecuzione | ✅ `query-builder-sqlite` | E2E `query-builder-sqlite` (join, WHERE, esegui, apri nell'editor) |
 | 19 | Temi con alto contrasto, zoom dell'interfaccia, sette lingue (oltre l'italiano) | ✅ `theme-sqlite`, `languages-sqlite`, `qa-ui-zoom-keys` | Estendere `theme-sqlite` e `languages-sqlite`; E2E `qa-ui-zoom-keys` |
 | 20 | Linter e controllo ortografico, outline, cursori multipli | ✅ `editor-more-sqlite` | Estendere `editor-more-sqlite` con un caso per ognuno |
 
 ## Bug trovati dal collaudo
 
-Test scritti dal gruppo S che falliscono perché è l'app a sbagliare: il test resta com'è e documenta il bug. Stato `aperto` finché la correzione non è unita in `main`.
+Test scritti dal gruppo S che falliscono perché è l'app a sbagliare: il test resta com'è e documenta il bug. Stato `aperto` finché la correzione non è unita in `main`. B9 e seguenti vengono dal giro per aree (scenari `qa4-*`, uno per bug, tutti corretti), B1-B8 dai test dei buchi; in fondo le correzioni della revisione del codice (R1-R20). Fra parentesi il commit della correzione.
 
 | # | Area | Bug | Test o scenario | Stato |
 |---|---|---|---|---|
@@ -396,3 +396,114 @@ Test scritti dal gruppo S che falliscono perché è l'app a sbagliare: il test r
 | B6 | Manutenzione MySQL | Su una tabella che non esiste `ANALYZE TABLE` restituisce righe di errore e l'app dice "Analyze done.": `run_maintenance` ignora le righe Error / "Operation failed" | `admin-maintenance-mysql` | risolto (da verificare in E2E) |
 | B7 | Utenti ClickHouse | Ogni utente mostra la scadenza 1970-01-01 00:00:00: per "mai" `system.users.valid_until` vale `['1970-01-01 00:00:00']`, quindi `empty()` è falso; togliere la data in Modifica lascia il 1970 | `admin-users-clickhouse` | risolto (da verificare in E2E) |
 | B8 | Utenti SQL Server | Il gruppo dei permessi a livello di database ha l'etichetta vuota nei dettagli dell'utente (`objectLabel` restituisce "" per la classe database) | (non verificato da uno scenario) | risolto (da verificare in E2E) |
+| B9 | Connessioni | Test su una connessione "Chiedi ogni volta" falliva con "password missing" invece di chiedere la password | `qa4-conn-ask-password-test` | risolto (856e7b06) |
+| B10 | Connessioni | Test su un file di testo scelto come SQLite diceva Connesso: ora il file viene letto e rifiutato | `qa4-conn-sqlite-not-a-database` | risolto (207bbb86) |
+| B11 | Connessioni | Il campo file di SQLite/DuckDB rifiutava un percorso tra virgolette ("Copia come percorso") o con uno spazio iniziale | `qa4-conn-sqlite-quoted-path` | risolto (856e7b06, bfc2cd0f) |
+| B12 | Connessioni | Tunnel SSH con host vuoto: Test aspettava 10 secondi con "ops@:22" invece di rifiutare subito | `qa4-conn-ssh-empty-host` | risolto (bfc2cd0f) |
+| B13 | Connessioni | Host vuoto su PostgreSQL: errore "TLS handshake: invalid dns name" invece di "manca l'host" | `qa4-conn-empty-host-test` | risolto (bfc2cd0f) |
+| B14 | Connessioni | SQL Server: l'host "localhost,51433" non veniva separato in host e porta (errore I/O grezzo) | `qa4-conn-mssql-host-comma` | risolto (bfc2cd0f) |
+| B15 | Connessioni | Un URL incollato con `;` o `,` finale finiva nel nome del database | `qa4-conn-url-trailing-punct` | risolto (bfc2cd0f) |
+| B16 | Connessioni | Gli errori dell'app stessi (Redis db, apertura SQLite, password mancante) restavano in inglese nell'interfaccia italiana | `qa4-conn-italian-driver-errors` | risolto (856e7b06, e1f3aa0f) |
+| B17 | Connessioni | Due connessioni potevano avere lo stesso nome | `qa4-conn-duplicate-name` | risolto (bfc2cd0f) |
+| B18 | Connessioni | L'import da DBeaver saltava ClickHouse, DuckDB, Oracle, libSQL e Snowflake come non supportati | `qa4-conn-import-dbeaver-clickhouse` | risolto (2ac89266) |
+| B19 | Connessioni | Backup (`pg_dump`/`mysqldump`) e comando della password partivano senza `CREATE_NO_WINDOW`: ogni esecuzione apriva una console su Windows | (trovato dalla sessione principale) | risolto (7eef555a) |
+| B20 | Navigator | Trascinare una routine nell'editor scriveva `schema."f_one(x integer)"`: ora scrive la chiamata | `qa4-nav-drag-routine-quoted` | risolto (c16ce390) |
+| B21 | Navigator | Il filtro per nome dello schema nascondeva lo schema e `schema.tabella` non trovava nulla | `qa4-nav-filter-schema-name` | risolto (c16ce390) |
+| B22 | Navigator | Dopo lo stop e il riavvio del server PostgreSQL la sessione aperta non si riprendeva (os error 10061) fino a Refresh: ora la sessione inattiva viene sondata prima dell'istruzione e Open data rilegge un tab fallito | `qa4-nav-pg-server-restart` | risolto (afd814bc, 17f10bf0) |
+| B23 | Navigator | Il segnalibro restava dopo l'eliminazione dell'oggetto | `qa4-nav-bookmark-after-drop` | risolto (c16ce390) |
+| B24 | Navigator | Copy name e Copy qualified name davano lo stesso testo su tabelle e viste | `qa4-nav-copy-name-same` | risolto (c16ce390) |
+| B25 | Editor SQL | Un parametro negativo (`10-:p` con -5) diventava `10--5` e commentava il resto; stesso per `@set v=-5`: risultato sbagliato in silenzio | `qa4-sql-param-negative-comment` | risolto (62ee52ed) |
+| B26 | Editor SQL | MySQL `SET autocommit=0` (e SQL Server `IMPLICIT_TRANSACTIONS ON`) seguito da INSERT: nessun badge Transaction, chiudere il tab perdeva la riga | `qa4-sql-mysql-autocommit-off` | risolto (21ed9f3b) |
+| B27 | Editor SQL | PostgreSQL: una selezione di due istruzioni con Ctrl+Invio mostrava solo il primo risultato | `qa4-sql-pg-selection-many-statements` | risolto (8f229be2) |
+| B28 | Editor SQL | La cronologia salvava in chiaro `CREATE ROLE … PASSWORD` | `qa4-sql-history-password` | risolto (7d3b4fcf) |
+| B29 | Editor SQL | SQLite/ClickHouse: una selezione di più istruzioni dava il messaggio grezzo "Multiple statements provided" | `qa4-sql-selection-many-statements-message` | risolto (8f229be2) |
+| B30 | Editor SQL | SQLite `?1 ?2 ?1` apriva tre campi e poi dava un errore di sintassi | `qa4-sql-sqlite-numbered-params` | risolto (62ee52ed) |
+| B31 | Editor SQL | ClickHouse: l'operatore ternario `1 ? 'a' : 'b'` apriva la finestra dei parametri | `qa4-sql-clickhouse-ternary` | risolto (62ee52ed) |
+| B32 | Editor SQL | Il formattatore spezzava `U&'..'` in `U & '...'` e `!<` di T-SQL in `! <` | `qa4-sql-format-unicode-string` | risolto (5da8431a) |
+| B33 | Editor SQL | `@export` diceva "Exported 1 rows" al plurale | `qa4-sql-export-directive-plural` | risolto (db8b55ee) |
+| B34 | Analisi | Grafici: i valori sotto 0,005 si leggevano come 0 | `qa4-ana-chart-small-values` | risolto (c76f6907) |
+| B35 | Analisi | Profilo: le cifre delle schede erano troncate a 1280 px | `qa4-ana-profile-truncated-values` | risolto (21107747, d8468e14) |
+| B36 | Analisi | Pivot: il NULL SQL e il testo 'NULL' finivano nella stessa colonna | `qa4-ana-pivot-null-vs-text` | risolto (c800d03c) |
+| B37 | Analisi | SQL sul risultato: i timestamptz erano letti nel fuso locale, mentre la griglia mostra quello del database | `qa4-ana-result-sql-timezone` | risolto (df7884ef, 1146a0ea) |
+| B38 | Analisi | ERD: il nome lungo di una colonna usciva dal riquadro | `qa4-ana-erd-long-column-name` | risolto (1b3ce5ad) |
+| B39 | Analisi | Explain PostgreSQL: Crea indice perdeva lo schema della tabella | `qa4-ana2-explain-index-schema` | risolto (a37d2a05, 3432bf20) |
+| B40 | Analisi | Notebook: l'export HTML scriveva 500 righe sotto "1.200 righe" senza avvisare | `qa4-ana2-notebook-export-truncated` | risolto (053491f9) |
+| B41 | Analisi | Explain: `lower(email) =` suggeriva un indice su `(email)` invece che sull'espressione | `qa4-ana2-explain-index-expression` | risolto (f0478435, 8c985b85) |
+| B42 | Analisi | Explain analyze di UPDATE/DELETE su MySQL mostrava `<not executable by iterator executor>` | `qa4-ana2-explain-mysql-dml-analyze` | risolto (137e56e0, 5335b559) |
+| B43 | Analisi | Notebook: un elenco numerato che parte da 3 si leggeva da 1 | `qa4-ana2-notebook-markdown-list-start` | risolto (053491f9) |
+| B44 | Analisi | Explain analyze PostgreSQL: `Planning` in JSON grezzo e `Triggers` vuoto | `qa4-ana2-explain-pg-planning-json` | risolto (a37d2a05) |
+| B45 | Analisi | Notebook e editor: un valore di parametro come 007 o 0042 entrava come numero e dava righe sbagliate | `qa4-ana2-notebook-param-leading-zero` | risolto (62ee52ed) |
+| B46 | Griglia | SQL Server: una colonna hierarchyid faceva fallire ogni SELECT ("invalid token type 0") | `qa4-grid-mssql-hierarchyid` | risolto (6a428157) |
+| B47 | Griglia | L'ordinamento dall'intestazione su un join con nomi doppi dava `ORDER BY id` ambiguo | `qa4-grid-pg-sort-join-ambiguous` | risolto (0e4bb5a2) |
+| B48 | Griglia | Il filtro Uguale falliva su json/xml di PostgreSQL e su text/ntext/xml/geography/sql_variant di SQL Server | `qa4-grid-pg-filter-json-equal` | risolto (1df4520d) |
+| B49 | Griglia | PostgreSQL: `time` 24:00:00 mostrava un errore di cast | `qa4-grid-pg-time-2400` | risolto (5303e772) |
+| B50 | Griglia | Svuotare una cella data, ora, booleana o JSON scriveva `''` e falliva: ora scrive NULL | `qa4-grid-pg-clear-date-cell` | risolto (fe93e45e) |
+| B51 | Griglia | DuckDB: eliminare una riga con MAP dava uno script di annullamento che non la ripristinava | `qa4-grid2-duckdb-map-undo` | risolto (d4e0a7fd) |
+| B52 | Griglia | SQLite: colonne DECIMAL/NUMERIC o senza tipo con soli interi erano trattate come intere e 9.99 veniva rifiutato | `qa4-grid2-sqlite-decimal-whole` | risolto (bd8e42b2) |
+| B53 | Griglia | Lo stesso su libSQL | `qa4-grid2-libsql-decimal-whole` | risolto (bd8e42b2) |
+| B54 | Griglia | DuckDB: un MAP mostrato come `{k: 1}` non si poteva riscrivere | `qa4-grid2-duckdb-map-edit` | risolto (d4e0a7fd) |
+| B55 | Griglia | DuckDB: una data BC (`0044-03-15 BC`) non si riscriveva e l'annullamento falliva | `qa4-grid2-duckdb-bc-date-undo` | risolto (d4e0a7fd) |
+| B56 | Griglia | DuckDB: le colonne GENERATED ALWAYS non erano riconosciute, Ctrl+D e annullamento fallivano | `qa4-grid2-duckdb-generated-duplicate` | risolto (f5ff0e15) |
+| B57 | Griglia | DuckDB: UHUGEINT da 2^127 in su appariva negativo | `qa4-grid2-duckdb-uhugeint` | risolto (849f0bbc) |
+| B58 | Griglia | DuckDB: TIMETZ perdeva l'offset | `qa4-grid2-duckdb-timetz` | risolto (849f0bbc, ef55982b) |
+| B59 | Impostazioni e tab | Con il pulsante Cancel nascosto dalle impostazioni della barra un'istruzione in corso non si poteva fermare | `qa4-ui-cancel-hidden` | risolto (6972602c) |
+| B60 | Impostazioni e tab | I tab non si potevano riordinare trascinandoli (ora anche Alt+Maiusc+Sinistra/Destra) | `qa4-ui-tab-reorder` | risolto (48993668) |
+| B61 | Impostazioni e tab | Editor delle scorciatoie: Ctrl+Canc/Backspace cancellava la scorciatoia invece di registrarla | `qa4-ui-shortcut-delete-combo` | risolto (a1b4ab3d) |
+| B62 | Impostazioni e tab | Il gruppo di scorciatoie mostrava il nome grezzo `dashboard.widget` | `qa4-ui-shortcuts-scope-header` | risolto (a1b4ab3d) |
+| B63 | Impostazioni e tab | Un tab non valido nell'area di lavoro salvata lasciava l'app vuota | (test unitario del workspace) | risolto (2dd964f6) |
+| B64 | Import / export | ClickHouse: l'export SQL INSERT di Map e Tuple scriveva JSON tra apici e non si poteva rieseguire | `qa4-xfer-clickhouse-sql-map-tuple` | risolto (22997cba, 3f800ed0) |
+| B65 | Import / export | Copia da PostgreSQL a MySQL: l'ora diventava TIME senza frazione e 23:59:59.999999 diventava 24:00:00 | `qa4-xfer-mysql-copy-time-fraction` | risolto (f6ed4b2e) |
+| B66 | Import / export | Copia di date da PostgreSQL a ClickHouse: i valori fuori intervallo (1000-01-01, 9999) erano ridotti in silenzio; ora si rifiutano | `qa4-xfer-clickhouse-copy-date-clamp` | risolto (504d5826) |
+| B67 | Import / export | Un import CSV fallito in ClickHouse diceva "Nothing was imported" ma lasciava 19.932 righe: ora passa da una tabella di appoggio | `qa4-xfer-clickhouse-import-partial` | risolto (504d5826, 026c8960) |
+| B68 | Import / export | Un campo CSV vuoto in una colonna ClickHouse non Nullable scriveva 0 o 1970-01-01 in silenzio: ora si rifiuta | `qa4-xfer-clickhouse-import-null-to-zero` | risolto (504d5826) |
+| B69 | Sicurezza e MCP | Una CTE con DELETE/UPDATE … RETURNING seguita da SELECT aggirava il blocco delle scritture senza filtro | `qa4-safe-guard-cte-dml` | risolto (d17ae3f2) |
+| B70 | Sicurezza e MCP | Le istruzioni degli agenti con PASSWORD erano salvate in chiaro nel registro delle chiamate e nella cronologia | `qa4-mcp-history-password` | risolto (7d3b4fcf, 574c7075) |
+| B71 | Sicurezza e MCP | Redis in sola lettura: un agente leggeva `CONFIG GET requirepass` e `ACL LIST` (segreti) | `qa4-mcp-redis-config-secrets` | risolto (0ce3e612) |
+| B72 | Sicurezza e MCP | ClickHouse in sola lettura: le funzioni tabella deltaLake, iceberg, hudi, fileCluster facevano richieste verso l'esterno | `qa4-mcp-clickhouse-table-functions` | risolto (42e5ede0, 2fec13b4) |
+| B73 | Sicurezza e MCP | La finestra di conferma delle scritture degli agenti, alta al massimo 260 px, nascondeva un `OR 1=1` dopo righe vuote | `qa4-mcp-agent-write-hidden-tail` | risolto (4d315864) |
+| B74 | Sicurezza e MCP | Un file di configurazione di un client con BOM UTF-8 era segnato come illeggibile | `qa4-mcp-client-bom` | risolto (49f3b384) |
+| B75 | Schema | Compare PostgreSQL: una colonna generata diventava `DEFAULT (a*2)` e falliva | `qa4-schema-compare-pg-generated` | risolto (6a6ab799) |
+| B76 | Schema | Compare PostgreSQL: l'identity si perdeva in silenzio | `qa4-schema-compare-pg-identity` | risolto (6a6ab799) |
+| B77 | Schema | Compare PostgreSQL: gli indici su espressione fallivano, quelli parziali perdevano il WHERE, BRIN diventava btree | `qa4-schema-compare-pg-expression-index` | risolto (6a6ab799) |
+| B78 | Schema | Compare SQL Server: identity diventava int, le colonne calcolate normali, si perdevano COLLATE, clustered, filtered e INCLUDE | `qa4-schema-compare-mssql-identity-computed` | risolto (6a6ab799) |
+| B79 | Schema | Compare PostgreSQL: il tipo enum era qualificato con lo schema di origine | `qa4-schema-compare-pg-enum-type` | risolto (6a6ab799) |
+| B80 | Schema | Compare PostgreSQL: una tabella partizionata diventava normale, senza avviso | `qa4-schema-compare-pg-partitioned` | risolto (6a6ab799) |
+| B81 | Schema | Compare MariaDB: una colonna JSON produceva un CHECK doppio | `qa4-schema-compare-mariadb-json` | risolto (6a6ab799) |
+| B82 | Schema | Compare MySQL: il prefisso dell'indice su testo `body(50)` si perdeva (ERR 1170), FULLTEXT diventava normale | `qa4-schema-compare-mysql-text-index` | risolto (6a6ab799, 9ec7f4d7) |
+| B83 | Schema | Compare ClickHouse: la chiave di ordinamento compariva come indice "ORDER BY", PARTITION BY e TTL si perdevano | `qa4-schema-compare-clickhouse-keys` | risolto (6a6ab799) |
+| B84 | Schema | PostgreSQL: un trigger BEFORE DELETE con altri eventi restituiva NEW e annullava ogni DELETE | `qa4-schema-trigger-pg-before-delete` | risolto (4c297b12) |
+| B85 | Schema | SQL Server: ALTER COLUMN senza COLLATE azzerava la collation case-sensitive | `qa4-schema-mssql-alter-column-collation` | risolto (6a6ab799) |
+| B86 | Schema | SQL Server: int in bigint con un default falliva (il vincolo di default non veniva tolto e rimesso) | `qa4-schema-mssql-alter-type-default` | risolto (6a6ab799) |
+| B87 | Schema | MySQL: allargare una chiave primaria AUTO_INCREMENT falliva (ERR 1075) | `qa4-schema-mysql-pk-auto-increment` | risolto (6a6ab799, 975d979f) |
+| B88 | Schema | SQLite: la ricostruzione della tabella azzerava `sqlite_sequence` | `qa4-schema-sqlite-rebuild-autoincrement` | risolto (c4360b37) |
+| B89 | Amministrazione | SQL Server: nei parametri "(max)" e "(min)" diventavano unità di misura | `qa4-admin-mssql-ft-unit` | risolto (ed6eced0) |
+| B90 | Amministrazione | MySQL: le attività mostravano le emoji come `?` | `qa4-admin-mysql-emoji-statement` | risolto (092f3c38) |
+| B91 | Amministrazione | MariaDB: le attività mostravano le emoji come `????` | `qa4-admin-mariadb-emoji-statement` | risolto (092f3c38) |
+| B92 | Amministrazione | Attività su una connessione irraggiungibile: 0 sessioni e solo un avviso | `qa4-admin-activity-connect-failed` | risolto (563b3b4e) |
+
+### Revisione del codice (R1-R20)
+
+La revisione del codice del giro per aree (`cb477074..HEAD`) ha trovato venti problemi; tutti corretti, ognuno con il test del suo commit.
+
+| # | Problema | File | Stato |
+|---|---|---|---|
+| R1 | Importazione in ClickHouse in modalità Replace: se lo spostamento dalla tabella di appoggio falliva dopo il TRUNCATE le righe erano perse | `import.rs` | risolto (026c8960) |
+| R2 | La finestra di conferma delle scritture degli agenti mostrava i caratteri bidirezionali Unicode: l'SQL mostrato poteva differire da quello eseguito; ora sono segni visibili | `writes.ts` | risolto (55797687) |
+| R3 | Il mascheramento delle credenziali non copriva Redis (`CONFIG SET requirepass`, `ACL SETUSER`, `AUTH`), DuckDB `CREATE SECRET`, SQL Server `CREATE CREDENTIAL`, le funzioni tabella ClickHouse | `security.rs` | risolto (5d3e4bea) |
+| R4 | Il form rifiutava l'host vuoto anche per Oracle e per i driver plugin: ora una sola lista dei driver che lo ammettono, per form e backend | `ConnectionDialog.tsx` | risolto (d170701c) |
+| R5 | Il controllo dell'indirizzo del backend pretendeva l'host anche per i plugin | `connections.rs` | risolto (d170701c) |
+| R6 | MySQL: le chiavi `UNIQUE KEY` perdevano lunghezze di prefisso, ordine ed espressioni | `create.rs` | risolto (9ec7f4d7) |
+| R7 | ClickHouse: un motore Replicated* con percorso ZooKeeper fisso univa la copia al gruppo di replica della sorgente | `catalog.rs` | risolto (975d979f) |
+| R8 | Compare PostgreSQL: una partizione presente solo nella destinazione diventava DROP TABLE; ora il compare non cancella righe | `ddl.rs` | risolto (975d979f) |
+| R9 | MySQL: `SET autocommit = 1` chiudeva la transazione anche se l'autocommit era già attivo (un `START TRANSACTION` restava invisibile) | `transaction.rs` | risolto (83865af8) |
+| R10 | MySQL: togliere una colonna dalla chiave e renderla nullable dava ER_PRIMARY_CANT_HAVE_NULL | `ddl.rs` | risolto (975d979f) |
+| R11 | SQL sul risultato: ogni caricamento impostava il fuso globale di DuckDB, l'ultimo vinceva; ora solo se ci sono timestamp con fuso | `duck.rs` | risolto (fe873dda) |
+| R12 | DuckDB: con colonne TIMETZ la query girava tre volte (effetti collaterali ripetuti); ora una sola | `lib.rs` del driver | risolto (ef55982b) |
+| R13 | Export ClickHouse: tuple a un campo, numeri grandi e ordine delle chiavi dei Map | `text.rs` | risolto (3f800ed0) |
+| R14 | Import ClickHouse senza diritto CREATE: ora ricade sul percorso diretto, dicendo che non è atomico | `import.rs` | risolto (026c8960) |
+| R15 | Import ClickHouse: il controllo dell'intervallo guardava solo la data e non gli anni oltre 9999 o i server vecchi | `import.rs` | risolto (026c8960) |
+| R16 | Compare SQL Server: indici XML e SPATIAL producevano un CREATE non valido; ora si saltano con un avviso | `catalog.rs` | risolto (975d979f) |
+| R17 | MCP in sola lettura su ClickHouse: `IS DISTINCT FROM` era letto come posizione di tabella e rifiutava una query valida | `access.rs` | risolto (5b2f9f67) |
+| R18 | Un errore di accesso senza le parole attese (libSQL "Unauthorized", HTTP 401 dei plugin) non richiedeva la password | `App.tsx` | risolto (ffce7c35) |
+| R19 | Modifica di massa su SQLite: svuotare una cella DATE/JSON/BOOLEAN scriveva NULL anche dove non è ammesso | `massEdit.ts` | risolto (8b3a0ac3) |
+| R20 | Explain: l'indice suggerito su un'espressione perdeva i letterali e gli schemi delle funzioni | `indexSql.ts` | risolto (8c985b85) |
