@@ -986,6 +986,51 @@ async fn count(b: &Backend, conn: &dyn Connection) -> String {
     cell(&rows[0], 0, 0).unwrap()
 }
 
+/// A commit mode switched by a typed statement (MySQL's `SET autocommit = 0`, SQL Server's
+/// `SET IMPLICIT_TRANSACTIONS ON`) is followed: the next change waits for COMMIT. `t` holds
+/// two rows.
+async fn typed_commit_modes(b: &Backend, conn: &dyn Connection, t: &str) {
+    let (off, on) = match b.config.driver {
+        DriverKind::MySql => ("SET autocommit = 0", "SET autocommit = 1"),
+        DriverKind::SqlServer => (
+            "SET IMPLICIT_TRANSACTIONS ON",
+            "SET IMPLICIT_TRANSACTIONS OFF",
+        ),
+        _ => return,
+    };
+    let insert = format!("INSERT INTO {t} VALUES (5)");
+    let delete = format!("DELETE FROM {t} WHERE id = 5");
+    run(conn, off).await.unwrap();
+    assert!(!conn.transaction().autocommit, "{}: {off}", b.name);
+    assert!(
+        !conn.transaction().open,
+        "{}: {off} changes nothing",
+        b.name
+    );
+    affected(b, conn, &insert).await;
+    assert!(conn.transaction().open, "{}: a change after {off}", b.name);
+    conn.rollback().await.unwrap();
+    assert_eq!(count(b, conn).await, "2", "{}: rolled back", b.name);
+    conn.rollback().await.unwrap();
+    run(conn, on).await.unwrap();
+    let state = conn.transaction();
+    assert!(state.autocommit && !state.open, "{}: {on}", b.name);
+    affected(b, conn, &insert).await;
+    assert!(!conn.transaction().open, "{}: autocommit again", b.name);
+    affected(b, conn, &delete).await;
+    // The toolbar's switch back to autocommit undoes a typed manual mode too.
+    run(conn, off).await.unwrap();
+    conn.set_autocommit(true).await.unwrap();
+    affected(b, conn, &insert).await;
+    affected(b, conn, &delete).await;
+    assert!(
+        !conn.transaction().open,
+        "{}: {off}, then autocommit",
+        b.name
+    );
+    assert_eq!(count(b, conn).await, "2", "{}: committed", b.name);
+}
+
 #[tokio::test]
 async fn manual_commit_and_rollback() {
     let _serial = SERIAL.lock().await;
@@ -1070,46 +1115,7 @@ async fn manual_commit_and_rollback() {
             conn.set_autocommit(true).await.unwrap();
         }
 
-        // A typed switch to manual commit is followed: the next change waits for COMMIT.
-        let typed = match b.config.driver {
-            DriverKind::MySql => Some(("SET autocommit = 0", "SET autocommit = 1")),
-            DriverKind::SqlServer => Some((
-                "SET IMPLICIT_TRANSACTIONS ON",
-                "SET IMPLICIT_TRANSACTIONS OFF",
-            )),
-            _ => None,
-        };
-        if let Some((off, on)) = typed {
-            run(conn, off).await.unwrap();
-            assert!(!conn.transaction().autocommit, "{}: {off}", b.name);
-            assert!(
-                !conn.transaction().open,
-                "{}: {off} changes nothing",
-                b.name
-            );
-            affected(&b, conn, &insert(5)).await;
-            assert!(conn.transaction().open, "{}: a change after {off}", b.name);
-            conn.rollback().await.unwrap();
-            assert_eq!(count(&b, conn).await, "2", "{}: rolled back", b.name);
-            conn.rollback().await.unwrap();
-            run(conn, on).await.unwrap();
-            let state = conn.transaction();
-            assert!(state.autocommit && !state.open, "{}: {on}", b.name);
-            affected(&b, conn, &insert(5)).await;
-            assert!(!conn.transaction().open, "{}: autocommit again", b.name);
-            affected(&b, conn, &format!("DELETE FROM {t} WHERE id = 5")).await;
-            // The toolbar's switch back to autocommit undoes a typed manual mode too.
-            run(conn, off).await.unwrap();
-            conn.set_autocommit(true).await.unwrap();
-            affected(&b, conn, &insert(5)).await;
-            affected(&b, conn, &format!("DELETE FROM {t} WHERE id = 5")).await;
-            assert!(
-                !conn.transaction().open,
-                "{}: {off}, then autocommit",
-                b.name
-            );
-            assert_eq!(count(&b, conn).await, "2", "{}: committed", b.name);
-        }
+        typed_commit_modes(&b, conn, &t).await;
 
         // DDL as the first statement opens the transaction too, where DDL is transactional.
         let mysql = b.config.driver == DriverKind::MySql;
