@@ -82,18 +82,22 @@ const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const FLOAT_WORDS = new Set(["nan", "infinity", "+infinity", "-infinity", "inf", "-inf"]);
 const BOOL_WORDS = new Set(["true", "t", "1", "yes", "y", "on", "false", "f", "0", "no", "n", "off"]);
 
-/** The rule of a result column, from its type and the table's catalog. */
-export function columnRule(column: ColumnInfo, meta: ColumnMeta | undefined): ColumnRule {
+/** The rule of a result column, from its type and the table's catalog. A `sqlite` table (SQLite,
+ *  libSQL) stores '' in a column of any declared type, a DATE or a JSON one too: there only
+ *  integer and real columns take an empty value as NULL. */
+export function columnRule(column: ColumnInfo, meta: ColumnMeta | undefined, sqlite = false): ColumnRule {
   const type = meta?.data_type ?? column.db_type;
+  const float = FLOAT_TYPE.test(type);
   const rule = (kind: ValueKind): ColumnRule => ({
     kind,
     nullable: meta?.nullable ?? true,
     enumValues: meta?.enum_values ?? [],
-    float: FLOAT_TYPE.test(type),
+    float,
     // The catalog does not say which columns the database numbers: those are keys.
     takesDefault: !meta || meta.nullable || meta.default !== null || meta.primary_key,
-    emptyIsNull:
-      kind === "integer" || kind === "number" || kind === "bool" || kind === "json" || (kind === "other" && VALUE_TYPE.test(type)),
+    emptyIsNull: sqlite
+      ? kind === "integer" || (kind === "number" && float)
+      : kind === "integer" || kind === "number" || kind === "bool" || kind === "json" || (kind === "other" && VALUE_TYPE.test(type)),
   });
   if (meta?.enum_values.length) return rule("enum");
   // Arrays and composite values are literals of their own.
