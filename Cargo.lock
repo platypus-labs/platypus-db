@@ -5988,6 +5988,7 @@ dependencies = [
  "platypus-core",
  "platypus-sql",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

@@ -373,7 +373,7 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | 10 | Export Markdown, HTML, Parquet, Excel, JSON, SQL INSERT: uno scenario che li scrive tutti e li rilegge (anche su un database di rete); compressione zstd | 🟡 | E2E `export-formats-postgres` con riletture; conformance `exports_every_format_and_reads_it_back` |
 | 11 | Import Parquet ed Excel (fogli come tabelle) e dati da file come database (JSON, Parquet, Excel) | 🟡 | E2E `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` |
 | 12 | Notifica di sistema per una query lunga; icona nel vassoio (Quick query); Linux e macOS | ❌ | Collaudo a mano con lista scritta (non automatizzabile con CDP); `windows-sqlite` già prova la finestra |
-| 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | 🟡 | ADBC generico: fatto con il driver di SQLite del registro (`adbc_generic.rs`; quello di DuckDB non si carica, bug aperto). Db2: non pratico (driver ODBC manuale, container di oltre 2 GB). Snowflake, BigQuery, Databricks: solo a mano |
+| 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | 🟡 | ADBC generico: fatto con il driver di SQLite del registro (`adbc_generic.rs`, anche quello di DuckDB con l'entrypoint `duckdb_adbc_init`). Db2: non pratico (driver ODBC manuale, container di oltre 2 GB). Snowflake, BigQuery, Databricks: solo a mano |
 | 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 | E2E `editor-cli-script-postgres` (il client c'è già nell'immagine di prova) |
 | 15 | Migration status con Liquibase, Prisma, Alembic | 🟡 | Estendere `schema-migrations-sqlite` con tre cartelle di prova |
 | 16 | Query across databases oltre i limiti (512 MB) e con più driver (PostgreSQL con MySQL) | 🟡 / ❌ | E2E `analysis-across-postgres-mysql` |
@@ -386,5 +386,5 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 
 | # | Area | Bug | Test | Stato |
 |---|---|---|---|---|
-| B1 | ADBC generico | La libreria scelta deve esportare `AdbcDriverInit`: nel form non c'è il campo "entrypoint", quindi il driver ADBC di DuckDB (`duckdb_adbc_init`) non si carica ("GetProcAddress failed") | `adbc_generic.rs` `generic_adbc_loads_duckdb` (ignorato) | aperto |
-| B2 | Certificati client MySQL | Con un file del certificato client mancante l'errore è "Input/output error: file not found" senza il nome del file (PostgreSQL lo dice) | `client_certificate.rs` `client_certificate_mysql` (il controllo sul nome è solo per PostgreSQL) | aperto |
+| B1 | ADBC generico | La libreria scelta doveva esportare `AdbcDriverInit`: il driver ADBC di DuckDB (`duckdb_adbc_init`) non si caricava ("GetProcAddress failed"). Ora il form ha il campo facoltativo "Entrypoint" | `adbc_generic.rs` `generic_adbc_loads_duckdb` | risolto |
+| B2 | Certificati client MySQL | Con un file del certificato client mancante l'errore non nominava il file (PostgreSQL sì). Ora MySQL controlla certificato e chiave e li nomina | `client_certificate.rs` `client_certificate_mysql` (controllo del nome per certificato e chiave, su entrambi) | risolto |

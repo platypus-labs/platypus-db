@@ -81,11 +81,7 @@ async fn refused(config: &ConnectionConfig) -> String {
     }
 }
 
-async fn check_server(
-    url: &str,
-    (user_sql, tls_sql, tls_expected): (&str, &str, &str),
-    names_file: bool,
-) {
+async fn check_server(url: &str, (user_sql, tls_sql, tls_expected): (&str, &str, &str)) {
     // With the certificate the login works, and the server sees the certificate.
     let with = config(url, true);
     let conn = driver(with.driver).connect(&with).await.unwrap();
@@ -111,8 +107,13 @@ async fn check_server(
     let mut missing = config(url, true);
     missing.ssl_client_cert = Some(tls_file("no-such.crt"));
     let err = refused(&missing).await;
-    // MySQL reports the bare I/O error (bug listed in docs/COVERAGE.md).
-    assert!(!names_file || err.contains("no-such.crt"), "{err}");
+    assert!(err.contains("no-such.crt"), "{err}");
+
+    // So does a key file that is not there.
+    let mut missing = config(url, true);
+    missing.ssl_client_key = Some(tls_file("no-such.key"));
+    let err = refused(&missing).await;
+    assert!(err.contains("no-such.key"), "{err}");
 
     // With the key of the wrong certificate (the server's) the handshake fails.
     let mut wrong = config(url, true);
@@ -138,7 +139,6 @@ async fn client_certificate_postgres() {
             "SELECT ssl::text, client_dn FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
             "true /CN=platypus",
         ),
-        true,
     )
     .await;
 }
@@ -161,7 +161,6 @@ async fn client_certificate_mysql() {
             "SELECT VARIABLE_VALUE FROM performance_schema.session_status WHERE VARIABLE_NAME = 'Ssl_cipher'",
             "TLS",
         ),
-        false,
     )
     .await;
 }
