@@ -38,7 +38,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Port forward da `kubectl` e `aws ssm` | cloud-sign-in; conformance `cloud_cli.rs` (`reaches_through_the_forward`) | ✅ |
 | Comandi prima e dopo la connessione (VPN) | connection-commands | ✅ |
 | Password: keychain, "chiedi ogni volta", comando di shell | qa-conn-keychain-empty-asks, qa-conn-wrong-password-reprompt, qa-conn-saved-placeholder, qa-safe-ok-credentials, connections-sqlite | ✅ |
-| Password da `.pgpass` | solo unit (`connectionTest.test`, `platypus-store`) | 🟡 |
+| Password da `.pgpass` | qa-conn-pgpass-postgres (PGPASSFILE, commenti, jolly, escape `:`, prima riga che corrisponde, riga mancante, password sbagliata, file tolto e rimesso); unit (`connectionTest.test`, `platypus-store`) | ✅ |
 | Gestori di password (1Password, Bitwarden, Vault, AWS Secrets Manager) | credential-managers (con CLI finte), credentialManagers.test, qa-safe-mcp-password-command-output | ✅ |
 | Master password (Argon2id + AES-256-GCM) | vault-postgres, qa3-mcp-vault, app-lock-sqlite, qa3-inst-upgrade-v020 | ✅ |
 | Accesso cloud: AWS IAM, Google Cloud IAM, Entra ID | cloud-sign-in (CLI finte); conformance `cloud_cli.rs` (`signs_in_with_the_token`, `tokens_and_forwards_reach_the_servers`) | ✅ |
@@ -90,7 +90,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Snippet e storico delle query, file `.sql` | editor-more-sqlite, scripts-builder-sqlite, history.test, qa-sql-ok-history-duckdb, qa-sql-script-file-encodings | ✅ |
 | Ctrl+\ in un nuovo tab di risultato | editor-more-sqlite | ✅ |
 | Modalità terminale (risultati come testo) | editor-more-sqlite | ✅ |
-| Script con `psql`, `mysql`, `sqlcmd`, `sqlite3` locali | nessun E2E; solo unit in `apps/desktop/src-tauri` | 🟡 |
+| Script con `psql`, `mysql`, `sqlcmd`, `sqlite3` locali | editor-cli-script-postgres (psql vero: `set`, `copy` da e verso file, errore che ferma lo script, selezione, client mancante, sola lettura; l'annullamento lascia correre la query sul server, bug B4); `mysql`, `sqlcmd`, `sqlite3`: solo unit in `apps/desktop/src-tauri` | 🟡 |
 | Esegui su più connessioni | editor-multi-run-sqlite, multiRun.test | ✅ |
 | Modalità Vim | vim-sqlite | ✅ |
 | Linter (colonne ignote, join senza condizione, `SELECT *` in produzione) e controllo ortografico dei commenti | editor-more-sqlite (messaggi al passaggio del mouse, solo produzione per `SELECT *`, impostazione off / commenti / tutto); conformance `compares_and_lints_schemas` | ✅ |
@@ -125,7 +125,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Colonne calcolate | grid-computed-sqlite, computed.test | ✅ |
 | Totali, vista record, conteggi per valore, statistiche, confronto di due righe | grid-more-sqlite | ✅ |
 | Chiavi esterne che aprono la riga, pannello References | grid-more-sqlite, edit-more-sqlite | ✅ |
-| Pannello mappa (PostGIS, MySQL, WKT) | grid-more-sqlite (WKB su SQLite); conformance `reads_geometries` (lettura) | 🟡 |
+| Pannello mappa (PostGIS, MySQL, WKT) | grid-map-postgres (tipi geometrici di PostgreSQL, EWKB con SRID, WKB, WKT e collezioni, colonna GEOMETRY di MySQL, illeggibili, selezione di più colonne, clic, zoom, oltre 10.000 forme); grid-more-sqlite (WKB su SQLite); conformance `reads_geometries`. Nessuna immagine di prova ha PostGIS: i valori che PostGIS invierebbe sono memorizzati come testo/bytea, una colonna di tipo `geometry` vera non è provata | 🟡 |
 | Risultati in sola lettura con aggiornamento automatico | grid-more-sqlite, rerun.test | ✅ |
 | Date, fuso orario, raggruppamento cifre, tempi relativi dalle impostazioni | qa-ana-locale-numbers, qa2-jrn-count-locale, format.test | 🟡 |
 | Valori speciali mostrati come nel database (infinity, bit, intervalli, UNION, money, datetime2) | qa-grid-pg-infinity, qa-grid-pg-bit-display, qa-grid-duckdb-display, qa-grid-mssql-money, qa-grid-mssql-datetime, qa2-dbs-interval-display, qa2-dbs-duckdb-union-null, qa2-dbs-trino-complex-values; conformance `value_fidelity.rs` | ✅ |
@@ -167,15 +167,15 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 
 | Funzionalità | Test che la copre | Stato |
 |---|---|---|
-| Export CSV | transfer-sqlite, profiles-export-sqlite, qa-xfer-csv-null-vs-empty, qa-xfer-export-tables-collide | ✅ |
-| Export JSON / NDJSON | qa-xfer-json-export-nested, profiles-export-sqlite | 🟡 |
-| Export Parquet | qa-xfer-ok-pg-export-roundtrip, profiles-export-sqlite | 🟡 |
-| Export Excel | qa-xfer-xlsx-export-dates | 🟡 |
-| Export SQL INSERT | qa-ora-export-sql-replay, qa-xfer-ok-pg-export-roundtrip | 🟡 |
-| Export Markdown, HTML, XML | qa-xfer-xml-control-chars; Markdown e HTML senza scenario | 🟡 |
+| Export CSV | export-formats-postgres (delimitatori, senza intestazione, righe già caricate, gzip e zstd, cartella inesistente), transfer-sqlite, profiles-export-sqlite, qa-xfer-csv-null-vs-empty, qa-xfer-export-tables-collide | ✅ |
+| Export JSON / NDJSON | export-formats-postgres, qa-xfer-json-export-nested, profiles-export-sqlite | ✅ |
+| Export Parquet | export-formats-postgres (piè di pagina letto: righe, colonne, tipi, codec zstd; reimportato; 0 e 50.000 righe), qa-xfer-ok-pg-export-roundtrip, profiles-export-sqlite | ✅ |
+| Export Excel | export-formats-postgres (tipi delle celle, date come numeri seriali, NULL senza cella, 50.000 righe), qa-xfer-xlsx-export-dates | ✅ |
+| Export SQL INSERT | export-formats-postgres (le istruzioni rieseguite danno le stesse righe), qa-ora-export-sql-replay, qa-xfer-ok-pg-export-roundtrip | ✅ |
+| Export Markdown, HTML, XML | export-formats-postgres (pipe e markup in escape, NULL, risultato vuoto), qa-xfer-xml-control-chars | ✅ |
 | Export in streaming, annullato, con limiti, errore col nome giusto | qa-xfer-ok-export-cancel-limits, qa-xfer-export-error-part-path, qa-xfer-cancel-without-notice; conformance `streams_a_million_rows_to_files`, `reads_and_exports_cells_of_tens_of_megabytes` | ✅ |
 | Compressione gzip / zstd | qa-xfer-export-directive-extension (gzip), sql-file-dump-sqlite (gzip); zstd solo unit | 🟡 |
-| Caricamento su URL firmato o bucket S3 / GCS / R2 / MinIO | conformance `upload.rs` (`uploads_an_export_to_a_bucket_and_reads_it_back`, `refuses_wrong_keys_and_a_missing_bucket` su un archivio S3 locale, profilo `s3`; `uploads_an_export_to_a_signed_url` su un server HTTP del test); unit in `platypus-transfer`; manca l'E2E dal form | 🟡 |
+| Caricamento su URL firmato o bucket S3 / GCS / R2 / MinIO | conformance `upload.rs` (`uploads_an_export_to_a_bucket_and_reads_it_back`, `refuses_wrong_keys_and_a_missing_bucket` su un archivio S3 locale, profilo `s3`; `uploads_an_export_to_a_signed_url` su un server HTTP del test); unit in `platypus-transfer`; qa-xfer-upload-s3 (dal form, oggetto riletto con una GET firmata: nome con spazi e accenti, gzip, Parquet, 5 MB, chiavi sbagliate, bucket assente, endpoint non valido o chiuso); il messaggio di fine export non dice che il file è stato caricato | ✅ |
 | Export di più tabelle o di uno schema | transfer-sqlite, qa-xfer-export-tables-collide, qa-xfer-mongo-export-tables | ✅ |
 | Import CSV, TSV, JSON, NDJSON | import-sqlite, qa-xfer-csv-ragged-rows, qa-xfer-csv-windows-1252, qa-xfer-csv-quoted-empty, qa-xfer-csv-decimal-precision, qa-xfer-json-nested-import, qa-xfer-ok-import-modes | ✅ |
 | Import Parquet ed Excel | import-parquet-xlsx-sqlite (Parquet scritto dall'export, foglio scelto dall'elenco, file illeggibili), qa-xfer-xlsx-date-in-text-column, qa2-dbs-ok-duckdb-files | ✅ |
@@ -290,7 +290,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Attività del server su SQL Server (utenti, statistiche, parametri) | admin-sessions-mssql soltanto | 🟡 |
 | Utenti e ruoli su ClickHouse e SQL Server | solo conformance `manages_users_roles_and_privileges`; nessun E2E | 🟡 |
 | Attività pianificate: script, export, backup; Run now, ritenzione, ritentativi | schedules-sqlite, schedules-missed-run-sqlite (orari persi, disabilitati, ritentativo registrato; il secondo tentativo non viene atteso), adminSchedules.test, profiles-schedule-sqlite | 🟡 |
-| Attività pianificate: backup di database PostgreSQL / MySQL e fuso orario | nessun test (solo script ed export su SQLite) | ❌ |
+| Attività pianificate: backup di database PostgreSQL / MySQL e fuso orario | schedules-backup-postgres (pg_dump e mysqldump veri: archivio PGDMP, SQL di uno schema, ritenzione, cartella impossibile, cartella mancante, schema inesistente, password sbagliata con ritentativo automatico al secondo giro, fuso orario di Tokyo) | ✅ |
 
 ## Driver e database
 
@@ -364,20 +364,20 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 | 1 | Installer di Windows e aggiornamento vero: installare, aggiornare da una versione pubblicata, disinstallare, con connessioni, password del keychain, script e impostazioni che restano | ❌ | Lista scritta in [COLLAUDO.md](COLLAUDO.md) (sezione 1), con lo script `scripts/collaudo-profile.ps1` che copia e confronta il profilo della versione vecchia; da spuntare su macchina vera; `qa4-inst-upgrade-real-installer` |
 | 2 | Copia portatile: cartella `data` accanto all'eseguibile, dati e log lì dentro, aggiornamento sostituendo l'eseguibile | ✅ `portable-data-folder` | E2E `portable-data-folder` (avvio con `data` vuota, una connessione e uno script salvati, riavvio, controllo dei file) |
 | 3 | Blocco per inattività con master password (chiude le connessioni di produzione) | ✅ `app-lock-idle-sqlite` | E2E `app-lock-idle-sqlite` con i minuti ridotti da impostazione di prova |
-| 4 | Attività pianificate: backup PostgreSQL / MySQL, fuso orario, ritentativo dopo un errore, esecuzione di un orario perso alla riapertura | 🟡 `schedules-missed-run-sqlite` fatto; resta `schedules-backup-postgres` | E2E `schedules-backup-postgres`, `schedules-missed-run-sqlite` |
-| 5 | Caricamento su bucket (S3, GCS, R2, MinIO) e su URL firmato | 🟡 | Fatto: servizio `s3` (SeaweedFS: MinIO non pubblica più immagini con tag fisso) in `docker/compose.yml`, profilo `s3`, e conformance `upload.rs`. Resta l'E2E `qa-xfer-upload-minio` dal form |
+| 4 | Attività pianificate: backup PostgreSQL / MySQL, fuso orario, ritentativo dopo un errore, esecuzione di un orario perso alla riapertura | ✅ `schedules-missed-run-sqlite`, `schedules-backup-postgres` | E2E `schedules-backup-postgres`, `schedules-missed-run-sqlite` |
+| 5 | Caricamento su bucket (S3, GCS, R2, MinIO) e su URL firmato | ✅ | Fatto: servizio `s3` (SeaweedFS: MinIO non pubblica più immagini con tag fisso) in `docker/compose.yml`, profilo `s3`, e conformance `upload.rs`. E2E `qa-xfer-upload-s3` dal form: fatto |
 | 6 | Manutenzione, parametri, dashboard, utenti e statistiche su SQL Server, MariaDB e ClickHouse; utenti e ruoli solo provati a livello di conformance | 🟡 / ❌ | E2E `admin-users-mssql`, `admin-users-clickhouse`, `admin-parameters-mysql`, `admin-parameters-mssql`, `admin-dashboard-mysql`, `admin-maintenance-{postgres,mysql,mssql}` |
 | 7 | Tunnel SSH con agente SSH, e certificati client per PostgreSQL e MySQL | ✅ | Fatto: `ssh_agent_tunnel` in `platypus-net`; `client_certificate_postgres`/`_mysql` con i container `postgres-mtls` e `mysql-mtls` (profilo `tls`, certificati di prova in `docker/tls`) |
 | 8 | Server MCP su Oracle, SQL Server, ClickHouse, Redis, Elasticsearch, Cassandra (sola lettura e conferma delle scritture) | 🟡 | Estendere `qa3-mcp-readonly-matrix` e `qa-safe-ok-mcp-servers` a tutti i driver; conformance `agents_read_only_*` su ognuno |
-| 9 | Import da DataGrip, pgAdmin e `pg_service.conf`; password da `.pgpass` | 🟡 import fatti (`import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`); resta `qa-conn-pgpass-postgres` | E2E `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` con file di prova |
-| 10 | Export Markdown, HTML, Parquet, Excel, JSON, SQL INSERT: uno scenario che li scrive tutti e li rilegge (anche su un database di rete); compressione zstd | 🟡 | E2E `export-formats-postgres` con riletture; conformance `exports_every_format_and_reads_it_back` |
+| 9 | Import da DataGrip, pgAdmin e `pg_service.conf`; password da `.pgpass` | ✅ `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` | E2E `import-datagrip-sqlite`, `import-pgadmin-sqlite`, `import-pg-service-sqlite`, `qa-conn-pgpass-postgres` con file di prova |
+| 10 | Export Markdown, HTML, Parquet, Excel, JSON, SQL INSERT: uno scenario che li scrive tutti e li rilegge (anche su un database di rete); compressione zstd | ✅ `export-formats-postgres` | E2E `export-formats-postgres` con riletture (lettore del piè di pagina Parquet in `parquet.mjs`); conformance `exports_every_format_and_reads_it_back` |
 | 11 | Import Parquet ed Excel (fogli come tabelle) e dati da file come database (JSON, Parquet, Excel) | ✅ `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` | E2E `import-parquet-xlsx-sqlite`, `data-files-as-databases-sqlite` |
 | 12 | Notifica di sistema per una query lunga; icona nel vassoio (Quick query); Linux e macOS | ❌ | Liste scritte in [COLLAUDO.md](COLLAUDO.md) (sezioni 2, 3 e 4: sistema, Linux, macOS), da spuntare su macchina vera; `windows-sqlite` già prova la finestra |
 | 13 | Snowflake, BigQuery, Databricks, IBM Db2, ADBC con libreria propria | 🟡 | ADBC generico: fatto con il driver di SQLite del registro (`adbc_generic.rs`, anche quello di DuckDB con l'entrypoint `duckdb_adbc_init`). Db2: non pratico (driver ODBC manuale, container di oltre 2 GB). Snowflake, BigQuery, Databricks: solo a mano |
-| 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 | E2E `editor-cli-script-postgres` (il client c'è già nell'immagine di prova) |
+| 14 | Esegui script con `psql`/`mysql`/`sqlcmd`/`sqlite3` locali | 🟡 `editor-cli-script-postgres` fatto con il psql vero (cartella dei client in `clients.mjs`; salta se non c'è); bug B4 aperto | E2E `editor-cli-script-postgres`; restano `mysql`, `sqlcmd`, `sqlite3` |
 | 15 | Migration status con Liquibase, Prisma, Alembic | ✅ `schema-migrations-sqlite` | Estendere `schema-migrations-sqlite` con tre cartelle di prova |
 | 16 | Query across databases oltre i limiti (512 MB) e con più driver (PostgreSQL con MySQL) | 🟡 / ❌ | E2E `analysis-across-postgres-mysql` |
-| 17 | Pannello mappa su PostGIS e MySQL; pannello valore con XML, immagini e salvataggio | 🟡 `grid-value-panel-binary-sqlite` fatto (bug 1: l'immagine non si vede); resta `grid-map-postgres` | E2E `grid-map-postgres`, `grid-value-panel-binary-sqlite` |
+| 17 | Pannello mappa su PostGIS e MySQL; pannello valore con XML, immagini e salvataggio | 🟡 `grid-value-panel-binary-sqlite` fatto (bug B3: l'immagine non si vede), `grid-map-postgres` fatto senza PostGIS vero (nessuna immagine di prova lo ha: EWKB e WKB inviati come testo/bytea) | E2E `grid-map-postgres`, `grid-value-panel-binary-sqlite` |
 | 18 | Query builder visuale: filtri, colonne, esecuzione | ✅ `query-builder-sqlite` | E2E `query-builder-sqlite` (join, WHERE, esegui, apri nell'editor) |
 | 19 | Temi con alto contrasto, zoom dell'interfaccia, sette lingue (oltre l'italiano) | ✅ `theme-sqlite`, `languages-sqlite`, `qa-ui-zoom-keys` | Estendere `theme-sqlite` e `languages-sqlite`; E2E `qa-ui-zoom-keys` |
 | 20 | Linter e controllo ortografico, outline, cursori multipli | ✅ `editor-more-sqlite` | Estendere `editor-more-sqlite` con un caso per ognuno |
@@ -391,3 +391,4 @@ Test scritti dal gruppo S che falliscono perché è l'app a sbagliare: il test r
 | B1 | ADBC generico | La libreria scelta doveva esportare `AdbcDriverInit`: il driver ADBC di DuckDB (`duckdb_adbc_init`) non si caricava ("GetProcAddress failed"). Ora il form ha il campo facoltativo "Entrypoint" | `adbc_generic.rs` `generic_adbc_loads_duckdb` | risolto |
 | B2 | Certificati client MySQL | Con un file del certificato client mancante l'errore non nominava il file (PostgreSQL sì). Ora MySQL controlla certificato e chiave e li nomina | `client_certificate.rs` `client_certificate_mysql` (controllo del nome per certificato e chiave, su entrambi) | risolto |
 | B3 | Pannello valore (F7) | Un valore BLOB che è un'immagine (PNG, JPEG, …) non si vede: il pannello la mostra con un URL `blob:` e la CSP di `tauri.conf.json` ha `img-src 'self' data:`, senza `blob:`, quindi la WebView la blocca (l'elemento `img.value-image` resta a larghezza 0). Provato anche a mano: lo stesso PNG con un URL `data:` si carica. Correzione: aggiungere `blob:` a `img-src`, oppure creare l'URL `data:` in `ValuePanel.tsx`. | grid-value-panel-binary-sqlite | aperto |
+| B4 | Script con il client da riga di comando | Annullare uno script lanciato con `psql` (Cancel) termina il processo del client ma non manda al server la richiesta di annullamento: un'istruzione lunga (`SELECT pg_sleep(120)`) resta attiva sul server fino alla fine. Il client si ferma e l'app dice "psql was stopped". Il gestore dell'annullamento normale (`pg_cancel_backend`) non è usato per questa strada | editor-cli-script-postgres (l'ultima asserzione, eseguita dopo tutte le altre) | aperto |
