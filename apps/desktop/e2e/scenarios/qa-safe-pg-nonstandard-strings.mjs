@@ -34,8 +34,12 @@ async function run(page, sql) {
 }
 
 async function editCell(page, text) {
+  // F2 sent while the grid is still taking focus is lost: try again once.
   await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor') !== null`);
+  await page.waitFor(`document.querySelector('.cell-editor') !== null`, 3_000).catch(async () => {
+    await page.key("F2", "F2", 113);
+    await page.waitFor(`document.querySelector('.cell-editor') !== null`);
+  });
   await page.key("a", "KeyA", 65, CTRL);
   await page.type(text);
   await page.key("Enter", "Enter", 13);
