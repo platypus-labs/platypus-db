@@ -247,8 +247,15 @@ impl ImportPlan {
         let names: Vec<&str> = columns.iter().map(|c| c.name).collect();
         let keys: Vec<&str> = self.keys.iter().map(String::as_str).collect();
         let table = self.table(dialect);
+        // ClickHouse turns a NULL for a column that refuses it into the type's default (0,
+        // 1970-01-01) unless told not to: the other databases refuse the row.
+        let settings = if dialect == Dialect::ClickHouse {
+            "SETTINGS input_format_null_as_default = 0 "
+        } else {
+            ""
+        };
         let head = format!(
-            "INSERT INTO {table} ({}) VALUES ",
+            "INSERT INTO {table} ({}) {settings}VALUES ",
             names
                 .iter()
                 .map(|c| dialect.quote_ident(c))
@@ -976,7 +983,162 @@ async fn flush(
 }
 
 /// Writes `rows`, whose columns are the plan's sources in order, as [`import`] does.
+///
+/// ClickHouse has no transaction to undo a failed load, so rows for an existing table go
+/// into a staging table first and move into the target only once all of them are in.
 pub async fn import_rows(
+    rows: RecordBatchStream,
+    (target, dialect): (&dyn Connection, Dialect),
+    plan: &ImportPlan,
+    progress: impl FnMut(u64) -> bool,
+) -> Result<u64, ImportError> {
+    plan.check()?;
+    if dialect != Dialect::ClickHouse || plan.create || plan.mode() == ImportMode::Upsert {
+        return import_direct(rows, (target, dialect), plan, progress).await;
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let staging_plan = ImportPlan {
+        table: format!("{}_platypus_stage_{stamp}", plan.table),
+        mode: ImportMode::Append,
+        ..plan.clone()
+    };
+    let staging = staging_plan.table(dialect);
+    exec(
+        target,
+        &format!(
+            "CREATE TABLE {staging} AS {} ENGINE = MergeTree ORDER BY tuple()",
+            plan.table(dialect)
+        ),
+    )
+    .await?;
+    let loaded = import_direct(rows, (target, dialect), &staging_plan, progress).await;
+    let moved = match loaded {
+        Ok(written) => move_staged(target, dialect, plan, &staging)
+            .await
+            .map(|()| written),
+        Err(e) => Err(e),
+    };
+    let _ = exec(target, &format!("DROP TABLE {staging}")).await;
+    moved
+}
+
+/// Moves the rows of a ClickHouse staging table into the plan's table, replacing its rows
+/// first in [`ImportMode::Replace`].
+async fn move_staged(
+    target: &dyn Connection,
+    dialect: Dialect,
+    plan: &ImportPlan,
+    staging: &str,
+) -> Result<(), ImportError> {
+    if plan.mode() == ImportMode::Replace {
+        exec(target, &format!("TRUNCATE TABLE {}", plan.table(dialect))).await?;
+    }
+    let names = plan
+        .columns
+        .iter()
+        .map(|c| dialect.quote_ident(&c.target))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "INSERT INTO {} ({names}) SELECT {names} FROM {staging}",
+        plan.table(dialect)
+    );
+    exec(target, &sql).await?;
+    Ok(())
+}
+
+/// The days a ClickHouse date or time type holds, `(name, first, last)` as `YYYY-MM-DD`: it
+/// clamps a value outside them to the nearest one without a word.
+type DayRange = (&'static str, &'static str, &'static str);
+
+fn day_range(declared: &str) -> Option<DayRange> {
+    let mut name = declared.trim();
+    while let Some(inner) = ["Nullable(", "LowCardinality("]
+        .iter()
+        .find_map(|p| name.strip_prefix(p))
+    {
+        name = inner.strip_suffix(')').unwrap_or(inner).trim();
+    }
+    match name.split_once('(').map_or(name, |(base, _)| base) {
+        "Date32" => Some(("Date32", "1900-01-01", "2299-12-31")),
+        "DateTime64" => Some(("DateTime64", "1900-01-01", "2299-12-31")),
+        "Date" => Some(("Date", "1970-01-01", "2149-06-06")),
+        "DateTime" => Some(("DateTime", "1970-01-01", "2106-02-07")),
+        _ => None,
+    }
+}
+
+/// The day range of each column of `plan` in a ClickHouse target, `None` for the columns that
+/// are no date or time: from the types the import creates, else from the table's own.
+async fn clickhouse_ranges(
+    target: &dyn Connection,
+    dialect: Dialect,
+    plan: &ImportPlan,
+) -> Vec<Option<DayRange>> {
+    if plan.create {
+        return plan
+            .columns
+            .iter()
+            .map(|c| c.data_type.as_deref().and_then(day_range))
+            .collect();
+    }
+    let database = plan.schema.as_deref().map_or_else(
+        || "currentDatabase()".to_owned(),
+        |s| dialect.quote_literal(s),
+    );
+    let sql = format!(
+        "SELECT name, type FROM system.columns WHERE database = {database} AND table = {}",
+        dialect.quote_literal(&plan.table)
+    );
+    let types = query_rows(target, &sql).await.unwrap_or_default();
+    plan.columns
+        .iter()
+        .map(|c| {
+            types
+                .iter()
+                .find(|r| r[0].as_deref() == Some(c.target.as_str()))
+                .and_then(|r| r[1].as_deref())
+                .and_then(day_range)
+        })
+        .collect()
+}
+
+/// Refuses a date or timestamp of `batch` outside what its ClickHouse column holds.
+fn check_ranges(
+    plan: &ImportPlan,
+    ranges: &[Option<DayRange>],
+    batch: &RecordBatch,
+) -> Result<(), ImportError> {
+    if ranges.iter().all(Option::is_none) {
+        return Ok(());
+    }
+    let rows = rows_text(batch)?;
+    for (at, range) in ranges.iter().enumerate() {
+        let Some((name, first, last)) = range else {
+            continue;
+        };
+        for text in rows.iter().filter_map(|r| r[at].as_deref()) {
+            let bytes = text.as_bytes();
+            let dated =
+                bytes.len() >= 10 && bytes[..4].iter().all(u8::is_ascii_digit) && bytes[4] == b'-';
+            if dated && (text[..10] < **first || text[..10] > **last) {
+                return Err(InvalidValue {
+                    column: plan.columns[at].target.clone(),
+                    message: format!(
+                        "{text} is outside the range of ClickHouse {name} ({first} to {last}), \
+                         which would store another date"
+                    ),
+                }
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn import_direct(
     mut rows: RecordBatchStream,
     (target, dialect): (&dyn Connection, Dialect),
     plan: &ImportPlan,
@@ -1018,6 +1180,11 @@ pub async fn import_rows(
             exec(target, &sql).await?;
         }
         let mut schema = rows.schema();
+        let ranges = if dialect == Dialect::ClickHouse {
+            clickhouse_ranges(target, dialect, plan).await
+        } else {
+            Vec::new()
+        };
         let mut native = loads_natively(plan, (target, dialect), &schema).await?;
         let json = plan.mode() != ImportMode::Upsert && bulk(target, dialect).await;
         // Rows go in chunks: natively, or each chunk in one `OPENJSON` insert.
@@ -1042,6 +1209,7 @@ pub async fn import_rows(
                     pending.clear();
                 }
             } else {
+                check_ranges(plan, &ranges, &batch)?;
                 for sql in plan.insert_sql(dialect, &batch)? {
                     exec(target, &sql).await?;
                 }
@@ -1074,19 +1242,23 @@ pub async fn import_rows(
     }
     .await;
     if outcome.is_err() {
-        // The first error explains more than a failed cleanup.
-        if transaction {
-            let _ = target.rollback().await;
-        }
-        // Most databases' rollback undid the CREATE already, and the DROP fails; MySQL,
-        // Oracle and CockroachDB keep the table. In manual-commit mode it opens a
-        // transaction, ended here.
-        if let Some(table) = created {
-            let _ = exec(target, &format!("DROP TABLE {table}")).await;
-            let _ = target.rollback().await;
-        }
+        undo(target, transaction, created).await;
     }
     outcome
+}
+
+/// Undoes a failed import. The first error explains more than a failed cleanup.
+async fn undo(target: &dyn Connection, transaction: bool, created: Option<String>) {
+    if transaction {
+        let _ = target.rollback().await;
+    }
+    // Most databases' rollback undid the CREATE already, and the DROP fails; MySQL,
+    // Oracle and CockroachDB keep the table. In manual-commit mode it opens a
+    // transaction, ended here.
+    if let Some(table) = created {
+        let _ = exec(target, &format!("DROP TABLE {table}")).await;
+        let _ = target.rollback().await;
+    }
 }
 
 #[cfg(test)]
@@ -1166,6 +1338,51 @@ mod tests {
             p.insert_sql(Dialect::Postgres, &batch()).unwrap(),
             [r#"INSERT INTO public."Sales" (id, item) VALUES (1, 'it''s'), (NULL, 'ink')"#]
         );
+    }
+
+    #[test]
+    fn clickhouse_refuses_null_for_a_column_that_cannot_hold_it() {
+        let sql = plan(false)
+            .insert_sql(Dialect::ClickHouse, &batch())
+            .unwrap();
+        assert!(
+            sql[0].contains(") SETTINGS input_format_null_as_default = 0 VALUES "),
+            "{}",
+            sql[0]
+        );
+    }
+
+    #[test]
+    fn clickhouse_date_types_have_a_range() {
+        assert_eq!(day_range("Date32").map(|r| r.1), Some("1900-01-01"));
+        assert_eq!(
+            day_range("LowCardinality(Nullable(DateTime64(6, 'UTC')))").map(|r| r.2),
+            Some("2299-12-31")
+        );
+        assert_eq!(day_range("Nullable(Date)").map(|r| r.2), Some("2149-06-06"));
+        assert_eq!(day_range("DateTime('UTC')").map(|r| r.0), Some("DateTime"));
+        assert_eq!(day_range("Int32"), None);
+        assert_eq!(day_range("String"), None);
+    }
+
+    #[test]
+    fn dates_outside_the_clickhouse_range_are_refused() {
+        use arrow_array::Date32Array;
+        let mut p = plan(true);
+        p.columns.truncate(1);
+        p.columns[0].data_type = Some("Date32".to_owned());
+        let ranges = [day_range("Date32")];
+        let schema = Arc::new(Schema::new(vec![Field::new("d", DataType::Date32, true)]));
+        let days = |v: Vec<Option<i32>>| {
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(Date32Array::from(v))]).unwrap()
+        };
+        // 2024-01-01 and NULL are fine; 1000-01-01 (-354_285) and 9999-12-31 are not.
+        check_ranges(&p, &ranges, &days(vec![Some(19_723), None])).unwrap();
+        for out in [-354_285, 2_932_896] {
+            let err = check_ranges(&p, &ranges, &days(vec![Some(out)])).unwrap_err();
+            assert!(err.to_string().contains("outside the range"), "{err}");
+        }
+        check_ranges(&p, &[None], &days(vec![Some(2_932_896)])).unwrap();
     }
 
     #[test]

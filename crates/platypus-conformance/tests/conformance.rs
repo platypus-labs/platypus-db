@@ -7589,3 +7589,140 @@ async fn reads_the_ddl_of_many_tables_together() {
             .unwrap();
     }
 }
+
+/// ClickHouse has no transaction: an import into an existing table goes through a staging
+/// table, so a failure leaves the table as it was, a NULL for a column that refuses it fails
+/// instead of becoming 0, and a date the column cannot hold is refused instead of clamped.
+#[tokio::test]
+#[allow(clippy::too_many_lines, clippy::type_complexity)]
+async fn clickhouse_imports_all_or_nothing() {
+    use arrow_array::{Date32Array, Int64Array, StringArray};
+    use arrow_schema::{DataType, Field, Schema};
+    use platypus_sql::Dialect;
+    use platypus_transfer::import::{ImportColumn, ImportMode, ImportPlan, import_rows};
+    use std::sync::Arc;
+
+    let all = backends().await;
+    let Some(b) = all
+        .iter()
+        .find(|b| b.config.driver == DriverKind::ClickHouse)
+    else {
+        return;
+    };
+    let conn = b.connect().await;
+    let _ = run(&*conn, "DROP TABLE conf_ch_stage").await;
+    run(
+        &*conn,
+        "CREATE TABLE conf_ch_stage (id Int32, n Int32, d Date32) ENGINE = MergeTree ORDER BY id",
+    )
+    .await
+    .unwrap();
+    run(
+        &*conn,
+        "INSERT INTO conf_ch_stage VALUES (0, 0, '2000-01-01')",
+    )
+    .await
+    .unwrap();
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int64, true),
+        Field::new("n", DataType::Utf8, true),
+        Field::new("d", DataType::Date32, true),
+    ]));
+    let plan = ImportPlan {
+        source_table: String::new(),
+        source_schema: None,
+        schema: Some(b.schema.clone()),
+        table: "conf_ch_stage".to_owned(),
+        create: false,
+        mode: ImportMode::Append,
+        keys: Vec::new(),
+        primary_key: Vec::new(),
+        identity: None,
+        constraints: Vec::new(),
+        columns: ["id", "n", "d"]
+            .iter()
+            .map(|c| ImportColumn {
+                source: (*c).to_owned(),
+                target: (*c).to_owned(),
+                data_type: None,
+                not_null: false,
+                default: None,
+            })
+            .collect(),
+    };
+    let load = |mode: ImportMode, batches: Vec<(Vec<i64>, Vec<Option<&str>>, Vec<i32>)>| {
+        let schema = schema.clone();
+        let plan = ImportPlan {
+            mode,
+            ..plan.clone()
+        };
+        let conn = &conn;
+        let batches: Vec<_> = batches
+            .into_iter()
+            .map(|(id, n, d)| {
+                Ok(RecordBatch::try_new(
+                    schema.clone(),
+                    vec![
+                        Arc::new(Int64Array::from(id)),
+                        Arc::new(StringArray::from(n)),
+                        Arc::new(Date32Array::from(d)),
+                    ],
+                )
+                .unwrap())
+            })
+            .collect();
+        async move {
+            let stream = platypus_core::RecordBatchStream::new(
+                schema.clone(),
+                futures::stream::iter(batches).boxed(),
+            );
+            import_rows(stream, (&**conn, Dialect::ClickHouse), &plan, |_| true).await
+        }
+    };
+    let count = || async {
+        let sql = "SELECT count(), (SELECT count() FROM system.tables WHERE database = currentDatabase() AND name LIKE 'conf_ch_stage%') FROM conf_ch_stage";
+        let batches = collect(b, &*conn, sql).await;
+        (
+            cell(&batches[0], 0, 0).unwrap(),
+            cell(&batches[0], 1, 0).unwrap(),
+        )
+    };
+    let day = 19_723; // 2024-01-01
+
+    // A bad value in the second batch: the first one is not left behind.
+    let bad = load(
+        ImportMode::Append,
+        vec![
+            (vec![1, 2], vec![Some("5"), Some("6")], vec![day, day]),
+            (vec![3], vec![Some("abc")], vec![day]),
+        ],
+    )
+    .await;
+    assert!(bad.is_err(), "a bad number");
+    assert_eq!(count().await, ("1".to_owned(), "1".to_owned()), "undone");
+
+    // A NULL for a column that does not take it.
+    let null = load(ImportMode::Append, vec![(vec![4], vec![None], vec![day])]).await;
+    assert!(null.is_err(), "NULL stored as 0");
+    assert_eq!(count().await.0, "1");
+
+    // Dates the column cannot hold (1000-01-01, 9999-12-31).
+    for out in [-354_285, 2_932_896] {
+        let err = load(
+            ImportMode::Append,
+            vec![(vec![5], vec![Some("1")], vec![out])],
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("outside the range"), "{err}");
+    }
+    assert_eq!(count().await.0, "1");
+
+    // The good rows go in, appended or replacing the old.
+    let good = vec![(vec![1, 2], vec![Some("5"), Some("6")], vec![day, day])];
+    assert_eq!(load(ImportMode::Append, good.clone()).await.unwrap(), 2);
+    assert_eq!(count().await, ("3".to_owned(), "1".to_owned()));
+    assert_eq!(load(ImportMode::Replace, good).await.unwrap(), 2);
+    assert_eq!(count().await, ("2".to_owned(), "1".to_owned()));
+    run(&*conn, "DROP TABLE conf_ch_stage").await.unwrap();
+}
