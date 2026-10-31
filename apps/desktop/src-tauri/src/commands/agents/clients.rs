@@ -206,8 +206,18 @@ fn snippet(format: ConfigFormat, entry: &ServerEntry) -> String {
     }
 }
 
+/// The byte-order mark `text` starts with (Notepad and Windows PowerShell 5.1 write one),
+/// or none, and the text after it: neither `serde_json` nor TOML reads the mark.
+fn split_bom(text: &str) -> (&'static str, &str) {
+    match text.strip_prefix('\u{feff}') {
+        Some(body) => ("\u{feff}", body),
+        None => ("", text),
+    }
+}
+
 /// The `platypus` server of a file's `text`, as JSON; `Err` when the text does not parse.
 fn installed_server(format: ConfigFormat, text: &str) -> Result<Option<Value>, String> {
+    let (_, text) = split_bom(text);
     match format {
         ConfigFormat::Json => {
             let doc = parse_json(text)?;
@@ -272,8 +282,11 @@ pub fn list(home: &Path, config: &Path, entry: &ServerEntry) -> Vec<AgentClient>
         .collect()
 }
 
-/// `text` with the `platypus` server set to `entry`, everything else as it was.
+/// `text` with the `platypus` server set to `entry`, everything else as it was, its
+/// byte-order mark too: the file stays as the tool that wrote it reads it.
 pub fn with_entry(format: ConfigFormat, text: &str, entry: &ServerEntry) -> Result<String, String> {
+    let (bom, text) = split_bom(text);
+    let mut out = String::from(bom);
     match format {
         ConfigFormat::Json => {
             let mut doc = parse_json(text)?;
@@ -286,7 +299,7 @@ pub fn with_entry(format: ConfigFormat, text: &str, entry: &ServerEntry) -> Resu
                 }
                 None => return Err("its `mcpServers` is not an object".to_owned()),
             }
-            let mut out = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+            out.push_str(&serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?);
             out.push('\n');
             Ok(out)
         }
@@ -302,7 +315,8 @@ pub fn with_entry(format: ConfigFormat, text: &str, entry: &ServerEntry) -> Resu
                 .as_table_mut()
                 .ok_or_else(|| "its `mcp_servers` is not a table".to_owned())?;
             servers.insert(SERVER_NAME, toml_edit::Item::Table(entry.toml()));
-            Ok(doc.to_string())
+            out.push_str(&doc.to_string());
+            Ok(out)
         }
     }
 }
@@ -502,5 +516,39 @@ mod tests {
         let codex = listed.iter().find(|c| c.id == "codex").unwrap();
         assert!(!codex.exists);
         assert_eq!(codex.state, InstallState::Missing);
+    }
+
+    /// Notepad and Windows PowerShell 5.1 start a UTF-8 file with a byte-order mark.
+    #[test]
+    fn reads_and_keeps_a_byte_order_mark() {
+        let home = tempfile::tempdir().unwrap();
+        let config = home.path().join("config");
+        let cursor = home.path().join(".cursor").join("mcp.json");
+        std::fs::create_dir_all(cursor.parent().unwrap()).unwrap();
+        std::fs::write(
+            &cursor,
+            "\u{feff}{\"mcpServers\": {\"other\": {\"command\": \"npx\"}}}\r\n",
+        )
+        .unwrap();
+        let listed = list(home.path(), &config, &entry());
+        let card = listed.iter().find(|c| c.id == "cursor").unwrap();
+        assert_eq!(card.state, InstallState::Missing);
+        install("cursor", home.path(), &config, &entry(), "1").unwrap();
+        let text = std::fs::read_to_string(&cursor).unwrap();
+        let body = text.strip_prefix('\u{feff}').expect("the mark is kept");
+        let doc: Value = serde_json::from_str(body).unwrap();
+        assert!(doc["mcpServers"]["other"].is_object());
+        assert!(doc["mcpServers"][SERVER_NAME].is_object());
+        let listed = list(home.path(), &config, &entry());
+        let card = listed.iter().find(|c| c.id == "cursor").unwrap();
+        assert_eq!(card.state, InstallState::Installed);
+        // TOML too, and a file without the mark gets none.
+        let toml = with_entry(ConfigFormat::Toml, "\u{feff}model = \"x\"\n", &entry()).unwrap();
+        assert!(toml.starts_with("\u{feff}model = \"x\""), "{toml}");
+        assert!(
+            !with_entry(ConfigFormat::Json, "{}", &entry())
+                .unwrap()
+                .starts_with('\u{feff}')
+        );
     }
 }
