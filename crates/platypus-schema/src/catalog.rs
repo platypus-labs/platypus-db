@@ -73,13 +73,13 @@ fn index_keys(definition: &str) -> Option<&str> {
     None
 }
 
-/// The key parts of `index` worth keeping: none when each is just its column, quoted.
+/// The key parts of `index` worth keeping: none when each is just its column, quoted only when\n/// it needs it (PostgreSQL) or always (MySQL's `SHOW CREATE TABLE`).
 fn kept_parts(dialect: Dialect, index: &IndexDesign, parts: Vec<String>) -> Vec<String> {
     let plain = parts.len() == index.columns.len()
         && parts
             .iter()
             .zip(&index.columns)
-            .all(|(p, c)| *p == dialect.quote_ident(c));
+            .all(|(p, c)| *p == dialect.quote_ident(c) || *p == dialect.quote_ident_always(c));
     if plain { Vec::new() } else { parts }
 }
 
@@ -449,6 +449,21 @@ mod tests {
         );
         let desc = vec!["a DESC".to_owned(), "\"My Col\"".to_owned()];
         assert_eq!(kept_parts(Dialect::Postgres, &index, desc.clone()), desc);
+    }
+
+    #[test]
+    fn mysql_backticked_plain_keys_are_not_kept() {
+        let index = IndexDesign {
+            columns: vec!["a".into(), "My Col".into()],
+            ..IndexDesign::default()
+        };
+        let plain = vec!["`a`".to_owned(), "`My Col`".to_owned()];
+        assert_eq!(
+            kept_parts(Dialect::MySql, &index, plain),
+            Vec::<String>::new()
+        );
+        let desc = vec!["`a` DESC".to_owned(), "`My Col`".to_owned()];
+        assert_eq!(kept_parts(Dialect::MySql, &index, desc.clone()), desc);
     }
 
     #[test]
