@@ -87,12 +87,38 @@ fn is_ident(c: u8) -> bool {
 }
 
 /// `pg_dump`'s own `\restrict KEY` and `\unrestrict KEY`: they only take commands away.
-pub(super) fn is_restrict_line(line: &[u8]) -> bool {
+fn is_restrict_line(line: &[u8]) -> bool {
     let line = trim_end(line);
     let rest = line
         .strip_prefix(b"\\restrict ")
         .or_else(|| line.strip_prefix(b"\\unrestrict "));
     rest.is_some_and(|key| !key.is_empty() && key.iter().all(u8::is_ascii_alphanumeric))
+}
+
+/// Tells `pg_dump`'s `\restrict` and `\unrestrict` commands of a file from the same text in
+/// `COPY` data (where `\r` is a carriage return: `\restrict abc` is a row), a string or a
+/// dollar-quoted body, which are kept as they are: a line is the command only where both
+/// readings of psql find a command may start. Every line of the file goes through it, in order.
+pub(super) struct RestrictLines {
+    readings: [Psql; 2],
+}
+
+impl RestrictLines {
+    pub(super) fn new() -> Self {
+        Self {
+            readings: [Psql::new(true), Psql::new(false)],
+        }
+    }
+
+    /// Whether `line`, the file's next line, is a `\restrict` or `\unrestrict` command.
+    pub(super) fn is_command(&mut self, line: &[u8]) -> bool {
+        let line = trim_end(line);
+        let starts = self.readings.iter().all(Psql::at_command_start);
+        for reading in &mut self.readings {
+            reading.line(line);
+        }
+        starts && is_restrict_line(line)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,6 +152,13 @@ impl Psql {
             statement: Vec::new(),
             copy_data: false,
         }
+    }
+
+    /// Whether the next line starts outside data, quotes, comments and any statement.
+    fn at_command_start(&self) -> bool {
+        !self.copy_data
+            && self.state == PgState::Normal
+            && self.statement.iter().all(u8::is_ascii_whitespace)
     }
 
     fn push(&mut self, c: u8) {
@@ -170,9 +203,7 @@ impl Lexer for Psql {
             }
             return false;
         }
-        let at_start =
-            self.state == PgState::Normal && self.statement.iter().all(u8::is_ascii_whitespace);
-        if at_start && is_restrict_line(line) {
+        if self.at_command_start() && is_restrict_line(line) {
             return false;
         }
         let mut copy_follows = false;
@@ -426,6 +457,34 @@ mod tests {
         assert!(!is_restrict_line(b"\\restrict"));
         assert!(!is_restrict_line(b"\\restrict a b"));
         assert!(!is_restrict_line(b"\\! restrict x"));
+    }
+
+    #[test]
+    fn restrict_lines_in_data_strings_and_bodies_stay() {
+        let file = [
+            "\\restrict abc123",
+            "COPY public.t (v) FROM stdin;",
+            "\\restrict abc123",
+            "\\.",
+            "SELECT 'a",
+            "\\restrict abc123",
+            "';",
+            "CREATE FUNCTION f() RETURNS text AS $$",
+            "\\unrestrict abc123",
+            "$$ LANGUAGE sql;",
+            "SELECT 1",
+            "\\restrict abc123",
+            ";",
+            "\\unrestrict abc123",
+        ];
+        let mut lines = RestrictLines::new();
+        let commands: Vec<usize> = file
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| lines.is_command(format!("{l}\n").as_bytes()))
+            .map(|(i, _)| i + 1)
+            .collect();
+        assert_eq!(commands, [1, 14]);
     }
 
     #[test]

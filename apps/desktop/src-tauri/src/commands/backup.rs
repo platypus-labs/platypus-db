@@ -26,7 +26,7 @@ use crate::error::{CommandError, CommandResult};
 
 mod scan;
 
-use scan::{Client, client_commands, is_restrict_line};
+use scan::{Client, RestrictLines, client_commands};
 
 /// How a PostgreSQL backup is written; MySQL's is always SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,15 +205,16 @@ async fn is_archive(path: &Path) -> std::io::Result<bool> {
     Ok(&head[..n] == b"PGDMP")
 }
 
-/// A line of a SQL file for psql, without `pg_dump`'s own `\restrict` and `\unrestrict`:
+/// The lines of a SQL file for psql, without `pg_dump`'s own `\restrict` and `\unrestrict`:
 /// psql restricted by the app refuses any other backslash command, those included, and an
-/// older psql knows neither.
-fn without_restrict(line: &[u8]) -> Cow<'_, [u8]> {
-    Cow::Borrowed(if is_restrict_line(line) { &[] } else { line })
+/// older psql knows neither. The same text in `COPY` data, a string or a body stays.
+fn without_restrict() -> Filter {
+    let mut restrict = RestrictLines::new();
+    Box::new(move |line| Cow::Borrowed(if restrict.is_command(line) { &[] } else { line }))
 }
 
-/// What filters each line of a file sent to a client.
-type Filter = fn(&[u8]) -> Cow<'_, [u8]>;
+/// What filters each line of a file sent to a client, in order.
+type Filter = Box<dyn for<'a> FnMut(&'a [u8]) -> Cow<'a, [u8]> + Send>;
 
 /// How a file is restored: a tool that reads it, or a client whose input it is, each line
 /// through a filter, after a prelude of the app's own.
@@ -336,7 +337,7 @@ async fn restore_invocation(
                 Ok(Restore::Input(
                     "psql",
                     (args, env),
-                    without_restrict,
+                    without_restrict(),
                     prelude,
                 ))
             }
@@ -353,7 +354,7 @@ async fn restore_invocation(
             Ok(Restore::Input(
                 "mysql",
                 (args, env),
-                without_definer,
+                Box::new(without_definer),
                 Vec::new(),
             ))
         }
@@ -463,7 +464,7 @@ fn without_definer(line: &[u8]) -> Cow<'_, [u8]> {
 async fn send_file(
     child: &mut Child,
     path: PathBuf,
-    (filter, prelude): (Filter, Vec<u8>),
+    (mut filter, prelude): (Filter, Vec<u8>),
     events: Channel<BackupEvent>,
 ) -> CommandResult<(
     tauri::async_runtime::JoinHandle<()>,
@@ -936,8 +937,17 @@ mod tests {
         assert_eq!(mysql_restriction(mariadb), ["--binary-mode", "--sandbox"]);
         assert_eq!(mysql_restriction(""), ["--binary-mode"]);
 
-        assert_eq!(&*without_restrict(b"\\restrict abc\n"), b"");
-        assert_eq!(&*without_restrict(b"SELECT 1;\n"), b"SELECT 1;\n");
+        let mut filter = without_restrict();
+        assert_eq!(&*filter(b"\\restrict abc\n"), b"");
+        assert_eq!(&*filter(b"SELECT 1;\n"), b"SELECT 1;\n");
+        // In COPY data `\r` is a carriage return: the row is sent.
+        assert_eq!(
+            &*filter(b"COPY t (v) FROM stdin;\n"),
+            b"COPY t (v) FROM stdin;\n"
+        );
+        assert_eq!(&*filter(b"\\restrict abc\n"), b"\\restrict abc\n");
+        assert_eq!(&*filter(b"\\.\n"), b"\\.\n");
+        assert_eq!(&*filter(b"\\unrestrict abc\n"), b"");
     }
 
     /// The events sent on a channel, as JSON.
