@@ -48,6 +48,9 @@ pub struct OpenedResultDb {
     connection: SavedConnection,
     /// Set when a table lacks rows of its result.
     partial: Option<Partial>,
+    /// The time zones the results' timestamps name, when more than one: SQL shows their
+    /// instants in the first.
+    zones: Vec<String>,
 }
 
 /// Why a table lacks rows of its result.
@@ -129,10 +132,11 @@ pub async fn open_result_db(
 ) -> CommandResult<OpenedResultDb> {
     let sources = sources(&state, &tables)?;
     let partial = partial(&sources);
-    let connection = fill_new(&state, &name, sources).await?;
+    let (connection, zones) = fill_new(&state, &name, sources).await?;
     Ok(OpenedResultDb {
         connection,
         partial,
+        zones,
     })
 }
 
@@ -150,20 +154,21 @@ pub(in crate::commands) async fn open_rows(
         batches,
         ending: Ending::Complete,
     };
-    fill_new(state, name, vec![source]).await
+    Ok(fill_new(state, name, vec![source]).await?.0)
 }
 
-/// Fills a new in-memory database with `sources` and keeps it for a temporary connection.
+/// Fills a new in-memory database with `sources` and keeps it for a temporary connection;
+/// with the time zones of [`fill`].
 pub(super) async fn fill_new(
     state: &AppState,
     name: &str,
     sources: Vec<Source>,
-) -> CommandResult<SavedConnection> {
+) -> CommandResult<(SavedConnection, Vec<String>)> {
     let names: Vec<String> = sources.iter().map(|s| s.table.clone()).collect();
     let memory = format!("platypus-result-{}", Uuid::new_v4());
     let filled = memory.clone();
-    let database = blocking(move || fill(&filled, &[], &sources)).await?;
-    Ok(register(state, name, memory, names, database))
+    let (database, zones) = blocking(move || fill(&filled, &[], &sources)).await?;
+    Ok((register(state, name, memory, names, database), zones))
 }
 
 /// Registers the temporary connection `name` to the in-memory database `memory`, which holds
@@ -280,8 +285,13 @@ fn sources(state: &AppState, tables: &[ResultTable]) -> CommandResult<Vec<Source
 }
 
 /// Loads `sources` into the in-memory database `memory`, after dropping the tables of
-/// `before` they no longer have.
-fn fill(memory: &str, before: &[String], sources: &[Source]) -> CommandResult<MemoryDatabase> {
+/// `before` they no longer have; with the time zones their timestamps name when they name
+/// more than one (empty otherwise): SQL shows all instants in the first.
+fn fill(
+    memory: &str,
+    before: &[String],
+    sources: &[Source],
+) -> CommandResult<(MemoryDatabase, Vec<String>)> {
     let (database, conn) = platypus_driver_duckdb::memory_database(memory)?;
     for table in before
         .iter()
@@ -292,7 +302,15 @@ fn fill(memory: &str, before: &[String], sources: &[Source]) -> CommandResult<Me
     for s in sources {
         platypus_local::duck::load(&conn, &s.table, &s.schema, &s.batches)?;
     }
-    Ok(database)
+    let schemas: Vec<&arrow_schema::Schema> = sources.iter().map(|s| s.schema.as_ref()).collect();
+    let mut zones = platypus_local::duck::zones(&schemas);
+    if let Some(first) = zones.first() {
+        platypus_local::duck::set_time_zone(&conn, first);
+    }
+    if zones.len() < 2 {
+        zones.clear();
+    }
+    Ok((database, zones))
 }
 
 #[cfg(test)]
@@ -386,6 +404,46 @@ mod tests {
         assert_eq!(one(&memory, gone), 0);
     }
 
+    /// A result of `zone`'s timestamps, one row.
+    fn zoned(table: &str, zone: &str) -> Source {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "ts",
+            DataType::Timestamp(arrow_schema::TimeUnit::Second, Some(zone.into())),
+            true,
+        )]));
+        let column = Arc::new(
+            arrow_array::TimestampSecondArray::from(vec![0_i64]).with_timezone(zone.to_owned()),
+        );
+        let batch = RecordBatch::try_new(Arc::clone(&schema), vec![column]).unwrap();
+        Source {
+            table: table.to_owned(),
+            schema,
+            batches: vec![batch],
+            ending: Ending::Complete,
+        }
+    }
+
+    #[test]
+    fn results_in_different_zones_are_shown_in_the_first_and_told() {
+        platypus_driver_duckdb::testing::load();
+        let memory = format!("tests-{}", Uuid::new_v4());
+        let all = [
+            source("plain", &[1]),
+            zoned("tokyo", "Asia/Tokyo"),
+            zoned("rome", "Europe/Rome"),
+        ];
+        let (_database, zones) = fill(&memory, &[], &all).unwrap();
+        assert_eq!(zones, ["Asia/Tokyo", "Europe/Rome"]);
+        let (_, conn) = platypus_driver_duckdb::memory_database(&memory).unwrap();
+        let zone: String = conn
+            .query_row("SELECT current_setting('TimeZone')", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(zone, "Asia/Tokyo", "the first result's zone, not the last");
+        // One zone, or none: nothing to tell.
+        let (_, zones) = fill(&memory, &[], &[zoned("tokyo", "Asia/Tokyo")]).unwrap();
+        assert!(zones.is_empty());
+    }
+
     #[test]
     fn rows_without_a_job_open_as_the_table_result() {
         platypus_driver_duckdb::testing::load();
@@ -409,7 +467,7 @@ mod tests {
         platypus_driver_duckdb::testing::load();
         let state = AppState::for_tests();
         let memory = format!("tests-{}", Uuid::new_v4());
-        let database = fill(&memory, &[], &[source("result", &[1])]).unwrap();
+        let (database, _) = fill(&memory, &[], &[source("result", &[1])]).unwrap();
         let saved = temporary("Results of x", &memory);
         let id = saved.id;
         lock(&state.result_dbs).insert(

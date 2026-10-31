@@ -2188,6 +2188,9 @@ export type ResultPartial = "memory_limit" | "stopped";
 export interface OpenedResultDb {
   connection: SavedConnection;
   partial: ResultPartial | null;
+  /** The time zones the results' timestamps name, when more than one: SQL shows their
+   *  instants in the first. */
+  zones: string[];
 }
 
 /** A table to copy into the DuckDB of "Query across databases". */
@@ -2214,6 +2217,8 @@ export interface AcrossTable {
 export interface OpenedAcross {
   connection: SavedConnection;
   tables: AcrossTable[];
+  /** As `OpenedResultDb.zones`. */
+  zones: string[];
 }
 
 // Analysis (group M): saved results

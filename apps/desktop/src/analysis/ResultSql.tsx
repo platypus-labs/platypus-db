@@ -11,7 +11,7 @@ import { SqlLine, type SqlLineHandle } from "../editor/SqlLine";
 import { msg, plural, t } from "../i18n";
 import { Icon } from "../ui/Icon";
 import { workbench } from "../workbench";
-import { loadAll, queryWithSql } from "./QueryWithSql";
+import { loadAll, noteZones, queryWithSql } from "./QueryWithSql";
 import { PivotDialog } from "./PivotDialog";
 import { MAX_PIVOT_COLUMNS, type PivotSettings, normalize, pivotCountSql, pivotSql } from "./pivot";
 import { hostOfJob, resultTables, resultsWithRows } from "./resultHosts";
@@ -144,6 +144,7 @@ class Fields {
       throw e;
     });
     const copy: Copy = { connection, sessionId: session.session_id, tables, partial: opened.partial };
+    noteZones(opened.zones);
     if (this.tokens.get(key) !== token) {
       free(copy);
       return null;

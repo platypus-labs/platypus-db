@@ -1358,6 +1358,7 @@ const zh: Record<string, string> = {
   "The tab the results came from is closed.": "结果所在的标签页已关闭。",
   "Tables of the results of another tab: {tables}": "另一个标签页的结果表：{tables}",
   "Partial: reading stopped at the memory limit.": "部分结果：读取在达到内存限制时停止。",
+  "The results name different time zones: SQL shows their instants in {zone}, not in {others}.": "结果使用了不同的时区：SQL 以 {zone} 显示其时间点，而不是 {others}。",
   "Partial: reading stopped before the end of the rows.": "部分结果：读取在行结束前停止。",
   "Compared the first {before} and {after} loaded rows: rows found in only one run are counted only when the other run was loaded in full. Load all the rows of both runs for a complete comparison.":
     "已比较加载的前 {before} 行和 {after} 行：只出现在一次运行中的行，仅当另一次运行已完整加载时才计入。请加载两次运行的所有行以进行完整比较。",

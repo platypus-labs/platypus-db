@@ -11,6 +11,13 @@ import { workbench } from "../workbench";
 import { withDriver } from "../drivers/DriverPopup";
 import type { TabInit } from "../tabs/registry";
 import { type ResultHost, type ResultSource, hostOfJob, hostOfTab, initialSql, resultTables, shownHost } from "./resultHosts";
+import { mixedZones } from "./zones";
+
+/** Tells, when the results name several time zones, the one SQL shows their instants in. */
+export function noteZones(zones: readonly string[]) {
+  const mixed = mixedZones(zones);
+  if (mixed) workbench().notify(t("The results name different time zones: SQL shows their instants in {zone}, not in {others}.", mixed));
+}
 
 /** Loads every row of the results, showing how many with Cancel; false when cancelled or
  *  failed (a result closed meanwhile fails). Cancel closes the dialog at once. */
@@ -90,6 +97,7 @@ export async function queryWithSql(host: ResultHost, jobId?: number, sql?: strin
   const opened = await withDriver(() => api.openResultDb(t("Results of {name}", { name: host.connection.name }), tables));
   const source: ResultSource = { tabKey: host.tabKey, tables: tableNames(tables), partial: opened.partial };
   openTemporaryQuery(opened.connection, { sql: sql ?? initialSql(tables), title: t("SQL on results"), resultSource: source });
+  noteZones(opened.zones);
 }
 
 /** Copies the source tab's results again into the tables of `connection`; `null` when

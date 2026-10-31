@@ -7,6 +7,7 @@ import { api, type QueryEvent, type ResultTable, type SavedConnection, toCommand
 import { type CheckedStatement, check } from "../guards/guards";
 import { GuardDialog } from "../guards/GuardDialog";
 import { typeBadge } from "../connections";
+import { mixedZones } from "../analysis/zones";
 import { withDriver } from "../drivers/DriverPopup";
 import { DRIVER_NAMES } from "../drivers/names";
 import { formatCount, msg, plural, t } from "../i18n";
@@ -328,6 +329,8 @@ export function MultiRunDialog({ script, origin, onClose }: Props) {
         { sql: mergedSql(merged), title, autorun: true },
         () => void api.closeResultDb(opened.connection.id),
       );
+      const mixed = mixedZones(opened.zones);
+      if (mixed) notes.push(t("The results name different time zones: SQL shows their instants in {zone}, not in {others}.", mixed));
       notes.unshift(t("The results opened in a new tab."));
     } catch (e) {
       notes.unshift(toCommandError(e).message);

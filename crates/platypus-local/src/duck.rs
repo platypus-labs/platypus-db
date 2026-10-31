@@ -31,10 +31,10 @@ pub fn load(
     batches: &[RecordBatch],
 ) -> Result<usize, LocalError> {
     register(conn)?;
-    // The zone the grid shows the instants in, so SQL on the result agrees with the screen. A
-    // database built without the time zone data keeps its own zone. GLOBAL: the SQL runs on
-    // another connection to the same database, which a session setting would not reach.
-    let _ = conn.execute_batch(&format!("SET GLOBAL TimeZone = '{}'", session_zone(schema)));
+    // A result without zoned timestamps leaves the zone others set.
+    if let Some(zone) = zones(&[schema.as_ref()]).first() {
+        set_time_zone(conn, zone);
+    }
     let rows = storable(schema, batches)?;
     let name = quote(table);
     let select = format!("SELECT {} FROM {SCAN}(?)", rows.select);
@@ -51,14 +51,29 @@ pub fn load(
     Ok(count)
 }
 
-/// The time zone the result's zoned timestamps are shown in: the one the first of them names
-/// (a fixed offset becomes an `Etc/GMT` zone), UTC when none does.
-fn session_zone(schema: &Schema) -> String {
-    let zone = schema.fields().iter().find_map(|f| match f.data_type() {
-        DataType::Timestamp(_, Some(zone)) => Some(zone.as_ref()),
-        _ => None,
-    });
-    zone.and_then(zone_name).unwrap_or_else(|| "UTC".into())
+/// Makes `zone` the one the database shows instants in: the zone the grid shows a result's
+/// in, so that SQL on it agrees with the screen. A database built without the time zone data
+/// keeps its own zone. GLOBAL: the SQL runs on another connection to the same database,
+/// which a session setting would not reach.
+pub fn set_time_zone(conn: &duckdb::Connection, zone: &str) {
+    let _ = conn.execute_batch(&format!("SET GLOBAL TimeZone = '{zone}'"));
+}
+
+/// The time zones the zoned timestamps of `schemas` name, as DuckDB zones (a fixed offset
+/// becomes an `Etc/GMT` zone), in order and once each: the first is the one to show them in;
+/// more than one, and the others' instants read in it differ from what their grid shows.
+#[must_use]
+pub fn zones(schemas: &[&Schema]) -> Vec<String> {
+    let mut zones: Vec<String> = Vec::new();
+    for field in schemas.iter().flat_map(|s| s.fields().iter()) {
+        if let DataType::Timestamp(_, Some(zone)) = field.data_type()
+            && let Some(zone) = zone_name(zone)
+            && !zones.contains(&zone)
+        {
+            zones.push(zone);
+        }
+    }
+    zones
 }
 
 /// A DuckDB time zone for an Arrow one: names pass, whole-hour offsets become `Etc/GMT`
@@ -478,6 +493,36 @@ mod tests {
                 .unwrap();
             assert_eq!(hour, "01:30");
         }
+    }
+
+    #[test]
+    fn a_result_without_zones_keeps_the_zone_and_zones_are_listed_once() {
+        platypus_driver_duckdb::testing::load();
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        conn.execute_batch("SET GLOBAL TimeZone = 'Europe/Rome'")
+            .unwrap();
+        let (schema, batch) = people(&[1]);
+        load(&conn, "plain", &schema, &[batch]).unwrap();
+        let zone: String = conn
+            .query_row("SELECT current_setting('TimeZone')", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(zone, "Europe/Rome");
+        let zoned = |zone: &str| {
+            Schema::new(vec![
+                Field::new("a", DataType::Int32, true),
+                Field::new(
+                    "ts",
+                    DataType::Timestamp(TimeUnit::Second, Some(zone.into())),
+                    true,
+                ),
+            ])
+        };
+        let (tokyo, utc, odd) = (zoned("Asia/Tokyo"), zoned("+00:00"), zoned("+05:30"));
+        assert_eq!(
+            zones(&[schema.as_ref(), &tokyo, &odd, &utc, &tokyo]),
+            ["Asia/Tokyo", "UTC"]
+        );
+        assert!(zones(&[schema.as_ref()]).is_empty());
     }
 
     #[test]

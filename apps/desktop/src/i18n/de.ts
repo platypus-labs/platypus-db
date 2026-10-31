@@ -1358,6 +1358,7 @@ const de: Record<string, string> = {
   "The tab the results came from is closed.": "Der Tab, aus dem die Ergebnisse stammen, ist geschlossen.",
   "Tables of the results of another tab: {tables}": "Tabellen der Ergebnisse eines anderen Tabs: {tables}",
   "Partial: reading stopped at the memory limit.": "Teilweise: Lesen am Speicherlimit angehalten.",
+  "The results name different time zones: SQL shows their instants in {zone}, not in {others}.": "Die Ergebnisse nennen verschiedene Zeitzonen: SQL zeigt ihre Zeitpunkte in {zone}, nicht in {others}.",
   "Partial: reading stopped before the end of the rows.": "Teilweise: Lesen vor dem Ende der Zeilen angehalten.",
   "Compared the first {before} and {after} loaded rows: rows found in only one run are counted only when the other run was loaded in full. Load all the rows of both runs for a complete comparison.":
     "Die ersten {before} und {after} geladenen Zeilen verglichen: Zeilen, die nur in einer Ausführung vorkommen, werden nur gezählt, wenn die andere Ausführung vollständig geladen wurde. Für einen vollständigen Vergleich alle Zeilen beider Ausführungen laden.",

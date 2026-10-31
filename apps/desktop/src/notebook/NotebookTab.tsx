@@ -11,7 +11,7 @@ import {
 } from "../api";
 import { parseConfig } from "../analysis/chartConfig";
 import { svgText } from "../analysis/chartExport";
-import { loadAll } from "../analysis/QueryWithSql";
+import { loadAll, noteZones } from "../analysis/QueryWithSql";
 import { resultCatalog, settled, withEvent } from "../analysis/sqlField";
 import { describe, type Result } from "../components/ResultPanel";
 import { withDriver } from "../drivers/DriverPopup";
@@ -196,6 +196,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
       throw e;
     });
     copy.current = { connection: { ...opened.connection, read_only: true }, sessionId: made.session_id, tables, partial: opened.partial };
+    noteZones(opened.zones);
     return made.session_id;
   }
 
