@@ -6,6 +6,7 @@ use std::sync::Arc;
 use platypus_store::{KeyringSecrets, VaultSecrets};
 use serde::Serialize;
 use tauri::State;
+use uuid::Uuid;
 
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
@@ -25,6 +26,14 @@ fn status(state: &AppState) -> VaultStatus {
         enabled: vault.is_some(),
         unlocked: vault.as_ref().is_some_and(|v| v.is_unlocked()),
     }
+}
+
+/// The secrets the app keeps beside the connections' passwords: the transfer profiles' and the
+/// sync passphrase.
+fn app_secret_ids(state: &AppState, profiles: &Profiles) -> CommandResult<Vec<Uuid>> {
+    let mut ids = profiles.secret_ids();
+    ids.push(state.passphrase_id()?);
+    Ok(ids)
 }
 
 fn vault(state: &AppState) -> CommandResult<Arc<VaultSecrets>> {
@@ -74,7 +83,8 @@ pub fn lock_vault(state: State<'_, AppState>) -> CommandResult<VaultStatus> {
     Ok(status(&state))
 }
 
-/// Moves the saved passwords (and the profiles' secrets) from the keychain into a new vault.
+/// Moves the saved passwords (and the app's other secrets, see [`app_secret_ids`]) from the
+/// keychain into a new vault.
 #[tauri::command]
 pub async fn enable_vault(
     state: State<'_, AppState>,
@@ -91,13 +101,12 @@ pub async fn enable_vault(
         .vault_path
         .clone()
         .map_err(|e| CommandError::new("store", e))?;
+    let ids = app_secret_ids(&state, &profiles)?;
     let created = Arc::new(
         blocking(move || Ok(VaultSecrets::create(path, &password, HashMap::new())?)).await?,
     );
     // A vault file left behind would be read at the next start instead of the keychain.
-    if let Err(e) =
-        state.with_store(|s| s.move_secrets_with(created.clone(), &profiles.secret_ids()))
-    {
+    if let Err(e) = state.with_store(|s| s.move_secrets_with(created.clone(), &ids)) {
         let _ = std::fs::remove_file(created.path());
         return Err(e);
     }
@@ -105,7 +114,8 @@ pub async fn enable_vault(
     Ok(status(&state))
 }
 
-/// Moves the saved passwords (and the profiles' secrets) back to the keychain and deletes the vault.
+/// Moves the saved passwords (and the app's other secrets) back to the keychain and deletes
+/// the vault.
 #[tauri::command]
 pub async fn disable_vault(
     state: State<'_, AppState>,
@@ -116,9 +126,8 @@ pub async fn disable_vault(
     // The master password is asked again, even when unlocked.
     let target = Arc::clone(&v);
     blocking(move || confirm_password(&target, &password)).await?;
-    state.with_store(|s| {
-        s.move_secrets_with(Arc::new(KeyringSecrets::default()), &profiles.secret_ids())
-    })?;
+    let ids = app_secret_ids(&state, &profiles)?;
+    state.with_store(|s| s.move_secrets_with(Arc::new(KeyringSecrets::default()), &ids))?;
     // The passwords are in the keychain now, whatever happens to the file.
     *lock(&state.vault) = None;
     // A file still there would be read at the next start: renamed when it cannot go.

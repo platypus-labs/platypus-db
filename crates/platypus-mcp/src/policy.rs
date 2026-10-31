@@ -217,16 +217,9 @@ impl Seal {
     /// [`Seal::of`] with the hash in `secrets`.
     #[must_use]
     pub fn with(config_dir: &Path, secrets: Arc<dyn SecretStore>) -> Self {
-        let dir = std::fs::canonicalize(config_dir).unwrap_or_else(|_| config_dir.to_owned());
-        let hash = ring::digest::digest(
-            &ring::digest::SHA256,
-            dir.to_string_lossy().to_lowercase().as_bytes(),
-        );
-        let mut bytes = [0; 16];
-        bytes.copy_from_slice(&hash.as_ref()[..16]);
         Self {
             file: config_dir.join(POLICY_FILE),
-            id: Uuid::from_bytes(bytes),
+            id: crate::profile::keychain_id(config_dir),
             secrets,
         }
     }

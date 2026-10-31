@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use platypus_core::Secret;
+use platypus_mcp::profile::ProfileKind;
 use platypus_store::{ConnectionStore, SettingsStore};
 use platypus_sync::collect::{self, Plan, Withheld};
 use platypus_sync::merge::{Conflict, ConflictKind, Context, Merged, merge};
@@ -26,8 +27,10 @@ use uuid::Uuid;
 use super::{AppState, lock};
 use crate::error::{CommandError, CommandResult};
 
-/// Where the sync passphrase is kept, beside the passwords.
-const PASSPHRASE_ID: Uuid = Uuid::from_u128(0x504c_4154_5950_5553_5359_4e43_5041_5353);
+/// Where the sync passphrase was kept before each profile had its own (see
+/// [`AppState::passphrase_id`]): one name for every profile on the computer, so that a portable
+/// copy or a test profile could overwrite or remove the installed app's passphrase.
+const SHARED_PASSPHRASE_ID: Uuid = Uuid::from_u128(0x504c_4154_5950_5553_5359_4e43_5041_5353);
 const STATE_FILE: &str = "sync-state.json";
 const CONFLICTS_FILE: &str = "sync-conflicts.json";
 /// How many conflicts the Sync page remembers.
@@ -137,8 +140,51 @@ fn write_conflicts(dir: &Path, list: &[ConflictInfo]) -> CommandResult<()> {
     file::write_atomic(&dir.join(CONFLICTS_FILE), text.as_bytes()).map_err(|e| error(&e))
 }
 
+impl AppState {
+    /// Where this profile's sync passphrase is kept, beside the passwords: a name of the
+    /// profile's own folder, as the agent policy's seal has.
+    pub(super) fn passphrase_id(&self) -> CommandResult<Uuid> {
+        let dir = self
+            .vault_path
+            .as_ref()
+            .map_err(|e| CommandError::new("store", e.clone()))?;
+        let dir = dir
+            .parent()
+            .ok_or_else(|| CommandError::new("io", "the data folder is not set"))?;
+        Ok(platypus_mcp::profile::keychain_id(dir))
+    }
+}
+
+/// The passphrase saved under `id`. Without one, a profile of `kind` whose sync has a folder
+/// takes the one saved under [`SHARED_PASSPHRASE_ID`] by the versions before: the installed
+/// app moves it to `id`, a portable copy copies it (it may be the installed app's), and a
+/// separate profile (`PLATYPUS_DATA_DIR`, as the tests use) never reads it.
+fn read_passphrase(
+    store: &ConnectionStore,
+    id: Uuid,
+    kind: ProfileKind,
+    has_folder: bool,
+) -> platypus_store::Result<Option<Secret>> {
+    if let Some(secret) = store.secret(id)? {
+        return Ok(Some(secret));
+    }
+    if kind == ProfileKind::Separate || !has_folder {
+        return Ok(None);
+    }
+    let Some(shared) = store.secret(SHARED_PASSPHRASE_ID)? else {
+        return Ok(None);
+    };
+    store.set_secret(id, Some(&shared))?;
+    if kind == ProfileKind::Installed {
+        store.set_secret(SHARED_PASSPHRASE_ID, None)?;
+    }
+    Ok(Some(shared))
+}
+
 fn passphrase(state: &AppState) -> CommandResult<Option<Secret>> {
-    state.with_store(|s| s.secret(PASSPHRASE_ID))
+    let id = state.passphrase_id()?;
+    let has_folder = folder_setting(state).is_some();
+    state.with_store(|s| read_passphrase(s, id, ProfileKind::from_env(), has_folder))
 }
 
 fn folder_setting(state: &AppState) -> Option<PathBuf> {
@@ -197,7 +243,8 @@ pub fn sync_configure(
     }
     let dir = state_dir(&state)?;
     let changed_folder = folder_setting(&state).is_none_or(|f| f != folder);
-    state.with_store(|s| s.set_secret(PASSPHRASE_ID, Some(&secret)))?;
+    let id = state.passphrase_id()?;
+    state.with_store(|s| s.set_secret(id, Some(&secret)))?;
     state.with_settings(|s| {
         s.set(
             "sync.folder",
@@ -225,7 +272,8 @@ fn toml_value(v: impl Into<platypus_store::toml::Value>) -> platypus_store::toml
 #[tauri::command]
 pub fn sync_disconnect(state: State<'_, AppState>) -> CommandResult<SyncStatus> {
     let dir = state_dir(&state)?;
-    state.with_store(|s| s.set_secret(PASSPHRASE_ID, None))?;
+    let id = state.passphrase_id()?;
+    state.with_store(|s| s.set_secret(id, None))?;
     state.with_settings(|s| {
         for key in ["sync.folder", "sync.interval_minutes", "sync.on_start"] {
             s.set(key, None)?;
@@ -588,6 +636,90 @@ mod tests {
             },
             &mut m.state,
         )
+    }
+
+    /// A profile's store with a passphrase under the name all profiles shared before.
+    fn store_with_shared_passphrase(root: &Path) -> ConnectionStore {
+        let store = ConnectionStore::open(
+            root.join("connections.toml"),
+            Arc::new(MemorySecrets::default()),
+        )
+        .unwrap();
+        store
+            .set_secret(SHARED_PASSPHRASE_ID, Some(&Secret::new("shared")))
+            .unwrap();
+        store
+    }
+
+    fn shared(store: &ConnectionStore) -> Option<String> {
+        store
+            .secret(SHARED_PASSPHRASE_ID)
+            .unwrap()
+            .map(|s| s.expose().to_owned())
+    }
+
+    #[test]
+    fn the_installed_app_moves_the_shared_passphrase_to_its_own_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_shared_passphrase(dir.path());
+        let id = Uuid::new_v4();
+        let read = read_passphrase(&store, id, ProfileKind::Installed, true).unwrap();
+        assert_eq!(read.unwrap().expose(), "shared");
+        assert_eq!(store.secret(id).unwrap().unwrap().expose(), "shared");
+        assert_eq!(shared(&store), None);
+        // Read again, it is its own.
+        let again = read_passphrase(&store, id, ProfileKind::Installed, true).unwrap();
+        assert_eq!(again.unwrap().expose(), "shared");
+    }
+
+    #[test]
+    fn a_portable_copy_copies_the_shared_passphrase_and_leaves_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_shared_passphrase(dir.path());
+        let id = Uuid::new_v4();
+        let read = read_passphrase(&store, id, ProfileKind::Portable, true).unwrap();
+        assert_eq!(read.unwrap().expose(), "shared");
+        assert_eq!(store.secret(id).unwrap().unwrap().expose(), "shared");
+        assert_eq!(shared(&store).as_deref(), Some("shared"));
+    }
+
+    #[test]
+    fn a_separate_profile_never_reads_the_shared_passphrase() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_shared_passphrase(dir.path());
+        let id = Uuid::new_v4();
+        assert!(
+            read_passphrase(&store, id, ProfileKind::Separate, true)
+                .unwrap()
+                .is_none()
+        );
+        assert!(store.secret(id).unwrap().is_none());
+        assert_eq!(shared(&store).as_deref(), Some("shared"));
+    }
+
+    /// A profile whose sync is off takes nothing: a passphrase it removed when it turned the
+    /// sync off does not come back from the shared name.
+    #[test]
+    fn a_profile_without_a_sync_folder_leaves_the_shared_passphrase() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_shared_passphrase(dir.path());
+        let id = Uuid::new_v4();
+        for kind in [ProfileKind::Installed, ProfileKind::Portable] {
+            assert!(read_passphrase(&store, id, kind, false).unwrap().is_none());
+        }
+        assert!(store.secret(id).unwrap().is_none());
+        assert_eq!(shared(&store).as_deref(), Some("shared"));
+    }
+
+    #[test]
+    fn a_profile_s_own_passphrase_wins_over_the_shared_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with_shared_passphrase(dir.path());
+        let id = Uuid::new_v4();
+        store.set_secret(id, Some(&Secret::new("own"))).unwrap();
+        let read = read_passphrase(&store, id, ProfileKind::Installed, true).unwrap();
+        assert_eq!(read.unwrap().expose(), "own");
+        assert_eq!(shared(&store).as_deref(), Some("shared"));
     }
 
     /// Two machines and the folder they share.

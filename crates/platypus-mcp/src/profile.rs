@@ -36,6 +36,49 @@ fn portable_dir_of(exe: &Path) -> Option<PathBuf> {
     data.is_dir().then_some(data)
 }
 
+/// Which of the profiles on this computer the running app uses: they all share the system
+/// keychain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileKind {
+    /// The OS folders of the installed app.
+    Installed,
+    /// The `data` folder of a portable copy ([`portable_dir`]).
+    Portable,
+    /// The folder `PLATYPUS_DATA_DIR` names: a throwaway one, as the end-to-end tests use.
+    Separate,
+}
+
+impl ProfileKind {
+    /// The kind of profile [`Profile::from_env`] (and the app) picks.
+    #[must_use]
+    pub fn from_env() -> Self {
+        if std::env::var_os(DATA_DIR_ENV).is_some() {
+            Self::Separate
+        } else if portable_dir().is_some() {
+            Self::Portable
+        } else {
+            Self::Installed
+        }
+    }
+}
+
+/// The id of the profile whose `connections.toml` and `settings.toml` are in `config_dir`:
+/// what it keeps in the system keychain beside its connections' passwords (the sync
+/// passphrase, the agent policy's seal) goes under this name, so that a profile (a portable
+/// copy, a test profile) never reads or writes another's. The first 16 bytes of the SHA-256
+/// of the folder, lowercased, as `canonicalize` gives it.
+#[must_use]
+pub fn keychain_id(config_dir: &Path) -> uuid::Uuid {
+    let dir = std::fs::canonicalize(config_dir).unwrap_or_else(|_| config_dir.to_owned());
+    let hash = ring::digest::digest(
+        &ring::digest::SHA256,
+        dir.to_string_lossy().to_lowercase().as_bytes(),
+    );
+    let mut bytes = [0; 16];
+    bytes.copy_from_slice(&hash.as_ref()[..16]);
+    uuid::Uuid::from_bytes(bytes)
+}
+
 /// Where the connections, settings and history live.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
@@ -162,5 +205,32 @@ mod tests {
         if std::env::var_os(DATA_DIR_ENV).is_none() {
             assert_eq!(Profile::from_env().unwrap(), os);
         }
+    }
+
+    #[test]
+    fn each_folder_has_its_own_keychain_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+        std::fs::create_dir(&a).unwrap();
+        std::fs::create_dir(&b).unwrap();
+        assert_eq!(keychain_id(&a), keychain_id(&a));
+        assert_ne!(keychain_id(&a), keychain_id(&b));
+        // The same folder spelled another way is the same profile.
+        assert_eq!(keychain_id(&a), keychain_id(&b.join("..").join("a")));
+    }
+
+    /// `forgetKeychainEntries` in `e2e/run.mjs` computes the id this way to remove what a test
+    /// profile left in the Credential Manager.
+    #[cfg(windows)]
+    #[test]
+    fn the_keychain_id_is_the_hash_of_the_verbatim_lowercased_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = std::fs::canonicalize(dir.path()).unwrap();
+        let text = path.to_string_lossy().to_lowercase();
+        assert!(text.starts_with(r"\\?\"), "{text}");
+        let hash = ring::digest::digest(&ring::digest::SHA256, text.as_bytes());
+        assert_eq!(keychain_id(dir.path()).as_bytes(), &hash.as_ref()[..16],);
+        let upper = dir.path().to_string_lossy().to_uppercase();
+        assert_eq!(keychain_id(Path::new(&upper)), keychain_id(dir.path()));
     }
 }
