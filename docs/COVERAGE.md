@@ -53,6 +53,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Prima apertura, database di esempio, schermata di benvenuto | sample-database, qa2-jrn-ok-first-day, welcome-recent-scripts-sqlite | ✅ |
 | Copia portatile (cartella `data` accanto all'eseguibile) | portable-data-folder | ✅ |
 | Gestori di pacchetti (winget, Homebrew, AUR, Flathub): avviso senza aggiornare | update-banner-package-manager (solo l'avviso) | 🟡 |
+| Secondo giro (qa5): BOM UTF-8 in `.env`, `.pgpass`, `pg_service.conf` e import; database di un servizio senza `dbname`; nome di un URL Redis; alias nel selettore dei driver; Invio nel form | qa5-conn-dotenv-bom, qa5-conn-pgpass-bom, qa5-conn-import-bom, qa5-conn-import-service-database, qa5-conn-redis-url-name, qa5-conn-picker-aliases, qa5-conn-enter-saves, qa5-conn-ok-commands-shared-sessions | ✅ |
 
 ## Navigator e oggetti
 
@@ -77,6 +78,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Cartelle degli oggetti tradotte in italiano | qa-nav-italian-folders, qa-ui-navigator-italian | ✅ |
 | Eventi ed estensioni PostgreSQL, tipi enum e sinonimi (SQL Server) | conformance `qa_fixnav_synonyms_and_enum_types`, qa-nav-sqlserver-synonyms | ✅ |
 | Il navigator si aggiorna dopo il DDL dell'editor | qa-nav-pg-editor-ddl-refresh, qa-nav-pg-expand-dropped-table, qa2-jrn-pg-refresh-default-db | ✅ |
+| Secondo giro (qa5): selezione da tastiera e PageUp / PageDown nell'albero; Generate DDL su PostgreSQL (collation, sequenze, opzioni, RLS, INHERITS) e SQL Server; dettagli di indici parziali e chiavi esterne | qa5-nav-keyboard-multiselect, qa5-nav-keyboard-page-keys, qa5-nav-pg-ddl-collation, qa5-nav-pg-ddl-serial-sequence, qa5-nav-pg-ddl-options-rls, qa5-nav-pg-ddl-inherits, qa5-nav-sqlserver-ddl-collation, qa5-nav-details-index-fk-hide, qa5-nav-ok-pg-ddl-not-valid | ✅ |
 
 ## Editor SQL
 
@@ -109,6 +111,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Notebook (celle Markdown/SQL, Run all, `.pnb`, export HTML) | notebook-sqlite, notebook.test | ✅ |
 | Query builder visuale | scripts-builder-sqlite, query-builder-sqlite | ✅ |
 | Debugger PL/pgSQL (passo, breakpoint, variabili) | admin-debugger-postgres, debugger.test; conformance `debugger.rs` (`debugs_a_function`, `debugs_a_procedure_to_its_end`, `stopping_leaves_no_blocked_session`) | ✅ |
+| Secondo giro (qa5): formattatore con operatori PostgreSQL, esponenti con segno e assegnazioni T-SQL; completamento dopo la richiesta della password; istruzione sotto il cursore | qa5-sql-format-pg-operators, qa5-sql-format-exponent, qa5-sql-format-mssql-compound, qa5-sql-completion-password-prompt, qa5-sql-ok-statement-under-cursor | ✅ |
 
 ## Griglia e modifica
 
@@ -145,6 +148,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Modifica su Oracle (DATE, CLOB, righe molte) | qa-ora-ok-grid-edit, qa-ora-grid-date-literals, qa-ora-grid-long-clob; conformance `oracle_saves_many_edited_rows` | ✅ |
 | Dati sensibili mascherati (Ctrl+Alt+M), copie con i valori | mask-sqlite, maskRules.test | ✅ |
 | Chiusura della finestra con modifiche o transazione non salvate | qa-ui-close-window-unsaved | ✅ |
+| Secondo giro (qa5): SQLite con colonne NUMERIC vuote, filtro rapido su FLOAT di MySQL, tipi scalari di PostgreSQL | qa5-grid-sqlite-empty-table-number-text, qa5-grid-mysql-filter-float, qa5-grid-ok-pg-scalar-types | ✅ |
 
 ## Analisi
 
@@ -190,6 +194,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Caricamenti ottimizzati (`COPY`, `LOAD DATA`, bulk copy SQL Server, appender DuckDB) | qa-perf-mssql-import-speed; conformance `bulk_loads_rows`, `value_fidelity.rs` (`mssql_bulk_*`) | ✅ |
 | Nessuna scrittura su connessioni in sola lettura (import, dati fittizi, copia) | qa-safe-readonly-import, qa-safe-readonly-generate-data, qa-safe-readonly-migrate, restrictions-sqlite | ✅ |
 | Connessione che vieta gli export | restrictions-sqlite | ✅ |
+| Secondo giro (qa5): import di JSON con BOM in DuckDB; export Excel di decimali oltre 2^53; Export all tables con nomi lunghi | qa5-xfer-json-bom, qa5-xfer-xlsx-large-float | ✅ |
 
 ## Impostazioni e tab
 
@@ -224,6 +229,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Progetti condivisi (Share project…, Open shared project…) | projects-shared-sqlite; `git_flow.rs` (`a_shared_projects_scripts_use_the_repository_around_them`) | ✅ |
 | Plugin WebAssembly (azioni, driver HTTP) | plugins-sqlite; `platypus-plugins` `tests/examples.rs` (`sql_tools_actions`, `toy_http_driver`, `a_driver_may_reach_the_host_of_its_connection`) | ✅ |
 | Blocco dell'app per inattività con master password | app-lock-idle-sqlite (orologio della pagina spostato), app-lock-sqlite | ✅ |
+| Secondo giro (qa5): AltGr che scrive le parentesi quadre e graffe, Ctrl+/ con tastiere dove `/` richiede Maiusc, Unfold all spostato da Ctrl+Alt+U | qa5-ui-altgr-brackets, qa5-ui-italian-comment-key | ✅ |
 
 ## Sicurezza e MCP / agenti
 
@@ -253,6 +259,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | MCP con master password | qa3-mcp-vault | ✅ |
 | CLI per agenti `platypus-cli` | `platypus-cli` `tests/saved_connections.rs` (`works_on_saved_connections_with_json_output`) | 🟡 |
 | MCP su Oracle, SQL Server, ClickHouse, Redis, Elasticsearch | nessun test del server MCP su questi (solo SQLite, PostgreSQL, MySQL, MongoDB); conformance `agents_read_in_read_only_transactions`, `agents_ask_before_a_query_that_writes` | 🟡 |
+| Secondo giro (qa5) e revisione di sicurezza: PRAGMA e SET su produzione, destinazione `kubectl` letta come opzione, proposte `propose_sql` in numero limitato, installazione negli JSON dei client senza toccare i numeri | qa5-safe-prod-pragma, qa5-safe-k8s-target-flag, qa5-mcp-propose-flood, qa5-mcp-install-bignumber; per SR1-SR17 vedi "Revisione di sicurezza" in fondo | ✅ |
 
 ## Schema
 
@@ -271,6 +278,7 @@ Ogni funzionalità nuova aggiunge una riga alla sezione della sua area, con il t
 | Commenti del database dalla scheda dell'oggetto | comments-postgres; conformance `writes_comments` | ✅ |
 | Schemi di 300 tabelle: prestazioni degli strumenti | qa3-schema-perf-300-pg | ✅ |
 | Indici: suggerimenti, `CREATE INDEX` da un risultato | indexSql.test; conformance `suggests_indexes_for_large_scans` | ✅ |
+| Secondo giro (qa5): compare e table editor che perdevano opzioni (default con espressione, indici parziali e su espressione, chiavi differite, DEFERRABLE, NULLS NOT DISTINCT, MATCH FULL, EXCLUDE, partizioni, CHECK NOT ENFORCED, indici INVISIBLE, opzioni di tabella MySQL, FK disabilitate, tabelle temporali, system versioning) | qa5-schema-sqlite-default-expression, qa5-schema-sqlite-rebuild-deferred-fk, qa5-schema-sqlite-rebuild-on-conflict, qa5-schema-pg-edit-deferrable-fk e i `qa5-schema-compare-*` (sqlite, pg, mysql, mssql, mariadb); guardie `qa5-schema-ok-pg-object-forms`, `qa5-schema-ok-pg-rename-columns` | ✅ |
 
 ## Amministrazione
 
@@ -384,7 +392,7 @@ In ordine di impatto sull'utente. Ogni riga dice il tipo di test da scrivere.
 
 ## Bug trovati dal collaudo
 
-Test scritti dal gruppo S che falliscono perché è l'app a sbagliare: il test resta com'è e documenta il bug. Stato `aperto` finché la correzione non è unita in `main`. B9 e seguenti vengono dal giro per aree (scenari `qa4-*`, uno per bug, tutti corretti), B1-B8 dai test dei buchi; in fondo le correzioni della revisione del codice (R1-R20). Fra parentesi il commit della correzione.
+Test scritti dal gruppo S che falliscono perché è l'app a sbagliare: il test resta com'è e documenta il bug. Stato `aperto` finché la correzione non è unita in `main`. B9-B92 vengono dal giro per aree (scenari `qa4-*`, uno per bug, tutti corretti), B93-B142 dal secondo giro con tester nuovi (scenari `qa5-*`, tutti corretti), B1-B8 dai test dei buchi; in fondo le correzioni della revisione del codice (R1-R20) e quelle della revisione di sicurezza (SR1-SR17). Fra parentesi il commit della correzione.
 
 | # | Area | Bug | Test o scenario | Stato |
 |---|---|---|---|---|
@@ -480,6 +488,56 @@ Test scritti dal gruppo S che falliscono perché è l'app a sbagliare: il test r
 | B90 | Amministrazione | MySQL: le attività mostravano le emoji come `?` | `qa4-admin-mysql-emoji-statement` | risolto (092f3c38) |
 | B91 | Amministrazione | MariaDB: le attività mostravano le emoji come `????` | `qa4-admin-mariadb-emoji-statement` | risolto (092f3c38) |
 | B92 | Amministrazione | Attività su una connessione irraggiungibile: 0 sessioni e solo un avviso | `qa4-admin-activity-connect-failed` | risolto (563b3b4e) |
+| B93 | Connessioni | Un file `.env` con BOM UTF-8 perdeva la prima variabile | `qa5-conn-dotenv-bom` | risolto (a4cff777) |
+| B94 | Connessioni | `pgpass.conf` con BOM non trovava mai la prima riga | `qa5-conn-pgpass-bom` | risolto (a4cff777) |
+| B95 | Connessioni | `pg_service.conf` con BOM perdeva il primo servizio e `servers.json` di pgAdmin con BOM era rifiutato | `qa5-conn-import-bom` | risolto (a4cff777) |
+| B96 | Connessioni | Un servizio di `pg_service.conf` senza `dbname` importava il nome del servizio come database invece del nome utente | `qa5-conn-import-service-database` | risolto (a4cff777) |
+| B97 | Connessioni | Un URL `redis://:pw@host:6380/3` incollato dava alla connessione il nome "3" | `qa5-conn-redis-url-name` | risolto (c4d57e61) |
+| B98 | Connessioni | La ricerca nel selettore dei driver non conosceva gli alias (mssql, pg, valkey, mongo) | `qa5-conn-picker-aliases` | risolto (b06392af) |
+| B99 | Connessioni | Invio in un campo di testo del form di connessione non salvava | `qa5-conn-enter-saves` | risolto (532a68cf) |
+| B100 | Navigator | Nessuna selezione multipla da tastiera nell'albero (Maiusc+frecce, Ctrl+Spazio) | `qa5-nav-keyboard-multiselect` | risolto (803684d7) |
+| B101 | Navigator | PageSu e PageGiù non facevano nulla nell'albero | `qa5-nav-keyboard-page-keys` | risolto (803684d7) |
+| B102 | Navigator | PostgreSQL: Generate DDL perdeva il COLLATE delle colonne | `qa5-nav-pg-ddl-collation` | risolto (de16938e) |
+| B103 | Navigator | PostgreSQL: una colonna serial usava `nextval` senza creare la sequenza | `qa5-nav-pg-ddl-serial-sequence` | risolto (de16938e, 0d2c59b5) |
+| B104 | Navigator | PostgreSQL: il DDL lasciava fuori reloptions, ROW LEVEL SECURITY e policy | `qa5-nav-pg-ddl-options-rls` | risolto (de16938e) |
+| B105 | Navigator | PostgreSQL: il DDL di una tabella con INHERITS non indicava il genitore | `qa5-nav-pg-ddl-inherits` | risolto (de16938e) |
+| B106 | Navigator | SQL Server: il DDL perdeva COLLATE, SPARSE, i nomi dei vincoli di default e le descrizioni | `qa5-nav-sqlserver-ddl-collation` | risolto (6b3ef184) |
+| B107 | Navigator | PostgreSQL: i dettagli nascondevano il WHERE degli indici parziali, INCLUDE, DESC e le azioni ON DELETE / ON UPDATE / DEFERRABLE delle chiavi esterne | `qa5-nav-details-index-fk-hide` | risolto (6b3ef184) |
+| B108 | Editor SQL | Il formattatore spezzava gli operatori PostgreSQL `<->`, `<#>`, `#-`, `@?`, `~~*`, `!~~` | `qa5-sql-format-pg-operators` | risolto (b17bf916) |
+| B109 | Editor SQL | Il formattatore spezzava gli esponenti con segno (`1e-7` diventava `1e - 7`) | `qa5-sql-format-exponent` | risolto (b17bf916) |
+| B110 | Editor SQL | Il formattatore spezzava `+=`, `-=`, `*=`, `/=`, `%=`, `|=` di T-SQL e `$action` di MERGE | `qa5-sql-format-mssql-compound` | risolto (b17bf916, 35e3a55a) |
+| B111 | Editor SQL | Dopo la richiesta della password dall'albero l'editor non aveva il completamento (catalogo mai richiesto) | `qa5-sql-completion-password-prompt` | risolto (1e9b1e5d) |
+| B112 | Griglia | SQLite: in una tabella vuota una colonna NUMERIC o DECIMAL accettava "1,5" e lo salvava come testo | `qa5-grid-sqlite-empty-table-number-text` | risolto (b3d92135) |
+| B113 | Griglia | MySQL: il filtro rapido Uguale su un FLOAT trovava 0 righe | `qa5-grid-mysql-filter-float` | risolto (c102ee4a) |
+| B114 | Import / export | Un file JSON con BOM UTF-8 era importato come una riga e una colonna | `qa5-xfer-json-bom` | risolto (64c86f3c) |
+| B115 | Import / export | L'export Excel scriveva i decimali oltre 2^53 come celle di testo | `qa5-xfer-xlsx-large-float` | risolto (3da4a3e7) |
+| B116 | Import / export | Export all tables: un nome di tabella troppo lungo per un file (o riservato di Windows) annullava tutto l'export | (test unitario dell'export) | risolto (e8b2ce14) |
+| B117 | Impostazioni e tab | Con tastiere non americane AltGr+[ e AltGr+] arrivavano come Ctrl+Alt, cioè Fold all / Unfold all: le parentesi quadre e graffe non si potevano scrivere nell'editor | `qa5-ui-altgr-brackets` | risolto (cbc9113b, 3b7873c4) |
+| B118 | Impostazioni e tab | Ctrl+/ non commentava dove `/` richiede Maiusc (tastiera italiana) | `qa5-ui-italian-comment-key` | risolto (cbc9113b) |
+| B119 | Sicurezza e MCP | Su una connessione di produzione `PRAGMA user_version=42` e `writable_schema=1` partivano senza conferma (SET e PRAGMA contati come "altro") | `qa5-safe-prod-pragma` | risolto (d1551290) |
+| B120 | Sicurezza e MCP | La destinazione `kubectl` era passata come argomento nudo: `--kubeconfig=\\evil\share\kc` veniva letta come opzione | `qa5-safe-k8s-target-flag` | risolto (bbbe9665) |
+| B121 | Sicurezza e MCP | `propose_sql` senza limite: 300 proposte aprivano 300 tab | `qa5-mcp-propose-flood` | risolto (c5fb4253) |
+| B122 | Sicurezza e MCP | Settings > Agents, Install riscriveva i numeri nel JSON del client (interi grandi in notazione scientifica, `1E5` in `100000.0`) | `qa5-mcp-install-bignumber` | risolto (90e24732) |
+| B123 | Sicurezza e MCP | L'errore MCP per un `connections.toml` non valido mostrava il percorso completo del file | (test unitario) | risolto (536c1757) |
+| B124 | Schema | SQLite: il table editor scriveva `DEFAULT datetime('now')` senza parentesi e la ricostruzione falliva | `qa5-schema-sqlite-default-expression` | risolto (9ea425dd, fc91a9c6) |
+| B125 | Schema | Compare SQLite: un indice su espressione era scritto come colonna | `qa5-schema-compare-sqlite-expression-index` | risolto (9ea425dd, fc91a9c6) |
+| B126 | Schema | Compare SQLite: il WHERE di un indice parziale si perdeva | `qa5-schema-compare-sqlite-partial-index` | risolto (9ea425dd, fc91a9c6) |
+| B127 | Schema | Compare SQLite: un WHERE modificato non era visto | `qa5-schema-compare-sqlite-partial-index-changed` | risolto (9ea425dd, fc91a9c6) |
+| B128 | Schema | Compare SQLite: DEFERRABLE INITIALLY DEFERRED si perdeva | `qa5-schema-compare-sqlite-deferred-fk` | risolto (9ea425dd, fc91a9c6) |
+| B129 | Schema | SQLite: la ricostruzione del table editor perdeva la chiave esterna differita | `qa5-schema-sqlite-rebuild-deferred-fk` | risolto (9ea425dd, fc91a9c6) |
+| B130 | Schema | SQLite: la ricostruzione perdeva UNIQUE ON CONFLICT REPLACE | `qa5-schema-sqlite-rebuild-on-conflict` | risolto (9ea425dd, fc91a9c6) |
+| B131 | Schema | Compare PostgreSQL: DEFERRABLE delle chiavi esterne si perdeva | `qa5-schema-compare-pg-deferrable-fk` | risolto (9ea425dd, fc91a9c6) |
+| B132 | Schema | PostgreSQL: il table editor toglieva DEFERRABLE a una chiave esterna | `qa5-schema-pg-edit-deferrable-fk` | risolto (9ea425dd, fc91a9c6) |
+| B133 | Schema | Compare PostgreSQL: UNIQUE NULLS NOT DISTINCT diventava UNIQUE normale | `qa5-schema-compare-pg-nulls-not-distinct` | risolto (9ea425dd, fc91a9c6) |
+| B134 | Schema | Compare PostgreSQL: MATCH FULL diventava MATCH SIMPLE | `qa5-schema-compare-pg-match-full` | risolto (9ea425dd, fc91a9c6) |
+| B135 | Schema | Compare PostgreSQL: i vincoli EXCLUDE erano lasciati fuori | `qa5-schema-compare-pg-exclusion` | risolto (9ea425dd, fc91a9c6) |
+| B136 | Schema | Compare MySQL: una tabella partizionata diventava normale, senza avviso | `qa5-schema-compare-mysql-partitioned` | risolto (9ea425dd, fc91a9c6) |
+| B137 | Schema | Compare MySQL: un CHECK NOT ENFORCED diventava attivo | `qa5-schema-compare-mysql-check-not-enforced` | risolto (9ea425dd, fc91a9c6) |
+| B138 | Schema | Compare MySQL: un indice INVISIBLE diventava visibile | `qa5-schema-compare-mysql-invisible-index` | risolto (9ea425dd, fc91a9c6) |
+| B139 | Schema | Compare MySQL: ENGINE e DEFAULT CHARSET / COLLATE della tabella si perdevano | `qa5-schema-compare-mysql-table-options` | risolto (9ea425dd, fc91a9c6) |
+| B140 | Schema | Compare SQL Server: una chiave esterna o un CHECK con NOCHECK arrivava attivo | `qa5-schema-compare-mssql-disabled-fk` | risolto (9ea425dd, fc91a9c6) |
+| B141 | Schema | Compare SQL Server: una tabella temporale diventava due tabelle normali | `qa5-schema-compare-mssql-temporal` | risolto (9ea425dd, fc91a9c6) |
+| B142 | Schema | Compare MariaDB: WITH SYSTEM VERSIONING si perdeva | `qa5-schema-compare-mariadb-system-versioning` | risolto (9ea425dd, fc91a9c6) |
 
 ### Revisione del codice (R1-R20)
 
@@ -507,3 +565,27 @@ La revisione del codice del giro per aree (`cb477074..HEAD`) ha trovato venti pr
 | R18 | Un errore di accesso senza le parole attese (libSQL "Unauthorized", HTTP 401 dei plugin) non richiedeva la password | `App.tsx` | risolto (ffce7c35) |
 | R19 | Modifica di massa su SQLite: svuotare una cella DATE/JSON/BOOLEAN scriveva NULL anche dove non è ammesso | `massEdit.ts` | risolto (8b3a0ac3) |
 | R20 | Explain: l'indice suggerito su un'espressione perdeva i letterali e gli schemi delle funzioni | `indexSql.ts` | risolto (8c985b85) |
+
+### Revisione di sicurezza (SR1-SR17)
+
+La revisione di sicurezza del codice (credenziali, MCP, sola lettura, SQL generato, file letti e scritti) ha trovato diciassette problemi; tutti corretti, con test o scenari nei commit. Le correzioni stanno nel ramo `s-security-fixes` (unito in `5e9c7b13`); l'isolamento dei dati del keychain tra gli scenari E2E in `84c53e72`, `7f79f32e`, `a6313416`.
+
+| # | Problema | Stato |
+|---|---|---|
+| SR1 | Le connessioni in sola lettura erano imposte solo dall'analisi dell'istruzione: `SELECT purge_all()` o `dblink_exec` giravano. Ora la sessione è in sola lettura anche sul server | risolto (ffe5e5cb) |
+| SR2 | Gli agenti con scrittura e conferma eseguivano senza chiedere una query con effetti fuori dalla transazione (`dblink_exec`, funzioni di Snowflake, Trino) | risolto (1e8bd53a) |
+| SR3 | Le istruzioni di avvio di un progetto condiviso girano per agenti e CLI senza l'approvazione dell'utente | risolto (2175cd91) |
+| SR4 | Il ripristino di un `.sql` passava `\!` e `system` a `psql` e `mysql` | risolto (db967a27, 5dcda7e7) |
+| SR5 | `git` in una cartella di progetto condivisa eseguiva i comandi del repository (`core.fsmonitor`, `core.pager`, filtri) | risolto (3f29c466) |
+| SR6 | `${env:NOME}` si espandeva anche in host, utente e opzioni arrivati da un file condiviso o da un link | risolto (42b63ce6) |
+| SR7 | I controlli di sicurezza erano calcolati prima di riempire le variabili `${nome}` del testo | risolto (3a0c19c8) |
+| SR8 | Driver ODBC e stringa di connessione viaggiavano nei file condivisi (caricamento di librerie native, `FILEDSN` verso un percorso di rete) | risolto (42b63ce6) |
+| SR9 | Una nuova connessione condivisa poteva dare agli agenti l'accesso in scrittura | risolto (d09758d7) |
+| SR10 | Un database chiamato `--init-command=…` era letto come opzione da `mysql`, `mysqldump` e `sqlite3` | risolto (db967a27) |
+| SR11 | La porta di debug dei test (`PLATYPUS_DEVTOOLS_PORT`) è accettata nelle versioni di rilascio: ora solo su loopback e documentata come rischio accettato | risolto (bc247f31) |
+| SR12 | `PLATYPUS_DRIVER_REGISTRY` accettava qualsiasi URL, anche `http://` | risolto (1a854da6) |
+| SR13 | Argon2id con i valori predefiniti e nessuna lunghezza minima della password di vault e sincronizzazione | risolto (90e03da3) |
+| SR14 | Il test di una connessione usava la password salvata anche con un server diverso da quello salvato; stessa cosa per i segreti SSH | risolto (97128df1, 32e0605f) |
+| SR15 | L'export CSV scriveva come formule le celle che iniziano con `=`, `+`, `-`, `@` | risolto (7096fbef) |
+| SR16 | I file del token e del ponte degli agenti restavano con i permessi vecchi dopo una riscrittura | risolto (292490bd) |
+| SR17 | Un client MCP con accesso ai file poteva allargare da sé la politica degli agenti (`agent_access`, `confirm_writes`, `unfiltered`) | risolto (3d376866, 87062689) |
