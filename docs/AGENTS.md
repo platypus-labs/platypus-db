@@ -128,7 +128,13 @@ read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_
 and SQL Server roll the transaction back), and functions that act outside it
 (`pg_terminate_backend`, `dblink`, `LOAD_FILE`…) are refused. DuckDB sessions of agents
 cannot read or write other files nor load extensions, and close after each call so the app
-can open the file.
+can open the file. On Redis, the commands that show the server's credentials change nothing
+but are not reads either: `ACL GETUSER` and `ACL LIST` (the hash of every password) and a
+`CONFIG GET` whose patterns match a parameter that holds a password (`requirepass`,
+`masterauth`, `masteruser`, the TLS key passphrases; so `CONFIG GET *` and `CONFIG GET *pass*`
+too). Read-only agents and the app's read-only connections refuse them; on a read-write
+connection the user is asked first, as for a change. `CONFIG GET maxmemory`, `ACL USERS` and
+`ACL WHOAMI` still run.
 
 On read-write connections changes commit at once, once allowed in the app (see above);
 `BEGIN`, `COMMIT` and `ROLLBACK` are refused, and so are `UPDATE` or `DELETE` without `WHERE`

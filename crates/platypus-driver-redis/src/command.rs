@@ -121,7 +121,8 @@ pub enum Kind {
     Dml,
     /// Empties whole databases (`FLUSHDB`, `FLUSHALL`).
     Ddl,
-    /// Changes the server (`CONFIG SET`, `ACL SETUSER`, `SHUTDOWN`, …).
+    /// Changes the server (`CONFIG SET`, `ACL SETUSER`, `SHUTDOWN`, …), or shows its
+    /// credentials ([`Command::reveals_secrets`]): neither runs on a read-only connection.
     Other,
 }
 
@@ -279,12 +280,11 @@ const READS: &[&str] = &[
     "TOPK.QUERY",
 ];
 
-/// Commands that read with some subcommands only, and those subcommands.
+/// Commands that read with some subcommands only, and those subcommands. `ACL GETUSER` and
+/// `ACL LIST` are not among them: they show the hash of every password
+/// ([`Command::reveals_secrets`]).
 const READ_SUBCOMMANDS: &[(&str, &[&str])] = &[
-    (
-        "ACL",
-        &["CAT", "GETUSER", "LIST", "USERS", "WHOAMI", "LOG", "DRYRUN"],
-    ),
+    ("ACL", &["CAT", "USERS", "WHOAMI", "LOG", "DRYRUN"]),
     (
         "CLIENT",
         &["GETNAME", "ID", "INFO", "LIST", "TRACKINGINFO", "GETREDIR"],
@@ -358,10 +358,101 @@ const ADMIN: &[&str] = &[
     "SLOWLOG",
 ];
 
+/// The configuration parameters that hold a password (Valkey's `primary…` names too).
+const SECRET_PARAMETERS: &[&str] = &[
+    "requirepass",
+    "masterauth",
+    "masteruser",
+    "primaryauth",
+    "primaryuser",
+    "tls-key-file-pass",
+    "tls-client-key-file-pass",
+];
+
+/// Whether the Redis glob `pattern` (`*`, `?`, `[a-z]`, `[^x]`, `\` escapes; case ignored,
+/// as `CONFIG GET` matches) matches `name`.
+fn glob_matches(pattern: &[u8], name: &[u8]) -> bool {
+    let Some((&first, rest)) = pattern.split_first() else {
+        return name.is_empty();
+    };
+    match first {
+        b'*' => (0..=name.len()).any(|skip| glob_matches(rest, &name[skip..])),
+        b'?' => !name.is_empty() && glob_matches(rest, &name[1..]),
+        b'[' => {
+            let Some((&c, tail)) = name.split_first() else {
+                return false;
+            };
+            let (negate, mut class) = match rest.split_first() {
+                Some((b'^', more)) => (true, more),
+                _ => (false, rest),
+            };
+            let mut hit = false;
+            loop {
+                match class {
+                    [] => break,
+                    [b']', more @ ..] => {
+                        class = more;
+                        break;
+                    }
+                    [b'\\', x, more @ ..] => {
+                        hit |= x.eq_ignore_ascii_case(&c);
+                        class = more;
+                    }
+                    [lo, b'-', hi, more @ ..] if *hi != b']' => {
+                        let (lo, hi) = (lo.to_ascii_lowercase(), hi.to_ascii_lowercase());
+                        let (lo, hi) = (lo.min(hi), lo.max(hi));
+                        hit |= (lo..=hi).contains(&c.to_ascii_lowercase());
+                        class = more;
+                    }
+                    [x, more @ ..] => {
+                        hit |= x.eq_ignore_ascii_case(&c);
+                        class = more;
+                    }
+                }
+            }
+            hit != negate && glob_matches(class, tail)
+        }
+        b'\\' if !rest.is_empty() => {
+            name.first()
+                .is_some_and(|c| c.eq_ignore_ascii_case(&rest[0]))
+                && glob_matches(&rest[1..], &name[1..])
+        }
+        _ => {
+            name.first().is_some_and(|c| c.eq_ignore_ascii_case(&first))
+                && glob_matches(rest, &name[1..])
+        }
+    }
+}
+
 impl Command {
+    /// Whether the command shows the server's credentials: `ACL GETUSER` and `ACL LIST` (the
+    /// hash of every user's password) and a `CONFIG GET` whose patterns match a parameter
+    /// that holds a password (`requirepass`, `masterauth`, `*`, `*pass*`…). It changes nothing,
+    /// but a read-only connection, and a read-only agent, do not run it.
+    #[must_use]
+    pub fn reveals_secrets(&self) -> bool {
+        let Self::Raw(args) = self else {
+            return false;
+        };
+        let name = upper(args.first().map_or(&[][..], Vec::as_slice));
+        let sub = args.get(1).map(|a| upper(a)).unwrap_or_default();
+        match (name.as_str(), sub.as_str()) {
+            ("ACL", "GETUSER" | "LIST") => true,
+            ("CONFIG", "GET") => args.iter().skip(2).any(|pattern| {
+                SECRET_PARAMETERS
+                    .iter()
+                    .any(|p| glob_matches(pattern, p.as_bytes()))
+            }),
+            _ => false,
+        }
+    }
+
     /// What the command does.
     #[must_use]
     pub fn kind(&self) -> Kind {
+        if self.reveals_secrets() {
+            return Kind::Other;
+        }
         match self {
             Self::Browse(_) | Self::Select(_) | Self::Multi | Self::Exec | Self::Discard => {
                 Kind::Query
@@ -820,6 +911,43 @@ mod tests {
         assert!(parse("SUBSCRIBE ch").is_err());
         assert!(parse("SELECT").is_err());
         assert!(parse("SELECT x").is_err());
+    }
+
+    #[test]
+    fn credentials_are_not_reads() {
+        let reveals = |line| parse(line).unwrap().reveals_secrets();
+        for line in [
+            "CONFIG GET requirepass",
+            "config get REQUIREPASS",
+            "CONFIG GET *",
+            "CONFIG GET *pass",
+            "CONFIG GET *pass*",
+            "CONFIG GET maxmemory master*",
+            "CONFIG GET re?uirepas[s]",
+            "CONFIG GET [l-r]equirepass",
+            "CONFIG GET [^a]equirepass",
+            "CONFIG GET tls-*",
+            "CONFIG GET primaryauth",
+            "ACL GETUSER default",
+            "acl list",
+        ] {
+            assert!(reveals(line), "{line}");
+            assert_eq!(parse(line).unwrap().kind(), Kind::Other, "{line}");
+        }
+        for line in [
+            "CONFIG GET maxmemory",
+            "CONFIG GET max*",
+            "CONFIG GET pass*",
+            "CONFIG GET [^r]equirepass",
+            "CONFIG GET requirepass?",
+            "CONFIG GET save dir",
+            "ACL WHOAMI",
+            "ACL USERS",
+            "GET requirepass",
+        ] {
+            assert!(!reveals(line), "{line}");
+            assert_eq!(parse(line).unwrap().kind(), Kind::Query, "{line}");
+        }
     }
 
     #[test]
