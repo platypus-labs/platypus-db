@@ -35,13 +35,14 @@ pub async fn catalog_columns(conn: &dyn Connection) -> Result<Vec<CatalogColumn>
     let mut columns = Vec::new();
     for schema in schemas(conn).await? {
         let (lit, id) = (literal(&schema.name), ident(&schema.name));
+        let user = user_object(&id, "m");
         columns.extend(
             query_catalog(
                 conn,
                 &format!(
                     "SELECT {lit}, m.name, p.name
                      FROM {id}.sqlite_master m JOIN pragma_table_info(m.name, {lit}) p
-                     WHERE m.type IN ('table', 'view') AND m.name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+                     WHERE m.type IN ('table', 'view') AND {user}
                      ORDER BY m.name, p.cid
                      LIMIT {CATALOG_LIMIT}"
                 ),
@@ -95,15 +96,31 @@ pub async fn catalog_foreign_keys(conn: &dyn Connection) -> Result<Vec<CatalogFo
     Ok(keys)
 }
 
+/// A condition on the `sqlite_master` row `alias` (of the schema `master`, already quoted) that
+/// keeps the objects a user made: not SQLite's own, and not a shadow table of an FTS5 table.
+/// Those are `<fts>_content`, `_data`, `_idx`, `_docsize` and `_config`, and only count when the
+/// catalog really has an FTS5 table `<fts>`: a plain `foo_data` stays visible.
+fn user_object(master: &str, alias: &str) -> String {
+    format!(
+        r"{alias}.name NOT LIKE 'sqlite\_%' ESCAPE '\'
+         AND NOT ({alias}.type = 'table' AND EXISTS (
+           SELECT 1 FROM {master}.sqlite_master v
+           WHERE v.type = 'table' AND v.sql LIKE 'CREATE VIRTUAL TABLE%USING fts5%'
+             AND {alias}.name IN (v.name || '_content', v.name || '_data', v.name || '_idx',
+                                  v.name || '_docsize', v.name || '_config')))"
+    )
+}
+
 pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMeta>> {
     let rows = query_text(
         conn,
         &format!(
-            "SELECT name, type, CASE WHEN type = 'trigger' THEN tbl_name END
-             FROM {}.sqlite_master
-             WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
-             ORDER BY name",
-            ident(schema)
+            "SELECT m.name, m.type, CASE WHEN m.type = 'trigger' THEN m.tbl_name END
+             FROM {id}.sqlite_master m
+             WHERE m.type IN ('table', 'view', 'trigger') AND {user}
+             ORDER BY m.name",
+            id = ident(schema),
+            user = user_object(&ident(schema), "m"),
         ),
     )
     .await?;
@@ -128,11 +145,11 @@ fn object_kind(code: &str) -> ObjectKind {
 pub async fn search_metadata(conn: &dyn Connection, needle: &str) -> Result<Vec<MetadataMatch>> {
     let has = |expr: &str| Dialect::Sqlite.contains(expr, needle);
     let (name, column, source) = (has("m.name"), has("p.name"), has("m.sql"));
-    let user = r"m.name NOT LIKE 'sqlite\_%' ESCAPE '\'";
     let parent = "CASE WHEN m.type = 'trigger' THEN m.tbl_name END";
     let mut found = Vec::new();
     for schema in schemas(conn).await? {
         let (lit, id) = (literal(&schema.name), ident(&schema.name));
+        let user = user_object(&id, "m");
         let rows = query_text(
             conn,
             &format!(
@@ -595,6 +612,39 @@ fn plan_steps(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use platypus_core::{ConnectionConfig, Driver, DriverKind, ExecOptions};
+
+    use crate::SqliteDriver;
+
+    #[tokio::test]
+    async fn hides_fts5_shadow_tables_but_not_look_alikes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fts.db");
+        std::fs::File::create(&path).unwrap();
+        let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+        config.database = path.to_string_lossy().into_owned();
+        let conn = SqliteDriver.connect(&config).await.unwrap();
+        for sql in [
+            "CREATE VIRTUAL TABLE docs USING fts5(body)",
+            "CREATE TABLE docs_extra (id INTEGER)",
+            "CREATE TABLE notes_data (id INTEGER)",
+            "CREATE TABLE notes (id INTEGER)",
+        ] {
+            conn.execute(sql, &ExecOptions::default()).await.unwrap();
+        }
+        let names = |objects: Vec<ObjectMeta>| -> Vec<String> {
+            objects.into_iter().map(|o| o.name).collect()
+        };
+        assert_eq!(
+            names(objects(&*conn, "main").await.unwrap()),
+            ["docs", "docs_extra", "notes", "notes_data"]
+        );
+        let columns = catalog_columns(&*conn).await.unwrap();
+        assert!(columns.iter().all(|c| !c.table.starts_with("docs_data")));
+        assert!(columns.iter().any(|c| c.table == "notes_data"));
+        let found = search_metadata(&*conn, "docs").await.unwrap();
+        assert!(found.iter().all(|m| !m.name.ends_with("_content")));
+    }
 
     #[test]
     fn reads_checks_from_the_table_sql() {
