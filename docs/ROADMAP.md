@@ -150,7 +150,7 @@ blocco cade.
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ✅ completato |
 | S — Collaudo finale | ✅ fatto (P1 in parte: inventario, giro per aree, tutti i database, secondo giro; P2 in parte: revisione di sicurezza) |
-| T — Revisione UX | libero |
+| T — Revisione UX | 🔒 Paolo · group-t-ux · 2026-11-01 |
 | U — Esportazione delle connessioni | 🔒 Paolo · group-u-export · 2026-11-01 |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
