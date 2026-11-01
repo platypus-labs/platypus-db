@@ -72,6 +72,8 @@ pub struct ImportedSecrets {
     pub password: Option<Secret>,
     /// The SSH tunnel's password, or the passphrase of its key.
     pub ssh: Option<Secret>,
+    /// The same for the jump hosts behind it, in the order of [`crate::SavedSsh::chain`].
+    pub jumps: Vec<Option<Secret>>,
 }
 
 /// Something to know about a whole project of the file.
@@ -497,6 +499,7 @@ fn apply_saved(c: &mut SavedConnection, saved: &Saved) -> ImportedSecrets {
     ImportedSecrets {
         password: saved.connection.password.clone(),
         ssh,
+        jumps: Vec::new(),
     }
 }
 
@@ -1431,6 +1434,7 @@ mod tests {
             Some(&ImportedSecrets {
                 password: Some(Secret::new("pg-pass")),
                 ssh: None,
+                jumps: Vec::new(),
             })
         );
         assert_eq!(
@@ -1438,6 +1442,7 @@ mod tests {
             Some(&ImportedSecrets {
                 password: Some(Secret::new("my-pass")),
                 ssh: Some(Secret::new("ssh-pass")),
+                jumps: Vec::new(),
             })
         );
         // A user name alone, and an agent, which needs no password.
