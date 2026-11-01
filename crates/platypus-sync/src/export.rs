@@ -106,17 +106,13 @@ fn secrets_of(store: &ConnectionStore, c: &SavedConnection) -> Result<ExportSecr
         .iter()
         .flat_map(SavedSsh::chain)
         .map(|s| read(s.secret_id))
-        .collect::<Result<Vec<_>>>()?;
-    let ssh = if hops.is_empty() {
-        None
-    } else {
-        hops.remove(0)
-    };
-    let jumps = if hops.iter().any(Option::is_some) {
-        hops
-    } else {
-        Vec::new()
-    };
+        .collect::<Result<Vec<_>>>()?
+        .into_iter();
+    let ssh = hops.next().flatten();
+    let mut jumps: Vec<_> = hops.collect();
+    if jumps.iter().all(Option::is_none) {
+        jumps.clear();
+    }
     Ok(ExportSecrets {
         password: if c.save_password { read(c.id)? } else { None },
         ssh,

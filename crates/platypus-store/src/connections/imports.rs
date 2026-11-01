@@ -75,7 +75,7 @@ impl ConnectionStore {
                     || (!replaced.contains(&c.id) && self.connections.iter().any(|s| s.id == c.id))
             })
         {
-            return Err(crate::StoreError::Invalid(
+            return Err(StoreError::Invalid(
                 "these connections are saved already".to_owned(),
             ));
         }
@@ -398,9 +398,9 @@ mod tests {
         let jump_secret = hops.jump.as_ref().unwrap().secret_id;
         s.set_ssh_secret(jump_secret, Some(&Secret::new("old-jump")))
             .unwrap();
-        let mut p = Project::new("Team", "#d08f20");
-        p.connections = vec![id];
-        s.save_project(p).unwrap();
+        let mut team = Project::new("Team", "#d08f20");
+        team.connections = vec![id];
+        s.save_project(team).unwrap();
 
         // The file's `a` replaces it with a one-hop tunnel and a new SSH password only.
         let mut project = imported("Rossi");
