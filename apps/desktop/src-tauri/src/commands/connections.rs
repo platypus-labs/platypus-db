@@ -306,15 +306,23 @@ pub fn detect_imports() -> Vec<ImportFile> {
     platypus_store::detect_imports()
 }
 
-/// The projects and connections of another tool's file, for the user to pick from;
-/// nothing is saved. The passwords found stay in the backend for `save_imported`.
+/// The projects and connections of another tool's file, or of a PlatypusDB export (an
+/// encrypted one needs `password`), for the user to pick from; nothing is saved. The
+/// passwords found stay in the backend for `save_imported`.
 #[tauri::command]
 pub fn read_import(
     state: State<'_, AppState>,
     source: ImportSource,
     path: PathBuf,
+    password: Option<String>,
 ) -> CommandResult<Vec<ImportedProject>> {
-    let projects = platypus_store::import_connections(source, &path)?;
+    let projects = if source == ImportSource::Platypus {
+        let bytes = std::fs::read(&path).map_err(|e| CommandError::new("io", e.to_string()))?;
+        platypus_sync::export::read(&bytes, password.as_deref())
+            .map_err(|e| super::sync::error(&e))?
+    } else {
+        platypus_store::import_connections(source, &path)?
+    };
     *lock(&state.import_secrets) = projects
         .iter()
         .flat_map(|p| p.secrets.iter().map(|(id, s)| (*id, s.clone())))
@@ -345,6 +353,22 @@ pub fn save_imported(
     })?;
     lock(&state.import_secrets).clear();
     Ok(workspace)
+}
+
+/// Writes the connections `request` picks to a `.platypusconn` file at `path`; with a
+/// password the file is encrypted and may carry the saved passwords.
+#[tauri::command]
+pub fn export_connections(
+    state: State<'_, AppState>,
+    request: platypus_sync::export::ExportRequest,
+    path: PathBuf,
+) -> CommandResult<()> {
+    let bytes = match &*lock(&state.store) {
+        Ok(store) => platypus_sync::export::export(store, &request),
+        Err(e) => return Err(CommandError::new("store", e.clone())),
+    }
+    .map_err(|e| super::sync::error(&e))?;
+    platypus_sync::file::write_atomic(&path, &bytes).map_err(|e| super::sync::error(&e))
 }
 
 /// Drops the passwords `read_import` keeps, when the import dialog closes without saving.

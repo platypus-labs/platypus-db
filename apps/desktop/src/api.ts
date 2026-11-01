@@ -218,7 +218,19 @@ export interface SavedSsh {
 /** SSH passwords or passphrases typed in a form, by `secret_id`. */
 export type SshSecrets = Record<string, PasswordInput>;
 
-export type ImportSource = "dbeaver" | "datagrip" | "pgadmin" | "pg_service";
+export type ImportSource = "platypus" | "dbeaver" | "datagrip" | "pgadmin" | "pg_service";
+
+/** What `exportConnections` writes to a `.platypusconn` file. */
+export interface ExportRequest {
+  /** Ids of the connections. */
+  connections: string[];
+  /** Keeps the projects and folders the connections are in. */
+  projects: boolean;
+  /** Encrypts the file; at least 8 characters. */
+  password: string | null;
+  /** Puts the saved passwords in the file; only with a password. */
+  credentials: boolean;
+}
 
 export interface ImportFile {
   source: ImportSource;
@@ -2400,7 +2412,10 @@ export const api = {
   ) => invoke<SavedConnection[]>("save_connection", { connection, password, sshSecrets, projects }),
   detectImports: () => invoke<ImportFile[]>("detect_imports"),
   /** The projects and connections in another tool's file; nothing is saved yet. */
-  readImport: (source: ImportSource, path: string) => invoke<ImportedProject[]>("read_import", { source, path }),
+  readImport: (source: ImportSource, path: string, password?: string) =>
+    invoke<ImportedProject[]>("read_import", { source, path, password: password ?? null }),
+  /** Writes the picked connections to a `.platypusconn` file. */
+  exportConnections: (request: ExportRequest, path: string) => invoke<void>("export_connections", { request, path }),
   /** Saves what was picked from an import, all or nothing. */
   saveImported: (request: ImportRequest) => invoke<Workspace>("save_imported", { request }),
   /** Drops the passwords `readImport` keeps for `saveImported`. */

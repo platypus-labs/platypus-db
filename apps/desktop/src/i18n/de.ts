@@ -3077,6 +3077,21 @@ const de: Record<string, string> = {
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "Eine Zelle, die mit =, +, -, @ oder einem Tabulator beginnt, erhält ein vorangestelltes ', damit eine Tabellenkalkulation sie als Text zeigt, statt sie als Formel auszuführen. Zahlen bleiben unverändert. Für eine Datei, die ein anderes Programm liest, ausschalten.",
   "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} Verbindung hat Verweise auf Umgebungsvariablen aus der Datei, die erst gelesen werden, wenn Sie sie in ihren Einstellungen bearbeiten.",
   "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} Verbindungen haben Verweise auf Umgebungsvariablen aus der Datei, die erst gelesen werden, wenn Sie sie in ihren Einstellungen bearbeiten.",
+  "Exported {n} connections": "{n} Verbindungen exportiert",
+  "Export connections…": "Verbindungen exportieren…",
+  "Export connections": "Verbindungen exportieren",
+  "Keep projects and folders": "Projekte und Ordner beibehalten",
+  "Encrypt with a password": "Mit einem Passwort verschlüsseln",
+  "Confirm password": "Passwort bestätigen",
+  "Use at least 8 characters.": "Verwenden Sie mindestens 8 Zeichen.",
+  "The passwords do not match.": "Die Passwörter stimmen nicht überein.",
+  "Include saved passwords": "Gespeicherte Passwörter einschließen",
+  "Without a password on the file, no password is ever written.": "Ohne Passwort für die Datei wird nie ein Passwort geschrieben.",
+  "Export {n}": "{n} exportieren",
+  "A file written by Export connections…, with a password if it was encrypted.": "Eine mit Verbindungen exportieren… geschriebene Datei, mit Passwort, wenn sie verschlüsselt wurde.",
+  "This file is encrypted. Enter its password.": "Diese Datei ist verschlüsselt. Geben Sie ihr Passwort ein.",
+  "Wrong password, or the file is damaged.": "Falsches Passwort, oder die Datei ist beschädigt.",
+  "To a file for another computer or a colleague.": "In eine Datei für einen anderen Computer oder einen Kollegen.",
 };
 
 export default de;

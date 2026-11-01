@@ -6,6 +6,7 @@
 | [AGENTS.md](AGENTS.md) | The MCP server for agents, its tools and limits, the bridge with the open app and the `platypus` CLI |
 | [PLUGINS.md](PLUGINS.md) | WebAssembly plugins: actions and drivers, the sandbox, permissions and how to write one |
 | [SHORTCUTS.md](SHORTCUTS.md) | All keyboard shortcuts |
+| [CONNECTIONS_FILE.md](CONNECTIONS_FILE.md) | The `.platypusconn` file of exported connections, plain and encrypted |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Project layout, requirements, building and testing, the sample and dev databases |
 | [ROADMAP.md](ROADMAP.md) | Planned work after 0.1.0, split into parallel groups with their locks and status (Italian) |
 | [EVOLUTIONS.md](EVOLUTIONS.md) | Ideas and evolutions after the roadmap, in groups with their own locks |

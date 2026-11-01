@@ -1441,7 +1441,12 @@ condivisi; task pianificati.
 
 ### Gruppo U — Esportazione delle connessioni
 
-**Stato: da fare.**
+**Stato: fatto in parte.** Esportazione in `.platypusconn` (in chiaro, o cifrato con le password
+salvate), importazione dal dialog esistente con la richiesta della password, voci nei menu e
+nella palette, formato descritto in [CONNECTIONS_FILE.md](CONNECTIONS_FILE.md). Il codice è in
+`crates/platypus-sync/src/export.rs`, non in `platypus-store`: riusa la cifratura della sync e il
+filtro dei progetti condivisi. Resta da fare: *sostituire* una connessione già presente
+all'importazione.
 
 Oggi le connessioni si importano da DBeaver, DataGrip e pgAdmin, si sincronizzano (gruppo O,
 senza password) e si condividono nei progetti (senza credenziali), ma non si possono esportare in
@@ -1454,18 +1459,20 @@ autenticata, con salt e nonce nel file) e può contenere anche le credenziali. P
 codice si controlla cosa riusare di `platypus-sync` (`crypto.rs`, `portable.rs`) e di
 `platypus-store` (`import`, `vault.rs`), invece di inventare un formato o una cifratura nuovi.
 
-**Area:** `crates/platypus-store/` (nuovo modulo di esportazione e lettore nell'`import` esistente),
+**Area:** `crates/platypus-sync/` (modulo `export`), la sorgente `Platypus` dell'`import` di `platypus-store`,
 i comandi Tauri relativi, la UI di esportazione e il flusso "Importa le connessioni" in
 `apps/desktop/src/`
 **Dipende da:** nessun gruppo aperto
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
-| 🆕 **Esportazione**: finestra con l'elenco delle connessioni da spuntare (tutte, per progetto, una per una), opzione "includi la struttura dei progetti", salvataggio in `.platypusconn` | P1 | D |
-| 🆕 **Importazione** del file nel flusso "Importa le connessioni" esistente, con anteprima, scelta delle connessioni e gestione dei nomi già presenti (salta, rinomina, sostituisci) | P1 | D |
-| 🆕 **Cifratura con password**: con la password si possono includere le credenziali; password sbagliata o file alterato danno un errore chiaro, mai dati a metà | P1 | N |
-| 🆕 Esportazione dal menu contestuale di una connessione o di un progetto e dalla palette dei comandi | P2 | D |
-| 🆕 Formato documentato (`docs/`) e versionato, con un test che rilegge i file delle versioni precedenti | P2 | N |
+| ✅ **Esportazione**: finestra con l'elenco delle connessioni da spuntare (tutte, per progetto, una per una), opzione "includi la struttura dei progetti", salvataggio in `.platypusconn` | P1 | D |
+| ✅ **Importazione** del file nel flusso "Importa le connessioni" esistente, con anteprima, scelta delle connessioni e gestione di quelle già presenti (partono deselezionate; spuntate, si tengono entrambe) | P1 | D |
+| ✅ **Cifratura con password**: con la password si possono includere le credenziali; password sbagliata o file alterato danno un errore chiaro, mai dati a metà | P1 | N |
+| ✅ Esportazione dal menu contestuale di una connessione o di un progetto e dalla palette dei comandi | P2 | D |
+| ✅ Formato documentato (`docs/`) e versionato, con un test che rilegge i file delle versioni precedenti | P2 | N |
+| 🆕 All'importazione, *sostituire* una connessione già presente (stesso server, database e utente) invece di aggiungerne una seconda | P2 | D |
+| 🆕 Le password dei salti SSH intermedi (jump host) nel file cifrato: oggi viaggia solo quella del primo server SSH | P3 | N |
 
 ---
 

@@ -3077,6 +3077,21 @@ const zh: Record<string, string> = {
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "以 =、+、-、@ 或制表符开头的单元格会在前面加上 '，使电子表格将其显示为文本而不是作为公式运行。数字保持不变。若文件由其他程序读取，请关闭此项。",
   "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} 个连接含有来自文件的环境变量引用，在你于其设置中编辑之前不会读取。",
   "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} 个连接含有来自文件的环境变量引用，在你于其设置中编辑之前不会读取。",
+  "Exported {n} connections": "已导出 {n} 个连接",
+  "Export connections…": "导出连接…",
+  "Export connections": "导出连接",
+  "Keep projects and folders": "保留项目和文件夹",
+  "Encrypt with a password": "使用密码加密",
+  "Confirm password": "确认密码",
+  "Use at least 8 characters.": "请至少使用 8 个字符。",
+  "The passwords do not match.": "两次输入的密码不一致。",
+  "Include saved passwords": "包含已保存的密码",
+  "Without a password on the file, no password is ever written.": "文件没有密码时，不会写入任何密码。",
+  "Export {n}": "导出 {n}",
+  "A file written by Export connections…, with a password if it was encrypted.": "由“导出连接…”写入的文件；如已加密则需要密码。",
+  "This file is encrypted. Enter its password.": "此文件已加密。请输入其密码。",
+  "Wrong password, or the file is damaged.": "密码错误，或文件已损坏。",
+  "To a file for another computer or a colleague.": "导出到文件，供另一台电脑或同事使用。",
 };
 
 export default zh;
