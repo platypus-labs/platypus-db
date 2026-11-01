@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "Import db";
 const row = (label) =>
@@ -37,6 +38,7 @@ async function menu(page, label, item, modal = dialog) {
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, item);
   await page.eval(
     `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(item)})).click()`,
   );

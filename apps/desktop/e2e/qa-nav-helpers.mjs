@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { CTRL } from "./cdp.mjs";
+import { revealItem } from "./menu-sub.mjs";
 
 export const visibleTab = `[...document.querySelectorAll('.query-tab, .object-tab')].find(t => t.style.display !== 'none')`;
 export const rows = (label) =>
@@ -197,6 +198,7 @@ export async function menu(page, label, item, index = 0) {
   await openMenu(page, label, index);
   const prefix = item.endsWith("*");
   const text = prefix ? item.slice(0, -1) : item;
+  await revealItem(page, text);
   const found = `[...document.querySelectorAll('.context-menu button')].find(b => { const t = b.querySelector('span')?.textContent ?? ''; return ${prefix} ? t.startsWith(${JSON.stringify(text)}) : t === ${JSON.stringify(text)}; })`;
   const ok = await page.eval(`!!${found}`);
   if (!ok) {

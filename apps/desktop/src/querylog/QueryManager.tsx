@@ -4,6 +4,7 @@ import { fmt, formatMs } from "../components/ResultPanel";
 import { useSetting } from "../settings";
 import { isSlow, slowQuerySeconds } from "./slow";
 import { t, msg } from "../i18n";
+import { copyText } from "../ui/copy";
 
 /** How often the open dialog asks for what changed. */
 const POLL_MS = 1000;
@@ -222,7 +223,7 @@ export function QueryManager({ onClose }: { onClose: () => void }) {
         )}
         <div className="actions">
           {current && (
-            <button type="button" onClick={() => void navigator.clipboard.writeText(current.text)}>
+            <button type="button" onClick={() => void copyText(current.text)}>
               {t("Copy statement")}
             </button>
           )}

@@ -261,7 +261,7 @@ async function gridAction(page) {
     await page.eval(`window.__copied`),
     "| id | name |\n| --- | --- |\n| 1 | apple |\n| 2 | pear\\|green |\n| 3 | NULL |\n",
   );
-  await page.waitFor(`${toast}.includes('Copied to the clipboard.')`);
+  await page.waitFor(`${toast}.includes('Copied')`);
   await page.eval(`document.querySelector('.toast')?.click()`);
 }
 

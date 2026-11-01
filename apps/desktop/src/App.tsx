@@ -39,6 +39,8 @@ import { dbKey, provideWorkbench, workbench } from "./workbench";
 import type { IconName } from "./ui/Icon";
 import { ask, choose, isAsking } from "./ui/ask";
 import { withInitApproval } from "./ui/initApproval";
+import { Toaster } from "./ui/Toaster";
+import { toast } from "./ui/toast";
 import { type PersistedTab, basename, flushWorkspace, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { forgetCatalog } from "./catalog/catalog";
@@ -141,14 +143,12 @@ export function App() {
   useEffect(() => {
     void startupDriverCheck();
   }, []);
-  const [toast, setToastState] = useState<{ text: string; ok: boolean } | null>(null);
-  /** Shows a notice that is not an error, in green. */
-  const showToast = (text: string | null) => setToastState(text ? { text, ok: true } : null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   /** Shows an error, and keeps it in the Activity log. */
   const setToast = (message: string | null) => {
-    setToastState(message ? { text: message, ok: false } : null);
-    if (message) logError(message);
+    if (!message) return;
+    toast(message, "error");
+    logError(message);
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -1004,7 +1004,7 @@ export function App() {
     duplicateConnection: (connection) => duplicateConnection(connection),
     capabilities: (sessionId) => capabilities.current.get(sessionId),
     showError: setToast,
-    notify: (message) => showToast(message),
+    notify: (message) => toast(message, "info"),
     openSettings: () => setSettingsOpen(true),
     openDialog: (render) => {
       const id = nextDialog.current++;
@@ -1179,11 +1179,6 @@ export function App() {
             onMenu={(t, x, y) => setMenu({ x, y, target: { scope: "tab", arg: { tab: t } } })}
           />
         )}
-        {toast && (
-          <div className={`notice ${toast.ok ? "ok" : "error"} toast`} role={toast.ok ? "status" : "alert"} onClick={() => showToast(null)}>
-            {toast.text}
-          </div>
-        )}
         <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0} ref={panes}>
           {split && (
             <PanelResizer
@@ -1321,10 +1316,11 @@ export function App() {
           onClose={() => setDialog(null)}
           onExported={(n) => {
             setDialog(null);
-            showToast(t("Exported {n} connections", { n }));
+            toast(t("Exported {n} connections", { n }));
           }}
         />
       )}
+      <Toaster />
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <AgentWriteDialog />
       <AgentContextDialog />

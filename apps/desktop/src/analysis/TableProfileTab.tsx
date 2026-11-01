@@ -14,6 +14,7 @@ import { workbench } from "../workbench";
 import { Histogram, count, percent } from "./ColumnProfile";
 import { equalsCondition, matchingColumns, outlierCondition } from "./tableProfileModel";
 import { EmptyState } from "../ui/State";
+import { copyText } from "../ui/copy";
 
 export interface TableProfileTabModel extends TabBase {
   kind: "table-profile";
@@ -160,7 +161,7 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
   const openValue = (column: string, value: string) => {
     const condition = equalsCondition(connection.driver, quoteIdent(column, connection.driver), value);
     if (condition !== null) return openRows(condition);
-    void navigator.clipboard.writeText(value).then(() => setNote(t("Copied to the clipboard: this value cannot be written as a filter.")));
+    void copyText(value).then(() => setNote(t("Copied to the clipboard: this value cannot be written as a filter.")));
   };
 
   const columns = useMemo(() => matchingColumns(profile?.columns ?? [], filter), [profile, filter]);
@@ -300,9 +301,9 @@ function ColumnCard({ column: c, hide, onValue, onOutliers }: CardProps) {
         {c.min !== null && (
           <>
             <dt>{t("Minimum")}</dt>
-            <dd className="tp-min">{masked(c.min, hide)}</dd>
+            <dd className="tp-min" title={masked(c.min, hide) ?? undefined}>{masked(c.min, hide)}</dd>
             <dt>{t("Maximum")}</dt>
-            <dd className="tp-max">{masked(c.max, hide)}</dd>
+            <dd className="tp-max" title={masked(c.max, hide) ?? undefined}>{masked(c.max, hide)}</dd>
           </>
         )}
         {c.numbers && (

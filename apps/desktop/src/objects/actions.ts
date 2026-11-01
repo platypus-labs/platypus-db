@@ -22,6 +22,7 @@ import { quoteIdent, schemaRef, selectLimit } from "../sqlNames";
 import { workbench } from "../workbench";
 import { type SqlActionChoices, SqlActionDialog, type SqlActionOptions } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
+import { copyText } from "../ui/copy";
 
 type ObjectArg = ActionScopes["navigator.object"];
 
@@ -73,11 +74,11 @@ async function generate(arg: ObjectArg, request: GenerateRequest, what: string) 
 }
 
 const DML: { id: string; title: string; statement: GenerateRequest["statement"]; order: number }[] = [
-  { id: "select", title: msg("Generate SELECT"), statement: "select", order: 20 },
-  { id: "insert", title: msg("Generate INSERT"), statement: "insert", order: 21 },
-  { id: "update", title: msg("Generate UPDATE"), statement: "update", order: 22 },
-  { id: "delete", title: msg("Generate DELETE"), statement: "delete", order: 23 },
-  { id: "upsert", title: msg("Generate UPSERT"), statement: "upsert", order: 24 },
+  { id: "select", title: msg("Generate SELECT"), statement: "select", order: 50 },
+  { id: "insert", title: msg("Generate INSERT"), statement: "insert", order: 51 },
+  { id: "update", title: msg("Generate UPDATE"), statement: "update", order: 52 },
+  { id: "delete", title: msg("Generate DELETE"), statement: "delete", order: 53 },
+  { id: "upsert", title: msg("Generate UPSERT"), statement: "upsert", order: 54 },
 ];
 
 for (const { id, title, statement, order } of DML) {
@@ -86,6 +87,7 @@ for (const { id, title, statement, order } of DML) {
     scope: "navigator.object",
     title,
     group: "generate",
+    submenu: "Generate SQL",
     order,
     // Writes go to tables; views get SELECT only, as Redis's key types and the indices of
     // Elasticsearch (their keys and documents change in the grid or with commands).
@@ -109,7 +111,8 @@ registerAction({
   scope: "navigator.object",
   title: "Generate DDL",
   group: "generate",
-  order: 29,
+  submenu: "Generate SQL",
+  order: 55,
   multiple: true,
   when: ({ connection }) => !isRedis(connection.driver),
   // The tab opens at once and fills as the DDL is read, a block of objects at a time.
@@ -133,7 +136,7 @@ registerAction({
   group: "copy",
   order: 41,
   multiple: true,
-  run: (arg) => navigator.clipboard.writeText((arg.selection ?? [arg]).map(qualified).join("\n")),
+  run: (arg) => void copyText((arg.selection ?? [arg]).map(qualified).join("\n")),
 });
 
 /** Whether the name of `kind` ends with its argument list, `add(integer, integer)`. */
@@ -178,7 +181,7 @@ registerAction({
   title: "Rename…",
   shortcut: "F2",
   group: "manage",
-  order: 80,
+  order: 64,
   when: ({ connection, object }) => can(connection.driver, "renamable", object.kind),
   run: (arg) =>
     confirmStatement(
@@ -209,8 +212,8 @@ registerAction({
   id: "object.truncate",
   scope: "navigator.object",
   title: "Truncate…",
-  group: "manage",
-  order: 85,
+  group: "danger",
+  order: 950,
   when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver) && !isSearch(connection.driver),
   run: (arg) =>
     confirmStatement(
@@ -231,8 +234,8 @@ registerAction({
   title: "Drop…",
   // Opens the same confirmation as the menu: the statement runs only from there.
   shortcut: "Delete",
-  group: "manage",
-  order: 90,
+  group: "danger",
+  order: 960,
   when: ({ connection, object }) => can(connection.driver, "droppable", object.kind),
   run: (arg) =>
     confirmStatement(

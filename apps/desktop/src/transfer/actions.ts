@@ -34,6 +34,7 @@ registerAction({
   scope: "navigator.object",
   title: "Copy to a database…",
   group: "manage",
+  submenu: "Data",
   order: 72,
   when: ({ connection, object }) => isRelation(object.kind) && !keepsDataIn(connection),
   run: ({ connection, database, schema, object }) => {
@@ -64,6 +65,7 @@ registerAction({
   scope: "navigator.object",
   title: "Import data…",
   group: "manage",
+  submenu: "Data",
   order: 70,
   // MongoDB's collections take documents, not the rows of an import.
   when: ({ connection, object }) => object.kind === "table" && !isNoSql(connection.driver) && !takesNoRows(connection),
@@ -103,6 +105,7 @@ registerAction({
   scope: "navigator.object",
   title: "Export data…",
   group: "manage",
+  submenu: "Data",
   order: 71,
   multiple: true,
   when: ({ connection, object, selection }) =>
@@ -157,6 +160,7 @@ registerAction({
   scope: "navigator.object",
   title: "Copy tables to a database…",
   group: "manage",
+  submenu: "Data",
   order: 73,
   multiple: true,
   // One table has "Copy to a database…", with its columns to map.
@@ -185,6 +189,7 @@ registerAction({
   scope: "navigator.object",
   title: "Generate data…",
   group: "manage",
+  submenu: "Data",
   order: 74,
   // Fake keys and documents are not made: a Redis table is a key type, an index holds documents.
   when: ({ connection, object }) => object.kind === "table" && !isRedis(connection.driver) && !isSearch(connection.driver) && !takesNoRows(connection),
@@ -247,6 +252,7 @@ registerAction({
   scope: "navigator.object",
   title: "Dump to SQL file…",
   group: "manage",
+  submenu: "Data",
   order: 75,
   multiple: true,
   // The objects of one schema, which the dump orders by their references.

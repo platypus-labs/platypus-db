@@ -11,6 +11,7 @@ import { formatCount, t, plural } from "../i18n";
 import { Icon } from "../ui/Icon";
 import { ErrorState } from "../ui/State";
 import { sortPosition } from "./viewerSort";
+import { copyText } from "../ui/copy";
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -148,7 +149,7 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
         className="result-error"
         title={`${e.code ? `${e.code}: ` : ""}${e.message}`}
         actions={
-          <button type="button" onClick={() => void navigator.clipboard.writeText(errorText(e))}>
+          <button type="button" onClick={() => void copyText(errorText(e))}>
             <Icon name="copy" size={14} /> {t("Copy error")}
           </button>
         }

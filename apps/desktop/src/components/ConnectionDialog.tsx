@@ -576,11 +576,24 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     setPicking(true);
   }
 
-  const tab = (id: Page, label: string) => (
-    <button type="button" role="tab" title={label} aria-selected={page === id} onClick={() => setPage(id)}>
+  // A dot after the name says the page holds settings (Network, Init): the same meaning on each.
+  const tab = (id: Page, label: string, hasSettings = false) => (
+    <button
+      type="button"
+      role="tab"
+      title={hasSettings ? `${label} · ${t("Has settings")}` : label}
+      aria-selected={page === id}
+      onClick={() => setPage(id)}
+    >
       {label}
+      {hasSettings && (
+        <span className="tab-dot" role="img" aria-label={t("Has settings")}>
+          ●
+        </span>
+      )}
     </button>
   );
+  const pageTitle = { general: "General", safety: "Appearance and safety", network: "Network", init: "Init" }[page];
   const networkSet =
     conn.network_profile ||
     conn.ssh ||
@@ -643,11 +656,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           <div className="dialog-tabs" role="tablist" aria-orientation="vertical">
             {tab("general", t("General"))}
             {tab("safety", t("Appearance and safety"))}
-            {server && !adbcProfile && tab("network", `${t("Network")}${networkSet ? " ●" : ""}`)}
-            {tab("init", `${t("Init")}${initSet ? " ●" : ""}`)}
+            {server && !adbcProfile && tab("network", t("Network"), !!networkSet)}
+            {tab("init", t("Init"), initSet)}
           </div>
 
           <div className="dialog-content">
+          <h3 className="dialog-page-title">{t(pageTitle)}</h3>
           <div data-page="general" hidden={page !== "general"} className="dialog-page">
             <label className="field">
               <span>{t("Name")}</span>

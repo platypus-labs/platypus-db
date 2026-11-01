@@ -45,6 +45,7 @@ import { EmptyState } from "../ui/State";
 import type { Point } from "../ui/pointerDrag";
 import { useDrag } from "../ui/useDrag";
 import { dropSql, type SqlDropTarget, sqlDropTarget } from "../editor/dropSql";
+import { copyText } from "../ui/copy";
 
 /** `cached`: read from the disk cache, not yet reloaded from the server. */
 type Load<T> =
@@ -1324,7 +1325,7 @@ function bookmarkOf({ connection, database, schema, object }: {
 /** The navigator's built-in menu entries; features add theirs to the same scopes. */
 function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
   const n = () => nav.current;
-  const copy = (text: string) => void navigator.clipboard.writeText(text);
+  const copy = (text: string) => void copyText(text);
   const unregister = [
     registerAction({
       id: "list.new_connection",

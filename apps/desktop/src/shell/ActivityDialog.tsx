@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { workbench } from "../workbench";
 import { type ActivityEntry, clearActivity, markSeen, useActivity } from "./activity";
 import { formatCount, t } from "../i18n";
+import { copyText } from "../ui/copy";
 
 /** Opens the log of the errors shown and the work done in the background. */
 export function openActivity() {
@@ -51,7 +52,7 @@ function ActivityDialog({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             disabled={entries.length === 0}
-            onClick={() => void navigator.clipboard.writeText(entries.map(line).join("\n")).catch(() => {})}
+            onClick={() => void copyText(entries.map(line).join("\n")).catch(() => {})}
           >
             {t("Copy")}
           </button>

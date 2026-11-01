@@ -6,6 +6,7 @@ import { MASK, useMask } from "../guards/mask";
 import { JSON_TYPE, formatJson, isJsonDocument } from "../jsonText";
 import { EmptyState, LoadingState } from "../ui/State";
 import { Icon } from "../ui/Icon";
+import { copyText } from "../ui/copy";
 
 /** The focused cell of a result. */
 export interface ValueTarget {
@@ -216,7 +217,7 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
         )}
         <span className="spacer" />
         {bytes && bytes.length > 0 && !binary && (
-          <button className="icon" title={t("Copy")} aria-label={t("Copy")} onClick={() => void navigator.clipboard.writeText(shown === "text" ? text : (formatted[shown as "json" | "xml"] ?? text))}>
+          <button className="icon" title={t("Copy")} aria-label={t("Copy")} onClick={() => void copyText(shown === "text" ? text : (formatted[shown as "json" | "xml"] ?? text))}>
             <Icon name="copy" />
           </button>
         )}

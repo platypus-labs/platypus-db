@@ -32,6 +32,7 @@ import { pathThrough, quickWire, routeWires } from "./route";
 import { Minimap } from "./Minimap";
 import { TablesDialog } from "./TablesDialog";
 import { LoadingState } from "../ui/State";
+import { pannedScroll } from "./pan";
 
 export type { ErdEdits };
 
@@ -131,9 +132,10 @@ function noteLines(text: string): string[] {
 const noteHeight = (n: ErdNote) => 16 + noteLines(n.text).length * 16;
 
 type Dragging =
-  | { what: "table"; name: string; dx: number; dy: number }
-  | { what: "note"; id: number; dx: number; dy: number }
-  | { what: "link"; table: string; column: string };
+  | { what: "table"; name: string; dx: number; dy: number; to?: Point }
+  | { what: "note"; id: number; dx: number; dy: number; to?: Point }
+  | { what: "link"; table: string; column: string }
+  | { what: "pan"; from: Point; left: number; top: number };
 
 /** A foreign key being dragged from a column row, to the pointer. */
 interface Link {
@@ -164,6 +166,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   // What the last edit action could not do, until the next one.
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The tables are being read again (the first read shows as `tables === null`). */
+  const [loading, setLoading] = useState(false);
   const drag = useRef<Dragging | null>(null);
   /** The routes of the last drawing with no table being dragged, by wire. */
   const routed = useRef(new Map<string, Point[]>());
@@ -181,6 +185,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
   useEffect(() => {
     let live = true;
     setError(null);
+    setLoading(true);
     void (async () => {
       try {
         const sid = await sideSession();
@@ -200,6 +205,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         if (live) setTables(read);
       } catch (e) {
         if (live) setError(toCommandError(e).message);
+      } finally {
+        if (live) setLoading(false);
       }
     })();
     return () => {
@@ -322,19 +329,32 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     setLink({ from, to: at(e) });
     svg.current!.setPointerCapture(e.pointerId);
   };
+  /** A press on the empty canvas drags the view. */
+  const startPan = (e: PointerEvent) => {
+    if (e.button !== 0 || !canvas.current) return;
+    drag.current = { what: "pan", from: { x: e.clientX, y: e.clientY }, left: canvas.current.scrollLeft, top: canvas.current.scrollTop };
+    svg.current!.setPointerCapture(e.pointerId);
+  };
   const move = (e: PointerEvent) => {
     const d = drag.current;
     if (!d) return;
+    if (d.what === "pan") {
+      const s = pannedScroll(d, d.from, { x: e.clientX, y: e.clientY });
+      canvas.current?.scrollTo(s.left, s.top);
+      return;
+    }
     const p = at(e);
     if (d.what === "link") return setLink((l) => l && { ...l, to: p });
     const to = { x: Math.max(0, Math.round(p.x - d.dx)), y: Math.max(0, Math.round(p.y - d.dy)) };
+    // The release can come before React has drawn the last move: the drag keeps the last position.
+    d.to = to;
     if (d.what === "table") setMoved((m) => ({ ...m, [d.name]: to }));
     else setMovedNotes((m) => ({ ...m, [d.id]: to }));
   };
   const drop = (e: PointerEvent) => {
     const d = drag.current;
     drag.current = null;
-    if (!d) return;
+    if (!d || d.what === "pan") return;
     if (d.what === "link") {
       setLink(null);
       if (e.type === "pointerup") dropLink(d.table, d.column, at(e));
@@ -342,8 +362,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     }
     // Every table is kept where it is, not only the one moved: the others were laid out
     // automatically, and must not jump when the next table appears or is moved.
-    if (d.what === "table" && moved[d.name]) onChange({ positions: { ...tab.positions, ...placed } });
-    if (d.what === "note" && movedNotes[d.id]) onChange({ notes: tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] })) });
+    if (d.what === "table" && d.to) onChange({ positions: { ...tab.positions, ...placed, [d.name]: d.to } });
+    if (d.what === "note" && d.to) onChange({ notes: tab.notes.map((n) => (n.id === d.id ? { ...n, ...d.to } : n)) });
     setMoved({});
     setMovedNotes({});
   };
@@ -533,7 +553,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
         )}
         <button type="button" disabled={!all} onClick={() => setChoosing(true)}>
           <Icon name="table" />
-          {t("Tables…")}
+          {t("Add tables…")}
         </button>
         <button type="button" onClick={addNote}>
           <Icon name="plus" />
@@ -595,7 +615,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
           </button>
         </div>
       <div className="erd-canvas" ref={canvas}>
-        {tables === null && !error && <LoadingState className="erd-loading" title={t("Reading the tables…")} />}
+        {(tables === null || loading) && !error && <LoadingState className="erd-loading" title={t("Reading the tables…")} />}
         <svg
           ref={svg}
           width={size.w * tab.zoom}
@@ -615,7 +635,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
               <path d="M 10 5 L 0 0 M 10 5 L 0 10 M 10 5 L 0 5" stroke={colors.muted} fill="none" />
             </marker>
           </defs>
-          <rect className="erd-bg" width={size.w} height={size.h} fill={colors.background} />
+          <rect className="erd-bg" width={size.w} height={size.h} fill={colors.background} onPointerDown={startPan} />
           {keys.map(({ table, fk, target, points }) => (
             <path
               key={`${table.name}/${fk.name}`}

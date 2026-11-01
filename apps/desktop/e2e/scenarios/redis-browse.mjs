@@ -5,6 +5,7 @@
 // is not UTF-8 shows escaped, and an unknown type is an error.
 // Skipped when Redis is not running.
 import assert from "node:assert/strict";
+import { submenuItems } from "../menu-sub.mjs";
 import { gridTsv, openEditor, resultError, runStatement, status, treeRow, visibleTab, editorText } from "../qa-sql.mjs";
 import { connection, redis, saveConnections, skip as skipRedis } from "../redis-helpers.mjs";
 
@@ -54,10 +55,13 @@ export default async function (page) {
 
   // Only what applies to a key type: no SQL builder, DDL, INSERT or TRUNCATE.
   const items = await menu(page, "hash");
-  for (const item of ["Open data", "Generate SELECT"]) assert.ok(items.includes(item), `${item} in ${items}`);
+  for (const item of ["Open data", "Generate SQL"]) assert.ok(items.includes(item), `${item} in ${items}`);
   for (const item of ["Visual query builder", "Generate DDL", "Generate INSERT", "Truncate…", "Edit table…"]) {
     assert.ok(!items.includes(item), `no ${item} in ${items}`);
   }
+  // ...and neither does the Generate SQL submenu.
+  const sql = await submenuItems(page, "Generate SQL");
+  for (const item of ["Generate DDL", "Generate INSERT"]) assert.ok(!sql.includes(item), `no ${item} in ${sql}`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent === 'Open data').click()`);
   await page.waitFor(`${editorText} === 'BROWSE db13.hash'`, 15_000);
   await page.waitFor(`${status} === '2 rows'`, 15_000);

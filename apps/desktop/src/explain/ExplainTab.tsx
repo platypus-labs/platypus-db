@@ -10,6 +10,7 @@ import { stepName } from "./compare";
 import { PlanDialog } from "./PlanDialog";
 import { PlanGraph } from "./PlanGraph";
 import { createIndexSql, filterKeys } from "./indexSql";
+import { copyText } from "../ui/copy";
 
 export type ExplainView = "tree" | "graph" | "text" | "table" | "compare";
 
@@ -263,7 +264,7 @@ export function ExplainTab({ tab, connection, active, ensureSession, onChange }:
         {explain && (
           <button
             className="square"
-            onClick={() => void navigator.clipboard.writeText(rawPlan(explain))}
+            onClick={() => void copyText(rawPlan(explain))}
             title={t("Copy the plan, as the database returned it")}
             aria-label={t("Copy plan")}
           >

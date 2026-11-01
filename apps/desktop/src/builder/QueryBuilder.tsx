@@ -12,6 +12,8 @@ import { workbench } from "../workbench";
 import { t } from "../i18n";
 import { EmptyState } from "../ui/State";
 import { useDrag } from "../ui/useDrag";
+import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
+import { BOX, boxWidth, resizedBox } from "./boxSize";
 
 export interface BuilderTable {
   id: number;
@@ -20,6 +22,9 @@ export interface BuilderTable {
   alias: string;
   x: number;
   y: number;
+  /** Size set by dragging the corner; the default width and a height by the columns when missing. */
+  w?: number;
+  h?: number;
   /** Ticked columns, in the table's order. */
   columns: string[];
 }
@@ -118,7 +123,6 @@ function aliasFor(name: string, taken: string[]): string {
   return alias;
 }
 
-const BOX = 200;
 let nextTableId = Date.now();
 
 export function QueryBuilder({ tab, connection, active, sideSession, onChange, onError }: TabProps<BuilderTabModel>) {
@@ -130,6 +134,9 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
   /** A table of the list is dragged over the canvas. */
   const [dropping, setDropping] = useState(false);
   const startDrag = useDrag();
+  const [sideWidth, setSideWidth] = useStoredSize("layout.builder_sidebar", 220);
+  const latestTables = useRef(tab.tables);
+  latestTables.current = tab.tables;
   // A drop adds the table to the tab as it is then.
   const latestAdd = useRef(add);
   latestAdd.current = add;
@@ -216,6 +223,27 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
     window.addEventListener("mouseup", onUp);
   }
 
+  /** Resizes a box by its corner handle. */
+  function resize(e: React.PointerEvent<HTMLDivElement>, table: BuilderTable) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const handle = e.currentTarget;
+    const from = { x: e.clientX, y: e.clientY };
+    const start = { w: boxWidth(table), h: table.h ?? handle.parentElement!.getBoundingClientRect().height };
+    handle.setPointerCapture(e.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      const size = resizedBox(start, ev.clientX - from.x, ev.clientY - from.y);
+      setTables(latestTables.current.map((t) => (t.id === table.id ? { ...t, ...size } : t)));
+    };
+    const onEnd = () => {
+      for (const [type, fn] of [["pointermove", onMove], ["pointerup", onEnd], ["pointercancel", onEnd]] as const) handle.removeEventListener(type, fn as EventListener);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  }
+
   function toggleColumn(table: BuilderTable, column: string, all: string[]) {
     const on = table.columns.includes(column);
     const columns = all.filter((c) => (c === column ? !on : table.columns.includes(c)));
@@ -235,12 +263,12 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
         latestAdd.current(name, Math.max(0, at.x - r.left + el.scrollLeft - BOX / 2), Math.max(0, at.y - r.top + el.scrollTop - 12));
       },
     });
-  const center = (t: BuilderTable) => ({ x: t.x + BOX / 2, y: t.y + 16 });
+  const center = (t: BuilderTable) => ({ x: t.x + boxWidth(t) / 2, y: t.y + 16 });
   const visible = objects.filter((o) => o.name.toLowerCase().includes(filter.toLowerCase()));
 
   return (
     <div className="builder-tab" style={{ display: active ? "flex" : "none" }}>
-      <aside className="builder-tables">
+      <aside className="builder-tables" style={{ width: sideWidth }}>
         <select aria-label={t("Schema")} value={tab.schema ?? ""} onChange={(e) => onChange({ schema: e.target.value })}>
           {schemas.map((s) => (
             <option key={s.name} value={s.name}>
@@ -266,6 +294,16 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
           ))}
         </ul>
       </aside>
+      <PanelResizer
+        storeKey="layout.builder_sidebar"
+        size={sideWidth}
+        fallback={220}
+        min={140}
+        max={() => 600}
+        direction="column"
+        onResize={setSideWidth}
+        label={t("Resize the tables list")}
+      />
       <div className="builder-main">
         <div
           className={`builder-canvas${dropping ? " drop-into" : ""}`}
@@ -300,7 +338,12 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
           {tab.tables.map((box) => {
             const columns = details.get(detailsKey(box))?.columns.map((c) => c.name) ?? [];
             return (
-              <div key={box.id} className="builder-box" data-table={box.name} style={{ left: box.x, top: box.y, width: BOX }}>
+              <div
+                key={box.id}
+                className={`builder-box${box.h ? " sized" : ""}`}
+                data-table={box.name}
+                style={{ left: box.x, top: box.y, width: boxWidth(box), height: box.h }}
+              >
                 <div className="builder-box-header" onMouseDown={(e) => move(e, box)}>
                   <span className="tree-label">
                     {box.name} <span className="muted">{box.alias}</span>
@@ -325,6 +368,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
                     </li>
                   ))}
                 </ul>
+                <div className="builder-box-grip" role="separator" aria-label={t("Resize the table box")} onPointerDown={(e) => resize(e, box)} />
               </div>
             );
           })}

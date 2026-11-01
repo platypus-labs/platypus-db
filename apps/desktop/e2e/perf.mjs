@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { CTRL } from "./cdp.mjs";
+import { revealItem } from "./menu-sub.mjs";
 
 export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 export const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
@@ -75,6 +76,7 @@ export async function rowMenu(page, label, item) {
   const r = await page.rect("#e2e-menu-of");
   await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, item);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(item)})).click()`);
 }
 

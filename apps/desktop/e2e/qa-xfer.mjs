@@ -7,6 +7,7 @@ import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { ALT, CTRL } from "./cdp.mjs";
+import { revealItem } from "./menu-sub.mjs";
 
 /** The databases: their connection in connections.toml, port and container client. */
 export const DBS = {
@@ -214,6 +215,7 @@ export async function menu(page, label, item, modal = null, within = null) {
   }
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, item);
   const items = await page.eval(`[...document.querySelectorAll('.context-menu button')].map(b => b.textContent)`);
   const found = await page.eval(
     `(() => { const b = [...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(item)})); if (b) b.click(); return !!b; })()`,

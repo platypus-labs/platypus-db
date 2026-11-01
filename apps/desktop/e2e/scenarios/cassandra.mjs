@@ -10,6 +10,7 @@
 // of a key column, a row without a key, a counter and a value of the wrong type are refused.
 // Skipped when Cassandra is not running.
 import assert from "node:assert/strict";
+import { revealItem } from "../menu-sub.mjs";
 import { spawnSync } from "../proc.mjs";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
@@ -228,8 +229,12 @@ export default async function (page) {
   await page.waitFor(`${treeRow("address")} !== undefined`, 15_000);
   await page.eval(`${treeRow("items")}.id = 'e2e-items'`);
   const items = await menu(page, "#e2e-items");
-  for (const item of ["Open data", "Generate SELECT", "Generate INSERT", "Generate UPDATE", "Generate DELETE", "Truncate…", "Drop…"]) {
+  for (const item of ["Open data", "Generate SQL", "Truncate…", "Drop…"]) {
     assert.ok(items.some((i) => i.startsWith(item)), `${item} in ${items}`);
+  }
+  // The statements are in the Generate SQL submenu.
+  for (const item of ["Generate SELECT", "Generate INSERT", "Generate UPDATE", "Generate DELETE"]) {
+    assert.ok(await revealItem(page, item), `${item} in the Generate SQL submenu`);
   }
   for (const item of ["Visual query builder", "Rename…"]) assert.ok(!items.some((i) => i.startsWith(item)), `${item} in ${items}`);
   await menuItem(page, "Open data");

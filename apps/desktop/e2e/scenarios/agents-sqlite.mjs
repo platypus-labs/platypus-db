@@ -108,7 +108,7 @@ async function agentsPage(page, shots) {
   await page.eval(`document.querySelector('[data-client="claude_code"]').click()`);
   await page.waitFor(`document.querySelector('[data-copy="claude_command"]') !== null`);
   await page.eval(`document.querySelector('[data-copy="claude_command"]').click()`);
-  await page.waitFor(`document.querySelector('[data-copy="claude_command"]').textContent === 'Copied'`);
+  await page.waitFor(`document.querySelector('.toast')?.textContent === 'Copied'`);
   assert.equal(await page.eval(`window.__copied`), claude);
 
   await page.waitFor(`${accessOf("Dev db")} === 'Read and write'`);

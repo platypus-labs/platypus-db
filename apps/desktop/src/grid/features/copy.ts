@@ -3,6 +3,7 @@
 import { registerAction } from "../../actions";
 import { api, type CopyFormat } from "../../api";
 import type { GridActionContext } from "../DataGrid";
+import { copyText } from "../../ui/copy";
 
 /** The result rows and columns of the selection; new rows of the editor are left out. */
 function selectedRange({ grid }: GridActionContext) {
@@ -23,7 +24,7 @@ async function copy(ctx: GridActionContext, format: CopyFormat, header = false) 
     header,
     table: ctx.source?.table,
   });
-  await navigator.clipboard.writeText(text);
+  await copyText(text);
 }
 
 const canCopy = (ctx: GridActionContext) => ctx.source?.jobId != null && selectedRange(ctx) !== null;
