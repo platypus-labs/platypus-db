@@ -3112,6 +3112,8 @@ const zh: Record<string, string> = {
   "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "配置文件在表的导出、导入、复制或迁移对话框中保存：在导航器中右键单击一张表。",
   "Notebook saved": "笔记本已保存",
   "Exported to {name}": "已导出到 {name}",
+  "{y} by {x}": "按 {x} 的 {y}",
+  "{name} (right axis)": "{name}（右轴）",
 };
 
 export default zh;

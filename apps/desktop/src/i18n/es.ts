@@ -3112,6 +3112,8 @@ const es: Record<string, string> = {
   "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Un perfil se guarda desde el cuadro de exportación, importación, copia o migración de una tabla: clic derecho en una tabla del navegador.",
   "Notebook saved": "Cuaderno guardado",
   "Exported to {name}": "Exportado a {name}",
+  "{y} by {x}": "{y} por {x}",
+  "{name} (right axis)": "{name} (eje derecho)",
 };
 
 export default es;
