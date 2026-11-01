@@ -84,3 +84,12 @@ test("a ticked connection like a saved one replaces it, each saved one once", ()
   assert.deepEqual(importRequest(read, new Set(["a"]), [{ kind: "none" }, { kind: "none" }], null, false, replace).replace, { a: "s1" });
   assert.deepEqual(importRequest(read, new Set(["a"]), [{ kind: "none" }, { kind: "none" }], null).replace, {});
 });
+
+test("a connection through another SSH tunnel is not the saved one", () => {
+  const bastion = (host, jump = null) => ({ host, port: 22, user: "ops", auth: "password", key_path: null, secret_id: "x", jump });
+  const saved = [{ ...connection("s", "Saved"), ssh: bastion("b", bastion("j")) }];
+  assert.equal(savedTwin({ ...connection("a", "A"), ssh: bastion("b", bastion("j")) }, saved)?.id, "s");
+  assert.equal(savedTwin({ ...connection("a", "A"), ssh: bastion("b") }, saved), undefined, "a hop less");
+  assert.equal(savedTwin({ ...connection("a", "A"), ssh: bastion("evil", bastion("j")) }, saved), undefined);
+  assert.equal(savedTwin(connection("a", "A"), saved), undefined, "direct");
+});

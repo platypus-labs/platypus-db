@@ -56,7 +56,7 @@ pub struct ImportRequest {
 impl ConnectionStore {
     /// Saves an import in one write of the file: nothing is saved if any part is refused.
     pub fn apply_import(&mut self, mut request: ImportRequest) -> Result<()> {
-        let (replaced, unused_secrets) = self.adopt_replaced(&mut request)?;
+        let replaced = self.adopt_replaced(&mut request)?;
         for target in &request.targets {
             if let ImportInto::Existing { id } = target.into {
                 self.require_project(id)?;
@@ -65,7 +65,7 @@ impl ConnectionStore {
                 self.check_connection(c)?;
             }
         }
-        let mut ids = std::collections::HashSet::new();
+        let mut ids = HashSet::new();
         if request
             .targets
             .iter()
@@ -138,29 +138,36 @@ impl ConnectionStore {
         if written.is_err() {
             (self.projects, self.project_folders, self.connections) = before;
             self.restore_secrets(&secrets_before);
-            return written;
         }
-        for id in unused_secrets {
-            let _ = self.secrets.delete(id);
-        }
-        Ok(())
+        written
     }
 
     /// Gives each imported connection of `request.replace` the id of the saved one it
     /// replaces, and the saved tunnel's secret ids hop by hop, so the saved SSH passwords
-    /// stay unless the file brings new ones. Returns the replaced ids, and the secret ids
-    /// of saved hops the new tunnel no longer has.
-    fn adopt_replaced(&self, request: &mut ImportRequest) -> Result<(HashSet<Uuid>, Vec<Uuid>)> {
+    /// stay unless the file brings new ones. Returns the replaced ids. Refused for a
+    /// connection that goes elsewhere than the one it replaces.
+    fn adopt_replaced(&self, request: &mut ImportRequest) -> Result<HashSet<Uuid>> {
         let mut replaced = HashSet::new();
-        let mut unused = Vec::new();
         for project in request.targets.iter_mut().map(|t| &mut t.project) {
             for c in &mut project.connections {
                 let Some(&to) = request.replace.get(&c.id) else {
                     continue;
                 };
                 let saved = self.get(to).ok_or(StoreError::NotFound(to))?;
+                // Its passwords stay: the file may not send them anywhere else.
+                if !same_route(c, saved) {
+                    return Err(StoreError::Invalid(format!(
+                        "{} goes to another server or through another tunnel than {}",
+                        c.name, saved.name
+                    )));
+                }
+                if !replaced.insert(to) {
+                    return Err(StoreError::Invalid(format!(
+                        "two connections replace {}",
+                        saved.name
+                    )));
+                }
                 let from = std::mem::replace(&mut c.id, to);
-                replaced.insert(to);
                 if let Some(s) = project.secrets.remove(&from) {
                     project.secrets.insert(to, s);
                 }
@@ -168,22 +175,19 @@ impl ConnectionStore {
                     project.placement.insert(to, path);
                 }
                 keep_local(c, saved);
+                // The same hops (`same_route`): each keeps its keychain entry and key file.
                 let mut hop = c.ssh.as_mut();
                 for old in saved.ssh.iter().flat_map(SavedSsh::chain) {
-                    match hop {
-                        Some(new) => {
-                            new.secret_id = old.secret_id;
-                            if new.key_path.is_none() {
-                                new.key_path.clone_from(&old.key_path);
-                            }
-                            hop = new.jump.as_deref_mut();
-                        }
-                        None => unused.push(old.secret_id),
+                    let Some(new) = hop else { break };
+                    new.secret_id = old.secret_id;
+                    if new.key_path.is_none() {
+                        new.key_path.clone_from(&old.key_path);
                     }
+                    hop = new.jump.as_deref_mut();
                 }
             }
         }
-        Ok((replaced, unused))
+        Ok(replaced)
     }
 
     /// Saves the secrets, or none of them. Returns what each id held before, to put back.
@@ -237,6 +241,21 @@ impl ConnectionStore {
             .find(|c| !self.projects.iter().any(|p| p.color == **c))
             .unwrap_or(&PROJECT_COLORS[self.projects.len() % PROJECT_COLORS.len()])
     }
+}
+
+/// Whether `a` and `b` reach the same database the same way: driver, server, database,
+/// user, and each SSH hop.
+fn same_route(a: &SavedConnection, b: &SavedConnection) -> bool {
+    let hops = |c: &SavedConnection| -> Vec<(String, u16, String)> {
+        c.ssh
+            .iter()
+            .flat_map(SavedSsh::chain)
+            .map(|s| (s.host.clone(), s.port, s.user.clone()))
+            .collect()
+    };
+    (a.driver, &a.host, a.port, &a.database, &a.user)
+        == (b.driver, &b.host, b.port, &b.database, &b.user)
+        && hops(a) == hops(b)
 }
 
 /// What `saved` set on this machine that the import does not bring: an imported connection
@@ -437,9 +456,13 @@ mod tests {
         team.connections = vec![id];
         s.save_project(team).unwrap();
 
-        // The file's `a` replaces it with a one-hop tunnel and a new SSH password only.
+        // The file's `a`, through the same tunnel (new keychain ids, a key file), replaces
+        // it with a new SSH password only.
         let mut project = imported("Rossi");
-        project.connections[0].ssh = Some(ssh("bastion2", None));
+        let mut tunnel = ssh("bastion", Some(ssh("jump", None)));
+        tunnel.auth = SshAuthKind::Key;
+        project.connections[0].ssh = Some(tunnel);
+        project.connections[0].color = Some("#123456".to_owned());
         let (a, b) = (project.connections[0].id, project.connections[1].id);
         project.secrets.insert(
             a,
@@ -460,7 +483,9 @@ mod tests {
         assert_eq!(names, ["a", "other", "b"]);
         let c = s.get(id).unwrap();
         assert!(s.get(a).is_none() && s.get(b).is_some());
-        assert_eq!(c.ssh.as_ref().unwrap().host, "bastion2");
+        // The file's settings.
+        assert_eq!(c.color.as_deref(), Some("#123456"));
+        assert_eq!(c.ssh.as_ref().unwrap().auth, SshAuthKind::Key);
         // What only this machine set stays.
         assert_eq!(c.password_command.as_deref(), Some("pass show db"));
         assert!(c.restrictions.no_export);
@@ -477,8 +502,41 @@ mod tests {
             s.ssh_secret(hops.secret_id).unwrap(),
             Some(Secret::new("new-ssh"))
         );
-        // The dropped jump host's secret goes.
-        assert_eq!(s.ssh_secret(jump_secret).unwrap(), None);
+        assert_eq!(
+            s.ssh_secret(jump_secret).unwrap(),
+            Some(Secret::new("old-jump"))
+        );
+        let hops: Vec<_> = c.ssh.iter().flat_map(SavedSsh::chain).collect();
+        assert_eq!(hops[1].secret_id, jump_secret);
+    }
+
+    #[test]
+    fn import_refuses_a_replacement_that_goes_elsewhere() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        let mut old = SavedConnection::new("old", DriverKind::Sqlite);
+        old.ssh = Some(ssh("bastion", None));
+        let id = old.id;
+        s.save(old, crate::PasswordUpdate::Keep).unwrap();
+        // Through another bastion: the saved SSH password would go there.
+        let mut project = imported("Rossi");
+        project.connections[0].ssh = Some(ssh("evil", None));
+        let a = project.connections[0].id;
+        let request = |project: &ImportedProject, replace| ImportRequest {
+            targets: vec![new_project(project.clone())],
+            rail_folder: None,
+            passwords: false,
+            replace,
+        };
+        let result = s.apply_import(request(&project, BTreeMap::from([(a, id)])));
+        assert!(matches!(result, Err(StoreError::Invalid(_))));
+        // Two connections for one saved one.
+        project.connections[0].ssh = Some(ssh("bastion", None));
+        project.connections[1].ssh = Some(ssh("bastion", None));
+        let b = project.connections[1].id;
+        let result = s.apply_import(request(&project, BTreeMap::from([(a, id), (b, id)])));
+        assert!(matches!(result, Err(StoreError::Invalid(_))));
+        assert_eq!(s.list().len(), 1);
     }
 
     #[test]

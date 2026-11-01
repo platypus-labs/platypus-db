@@ -92,10 +92,19 @@ export function savedPasswords(projects: ImportedProject[]): number {
   return projects.reduce((n, p) => n + (p.with_password?.length ?? 0), 0);
 }
 
-/** The saved connection `c` looks like: same database, server, port, database name and user. */
+/** The SSH hops of `c`, outermost last, as host, port and user. */
+function hops(c: SavedConnection): string {
+  const out = [];
+  for (let s = c.ssh ?? null; s; s = s.jump) out.push([s.host, s.port, s.user]);
+  return JSON.stringify(out);
+}
+
+/** The saved connection `c` looks like: same database, server, port, database name, user
+ *  and SSH hops (the store refuses to replace one reached another way). */
 export function savedTwin(c: SavedConnection, existing: readonly SavedConnection[]): SavedConnection | undefined {
   return existing.find(
-    (e) => e.driver === c.driver && e.host === c.host && e.port === c.port && e.database === c.database && e.user === c.user,
+    (e) =>
+      e.driver === c.driver && e.host === c.host && e.port === c.port && e.database === c.database && e.user === c.user && hops(e) === hops(c),
   );
 }
 

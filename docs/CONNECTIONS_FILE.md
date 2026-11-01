@@ -57,8 +57,9 @@ The file is untrusted like a shared project's: each connection gets a new id, it
 `${env:…}` references are held until the user edits them, it cannot make the ODBC driver
 manager load a library, and agents are kept out of it until the user lets them in.
 
-A connection like a saved one (same database, server, port, database name and user) starts
-unticked. Ticked, it replaces the saved one by default: the saved connection keeps its id, so
+A connection like a saved one (same database, server, port, database name, user and SSH
+hops) starts unticked; one reached another way is never taken for it, so a file cannot send
+saved passwords to another server. Ticked, it replaces the saved one by default: the saved connection keeps its id, so
 its projects, tabs and history, the passwords the file does not bring, and what only this
 machine set: certificate and key paths, the password command, options the file leaves out,
 agent access and its restrictions.

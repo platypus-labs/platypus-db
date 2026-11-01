@@ -109,6 +109,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
     setError(null);
     setRead(null);
     setTicked(new Set());
+    setReplacing(true);
     try {
       const all = await api.readImport(next.source, next.path, pass);
       setRead(all);
