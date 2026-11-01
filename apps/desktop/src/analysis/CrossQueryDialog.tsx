@@ -21,6 +21,7 @@ import {
   nameProblems,
 } from "./acrossModel";
 import { Icon } from "../ui/Icon";
+import { Busy } from "../ui/State";
 
 /** The kinds of object whose rows can be copied. */
 const READABLE: ObjectKind[] = ["table", "view", "materialized_view", "foreign_table"];
@@ -170,7 +171,7 @@ function CrossQueryDialog({ start, onClose }: { start: AcrossStart[]; onClose: (
             {t("Cancel")}
           </button>
           <button type="button" className="primary" data-action="open" disabled={busy || !ready} onClick={() => void open()}>
-            {busy ? t("Loading…") : t("Open")}
+            {busy ? <Busy label={t("Loading…")} /> : t("Open")}
           </button>
         </div>
       </div>

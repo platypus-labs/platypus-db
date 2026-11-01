@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type SyncConflict, type SyncStatus } from "../api";
 import { plural, t } from "../i18n";
+import { Busy } from "../ui/State";
 import { pickFolder } from "../projects/shared";
 import { onSyncRan, runSync, scheduleSync, syncErrorText, syncSummary } from "./background";
 
@@ -43,6 +44,8 @@ export function SyncPanel() {
   const [minutes, setMinutes] = useState(15);
   const [onStart, setOnStart] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Which button's action is under way, for its spinner; the last message stays until the new one.
+  const [doing, setDoing] = useState<"save" | "sync" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const show = (s: SyncStatus) => {
@@ -69,7 +72,7 @@ export function SyncPanel() {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setMessage(null);
+    setDoing("save");
     try {
       show(await api.syncConfigure(folder, passphrase === "" ? null : passphrase, minutes, onStart));
       setPassphrase("");
@@ -80,12 +83,13 @@ export function SyncPanel() {
       setMessage({ ok: false, text: syncErrorText(err) });
     } finally {
       setBusy(false);
+      setDoing(null);
     }
   }
 
   async function syncNow() {
     setBusy(true);
-    setMessage(null);
+    setDoing("sync");
     try {
       const report = await runSync();
       setMessage({ ok: true, text: syncSummary(report) ?? t("Everything is in sync.") });
@@ -94,6 +98,7 @@ export function SyncPanel() {
       setMessage({ ok: false, text: syncErrorText(err) });
     } finally {
       setBusy(false);
+      setDoing(null);
     }
   }
 
@@ -107,6 +112,7 @@ export function SyncPanel() {
       setMessage({ ok: false, text: syncErrorText(err) });
     } finally {
       setBusy(false);
+      setDoing(null);
     }
   }
 
@@ -161,11 +167,11 @@ export function SyncPanel() {
         </div>
       )}
       <div className="actions">
-        <button type="submit" className="primary" data-action="sync-save" disabled={busy || folder.trim() === "" || (needsPassphrase && (passphrase === "" || mismatch))}>
-          {on ? t("Save") : t("Turn on sync")}
+        <button type="submit" className="primary" data-action="sync-save" aria-busy={doing === "save" || undefined} disabled={busy || folder.trim() === "" || (needsPassphrase && (passphrase === "" || mismatch))}>
+          {doing === "save" ? <Busy label={t("Saving…")} /> : on ? t("Save") : t("Turn on sync")}
         </button>
-        <button type="button" data-action="sync-now" disabled={busy || !on} onClick={() => void syncNow()}>
-          {t("Sync now")}
+        <button type="button" data-action="sync-now" aria-busy={doing === "sync" || undefined} disabled={busy || !on} onClick={() => void syncNow()}>
+          {doing === "sync" ? <Busy label={t("Syncing…")} /> : t("Sync now")}
         </button>
         <span className="spacer" />
         <button type="button" data-action="sync-off" disabled={busy || !on} onClick={() => void turnOff()}>
