@@ -908,6 +908,28 @@ button.toggled {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
+.builder-box.sized {
+  display: flex;
+  flex-direction: column;
+}
+
+.builder-box.sized .builder-columns {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.builder-box-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, var(--border) 50%, var(--border) 60%, transparent 60%, transparent 75%, var(--border) 75%, var(--border) 85%, transparent 85%);
+}
+
 .builder-box-header {
   display: flex;
   align-items: center;

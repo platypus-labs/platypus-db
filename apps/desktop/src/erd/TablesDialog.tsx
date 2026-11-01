@@ -40,7 +40,7 @@ export function TablesDialog({ all, chosen, onSave, onClose }: Props) {
           save();
         }}
       >
-        <h2>{t("Tables of the diagram")}</h2>
+        <h2>{t("Add tables to the diagram")}</h2>
         <input
           autoFocus
           placeholder={t("Filter")}
