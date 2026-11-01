@@ -48,15 +48,16 @@ export function SyncPanel() {
   const [doing, setDoing] = useState<"save" | "sync" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const show = (s: SyncStatus) => {
+  const show = (s: SyncStatus, keepTyped = false) => {
     setStatus(s);
-    setFolder(s.folder ?? "");
+    setFolder((typed) => (keepTyped && typed) || (s.folder ?? ""));
     setMinutes(s.interval_minutes);
     setOnStart(s.on_start);
   };
 
   useEffect(() => {
-    api.syncStatus().then(show, (e) => setMessage({ ok: false, text: syncErrorText(e) }));
+    // What was typed before the answer came stays.
+    api.syncStatus().then((s) => show(s, true), (e) => setMessage({ ok: false, text: syncErrorText(e) }));
     // A run in the background changes the time and the conflicts.
     return onSyncRan(() => void api.syncStatus().then(setStatus, () => {}));
   }, []);
