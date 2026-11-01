@@ -100,6 +100,7 @@ mod tests {
             parent: parent.map(str::to_owned),
             rows: None,
             size: None,
+            hidden_key: None,
         }
     }
 

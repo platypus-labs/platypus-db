@@ -113,8 +113,23 @@ pub async fn catalog_foreign_keys(conn: &dyn Connection) -> Result<Vec<CatalogFo
         .collect())
 }
 
+/// The hidden key of the table `c` (a `pg_class` row): the `rowid` CockroachDB adds, with
+/// `unique_rowid()` as its default, when the table declares no primary key. It is the primary
+/// index then, and `SELECT *` leaves it out.
+const HIDDEN_ROWID: &str = "(SELECT a.attname
+        FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE i.indrelid = c.oid AND i.indisprimary AND i.indnkeyatts = 1
+          AND a.attname = 'rowid' AND pg_get_expr(d.adbin, d.adrelid) LIKE 'unique_rowid()%')";
+
 pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMeta>> {
     let schema = literal(schema);
+    let hidden = if crate::is_cockroach(conn) {
+        format!("CASE WHEN c.relkind = 'r' THEN {HIDDEN_ROWID} END")
+    } else {
+        "NULL".to_owned()
+    };
     let rows = query_text(
         conn,
         &format!(
@@ -133,20 +148,21 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
                          + COALESCE((SELECT sum(ic.relpages) FROM pg_index i
                                      JOIN pg_class ic ON ic.oid = i.indexrelid
                                      WHERE i.indrelid = c.oid), 0))
-                        * current_setting('block_size')::bigint END
+                        * current_setting('block_size')::bigint END,
+                    {hidden}
              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
              WHERE n.nspname = {schema} AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
              UNION ALL
              SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
                     CASE p.prokind WHEN 'p' THEN 'P' ELSE 'F' END,
-                    obj_description(p.oid, 'pg_proc'), NULL, NULL, NULL
+                    obj_description(p.oid, 'pg_proc'), NULL, NULL, NULL, NULL
              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = {schema} AND p.prokind IN ('f', 'p')
                -- Not the routines an extension brings (TimescaleDB's, in public).
                AND NOT EXISTS (SELECT 1 FROM pg_depend d
                                WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
              UNION ALL
-             SELECT t.tgname, 'T', obj_description(t.oid, 'pg_trigger'), c.relname, NULL, NULL
+             SELECT t.tgname, 'T', obj_description(t.oid, 'pg_trigger'), c.relname, NULL, NULL, NULL
              FROM pg_trigger t
              JOIN pg_class c ON c.oid = t.tgrelid
              JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -155,7 +171,7 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
              -- Enums, domains, ranges and standalone composite types; not the row types
              -- of tables, nor the types an extension brings.
              SELECT t.typname, CASE t.typtype WHEN 'd' THEN 'D' ELSE 'Y' END,
-                    obj_description(t.oid, 'pg_type'), NULL, NULL, NULL
+                    obj_description(t.oid, 'pg_type'), NULL, NULL, NULL, NULL
              FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
              WHERE n.nspname = {schema}
                AND (t.typtype IN ('e', 'd', 'r')
@@ -163,7 +179,7 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
                AND NOT EXISTS (SELECT 1 FROM pg_depend d
                                WHERE d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e')
              UNION ALL
-             SELECT e.extname, 'E', obj_description(e.oid, 'pg_extension'), NULL, NULL, NULL
+             SELECT e.extname, 'E', obj_description(e.oid, 'pg_extension'), NULL, NULL, NULL, NULL
              FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
              WHERE n.nspname = {schema}
              ORDER BY 1"
@@ -176,6 +192,7 @@ pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMe
             parent: r.opt(3),
             rows: r.number(4),
             size: r.number(5),
+            hidden_key: r.opt(6),
             ..ObjectMeta::new(r.text(0), object_kind(&r.text(1)), r.opt(2))
         })
         .collect())

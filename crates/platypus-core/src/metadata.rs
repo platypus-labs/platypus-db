@@ -75,6 +75,9 @@ pub struct ObjectMeta {
     pub rows: Option<u64>,
     /// About how many bytes a table takes on disk with its indexes; `None` when unknown.
     pub size: Option<u64>,
+    /// A column that identifies the rows but that `SELECT *` leaves out: the hidden `rowid`
+    /// CockroachDB adds to a table without a primary key. `None` for the other tables.
+    pub hidden_key: Option<String>,
 }
 
 impl ObjectMeta {
@@ -87,6 +90,7 @@ impl ObjectMeta {
             parent: None,
             rows: None,
             size: None,
+            hidden_key: None,
         }
     }
 }

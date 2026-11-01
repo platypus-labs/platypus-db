@@ -7305,6 +7305,49 @@ async fn qa_fixdbs_cockroach_strings_and_arrays() {
     }
 }
 
+/// CockroachDB's hidden `rowid` identifies the rows of a table without a primary key.
+#[tokio::test]
+async fn cockroach_hidden_rowid_is_the_row_key() {
+    let _serial = SERIAL.lock().await;
+    let Some(crdb) = qa_fixdbs_pg("postgres://root@localhost:56257/platypus?sslmode=disable").await
+    else {
+        return;
+    };
+    for sql in [
+        "DROP SCHEMA IF EXISTS qa_rowid CASCADE",
+        "CREATE SCHEMA qa_rowid",
+        "CREATE TABLE qa_rowid.loose (name STRING)",
+        "CREATE TABLE qa_rowid.keyed (id INT8 PRIMARY KEY, name STRING)",
+        "INSERT INTO qa_rowid.loose VALUES ('a'), ('b')",
+    ] {
+        run(&*crdb, sql)
+            .await
+            .unwrap_or_else(|e| panic!("{sql}: {e}"));
+    }
+    let objects = crdb.objects("qa_rowid").await.unwrap();
+    let hidden = |name: &str| {
+        objects
+            .iter()
+            .find(|o| o.name == name)
+            .unwrap_or_else(|| panic!("{name} not listed"))
+            .hidden_key
+            .clone()
+    };
+    assert_eq!(hidden("loose").as_deref(), Some("rowid"));
+    assert_eq!(hidden("keyed"), None);
+    // The viewer's query selects the key, and its values tell the rows apart.
+    let rows =
+        platypus_core::query_text(&*crdb, "SELECT *, rowid FROM qa_rowid.loose ORDER BY name")
+            .await
+            .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_ne!(rows[0][1], rows[1][1]);
+    let details = crdb.table_details("qa_rowid", "loose").await.unwrap();
+    let key = details.columns.iter().find(|c| c.name == "rowid").unwrap();
+    assert!(key.primary_key, "{key:?}");
+    run(&*crdb, "DROP SCHEMA qa_rowid CASCADE").await.unwrap();
+}
+
 /// TimescaleDB's schemas, routines and hypertables.
 #[tokio::test]
 async fn qa_fixdbs_timescale_catalogs() {
@@ -7566,6 +7609,72 @@ async fn qa3_run_text(conn: &dyn Connection, driver: DriverKind, script: &platyp
         run(conn, s)
             .await
             .unwrap_or_else(|e| panic!("{driver:?}: {s}: {e}\n{text}"));
+    }
+}
+
+/// MariaDB tables with `PERIOD FOR` (application time, and system time with row start and end
+/// columns of their own) are compared and created again with their periods.
+#[tokio::test]
+async fn mariadb_schema_compare_keeps_periods() {
+    let _serial = SERIAL.lock().await;
+    let Some(b) = backends().await.into_iter().find(|b| b.name == "mariadb") else {
+        return;
+    };
+    let mut config = b.config.clone();
+    // Creating databases takes more than the test user may do.
+    "root".clone_into(&mut config.user);
+    config.password = Some(platypus_core::Secret::new("platypus"));
+    let conn = self::driver(config.driver).connect(&config).await.unwrap();
+    let conn = &*conn;
+    let d = platypus_sql::Dialect::MySql;
+    for (schema, with_tables) in [(QA3_SRC, true), (QA3_DST, false)] {
+        for sql in [
+            format!("DROP DATABASE IF EXISTS {schema}"),
+            format!("CREATE DATABASE {schema}"),
+        ] {
+            run(conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        if !with_tables {
+            continue;
+        }
+        for sql in [
+            format!(
+                "CREATE TABLE {schema}.booked (id INT NOT NULL, d1 DATE NOT NULL, d2 DATE NOT NULL,                  PERIOD FOR validity (d1, d2))"
+            ),
+            format!(
+                "CREATE TABLE {schema}.versioned (id INT NOT NULL,                  s TIMESTAMP(6) GENERATED ALWAYS AS ROW START,                  e TIMESTAMP(6) GENERATED ALWAYS AS ROW END,                  PERIOD FOR SYSTEM_TIME (s, e)) WITH SYSTEM VERSIONING"
+            ),
+        ] {
+            run(conn, &sql)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+    }
+    let src = platypus_schema::load_designs(conn, d, QA3_SRC)
+        .await
+        .unwrap();
+    let booked = src.iter().find(|t| t.name == "booked").unwrap();
+    assert_eq!(booked.periods.len(), 1, "{booked:?}");
+    assert_eq!(booked.periods[0].name, "validity");
+    let versioned = src.iter().find(|t| t.name == "versioned").unwrap();
+    assert!(versioned.periods[0].is_system_time(), "{versioned:?}");
+    // Both are missing from the target: the script creates them with their periods.
+    let script = qa3_compare(conn, DriverKind::MySql).await;
+    let text = script.text(d);
+    assert!(text.contains("PERIOD FOR validity (d1, d2)"), "{text}");
+    assert!(text.contains("PERIOD FOR SYSTEM_TIME (s, e)"), "{text}");
+    qa3_run_text(conn, DriverKind::MySql, &script).await;
+    let again = qa3_compare(conn, DriverKind::MySql).await;
+    assert_eq!(
+        again.statements,
+        Vec::<String>::new(),
+        "after
+{text}"
+    );
+    for schema in [QA3_SRC, QA3_DST] {
+        run(conn, &format!("DROP DATABASE {schema}")).await.unwrap();
     }
 }
 

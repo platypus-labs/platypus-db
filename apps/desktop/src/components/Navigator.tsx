@@ -425,7 +425,7 @@ export function Navigator(props: Props) {
   function openData(c: SavedConnection, db: string | null, schema: SchemaMeta, object: ObjectMeta, target: string) {
     if (focusData(c.id, db, target)) return;
     onOpenTab(c, {
-      sql: viewerSql(c.driver, target),
+      sql: viewerSql(c.driver, target, "", object.hidden_key),
       autorun: true,
       title: object.name,
       table: target,
