@@ -14,7 +14,11 @@ PLATYPUS_INVENTORY=1 PLATYPUS_E2E_SHOTS=<cartella> npm --prefix apps/desktop run
 
 Il filtro `inventory` lancia tutte e quattro le varianti (circa 40 secondi ciascuna); `inventory-dark-en`, `inventory-dark-it`, `inventory-light-en`, `inventory-light-it` ne lanciano una sola. Per provare solo alcune schermate: `PLATYPUS_INVENTORY_ONLY=er-diagram,transfer`.
 
-Le immagini finiscono in `<PLATYPUS_E2E_SHOTS>/inventory/<variante>/<NN>-<schermata>[-<parte>].png` (1440×900), per esempio `inventory/light-it/17-er-diagram.png`. Non si committano. Una schermata che non si raggiunge viene saltata con una riga `SKIPPED` nel log e un `_failed-<schermata>.png` con lo stato della pagina: le altre proseguono.
+Con `PLATYPUS_INVENTORY_SIZE=1280x720` (o `2560x1440`, o qualunque `LxA`) la finestra ha quella misura invece di 1440×900 e il nome della cartella la riporta: `inventory/dark-en-1280x720/`. Serve alla revisione UX (gruppo T), che guarda l'app piccola e grande. La misura è impostata con `Emulation.setDeviceMetricsOverride` (il viewport della pagina, non la finestra di Tauri).
+
+Le schermate della revisione UX (dal costruttore di query in poi) usano il PostgreSQL di `docker/compose.yml` (`docker compose -f docker/compose.yml up -d --wait`, porta 55432) per l'amministrazione del server; se non risponde, quella schermata viene saltata con la ragione nel log.
+
+Le immagini finiscono in `<PLATYPUS_E2E_SHOTS>/inventory/<variante>/<NN>-<schermata>[-<parte>].png` (1440×900 se non si indica la misura), per esempio `inventory/light-it/17-er-diagram.png`. Non si committano. Una schermata che non si raggiunge viene saltata con una riga `SKIPPED` nel log e un `_failed-<schermata>.png` con lo stato della pagina: le altre proseguono.
 
 ## Dove sta il codice
 
@@ -53,6 +57,33 @@ La colonna "Problemi trovati" la compila chi rivede.
 | Pannello degli agenti (pagina Agenti delle Impostazioni, ogni scheda) | "Not installed" va a capo su due righe nella colonna Stato; i percorsi dei file di configurazione vanno a capo e si troncano ("claude_deskto p_config.json") in monospazio 10px; tre livelli di barre di scorrimento (dialog, pagina, blocco JSON); paragrafo introduttivo lungo a 11px prima delle schede; [it] "Non installato" a capo e "non ancora presente" spezza i percorsi |
 | Test delle connessioni | dialog stretto con lista a 11px; lo stato è indicato solo dal colore del pallino (nessuna icona); scurimento dello sfondo debole |
 | Dialog di conferma (eliminare una tabella) | il pulsante Drop è rosso/rosa salmone, diverso dal rosso usato altrove per gli errori; "Open in editor" è un link di testo arancio al posto di un pulsante secondario; larghezza ~640px diversa dagli altri dialog |
+
+### Schermate della revisione UX (gruppo T)
+
+Ogni voce è un nome di schermata di `inventory.mjs` e le immagini che produce:
+
+| Schermata | Cosa fotografa |
+|---|---|
+| `query-builder` | costruttore visuale: una tabella; due tabelle unite con colonne scelte |
+| `notebook` | notebook vuoto; due celle SQL eseguite |
+| `chart-pivot` | grafico a barre e a torta; dialog del pivot; risultato del pivot |
+| `schema-tools` | Confronta con… (dialog e risultato); Controlla lo schema |
+| `server-admin` | Attività del server su PostgreSQL, una foto per sezione (sessioni, blocchi, utenti, parametri…) |
+| `lock-screen` | schermata di blocco (si abilita e poi si toglie la password principale) |
+| `masking` | griglia con i dati sensibili mascherati e l'indicatore in alto |
+| `snapshots` | registro delle transazioni e script di ripristino |
+| `agents-mcp` | pagina Agenti delle impostazioni, una foto per client |
+| `sync-sharing` | Sincronizzazione, menu e dialog di condivisione del progetto, apertura di un progetto condiviso |
+| `scheduled-tasks` | task pianificati: stato vuoto e form di un nuovo task |
+| `transfer-profiles` | profili di trasferimento (stato vuoto) |
+| `table-menu-submenu` | menu di una tabella e ogni suo sottomenu aperto |
+| `pinned-tab` | menu della scheda e barra con una scheda fissata |
+| `grid-editing` | editor di cella, anteprima SQL, riga nuova |
+| `column-hover` | riquadro del profilo di colonna sull'intestazione |
+| `connection-ssh` | form di connessione, pagina Rete con il tunnel SSH |
+| `import-connections` | dialog di importazione delle connessioni |
+
+Le pagine delle impostazioni sono già in `settings`.
 
 ## Priorità
 
