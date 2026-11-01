@@ -153,7 +153,8 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
                 onKeyDown={(e) => onKey(e, tab)}
               >
                 <span className="tab-icon">
-                  <Icon name={tab.pinned ? "pin" : props.icon(tab)} size={13} />
+                  <Icon name={props.icon(tab)} size={13} />
+                  {tab.pinned && <Icon name="pin" size={9} className="tab-pin" />}
                 </span>
                 {tab.pinned ? (
                   <span className="sr-only">{props.title(tab)}</span>

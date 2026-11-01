@@ -647,9 +647,22 @@
   border-radius: var(--radius);
 }
 
-/* A pinned tab: its icon alone, first in the bar. */
+/* A pinned tab: its icon alone, first in the bar, with a small pin in the corner. */
 .tab.pinned {
   padding: 0 var(--space-10);
+}
+
+.tab.pinned .tab-icon {
+  position: relative;
+}
+
+.tab-pin {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  color: var(--accent);
+  background: var(--bg);
+  border-radius: 50%;
 }
 
 /* The other tab of a split editor. */

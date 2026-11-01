@@ -47,9 +47,10 @@ export default async function (page, { dir }) {
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   await page.eval(`[...document.querySelectorAll('.context-menu [role=menuitem]')].find(b => b.textContent.startsWith('Pin tab')).click()`);
   await page.waitFor(`${tabs}[0].classList.contains('pinned')`);
-  // The pinned tab shows the pin, the others their own icon.
-  assert.equal(await page.eval(`${tabs}[0].querySelector('.tab-icon svg').getAttribute('class').includes('pin')`), true);
-  assert.equal(await page.eval(`${tabs}[1].querySelector('.tab-icon svg').getAttribute('class').includes('pin')`), false);
+  // The pinned tab keeps its own icon and adds a pin, unlike the others.
+  assert.equal(await page.eval(`${tabs}[0].querySelectorAll('.tab-icon svg').length`), 2);
+  assert.equal(await page.eval(`${tabs}[0].querySelector('.tab-icon .tab-pin') !== null`), true);
+  assert.equal(await page.eval(`${tabs}[1].querySelector('.tab-icon .tab-pin') === null`), true);
   await page.eval(`${tabs}[2].click()`);
   await page.waitFor(`${text} === "select 'two'"`);
 
