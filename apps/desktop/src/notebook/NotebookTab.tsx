@@ -427,7 +427,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     if (!path) return;
     try {
       await api.writeTextFile(path, notebookHtml(title, await exportCells(), tab.params));
-      toast(t("Exported to {name}", { name: path.split(/[\/]/).pop()! }));
+      toast(t("Exported to {name}", { name: path.split(/[\\/]/).pop()! }));
     } catch (e) {
       toast(toCommandError(e).message, "error");
     }
