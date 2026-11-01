@@ -7,7 +7,7 @@
 | [SHORTCUTS.md](SHORTCUTS.md) | All keyboard shortcuts |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Project layout, requirements, building and testing, the sample and dev databases |
 | [ROADMAP.md](ROADMAP.md) | Planned work after 0.1.0, split into parallel groups with their locks and status (Italian) |
-| [EVOLUTIVE.md](EVOLUTIVE.md) | Ideas and evolutions after the roadmap, in groups with their own locks (Italian) |
+| [EVOLUTIONS.md](EVOLUTIONS.md) | Ideas and evolutions after the roadmap, in groups with their own locks (Italian) |
 | [EXTENDING.md](EXTENDING.md) | The extension points features plug into: driver capabilities, SQL generation, actions, tab kinds, settings, the result grid |
 | [RELEASING.md](RELEASING.md) | How releases are built and published, the updater keys, and installers built locally |
 | [BENCHMARKS.md](BENCHMARKS.md) | Startup, memory, scrolling and export measurements, with the method |

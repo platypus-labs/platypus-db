@@ -32,7 +32,7 @@ rispettate anche quelle.
    Un lock è scaduto se il branch indicato non ha commit da più di **3 giorni**
    (`git log -1 --format=%cd origin/<branch>`): in quel caso il gruppo si considera libero.
    Quando ogni gruppo della roadmap è completato, fatto, bloccato o in attesa, si sceglie da
-   [docs/EVOLUTIVE.md](docs/EVOLUTIVE.md) con le stesse regole (lock nella sua tabella, branch
+   [docs/EVOLUTIONS.md](docs/EVOLUTIONS.md) con le stesse regole (lock nella sua tabella, branch
    `evo-<lettera>-<tema>`).
 4. **Prendere il lock e pusharlo su main**, prima di scrivere codice:
    - su `main` aggiornato, modificare solo la riga del gruppo in "Lock dei gruppi":
