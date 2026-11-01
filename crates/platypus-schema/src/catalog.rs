@@ -449,7 +449,7 @@ pub(crate) fn mysql(design: &mut TableDesign, definition: &create::Definition) {
         .collect();
     // The CHECK the server makes for an application-time period (`start < end`, named like
     // the period) comes with `PERIOD FOR`: creating it again would add a duplicate.
-    let flat = |text: &str| text.replace(['`', ' ', '(', ')'], "").to_ascii_lowercase();
+    let flat = |text: &str| text.replace(['`', '"', ' ', '(', ')'], "").to_ascii_lowercase();
     let implicit_periods: Vec<(String, String)> = design
         .periods
         .iter()
@@ -469,10 +469,7 @@ pub(crate) fn mysql(design: &mut TableDesign, definition: &create::Definition) {
     });
     design.constraints.retain(|c| {
         let implicit = json.contains(&c.name)
-            && c.check
-                .replace(['`', ' ', '(', ')'], "")
-                .to_ascii_lowercase()
-                == format!("json_valid{}", c.name.to_ascii_lowercase());
+            && flat(&c.check) == format!("json_valid{}", c.name.to_ascii_lowercase());
         !implicit
     });
 }
@@ -583,6 +580,8 @@ mod tests {
             constraints: vec![
                 check("validity", "`d1` < `d2`"),
                 check("mine", "`d1` < `d2`"),
+                // ANSI_QUOTES: the server writes the identifiers in double quotes.
+                check("quoted", "\"d1\" < \"d2\""),
             ],
             periods: vec![crate::PeriodDesign {
                 name: "validity".to_owned(),
@@ -591,6 +590,10 @@ mod tests {
             }],
             ..TableDesign::default()
         };
+        design.periods.push(crate::PeriodDesign {
+            name: "quoted".to_owned(),
+            ..design.periods[0].clone()
+        });
         mysql(&mut design, &create::Definition::default());
         let names: Vec<&str> = design.constraints.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["mine"]);
