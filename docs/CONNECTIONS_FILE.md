@@ -59,4 +59,6 @@ manager load a library, and agents are kept out of it until the user lets them i
 
 A connection like a saved one (same database, server, port, database name and user) starts
 unticked. Ticked, it replaces the saved one by default: the saved connection keeps its id, so
-its projects, tabs and history, and keeps the passwords the file does not bring.
+its projects, tabs and history, the passwords the file does not bring, and what only this
+machine set: certificate and key paths, the password command, options the file leaves out,
+agent access and its restrictions.

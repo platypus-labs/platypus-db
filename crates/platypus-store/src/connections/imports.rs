@@ -7,7 +7,7 @@ use platypus_core::Secret;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{ConnectionStore, Project, SavedSsh};
+use super::{ConnectionStore, Project, SavedConnection, SavedSsh};
 use crate::{ImportedProject, Result, StoreError};
 
 /// The colors given to new projects, the same as the project dialog's.
@@ -167,11 +167,15 @@ impl ConnectionStore {
                 if let Some(path) = project.placement.remove(&from) {
                     project.placement.insert(to, path);
                 }
+                keep_local(c, saved);
                 let mut hop = c.ssh.as_mut();
                 for old in saved.ssh.iter().flat_map(SavedSsh::chain) {
                     match hop {
                         Some(new) => {
                             new.secret_id = old.secret_id;
+                            if new.key_path.is_none() {
+                                new.key_path.clone_from(&old.key_path);
+                            }
                             hop = new.jump.as_deref_mut();
                         }
                         None => unused.push(old.secret_id),
@@ -233,6 +237,34 @@ impl ConnectionStore {
             .find(|c| !self.projects.iter().any(|p| p.color == **c))
             .unwrap_or(&PROJECT_COLORS[self.projects.len() % PROJECT_COLORS.len()])
     }
+}
+
+/// What `saved` set on this machine that the import does not bring: an imported connection
+/// replacing it keeps it. Certificate paths, the password command and options it leaves
+/// out, virtual keys when it has none, agent access, and the stricter of the restrictions.
+fn keep_local(c: &mut SavedConnection, saved: &SavedConnection) {
+    if c.ssl_client_cert.is_none() && c.ssl_client_key.is_none() {
+        c.ssl_client_cert.clone_from(&saved.ssl_client_cert);
+        c.ssl_client_key.clone_from(&saved.ssl_client_key);
+    }
+    if c.ssl_root_cert.is_none() {
+        c.ssl_root_cert.clone_from(&saved.ssl_root_cert);
+    }
+    if c.password_command.is_none() {
+        c.password_command.clone_from(&saved.password_command);
+    }
+    c.pgpass |= saved.pgpass;
+    for (key, value) in &saved.options {
+        c.options
+            .entry(key.clone())
+            .or_insert_with(|| value.clone());
+    }
+    if c.virtual_keys.is_empty() {
+        c.virtual_keys.clone_from(&saved.virtual_keys);
+    }
+    c.agent_access = saved.agent_access;
+    c.restrictions.no_export |= saved.restrictions.no_export;
+    c.restrictions.no_data_editing |= saved.restrictions.no_data_editing;
 }
 
 /// The secrets to save for the connections of `targets`, under the ids the store keeps
@@ -387,6 +419,9 @@ mod tests {
         // Saved: `old` in a project, with a password and a two-hop tunnel.
         let mut old = SavedConnection::new("old", DriverKind::Sqlite);
         old.save_password = true;
+        old.password_command = Some("pass show db".to_owned());
+        old.restrictions.no_export = true;
+        old.options.insert("app_name".to_owned(), "mine".to_owned());
         old.ssh = Some(ssh("bastion", Some(ssh("jump", None))));
         let (id, hops) = (old.id, old.ssh.as_ref().unwrap().clone());
         let other = SavedConnection::new("other", DriverKind::Sqlite);
@@ -426,6 +461,10 @@ mod tests {
         let c = s.get(id).unwrap();
         assert!(s.get(a).is_none() && s.get(b).is_some());
         assert_eq!(c.ssh.as_ref().unwrap().host, "bastion2");
+        // What only this machine set stays.
+        assert_eq!(c.password_command.as_deref(), Some("pass show db"));
+        assert!(c.restrictions.no_export);
+        assert_eq!(c.options["app_name"], "mine");
         assert!(named(&s, "Team").connections.contains(&id));
         assert_eq!(
             folder_of(named(&s, "Rossi"), id),
