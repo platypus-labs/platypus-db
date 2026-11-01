@@ -4,10 +4,10 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use arrow_array::cast::AsArray;
-use arrow_array::types::Decimal128Type;
+use arrow_array::types::{Decimal128Type, Time64NanosecondType};
 use arrow_array::{Array, ArrayRef, BooleanArray, Decimal128Array, RecordBatch, StringArray};
 use arrow_cast::display::FormatOptions;
-use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef};
+use arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef, TimeUnit};
 use duckdb::vtab::arrow::{ArrowBatchRegistration, ArrowVTab};
 use platypus_core::{META_DB_TYPE, special};
 
@@ -287,6 +287,10 @@ fn store(field: &Field, batches: &[RecordBatch], column: usize) -> Result<Store,
         DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View if numeric_text(field) => {
             return text_numbers(batches, column);
         }
+        // DuckDB's TIME stops at microseconds: finer times (SQL Server `time(7)`) stay text.
+        DataType::Time64(TimeUnit::Nanosecond) if has_sub_micros(batches, column) => {
+            return Ok(Store::Text);
+        }
         _ => {}
     }
     let takes = writable(field.data_type())
@@ -352,6 +356,18 @@ fn numeric_text(field: &Field) -> bool {
     field.metadata().get(META_DB_TYPE).is_some_and(|t| {
         let t = t.to_ascii_lowercase();
         (t.starts_with("numeric") || t.starts_with("decimal")) && !t.contains('[')
+    })
+}
+
+/// Whether a `Time64(Nanosecond)` column has a value finer than a microsecond.
+fn has_sub_micros(batches: &[RecordBatch], column: usize) -> bool {
+    batches.iter().any(|batch| {
+        batch
+            .column(column)
+            .as_primitive::<Time64NanosecondType>()
+            .iter()
+            .flatten()
+            .any(|nanos| nanos % 1000 != 0)
     })
 }
 
@@ -447,7 +463,7 @@ mod tests {
     use arrow_array::types::{Int32Type, IntervalMonthDayNanoType};
     use arrow_array::{
         ArrayRef, FixedSizeBinaryArray, Int32Array, Int64Array, ListArray, NullArray, RecordBatch,
-        StringArray,
+        StringArray, Time64NanosecondArray,
     };
     use arrow_schema::{DataType, Field, IntervalUnit, Schema, SchemaRef, TimeUnit};
 
@@ -943,6 +959,23 @@ mod tests {
             ),
             1
         );
+    }
+
+    #[test]
+    fn times_finer_than_a_microsecond_stay_whole() {
+        let fine = Time64NanosecondArray::from(vec![Some(45_296_123_456_700), None]);
+        let coarse = Time64NanosecondArray::from(vec![Some(45_296_123_456_000), None]);
+        let (schema, batch) = table_of(vec![
+            ("fine", Arc::new(fine) as ArrayRef),
+            ("coarse", Arc::new(coarse) as ArrayRef),
+        ]);
+        platypus_driver_duckdb::testing::load();
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        load(&conn, "t", &schema, &[batch]).unwrap();
+        assert_eq!(text(&conn, "SELECT typeof(fine) FROM t LIMIT 1"), "VARCHAR");
+        assert_eq!(text(&conn, "SELECT typeof(coarse) FROM t LIMIT 1"), "TIME");
+        let shown = text(&conn, "SELECT fine FROM t WHERE fine IS NOT NULL");
+        assert!(shown.contains("12:34:56.1234567"), "{shown}");
     }
 
     #[test]
