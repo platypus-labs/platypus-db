@@ -185,8 +185,10 @@ pub fn restore_and_track(window: &WebviewWindow, path: &Path, saved: Option<Wind
             width,
             height,
         } = state.frame;
-        let _ = window.set_size(PhysicalSize::new(width, height));
+        // Move first: the move onto a monitor with another scale factor changes the DPI, and
+        // Windows rescales the window then; the size set after it stays as saved.
         let _ = window.set_position(PhysicalPosition::new(x, y));
+        let _ = window.set_size(PhysicalSize::new(width, height));
         if state.maximized {
             let _ = window.maximize();
         }
