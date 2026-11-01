@@ -8,7 +8,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "./cdp.mjs";
-import { revealItem } from "./menu-sub.mjs";
+import { connect as netConnect } from "node:net";
+import { openSubmenu, revealItem } from "./menu-sub.mjs";
 import { setField } from "./plans.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -16,6 +17,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const NAME = "Shop dev";
 const ARCHIVE = "Archive db";
 const PROJECT = "00000000-0000-4000-9000-0000000a0031";
+const ANALYTICS = "00000000-0000-4000-9000-0000000a0032";
+// The dev PostgreSQL of docker/compose.yml, for the screens that need a server (kept out of the
+// Shop project, so the shop screens stay as they were); the screens skip when it is not up.
+const PG = "Local Postgres";
+const PG_ID = "00000000-0000-4000-8000-0000000a0003";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** The scenarios' `skip`: the inventory only runs when asked for. */
@@ -79,6 +85,7 @@ connections = ["00000000-0000-4000-8000-0000000a0001"]
 id = "00000000-0000-4000-9000-0000000a0032"
 name = "Analytics"
 color = "#0d9488"
+connections = ["${PG_ID}"]
 
 [[connections]]
 id = "00000000-0000-4000-8000-0000000a0001"
@@ -94,6 +101,18 @@ name = "${ARCHIVE}"
 driver = "sqlite"
 database = '${join(dir, "archive.db")}'
 save_password = false
+
+[[connections]]
+id = "${PG_ID}"
+name = "${PG}"
+driver = "postgres"
+host = "127.0.0.1"
+port = 55432
+database = "platypus"
+user = "platypus"
+ssl_mode = "disable"
+save_password = false
+password_command = "echo platypus"
 `,
   );
   writeFileSync(join(dir, "settings.toml"), `[appearance]\ntheme = "${theme}"\nlanguage = "${lang}"\n`);
@@ -442,7 +461,363 @@ export const screens = [
       await shoot();
     },
   },
+  ...moreScreens(),
 ];
+
+// ---- the screens of the UX review (group T): one per section of its checklist ----
+
+const reachable = (port) =>
+  new Promise((done) => {
+    const socket = netConnect({ host: "127.0.0.1", port, timeout: 1500 });
+    socket.once("connect", () => (socket.destroy(), done(true)));
+    socket.once("error", () => done(false));
+    socket.once("timeout", () => (socket.destroy(), done(false)));
+  });
+
+/** Sets a React-controlled input or select the way typing or choosing would. */
+const setValue = (page, element, value, proto = "HTMLInputElement") =>
+  page.eval(`(() => {
+    const el = ${element};
+    Object.getOwnPropertyDescriptor(${proto}.prototype, 'value').set.call(el, ${JSON.stringify(value)});
+    el.dispatchEvent(new Event(${proto === "HTMLSelectElement" ? "'change'" : "'input'"}, { bubbles: true }));
+  })()`);
+
+/** Runs `fn` in the Analytics project, where the dev PostgreSQL lives, and goes back to Shop. */
+async function inPostgres(page, fn) {
+  if (!(await reachable(55432))) throw new Error("PostgreSQL at localhost:55432 is not reachable (docker compose -f docker/compose.yml up -d --wait)");
+  await page.eval(`document.querySelector('.project-square[data-project="${ANALYTICS}"]').click()`);
+  try {
+    await page.waitFor(`${treeRow(PG)} !== undefined`, 15_000);
+    await page.eval(`${treeRow(PG)}.querySelector('.twisty')?.click()`);
+    await page.waitFor(`(() => {
+      const all = [...document.querySelectorAll('.tree-row')];
+      const at = all.findIndex(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(PG)});
+      return at >= 0 && all[at + 1] !== undefined && Number(all[at + 1].getAttribute('aria-level')) > Number(all[at].getAttribute('aria-level'));
+    })()`, 30_000);
+    await fn();
+  } finally {
+    await page.eval(`document.querySelector('.project-square[data-project="${PROJECT}"]')?.click()`);
+  }
+}
+
+/** Shoots every button of an `.object-sections` bar of `scope`, one picture per section. */
+async function eachSection(page, shoot, scope, wait = 800) {
+  const buttons = `document.querySelectorAll(${JSON.stringify(`${scope} .object-sections button`)})`;
+  await page.waitFor(`${buttons}.length > 0`, 20_000);
+  const labels = await page.eval(`[...${buttons}].map(b => b.firstChild?.textContent ?? b.textContent)`);
+  for (let i = 0; i < labels.length; i++) {
+    await page.eval(`${buttons}[${i}].click()`);
+    await page.sleep(wait);
+    await shoot(labels[i]);
+  }
+}
+
+const adminTab = `[...document.querySelectorAll('.admin-tab')].find(t => t.style.display !== 'none')`;
+const notebookTab = `[...document.querySelectorAll('.notebook-tab')].find(t => t.style.display !== 'none')`;
+const builderTab = `document.querySelector('.builder-tab:not([style*="none"])')`;
+const cellOf = (name) => `${notebookTab}?.querySelector('[data-name=${JSON.stringify(name)}]')`;
+
+async function notebookScreens(page, shoot) {
+  await expandShop(page);
+  await menuItem(page, NAME, "New notebook");
+  await page.waitFor(`${cellOf("c1")}?.querySelector('.cm-content') != null`, 15_000);
+  await page.sleep(300);
+  await shoot("empty");
+  const fill = async (name, sql) => {
+    await page.eval(`${cellOf(name)}.querySelector('.cm-content').focus()`);
+    await key(page, "a", "KeyA", 65, CTRL);
+    await page.type(sql);
+    await page.waitFor(`[...${cellOf(name)}.querySelectorAll('.cm-line')].map(l => l.textContent).join('\\n') === ${JSON.stringify(sql)}`);
+    await escape(page);
+    await page.eval(`${cellOf(name)}.querySelector('[data-action="run"]').click()`);
+    await page.waitFor(`!${cellOf(name)}.classList.contains('running') && (${cellOf(name)}.querySelector('[data-field=status]')?.dataset.result ?? '') !== ''`, 30_000);
+  };
+  await fill("c1", "SELECT status, count(*) AS orders, sum(total) AS revenue FROM orders GROUP BY status");
+  await page.eval(`${notebookTab}.querySelector('[data-action="add_sql"]').click()`);
+  await page.waitFor(`${cellOf("c2")}?.querySelector('.cm-content') != null`);
+  await fill("c2", "SELECT name, price FROM products ORDER BY price DESC");
+  await page.sleep(300);
+  await shoot("cells");
+}
+
+async function chartPivotScreens(page, shoot) {
+  await newEditor(page);
+  await setEditor(page, "SELECT c.city, count(*) AS orders, sum(o.total) AS revenue\nFROM orders o\nJOIN customers c ON o.customer_id = c.id\nGROUP BY c.city\nORDER BY c.city");
+  await run(page);
+  await page.eval(`[...${queryTab}.querySelectorAll('.view-toggle button')].find(b => b.textContent === ${JSON.stringify(tr("Chart"))}).click()`);
+  await page.waitFor(`${queryTab}.querySelector('.chart-svg') !== null`, 10_000);
+  await page.sleep(500);
+  await shoot("bar");
+  await setValue(page, `${queryTab}.querySelector('select[aria-label=${JSON.stringify(tr("Chart type"))}]')`, "pie", "HTMLSelectElement");
+  await page.waitFor(`${queryTab}.querySelector('path.chart-slice') !== null`);
+  await page.sleep(300);
+  await shoot("pie");
+  await page.eval(`[...${queryTab}.querySelectorAll('.view-toggle button')][0].click()`);
+  await page.waitFor(`${queryTab}.querySelector('.grid-scroll') !== null`);
+  await page.eval(`${queryTab}.querySelector('.result-pivot-open').click()`);
+  await page.waitFor(`document.querySelector('.pivot-dialog') !== null`);
+  await page.sleep(300);
+  await shoot("dialog");
+  await page.eval(`document.querySelector('.pivot-dialog fieldset label input').click()`);
+  await page.eval(`[...document.querySelectorAll('.pivot-dialog .actions button')].find(b => b.textContent === ${JSON.stringify(tr("Pivot"))}).click()`);
+  await page.waitFor(`document.querySelector('.pivot-dialog') === null`, 15_000);
+  await page.sleep(600);
+  await shoot("result");
+}
+
+async function builderScreens(page, shoot) {
+  await expandShop(page);
+  await menuItem(page, "customers", "Visual query builder");
+  await page.waitFor(`(${builderTab}?.querySelector('.builder-sql')?.textContent ?? '').includes('FROM customers')`, 15_000);
+  await page.sleep(500);
+  await shoot("one-table");
+  await page.eval(`[...${builderTab}.querySelectorAll('.builder-source')].find(r => r.textContent === 'orders').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+  await page.waitFor(`${builderTab}.querySelector('.builder-box[data-table="orders"] label') !== null`, 10_000);
+  await page.eval(`${builderTab}.querySelector('.builder-box[data-table="customers"] label input').click()`);
+  await page.eval(`${builderTab}.querySelector('.builder-box[data-table="orders"] label input').click()`);
+  await page.sleep(500);
+  await shoot("joined");
+}
+
+async function adminScreens(page, shoot) {
+  await inPostgres(page, async () => {
+    await menuItem(page, PG, "Server activity");
+    await page.waitFor(`${adminTab} !== undefined`, 30_000);
+    await eachSection(page, shoot, ".admin-tab", 1500);
+  });
+}
+
+async function schemaToolsScreens(page, shoot) {
+  await expandShop(page);
+  await menuItem(page, "main", "Compare with…");
+  const dialog = `document.querySelector('.modal.schema-compare')`;
+  await page.waitFor(`${dialog} !== null`);
+  await setValue(page, `${dialog}.querySelectorAll('select')[0]`, await page.eval(`[...${dialog}.querySelectorAll('select')[0].options].find(o => o.textContent === ${JSON.stringify(ARCHIVE)}).value`), "HTMLSelectElement");
+  await page.waitFor(`[...${dialog}.querySelectorAll('select')[1].options].some(o => o.textContent === 'main')`, 15_000);
+  await setValue(page, `${dialog}.querySelectorAll('select')[1]`, "main", "HTMLSelectElement");
+  await page.sleep(300);
+  await shoot("compare-dialog");
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(tr("Compare"))}).click()`);
+  await page.waitFor(`${dialog} === null || ${dialog}.querySelector('.notice') !== null`, 30_000);
+  await page.sleep(800);
+  await shoot("compare-result");
+  await reset(page);
+  await expandShop(page);
+  await menuItem(page, "main", "Check schema…");
+  await page.waitFor(`document.querySelector('.modal.schema-lint') !== null`, 15_000);
+  await page.sleep(1500);
+  await shoot("check");
+}
+
+async function lockScreens(page, shoot) {
+  const invoke = (command) => page.eval(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, { password: 'inventory-pw' }).then(() => true)`);
+  await invoke("enable_vault");
+  try {
+    await palette(page, "Lock PlatypusDB");
+    await page.waitFor(`document.querySelector('.lock-screen') !== null`, 15_000);
+    await page.sleep(400);
+    await shoot("lock");
+    await setValue(page, `document.querySelector('.lock-screen input[type=password]')`, "inventory-pw");
+    await page.eval(`document.querySelector('.lock-screen button[type=submit]').click()`);
+    await page.waitFor(`document.querySelector('.lock-screen') === null`, 15_000);
+  } finally {
+    await invoke("disable_vault").catch(() => {});
+  }
+}
+
+async function maskScreens(page, shoot) {
+  await openTable(page, "customers");
+  await key(page, "m", "KeyM", 77, CTRL | 1);
+  try {
+    await page.waitFor(`document.querySelector('.topbar-masked') !== null`, 15_000);
+    await page.sleep(500);
+    await shoot();
+  } finally {
+    if (await page.eval(`document.querySelector('.topbar-masked') !== null`)) await key(page, "m", "KeyM", 77, CTRL | 1);
+  }
+}
+
+async function snapshotScreens(page, shoot) {
+  await newEditor(page);
+  await setEditor(page, "UPDATE products SET price = 25 WHERE id = 4;\nUPDATE products SET price = 24 WHERE id = 4;");
+  await page.eval(`(() => { const s = ${queryTab}.querySelector('.statusbar span'); if (s) s.textContent = ''; })()`);
+  await key(page, "x", "KeyX", 88, 1);
+  const button = (label) => `[...${queryTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === ${JSON.stringify(tr(label))})`;
+  await page.waitFor(`${button("Cancel")}?.disabled && (${queryTab}.querySelector('.statusbar span')?.textContent ?? '') !== ''`, 30_000);
+  await page.eval(`${button("Transaction log")}.click()`);
+  await page.waitFor(`document.querySelector('.modal.tx-log') !== null`);
+  await page.sleep(500);
+  await shoot("log");
+  const tabs = await page.eval(`document.querySelectorAll('.query-tab').length`);
+  await page.eval(`document.querySelector('.tx-log-restore').click()`);
+  await page.waitFor(`document.querySelectorAll('.query-tab').length > ${tabs}`, 15_000);
+  await page.sleep(600);
+  await shoot("restore");
+}
+
+async function agentsScreens(page, shoot) {
+  await key(page, ",", "Comma", 188, CTRL);
+  await page.settingsTab("Agents");
+  await page.waitFor(`document.querySelector('.agents-panel [data-client]') !== null`);
+  const clients = await page.eval(`[...document.querySelectorAll('.agents-panel [data-client]')].map(b => b.dataset.client)`);
+  await page.sleep(400);
+  await shoot("panel");
+  for (const client of clients) {
+    await page.eval(`document.querySelector('.agents-panel [data-client=${JSON.stringify(client)}]').click()`);
+    await page.sleep(500);
+    await shoot(client);
+  }
+}
+
+async function syncAndSharingScreens(page, shoot) {
+  await key(page, ",", "Comma", 188, CTRL);
+  await page.settingsTab("Sync");
+  await page.waitFor(`document.querySelector('.sync-panel') !== null`);
+  await page.sleep(400);
+  await shoot("sync");
+  await reset(page);
+  const r = await page.rect(`.project-square[data-project="${PROJECT}"]`);
+  await page.click(r.x + r.w / 2, r.y + r.h / 2, { button: "right" });
+  await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await shoot("project-menu");
+  await clickText(page, ".context-menu button", "Share project…");
+  await page.waitFor(`document.querySelector('.share-project-dialog') !== null`);
+  await page.sleep(300);
+  await shoot("share");
+  await reset(page);
+  await page.eval(`document.querySelector('.project-add').click()`);
+  await page.waitFor(`document.querySelector('.project-dialog [data-action="open-shared"]') !== null`);
+  await shoot("open-shared");
+}
+
+async function tasksScreens(page, shoot) {
+  await palette(page, "Scheduled tasks");
+  await page.waitFor(`document.querySelector('.schedules-dialog') !== null`);
+  await page.sleep(500);
+  await shoot("empty");
+  await clickText(page, ".schedules-dialog button", "New task…");
+  await page.waitFor(`document.querySelector('.schedule-form') !== null`);
+  await page.sleep(300);
+  await shoot("new");
+}
+
+async function profilesScreens(page, shoot) {
+  await palette(page, "Transfer profiles");
+  await page.waitFor(`document.querySelector('.schedules-dialog') !== null`);
+  await page.sleep(600);
+  await shoot();
+}
+
+async function menuSubmenuScreens(page, shoot) {
+  await expandShop(page);
+  await rightClick(page, "orders");
+  await shoot("menu");
+  const count = await page.eval(`[...document.querySelectorAll('.context-menu button')].filter(b => b.hasAttribute('aria-haspopup')).length`);
+  for (let i = 0; i < count; i++) {
+    const label = await page.eval(`[...document.querySelectorAll('.context-menu button')].filter(b => b.hasAttribute('aria-haspopup'))[${i}].querySelector('span')?.textContent ?? ''`);
+    if (!(await openSubmenu(page, label))) continue;
+    await page.sleep(300);
+    await shoot(label);
+  }
+}
+
+async function pinnedTabScreens(page, shoot) {
+  await openTable(page, "customers");
+  await openTable(page, "orders");
+  const pin = async (label) => {
+    await page.eval(`document.querySelectorAll('.tabs .tab')[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 60 }))`);
+    await page.waitFor(`document.querySelector('.context-menu') !== null`);
+    await shoot(`${label}-menu`);
+    await page.eval(`[...document.querySelectorAll('.context-menu [role=menuitem]')].find(b => b.textContent.startsWith(${JSON.stringify(tr(label))})).click()`);
+  };
+  await pin("Pin tab");
+  try {
+    await page.waitFor(`document.querySelectorAll('.tabs .tab')[0].classList.contains('pinned')`);
+    await page.sleep(300);
+    await shoot("pinned");
+  } finally {
+    await pin("Unpin tab").catch(() => {});
+  }
+}
+
+async function gridEditingScreens(page, shoot) {
+  await openTable(page, "customers");
+  await page.eval(`${queryTab}.querySelector('.grid-scroll').focus()`);
+  await key(page, "ArrowDown", "ArrowDown", 40);
+  await key(page, "ArrowRight", "ArrowRight", 39);
+  await key(page, "ArrowRight", "ArrowRight", 39);
+  await key(page, "F2", "F2", 113);
+  await page.waitFor(`document.querySelector('.cell-editor') !== null`);
+  await page.sleep(200);
+  await shoot("cell-editor");
+  await key(page, "a", "KeyA", 65, CTRL);
+  await page.type("Asti");
+  await key(page, "Enter", "Enter", 13);
+  await page.waitFor(`document.querySelector('.cell-editor') === null`);
+  await page.eval(`${queryTab}.querySelector('.edit-bar button[aria-label=${JSON.stringify(tr("Preview SQL"))}]').click()`);
+  await page.waitFor(`document.querySelector('.sql-preview') !== null`);
+  await page.sleep(400);
+  await shoot("preview-sql");
+  await escape(page);
+  await page.eval(`${queryTab}.querySelector('.edit-bar button[aria-label=${JSON.stringify(tr("Add a row"))}]').click()`);
+  await page.sleep(500);
+  await shoot("new-row");
+}
+
+async function columnHoverScreens(page, shoot) {
+  await newEditor(page);
+  await setEditor(page, "SELECT c.id, city, status, total FROM customers c JOIN orders o ON o.customer_id = c.id");
+  await run(page);
+  const grid = await page.eval(`(() => { const r = ${queryTab}.querySelector('.grid-scroll').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
+  await page.mouse("mouseMoved", grid.x + 140, grid.y + 14);
+  await page.waitFor(`document.querySelector('.column-profile') !== null`, 8_000);
+  await page.sleep(300);
+  await shoot();
+}
+
+async function connectionDialogScreens(page, shoot) {
+  await page.eval(`document.querySelector('.sidebar-column button[aria-label=${JSON.stringify(tr("New connection"))}]').click()`);
+  await page.waitFor(`document.querySelector('.driver-grid') !== null`);
+  await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent.includes('PostgreSQL')).click()`);
+  await page.waitFor(`document.querySelector('.modal .dialog-tabs [role=tab]') !== null`);
+  await page.eval(`[...document.querySelectorAll('.modal .dialog-tabs [role=tab]')].find(t => t.textContent.includes(${JSON.stringify(tr("Network"))})).click()`);
+  await page.sleep(300);
+  await page.eval(`[...document.querySelectorAll('.modal label')].find(l => l.textContent.includes(${JSON.stringify(tr("Connect through an SSH tunnel"))})).querySelector('input').click()`);
+  await page.waitFor(`document.querySelector('.modal input[placeholder="bastion.example.com"]') !== null`);
+  await page.sleep(300);
+  await shoot("ssh");
+}
+
+async function importConnectionsScreens(page, shoot) {
+  await page.eval(`document.querySelector('.sidebar-column button[aria-label=${JSON.stringify(tr("Import connections"))}]').click()`);
+  await page.waitFor(`document.querySelector('.modal') !== null`);
+  await page.sleep(800);
+  await shoot();
+}
+
+/** The screens of the UX review, one or more pictures for each section of the group T checklist. */
+function moreScreens() {
+  return [
+    { name: "query-builder", run: builderScreens },
+    { name: "notebook", run: notebookScreens },
+    { name: "chart-pivot", run: chartPivotScreens },
+    { name: "schema-tools", run: schemaToolsScreens },
+    { name: "server-admin", run: adminScreens },
+    { name: "lock-screen", run: lockScreens },
+    { name: "masking", run: maskScreens },
+    { name: "snapshots", run: snapshotScreens },
+    { name: "agents-mcp", run: agentsScreens },
+    { name: "sync-sharing", run: syncAndSharingScreens },
+    { name: "scheduled-tasks", run: tasksScreens },
+    { name: "transfer-profiles", run: profilesScreens },
+    { name: "table-menu-submenu", run: menuSubmenuScreens },
+    { name: "pinned-tab", run: pinnedTabScreens },
+    { name: "grid-editing", run: gridEditingScreens },
+    { name: "column-hover", run: columnHoverScreens },
+    { name: "connection-ssh", run: connectionDialogScreens },
+    { name: "import-connections", run: importConnectionsScreens },
+  ];
+}
 
 /** Every page of Settings and, in each, every sub-tab. */
 async function settingsScreens(page, shoot) {
@@ -468,11 +843,15 @@ async function settingsScreens(page, shoot) {
 }
 
 /** Walks the screens and saves their pictures for `variant`, e.g. `dark-en`. */
-export async function runInventory(page, ctx, variant) {
+export async function runInventory(page, ctx, base) {
+  // PLATYPUS_INVENTORY_SIZE=1280x720 sets the viewport (default 1440x900) and goes in the folder name.
+  const given = /^(\d+)x(\d+)$/.exec(process.env.PLATYPUS_INVENTORY_SIZE ?? "");
+  const [width, height] = given ? [Number(given[1]), Number(given[2])] : [1440, 900];
+  const variant = given ? `${base}-${width}x${height}` : base;
   const out = resolve(ctx.shots ?? join(ctx.dir, "shots"), "inventory", variant);
   mkdirSync(out, { recursive: true });
   // One window size for every variant, so the pictures compare.
-  await page.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await page.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   await page.send("Page.enable");
   await page.eval(`(() => {
     const style = document.createElement("style");
