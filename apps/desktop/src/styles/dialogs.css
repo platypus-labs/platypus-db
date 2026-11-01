@@ -1879,6 +1879,7 @@ button.primary.danger:hover:not(:disabled) {
   display: -webkit-box;
   min-width: 0;
   overflow: hidden;
+  white-space: normal; /* the button rule is nowrap, which defeats the clamp */
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
