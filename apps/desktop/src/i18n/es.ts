@@ -3110,6 +3110,17 @@ const es: Record<string, string> = {
   "Has settings": "Tiene ajustes",
   "Go to the navigator": "Ir al navegador",
   "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Un perfil se guarda desde el cuadro de exportación, importación, copia o migración de una tabla: clic derecho en una tabla del navegador.",
+  "Testing…": "Probando…",
+  "Cancel test": "Cancelar la prueba",
+  "Syncing…": "Sincronizando…",
+  "A snapshot is taken when you run an UPDATE or DELETE from the SQL editor, if the setting \"Keep the rows an UPDATE or DELETE changes, to put them back\" is on.": "Se crea una instantánea al ejecutar un UPDATE o DELETE desde el editor SQL, si el ajuste «Keep the rows an UPDATE or DELETE changes, to put them back» está activado.",
+  "Notebook saved": "Cuaderno guardado",
+  "Exported to {name}": "Exportado a {name}",
+  "{y} by {x}": "{y} por {x}",
+  "{name} (right axis)": "{name} (eje derecho)",
+  "running, not counting this app's own session": "en ejecución, sin contar la sesión de esta app",
+  "last {n} s": "últimos {n} s",
+  "last {n} min": "últimos {n} min",
 };
 
 export default es;

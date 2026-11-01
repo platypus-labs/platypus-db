@@ -1,7 +1,7 @@
 /** The admin tab's dashboard: tiles for the server's connections, transactions and statements
  *  per second, cache hit ratio and uptime, each with a sparkline of its last readings; the
- *  size of each database and the replication. What the server does not tell shows "—", and
- *  the reason in its tooltip. */
+ *  size of each database and the replication. What the server does not tell shows "—", with
+ *  the reason under it. */
 import type { ReactNode } from "react";
 import type { Metric, ReplicationRow, ServerMetrics } from "../api";
 import { formatBytes } from "../format";
@@ -15,6 +15,7 @@ import {
   rateSeries,
   rateText,
   type Sample,
+  spanText,
   uptimeText,
 } from "./dashboardModel";
 import { Sparkline } from "./Sparkline";
@@ -59,9 +60,41 @@ function Tile({
       <div className="dash-value" data-field="value" title={value === null ? reason : undefined}>
         {value ?? "—"}
       </div>
+      {value === null && (
+        <div className="dash-note muted small" data-field="reason">
+          {reason}
+        </div>
+      )}
       {note && <div className="dash-note muted small">{note}</div>}
       {children}
     </div>
+  );
+}
+
+/** A sparkline with the time it covers and its largest reading. */
+function Spark({
+  samples,
+  values,
+  domain,
+  label,
+  format,
+}: {
+  samples: Sample[];
+  values: (number | null)[];
+  domain?: [number, number];
+  label: string;
+  format: (n: number) => string;
+}) {
+  const span = spanText(samples);
+  const known = values.filter((v): v is number => v !== null);
+  return (
+    <>
+      <Sparkline values={values} domain={domain} label={label} />
+      <div className="dash-spark-caption muted small" data-field="spark-caption">
+        {span.unit === "s" ? t("last {n} s", { n: span.n }) : t("last {n} min", { n: span.n })}
+        {known.length > 0 && ` · ${t("max {n}", { n: format(Math.max(...known)) })}`}
+      </div>
+    </>
   );
 }
 
@@ -90,14 +123,14 @@ export function Dashboard({ samples }: { samples: Sample[] }) {
           reason={why([m.connections_active], n)}
           note={
             <>
-              {t("running")}
+              {t("running, not counting this app's own session")}
               {idle !== null && ` · ${t("{n} idle", { n: formatCount(idle) })}`}
               {max !== null && ` · ${t("max {n}", { n: formatCount(max) })}`}
               {share !== null && ` (${Math.round(share * 100)}%)`}
             </>
           }
         >
-          <Sparkline values={gaugeSeries(samples, (x) => x.connections_active)} label={t("Running connections")} />
+          <Spark samples={samples} values={gaugeSeries(samples, (x) => x.connections_active)} label={t("Running connections")} format={formatCount} />
         </Tile>
         <Tile
           id="transactions"
@@ -105,7 +138,7 @@ export function Dashboard({ samples }: { samples: Sample[] }) {
           value={tps === null ? null : rateText(tps)}
           reason={why([m.transactions], n)}
         >
-          <Sparkline values={transactions} label={t("Transactions per second")} />
+          <Spark samples={samples} values={transactions} label={t("Transactions per second")} format={rateText} />
         </Tile>
         <Tile
           id="statements"
@@ -113,7 +146,7 @@ export function Dashboard({ samples }: { samples: Sample[] }) {
           value={qps === null ? null : rateText(qps)}
           reason={why([m.statements], n)}
         >
-          <Sparkline values={statements} label={t("Statements per second")} />
+          <Spark samples={samples} values={statements} label={t("Statements per second")} format={rateText} />
         </Tile>
         <Tile
           id="cache"
@@ -122,7 +155,7 @@ export function Dashboard({ samples }: { samples: Sample[] }) {
           reason={why([m.cache_hits, m.cache_reads], 2)}
           note={t("pages found in memory")}
         >
-          <Sparkline values={ratios} domain={[0, 1]} label={t("Cache hit ratio")} />
+          <Spark samples={samples} values={ratios} domain={[0, 1]} label={t("Cache hit ratio")} format={(n) => `${(n * 100).toFixed(1)}%`} />
         </Tile>
         <Tile
           id="uptime"

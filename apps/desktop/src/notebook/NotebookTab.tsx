@@ -37,6 +37,7 @@ import {
   resultTables,
 } from "./model";
 import { EmptyState } from "../ui/State";
+import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
 
 export interface NotebookTabModel extends TabBase {
@@ -112,10 +113,14 @@ export async function openNotebook(connection: SavedConnection) {
 
 /** A notebook: cells of SQL and Markdown run one by one or all in order, each with its result
  *  as a grid or a chart and its plan; cells on the results read the others' rows. */
-export function NotebookTab({ tab, connection, active, ensureSession, sideSession, catalog, onNeedCatalog, onChange, onError }: TabProps<NotebookTabModel>) {
+export function NotebookTab({ tab, connection, active, ensureSession, sideSession, catalog, onNeedCatalog, onChange }: TabProps<NotebookTabModel>) {
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [editing, setEditing] = useState<ReadonlySet<string>>(() => new Set(tab.cells.filter((c) => c.kind === "markdown" && !c.text.trim()).map((c) => c.id)));
   const [runningAll, setRunningAll] = useState(false);
+  // "Stop" was pressed during "Run all": the next cells do not start.
+  const stopped = useRef(false);
+  // Cells whose Stop came before their query had a job: it is cancelled once it has one.
+  const stopAsked = useRef(new Set<string>());
   const copy = useRef<Copy | null>(null);
   // The copy is made or loaded again by one cell at a time.
   const copying = useRef<Promise<unknown>>(Promise.resolve());
@@ -213,7 +218,10 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
       };
       update(result);
       api.runQuery(sid, sql, null, (event) => update(withEvent(result, event)), true).then(
-        (jobId) => update({ ...result, jobId }),
+        (jobId) => {
+          update({ ...result, jobId });
+          if (stopAsked.current.has(cell)) void api.cancelQuery(jobId).catch(() => undefined);
+        },
         (e: unknown) => update({ ...result, status: { kind: "error", error: toCommandError(e) } }),
       );
     });
@@ -258,6 +266,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     const cell = tabNow.current.cells.find((c) => c.id === id);
     if (cell?.kind !== "sql" || !cell.text.trim()) return true;
     const before = runsNow.current[cell.id]?.result?.jobId;
+    stopAsked.current.delete(cell.id);
     setRun(cell.id, () => ({ running: true, error: null }));
     try {
       const statements = await prepared(cell);
@@ -271,6 +280,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
       for (const s of statements) {
         // The cell shows its last statement: earlier ones' rows go.
         if (last?.jobId != null) void api.closeQuery(last.jobId);
+        if (stopAsked.current.has(cell.id)) break;
         last = await runStatement(cell.id, sid, s.sql);
         if (last.status.kind === "error") break;
       }
@@ -300,11 +310,24 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     }
   }
 
+  /** Cancels the statement `id` is running, with the cancel the SQL editor uses. */
+  function stopCell(id: string) {
+    stopAsked.current.add(id);
+    const result = runsNow.current[id]?.result;
+    if (result?.jobId != null && result.status.kind === "running") void api.cancelQuery(result.jobId).catch(() => undefined);
+  }
+
+  function stopAll() {
+    stopped.current = true;
+    for (const [id, run] of Object.entries(runsNow.current)) if (run.running) stopCell(id);
+  }
+
   async function runAll() {
+    stopped.current = false;
     setRunningAll(true);
     try {
       for (const cell of tabNow.current.cells) {
-        if (!(await runCell(cell.id))) break;
+        if (stopped.current || !(await runCell(cell.id))) break;
       }
     } finally {
       setRunningAll(false);
@@ -353,8 +376,9 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     try {
       await api.writeTextFile(path, notebookFile(tab));
       onChange({ file: path, title: fileName(path), unsaved: false });
+      toast(t("Notebook saved"));
     } catch (e) {
-      onError(toCommandError(e).message);
+      toast(toCommandError(e).message, "error");
     }
   }
 
@@ -403,8 +427,9 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     if (!path) return;
     try {
       await api.writeTextFile(path, notebookHtml(title, await exportCells(), tab.params));
+      toast(t("Exported to {name}", { name: path.split(/[\\/]/).pop()! }));
     } catch (e) {
-      onError(toCommandError(e).message);
+      toast(toCommandError(e).message, "error");
     }
   }
 
@@ -427,6 +452,11 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
         <button type="button" className="primary" disabled={runningAll} onClick={() => void runAll()} data-action="run_all">
           {t("Run all")}
         </button>
+        {runningAll && (
+          <button type="button" onClick={stopAll} data-action="stop_all">
+            {t("Stop")}
+          </button>
+        )}
         <button type="button" onClick={() => addCell("sql")} data-action="add_sql">
           {t("+ SQL")}
         </button>
@@ -482,6 +512,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
             connectionName={connection.name}
             onChange={(patch) => changeCell(cell.id, patch)}
             onRun={() => void runCell(cell.id)}
+            onStop={() => stopCell(cell.id)}
             onPlan={() => togglePlan(cell)}
             onEdit={(on) =>
               setEditing((e) => {

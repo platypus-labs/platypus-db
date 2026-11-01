@@ -25,7 +25,7 @@ import { editsTables, focusData, openObjectTab, openTableEditor } from "./open";
 import { openScriptFile, scriptFile } from "../scripts/scripts";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
-import { LoadingState } from "../ui/State";
+import { Busy, LoadingState } from "../ui/State";
 
 export type ObjectSection =
   | "properties"
@@ -124,6 +124,8 @@ async function loadObject(sid: number, tab: ObjectTabModel, commentable: boolean
 export function ObjectTab({ tab, connection, active, sideSession, onChange }: TabProps<ObjectTabModel>) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // True from a (re)load to its end: the old data stays in view, dimmed.
+  const [reloading, setReloading] = useState(false);
   const [version, setVersion] = useState(0);
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   // Also re-renders the note and tag cells of the columns, which read the catalog as they draw.
@@ -165,15 +167,21 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
     let cancelled = false;
     void (async () => {
       setError(null);
+      setReloading(true);
       const sid = await sideSession();
       if (cancelled) return;
       // The password prompt was cancelled or the connection failed: say so, not "Loading…".
-      if (sid === null) return setError(t("Not connected."));
+      if (sid === null) {
+        setReloading(false);
+        return setError(t("Not connected."));
+      }
       try {
         const loaded = await loadObject(sid, tab, commentable);
         if (!cancelled) setData(loaded);
       } catch (e) {
         if (!cancelled) setError(toCommandError(e).message);
+      } finally {
+        if (!cancelled) setReloading(false);
       }
     })();
     return () => {
@@ -303,8 +311,15 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             {t("Show in ER diagram")}
           </button>
         )}
-        <button className="square" onClick={() => setVersion((v) => v + 1)} title={t("Refresh from the database")} aria-label={t("Refresh")}>
-          <Icon name="refresh" />
+        <button
+          className="square"
+          data-action="refresh-object"
+          onClick={() => setVersion((v) => v + 1)}
+          title={t("Refresh from the database")}
+          aria-label={t("Refresh")}
+          aria-busy={reloading || undefined}
+        >
+          {reloading ? <Busy /> : <Icon name="refresh" />}
         </button>
       </header>
       {relation && (
@@ -323,7 +338,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           </button>
         ))}
       </nav>
-      <div className="object-body">
+      <div className={data && reloading ? "object-body is-reloading" : "object-body"} aria-busy={reloading || undefined}>
         {error && <div className="notice error">{error}</div>}
         {!data && !error && <LoadingState compact title={t("Loading…")} />}
         {data && section === "properties" && (

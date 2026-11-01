@@ -17,7 +17,9 @@ import {
   pieAngles,
   pieParts,
   timeTicks,
+  rightAxisSeries,
   truncate,
+  valueAxisTitle,
 } from "../src/analysis/chartScale.ts";
 
 const DAY = 86_400_000;
@@ -129,4 +131,21 @@ test("a pie gathers the smallest slices into one, keeping the order of the other
     values: [4, 3, 9],
     categories: ["a", "b", "Other"],
   });
+});
+
+test("rightAxisSeries: a second axis only for two series more than 10x apart", () => {
+  assert.equal(rightAxisSeries([5000, 40]), 1);
+  assert.equal(rightAxisSeries([40, 5000]), 1);
+  assert.equal(rightAxisSeries([100, 9]), 1);
+  assert.equal(rightAxisSeries([100, 10]), null);
+  assert.equal(rightAxisSeries([-5000, 40]), 1);
+  assert.equal(rightAxisSeries([100, 0]), null);
+  assert.equal(rightAxisSeries([5000]), null);
+  assert.equal(rightAxisSeries([5000, 40, 3]), null);
+});
+
+test("valueAxisTitle: the series name when alone, else the fallback", () => {
+  assert.equal(valueAxisTitle(["orders"], "Value"), "orders");
+  assert.equal(valueAxisTitle(["a", "b"], "Value"), "Value");
+  assert.equal(valueAxisTitle([], "Value"), "Value");
 });

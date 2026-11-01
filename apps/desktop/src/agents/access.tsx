@@ -14,13 +14,13 @@ export const agentAccessLabel = (access: AgentAccess) =>
   t(AGENT_ACCESS.find((a) => a.value === access)?.label ?? access);
 
 /** Production and read-only connections never let agents write. */
-const capped = (c: SavedConnection) => isProduction(c) || c.read_only;
+export const isCapped = (c: SavedConnection) => isProduction(c) || c.read_only;
 
 /** What agents may do in fact: nothing where the data is not exported. */
 export function effectiveAgentAccess(c: SavedConnection): AgentAccess {
   if (c.restrictions?.no_export) return "off";
   const access = c.agent_access ?? "read_only";
-  return access === "read_write" && capped(c) ? "read_only" : access;
+  return access === "read_write" && isCapped(c) ? "read_only" : access;
 }
 
 /** The connection with the access agents get in fact, as saved. */
@@ -37,7 +37,7 @@ export function AgentAccessField({
   conn: SavedConnection;
   onChange: (access: AgentAccess) => void;
 }) {
-  const limit = capped(conn);
+  const limit = isCapped(conn);
   const kept = !!conn.restrictions?.no_export;
   return (
     <label className="field">

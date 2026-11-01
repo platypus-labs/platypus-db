@@ -175,3 +175,17 @@ export function arcPath(cx: number, cy: number, r: number, a0: number, a1: numbe
 export function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+/** The series drawn on a right-hand axis, so that a small one is not flat beside a large one:
+ *  the second of exactly two whose largest absolute values differ by more than 10x; else `null`. */
+export function rightAxisSeries(maxes: readonly number[]): number | null {
+  if (maxes.length !== 2) return null;
+  const [a, b] = [Math.abs(maxes[0] ?? 0), Math.abs(maxes[1] ?? 0)];
+  const small = Math.min(a, b);
+  return small > 0 && Math.max(a, b) / small > 10 ? 1 : null;
+}
+
+/** The title of a value axis: the series' name when it is the only one on it, else `fallback`. */
+export function valueAxisTitle(names: readonly string[], fallback: string): string {
+  return names.length === 1 ? (names[0] ?? fallback) : fallback;
+}
