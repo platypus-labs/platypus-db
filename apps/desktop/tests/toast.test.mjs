@@ -24,3 +24,19 @@ test("at most three stack, the oldest goes first; dismiss removes one", (t) => {
   t.mock.timers.tick(2000);
   assert.equal(getToasts().length, 0);
 });
+
+test("an info toast stays longer, an error until it is dismissed, a repeat replaces", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  toast("slow", "info");
+  toast("bad", "error");
+  toast("bad", "error");
+  assert.deepEqual(getToasts().map((i) => i.kind), ["info", "error"]);
+  t.mock.timers.tick(2000);
+  assert.equal(getToasts().length, 2);
+  t.mock.timers.tick(2000);
+  assert.deepEqual(getToasts().map((i) => i.kind), ["error"]);
+  t.mock.timers.tick(60_000);
+  assert.equal(getToasts().length, 1);
+  dismissToast(getToasts()[0].id);
+  assert.equal(getToasts().length, 0);
+});

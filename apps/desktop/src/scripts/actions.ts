@@ -106,7 +106,7 @@ registerAction({
   title: "Copy file path",
   group: "edit",
   order: 22,
-  run: ({ entry, root }) => copyText(scriptFile(root, entry.path)),
+  run: ({ entry, root }) => void copyText(scriptFile(root, entry.path)),
 });
 
 registerAction({

@@ -12,7 +12,7 @@ const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ??
 const grid = `${visibleTab}.querySelector('.grid-scroll')`;
 const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
-const toasts = `[...document.querySelectorAll('.toaster .toast-item')].map(t => t.textContent)`;
+const toasts = `[...document.querySelectorAll('.toaster .toast')].map(t => t.textContent)`;
 
 export function setup({ dir }) {
   const path = join(dir, "copy-toast.db");
@@ -77,6 +77,6 @@ export default async function (page) {
   await page.waitFor(`${toasts}.includes('Could not copy to the clipboard.')`);
   assert.ok(!(await page.eval(toasts)).includes("Copied"));
   // A click dismisses it.
-  await page.eval(`document.querySelector('.toaster .toast-item').click()`);
+  await page.eval(`document.querySelector('.toaster .toast').click()`);
   await page.waitFor(`${toasts}.length === 0`);
 }

@@ -38,7 +38,7 @@ const panel = `document.querySelector('.plugins-panel')`;
 const pluginRow = (id) => `${panel}?.querySelector('.driver-block[data-plugin="${id}"]:not(.plugin-review)')`;
 const review = `${panel}?.querySelector('[data-field="plugin-review"]')`;
 const panelError = `(${panel}?.querySelector('[data-field="plugin-error"]')?.textContent ?? '')`;
-const toast = `(document.querySelector('.toast-item')?.textContent ?? '')`;
+const toast = `(document.querySelector('.toast')?.textContent ?? '')`;
 
 export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "plugins.db"));
@@ -262,7 +262,7 @@ async function gridAction(page) {
     "| id | name |\n| --- | --- |\n| 1 | apple |\n| 2 | pear\\|green |\n| 3 | NULL |\n",
   );
   await page.waitFor(`${toast}.includes('Copied')`);
-  await page.eval(`document.querySelector('.toast-item')?.click()`);
+  await page.eval(`document.querySelector('.toast')?.click()`);
 }
 
 async function navigatorAction(page) {

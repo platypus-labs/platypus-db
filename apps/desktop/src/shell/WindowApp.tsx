@@ -18,6 +18,7 @@ import { t } from "../i18n";
 import { withInitApproval } from "../ui/initApproval";
 import { EmptyState } from "../ui/State";
 import { Toaster } from "../ui/Toaster";
+import { toast } from "../ui/toast";
 
 /** The connection the quick query used last. */
 const QUICK_KEY = "platypus.quick.connection";
@@ -27,7 +28,7 @@ export function WindowApp({ label }: { label: string }) {
   const [connections, setConnections] = useState<SavedConnection[] | null>(null);
   const [tab, setTab] = useState<TabModel | null>(null);
   const [catalog, setCatalog] = useState<CompletionCatalog | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const setToast = (message: string | null) => message && toast(message, "error");
   const [dialogs, setDialogs] = useState<{ id: number; node: ReactNode }[]>([]);
   const [asking, setAsking] = useState<{ connection: SavedConnection; error: string | null; resolve: (p: string | null) => void } | null>(null);
   const session = useRef<Promise<number | null> | null>(null);
@@ -210,7 +211,7 @@ export function WindowApp({ label }: { label: string }) {
     closeSession: (id) => void api.closeSession(id),
     capabilities: (id) => capabilities.current.get(id),
     showError: setToast,
-    notify: setToast,
+    notify: (message) => toast(message, "info"),
     openSettings: () => setToast(t("The settings are in the main window.")),
     openDialog: (render) => {
       const id = nextDialog.current++;
@@ -271,11 +272,6 @@ export function WindowApp({ label }: { label: string }) {
           </button>
         )}
       </div>
-      {toast && (
-        <div className="notice error toast" role="alert" onClick={() => setToast(null)}>
-          {toast}
-        </div>
-      )}
       <div className="panes">
         {connections && connections.length === 0 && <EmptyState className="window-empty" title={t("No connection is saved yet.")} />}
         {tab && connection && Component && (

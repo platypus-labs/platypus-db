@@ -785,22 +785,6 @@
   color: var(--error);
 }
 
-.toast {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 5;
-  max-width: 480px;
-  cursor: pointer;
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
-}
-
-/* Clear of the tab bar when it is at the bottom. */
-:root[data-tabbar="bottom"] .workspace > .toast {
-  bottom: 50px;
-}
-
 .update-banner {
   display: flex;
   align-items: center;
@@ -859,7 +843,7 @@
   pointer-events: none;
 }
 
-.toaster .toast-item {
+.toaster .toast {
   pointer-events: auto;
   cursor: pointer;
   max-width: 480px;
@@ -876,7 +860,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .toaster .toast-item {
+  .toaster .toast {
     animation: none;
   }
+}
+
+/* Clear of the tab bar when it is at the bottom. */
+:root[data-tabbar="bottom"] .toaster {
+  bottom: 50px;
 }

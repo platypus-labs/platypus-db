@@ -63,7 +63,7 @@ export function ShareQueryDialog({ tab, connection, onClose }: { tab: QueryTabMo
 
   async function copy() {
     if (!link?.ok) return;
-    await copyText(link.text);
+    if (!(await copyText(link.text))) return;
     setCopied(true);
     setMessage(null);
   }

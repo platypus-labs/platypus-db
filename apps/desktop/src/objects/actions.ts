@@ -134,7 +134,7 @@ registerAction({
   group: "copy",
   order: 41,
   multiple: true,
-  run: (arg) => copyText((arg.selection ?? [arg]).map(qualified).join("\n")),
+  run: (arg) => void copyText((arg.selection ?? [arg]).map(qualified).join("\n")),
 });
 
 /** Whether the name of `kind` ends with its argument list, `add(integer, integer)`. */
