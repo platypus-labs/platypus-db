@@ -37,6 +37,7 @@ import {
   resultTables,
 } from "./model";
 import { EmptyState } from "../ui/State";
+import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
 
 export interface NotebookTabModel extends TabBase {
@@ -112,7 +113,7 @@ export async function openNotebook(connection: SavedConnection) {
 
 /** A notebook: cells of SQL and Markdown run one by one or all in order, each with its result
  *  as a grid or a chart and its plan; cells on the results read the others' rows. */
-export function NotebookTab({ tab, connection, active, ensureSession, sideSession, catalog, onNeedCatalog, onChange, onError }: TabProps<NotebookTabModel>) {
+export function NotebookTab({ tab, connection, active, ensureSession, sideSession, catalog, onNeedCatalog, onChange }: TabProps<NotebookTabModel>) {
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [editing, setEditing] = useState<ReadonlySet<string>>(() => new Set(tab.cells.filter((c) => c.kind === "markdown" && !c.text.trim()).map((c) => c.id)));
   const [runningAll, setRunningAll] = useState(false);
@@ -353,8 +354,9 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     try {
       await api.writeTextFile(path, notebookFile(tab));
       onChange({ file: path, title: fileName(path), unsaved: false });
+      toast(t("Notebook saved"));
     } catch (e) {
-      onError(toCommandError(e).message);
+      toast(toCommandError(e).message, "error");
     }
   }
 
@@ -403,8 +405,9 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     if (!path) return;
     try {
       await api.writeTextFile(path, notebookHtml(title, await exportCells(), tab.params));
+      toast(t("Exported to {name}", { name: path.split(/[\/]/).pop()! }));
     } catch (e) {
-      onError(toCommandError(e).message);
+      toast(toCommandError(e).message, "error");
     }
   }
 

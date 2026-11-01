@@ -3110,6 +3110,8 @@ const pt: Record<string, string> = {
   "Has settings": "Tem configurações",
   "Go to the navigator": "Ir para o navegador",
   "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Um perfil é guardado na janela de exportação, importação, cópia ou migração de uma tabela: clique com o botão direito numa tabela no navegador.",
+  "Notebook saved": "Notebook salvo",
+  "Exported to {name}": "Exportado para {name}",
 };
 
 export default pt;
