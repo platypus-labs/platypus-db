@@ -1024,7 +1024,13 @@ pub async fn object_properties(conn: &dyn Connection, o: &ObjectRef<'_>) -> Resu
                 Property::new("Tablespace", r.text(5)),
             ]);
         }
+        if o.kind == ObjectKind::Sequence {
+            props.extend(sequence_properties(conn, o).await?);
+        }
         return Ok(props);
+    }
+    if matches!(o.kind, ObjectKind::Type | ObjectKind::Domain) {
+        return type_properties(conn, o).await;
     }
     if matches!(o.kind, ObjectKind::Function | ObjectKind::Procedure) {
         let r = row(
@@ -1055,6 +1061,127 @@ pub async fn object_properties(conn: &dyn Connection, o: &ObjectRef<'_>) -> Resu
         return Ok(props);
     }
     Ok(Vec::new())
+}
+
+/// Type, increment, bounds, cache, cycle, last value and owning column of a sequence.
+async fn sequence_properties(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Vec<Property>> {
+    let oid = relation(o.schema, o.name);
+    // CockroachDB has no `pg_sequences` view nor sequence ownership in `pg_depend`.
+    let (last, owner) = if crate::is_cockroach(conn) {
+        ("NULL".to_owned(), "NULL".to_owned())
+    } else {
+        (
+            format!(
+                "(SELECT last_value::text FROM pg_sequences
+                  WHERE schemaname = {} AND sequencename = {})",
+                literal(o.schema),
+                literal(o.name)
+            ),
+            format!(
+                "(SELECT d.refobjid::regclass::text || '.' || quote_ident(a.attname)
+                  FROM pg_depend d JOIN pg_attribute a
+                    ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
+                  WHERE d.objid = {oid} AND d.classid = 'pg_class'::regclass
+                    AND d.deptype IN ('a', 'i') AND d.refobjsubid > 0 LIMIT 1)"
+            ),
+        )
+    };
+    let s = row(
+        conn,
+        &format!(
+            "SELECT format_type(s.seqtypid, NULL), s.seqincrement, s.seqmin, s.seqmax,
+                    s.seqstart, s.seqcache, s.seqcycle, {last}, {owner}
+             FROM pg_sequence s WHERE s.seqrelid = {oid}"
+        ),
+        o,
+    )
+    .await?;
+    Ok(sequence_props(&s))
+}
+
+fn sequence_props(s: &TextRow) -> Vec<Property> {
+    let mut props = vec![
+        Property::new("Data type", s.text(0)),
+        Property::new("Increment", s.text(1)),
+        Property::new("Minimum", s.text(2)),
+        Property::new("Maximum", s.text(3)),
+        Property::new("Start", s.text(4)),
+        Property::new("Cache", s.text(5)),
+        Property::new("Cycle", if s.flag(6) { "yes" } else { "no" }),
+        Property::new(
+            "Last value",
+            s.opt(7).unwrap_or_else(|| "not used yet".to_owned()),
+        ),
+    ];
+    if let Some(owner) = s.opt(8) {
+        props.push(Property::new("Owned by", owner));
+    }
+    props
+}
+
+/// Kind and definition of an enum, composite, range, base or domain type.
+async fn type_properties(conn: &dyn Connection, o: &ObjectRef<'_>) -> Result<Vec<Property>> {
+    let t = row(
+        conn,
+        &format!(
+            "SELECT t.typtype::text, pg_get_userbyid(t.typowner),
+                    (SELECT string_agg(e.enumlabel, ', ' ORDER BY e.enumsortorder)
+                     FROM pg_enum e WHERE e.enumtypid = t.oid),
+                    format_type(t.typbasetype, t.typtypmod), t.typnotnull, t.typdefault,
+                    (SELECT string_agg(quote_ident(c.conname) || ': ' || pg_get_constraintdef(c.oid, true),
+                                       chr(31) ORDER BY c.conname)
+                     FROM pg_constraint c WHERE c.contypid = t.oid AND c.contype <> 'n'),
+                    (SELECT string_agg(quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod),
+                                       ', ' ORDER BY a.attnum)
+                     FROM pg_attribute a
+                     WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped),
+                    (SELECT format_type(r.rngsubtype, NULL) FROM pg_range r WHERE r.rngtypid = t.oid)
+             FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE n.nspname = {} AND t.typname = {}",
+            literal(o.schema),
+            literal(o.name)
+        ),
+        o,
+    )
+    .await?;
+    Ok(type_props(&t))
+}
+
+fn type_props(t: &TextRow) -> Vec<Property> {
+    let mut props = vec![Property::new("Owner", t.text(1))];
+    let mut add = |name: &str, value: Option<String>| {
+        if let Some(v) = value {
+            props.push(Property::new(name, v));
+        }
+    };
+    match t.text(0).as_str() {
+        "e" => {
+            add("Kind", Some("enum".to_owned()));
+            add("Values", t.opt(2));
+        }
+        "d" => {
+            add("Kind", Some("domain".to_owned()));
+            add("Base type", t.opt(3));
+            add("Default", t.opt(5));
+            add(
+                "Not null",
+                Some(if t.flag(4) { "yes" } else { "no" }.to_owned()),
+            );
+            for check in list(t.opt(6)) {
+                add("Constraint", Some(check));
+            }
+        }
+        "c" => {
+            add("Kind", Some("composite".to_owned()));
+            add("Attributes", t.opt(7));
+        }
+        "r" | "m" => {
+            add("Kind", Some("range".to_owned()));
+            add("Subtype", t.opt(8));
+        }
+        other => add("Kind", Some(other.to_owned())),
+    }
+    props
 }
 
 pub async fn databases(conn: &dyn Connection) -> Result<Vec<String>> {
@@ -1150,6 +1277,49 @@ mod tests {
 
     fn cells<const N: usize>(v: [Option<&str>; N]) -> TextRow {
         v.iter().map(|c| c.map(str::to_owned)).collect()
+    }
+
+    #[test]
+    fn describes_sequences_and_types() {
+        let seq = cells([
+            Some("bigint"),
+            Some("1"),
+            Some("1"),
+            Some("99"),
+            Some("1"),
+            Some("1"),
+            Some("t"),
+            None,
+            Some("s.t.id"),
+        ]);
+        let p = sequence_props(&seq);
+        assert_eq!(p[6].value, "yes");
+        assert_eq!(p[7].value, "not used yet");
+        assert_eq!(p[8].name, "Owned by");
+        let dom = cells([
+            Some("d"),
+            Some("me"),
+            None,
+            Some("integer"),
+            Some("t"),
+            Some("0"),
+            Some("pos: CHECK ((VALUE > 0))\u{1f}two: CHECK ((VALUE < 9))"),
+            None,
+            None,
+        ]);
+        let names: Vec<String> = type_props(&dom).into_iter().map(|x| x.name).collect();
+        assert_eq!(
+            names,
+            [
+                "Owner",
+                "Kind",
+                "Base type",
+                "Default",
+                "Not null",
+                "Constraint",
+                "Constraint"
+            ]
+        );
     }
 
     #[test]
