@@ -3114,6 +3114,10 @@ const zh: Record<string, string> = {
   "Cancel test": "取消测试",
   "Syncing…": "正在同步…",
   "A snapshot is taken when you run an UPDATE or DELETE from the SQL editor, if the setting \"Keep the rows an UPDATE or DELETE changes, to put them back\" is on.": "在 SQL 编辑器中执行 UPDATE 或 DELETE 时会创建快照（需开启设置“Keep the rows an UPDATE or DELETE changes, to put them back”）。",
+  "Notebook saved": "笔记本已保存",
+  "Exported to {name}": "已导出到 {name}",
+  "{y} by {x}": "按 {x} 的 {y}",
+  "{name} (right axis)": "{name}（右轴）",
 };
 
 export default zh;

@@ -192,6 +192,7 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig, ba
           {data && request && size && !empty && (
             <Chart ref={svg} data={data} kind={shown.kind} width={size.width} height={size.height} colors={colors}
               otherLabel={t("Other")}
+              xName={shown.x}
               label={t("Chart of {series}", { series: data.series.map((s) => s.name).join(", ") })}
               locale={locale()}
             />

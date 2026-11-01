@@ -3114,6 +3114,10 @@ const de: Record<string, string> = {
   "Cancel test": "Test abbrechen",
   "Syncing…": "Synchronisiere…",
   "A snapshot is taken when you run an UPDATE or DELETE from the SQL editor, if the setting \"Keep the rows an UPDATE or DELETE changes, to put them back\" is on.": "Ein Snapshot entsteht, wenn du ein UPDATE oder DELETE im SQL-Editor ausführst und die Einstellung „Keep the rows an UPDATE or DELETE changes, to put them back“ aktiv ist.",
+  "Notebook saved": "Notizbuch gespeichert",
+  "Exported to {name}": "Exportiert nach {name}",
+  "{y} by {x}": "{y} nach {x}",
+  "{name} (right axis)": "{name} (rechte Achse)",
 };
 
 export default de;
