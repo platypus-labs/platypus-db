@@ -42,7 +42,7 @@ import { TERMINAL_ROWS, type TerminalBlock, TerminalView, blockText } from "../e
 import { VariablesPanel } from "../editor/VariablesPanel";
 import { defineSetting, getSetting, useSetting } from "../settings";
 import { maskSetting, useSensitive } from "../guards/mask";
-import { qualifiedName, viewerSql } from "../sqlNames";
+import { keyOrderClause, qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { editsTables, openObjectTab, openTableEditor } from "../objects/open";
@@ -1647,16 +1647,17 @@ export function QueryTab({
   }
 
   /** Data viewer on DuckDB, which moves an edited row to the end of the table when the table has
-   *  a key: writes `ORDER BY` the single-column primary key into the viewer's own statement and
+   *  a key: writes `ORDER BY` the primary key (or `rowid`, with none) into the viewer's own statement and
    *  runs it. False when it did not (a sort already there, no such key, a rewrite that does not
    *  fit): the caller runs the statement as it is. */
   async function keepKeyOrder(result: Result): Promise<boolean> {
     try {
       if (await api.sqlOrderClause(result.sql, connection.driver)) return false;
       const keys = (await details.current)?.constraints.find((c) => c.kind === "primary_key");
-      if (keys?.columns.length !== 1) return false;
-      const column = keys.columns[0] ?? null;
-      return (await rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, column, false), true)) !== null;
+      const clause = keyOrderClause(connection.driver, keys?.columns ?? [], tab.tableRef?.kind === "table");
+      if (!clause) return false;
+      // No column and an `original`: the statement gets exactly this ORDER BY.
+      return (await rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, null, false, clause), true)) !== null;
     } catch {
       return false;
     }

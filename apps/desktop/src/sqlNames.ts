@@ -4,7 +4,7 @@ import { searchRequest } from "./searchSql";
 import { quoteIdent, redisArg } from "./sqlIdent";
 import { defineSetting } from "./settings";
 
-export { quoteIdent } from "./sqlIdent";
+export { keyOrderClause, quoteIdent } from "./sqlIdent";
 
 /** Whether SQL generated for a table of the session's `current` schema may name it without
  *  its schema. Never on Trino: a session there resolves names in the schema of its

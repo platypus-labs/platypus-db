@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { api, type MetadataMatch, type ObjectKind, type SchemaMeta, type TableHits, toCommandError } from "../api";
+import { hiddenKeyOf } from "../objects/open";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { Icon, objectIcon } from "../ui/Icon";
@@ -106,10 +107,11 @@ export function SearchTab({ tab, connection, active, ensureSession, sideSession,
     });
   }
 
-  function openRows(hit: TableHit) {
+  async function openRows(hit: TableHit) {
     const target = qualifiedName(connection.driver, hit.schema, hit.table);
+    const hiddenKey = await hiddenKeyOf(connection, tab.database, hit.schema.name, hit.table);
     workbench().openTab("query", connection.id, {
-      sql: viewerSql(connection.driver, target, hit.condition),
+      sql: viewerSql(connection.driver, target, hit.condition, hiddenKey),
       autorun: true,
       title: hit.table,
       table: target,

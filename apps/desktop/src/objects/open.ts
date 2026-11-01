@@ -1,4 +1,4 @@
-import { isNoSql, type DriverKind, type ObjectKind } from "../api";
+import { api, isNoSql, type DriverKind, type ObjectKind, type SavedConnection } from "../api";
 import { requestDataAgain } from "../navigatorEvents";
 import type { TabModel } from "../tabs/registry";
 import { workbench } from "../workbench";
@@ -53,6 +53,25 @@ export function openObjectTab(
 /** Whether `tab` is the data viewer of `table` (its qualified name) on the connection. */
 export const showsData = (tab: TabModel, connectionId: string, database: string | null | undefined, table: string) =>
   tab.kind === "query" && tab.connectionId === connectionId && sameDatabase(tab, database) && tab.table === table;
+
+/** The hidden key (CockroachDB's `rowid`) a table is edited by: `SELECT *` leaves it out, so the
+ *  data viewer must select it. `null` when there is none or it cannot be read. Every way of
+ *  opening a table viewer asks here, so they all open it editable. */
+export async function hiddenKeyOf(
+  connection: SavedConnection,
+  database: string | null | undefined,
+  schema: string,
+  table: string,
+): Promise<string | null> {
+  if (connection.driver !== "postgres") return null; // Only CockroachDB (a postgres driver) has one.
+  try {
+    const id = await workbench().sideSession(connection, database ?? null);
+    if (id === null) return null;
+    return (await api.listObjects(id, schema)).find((o) => o.name === table)?.hidden_key ?? null;
+  } catch {
+    return null; // Opened without it; the editor checks the keys again.
+  }
+}
 
 /** Brings forward the data viewer of `table`, which reads its rows again if its last read
  *  failed (the server was down, say); `false` when no tab shows it. */

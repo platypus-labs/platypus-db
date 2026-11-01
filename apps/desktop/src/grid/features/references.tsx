@@ -12,6 +12,7 @@ import {
   toCommandError,
 } from "../../api";
 import { quoteIdent, viewerSql } from "../../sqlNames";
+import { hiddenKeyOf } from "../../objects/open";
 import { workbench } from "../../workbench";
 import type { Cell, GridActionContext } from "../DataGrid";
 import { type EditSource, resultColumns } from "../edit/meta";
@@ -38,7 +39,7 @@ declare module "../DataGrid" {
 
 /** Opens a data viewer tab on `schema.table` of `database` (`null`: the connection's own),
  *  filtered. */
-export function openTable(
+export async function openTable(
   connection: SavedConnection,
   database: string | null | undefined,
   schema: string,
@@ -47,9 +48,10 @@ export function openTable(
 ) {
   const d = connection.driver;
   const target = `${quoteIdent(schema, d)}.${quoteIdent(table, d)}`;
+  const hiddenKey = await hiddenKeyOf(connection, database, schema, table);
   workbench().openTab("query", connection.id, {
     database: database ?? null,
-    sql: viewerSql(d, target, filter),
+    sql: viewerSql(d, target, filter, hiddenKey),
     autorun: true,
     title: table,
     table: target,
