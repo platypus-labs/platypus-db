@@ -78,6 +78,7 @@ export default async function (page, { dir }) {
     "Disconnect",
     "Navigator filters…",
     "Duplicate",
+    "Export connections…",
     "Copy as URL",
     "Edit…",
     "Delete…",
