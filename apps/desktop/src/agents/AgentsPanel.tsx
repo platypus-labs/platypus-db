@@ -9,7 +9,8 @@ import {
 } from "../api";
 import { isProduction } from "../connections";
 import { DriverIcon } from "../components/DriverPicker";
-import { AGENT_ACCESS, agentAccessLabel, effectiveAgentAccess } from "./access";
+import { workbench } from "../workbench";
+import { AGENT_ACCESS, agentAccessLabel, effectiveAgentAccess, isCapped } from "./access";
 import { AgentActivity } from "./AgentActivity";
 import { AgentBridge } from "./AgentBridge";
 import { AgentClients } from "./AgentClients";
@@ -57,17 +58,26 @@ const LEVEL_NOTES: Record<AgentAccess, string> = {
 };
 
 /** The three levels of a connection, the one it has marked. */
-function AccessLevels({ current }: { current: AgentAccess }) {
+function AccessLevels({ connection, onChange }: { connection: SavedConnection; onChange: (access: AgentAccess) => void }) {
+  const current = effectiveAgentAccess(connection);
+  const kept = !!connection.restrictions?.no_export;
   return (
-    <div className="agent-levels">
+    <div className="agent-levels" role="radiogroup" aria-label={t("Agent access")}>
       {AGENT_ACCESS.map((a) => (
-        <div key={a.value} className={`agent-level${a.value === current ? " on" : ""}`} data-level={a.value}>
-          <span className="agent-level-radio" />
+        <label key={a.value} className={`agent-level${a.value === current ? " on" : ""}`} data-level={a.value}>
+          <input
+            type="radio"
+            name="agent-access"
+            value={a.value}
+            checked={a.value === current}
+            disabled={kept || (a.value === "read_write" && isCapped(connection))}
+            onChange={() => onChange(a.value)}
+          />
           <div>
             <div className="agent-level-title">{t(a.label)}</div>
             <div className="muted small">{t(LEVEL_NOTES[a.value])}</div>
           </div>
-        </div>
+        </label>
       ))}
     </div>
   );
@@ -77,9 +87,13 @@ function AccessLevels({ current }: { current: AgentAccess }) {
 function AgentSecurity({
   connections,
   blockers,
+  onSaved,
+  onError,
 }: {
   connections: SavedConnection[];
   blockers: Record<string, AgentBlocker>;
+  onSaved: (all: SavedConnection[]) => void;
+  onError: (message: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const chosen = connections.find((c) => c.id === selectedId) ?? connections[0];
@@ -140,7 +154,12 @@ function AgentSecurity({
               <strong>{chosen.name}</strong>
               {isProduction(chosen) && <span className="badge prod">{t("production")}</span>}
             </header>
-            <AccessLevels current={chosenAccess} />
+            <AccessLevels
+              connection={chosen}
+              onChange={(agent_access) =>
+                api.saveConnection({ ...chosen, agent_access }, { action: "keep" }).then(onSaved, (e: unknown) => onError(toCommandError(e).message))
+              }
+            />
             {chosenBlocker && <p className="small agent-blocked">{blockerNote(chosenBlocker)}</p>}
           </aside>
         )}
@@ -211,7 +230,16 @@ export function AgentsPanel() {
         {page === "activity" && <AgentActivity />}
       </div>
       <div className="dialog-page" data-agents-panel="security" hidden={page !== "security"}>
-        <AgentSecurity connections={connections} blockers={blockers} />
+        <AgentSecurity
+          connections={connections}
+          blockers={blockers}
+          onSaved={(all) => {
+            setConnections(all);
+            // The app keeps its own list: a later save from a stale copy would undo the change.
+            workbench().setConnections(all);
+          }}
+          onError={setError}
+        />
       </div>
     </div>
   );

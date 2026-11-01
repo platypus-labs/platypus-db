@@ -1582,18 +1582,13 @@ button.primary.danger:hover:not(:disabled) {
   background: var(--grid-selection);
 }
 
-.agent-level-radio {
-  flex: none;
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  margin-top: var(--space-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
+.agent-level {
+  cursor: pointer;
 }
 
-.agent-level.on .agent-level-radio {
-  border-color: var(--accent);
-  background: radial-gradient(var(--accent) 45%, transparent 50%);
+.agent-level input {
+  flex: none;
+  margin-top: var(--space-2);
 }
 
 .agent-level-title {
