@@ -1450,12 +1450,12 @@ condivisi; task pianificati.
 
 ### Gruppo U — Esportazione delle connessioni
 
-**Stato: fatto in parte.** Esportazione in `.platypusconn` (in chiaro, o cifrato con le password
-salvate), importazione dal dialog esistente con la richiesta della password, voci nei menu e
-nella palette, formato descritto in [CONNECTIONS_FILE.md](CONNECTIONS_FILE.md). Il codice è in
-`crates/platypus-sync/src/export.rs`, non in `platypus-store`: riusa la cifratura della sync e il
-filtro dei progetti condivisi. Resta da fare: *sostituire* una connessione già presente
-all'importazione.
+**Stato: completato.** Esportazione in `.platypusconn` (in chiaro, o cifrato con le password
+salvate, jump host compresi), importazione dal dialog esistente con la richiesta della password
+e la sostituzione delle connessioni già salvate (per tutte le sorgenti, non solo PlatypusDB),
+voci nei menu e nella palette, formato descritto in [CONNECTIONS_FILE.md](CONNECTIONS_FILE.md).
+Il codice è in `crates/platypus-sync/src/export.rs`, non in `platypus-store`: riusa la cifratura
+della sync e il filtro dei progetti condivisi.
 
 Oggi le connessioni si importano da DBeaver, DataGrip e pgAdmin, si sincronizzano (gruppo O,
 senza password) e si condividono nei progetti (senza credenziali), ma non si possono esportare in
@@ -1480,8 +1480,8 @@ i comandi Tauri relativi, la UI di esportazione e il flusso "Importa le connessi
 | ✅ **Cifratura con password**: con la password si possono includere le credenziali; password sbagliata o file alterato danno un errore chiaro, mai dati a metà | P1 | N |
 | ✅ Esportazione dal menu contestuale di una connessione o di un progetto e dalla palette dei comandi | P2 | D |
 | ✅ Formato documentato (`docs/`) e versionato, con un test che rilegge i file delle versioni precedenti | P2 | N |
-| 🆕 All'importazione, *sostituire* una connessione già presente (stesso server, database e utente) invece di aggiungerne una seconda | P2 | D |
-| 🆕 Le password dei salti SSH intermedi (jump host) nel file cifrato: oggi viaggia solo quella del primo server SSH | P3 | N |
+| ✅ 🆕 All'importazione, *sostituire* una connessione già presente (stesso server, database e utente) invece di aggiungerne una seconda | P2 | D |
+| ✅ 🆕 Le password dei salti SSH intermedi (jump host) nel file cifrato | P3 | N |
 
 ---
 
