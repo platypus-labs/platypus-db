@@ -301,9 +301,9 @@ function ColumnCard({ column: c, hide, onValue, onOutliers }: CardProps) {
         {c.min !== null && (
           <>
             <dt>{t("Minimum")}</dt>
-            <dd className="tp-min">{masked(c.min, hide)}</dd>
+            <dd className="tp-min" title={masked(c.min, hide) ?? undefined}>{masked(c.min, hide)}</dd>
             <dt>{t("Maximum")}</dt>
-            <dd className="tp-max">{masked(c.max, hide)}</dd>
+            <dd className="tp-max" title={masked(c.max, hide) ?? undefined}>{masked(c.max, hide)}</dd>
           </>
         )}
         {c.numbers && (

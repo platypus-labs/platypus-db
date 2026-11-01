@@ -64,7 +64,7 @@
 }
 .tp-card > .column-profile-head,
 .tp-card > dl,
-.tp-card > .column-profile-bars {
+.tp-card > .column-profile-hist {
   grid-row: 1 / span 20;
 }
 .tp-card > .column-profile-head {
@@ -76,7 +76,7 @@
 .tp-card > dl {
   grid-column: 2;
 }
-.tp-card > .column-profile-bars {
+.tp-card > .column-profile-hist {
   grid-column: 3;
   align-self: center;
   margin: 0;

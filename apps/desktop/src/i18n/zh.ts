@@ -1328,6 +1328,11 @@ const zh: Record<string, string> = {
   // Analysis (group M): column statistics
   "NULL values": "NULL 值",
   "Most frequent": "最常见",
+  "Distribution": "分布",
+  "How many rows fall in each range of values": "每个取值范围内有多少行",
+  "{from} to {to}: {n} row": "{from} – {to}：{n} 行",
+  "{from} to {to}: {n} rows": "{from} – {to}：{n} 行",
+  "Row count": "行数",
   "of all {n} row": "共 {n} 行",
   "of all {n} rows": "共 {n} 行",
   "of {n} loaded row": "已加载 {n} 行",

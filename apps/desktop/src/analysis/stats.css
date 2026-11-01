@@ -35,19 +35,55 @@
   white-space: nowrap;
   font-family: var(--font-mono);
 }
+.column-profile-hist {
+  margin-top: var(--space-8);
+  min-width: 0;
+}
+.column-profile-hist-title {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-xs);
+}
+.column-profile-hist-plot {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.column-profile-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  text-align: right;
+}
 .column-profile-bars {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 36px;
-  margin-top: var(--space-8);
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 .column-profile-bars rect {
   fill: color-mix(in srgb, var(--accent) 55%, transparent);
 }
+/* Long bounds (timestamps) shrink with an ellipsis instead of running into each other. */
 .column-profile-range {
   display: flex;
   justify-content: space-between;
+  gap: var(--space-8);
   font-size: var(--text-xs);
+}
+.column-profile-range span {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .column-profile-label {
   margin-top: var(--space-8);
