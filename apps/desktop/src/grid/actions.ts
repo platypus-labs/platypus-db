@@ -4,6 +4,7 @@ import { registerAction } from "../actions";
 import { api } from "../api";
 import type { GridActionContext } from "./DataGrid";
 import { clipboardText, rememberCopy } from "./edit/paste";
+import { copyText } from "../ui/copy";
 
 registerAction({
   id: "grid.copy",
@@ -18,7 +19,7 @@ registerAction({
     const text = clipboardText(rows);
     // The text writes NULL and '' alike: pasting it back in the grid takes these cells.
     rememberCopy(text, rows);
-    await navigator.clipboard.writeText(text);
+    await copyText(text);
   },
 });
 

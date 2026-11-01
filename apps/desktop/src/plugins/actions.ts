@@ -10,6 +10,7 @@ import type { EditorHost } from "../editor/SqlEditor";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
 import { installedPlugins, onPluginsChanged, reloadPlugins } from "./store";
+import { copyText } from "../ui/copy";
 
 /** The grid rows sent to a plugin at most, as the backend caps them too. */
 export const MAX_GRID_ROWS = 1000;
@@ -33,8 +34,7 @@ async function apply(outcome: PluginOutcome, target: Target) {
       target.newTab(outcome.text);
       break;
     case "copy":
-      await navigator.clipboard.writeText(outcome.text);
-      workbench().notify(t("Copied to the clipboard."));
+      await copyText(outcome.text);
       break;
     case "message":
       workbench().notify(outcome.text);

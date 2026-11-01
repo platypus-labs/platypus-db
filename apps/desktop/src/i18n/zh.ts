@@ -935,6 +935,8 @@ const zh: Record<string, string> = {
   "Production connections are read-only for agents.": "对代理而言，生产连接是只读的。",
   "Read-only connections are read-only for agents too.": "只读连接对代理而言同样是只读的。",
   "Copied": "已复制",
+  "Copied: {what}": "已复制：{what}",
+  "Could not copy to the clipboard.": "无法复制到剪贴板。",
   "Agents use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. They start it by themselves, without a window: PlatypusDB need not be open, unless agents must ask before their changes (Settings › Safety). Passwords never reach them, and their queries go into the history with the agent's name.": "代理通过 PlatypusDB 的 MCP 服务器使用你已保存的连接：就是应用本身，以 {mcp} 启动。它们会自行启动，不显示窗口：PlatypusDB 无需打开，除非代理在更改前必须征得同意（设置 › 安全）。密码永远不会传给它们，它们的查询会连同代理名称记录在历史中。",
   "production": "生产",
   "asks for its password at each connection: agents cannot open it": "每次连接都会询问密码：代理无法打开",
@@ -2969,7 +2971,6 @@ const zh: Record<string, string> = {
   "Turned on": "已开启",
   "This plugin action can only change the text of an editor.": "此插件操作只能更改编辑器的文本。",
   "This plugin action cannot open a tab here.": "此插件操作无法在此打开标签页。",
-  "Copied to the clipboard.": "已复制到剪贴板。",
   "The editor is read-only.": "编辑器为只读。",
   "Select some rows first.": "请先选择一些行。",
   // Group O: review fixes (shared folders, first sync)

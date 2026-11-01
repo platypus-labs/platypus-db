@@ -22,6 +22,7 @@ import { quoteIdent, schemaRef, selectLimit } from "../sqlNames";
 import { workbench } from "../workbench";
 import { type SqlActionChoices, SqlActionDialog, type SqlActionOptions } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
+import { copyText } from "../ui/copy";
 
 type ObjectArg = ActionScopes["navigator.object"];
 
@@ -133,7 +134,7 @@ registerAction({
   group: "copy",
   order: 41,
   multiple: true,
-  run: (arg) => navigator.clipboard.writeText((arg.selection ?? [arg]).map(qualified).join("\n")),
+  run: (arg) => copyText((arg.selection ?? [arg]).map(qualified).join("\n")),
 });
 
 /** Whether the name of `kind` ends with its argument list, `add(integer, integer)`. */

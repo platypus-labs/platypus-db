@@ -14,6 +14,7 @@ import { workbench } from "../workbench";
 import { Histogram, count, percent } from "./ColumnProfile";
 import { equalsCondition, matchingColumns, outlierCondition } from "./tableProfileModel";
 import { EmptyState } from "../ui/State";
+import { copyText } from "../ui/copy";
 
 export interface TableProfileTabModel extends TabBase {
   kind: "table-profile";
@@ -160,7 +161,7 @@ export function TableProfileTab({ tab, connection, active, sideSession, onChange
   const openValue = (column: string, value: string) => {
     const condition = equalsCondition(connection.driver, quoteIdent(column, connection.driver), value);
     if (condition !== null) return openRows(condition);
-    void navigator.clipboard.writeText(value).then(() => setNote(t("Copied to the clipboard: this value cannot be written as a filter.")));
+    void copyText(value).then(() => setNote(t("Copied to the clipboard: this value cannot be written as a filter.")));
   };
 
   const columns = useMemo(() => matchingColumns(profile?.columns ?? [], filter), [profile, filter]);

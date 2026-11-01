@@ -935,6 +935,8 @@ const es: Record<string, string> = {
   "Production connections are read-only for agents.": "Las conexiones de producción son de solo lectura para los agentes.",
   "Read-only connections are read-only for agents too.": "Las conexiones de solo lectura también lo son para los agentes.",
   "Copied": "Copiado",
+  "Copied: {what}": "Copiado: {what}",
+  "Could not copy to the clipboard.": "No se pudo copiar al portapapeles.",
   "Agents use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. They start it by themselves, without a window: PlatypusDB need not be open, unless agents must ask before their changes (Settings › Safety). Passwords never reach them, and their queries go into the history with the agent's name.": "Los agentes usan tus conexiones guardadas a través del servidor MCP de PlatypusDB: la propia app, iniciada con {mcp}. Lo inician ellos solos, sin ventana: PlatypusDB no necesita estar abierto, salvo que los agentes deban preguntar antes de sus cambios (Ajustes › Seguridad). Las contraseñas nunca les llegan, y sus consultas van al historial con el nombre del agente.",
   "production": "producción",
   "asks for its password at each connection: agents cannot open it": "pide la contraseña en cada conexión: los agentes no pueden abrirla",
@@ -2969,7 +2971,6 @@ const es: Record<string, string> = {
   "Turned on": "Activado",
   "This plugin action can only change the text of an editor.": "Esta acción del plugin solo puede cambiar el texto de un editor.",
   "This plugin action cannot open a tab here.": "Esta acción del plugin no puede abrir una pestaña aquí.",
-  "Copied to the clipboard.": "Copiado al portapapeles.",
   "The editor is read-only.": "El editor es de solo lectura.",
   "Select some rows first.": "Selecciona primero algunas filas.",
   // Group O: review fixes (shared folders, first sync)

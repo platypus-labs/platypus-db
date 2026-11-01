@@ -8,6 +8,7 @@ import { basename } from "../workspace";
 import { shareErrorMessage } from "./messages";
 import { describeTarget } from "./shareMatch";
 import { SHARE_EXTENSION, ShareError, type SharedQuery, encodeFile, encodeLink } from "./shareQuery";
+import { copyText } from "../ui/copy";
 
 /** The variables worth sharing: the answers the editor remembers for `?` placeholders are
  *  not named values. */
@@ -62,13 +63,9 @@ export function ShareQueryDialog({ tab, connection, onClose }: { tab: QueryTabMo
 
   async function copy() {
     if (!link?.ok) return;
-    try {
-      await navigator.clipboard.writeText(link.text);
-      setCopied(true);
-      setMessage(null);
-    } catch (e) {
-      setMessage({ error: true, text: toCommandError(e).message });
-    }
+    await copyText(link.text);
+    setCopied(true);
+    setMessage(null);
   }
 
   async function saveFile() {

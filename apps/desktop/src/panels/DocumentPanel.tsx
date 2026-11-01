@@ -8,6 +8,7 @@ import { MASK, useMask } from "../guards/mask";
 import { JsonNumber, type JsonValue as Json, jsonNumber, parseJson, stringifyJson } from "../jsonText";
 import { EmptyState, LoadingState } from "../ui/State";
 import { Icon } from "../ui/Icon";
+import { copyText } from "../ui/copy";
 
 /** An object of the document: not a leaf, not an array. */
 const isObject = (value: Json): value is { [key: string]: Json } =>
@@ -169,7 +170,7 @@ export function DocumentPanel({ jobId, columns, row, field, version, onClose }: 
         <strong className="small value-name">{t("Document")}</strong>
         <span className="spacer" />
         {doc && (
-          <button className="icon" title={t("Copy as JSON")} aria-label={t("Copy as JSON")} onClick={() => void navigator.clipboard.writeText(stringifyJson(doc))}>
+          <button className="icon" title={t("Copy as JSON")} aria-label={t("Copy as JSON")} onClick={() => void copyText(stringifyJson(doc))}>
             <Icon name="copy" />
           </button>
         )}

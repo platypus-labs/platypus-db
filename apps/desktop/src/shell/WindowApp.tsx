@@ -17,6 +17,7 @@ import { track } from "./activity";
 import { t } from "../i18n";
 import { withInitApproval } from "../ui/initApproval";
 import { EmptyState } from "../ui/State";
+import { Toaster } from "../ui/Toaster";
 
 /** The connection the quick query used last. */
 const QUICK_KEY = "platypus.quick.connection";
@@ -345,6 +346,7 @@ export function WindowApp({ label }: { label: string }) {
           }}
         />
       )}
+      <Toaster />
     </div>
   );
 }

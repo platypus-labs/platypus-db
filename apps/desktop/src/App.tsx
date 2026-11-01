@@ -39,6 +39,7 @@ import { dbKey, provideWorkbench, workbench } from "./workbench";
 import type { IconName } from "./ui/Icon";
 import { ask, choose, isAsking } from "./ui/ask";
 import { withInitApproval } from "./ui/initApproval";
+import { Toaster } from "./ui/Toaster";
 import { type PersistedTab, basename, flushWorkspace, loadWorkspace, saveWorkspace } from "./workspace";
 import { connectionsOf, loadActiveProject, projectKey, saveActiveProject } from "./projects/state";
 import { forgetCatalog } from "./catalog/catalog";
@@ -1325,6 +1326,7 @@ export function App() {
           }}
         />
       )}
+      <Toaster />
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <AgentWriteDialog />
       <AgentContextDialog />

@@ -6,6 +6,7 @@ import { workbench } from "../workbench";
 import { ask } from "../ui/ask";
 import { connectionFor, nameOf, openScript, parentOf, scriptFile, scriptsChanged } from "./scripts";
 import { t } from "../i18n";
+import { copyText } from "../ui/copy";
 
 declare module "../actions" {
   interface ActionScopes {
@@ -105,7 +106,7 @@ registerAction({
   title: "Copy file path",
   group: "edit",
   order: 22,
-  run: ({ entry, root }) => navigator.clipboard.writeText(scriptFile(root, entry.path)),
+  run: ({ entry, root }) => copyText(scriptFile(root, entry.path)),
 });
 
 registerAction({

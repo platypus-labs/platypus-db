@@ -1,4 +1,5 @@
 import { t, plural } from "../../i18n";
+import { copyText } from "../../ui/copy";
 
 interface Props {
   statements: string[];
@@ -50,7 +51,7 @@ export function PreviewDialog({ statements, busy, production = false, commands, 
         </p>
         <pre className="sql-preview">{script}</pre>
         <div className="actions">
-          <button type="button" onClick={() => void navigator.clipboard.writeText(script)}>
+          <button type="button" onClick={() => void copyText(script)}>
             {t("Copy")}
           </button>
           <span className="spacer" />

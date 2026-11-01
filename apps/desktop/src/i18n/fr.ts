@@ -935,6 +935,8 @@ const fr: Record<string, string> = {
   "Production connections are read-only for agents.": "Les connexions de production sont en lecture seule pour les agents.",
   "Read-only connections are read-only for agents too.": "Les connexions en lecture seule le sont aussi pour les agents.",
   "Copied": "Copié",
+  "Copied: {what}": "Copié : {what}",
+  "Could not copy to the clipboard.": "Impossible de copier dans le presse-papiers.",
   "Agents use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. They start it by themselves, without a window: PlatypusDB need not be open, unless agents must ask before their changes (Settings › Safety). Passwords never reach them, and their queries go into the history with the agent's name.": "Les agents utilisent vos connexions enregistrées via le serveur MCP de PlatypusDB : l'application elle-même, lancée avec {mcp}. Ils le lancent eux-mêmes, sans fenêtre : PlatypusDB n'a pas besoin d'être ouvert, sauf si les agents doivent demander avant leurs modifications (Paramètres › Sécurité). Les mots de passe ne leur parviennent jamais, et leurs requêtes vont dans l'historique avec le nom de l'agent.",
   "production": "production",
   "asks for its password at each connection: agents cannot open it": "demande son mot de passe à chaque connexion : les agents ne peuvent pas l'ouvrir",
@@ -2969,7 +2971,6 @@ const fr: Record<string, string> = {
   "Turned on": "Activé",
   "This plugin action can only change the text of an editor.": "Cette action du plugin ne peut modifier que le texte d'un éditeur.",
   "This plugin action cannot open a tab here.": "Cette action du plugin ne peut pas ouvrir d'onglet ici.",
-  "Copied to the clipboard.": "Copié dans le presse-papiers.",
   "The editor is read-only.": "L'éditeur est en lecture seule.",
   "Select some rows first.": "Sélectionnez d'abord des lignes.",
   // Group O: review fixes (shared folders, first sync)
