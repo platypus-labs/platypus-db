@@ -3077,6 +3077,20 @@ const pt: Record<string, string> = {
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "Uma célula que começa com =, +, -, @ ou uma tabulação recebe um ' na frente, para que uma planilha a mostre como texto em vez de executá-la como fórmula. Os números ficam como estão. Desative para um arquivo lido por outro programa.",
   "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} conexão tem referências a variáveis de ambiente vindas do arquivo, que só são lidas depois que você as editar nas configurações dela.",
   "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} conexões têm referências a variáveis de ambiente vindas do arquivo, que só são lidas depois que você as editar nas configurações delas.",
+  "Exported {n} connections": "{n} conexões exportadas",
+  "Export connections…": "Exportar conexões…",
+  "Export connections": "Exportar conexões",
+  "Keep projects and folders": "Manter projetos e pastas",
+  "Encrypt with a password": "Cifrar com uma senha",
+  "Confirm password": "Confirmar a senha",
+  "Use at least 8 characters.": "Use pelo menos 8 caracteres.",
+  "The passwords do not match.": "As senhas não coincidem.",
+  "Include saved passwords": "Incluir as senhas salvas",
+  "Without a password on the file, no password is ever written.": "Sem senha no arquivo, nenhuma senha é escrita.",
+  "Export {n}": "Exportar {n}",
+  "A file written by Export connections…, with a password if it was encrypted.": "Um arquivo escrito por Exportar conexões…, com senha se estiver cifrado.",
+  "This file is encrypted. Enter its password.": "Este arquivo está cifrado. Digite a senha dele.",
+  "To a file for another computer or a colleague.": "Para um arquivo para outro computador ou um colega.",
 };
 
 export default pt;

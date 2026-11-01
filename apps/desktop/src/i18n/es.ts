@@ -3077,6 +3077,20 @@ const es: Record<string, string> = {
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "Una celda que empieza por =, +, -, @ o un tabulador recibe un ' delante, para que una hoja de cálculo la muestre como texto en lugar de ejecutarla como fórmula. Los números quedan como están. Desactívalo para un archivo que lee otro programa.",
   "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} conexión tiene referencias a variables de entorno tomadas del archivo, que no se leen hasta que las edites en su configuración.",
   "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} conexiones tienen referencias a variables de entorno tomadas del archivo, que no se leen hasta que las edites en su configuración.",
+  "Exported {n} connections": "{n} conexiones exportadas",
+  "Export connections…": "Exportar conexiones…",
+  "Export connections": "Exportar conexiones",
+  "Keep projects and folders": "Mantener proyectos y carpetas",
+  "Encrypt with a password": "Cifrar con una contraseña",
+  "Confirm password": "Confirmar la contraseña",
+  "Use at least 8 characters.": "Use al menos 8 caracteres.",
+  "The passwords do not match.": "Las contraseñas no coinciden.",
+  "Include saved passwords": "Incluir las contraseñas guardadas",
+  "Without a password on the file, no password is ever written.": "Sin contraseña en el archivo, nunca se escribe ninguna contraseña.",
+  "Export {n}": "Exportar {n}",
+  "A file written by Export connections…, with a password if it was encrypted.": "Un archivo escrito por Exportar conexiones…, con contraseña si estaba cifrado.",
+  "This file is encrypted. Enter its password.": "Este archivo está cifrado. Introduzca su contraseña.",
+  "To a file for another computer or a colleague.": "A un archivo para otro equipo o un colega.",
 };
 
 export default es;

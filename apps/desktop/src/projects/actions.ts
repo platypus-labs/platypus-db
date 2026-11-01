@@ -144,6 +144,14 @@ registerAction({
 });
 
 registerAction({
+  id: "project.export",
+  scope: "project",
+  title: "Export…",
+  order: 14,
+  run: (project) => workbench().exportConnections(project.connections),
+});
+
+registerAction({
   id: "project.delete",
   scope: "project",
   title: "Delete project",

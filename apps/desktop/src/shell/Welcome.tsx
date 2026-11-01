@@ -18,6 +18,7 @@ interface Props {
   version: string;
   onNew: () => void;
   onImport: () => void;
+  onExport: () => void;
   /** Opens a data file as a DuckDB database. */
   onOpenFile: (path: string) => void;
   /** Opens the sample database, made at the first click. */
@@ -100,7 +101,7 @@ export async function pickDataFile(): Promise<string | null> {
 }
 
 /** What the workspace shows with no tab open. */
-export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample, onError, connections, onOpenConnection }: Props) {
+export function Welcome({ empty, version, onNew, onImport, onExport, onOpenFile, onSample, onError, connections, onOpenConnection }: Props) {
   const [sampleBusy, setSampleBusy] = useState(false);
   const recent = useRecent(connections);
   const scripts = useRecentScripts(connections);
@@ -164,6 +165,13 @@ export function Welcome({ empty, version, onNew, onImport, onOpenFile, onSample,
           <span>
             <strong>{t("Import connections")}</strong>
             <span className="muted">{t("From DBeaver, DataGrip or pgAdmin.")}</span>
+          </span>
+        </button>
+        <button type="button" className="welcome-card" onClick={onExport}>
+          <Icon name="download" size={18} />
+          <span>
+            <strong>{t("Export connections")}</strong>
+            <span className="muted">{t("To a file for another computer or a colleague.")}</span>
           </span>
         </button>
       </div>
