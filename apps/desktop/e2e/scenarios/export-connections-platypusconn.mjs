@@ -134,7 +134,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`!${open}.disabled`);
   await page.eval(`${open}.click()`);
   await page.waitFor(`${importDialog}.querySelector('.notice.error') !== null`, 15_000);
-  assert.ok((await page.eval(`${importDialog}.querySelector('.notice.error').textContent`)).length > 0);
+  assert.match(await page.eval(`${importDialog}.querySelector(".notice.error").textContent`), /Wrong password/);
   assert.equal(await page.eval(`${importDialog}.querySelectorAll('.import-row.connection').length`), 0);
   assert.equal(await page.eval(`${importDialog}.querySelector('.import-password') !== null`), true);
   // The right password opens it: the field and the error go, the six connections show

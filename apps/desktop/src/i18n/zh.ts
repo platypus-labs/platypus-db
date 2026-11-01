@@ -3090,6 +3090,7 @@ const zh: Record<string, string> = {
   "Export {n}": "导出 {n}",
   "A file written by Export connections…, with a password if it was encrypted.": "由“导出连接…”写入的文件；如已加密则需要密码。",
   "This file is encrypted. Enter its password.": "此文件已加密。请输入其密码。",
+  "Wrong password, or the file is damaged.": "密码错误，或文件已损坏。",
   "To a file for another computer or a colleague.": "导出到文件，供另一台电脑或同事使用。",
 };
 

@@ -3090,6 +3090,7 @@ const de: Record<string, string> = {
   "Export {n}": "{n} exportieren",
   "A file written by Export connections…, with a password if it was encrypted.": "Eine mit Verbindungen exportieren… geschriebene Datei, mit Passwort, wenn sie verschlüsselt wurde.",
   "This file is encrypted. Enter its password.": "Diese Datei ist verschlüsselt. Geben Sie ihr Passwort ein.",
+  "Wrong password, or the file is damaged.": "Falsches Passwort, oder die Datei ist beschädigt.",
   "To a file for another computer or a colleague.": "In eine Datei für einen anderen Computer oder einen Kollegen.",
 };
 

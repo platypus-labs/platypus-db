@@ -123,7 +123,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
       if (err.kind === "password_needed" || err.kind === "sync_passphrase") {
         setLocked(next);
         // A first ask is not an error; a wrong password is.
-        if (err.kind === "sync_passphrase") setError(err.message);
+        if (err.kind === "sync_passphrase") setError(t("Wrong password, or the file is damaged."));
       } else setError(err.message);
     }
   }
