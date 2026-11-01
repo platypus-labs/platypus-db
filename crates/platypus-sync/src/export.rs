@@ -423,7 +423,7 @@ mod tests {
     /// A version 1 file as written by hand: what older apps wrote keeps opening.
     #[test]
     fn reads_a_version_1_file() {
-        let file = r##"{
+        let file = r#"{
           "format": "platypusdb-connections",
           "version": 1,
           "projects": [{
@@ -443,7 +443,7 @@ mod tests {
             "placement": { "6f1c1d2e-0000-4000-8000-000000000001": ["Servers"] },
             "secrets": { "6f1c1d2e-0000-4000-8000-000000000001": { "password": "x" } }
           }]
-        }"##;
+        }"#;
         let read = read(file.as_bytes(), None).unwrap();
         let team = &read[0];
         let c = &team.connections[0];

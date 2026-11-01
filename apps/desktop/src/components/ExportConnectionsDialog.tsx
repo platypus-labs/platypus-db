@@ -35,7 +35,8 @@ export function ExportConnectionsDialog({ connections, projects, preselect, onEx
   const inProject = new Set(projects.flatMap((p) => p.connections));
   const loose = connections.filter((c) => !inProject.has(c.id));
   const all = connections.map((c) => c.id);
-  const count = all.filter((id) => ticked.has(id)).length;
+  const selected = all.filter((id) => ticked.has(id));
+  const count = selected.length;
 
   const tooShort = encrypt && password.length > 0 && password.length < MIN_PASSWORD;
   const mismatch = encrypt && confirm.length > 0 && confirm !== password;
@@ -54,7 +55,7 @@ export function ExportConnectionsDialog({ connections, projects, preselect, onEx
         return;
       }
       await api.exportConnections(
-        { connections: all.filter((id) => ticked.has(id)), projects: keepProjects, password: encrypt ? password : null, credentials: encrypt && credentials },
+        { connections: selected, projects: keepProjects, password: encrypt ? password : null, credentials: encrypt && credentials },
         path,
       );
       onExported(count);
@@ -156,9 +157,14 @@ function ConnectionRow({ c, depth, ticked, onTicked }: { c: SavedConnection; dep
   );
 }
 
-/** The ids under `folder` (a folder id, `null` for the root) of a project, subfolders included. */
+/** The connection ids placed directly in `folder` (`null` for the root) of a project. */
+function idsIn(project: Project, folder: ConnectionFolder | null): string[] {
+  return project.connections.filter((id) => (project.placement?.[id] ?? null) === (folder?.id ?? null));
+}
+
+/** The ids under `folder`, subfolders included. */
 function idsUnder(project: Project, folder: ConnectionFolder | null): string[] {
-  const own = project.connections.filter((id) => (project.placement?.[id] ?? null) === (folder?.id ?? null));
+  const own = idsIn(project, folder);
   const subs = (project.folders ?? []).filter((f) => (f.parent ?? null) === (folder?.id ?? null));
   return [...own, ...subs.flatMap((f) => idsUnder(project, f))];
 }
@@ -179,7 +185,7 @@ function FolderRows({
   byId: Map<string, SavedConnection>;
 }) {
   const folders = (project.folders ?? []).filter((f) => (f.parent ?? null) === (parent?.id ?? null));
-  const own = project.connections.filter((id) => (project.placement?.[id] ?? null) === (parent?.id ?? null));
+  const own = idsIn(project, parent);
   return (
     <>
       {folders.map((f) => (
