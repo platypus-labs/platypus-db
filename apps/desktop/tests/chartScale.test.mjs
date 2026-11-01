@@ -9,6 +9,7 @@ import {
   extent,
   formatNumber,
   formatTime,
+  groupSmallSlices,
   hasMarks,
   linear,
   niceDomain,
@@ -115,4 +116,17 @@ test("numbers under 0.01 keep their significant digits instead of reading 0", ()
   assert.equal(formatNumber(-0.004, "en-US"), "-4E-3");
   assert.equal(formatNumber(0, "en-US"), "0");
   assert.equal(formatNumber(0.01, "en-US"), "0.01");
+});
+
+test("a pie gathers the smallest slices into one, keeping the order of the others", () => {
+  const values = [5, 1, 9, 2, null, 0, 3];
+  const names = ["a", "b", "c", "d", "e", "f", "g"];
+  assert.deepEqual(groupSmallSlices(values, names, "Other", false, 3), { values: [5, 9, 3, 3], categories: ["a", "c", "g", "Other"] });
+  // Few enough slices: nothing is gathered.
+  assert.deepEqual(groupSmallSlices([2, 1], ["x", "y"], "Other", false), { values: [2, 1], categories: ["x", "y"] });
+  // The category that already gathers the rest joins the new one.
+  assert.deepEqual(groupSmallSlices([4, 3, 2, 7], ["a", "b", "c", "Other"], "Other", true, 2), {
+    values: [4, 3, 9],
+    categories: ["a", "b", "Other"],
+  });
 });

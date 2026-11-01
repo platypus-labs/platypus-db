@@ -16,6 +16,7 @@ import {
   linear,
   niceDomain,
   niceTicks,
+  groupSmallSlices,
   pieAngles,
   pieParts,
   timeTicks,
@@ -91,9 +92,16 @@ interface ChartProps {
   ref?: Ref<SVGSVGElement>;
 }
 
-export function Chart({ data, kind, width, height, colors, otherLabel, label, locale, ref }: ChartProps) {
-  const labels = data.categories.map(categoryLabel);
-  const categories = data.other ? [...labels.slice(0, -1), otherLabel] : labels;
+export function Chart({ data: full, kind, width, height, colors, otherLabel, label, locale, ref }: ChartProps) {
+  const labels = full.categories.map(categoryLabel);
+  let categories = full.other ? [...labels.slice(0, -1), otherLabel] : labels;
+  let data = full;
+  if (kind === "pie" && full.series[0]) {
+    // Many slices make an unreadable legend: the smallest ones go into one.
+    const grouped = groupSmallSlices(full.series[0].values, categories, otherLabel, !!full.other);
+    categories = grouped.categories;
+    data = { ...full, series: [{ ...full.series[0], values: grouped.values }, ...full.series.slice(1)] };
+  }
   const plot: Plot = {
     left: MARGIN.left,
     right: Math.max(MARGIN.left + 10, width - MARGIN.right),

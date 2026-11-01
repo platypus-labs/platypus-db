@@ -126,6 +126,30 @@ export function pieParts(values: readonly (number | null)[]): { drawn: number[];
   return { drawn, left };
 }
 
+/** Slices a pie keeps before it gathers the smallest ones in one. */
+export const PIE_MAX_SLICES = 8;
+
+/** The slices of a pie with the positive ones past the `max` largest summed into one `other`
+ *  slice (the last category too, when `hasOther`: it already gathers the rest); the others keep
+ *  their order. Zero, negative and missing values stay out, as the pie leaves them. */
+export function groupSmallSlices(
+  values: readonly (number | null)[],
+  categories: readonly string[],
+  other: string,
+  hasOther: boolean,
+  max = PIE_MAX_SLICES,
+): { values: number[]; categories: string[] } {
+  const drawn = pieParts(values).drawn;
+  const named = drawn.filter((i) => !(hasOther && i === categories.length - 1));
+  const keep = new Set([...named].sort((a, b) => (values[b] ?? 0) - (values[a] ?? 0)).slice(0, max));
+  const rest = drawn.filter((i) => !keep.has(i)).reduce((sum, i) => sum + (values[i] ?? 0), 0);
+  const kept = named.filter((i) => keep.has(i));
+  return {
+    values: [...kept.map((i) => values[i] ?? 0), ...(rest > 0 ? [rest] : [])],
+    categories: [...kept.map((i) => categories[i] ?? ""), ...(rest > 0 ? [other] : [])],
+  };
+}
+
 /** Start and end angle of each slice, clockwise from the top; negative values count as 0. */
 export function pieAngles(values: readonly number[]): [number, number][] {
   const total = values.reduce((sum, v) => sum + Math.max(0, v), 0);
