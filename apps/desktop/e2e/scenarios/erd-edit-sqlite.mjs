@@ -38,6 +38,7 @@ INSERT INTO legacy VALUES (1, 'kept');`);
 const table = (verb, name) => new RegExp(`${verb}\\s+(?:"?main"?\\.)?"?${name}"?(?![\\w])`, "i");
 
 const erd = visibleErd;
+const addTableButton = `[...${erd}.querySelectorAll("button")].find(b => b.textContent.trim() === "Add table")`;
 const dialog = `document.querySelector('.modal.design-dialog')`;
 const confirmBox = `document.querySelector('.modal.confirm')`;
 const tabs = `[...document.querySelectorAll('.tab')]`;
@@ -70,7 +71,7 @@ const saveForm = (page) => page.eval(`${buttonIn(dialog, "Save")}.click()`);
 
 /** Adds a table with the columns `extra` (name, type) after its `id`. */
 async function addTable(page, name, extra = []) {
-  await page.eval(`${buttonIn(erd, "Add table")}.click()`);
+  await page.eval(`${addTableButton}.click()`);
   await page.waitFor(`${dialog} !== null`);
   await typeInto(page, `${dialog}.querySelector('input[aria-label="Table name"]')`, name);
   for (const [column, type] of extra) await addColumn(page, column, type);
@@ -133,7 +134,7 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(`${erd}.querySelectorAll('.erd-handle').length`), 2 + 2 + 2 + 1 + 2 + 1, "a handle for every column");
 
   // The form refuses a table that cannot be created, saying why.
-  await page.eval(`${buttonIn(erd, "Add table")}.click()`);
+  await page.eval(`${addTableButton}.click()`);
   await page.waitFor(`${dialog} !== null`);
   const name = `${dialog}.querySelector('input[aria-label="Table name"]')`;
   await saveForm(page);
@@ -164,7 +165,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`${pendingText} === '2 pending changes'`);
   assert.equal(await page.eval(count("new")), 2);
   // A table with a name in another case is a duplicate too.
-  await page.eval(`${buttonIn(erd, "Add table")}.click()`);
+  await page.eval(`${addTableButton}.click()`);
   await page.waitFor(`${dialog} !== null`);
   await typeInto(page, name, "PRODUCTS");
   await saveForm(page);

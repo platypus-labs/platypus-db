@@ -65,6 +65,8 @@ export default async function (page) {
   // The box of a table: resized by its corner grip, the SQL untouched.
   await page.eval(`[...${builder}.querySelectorAll('.builder-source')].find(r => r.textContent === 'customers').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await page.waitFor(`${box} !== null`, 10_000);
+  // The columns arrive after the box: the grip moves down until they are listed.
+  await page.waitFor(`${box}.querySelectorAll('.builder-columns li').length === 6`, 10_000);
   const sqlBefore = await page.eval(builderSql);
   const before = await page.eval(boxSize);
   assert.equal(before.w, 200, "the default box width");

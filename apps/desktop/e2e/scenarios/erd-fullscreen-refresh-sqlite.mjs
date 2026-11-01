@@ -164,7 +164,7 @@ CREATE TABLE notes_alone (id INTEGER PRIMARY KEY);`);
   await page.waitFor(`${modal} === null`);
   await page.sleep(300);
   assert.equal(await page.eval(isFull), true, "Escape in the dialog left the full screen alone");
-  await page.eval(`${buttonIn(visibleErd, "Tables")}.click()`);
+  await page.eval(`${buttonIn(visibleErd, "Add tables")}.click()`);
   await page.waitFor(`document.querySelector('.modal.erd-tables') != null`);
   const picker = await page.eval(`(() => { const m = document.querySelector('.modal.erd-tables'); const r = m.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + 20)?.closest('.modal') === m; })()`);
   assert.equal(picker, true, "the Tables dialog is above the full-screen diagram");

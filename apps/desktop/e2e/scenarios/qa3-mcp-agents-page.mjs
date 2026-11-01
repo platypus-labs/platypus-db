@@ -106,7 +106,7 @@ export default async function (page, { dir }) {
   const codex = await page.eval(`document.querySelector('[data-field="snippet_codex"]').textContent`);
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
   await page.eval(`document.querySelector('[data-copy="snippet_codex"]').click()`);
-  await page.waitFor(`document.querySelector('[data-copy="snippet_codex"]').textContent === 'Copied'`);
+  await page.waitFor(`document.querySelector('.toast')?.textContent === 'Copied'`);
   assert.equal(await page.eval(`window.__copied`), codex, "Copy puts the Codex table on the clipboard");
   const { exe, dataDir } = parseCommands(claude, codex);
   assert.equal(dataDir, dir, "the commands name the app's profile");

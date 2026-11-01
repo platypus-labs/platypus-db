@@ -30,7 +30,7 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(lines), 3, "orders → customers, employees → itself, part_refs → parts");
 
   // A custom diagram: three tables, a note, 125%.
-  await page.eval(`${buttonIn(visibleErd, "Tables")}.click()`);
+  await page.eval(`${buttonIn(visibleErd, "Add tables")}.click()`);
   await page.waitFor(`${picker} !== null`);
   await page.eval(`${buttonIn(picker, "Clear shown")}.click()`);
   for (const t of ["customers", "orders", "employees"]) {
@@ -57,7 +57,7 @@ export default async function (page, { dir }) {
   assert.equal(await page.eval(`${visibleErd}.querySelectorAll('.notice.error').length`), 0);
   assert.ok(await page.eval(`${visibleErd}.querySelector('.erd-note')?.textContent.includes('keep me')`), "the note survives");
   assert.ok(await page.eval(`${visibleErd}.textContent.includes('125%')`), "the zoom survives");
-  await page.eval(`${buttonIn(visibleErd, "Tables")}.click()`);
+  await page.eval(`${buttonIn(visibleErd, "Add tables")}.click()`);
   await page.waitFor(`${picker} !== null`);
   const listed = await page.eval(`[...${picker}.querySelectorAll('label')].map(l => l.textContent)`);
   assert.ok(listed.includes("invoices") && !listed.includes("orders"), JSON.stringify(listed));

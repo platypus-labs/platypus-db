@@ -75,7 +75,7 @@ export default async function (page) {
 
   // An item of the submenu still runs: Generate SELECT opens the statement in an editor.
   await page.eval(`[...document.querySelectorAll('.context-menu.submenu button')].find(b => b.textContent.startsWith('Generate SELECT')).click()`);
-  await page.waitFor(`/SELECT[\\s\\S]*\\bt\\b/.test(${visibleTab}?.querySelector('.cm-content')?.textContent ?? '')`, 15_000);
+  await page.waitFor(`/SELECT[\\s\\S]*FROM t\\b/.test([...(${visibleTab}?.querySelectorAll('.cm-line') ?? [])].map(l => l.textContent).join(' '))`, 15_000);
   await page.waitFor(`document.querySelector('.context-menu') === null`);
 
   // Escape closes a menu with its submenu open.
