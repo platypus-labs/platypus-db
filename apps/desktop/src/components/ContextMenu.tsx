@@ -147,7 +147,10 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
         onClick={() => choose(action)}
         {...props}
       >
-        <span>{t(action.title)}</span>
+        <span>
+          {checked && <Icon name="commit" size={12} className="menu-check" />}
+          {t(action.title)}
+        </span>
         {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
         {reason && (
           <span id={hint} hidden>
