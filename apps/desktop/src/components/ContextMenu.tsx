@@ -50,10 +50,14 @@ function Submenu({ children }: { children: React.ReactNode }) {
     const el = ref.current;
     const anchor = el?.parentElement;
     if (!el || !anchor) return;
-    const { width, height } = el.getBoundingClientRect();
+    // A parent with backdrop-filter is the containing block of a fixed child: its origin is
+    // not the window's, so measure where left/top 0 land and subtract that.
+    el.style.left = "0";
+    el.style.top = "0";
+    const { width, height, left: originX, top: originY } = el.getBoundingClientRect();
     const p = submenuPlacement(anchor.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight });
     const a = anchor.getBoundingClientRect();
-    setPos({ left: a.left + p.left, top: a.top + p.top, ...(p.maxHeight && { maxHeight: p.maxHeight, overflowY: "auto" }) });
+    setPos({ left: a.left + p.left - originX, top: a.top + p.top - originY, ...(p.maxHeight && { maxHeight: p.maxHeight, overflowY: "auto" }) });
   }, []);
   return (
     <div ref={ref} className="context-menu submenu" role="menu" style={pos}>

@@ -67,6 +67,7 @@
 /* Fixed, placed in window coordinates by ContextMenu: not clipped by a scrolling parent menu. */
 .context-menu.submenu {
   position: fixed;
+  width: max-content;
 }
 
 /* A panel under a field, like a menu: the larger editor of a result's SQL field. */
