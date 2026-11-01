@@ -189,6 +189,20 @@ interface Theme {
   focus: string;
 }
 
+/** `text` cut to `max` pixels with an ellipsis, in the context's current font. */
+function ellipsize(ctx: CanvasRenderingContext2D, text: string, max: number): string {
+  // A glyph is never 16 px wide at this size: a few characters surely fit, unmeasured.
+  if (text.length * 16 < max || ctx.measureText(text).width <= max) return text;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + "…").width <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? text.slice(0, lo) + "…" : "";
+}
+
 function readTheme(el: Element): Theme {
   const s = getComputedStyle(el);
   const v = (name: string) => s.getPropertyValue(name).trim();
@@ -540,7 +554,7 @@ export function DataGrid({
         // A hint follows the value, so both start on the left.
         const right = !!column?.numeric && !dec?.hint;
         ctx.textAlign = right ? "right" : "left";
-        ctx.fillText(value, right ? x + cw - PAD : x + PAD, y);
+        ctx.fillText(right || dec?.hint ? value : ellipsize(ctx, value, cw - PAD * 2), right ? x + cw - PAD : x + PAD, y);
         if (dec?.strike) {
           const tw = Math.min(ctx.measureText(value).width, cw - PAD * 2);
           ctx.fillRect(right ? x + cw - PAD - tw : x + PAD, y, tw, 1);

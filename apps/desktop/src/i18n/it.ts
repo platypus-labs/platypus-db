@@ -3121,6 +3121,11 @@ const it: Record<string, string> = {
   "running, not counting this app's own session": "in esecuzione, senza contare la sessione di questa app",
   "last {n} s": "ultimi {n} s",
   "last {n} min": "ultimi {n} min",
+  "Cursors": "Cursori",
+  "Folding": "Riduzione",
+  "Dashboard saved": "Dashboard salvata",
+  "PK primary key · FK foreign key · * NOT NULL": "PK chiave primaria · FK chiave esterna · * NOT NULL",
+  "DDL": "DDL",
 };
 
 export default it;

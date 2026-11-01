@@ -106,6 +106,8 @@ async function showOnMap(page) {
   const r = await page.rect(`#e2e-grid`);
   await page.click(r.x + 4, r.y + 52, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await page.waitFor(`${menuButton("Analyze")} !== undefined`);
+  await page.eval(`${menuButton("Analyze")}.click()`);
   await page.waitFor(`${menuButton("Show on map")} !== undefined`);
   await page.eval(`${menuButton("Show on map")}.click()`);
   await page.waitFor(`${panel} !== null`);

@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  min-width: 220px;
+  min-width: 140px;
 }
 .result-sql-field {
   flex: 1;

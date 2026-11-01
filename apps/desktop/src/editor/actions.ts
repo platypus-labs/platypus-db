@@ -130,6 +130,7 @@ function command(
   order: number,
   run: (view: EditorView) => boolean,
   edits = true,
+  submenu?: string,
 ) {
   registerAction({
     id: `editor.${id}`,
@@ -138,6 +139,7 @@ function command(
     shortcut,
     group,
     order,
+    submenu,
     when: edits ? writable : undefined,
     run: ({ view }) => {
       run(view);
@@ -146,21 +148,26 @@ function command(
   });
 }
 
+// The commands that work on lines, several cursors and folds, in submenus of the menu.
+const LINES = msg("Lines");
+const CURSORS = msg("Cursors");
+const FOLDING = msg("Folding");
+
 command("toggle_comment", msg("Toggle comment"), "Mod+/", "sql", 12, toggleComment);
-command("duplicate_line", msg("Duplicate line"), "Shift+Alt+ArrowDown", "lines", 20, copyLineDown);
-command("duplicate_line_up", msg("Duplicate line above"), "Shift+Alt+ArrowUp", "lines", 21, copyLineUp);
-command("move_line_up", msg("Move line up"), "Alt+ArrowUp", "lines", 22, moveLineUp);
-command("move_line_down", msg("Move line down"), "Alt+ArrowDown", "lines", 23, moveLineDown);
-command("delete_line", msg("Delete line"), "Mod+Shift+K", "lines", 24, deleteLine);
-command("add_cursor_above", msg("Add cursor above"), "Mod+Alt+ArrowUp", "cursors", 30, addCursorAbove, false);
-command("add_cursor_below", msg("Add cursor below"), "Mod+Alt+ArrowDown", "cursors", 31, addCursorBelow, false);
-command("select_next", msg("Select next occurrence"), "Mod+D", "cursors", 32, selectNextOccurrence, false);
-command("select_all_matches", msg("Select all occurrences"), "Mod+Shift+L", "cursors", 33, selectSelectionMatches, false);
+command("duplicate_line", msg("Duplicate line"), "Shift+Alt+ArrowDown", "lines", 20, copyLineDown, true, LINES);
+command("duplicate_line_up", msg("Duplicate line above"), "Shift+Alt+ArrowUp", "lines", 21, copyLineUp, true, LINES);
+command("move_line_up", msg("Move line up"), "Alt+ArrowUp", "lines", 22, moveLineUp, true, LINES);
+command("move_line_down", msg("Move line down"), "Alt+ArrowDown", "lines", 23, moveLineDown, true, LINES);
+command("delete_line", msg("Delete line"), "Mod+Shift+K", "lines", 24, deleteLine, true, LINES);
+command("add_cursor_above", msg("Add cursor above"), "Mod+Alt+ArrowUp", "cursors", 30, addCursorAbove, false, CURSORS);
+command("add_cursor_below", msg("Add cursor below"), "Mod+Alt+ArrowDown", "cursors", 31, addCursorBelow, false, CURSORS);
+command("select_next", msg("Select next occurrence"), "Mod+D", "cursors", 32, selectNextOccurrence, false, CURSORS);
+command("select_all_matches", msg("Select all occurrences"), "Mod+Shift+L", "cursors", 33, selectSelectionMatches, false, CURSORS);
 // Not Ctrl+Alt+[ outside macOS: that is AltGr+[ there, how Italian, German, Spanish and French
 // keyboards type the bracket (shortcutKeys.ts `altGraphText`). Not Ctrl+Alt+U either: plugins
 // use it (the sql-tools example in docs/PLUGINS.md), and a built-in shortcut comes first.
-command("fold_all", msg("Fold all"), isMac ? "Mod+Alt+[" : "Mod+Alt+F", "folding", 40, foldAll, false);
-command("unfold_all", msg("Unfold all"), isMac ? "Mod+Alt+]" : "Mod+Alt+Shift+F", "folding", 41, unfoldAll, false);
+command("fold_all", msg("Fold all"), isMac ? "Mod+Alt+[" : "Mod+Alt+F", "folding", 40, foldAll, false, FOLDING);
+command("unfold_all", msg("Unfold all"), isMac ? "Mod+Alt+]" : "Mod+Alt+Shift+F", "folding", 41, unfoldAll, false, FOLDING);
 
 /** DuckDB has none: its client cannot open a file the session holds. ClickHouse neither:
  *  clickhouse-client speaks the native protocol, not HTTP. */

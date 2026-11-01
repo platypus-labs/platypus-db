@@ -67,7 +67,7 @@ import {
 import { GuardDialog } from "../guards/GuardDialog";
 import { PendingDialog } from "../guards/PendingDialog";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
-import { useResultsBeside } from "../shell/layout";
+import { useResultsBeside, useSidePanelsLeft } from "../shell/layout";
 import { TransactionLogDialog } from "../guards/TransactionLogDialog";
 import { openRestore, snapshotBefore } from "../guards/SnapshotsDialog";
 import { emptyLog, noteEnd, noteStatement } from "../guards/txLog";
@@ -104,7 +104,7 @@ import { rememberScript } from "../scripts/recent";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
 const REFRESH_CHOICES: [number, string][] = [
-  [0, msg("Off")],
+  [0, msg("Auto-refresh off")],
   [2, "2 s"],
   [5, "5 s"],
   [10, "10 s"],
@@ -457,6 +457,8 @@ export function QueryTab({
   // results are beside it (Settings › Appearance › Layout).
   const [editorHeight, setEditorHeight] = useStoredSize("layout.editor_height", 200);
   const [editorWidth, setEditorWidth] = useStoredSize("layout.editor_width", 520);
+  const [panelWidth, setPanelWidth] = useStoredSize("layout.editor_side_panel", 340);
+  const panelsLeft = useSidePanelsLeft();
   const beside = useResultsBeside();
   const main = useRef<HTMLDivElement>(null);
   /** The session's schema after the tab changed it (`SET search_path`); `null` for the
@@ -1770,7 +1772,11 @@ export function QueryTab({
   }, [active, stoppable]);
 
   return (
-    <div className="query-tab" ref={root} style={{ display: active ? "flex" : "none" }}>
+    <div
+      className="query-tab"
+      ref={root}
+      style={{ display: active ? "flex" : "none", "--editor-panel-width": `${panelWidth}px` } as React.CSSProperties}
+    >
       <div
         className="query-main"
         ref={main}
@@ -2230,6 +2236,20 @@ export function QueryTab({
           </span>
         </div>
       </div>
+      {panel && (
+        <PanelResizer
+          storeKey="layout.editor_side_panel"
+          size={panelWidth}
+          fallback={340}
+          min={220}
+          max={() => (root.current?.clientWidth ?? window.innerWidth) - 360}
+          direction="column"
+          after={!panelsLeft}
+          onDrag={(w) => root.current?.style.setProperty("--editor-panel-width", `${w}px`)}
+          onResize={setPanelWidth}
+          label={t("Resize the side panels")}
+        />
+      )}
       {panel === "history" && (
         <HistoryPanel
           connectionId={connection.id}

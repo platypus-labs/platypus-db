@@ -26,6 +26,7 @@ import { openScriptFile, scriptFile } from "../scripts/scripts";
 import { SqlActionDialog } from "./SqlActionDialog";
 import { t, msg } from "../i18n";
 import { Busy, LoadingState } from "../ui/State";
+import { copyText } from "../ui/copy";
 
 export type ObjectSection =
   | "properties"
@@ -399,8 +400,8 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             rows={d.indexes.map((i) => [
               i.name,
               i.columns.join(", "),
-              i.unique ? t("yes") : "",
-              i.primary ? t("yes") : "",
+              t(i.unique ? "yes" : "no"),
+              t(i.primary ? "yes" : "no"),
               i.detail ?? (i.partial ? t("partial") : ""),
             ])}
           />
@@ -454,9 +455,16 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
           (data.ddl === null ? (
             <div className="notice muted">{t("This driver cannot show the DDL of objects.")}</div>
           ) : (
-            <div className="object-ddl">
-              <SqlEditor key={data.ddl} initialValue={data.ddl} driver={connection.driver} readOnly />
-            </div>
+            <>
+              <div className="object-ddl-bar">
+                <button type="button" onClick={() => void copyText(data.ddl!, t("DDL"))}>
+                  <Icon name="copy" size={14} /> {t("Copy")}
+                </button>
+              </div>
+              <div className="object-ddl">
+                <SqlEditor key={data.ddl} initialValue={data.ddl} driver={connection.driver} readOnly />
+              </div>
+            </>
           ))}
       </div>
     </div>

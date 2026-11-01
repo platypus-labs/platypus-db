@@ -119,9 +119,15 @@ export function ResultPanel(props: PanelProps) {
   );
 }
 
+/** The error code before the message; a bare number (SQLite's `1`) is named, not left as "1:". */
+function codePrefix(e: CommandError): string {
+  if (!e.code) return "";
+  return /^\d+$/.test(e.code) ? `${t("Error")} ${e.code}: ` : `${e.code}: `;
+}
+
 /** The error as plain text, for the clipboard. */
 function errorText(e: CommandError): string {
-  return [`${e.code ? `${e.code}: ` : ""}${e.message}`, e.detail, e.hint].filter(Boolean).join("\n");
+  return [`${codePrefix(e)}${e.message}`, e.detail, e.hint].filter(Boolean).join("\n");
 }
 
 function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart, toolbar }: PanelProps) {
@@ -147,7 +153,7 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
     return (
       <ErrorState
         className="result-error"
-        title={`${e.code ? `${e.code}: ` : ""}${e.message}`}
+        title={`${codePrefix(e)}${e.message}`}
         actions={
           <button type="button" onClick={() => void copyText(errorText(e))}>
             <Icon name="copy" size={14} /> {t("Copy error")}

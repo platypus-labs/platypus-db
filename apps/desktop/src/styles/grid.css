@@ -289,7 +289,8 @@
   border: 2px solid var(--accent);
   border-left-width: 1px;
   border-radius: 0;
-  background: var(--hover);
+  /* Opaque: the neighbouring column must not show through the button. */
+  background: linear-gradient(var(--hover), var(--hover)), var(--bg-input);
   color: var(--fg);
   line-height: 1;
 }
@@ -435,6 +436,8 @@
   max-width: none;
   padding: 0;
   pointer-events: none;
+  /* Covers the column lines of the grid under the header. */
+  background: var(--bg);
 }
 
 /* Grid: totals, record view, grouping and references panels, columns dialog */

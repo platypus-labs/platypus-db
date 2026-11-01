@@ -1,6 +1,7 @@
 // Search, the value panel, the record view, counts by value, column metadata, calculations,
 // the map and comparing two rows, on the grid's shortcuts and menu.
 import { registerAction } from "../../actions";
+import { msg } from "../../i18n";
 
 registerAction({
   id: "grid.find",
@@ -35,10 +36,14 @@ registerAction({
   run: ({ source }) => source!.features!.toggleRecordView(),
 });
 
+// Analysis of the shown rows, in a submenu: the first level keeps the main ways to look at them.
+const ANALYZE = msg("Analyze");
+
 registerAction({
   id: "grid.group_by",
   scope: "grid",
   title: "Count by value",
+  submenu: ANALYZE,
   group: "view",
   order: 63,
   when: ({ source, grid }) => source?.features !== undefined && grid.selection() !== null,
@@ -49,6 +54,7 @@ registerAction({
   id: "grid.metadata",
   scope: "grid",
   title: "Column metadata",
+  submenu: ANALYZE,
   group: "view",
   order: 64,
   when: ({ source }) => source?.features !== undefined,
@@ -59,6 +65,7 @@ registerAction({
   id: "grid.calc",
   scope: "grid",
   title: "Calculate",
+  submenu: ANALYZE,
   group: "view",
   order: 65,
   when: ({ source }) => source?.features !== undefined,
@@ -69,6 +76,7 @@ registerAction({
   id: "grid.map",
   scope: "grid",
   title: "Show on map",
+  submenu: ANALYZE,
   group: "view",
   order: 66,
   when: ({ source }) => source?.features !== undefined,
@@ -79,6 +87,7 @@ registerAction({
   id: "grid.conditional_formatting",
   scope: "grid",
   title: "Conditional formatting…",
+  submenu: ANALYZE,
   group: "view",
   order: 67,
   when: ({ source, grid }) => source?.features !== undefined && grid.columns().length > 0,
@@ -92,6 +101,7 @@ registerAction({
   id: "grid.compare_rows",
   scope: "grid",
   title: "Compare the two rows",
+  submenu: ANALYZE,
   group: "view",
   order: 67,
   when: ({ source, grid }) => {

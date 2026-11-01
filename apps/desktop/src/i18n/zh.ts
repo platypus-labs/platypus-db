@@ -3121,6 +3121,11 @@ const zh: Record<string, string> = {
   "running, not counting this app's own session": "运行中，不含本应用自己的会话",
   "last {n} s": "最近 {n} 秒",
   "last {n} min": "最近 {n} 分钟",
+  "Cursors": "光标",
+  "Folding": "折叠",
+  "Dashboard saved": "仪表板已保存",
+  "PK primary key · FK foreign key · * NOT NULL": "PK 主键 · FK 外键 · * NOT NULL",
+  "DDL": "DDL",
 };
 
 export default zh;

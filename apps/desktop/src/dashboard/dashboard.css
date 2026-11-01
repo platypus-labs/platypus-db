@@ -22,6 +22,29 @@
   color: var(--fg-strong);
 }
 
+/* The name is a title even before one is typed, and a pencil says it can be changed. */
+.dashboard-title::placeholder {
+  color: var(--fg-strong);
+  opacity: 0.7;
+}
+
+.dashboard-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.dashboard-title-row > svg {
+  flex: none;
+  color: var(--fg-muted);
+  opacity: 0;
+}
+
+.dashboard-title-row:hover > svg,
+.dashboard-title-row:focus-within > svg {
+  opacity: 1;
+}
+
 .dashboard-title:hover {
   border-color: var(--border);
 }

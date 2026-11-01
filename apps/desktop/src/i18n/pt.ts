@@ -3121,6 +3121,11 @@ const pt: Record<string, string> = {
   "running, not counting this app's own session": "em execução, sem contar a sessão desta app",
   "last {n} s": "últimos {n} s",
   "last {n} min": "últimos {n} min",
+  "Cursors": "Cursores",
+  "Folding": "Recolhimento",
+  "Dashboard saved": "Painel guardado",
+  "PK primary key · FK foreign key · * NOT NULL": "PK chave primária · FK chave estrangeira · * NOT NULL",
+  "DDL": "DDL",
 };
 
 export default pt;

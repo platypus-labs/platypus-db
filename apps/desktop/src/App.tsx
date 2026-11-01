@@ -36,7 +36,7 @@ import "./plugins/actions";
 import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
-import type { IconName } from "./ui/Icon";
+import { objectIcon, type IconName } from "./ui/Icon";
 import { ask, choose, isAsking } from "./ui/ask";
 import { withInitApproval } from "./ui/initApproval";
 import { Toaster } from "./ui/Toaster";
@@ -1368,7 +1368,7 @@ export function App() {
 
 /** A tab's icon: what it shows. */
 function tabIcon(t: TabModel): IconName {
-  if (t.kind === "object") return "object";
+  if (t.kind === "object") return objectIcon(t.objectKind);
   if (t.kind === "builder") return "builder";
   if (t.kind === "table-editor") return "edit";
   if (t.kind === "erd" || t.kind === "schema-history") return "schema";
