@@ -3001,7 +3001,6 @@ const fr: Record<string, string> = {
   "Which buttons the editor toolbar shows.": "Les boutons affichés dans la barre de l'éditeur.",
   "When slow queries are marked.": "Quand les requêtes lentes sont signalées.",
   "How open tabs are arranged.": "La disposition des onglets ouverts.",
-  "Import, export and choose the color themes.": "Importez, exportez et choisissez les thèmes de couleur.",
   "Protects saved passwords with one password of yours.": "Protège les mots de passe enregistrés avec un mot de passe à vous.",
   "Keep your settings and connections in step across computers.": "Gardez vos réglages et connexions synchronisés entre ordinateurs.",
   "Connect assistants and tools that work with your databases.": "Connectez les assistants et outils qui travaillent avec vos bases.",
@@ -3121,6 +3120,15 @@ const fr: Record<string, string> = {
   "running, not counting this app's own session": "en cours, sans compter la session de cette application",
   "last {n} s": "dernières {n} s",
   "last {n} min": "dernières {n} min",
+  "Import and export the color themes.": "Importez et exportez les thèmes de couleur.",
+  "Between {min} and {max}": "Entre {min} et {max}",
+  "At least {min}": "Au moins {min}",
+  "At most {max}": "Au plus {max}",
+  "Not a valid number": "Nombre non valide",
+  "Different from the default": "Différent de la valeur par défaut",
+  "Click a shortcut, then press the new keys. Backspace removes it, Esc cancels.": "Cliquez sur un raccourci, puis appuyez sur les nouvelles touches. Retour arrière le supprime, Échap annule.",
+  "Rows of the SELECT that the table menu generates.": "Lignes du SELECT généré par le menu de la table.",
+  "Sharing…": "Partage…",
 };
 
 export default fr;

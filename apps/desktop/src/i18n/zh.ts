@@ -3001,7 +3001,6 @@ const zh: Record<string, string> = {
   "Which buttons the editor toolbar shows.": "编辑器工具栏显示哪些按钮。",
   "When slow queries are marked.": "何时标记慢查询。",
   "How open tabs are arranged.": "已打开标签页的排列方式。",
-  "Import, export and choose the color themes.": "导入、导出并选择配色主题。",
   "Protects saved passwords with one password of yours.": "用你自己的一个密码保护已保存的密码。",
   "Keep your settings and connections in step across computers.": "让设置和连接在多台电脑之间保持同步。",
   "Connect assistants and tools that work with your databases.": "连接可使用你的数据库的助手和工具。",
@@ -3121,6 +3120,15 @@ const zh: Record<string, string> = {
   "running, not counting this app's own session": "运行中，不含本应用自己的会话",
   "last {n} s": "最近 {n} 秒",
   "last {n} min": "最近 {n} 分钟",
+  "Import and export the color themes.": "导入和导出配色主题。",
+  "Between {min} and {max}": "介于 {min} 和 {max} 之间",
+  "At least {min}": "至少 {min}",
+  "At most {max}": "至多 {max}",
+  "Not a valid number": "不是有效数字",
+  "Different from the default": "与默认值不同",
+  "Click a shortcut, then press the new keys. Backspace removes it, Esc cancels.": "点击快捷键，然后按下新的按键。Backspace 删除，Esc 取消。",
+  "Rows of the SELECT that the table menu generates.": "表菜单生成的 SELECT 的行数。",
+  "Sharing…": "正在共享…",
 };
 
 export default zh;

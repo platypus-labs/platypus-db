@@ -553,6 +553,31 @@
   width: 90px;
 }
 
+/* Text fields hold patterns and formats: wide enough not to cut them. */
+.setting input:not([type]) {
+  width: 340px;
+  max-width: 100%;
+}
+
+.setting input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+/* A page without sub-tabs: the first setting does not touch the heading. */
+.settings-head + .setting {
+  margin-top: var(--space-8);
+}
+
+.sync-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.sync-panel > .setting {
+  padding: var(--space-8) 0;
+}
+
 button.primary.danger {
   background: var(--error);
   border-color: var(--error);
@@ -992,8 +1017,9 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .modal.settings {
-  width: min(960px, calc(100vw - 32px));
-  height: min(720px, calc(100vh - 96px));
+  /* Grows with big windows, so the whole page list fits without scrolling. */
+  width: min(clamp(960px, 70vw, 1280px), calc(100vw - 32px));
+  height: min(clamp(720px, 75vh, 960px), calc(100vh - 96px));
   overflow: hidden;
 }
 
@@ -1143,6 +1169,10 @@ button.primary.danger:hover:not(:disabled) {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-sm);
+}
+
+.shortcuts td:nth-child(2) {
+  text-align: right;
 }
 
 .shortcuts td {
@@ -1774,7 +1804,7 @@ button.primary.danger:hover:not(:disabled) {
 
 .agent-activity-filters input[type="search"] {
   flex: 1;
-  min-width: 160px;
+  min-width: 300px;
 }
 
 .agent-calls tr {

@@ -7,6 +7,12 @@ export interface NumberBounds {
   step?: number;
 }
 
+/** What a rejected number should tell: the range it must be in, only one bound, or just that it is no number. */
+export function numberRule({ min, max }: NumberBounds): "between" | "min" | "max" | "number" {
+  if (min !== undefined && max !== undefined) return "between";
+  return min !== undefined ? "min" : max !== undefined ? "max" : "number";
+}
+
 /** The number `text` holds when the setting accepts it; `null` otherwise. */
 export function settingNumber(text: string, { min, max, step }: NumberBounds): number | null {
   if (text.trim() === "") return null;
