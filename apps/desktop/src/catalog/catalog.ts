@@ -83,6 +83,12 @@ function load(connectionId: string): Promise<void> {
   return p;
 }
 
+/** Whether any loaded object of any connection carries `tag` (lowercase). */
+export function isKnownTag(tag: string): boolean {
+  for (const entries of loaded.values()) for (const e of entries.values()) if (e.tags.includes(tag)) return true;
+  return false;
+}
+
 /** The note and tags of `key`; `undefined` until loaded or when there are none. */
 export function catalogEntry(connectionId: string, key: CatalogKey): CatalogEntry | undefined {
   const entries = loaded.get(connectionId);
