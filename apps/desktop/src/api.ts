@@ -1281,6 +1281,9 @@ export interface ObjectMeta {
   rows: number | null;
   /** Bytes on disk of a table with its indexes. */
   size: number | null;
+  /** A column that identifies the rows but that `SELECT *` leaves out (CockroachDB's hidden
+   *  `rowid`); the data viewer selects it so the rows can be edited. */
+  hidden_key?: string | null;
 }
 
 export interface MetadataMatch {

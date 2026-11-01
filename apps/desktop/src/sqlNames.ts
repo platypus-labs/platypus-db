@@ -70,14 +70,16 @@ export interface Sort {
 /** The data viewer's first query for a table (already quoted) and an optional `WHERE`
  *  condition. On MongoDB the table is a collection reference and the filter a query document;
  *  on Redis the table is a key type and the filter a pattern of the keys (`user:*`); on
- *  Elasticsearch the table is an index and the filter a query string.
+ *  Elasticsearch the table is an index and the filter a query string. `hiddenKey` is a column
+ *  `SELECT *` leaves out that the rows are edited by (CockroachDB's `rowid`): it is selected too.
  *  Once open, the editor's text is the query: `api.sqlOrderBy` sorts it. */
-export function viewerSql(driver: DriverKind, table: string, filter = ""): string {
+export function viewerSql(driver: DriverKind, table: string, filter = "", hiddenKey: string | null = null): string {
   if (driver === "mongo") return `${table}.find(${filter.trim() || "{}"})`;
   if (driver === "redis") return `BROWSE ${table}${filter.trim() ? ` MATCH ${redisArg(filter.trim())}` : ""}`;
   // The filter is a query string, `status:active AND price:[10 TO 20]`.
   if (driver === "elasticsearch") return searchRequest(table, null, filter);
-  return `SELECT *\nFROM ${table}${filter.trim() ? `\nWHERE ${filter.trim()}` : ""}`;
+  const list = hiddenKey ? `*, ${quoteIdent(hiddenKey, driver)}` : "*";
+  return `SELECT ${list}\nFROM ${table}${filter.trim() ? `\nWHERE ${filter.trim()}` : ""}`;
 }
 
 /** A table or column dragged from the navigator: the quoted name and, for a table, a

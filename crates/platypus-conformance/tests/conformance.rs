@@ -7305,6 +7305,49 @@ async fn qa_fixdbs_cockroach_strings_and_arrays() {
     }
 }
 
+/// CockroachDB's hidden `rowid` identifies the rows of a table without a primary key.
+#[tokio::test]
+async fn cockroach_hidden_rowid_is_the_row_key() {
+    let _serial = SERIAL.lock().await;
+    let Some(crdb) = qa_fixdbs_pg("postgres://root@localhost:56257/platypus?sslmode=disable").await
+    else {
+        return;
+    };
+    for sql in [
+        "DROP SCHEMA IF EXISTS qa_rowid CASCADE",
+        "CREATE SCHEMA qa_rowid",
+        "CREATE TABLE qa_rowid.loose (name STRING)",
+        "CREATE TABLE qa_rowid.keyed (id INT8 PRIMARY KEY, name STRING)",
+        "INSERT INTO qa_rowid.loose VALUES ('a'), ('b')",
+    ] {
+        run(&*crdb, sql)
+            .await
+            .unwrap_or_else(|e| panic!("{sql}: {e}"));
+    }
+    let objects = crdb.objects("qa_rowid").await.unwrap();
+    let hidden = |name: &str| {
+        objects
+            .iter()
+            .find(|o| o.name == name)
+            .unwrap_or_else(|| panic!("{name} not listed"))
+            .hidden_key
+            .clone()
+    };
+    assert_eq!(hidden("loose").as_deref(), Some("rowid"));
+    assert_eq!(hidden("keyed"), None);
+    // The viewer's query selects the key, and its values tell the rows apart.
+    let rows =
+        platypus_core::query_text(&*crdb, "SELECT *, rowid FROM qa_rowid.loose ORDER BY name")
+            .await
+            .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_ne!(rows[0][1], rows[1][1]);
+    let details = crdb.table_details("qa_rowid", "loose").await.unwrap();
+    let key = details.columns.iter().find(|c| c.name == "rowid").unwrap();
+    assert!(key.primary_key, "{key:?}");
+    run(&*crdb, "DROP SCHEMA qa_rowid CASCADE").await.unwrap();
+}
+
 /// TimescaleDB's schemas, routines and hypertables.
 #[tokio::test]
 async fn qa_fixdbs_timescale_catalogs() {
