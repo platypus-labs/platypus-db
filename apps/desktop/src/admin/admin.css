@@ -92,6 +92,12 @@
   background: var(--error-bg);
 }
 
+.admin-badge.done {
+  color: var(--fg-muted);
+  background: transparent;
+}
+
+.admin-badge.done .admin-dot,
 .admin-badge.running .admin-dot,
 .admin-filter.running .admin-dot {
   background: var(--ok);
@@ -119,6 +125,8 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
+  /* Room for the horizontal scrollbar under the last row. */
+  padding-bottom: var(--space-16);
 }
 
 .admin-table {
@@ -170,7 +178,7 @@
 
 .admin-details {
   flex: none;
-  width: min(380px, 40%);
+  width: min(var(--admin-details-w, 380px), 60%);
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -182,7 +190,9 @@
   overflow: auto;
 }
 
+/* Nothing selected: a narrow panel, the list keeps the room. */
 .admin-details.empty {
+  width: min(var(--admin-details-w, 380px), 220px);
   justify-content: center;
   text-align: center;
 }
@@ -483,7 +493,7 @@
 
 .dash-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--space-10);
 }
 

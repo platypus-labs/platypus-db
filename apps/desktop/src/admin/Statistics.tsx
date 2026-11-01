@@ -18,6 +18,7 @@ import {
   tableOf,
 } from "./statisticsOrder";
 import { EmptyState } from "../ui/State";
+import { AdminSplit } from "./AdminSplit";
 
 const ORDERS: [QueryOrder, string][] = [
   ["total", msg("Total time")],
@@ -88,7 +89,8 @@ export function TopQueries({
           onChange={(e) => setFilter(e.target.value)}
         />
       </div>
-      <div className="admin-split">
+      <AdminSplit
+        list={
         <div className="admin-list">
           <table className="meta-table admin-table admin-statements">
             <thead>
@@ -122,8 +124,9 @@ export function TopQueries({
           </table>
           {shown.length === 0 && <EmptyState compact className="admin-empty" title={t("No statements match.")} />}
         </div>
-        <QueryDetails query={chosen ?? null} onOpen={onOpen} onExplain={onExplain} />
-      </div>
+        }
+        details={<QueryDetails query={chosen ?? null} onOpen={onOpen} onExplain={onExplain} />}
+      />
     </>
   );
 }
@@ -190,7 +193,18 @@ type Column = "size" | "rows" | "dead" | "free" | "full" | "index" | "vacuum" | 
 
 const COLUMNS: [Column, string, (o: ObjectStatistics) => ReactNode, (o: ObjectStatistics) => unknown][] = [
   ["size", msg("Size"), (o) => size(o.size_bytes), (o) => o.size_bytes],
-  ["rows", msg("Rows"), (o) => count(o.rows), (o) => o.rows],
+  [
+    "rows",
+    msg("Rows"),
+    // An estimate of 0 for a table that takes space: statistics not gathered yet.
+    (o) =>
+      o.kind === "table" && o.rows === 0 && (o.size_bytes ?? 0) > 0 ? (
+        <span title={t("Statistics not updated: run ANALYZE")}>—</span>
+      ) : (
+        count(o.rows)
+      ),
+    (o) => o.rows,
+  ],
   ["dead", msg("Dead rows"), (o) => count(o.dead_rows), (o) => o.dead_rows],
   ["free", msg("Unused space"), (o) => size(o.free_bytes), (o) => o.free_bytes],
   ["full", msg("Full scans"), (o) => count(o.full_scans), (o) => o.full_scans],
@@ -238,7 +252,8 @@ export function ObjectsView({
           onChange={(e) => setFilter(e.target.value)}
         />
       </div>
-      <div className="admin-split">
+      <AdminSplit
+        list={
         <div className="admin-list">
           <table className="meta-table admin-table admin-objects">
             <thead>
@@ -285,15 +300,18 @@ export function ObjectsView({
           </table>
           {shown.length === 0 && <EmptyState compact className="admin-empty" title={t("No tables or indexes match.")} />}
         </div>
-        <ObjectDetails
-          key={chosen ? keyOf(chosen) : ""}
-          object={chosen}
-          known={known}
-          maintenance={maintenance}
-          readOnly={readOnly}
-          onMaintain={onMaintain}
-        />
-      </div>
+        }
+        details={
+          <ObjectDetails
+            key={chosen ? keyOf(chosen) : ""}
+            object={chosen}
+            known={known}
+            maintenance={maintenance}
+            readOnly={readOnly}
+            onMaintain={onMaintain}
+          />
+        }
+      />
     </>
   );
 }

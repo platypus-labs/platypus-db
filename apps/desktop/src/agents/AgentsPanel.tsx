@@ -14,6 +14,7 @@ import { AGENT_ACCESS, agentAccessLabel, effectiveAgentAccess, isCapped } from "
 import { AgentActivity } from "./AgentActivity";
 import { AgentBridge } from "./AgentBridge";
 import { AgentClients } from "./AgentClients";
+import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 import { CopyBlock } from "./CopyBlock";
 import { msg, t, tNodes } from "../i18n";
 
@@ -99,6 +100,20 @@ function AgentSecurity({
   const chosen = connections.find((c) => c.id === selectedId) ?? connections[0];
   const chosenAccess = chosen ? effectiveAgentAccess(chosen) : "off";
   const chosenBlocker = chosen && chosenAccess !== "off" ? blockers[chosen.id] : undefined;
+  const [detailWidth, setDetailWidth] = useStoredSize("layout.agents.detail", 260);
+  // Enter or Space chooses a row, the arrows move to the next and the previous.
+  const rowKeys = (e: React.KeyboardEvent<HTMLTableRowElement>, id: string) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setSelectedId(id);
+      return;
+    }
+    const to = e.key === "ArrowDown" ? e.currentTarget.nextElementSibling : e.key === "ArrowUp" ? e.currentTarget.previousElementSibling : null;
+    if (!(to instanceof HTMLElement) || !to.dataset.id) return;
+    e.preventDefault();
+    setSelectedId(to.dataset.id);
+    to.focus();
+  };
   return (
     <>
       <div className="agents-split">
@@ -117,8 +132,12 @@ function AgentSecurity({
                 <tr
                   key={c.id}
                   data-connection={c.name}
+                  data-id={c.id}
                   className={c.id === chosen?.id ? "selected" : undefined}
+                  tabIndex={0}
+                  aria-selected={c.id === chosen?.id}
                   onClick={() => setSelectedId(c.id)}
+                  onKeyDown={(e) => rowKeys(e, c.id)}
                 >
                   <td>
                     <DriverIcon driver={c.driver} />
@@ -148,7 +167,20 @@ function AgentSecurity({
           </tbody>
         </table>
         {chosen && (
-          <aside className="agent-detail" aria-label={t("Agent access")}>
+          <PanelResizer
+            storeKey="layout.agents.detail"
+            size={detailWidth}
+            fallback={260}
+            min={200}
+            max={() => 560}
+            direction="column"
+            after
+            onResize={setDetailWidth}
+            label={t("Resize the details")}
+          />
+        )}
+        {chosen && (
+          <aside className="agent-detail" aria-label={t("Agent access")} style={{ width: detailWidth }}>
             <header>
               <DriverIcon driver={chosen.driver} />
               <strong>{chosen.name}</strong>
@@ -200,12 +232,15 @@ export function AgentsPanel() {
   // Every page stays in the document, the inactive ones hidden.
   return (
     <div className="agents-panel">
-      <p className="muted small">
+      <details className="agents-intro muted small">
+        <summary>{t("Agents use your saved connections through PlatypusDB's MCP server. How it works")}</summary>
+        <p>
         {tNodes(
           "Agents use your saved connections through PlatypusDB's MCP server: the app itself, started with {mcp}. They start it by themselves, without a window: PlatypusDB need not be open, unless agents must ask before their changes (Settings › Safety). Passwords never reach them, and their queries go into the history with the agent's name.",
           { mcp: <code>--mcp</code> },
         )}
-      </p>
+        </p>
+      </details>
       {error && <div className="notice error small">{error}</div>}
       {vault && (
         <div className="notice small" data-notice="vault">
@@ -227,7 +262,7 @@ export function AgentsPanel() {
         <AgentBridge />
       </div>
       <div className="dialog-page" data-agents-panel="activity" hidden={page !== "activity"}>
-        {page === "activity" && <AgentActivity />}
+        {page === "activity" && <AgentActivity onSetup={() => setPage("setup")} />}
       </div>
       <div className="dialog-page" data-agents-panel="security" hidden={page !== "security"}>
         <AgentSecurity

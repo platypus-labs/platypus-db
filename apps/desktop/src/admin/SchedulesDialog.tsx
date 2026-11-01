@@ -21,7 +21,7 @@ import { ask } from "../ui/ask";
 import { workbench } from "../workbench";
 import { createsTables, exportsFiles, profileConnections, profilesOf } from "../transfer/profiles";
 import { cleaned, newProfileSchedule, newSchedule, newSnapshotSchedule, repeatOf, sortSchedules, taskKinds, taskOf, taskOnConnection, writesFiles } from "./schedules";
-import { EmptyState } from "../ui/State";
+import { EmptyState, LoadingState } from "../ui/State";
 
 const KINDS: Record<ScheduleTask["kind"], string> = {
   script: msg("Run a SQL script"),
@@ -68,7 +68,7 @@ function describeWhen(s: Schedule): string {
 /** A run's outcome: done or failed, then `children`. */
 function RunBadge({ ok, title, children }: { ok: boolean; title?: string; children?: ReactNode }) {
   return (
-    <span className={`admin-badge ${ok ? "running" : "waiting"}`} title={title}>
+    <span className={`admin-badge ${ok ? "done" : "waiting"}`} title={title}>
       <span className="admin-dot" />
       {ok ? t("done") : t("failed")}
       {children}
@@ -97,11 +97,13 @@ export function SchedulesDialog({
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
+  /** Tasks launched by hand whose "running" state has not arrived yet. */
+  const [started, setStarted] = useState<Set<string>>(new Set());
   const connections = workbench().connections();
   const nameOf = (id: string) => connections.find((c) => c.id === id)?.name ?? t("a deleted connection");
 
   useEffect(() => {
-    const load = () => api.listSchedules().then(setSchedules, (e) => setError(toCommandError(e).message));
+    const load = () => api.listSchedules().then((all) => { setStarted(new Set()); setSchedules(all); }, (e) => setError(toCommandError(e).message));
     void load();
     const off = listen("schedules-changed", () => void load());
     if (connectionId && snapshot) {
@@ -156,7 +158,19 @@ export function SchedulesDialog({
               {t("They run while PlatypusDB is open; a time missed while it was closed runs at the next start.")}
             </p>
             {error && <div className="notice error small">{error}</div>}
-            {schedules && schedules.length === 0 && <EmptyState compact className="schedules-empty" title={t("No scheduled tasks yet.")} />}
+            {schedules === null && !error && <LoadingState compact title={t("Reading the tasks…")} />}
+            {schedules && schedules.length === 0 && (
+              <EmptyState
+                compact
+                className="schedules-empty"
+                title={t("No scheduled tasks yet.")}
+                actions={
+                  <button type="button" className="primary" onClick={() => setEditing(newSchedule(connections[0]?.id ?? "", crypto.randomUUID()))} disabled={connections.length === 0}>
+                    {t("New task…")}
+                  </button>
+                }
+              />
+            )}
             {schedules && schedules.length > 0 && (
               <div className="schedules-list">
                 <table className="meta-table admin-table">
@@ -173,12 +187,18 @@ export function SchedulesDialog({
                     {sortSchedules(schedules).map((s) => (
                       <ScheduleRow
                         key={s.id}
-                        schedule={s}
+                        schedule={s.running || started.has(s.id) ? { ...s, running: true } : s}
                         connection={nameOf(s.connection_id)}
                         opened={opened === s.id}
                         onOpen={() => setOpened(opened === s.id ? null : s.id)}
                         onToggle={(on) => void toggle(s, on)}
-                        onRun={() => void api.runScheduleNow(s.id).catch((e) => setError(toCommandError(e).message))}
+                        onRun={() => {
+                          setStarted((old) => new Set(old).add(s.id));
+                          api.runScheduleNow(s.id).catch((e) => {
+                            setStarted(new Set());
+                            setError(toCommandError(e).message);
+                          });
+                        }}
                         onEdit={() => setEditing(strip(s))}
                         onDelete={() => void remove(s)}
                       />

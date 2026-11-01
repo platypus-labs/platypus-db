@@ -6,6 +6,7 @@ import type { ServerParameter } from "../api";
 import { formatCount, msg, plural, t } from "../i18n";
 import { changedCount, shownParameters, valueText } from "./parametersModel";
 import { EmptyState } from "../ui/State";
+import { AdminSplit } from "./AdminSplit";
 
 /** Rows drawn at once: ClickHouse has thousands of settings. */
 const LIMIT = 500;
@@ -57,7 +58,8 @@ export function Parameters({
           onChange={(e) => setFilter(e.target.value)}
         />
       </div>
-      <div className="admin-split">
+      <AdminSplit
+        list={
         <div className="admin-list">
           <table className="meta-table admin-table admin-parameters">
             <thead>
@@ -104,8 +106,9 @@ export function Parameters({
           )}
           {matching.length === 0 && <EmptyState compact className="admin-empty" title={t("No parameters match.")} />}
         </div>
-        <ParameterDetails parameter={chosen} onOpen={onOpen} />
-      </div>
+        }
+        details={<ParameterDetails parameter={chosen} onOpen={onOpen} />}
+      />
     </>
   );
 }

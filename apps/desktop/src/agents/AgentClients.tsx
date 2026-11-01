@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, toCommandError, type AgentClient, type AgentInstallState, type AgentSetup } from "../api";
 import { ask } from "../ui/ask";
+import { toast } from "../ui/toast";
 import { msg, t, tNodes } from "../i18n";
 import { Icon } from "../ui/Icon";
 import { ClientLogo } from "./clientLogos";
@@ -53,6 +54,14 @@ export function AgentClients() {
   const [notice, setNotice] = useState<string | null>(null);
   const [setup, setSetup] = useState<AgentSetup | null>(null);
   const [setupFailed, setSetupFailed] = useState(false);
+  /** The client being installed: its button waits. */
+  const [installing, setInstalling] = useState<string | null>(null);
+  const detail = useRef<HTMLElement>(null);
+  const choose = (id: string) => {
+    setChosen(id);
+    // The detail is under the grid: bring it into view once it shows the new client.
+    requestAnimationFrame(() => detail.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }));
+  };
 
   const load = () =>
     api.agentClients().then(
@@ -75,9 +84,11 @@ export function AgentClients() {
         })
       : t("Create {path} with the PlatypusDB server?", { path: client.path });
     if (!(await ask(message, { confirm: t("Install") }))) return;
+    setInstalling(client.id);
     try {
       const done = await api.installAgentClient(client.id);
       setError(null);
+      toast(t("PlatypusDB is in {client}: restart it to load the server.", { client: client.name }));
       setNotice(
         done.backup
           ? t("PlatypusDB is in {client}: restart it to load the server. Backup: {backup}", {
@@ -90,6 +101,9 @@ export function AgentClients() {
     } catch (e) {
       setNotice(null);
       setError(toCommandError(e).message);
+      toast(toCommandError(e).message, "error");
+    } finally {
+      setInstalling(null);
     }
   };
 
@@ -115,11 +129,11 @@ export function AgentClients() {
               role="button"
               tabIndex={0}
               aria-pressed={c.id === chosen}
-              onClick={() => setChosen(c.id)}
+              onClick={() => choose(c.id)}
               onKeyDown={(e) => {
                 if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
                   e.preventDefault();
-                  setChosen(c.id);
+                  choose(c.id);
                 }
               }}
             >
@@ -134,14 +148,14 @@ export function AgentClients() {
                 <button
                   type="button"
                   data-install={c.id}
-                  disabled={done || c.state === "unreadable"}
+                  disabled={done || c.state === "unreadable" || installing !== null}
                   onClick={(e) => {
                     e.stopPropagation();
                     void install(c);
                   }}
                 >
                   {done && <Icon name="commit" size={12} />}
-                  {done ? t("Done") : c.state === "different" ? t("Update") : t("Install")}
+                  {installing === c.id ? t("Installing…") : done ? t("Done") : c.state === "different" ? t("Update") : t("Install")}
                 </button>
               </div>
             </div>
@@ -149,7 +163,7 @@ export function AgentClients() {
         })}
       </div>
       {shown && manual && (
-        <section className="client-detail" data-detail={shown.id}>
+        <section className="client-detail" data-detail={shown.id} ref={detail}>
           <header>
             <ClientLogo id={shown.id} size={28} />
             <strong>{shown.name}</strong>

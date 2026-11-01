@@ -268,6 +268,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
                   : undefined
               }
               headerVersion={notesVersion}
+              headerMasked={mask ? (col) => !!masked[col] : undefined}
               headerMarked={notes ? (col) => { const e = noteOf(col); return !!(e?.note || e?.tags.length); } : undefined}
               onHeaderHover={(hover) => profile.onHeaderHover(hover && hover.col < columns.length ? hover : null)}
               rowCount={rowCount}

@@ -72,6 +72,7 @@ export default async function (page, { dir }) {
 
   await runNow(page, "Bump");
   assert.match(await page.eval(last("Bump")), /^done/);
+  assert.equal(await page.eval(`${row("Bump")}.querySelector('[data-field="last"] .admin-badge').classList.contains('done')`), true, "a run that worked has its own class");
   assert.deepEqual(values(), [12, 12, 13]);
   await page.eval(`${row("Bump")}.children[1].click()`);
   await page.waitFor(`document.querySelector('.schedule-runs li') !== null`);

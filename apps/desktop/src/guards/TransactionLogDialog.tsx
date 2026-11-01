@@ -1,6 +1,7 @@
 import { preview } from "./GuardDialog";
 import { groups, type TxLog, type TxRecord } from "./txLog";
 import { t, plural } from "../i18n";
+import { ask } from "../ui/ask";
 
 const time = (at: number) => new Date(at).toLocaleTimeString();
 
@@ -27,6 +28,9 @@ export function TransactionLogDialog({
   onClose: () => void;
 }) {
   const all = groups(log);
+  async function clear() {
+    if (await ask(t("Clear the transaction log of this tab?"), { confirm: t("Clear"), danger: true })) onClear();
+  }
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide tx-log" onKeyDown={(e) => e.key === "Escape" && onClose()}>
@@ -49,7 +53,7 @@ export function TransactionLogDialog({
                         <span className="tx-log-end">{end!.label}</span>
                       </>
                     ) : (
-                      <span className="muted">{t("Committed on its own")}</span>
+                      <span className="muted">{t("Auto-commit (outside a transaction)")}</span>
                     )}
                   </header>
                   <ol>
@@ -73,7 +77,7 @@ export function TransactionLogDialog({
           </div>
         )}
         <div className="actions">
-          <button type="button" onClick={onClear} disabled={all.length === 0}>
+          <button type="button" onClick={() => void clear()} disabled={all.length === 0}>
             {t("Clear")}
           </button>
           <span className="spacer" />
