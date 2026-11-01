@@ -3118,6 +3118,9 @@ const zh: Record<string, string> = {
   "Exported to {name}": "已导出到 {name}",
   "{y} by {x}": "按 {x} 的 {y}",
   "{name} (right axis)": "{name}（右轴）",
+  "running, not counting this app's own session": "运行中，不含本应用自己的会话",
+  "last {n} s": "最近 {n} 秒",
+  "last {n} min": "最近 {n} 分钟",
 };
 
 export default zh;

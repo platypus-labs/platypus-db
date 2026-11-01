@@ -41,6 +41,17 @@ export default async function (page) {
     await page.waitFor(`${parameterRow("work_mem")} != null`, 30_000);
     const all = await count(page);
     assert.ok(all > 200, `pg_settings lists its settings: ${all}`);
+    // One body, with no empty statistics block under it, and the list fills the height.
+    assert.equal(await page.eval(`${adminTab}.querySelectorAll('.object-body').length`), 1);
+    assert.equal(
+      await page.eval(`(() => {
+        const list = ${adminTab}.querySelector('.admin-list').getBoundingClientRect();
+        const body = ${adminTab}.querySelector('.object-body').getBoundingClientRect();
+        return body.bottom - list.bottom < 40;
+      })()`),
+      true,
+      "the parameters list reaches the bottom of the tab",
+    );
     assert.deepEqual(await parameterNames(page), [...(await parameterNames(page))].sort(), "sorted by name");
 
     // A value reads with its unit, next to its default and where it comes from.

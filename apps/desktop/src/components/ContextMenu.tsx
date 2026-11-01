@@ -2,6 +2,7 @@ import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "r
 import { type Action, type ActionScope, type ActionScopes, actionsFor, runAction, shortcutLabel } from "../actions";
 import { t } from "../i18n";
 import { Icon } from "../ui/Icon";
+import { submenuPlacement } from "./menuPlacement";
 
 /** Where a context menu was opened: the scope whose actions it lists, and their argument. */
 export type MenuTarget = { [S in ActionScope]: { scope: S; arg: ActionScopes[S] } }[ActionScope];
@@ -38,6 +39,25 @@ function entries(actions: Action[]): Entry[] {
     }
   }
   return out;
+}
+
+/** A submenu kept inside the window: it flips or shifts from its anchor row. */
+function Submenu({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<React.CSSProperties>({ visibility: "hidden" });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const anchor = el?.parentElement;
+    if (!el || !anchor) return;
+    const { width, height } = el.getBoundingClientRect();
+    const p = submenuPlacement(anchor.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight });
+    setPos({ left: p.left, top: p.top, ...(p.maxHeight && { maxHeight: p.maxHeight, overflowY: "auto" }) });
+  }, []);
+  return (
+    <div ref={ref} className="context-menu submenu" role="menu" style={pos}>
+      {children}
+    </div>
+  );
 }
 
 const groupOf = (e: Entry) => ("action" in e ? e.action.group : e.group);
@@ -186,9 +206,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
                 </span>
               </button>
               {open === entry.submenu && (
-                <div className="context-menu submenu" role="menu">
-                  {entry.actions.map((action) => item(action))}
-                </div>
+                <Submenu>{entry.actions.map((action) => item(action))}</Submenu>
               )}
             </div>
           )}

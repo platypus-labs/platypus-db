@@ -3118,6 +3118,9 @@ const es: Record<string, string> = {
   "Exported to {name}": "Exportado a {name}",
   "{y} by {x}": "{y} por {x}",
   "{name} (right axis)": "{name} (eje derecho)",
+  "running, not counting this app's own session": "en ejecución, sin contar la sesión de esta app",
+  "last {n} s": "últimos {n} s",
+  "last {n} min": "últimos {n} min",
 };
 
 export default es;

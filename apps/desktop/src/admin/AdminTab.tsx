@@ -395,7 +395,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
           </div>
         </div>
       )}
-      {!unreachable && ON_DEMAND.has(view) && (
+      {!unreachable && (view === "statements" || view === "objects") && (
         <div className="object-body admin-body">
           {statistics.error && <div className="notice error small" data-field="statistics-error">{statistics.error}</div>}
           {view === "statements" && statistics.queries && (
