@@ -3107,6 +3107,9 @@ const de: Record<string, string> = {
   "Same server, database and user: the saved connection takes the file's settings and keeps its projects and the passwords the file does not bring.": "Gleicher Server, gleiche Datenbank und gleicher Benutzer: Die gespeicherte Verbindung übernimmt die Einstellungen der Datei und behält ihre Projekte und die Passwörter, die die Datei nicht mitbringt.",
   "The ticked ones are added beside the saved ones.": "Die angehakten werden neben den gespeicherten hinzugefügt.",
   "To a file for another computer or a colleague.": "In eine Datei für einen anderen Computer oder einen Kollegen.",
+  "Has settings": "Enthält Einstellungen",
+  "Go to the navigator": "Zum Navigator",
+  "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Ein Profil speichern Sie im Export-, Import-, Kopier- oder Migrationsdialog einer Tabelle: Rechtsklick auf eine Tabelle im Navigator.",
 };
 
 export default de;

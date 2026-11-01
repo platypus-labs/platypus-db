@@ -3107,6 +3107,9 @@ const zh: Record<string, string> = {
   "Same server, database and user: the saved connection takes the file's settings and keeps its projects and the passwords the file does not bring.": "相同的服务器、数据库和用户：已保存的连接采用文件中的设置，并保留其项目以及文件未带来的密码。",
   "The ticked ones are added beside the saved ones.": "勾选的连接会添加在已保存的连接旁边。",
   "To a file for another computer or a colleague.": "导出到文件，供另一台电脑或同事使用。",
+  "Has settings": "已有设置",
+  "Go to the navigator": "前往导航器",
+  "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "配置文件在表的导出、导入、复制或迁移对话框中保存：在导航器中右键单击一张表。",
 };
 
 export default zh;

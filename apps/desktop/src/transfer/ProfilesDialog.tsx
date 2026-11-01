@@ -14,6 +14,7 @@ import type { JobStatus } from "./jobStatus";
 import { openProfile } from "./profileActions";
 import { profileConnections, profilesOf } from "./profiles";
 import { runTracked } from "./ProfileSave";
+import { toggleSidebar, useSidebarCollapsed } from "../shell/sidebar";
 import { EmptyState } from "../ui/State";
 
 const KINDS: Record<ProfileTask["kind"], string> = {
@@ -32,6 +33,7 @@ export function ProfilesDialog({ connectionId, onClose }: { connectionId?: strin
   const [runs, setRuns] = useState<Record<string, JobStatus>>({});
   /** The profile waiting for the confirmation a production connection asks before it runs. */
   const [confirm, setConfirm] = useState<{ profile: TransferProfile; request: GuardRequest } | null>(null);
+  const collapsed = useSidebarCollapsed();
   const connections = workbench().connections();
   const nameOf = (id: string) => connections.find((c) => c.id === id)?.name ?? t("a deleted connection");
   const fail = (e: unknown) => setError(toCommandError(e).message);
@@ -83,7 +85,26 @@ export function ProfilesDialog({ connectionId, onClose }: { connectionId?: strin
         <h2>{connectionId ? t("Transfer profiles of {name}", { name: nameOf(connectionId) }) : t("Transfer profiles")}</h2>
         <p className="muted small">{t("Save a profile from the export, import, copy and migration dialogs.")}</p>
         {error && <div className="notice error small">{error}</div>}
-        {shown && shown.length === 0 && <EmptyState compact className="schedules-empty" title={t("No profiles saved yet.")} />}
+        {shown && shown.length === 0 && (
+          <EmptyState
+            className="schedules-empty"
+            title={t("No profiles saved yet.")}
+            actions={
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  if (collapsed) toggleSidebar();
+                  onClose();
+                }}
+              >
+                {t("Go to the navigator")}
+              </button>
+            }
+          >
+            {t("A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.")}
+          </EmptyState>
+        )}
         {shown && shown.length > 0 && (
           <div className="schedules-list">
             <table className="meta-table admin-table">

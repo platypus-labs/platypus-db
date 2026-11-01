@@ -380,7 +380,11 @@
 /* Welcome: the workspace with no tab open */
 
 .welcome {
-  margin: 0 auto;
+  /* Auto margins on every side: centered across the workspace, and when the content is taller
+     it takes the whole height and scrolls. */
+  margin: auto;
+  min-height: 0;
+  max-height: 100%;
   width: 100%;
   max-width: 1180px;
   padding: var(--space-48) var(--space-32);
@@ -388,6 +392,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
+  justify-content: center;
   gap: var(--space-48);
   overflow: auto;
 }
