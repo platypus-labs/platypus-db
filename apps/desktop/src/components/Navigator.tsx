@@ -23,7 +23,7 @@ import { textFilter } from "../navigator/filter";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
-import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
+import { annotation, catalogEntry, catalogKey, isKnownTag, parseFilter, useCatalogVersion } from "../catalog/catalog";
 import { openDocs } from "../catalog/DocsDialog";
 import { toggled } from "../sets";
 import { type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
@@ -482,7 +482,7 @@ export function Navigator(props: Props) {
     [],
   );
 
-  const parsed = parseFilter(filter);
+  const parsed = parseFilter(filter, isKnownTag);
   const needle = parsed.text.toLowerCase();
   const needTags = parsed.tags;
   const rows: Row[] = [];

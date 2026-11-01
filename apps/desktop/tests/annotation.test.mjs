@@ -6,6 +6,12 @@ import { addTags, annotation, parseFilter } from "../src/catalog/annotation.ts";
 
 const entry = (note, tags = []) => ({ key: { database: "", schema: "public", object: "t", column: "" }, note, tags });
 
+test("a #word that is not a known tag stays in the text", () => {
+  const known = (t) => t === "pii";
+  assert.deepEqual(parseFilter("#temp", known), { text: "#temp", tags: [] });
+  assert.deepEqual(parseFilter("#pii #temp orders", known), { text: "#temp orders", tags: ["pii"] });
+});
+
 test("a filter without # is all text", () => {
   assert.deepEqual(parseFilter("orders"), { text: "orders", tags: [] });
   assert.deepEqual(parseFilter(""), { text: "", tags: [] });
