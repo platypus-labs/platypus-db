@@ -41,7 +41,8 @@ function entries(actions: Action[]): Entry[] {
   return out;
 }
 
-/** A submenu kept inside the window: it flips or shifts from its anchor row. */
+/** A submenu kept inside the window: it flips or shifts from its anchor row. It is a fixed
+ *  panel in window coordinates, so a menu that scrolls (taller than the window) cannot clip it. */
 function Submenu({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<React.CSSProperties>({ visibility: "hidden" });
@@ -51,7 +52,8 @@ function Submenu({ children }: { children: React.ReactNode }) {
     if (!el || !anchor) return;
     const { width, height } = el.getBoundingClientRect();
     const p = submenuPlacement(anchor.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight });
-    setPos({ left: p.left, top: p.top, ...(p.maxHeight && { maxHeight: p.maxHeight, overflowY: "auto" }) });
+    const a = anchor.getBoundingClientRect();
+    setPos({ left: a.left + p.left, top: a.top + p.top, ...(p.maxHeight && { maxHeight: p.maxHeight, overflowY: "auto" }) });
   }, []);
   return (
     <div ref={ref} className="context-menu submenu" role="menu" style={pos}>
@@ -98,7 +100,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
     // Taller than the window (a small window, a large interface size): it scrolls, so every
-    // item can be reached. Only then, since a scrolling menu clips its submenus.
+    // item can be reached. Its submenus are fixed panels, which the scrolling does not clip.
     const room = window.innerHeight - 8;
     setPos({
       left: Math.max(0, Math.min(menu.x, window.innerWidth - width - 4)),

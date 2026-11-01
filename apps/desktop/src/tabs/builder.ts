@@ -52,6 +52,7 @@ registerAction({
   scope: "navigator.object",
   title: "Visual query builder",
   group: "open",
+  submenu: "Analyze",
   order: 30,
   when: ({ connection, object }) =>
     !isNoSql(connection.driver) && (object.kind === "table" || object.kind === "view"),

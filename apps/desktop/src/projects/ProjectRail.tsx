@@ -19,6 +19,8 @@ interface Props {
   onNew: () => void;
   onMenu: (project: Project, e: React.MouseEvent) => void;
   onFolderMenu: (folder: ProjectFolder, e: React.MouseEvent) => void;
+  /** Right click on "+": New project, Open shared project. */
+  onAddMenu: (e: React.MouseEvent) => void;
 }
 
 /** What a part of the rail is as a drop target: `data-drop` names it, `data-project` or
@@ -112,7 +114,7 @@ function spotAt(el: Element | null, at: Point): { spot: RailSpot; element: Eleme
  *  A project dragged onto another makes a folder of the two, as in Discord; dragged onto
  *  a folder it goes into it; dragged to the edge of a square it moves there (in an open
  *  folder, inside it), and to the end of the rail, out of its folder, last. */
-export function ProjectRail({ projects, folders, active, txProjects, onSwitch, onNew, onMenu, onFolderMenu }: Props) {
+export function ProjectRail({ projects, folders, active, txProjects, onSwitch, onNew, onMenu, onFolderMenu, onAddMenu }: Props) {
   const nav = useRef<HTMLElement>(null);
   const startDrag = useDrag();
   const [shown, setShown] = useState<RailTarget | null>(null);
@@ -237,7 +239,7 @@ export function ProjectRail({ projects, folders, active, txProjects, onSwitch, o
           </div>
         );
       })}
-      <button type="button" className="project-add" title={t("New project")} aria-label={t("New project")} onClick={onNew}>
+      <button type="button" className="project-add" title={t("New project")} aria-label={t("New project")} onClick={onNew} onContextMenu={onAddMenu}>
         <Icon name="plus" size={14} />
       </button>
       {shown?.line !== undefined && <i className="rail-drop-line" style={{ top: shown.line }} aria-hidden />}

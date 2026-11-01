@@ -397,6 +397,17 @@
   overflow: auto;
 }
 
+/* A short window: less air, so the page does not scroll for a few pixels. */
+@media (max-height: 800px) {
+  .welcome {
+    padding-block: var(--space-24);
+    gap: var(--space-24);
+  }
+  .welcome-card {
+    padding-block: var(--space-12);
+  }
+}
+
 .welcome-intro {
   flex: 1 1 420px;
   display: flex;

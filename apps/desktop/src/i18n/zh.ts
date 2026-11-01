@@ -3121,6 +3121,9 @@ const zh: Record<string, string> = {
   "running, not counting this app's own session": "运行中，不含本应用自己的会话",
   "last {n} s": "最近 {n} 秒",
   "last {n} min": "最近 {n} 分钟",
+  "Added to bookmarks": "已添加到书签",
+  "A project folder a colleague shared on a drive or in Git.": "同事在云盘或 Git 中共享的项目文件夹。",
+  "Project rail: add": "项目栏：添加",
 };
 
 export default zh;

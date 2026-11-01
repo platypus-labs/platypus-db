@@ -10,6 +10,7 @@ import { Icon } from "../ui/Icon";
 import { language, t } from "../i18n";
 import { openScriptFile } from "../scripts/scripts";
 import { recentScripts, RECENT_SCRIPTS } from "../scripts/recent";
+import { openSharedProject } from "../projects/shared";
 import { SHARE_EXTENSION } from "../share/shareQuery";
 
 interface Props {
@@ -167,8 +168,15 @@ export function Welcome({ empty, version, onNew, onImport, onExport, onOpenFile,
             <span className="muted">{t("From DBeaver, DataGrip or pgAdmin.")}</span>
           </span>
         </button>
+        <button type="button" className="welcome-card" data-action="open-shared" onClick={() => void openSharedProject()}>
+          <Icon name="open" size={18} />
+          <span>
+            <strong>{t("Open shared project…")}</strong>
+            <span className="muted">{t("A project folder a colleague shared on a drive or in Git.")}</span>
+          </span>
+        </button>
         <button type="button" className="welcome-card" onClick={onExport}>
-          <Icon name="download" size={18} />
+          <Icon name="upload" size={18} />
           <span>
             <strong>{t("Export connections")}</strong>
             <span className="muted">{t("To a file for another computer or a colleague.")}</span>

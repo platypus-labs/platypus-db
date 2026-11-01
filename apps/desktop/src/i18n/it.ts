@@ -3121,6 +3121,9 @@ const it: Record<string, string> = {
   "running, not counting this app's own session": "in esecuzione, senza contare la sessione di questa app",
   "last {n} s": "ultimi {n} s",
   "last {n} min": "ultimi {n} min",
+  "Added to bookmarks": "Aggiunto ai segnalibri",
+  "A project folder a colleague shared on a drive or in Git.": "Una cartella di progetto condivisa da un collega su un disco o in Git.",
+  "Project rail: add": "Rail dei progetti: aggiungi",
 };
 
 export default it;

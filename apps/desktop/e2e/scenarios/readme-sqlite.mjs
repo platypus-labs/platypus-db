@@ -10,6 +10,7 @@ import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 export const NAME = "Shop dev";
 export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
@@ -104,6 +105,7 @@ export async function navigatorMenu(page, label, title) {
   await page.eval(`${treeRow(label)}.querySelector('.tree-label').id = 'e2e-row'`);
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
+  await revealItem(page, title);
   await page.waitFor(`${menuButton(title)} !== undefined`);
   await page.eval(`${menuButton(title)}.click()`);
 }

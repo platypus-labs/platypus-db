@@ -148,7 +148,8 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
                 onAuxClick={(e) => e.button === 1 && props.onClose(tab)}
                 onContextMenu={(e: MouseEvent) => {
                   e.preventDefault();
-                  props.onMenu(tab, e.clientX, e.clientY);
+                  // Under the tab, so the menu does not cover it or its neighbour.
+                  props.onMenu(tab, e.clientX, e.currentTarget.getBoundingClientRect().bottom);
                 }}
                 onKeyDown={(e) => onKey(e, tab)}
               >
