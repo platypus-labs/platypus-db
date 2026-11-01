@@ -5526,6 +5526,70 @@ async fn agents_ask_before_a_query_that_writes() {
     }
 }
 
+/// The first cell of what `sql` returns through `agent` (`None` for a statement without rows).
+async fn first_cell(agent: &platypus_mcp::Agent, name: &str, sql: &str) -> Option<String> {
+    use platypus_mcp::QueryArgs;
+    use platypus_mcp::query::Outcome;
+
+    let args = QueryArgs {
+        connection: "Db".to_owned(),
+        sql: sql.to_owned(),
+        max_rows: None,
+        max_bytes: None,
+        timeout_seconds: None,
+        format: None,
+    };
+    match agent
+        .run_query(&args, "test")
+        .await
+        .unwrap_or_else(|e| panic!("{name}: {sql}: {e}"))
+        .outcome
+    {
+        Outcome::Rows(table) => Some(table.rows[0][0].text().to_owned()),
+        Outcome::Affected(_) => None,
+    }
+}
+
+/// An agent's calls on a connection share one database session: a user variable (MySQL) and
+/// a temporary table (MySQL and PostgreSQL) made by one call are there in the next.
+#[tokio::test]
+async fn agents_keep_session_state_between_calls() {
+    use platypus_mcp::{Agent, Profile, Verdict};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let (driver, variable) = match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => ("postgres", None),
+            DriverKind::MySql => (
+                "mysql",
+                Some(("SET @agent_var = 41", "SELECT @agent_var + 1")),
+            ),
+            _ => continue,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        save_agent_connection(dir.path(), &b, driver);
+        let app = std::sync::Arc::new(AnsweringApp {
+            verdict: Verdict::Once,
+            asked: std::sync::atomic::AtomicUsize::default(),
+        });
+        let agent = Agent::new(Profile::at(dir.path())).with_link(app);
+        let run = |sql: &'static str| first_cell(&agent, b.name, sql);
+
+        if let Some((set, read)) = variable {
+            run(set).await;
+            assert_eq!(run(read).await.as_deref(), Some("42"), "{}", b.name);
+        }
+        run("CREATE TEMPORARY TABLE agent_session_probe (id INT)").await;
+        run("INSERT INTO agent_session_probe VALUES (7)").await;
+        assert_eq!(
+            run("SELECT id FROM agent_session_probe").await.as_deref(),
+            Some("7"),
+            "{}",
+            b.name
+        );
+    }
+}
+
 /// PostgreSQL decodes `U&"â€¦"` names the way the agents' read-only check does, so a function
 /// spelled with Unicode escapes is the one the check refuses.
 #[tokio::test]

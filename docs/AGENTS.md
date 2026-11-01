@@ -40,6 +40,14 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
   sessions open in the app (connection, database, manual commit, open transaction).
   Settings → Agents → Setup turns the bridge off, changes its port (47337 by default), shows
   its address and token for MCP clients over HTTP and makes a new token.
+- An agent's statements run on **one database session per connection**, kept open between
+  calls: a MySQL or MariaDB `@variable`, a temporary table or a `SET` made by one call is there
+  in the next (PostgreSQL and SQL Server keep theirs the same way; DuckDB closes its file after
+  each call, so it keeps none). The session is shared by the calls of every MCP client of the
+  running server, and starts again when the server restarts, the connection's settings change,
+  the server drops it, a call times out or is cancelled, or a transaction is left open. Each
+  `platypus` CLI command is a process of its own, so it never keeps session state from one
+  command to the next.
 
 Settings → Agents → Setup lists Claude Desktop, Claude Code, Codex, Cursor, Windsurf,
 Antigravity and Gemini CLI with their configuration file and whether PlatypusDB is in it:

@@ -13,6 +13,7 @@ mod profiles;
 mod querylog;
 mod saved_results;
 mod scheduler;
+mod window_state;
 mod windows;
 
 use std::path::{Path, PathBuf};
@@ -131,7 +132,19 @@ fn open_main_window(app: &tauri::App, system_title_bar: bool) -> tauri::Result<(
         return Ok(());
     };
     config.decorations = system_title_bar || cfg!(target_os = "macos");
-    windows::build(app.handle(), &config)
+    // Shown once it is where it was left (`window_state`).
+    config.visible = false;
+    windows::build(app.handle(), &config)?;
+    let state_file = dir(app, false).ok().map(|d| window_state::path(&d));
+    if let Some(window) = app.get_webview_window("main") {
+        match &state_file {
+            Some(file) => {
+                window_state::restore_and_track(&window, file, window_state::load(file));
+            }
+            None => window.show()?,
+        }
+    }
+    Ok(())
 }
 
 /// Opens the stores and the window.
