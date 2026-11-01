@@ -5,6 +5,8 @@ import { keepsNativeMenu } from "../src/ui/nativeMenu.ts";
 
 test("only plain text fields keep the browser menu", () => {
   assert.equal(keepsNativeMenu({ tagName: "INPUT" }), true);
+  assert.equal(keepsNativeMenu({ tagName: "INPUT", type: "search" }), true);
+  assert.equal(keepsNativeMenu({ tagName: "INPUT", type: "checkbox" }), false);
   assert.equal(keepsNativeMenu({ tagName: "TEXTAREA" }), true);
   assert.equal(keepsNativeMenu({ tagName: "DIV", isContentEditable: true }), true);
   assert.equal(keepsNativeMenu({ tagName: "DIV" }), false);
