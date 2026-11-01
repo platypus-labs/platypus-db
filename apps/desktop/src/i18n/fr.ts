@@ -3110,6 +3110,9 @@ const fr: Record<string, string> = {
   "Has settings": "Contient des réglages",
   "Go to the navigator": "Aller au navigateur",
   "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Un profil s'enregistre depuis la fenêtre d'export, d'import, de copie ou de migration d'une table : clic droit sur une table dans le navigateur.",
+  "running, not counting this app's own session": "en cours, sans compter la session de cette application",
+  "last {n} s": "dernières {n} s",
+  "last {n} min": "dernières {n} min",
 };
 
 export default fr;

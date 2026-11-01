@@ -12,8 +12,16 @@ import {
   rateSeries,
   rateText,
   ratioSeries,
+  spanText,
   uptimeText,
 } from "../src/admin/dashboardModel.ts";
+
+test("spanText: seconds under a minute, else minutes", () => {
+  const at = (...ts) => ts.map((t) => ({ at: t, metrics: {} }));
+  assert.deepEqual(spanText(at(0, 30000)), { unit: "s", n: 30 });
+  assert.deepEqual(spanText(at(0, 300000)), { unit: "min", n: 5 });
+  assert.deepEqual(spanText([]), { unit: "s", n: 0 });
+});
 
 const metric = (value, unavailable = null) => ({ value, unavailable });
 const sample = (at, extra = {}) => ({

@@ -3110,6 +3110,9 @@ const zh: Record<string, string> = {
   "Has settings": "已有设置",
   "Go to the navigator": "前往导航器",
   "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "配置文件在表的导出、导入、复制或迁移对话框中保存：在导航器中右键单击一张表。",
+  "running, not counting this app's own session": "运行中，不含本应用自己的会话",
+  "last {n} s": "最近 {n} 秒",
+  "last {n} min": "最近 {n} 分钟",
 };
 
 export default zh;

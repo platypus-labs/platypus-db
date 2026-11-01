@@ -93,3 +93,11 @@ export function uptimeText(seconds: number): string {
 export function rateText(rate: number): string {
   return rate < 10 ? rate.toFixed(1) : Math.round(rate).toString();
 }
+
+/** How much time the samples cover: whole seconds up to a minute, else rounded minutes. */
+export function spanText(samples: Sample[]): { unit: "s" | "min"; n: number } {
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const seconds = first && last ? Math.max(0, Math.round((last.at - first.at) / 1000)) : 0;
+  return seconds < 60 ? { unit: "s", n: seconds } : { unit: "min", n: Math.round(seconds / 60) };
+}
