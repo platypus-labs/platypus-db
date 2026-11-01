@@ -132,8 +132,8 @@ function noteLines(text: string): string[] {
 const noteHeight = (n: ErdNote) => 16 + noteLines(n.text).length * 16;
 
 type Dragging =
-  | { what: "table"; name: string; dx: number; dy: number }
-  | { what: "note"; id: number; dx: number; dy: number }
+  | { what: "table"; name: string; dx: number; dy: number; to?: Point }
+  | { what: "note"; id: number; dx: number; dy: number; to?: Point }
   | { what: "link"; table: string; column: string }
   | { what: "pan"; from: Point; left: number; top: number };
 
@@ -346,6 +346,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     const p = at(e);
     if (d.what === "link") return setLink((l) => l && { ...l, to: p });
     const to = { x: Math.max(0, Math.round(p.x - d.dx)), y: Math.max(0, Math.round(p.y - d.dy)) };
+    // The release can come before React has drawn the last move: the drag keeps the last position.
+    d.to = to;
     if (d.what === "table") setMoved((m) => ({ ...m, [d.name]: to }));
     else setMovedNotes((m) => ({ ...m, [d.id]: to }));
   };
@@ -360,8 +362,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     }
     // Every table is kept where it is, not only the one moved: the others were laid out
     // automatically, and must not jump when the next table appears or is moved.
-    if (d.what === "table" && moved[d.name]) onChange({ positions: { ...tab.positions, ...placed } });
-    if (d.what === "note" && movedNotes[d.id]) onChange({ notes: tab.notes.map((n) => ({ ...n, ...movedNotes[n.id] })) });
+    if (d.what === "table" && d.to) onChange({ positions: { ...tab.positions, ...placed, [d.name]: d.to } });
+    if (d.what === "note" && d.to) onChange({ notes: tab.notes.map((n) => (n.id === d.id ? { ...n, ...d.to } : n)) });
     setMoved({});
     setMovedNotes({});
   };
