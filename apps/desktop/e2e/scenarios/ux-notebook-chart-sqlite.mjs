@@ -123,20 +123,18 @@ async function stopping(page) {
   await page.eval(click(cell(slow), "run"));
   await page.waitFor(`${running(slow)} && ${cell(slow)}.querySelector('.notebook-running') !== null && ${cell(slow)}.querySelector('[data-action=stop]') !== null`, 15_000);
   assert.equal(await page.eval(`${cell(slow)}.querySelector('[data-action=run]')`), null, "Run gives way to Stop");
-  // The job is known a moment after the start.
-  await page.sleep(1000);
   await page.eval(click(cell(slow), "stop"));
   await page.waitFor(`!${running(slow)}`, 30_000);
   assert.equal(await page.eval(`${cell(slow)}.querySelector('.notebook-running')`), null, "the indicator goes");
   await page.waitFor(`${cell(slow)}.querySelector('[data-action=run]') !== null`);
-  assert.doesNotMatch(await page.eval(`${cell(slow)}.querySelector('[data-field=status]')?.textContent ?? ''`), /^1 row/, "cancelled: no count");
+  // Stopped: it ends with no rows of its own, not with the count.
+  assert.doesNotMatch(await page.eval(`${cell(slow)}.querySelector('[data-field=status]')?.textContent ?? ''`), /rows?\b/, "stopped: no full result");
 
   // Stop during "Run all": the cell after the slow one never starts.
   const after = await addSql(page, "SELECT 1 AS after_slow");
   await page.eval(click(tab, "run_all"));
   await page.waitFor(`${tab}.querySelector('[data-action=stop_all]') !== null`, 15_000);
-  await page.waitFor(`${running(slow)}`, 15_000);
-  await page.sleep(1000);
+  await page.waitFor(`${running(slow)} && ${cell(slow)}.querySelector('.notebook-running') !== null`, 15_000);
   await page.eval(click(tab, "stop_all"));
   await page.waitFor(`${tab}.querySelector('[data-action=stop_all]') === null && !${running(slow)}`, 30_000);
   assert.equal(await page.eval(`${cell(after)}.querySelector('[data-field=status]')`), null, "the next cell did not run");

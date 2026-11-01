@@ -119,6 +119,8 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
   const [runningAll, setRunningAll] = useState(false);
   // "Stop" was pressed during "Run all": the next cells do not start.
   const stopped = useRef(false);
+  // Cells whose Stop came before their query had a job: it is cancelled once it has one.
+  const stopAsked = useRef(new Set<string>());
   const copy = useRef<Copy | null>(null);
   // The copy is made or loaded again by one cell at a time.
   const copying = useRef<Promise<unknown>>(Promise.resolve());
@@ -216,7 +218,10 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
       };
       update(result);
       api.runQuery(sid, sql, null, (event) => update(withEvent(result, event)), true).then(
-        (jobId) => update({ ...result, jobId }),
+        (jobId) => {
+          update({ ...result, jobId });
+          if (stopAsked.current.has(cell)) void api.cancelQuery(jobId).catch(() => undefined);
+        },
         (e: unknown) => update({ ...result, status: { kind: "error", error: toCommandError(e) } }),
       );
     });
@@ -261,6 +266,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     const cell = tabNow.current.cells.find((c) => c.id === id);
     if (cell?.kind !== "sql" || !cell.text.trim()) return true;
     const before = runsNow.current[cell.id]?.result?.jobId;
+    stopAsked.current.delete(cell.id);
     setRun(cell.id, () => ({ running: true, error: null }));
     try {
       const statements = await prepared(cell);
@@ -274,6 +280,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
       for (const s of statements) {
         // The cell shows its last statement: earlier ones' rows go.
         if (last?.jobId != null) void api.closeQuery(last.jobId);
+        if (stopAsked.current.has(cell.id)) break;
         last = await runStatement(cell.id, sid, s.sql);
         if (last.status.kind === "error") break;
       }
@@ -305,8 +312,9 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
 
   /** Cancels the statement `id` is running, with the cancel the SQL editor uses. */
   function stopCell(id: string) {
-    const job = runsNow.current[id]?.result?.jobId;
-    if (job != null) void api.cancelQuery(job).catch(() => undefined);
+    stopAsked.current.add(id);
+    const result = runsNow.current[id]?.result;
+    if (result?.jobId != null && result.status.kind === "running") void api.cancelQuery(result.jobId).catch(() => undefined);
   }
 
   function stopAll() {
