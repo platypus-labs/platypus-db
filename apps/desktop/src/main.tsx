@@ -16,12 +16,14 @@ import { startAgentBridge } from "./agents/bridge";
 import { startLayout } from "./shell/layout";
 import "./ui/iconSet";
 import { startMotion } from "./ui/motion";
+import { startNativeMenuGuard } from "./ui/nativeMenu";
 import "./styles/index.css";
 
 paintCached();
 const label = getCurrentWindow().label;
 startErrorLog();
 startModalA11y();
+startNativeMenuGuard();
 translateAppMessages(appMessage);
 
 // Settings are a local file read: waiting for them avoids rendering defaults first.

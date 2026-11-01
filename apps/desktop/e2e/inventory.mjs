@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "./cdp.mjs";
+import { revealItem } from "./menu-sub.mjs";
 import { setField } from "./plans.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,7 @@ async function rightClick(page, rowLabel) {
 /** Right-clicks the navigator row `rowLabel` and clicks the menu entry starting with `item`. */
 async function menuItem(page, rowLabel, item) {
   await rightClick(page, rowLabel);
+  await revealItem(page, tr(item));
   const entry = `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(tr(item))}))`;
   await page.waitFor(`${entry} !== undefined`);
   await page.eval(`${entry}.click()`);

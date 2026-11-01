@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "E2E PG";
 const PORT = 55432;
@@ -76,9 +77,10 @@ export default async function (page) {
 
   await page.eval(`${row("orders")}.id = 'e2e-orders'`);
   const items = await menu(page, "#e2e-orders");
-  for (const item of ["Open data", "Open details", "Generate SELECT", "Copy name", "Refresh", "Drop…"]) {
+  for (const item of ["Open data", "Open details", "Generate SQL", "Copy name", "Refresh", "Drop…"]) {
     assert.ok(items.includes(item), `${item} in ${items}`);
   }
+  await revealItem(page, "Open data");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent === 'Open data').click()`);
 
   // Data viewer: autorun, header sort.
@@ -100,6 +102,7 @@ export default async function (page) {
 
   // Generate SELECT uses the navigator.select_limit setting (default 200).
   await menu(page, "#e2e-orders");
+  await revealItem(page, "Generate SELECT");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent === 'Generate SELECT').click()`);
   await page.waitFor(`/LIMIT 200;/.test(${visibleTab}?.querySelector('.cm-content')?.textContent ?? '')`);
 }

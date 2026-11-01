@@ -51,7 +51,7 @@ registerAction({
   title: "Edit table…",
   shortcut: "F4",
   group: "manage",
-  order: 70,
+  order: 62,
   when: ({ connection, object }) => object.kind === "table" && editsTables(connection.driver),
   run: ({ connection, database, schema, object }) =>
     openTableEditor(connection.id, { database, schema: schema.name, name: object.name }),

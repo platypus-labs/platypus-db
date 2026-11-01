@@ -34,7 +34,7 @@ const TITLES: Record<Maintenance, string> = {
     title: TITLES[operation],
     submenu: "Maintenance",
     group: "manage",
-    order: 70 + i,
+    order: 65 + i,
     when: ({ connection, object }) =>
       object.kind === "table" && (OPERATIONS[connection.driver]?.includes(operation) ?? false),
     run: ({ connection, database, schema, object }) =>

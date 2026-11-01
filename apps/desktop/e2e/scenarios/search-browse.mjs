@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { gridTsv, runStatement, editorText, treeRow, visibleTab } from "../qa-sql.mjs";
 import { closeMenu, connection, drop, es, expandCluster, openIndex, rowMenu, saveConnections, seed, skip as skipSearch, table } from "../search-helpers.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "E2E ES navigator";
 const NARROW = "E2E ES pattern";
@@ -97,7 +98,7 @@ export default async function (page) {
 
   // The menu of an index offers what works on one: reading, dropping; no SQL writes.
   const items = await rowMenu(page, "e2e_nav_orders");
-  for (const item of ["Open data", "Generate SELECT"]) assert.ok(items.includes(item), `${item} in ${items}`);
+  for (const item of ["Open data", "Generate SQL"]) assert.ok(items.includes(item), `${item} in ${items}`);
   assert.ok(items.some((i) => /^Drop/.test(i)), `Drop in ${items}`);
   for (const item of ["Visual query builder", "Generate INSERT", "Generate UPDATE", "Generate DELETE", "Generate UPSERT", "Truncate…", "Edit table…"]) {
     assert.ok(!items.includes(item), `no ${item} in ${items}`);
@@ -105,12 +106,13 @@ export default async function (page) {
   await closeMenu(page);
   // An alias reads, and cannot be dropped as a table.
   const viewItems = await rowMenu(page, "e2e_nav_alias");
-  assert.ok(viewItems.includes("Generate SELECT"), `Generate SELECT in ${viewItems}`);
+  assert.ok(viewItems.includes("Generate SQL"), `Generate SQL in ${viewItems}`);
   assert.ok(!viewItems.some((i) => /^Drop|^Truncate/.test(i)), `no Drop or Truncate in ${viewItems}`);
   await closeMenu(page);
 
   // Generate SELECT writes the search of the index, and it runs.
   await rowMenu(page, "e2e_nav_orders");
+  await revealItem(page, "Generate SELECT");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate SELECT')).click()`);
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content') != null && ${editorText}.startsWith('GET /e2e_nav_orders/_search')`, 15_000);
   assert.match(await page.eval(editorText), /"query":\{"match_all":\{\}\}/);

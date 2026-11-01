@@ -54,7 +54,7 @@ export default async function (page) {
 
   // Only what applies to a key type: no SQL builder, DDL, INSERT or TRUNCATE.
   const items = await menu(page, "hash");
-  for (const item of ["Open data", "Generate SELECT"]) assert.ok(items.includes(item), `${item} in ${items}`);
+  for (const item of ["Open data", "Generate SQL"]) assert.ok(items.includes(item), `${item} in ${items}`);
   for (const item of ["Visual query builder", "Generate DDL", "Generate INSERT", "Truncate…", "Edit table…"]) {
     assert.ok(!items.includes(item), `no ${item} in ${items}`);
   }

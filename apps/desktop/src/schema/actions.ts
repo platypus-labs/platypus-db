@@ -72,7 +72,7 @@ registerAction({
   scope: "navigator.object",
   title: "Create trigger…",
   group: "manage",
-  order: 75,
+  order: 63,
   when: ({ connection, object }) =>
     object.kind === "table" && CREATABLE.includes(connection.driver) && !NO_TRIGGERS.includes(connection.driver) && !connection.read_only,
   run: ({ connection, database, schema, object }) =>
