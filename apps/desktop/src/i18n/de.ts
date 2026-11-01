@@ -287,6 +287,7 @@ const de: Record<string, string> = {
   "Navigator: schema": "Navigator: Schema",
   "Navigator: table or routine": "Navigator: Tabelle oder Routine",
   "Navigator: column": "Navigator: Spalte",
+  "Navigator: index": "Navigator: Index",
   "Filter actions…": "Aktionen filtern…",
   "Click, then press the keys; Backspace removes the shortcut": "Klicken, dann die Tasten drücken; Backspace entfernt das Tastenkürzel",
   "Press keys…": "Tasten drücken…",

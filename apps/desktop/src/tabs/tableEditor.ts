@@ -35,6 +35,17 @@ registerAction({
 });
 
 registerAction({
+  id: "table_editor.edit_index",
+  scope: "navigator.index",
+  title: "Edit table…",
+  group: "manage",
+  order: 70,
+  when: ({ connection, object }) => object.kind === "table" && editsTables(connection.driver),
+  run: ({ connection, database, schema, object }) =>
+    openTableEditor(connection.id, { database, schema: schema.name, name: object.name }),
+});
+
+registerAction({
   id: "table_editor.edit",
   scope: "navigator.object",
   title: "Edit table…",

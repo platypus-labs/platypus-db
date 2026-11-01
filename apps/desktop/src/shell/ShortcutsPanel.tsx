@@ -28,6 +28,7 @@ const SCOPES: Record<string, string> = {
   "navigator.schema": msg("Navigator: schema"),
   "navigator.object": msg("Navigator: table or routine"),
   "navigator.column": msg("Navigator: column"),
+  "navigator.index": msg("Navigator: index"),
   "navigator.database": msg("Navigator: database"),
   "navigator.folder": msg("Navigator: folder"),
   project: msg("Project"),

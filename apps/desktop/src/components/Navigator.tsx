@@ -900,6 +900,7 @@ export function Navigator(props: Props) {
         depth: depth + 2,
         label: ix.name,
         icon: ix.primary ? "key" : "index",
+        menu: { scope: "navigator.index", arg: { connection: c, database: db, schema, object, index: ix.name } },
         detail: `(${ix.columns.join(", ")})${ix.primary ? ` · ${t("primary")}` : ix.unique ? ` · ${t("unique")}` : ""}${ix.size != null ? ` · ${formatBytes(ix.size)}` : ""}`,
       })),
     );
@@ -1609,6 +1610,22 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
           n().refresh(key, () => n().loadObjects(connection, database, schema.name));
         }
       },
+    }),
+    registerAction({
+      id: "index.copy_name",
+      scope: "navigator.index",
+      title: "Copy name",
+      group: "copy",
+      order: 40,
+      run: ({ index }) => copy(index),
+    }),
+    registerAction({
+      id: "index.open",
+      scope: "navigator.index",
+      title: "Open details",
+      group: "open",
+      order: 15,
+      run: ({ connection, database, schema, object }) => n().openObject(connection, database, schema, object),
     }),
     registerAction({
       id: "column.copy_name",

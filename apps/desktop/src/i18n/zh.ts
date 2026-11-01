@@ -287,6 +287,7 @@ const zh: Record<string, string> = {
   "Navigator: schema": "导航器：模式",
   "Navigator: table or routine": "导航器：表或例程",
   "Navigator: column": "导航器：列",
+  "Navigator: index": "导航器：索引",
   "Filter actions…": "过滤操作…",
   "Click, then press the keys; Backspace removes the shortcut": "单击后按下按键；Backspace 删除快捷键",
   "Press keys…": "请按键…",
