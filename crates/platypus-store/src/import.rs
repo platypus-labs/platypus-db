@@ -27,6 +27,8 @@ pub enum ImportSource {
     Datagrip,
     Pgadmin,
     PgService,
+    /// A PlatypusDB export (`.platypusconn`), read by `platypus-sync`, which can decrypt it.
+    Platypus,
 }
 
 /// A file found where a tool keeps its connections.
@@ -258,6 +260,9 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
             };
             one(datagrip(&read_text(path)?, &users))
         }
+        ImportSource::Platypus => Err(invalid(
+            "PlatypusDB exports are read by platypus_sync::export::read".to_owned(),
+        )),
     }?;
     let base = project_folder(path);
     for project in &mut projects {

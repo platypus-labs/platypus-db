@@ -3077,6 +3077,21 @@ const it: Record<string, string> = {
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "Una cella che inizia con =, +, -, @ o una tabulazione riceve un ' davanti, così un foglio di calcolo la mostra come testo invece di eseguirla come formula. I numeri restano come sono. Disattivalo per un file letto da un altro programma.",
   "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} connessione ha riferimenti a variabili d'ambiente presi dal file, che non vengono letti finché non li modifichi nelle sue impostazioni.",
   "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} connessioni hanno riferimenti a variabili d'ambiente presi dal file, che non vengono letti finché non li modifichi nelle loro impostazioni.",
+  "Exported {n} connections": "Esportate {n} connessioni",
+  "Export connections…": "Esporta le connessioni…",
+  "Export connections": "Esporta le connessioni",
+  "Keep projects and folders": "Mantieni progetti e cartelle",
+  "Encrypt with a password": "Cifra con una password",
+  "Confirm password": "Conferma la password",
+  "Use at least 8 characters.": "Usa almeno 8 caratteri.",
+  "The passwords do not match.": "Le password non coincidono.",
+  "Include saved passwords": "Includi le password salvate",
+  "Without a password on the file, no password is ever written.": "Senza una password sul file, nessuna password viene mai scritta.",
+  "Export {n}": "Esporta {n}",
+  "A file written by Export connections…, with a password if it was encrypted.": "Un file scritto da Esporta le connessioni…, con una password se è cifrato.",
+  "This file is encrypted. Enter its password.": "Questo file è cifrato. Inserisci la sua password.",
+  "Wrong password, or the file is damaged.": "Password sbagliata, oppure il file è danneggiato.",
+  "To a file for another computer or a colleague.": "In un file per un altro computer o un collega.",
 };
 
 export default it;

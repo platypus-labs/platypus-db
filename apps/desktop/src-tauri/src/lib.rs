@@ -382,6 +382,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::connections::detect_imports,
         commands::connections::read_import,
         commands::connections::save_imported,
+        commands::connections::export_connections,
         commands::connections::forget_import,
         commands::connections::test_connection,
         commands::connections::open_session,

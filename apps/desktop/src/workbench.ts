@@ -24,6 +24,8 @@ export interface Workbench {
   /** Opens the new connection dialog; the connection goes into `folder` of the active
    *  project when given. */
   newConnection(folder?: string | null): void;
+  /** Opens the export of connections to a file, with `preselect` ticked. */
+  exportConnections(preselect?: string[]): void;
   /** Opens the new connection dialog filled in from `connection`; `saved` runs with the
    *  connection once the user saves it. */
   newConnectionFrom(connection: SavedConnection, saved: (connection: SavedConnection) => void): void;

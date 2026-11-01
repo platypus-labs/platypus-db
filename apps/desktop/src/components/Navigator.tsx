@@ -99,6 +99,8 @@ interface Props {
   onNew: () => void;
   /** Opens the import of connections from other tools. */
   onImport: () => void;
+  /** Opens the export of connections to a file. */
+  onExport: () => void;
   onEdit: (c: SavedConnection) => void;
   onDelete: (c: SavedConnection) => void;
   /** Opens a new editor tab: optionally with SQL, run at once, or as a data viewer. */
@@ -1356,6 +1358,22 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "import",
       order: 21,
       run: () => n().props.onImport(),
+    }),
+    registerAction({
+      id: "list.export",
+      scope: "navigator.list",
+      title: "Export connections…",
+      group: "import",
+      order: 22,
+      run: () => n().props.onExport(),
+    }),
+    registerAction({
+      id: "connection.export",
+      scope: "navigator.connection",
+      title: "Export connections…",
+      group: "manage",
+      order: 89,
+      run: ({ connection }) => workbench().exportConnections([connection.id]),
     }),
     registerAction({
       id: "connection.new_connection",

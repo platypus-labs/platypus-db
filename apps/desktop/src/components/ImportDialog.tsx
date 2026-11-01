@@ -43,6 +43,7 @@ interface Props {
 }
 
 const SOURCES: { value: ImportSource; label: string; file: string }[] = [
+  { value: "platypus", label: "PlatypusDB", file: ".platypusconn" },
   { value: "dbeaver", label: "DBeaver", file: ".dbp · data-sources.json" },
   { value: "datagrip", label: "DataGrip", file: "dataSources.xml" },
   { value: "pgadmin", label: "pgAdmin", file: "servers.json" },
@@ -50,6 +51,7 @@ const SOURCES: { value: ImportSource; label: string; file: string }[] = [
 ];
 
 const HINTS: Record<ImportSource, string> = {
+  platypus: msg("A file written by Export connections…, with a password if it was encrypted."),
   dbeaver: msg("File › Export › DBeaver project (.dbp), or data-sources.json in the workspace's .dbeaver folder."),
   datagrip: msg("dataSources.xml, in the project's .idea folder."),
   pgadmin: msg("servers.json, from Tools › Export Servers."),
@@ -91,6 +93,9 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   const [railFolder, setRailFolder] = useState<string | null>(null);
   const [passwords, setPasswords] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** The encrypted file waiting for its password. */
+  const [locked, setLocked] = useState<ImportFile | null>(null);
+  const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -99,20 +104,27 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
     return () => void api.forgetImport().catch(() => {});
   }, []);
 
-  async function load(next: ImportFile) {
+  async function load(next: ImportFile, pass?: string) {
     setFile(next);
+    setLocked(null);
+    if (pass === undefined) setPassword("");
     setSource(next.source);
     setError(null);
     setRead(null);
     setTicked(new Set());
     try {
-      const all = await api.readImport(next.source, next.path);
+      const all = await api.readImport(next.source, next.path, pass);
       setRead(all);
       setTicked(new Set(all.flatMap((p) => p.connections).filter((c) => !duplicate(c, existing)).map((c) => c.id)));
       setInto(all.map((p) => defaultInto(p, project, projects)));
       setRailFolder(all.filter((p) => p.name).length > 1 ? railName(next.path) : null);
     } catch (e) {
-      setError(toCommandError(e).message);
+      const err = toCommandError(e);
+      if (err.kind === "password_needed" || err.kind === "sync_passphrase") {
+        setLocked(next);
+        // A first ask is not an error; a wrong password is.
+        if (err.kind === "sync_passphrase") setError(t("Wrong password, or the file is damaged."));
+      } else setError(err.message);
     }
   }
 
@@ -125,7 +137,11 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   }, [source]);
 
   async function choose() {
-    const path = await answerFor("file", () => open({ multiple: false, title: `${label(source)} connections` }));
+    const path = await answerFor("file", () => open({
+        multiple: false,
+        title: `${label(source)} connections`,
+        filters: source === "platypus" ? [{ name: "PlatypusDB", extensions: ["platypusconn"] }] : undefined,
+      }));
     if (typeof path === "string") await load({ source, path });
   }
 
@@ -189,6 +205,21 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
           </button>
           <span className="muted small import-hint">{t(HINTS[source])}</span>
         </div>
+        {locked && (
+          <form
+            className="import-password"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load(locked, password);
+            }}
+          >
+            <span className="muted small">{t("This file is encrypted. Enter its password.")}</span>
+            <input type="password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} aria-label={t("Password")} />
+            <button type="submit" disabled={!password}>
+              {t("Open")}
+            </button>
+          </form>
+        )}
         {error && <div className="notice error small">{error}</div>}
         {read && isEmptyImport(read) && <p className="muted small">{t("No connections found in this file.")}</p>}
         {read && !isEmptyImport(read) && (
@@ -245,7 +276,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   );
 }
 
-function Tick({ ids, ticked, onTicked }: { ids: string[]; ticked: ReadonlySet<string>; onTicked: (next: Set<string>) => void }) {
+export function Tick({ ids, ticked, onTicked }: { ids: string[]; ticked: ReadonlySet<string>; onTicked: (next: Set<string>) => void }) {
   const state = checkState(ids, ticked);
   return (
     <input

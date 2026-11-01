@@ -49,6 +49,9 @@ pub enum SyncError {
     #[error("wrong sync passphrase, or the sync file is damaged")]
     WrongPassphrase,
 
+    #[error("this file is encrypted: enter its password")]
+    PasswordNeeded,
+
     #[error("the sync file is damaged: {0}")]
     Damaged(String),
 

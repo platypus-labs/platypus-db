@@ -13,6 +13,7 @@ import {
 } from "./api";
 import { onNavigatorRefresh, requestNavigatorRefresh, revealConnection } from "./navigatorEvents";
 import { ConnectionDialog } from "./components/ConnectionDialog";
+import { ExportConnectionsDialog } from "./components/ExportConnectionsDialog";
 import { ImportDialog } from "./components/ImportDialog";
 import { UnlockDialog } from "./components/MasterPassword";
 import { asksPassword, connectionColor, isProduction } from "./connections";
@@ -94,6 +95,7 @@ type Dialog =
     }
   | { kind: "add-connections" }
   | { kind: "import" }
+  | { kind: "export"; preselect: string[] }
   | { kind: "project"; project: Project | null }
   | null;
 
@@ -139,11 +141,13 @@ export function App() {
   useEffect(() => {
     void startupDriverCheck();
   }, []);
-  const [toast, showToast] = useState<string | null>(null);
+  const [toast, setToastState] = useState<{ text: string; ok: boolean } | null>(null);
+  /** Shows a notice that is not an error, in green. */
+  const showToast = (text: string | null) => setToastState(text ? { text, ok: true } : null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   /** Shows an error, and keeps it in the Activity log. */
   const setToast = (message: string | null) => {
-    showToast(message);
+    setToastState(message ? { text: message, ok: false } : null);
     if (message) logError(message);
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -938,6 +942,7 @@ export function App() {
     importOpen: dialog?.kind === "import",
     newConnection,
     importConnections: () => setDialog({ kind: "import" }),
+    exportConnections: (preselect: string[] = []) => setDialog({ kind: "export", preselect }),
     openDataFile: () =>
       void pickDataFile()
         .then((path) => (path === null ? undefined : openDroppedFile(path)))
@@ -972,6 +977,7 @@ export function App() {
     switchProject: (id) => shell.current.switchProject(id),
     editProject: (project) => setDialog({ kind: "project", project }),
     newConnection: (folder) => void shell.current.newConnection(folder ?? null),
+    exportConnections: (preselect) => shell.current.exportConnections(preselect),
     newConnectionFrom: (connection, afterSave) =>
       setDialog({
         kind: "connection",
@@ -1122,6 +1128,7 @@ export function App() {
           error={storeError}
           onNew={() => void newConnection()}
           onImport={() => setDialog({ kind: "import" })}
+          onExport={() => setDialog({ kind: "export", preselect: [] })}
           onEdit={(c) =>
             setDialog({
               kind: "connection",
@@ -1173,8 +1180,8 @@ export function App() {
           />
         )}
         {toast && (
-          <div className="notice error toast" role="alert" onClick={() => showToast(null)}>
-            {toast}
+          <div className={`notice ${toast.ok ? "ok" : "error"} toast`} role={toast.ok ? "status" : "alert"} onClick={() => showToast(null)}>
+            {toast.text}
           </div>
         )}
         <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0} ref={panes}>
@@ -1234,6 +1241,7 @@ export function App() {
             version={portable ? `${version} · ${t("portable")}` : version}
             onNew={() => void newConnection()}
             onImport={() => setDialog({ kind: "import" })}
+            onExport={() => setDialog({ kind: "export", preselect: [] })}
             onOpenFile={(path) => void openDroppedFile(path).catch((e: unknown) => setToast(toCommandError(e).message))}
             onSample={openSample}
             onError={setToast}
@@ -1302,6 +1310,18 @@ export function App() {
           onImported={(w) => {
             setWorkspace(w);
             setDialog(null);
+          }}
+        />
+      )}
+      {dialog?.kind === "export" && (
+        <ExportConnectionsDialog
+          connections={connections ?? []}
+          projects={projects ?? []}
+          preselect={dialog.preselect}
+          onClose={() => setDialog(null)}
+          onExported={(n) => {
+            setDialog(null);
+            showToast(t("Exported {n} connections", { n }));
           }}
         />
       )}
@@ -1412,6 +1432,8 @@ interface ShellApi {
   closeSplit: () => void;
   newConnection: () => void;
   importConnections: () => void;
+  /** Opens the export of connections, with `preselect` ticked. */
+  exportConnections: (preselect?: string[]) => void;
   openDataFile: () => void;
   lockApp: () => void;
   detachTab: (tab: TabModel) => void;
@@ -1511,6 +1533,7 @@ function registerShellActions(shell: { current: ShellApi }) {
     // The welcome page's actions, for the palette.
     registerAction({ id: "app.new_connection", scope: "global", title: "New connection…", run: () => s().newConnection() }),
     registerAction({ id: "app.import_connections", scope: "global", title: "Import connections…", run: () => s().importConnections() }),
+    registerAction({ id: "app.export_connections", scope: "global", title: "Export connections…", run: () => s().exportConnections() }),
     registerAction({ id: "app.open_data_file", scope: "global", title: "Open a data file…", run: () => s().openDataFile() }),
     registerAction({
       id: "app.settings",

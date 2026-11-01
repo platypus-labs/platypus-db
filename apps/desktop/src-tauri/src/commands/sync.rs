@@ -40,9 +40,10 @@ const DEFAULT_INTERVAL: u32 = 15;
 /// One run at a time: the interval, the start and a click can overlap.
 static RUNNING: Mutex<()> = Mutex::new(());
 
-fn error(e: &SyncError) -> CommandError {
+pub(crate) fn error(e: &SyncError) -> CommandError {
     let kind = match e {
         SyncError::WrongPassphrase => "sync_passphrase",
+        SyncError::PasswordNeeded => "password_needed",
         SyncError::EmptyPassphrase => "sync_passphrase_empty",
         SyncError::ShortPassphrase => "sync_passphrase_short",
         SyncError::Newer { .. } => "sync_newer",

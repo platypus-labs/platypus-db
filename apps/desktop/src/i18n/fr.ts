@@ -3077,6 +3077,21 @@ const fr: Record<string, string> = {
   "A cell starting with =, +, -, @ or a tab gets a leading ' so that a spreadsheet shows it as text instead of running it as a formula. Numbers stay as they are. Turn it off for a file read by another program.": "Une cellule qui commence par =, +, -, @ ou une tabulation reçoit un ' devant, pour qu'un tableur l'affiche comme du texte au lieu de l'exécuter comme une formule. Les nombres restent tels quels. Désactivez-le pour un fichier lu par un autre programme.",
   "{n} connection has environment variable references from the file, not read until you edit them in its settings.": "{n} connexion a des références à des variables d'environnement venues du fichier, lues seulement une fois modifiées dans ses réglages.",
   "{n} connections have environment variable references from the file, not read until you edit them in their settings.": "{n} connexions ont des références à des variables d'environnement venues du fichier, lues seulement une fois modifiées dans leurs réglages.",
+  "Exported {n} connections": "{n} connexions exportées",
+  "Export connections…": "Exporter les connexions…",
+  "Export connections": "Exporter les connexions",
+  "Keep projects and folders": "Conserver les projets et les dossiers",
+  "Encrypt with a password": "Chiffrer avec un mot de passe",
+  "Confirm password": "Confirmer le mot de passe",
+  "Use at least 8 characters.": "Utilisez au moins 8 caractères.",
+  "The passwords do not match.": "Les mots de passe ne correspondent pas.",
+  "Include saved passwords": "Inclure les mots de passe enregistrés",
+  "Without a password on the file, no password is ever written.": "Sans mot de passe sur le fichier, aucun mot de passe n'est jamais écrit.",
+  "Export {n}": "Exporter {n}",
+  "A file written by Export connections…, with a password if it was encrypted.": "Un fichier écrit par Exporter les connexions…, avec un mot de passe s'il est chiffré.",
+  "This file is encrypted. Enter its password.": "Ce fichier est chiffré. Saisissez son mot de passe.",
+  "Wrong password, or the file is damaged.": "Mot de passe incorrect, ou le fichier est endommagé.",
+  "To a file for another computer or a colleague.": "Vers un fichier pour un autre ordinateur ou un collègue.",
 };
 
 export default fr;
