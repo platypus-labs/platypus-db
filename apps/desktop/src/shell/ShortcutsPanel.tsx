@@ -58,7 +58,7 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
     };
   }, [recording]);
   const [filter, setFilter] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ id: string; text: string } | null>(null);
   const needle = filter.trim();
   const actions = bindableActions()
     .filter((a) => actionMatches(a, needle) && actionMatches(a, search))
@@ -76,7 +76,7 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
 
   function save(action: Action, shortcut: string | null) {
     setError(null);
-    setShortcut(action, shortcut).catch((e: unknown) => setError(toCommandError(e).message));
+    setShortcut(action, shortcut).catch((e: unknown) => setError({ id: action.id, text: toCommandError(e).message }));
   }
 
   function record(action: Action, e: React.KeyboardEvent) {
@@ -88,11 +88,11 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
       return setRecording(null);
     }
     // AltGr types the character: as a shortcut it would never run.
-    if (altGraphText(e.nativeEvent, isMac)) return setError(t("A key typed with AltGr is a character, not a shortcut."));
+    if (altGraphText(e.nativeEvent, isMac)) return setError({ id: action.id, text: t("A key typed with AltGr is a character, not a shortcut.") });
     const shortcut = shortcutOf(e.nativeEvent);
     if (!shortcut) return;
     // A letter alone would run the action instead of being typed: still recording.
-    if (typesText(shortcut)) return setError(t("A key that types a character needs Ctrl or Alt."));
+    if (typesText(shortcut)) return setError({ id: action.id, text: t("A key that types a character needs Ctrl or Alt.") });
     save(action, shortcut);
     setRecording(null);
   }
@@ -106,7 +106,7 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
-      {error && <div className="notice error small">{error}</div>}
+      <p className="muted small">{t("Click a shortcut, then press the new keys. Backspace removes it, Esc cancels.")}</p>
       <table>
         <tbody>
           {actions.flatMap((a) => {
@@ -128,13 +128,21 @@ export function ShortcutsPanel({ search = "" }: { search?: string }) {
                   <button
                     type="button"
                     className={`shortcut-key${recording === a.id ? " recording" : ""}`}
-                    onClick={() => setRecording(a.id)}
+                    onClick={() => {
+                      setError(null);
+                      setRecording(a.id);
+                    }}
                     onKeyDown={(e) => recording === a.id && record(a, e)}
                     onBlur={() => recording === a.id && setRecording(null)}
                     title={t("Click, then press the keys; Backspace removes the shortcut")}
                   >
                     {recording === a.id ? t("Press keys…") : (label ?? "—")}
                   </button>
+                  {error?.id === a.id && (
+                    <div className="error-text small" role="alert" data-field="shortcut-error">
+                      {error.text}
+                    </div>
+                  )}
                   {clash.length > 0 && (
                     <span className="error-text small" title={clash.map((c) => t(c.title)).join(", ")}>
                       {" "}

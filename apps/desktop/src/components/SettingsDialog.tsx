@@ -14,7 +14,8 @@ import { PluginsPanel } from "../plugins/PluginsPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
 import { SyncPanel } from "../sync/SyncPanel";
 import { msg, t } from "../i18n";
-import { settingNumber } from "./settingValue";
+import { numberRule, settingNumber } from "./settingValue";
+import { toast } from "../ui/toast";
 
 type Value = boolean | number | string;
 
@@ -53,15 +54,15 @@ const NAV_GROUPS: { label: string; pages: string[] }[] = [
 const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
   "Appearance": { icon: "theme", about: msg("Theme, language, layout and icons.") },
   "Navigator": { icon: "sidebar", about: msg("How the navigator lists your databases and objects.") },
-  "Driver updates": { icon: "refresh", about: msg("When PlatypusDB looks for newer versions of the downloaded drivers.") },
+  "Driver updates": { icon: "download", about: msg("When PlatypusDB looks for newer versions of the downloaded drivers.") },
   "SQL editor": { icon: "sql", about: msg("Editing, completion and checking of SQL.") },
   "Results": { icon: "table", about: msg("How results are shown, formatted and exported.") },
   "Safety": { icon: "lock", about: msg("What PlatypusDB asks before changes, and what it blocks.") },
-  "Connections": { icon: "database", about: msg("Checks on open connections.") },
+  "Connections": { icon: "link", about: msg("Checks on open connections.") },
   "Toolbar": { icon: "settings", about: msg("Which buttons the editor toolbar shows.") },
   "Performance": { icon: "activity", about: msg("When slow queries are marked.") },
   "Tabs": { icon: "split", about: msg("How open tabs are arranged.") },
-  "Themes": { icon: "theme", about: msg("Import, export and choose the color themes.") },
+  "Themes": { icon: "theme", about: msg("Import and export the color themes.") },
   "Master password": { icon: "key", about: msg("Protects saved passwords with one password of yours.") },
   "Sync": { icon: "refresh", about: msg("Keep your settings and connections in step across computers.") },
   "Agents": { icon: "agent", about: msg("Connect assistants and tools that work with your databases.") },
@@ -186,8 +187,13 @@ function settingFound(needle: string, def: SettingDef<Value>): boolean {
 /** Every declared setting, by section, then the other pages: one tab each, chosen in the list
  *  on the left. While the search has text, the matching settings of every section show
  *  instead, grouped by section, and the list jumps to a group. Changes apply and save at once. */
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ onClose: close }: { onClose: () => void }) {
   useSettingsVersion();
+  // Blurs the focused field first, so what was typed in it is saved before the dialog unmounts.
+  const onClose = () => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    close();
+  };
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const needle = fold(search.trim());
@@ -455,6 +461,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
           defaultValue={value as string}
           placeholder={c.placeholder}
           onBlur={(e) => e.target.value !== value && onSave(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         />
       );
       break;
@@ -548,7 +555,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
   );
   const text = (
     <span>
-      <span className={`setting-title${changed ? " changed" : ""}`}>{t(def.label)}</span>
+      <span className={`setting-title${changed ? " changed" : ""}`} title={changed ? t("Different from the default") : undefined}>{t(def.label)}</span>
       {def.description && <span className="muted small">{t(def.description)}</span>}
     </span>
   );
@@ -609,11 +616,33 @@ function Picture({ picture }: { picture: SettingPicture }) {
  *  step). */
 function NumberInput(props: { value: number; min?: number; max?: number; step?: number; onCommit: (n: number) => void }) {
   const [text, setText] = useState(String(props.value));
+  // A rejected value stays in the field, marked, with a toast saying what is accepted.
+  const [invalid, setInvalid] = useState(false);
   // Follows the value when it changes elsewhere (Reset): blur would save the old one.
-  useEffect(() => setText(String(props.value)), [props.value]);
+  useEffect(() => {
+    setText(String(props.value));
+    setInvalid(false);
+  }, [props.value]);
   const commit = () => {
     const n = settingNumber(text, props);
-    if (n !== null && n !== props.value) props.onCommit(n);
+    if (n === null) {
+      setInvalid(true);
+      const { min, max } = props;
+      const rule = numberRule(props);
+      toast(
+        rule === "between"
+          ? t("Between {min} and {max}", { min: String(min), max: String(max) })
+          : rule === "min"
+            ? t("At least {min}", { min: String(min) })
+            : rule === "max"
+              ? t("At most {max}", { max: String(max) })
+              : t("Not a valid number"),
+        "error",
+      );
+      return;
+    }
+    setInvalid(false);
+    if (n !== props.value) props.onCommit(n);
     else setText(String(props.value));
   };
   return (
@@ -623,7 +652,11 @@ function NumberInput(props: { value: number; min?: number; max?: number; step?: 
       min={props.min}
       max={props.max}
       step={props.step}
-      onChange={(e) => setText(e.target.value)}
+      aria-invalid={invalid || undefined}
+      onChange={(e) => {
+        setText(e.target.value);
+        setInvalid(false);
+      }}
       onBlur={commit}
       onKeyDown={(e) => e.key === "Enter" && commit()}
     />

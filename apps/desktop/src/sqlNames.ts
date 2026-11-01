@@ -38,6 +38,7 @@ export const selectLimit = defineSetting({
   key: "navigator.select_limit",
   section: "Navigator",
   label: "LIMIT of Generate SELECT",
+  description: "Rows of the SELECT that the table menu generates.",
   default: 200,
   control: { type: "number", min: 1, step: 100 },
 });

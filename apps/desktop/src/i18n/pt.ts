@@ -3001,7 +3001,6 @@ const pt: Record<string, string> = {
   "Which buttons the editor toolbar shows.": "Quais botões a barra do editor mostra.",
   "When slow queries are marked.": "Quando as consultas lentas são marcadas.",
   "How open tabs are arranged.": "Como as abas abertas são organizadas.",
-  "Import, export and choose the color themes.": "Importe, exporte e escolha os temas de cores.",
   "Protects saved passwords with one password of yours.": "Protege as senhas salvas com uma senha sua.",
   "Keep your settings and connections in step across computers.": "Mantenha suas configurações e conexões em sincronia entre computadores.",
   "Connect assistants and tools that work with your databases.": "Conecte assistentes e ferramentas que trabalham com seus bancos de dados.",
@@ -3121,6 +3120,15 @@ const pt: Record<string, string> = {
   "running, not counting this app's own session": "em execução, sem contar a sessão desta app",
   "last {n} s": "últimos {n} s",
   "last {n} min": "últimos {n} min",
+  "Import and export the color themes.": "Importe e exporte os temas de cores.",
+  "Between {min} and {max}": "Entre {min} e {max}",
+  "At least {min}": "Pelo menos {min}",
+  "At most {max}": "No máximo {max}",
+  "Not a valid number": "Não é um número válido",
+  "Different from the default": "Diferente do padrão",
+  "Click a shortcut, then press the new keys. Backspace removes it, Esc cancels.": "Clique num atalho e pressione as novas teclas. Backspace remove, Esc cancela.",
+  "Rows of the SELECT that the table menu generates.": "Linhas do SELECT gerado pelo menu da tabela.",
+  "Sharing…": "Compartilhando…",
 };
 
 export default pt;
