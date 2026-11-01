@@ -99,15 +99,16 @@ pub async fn catalog_foreign_keys(conn: &dyn Connection) -> Result<Vec<CatalogFo
 /// A condition on the `sqlite_master` row `alias` (of the schema `master`, already quoted) that
 /// keeps the objects a user made: not SQLite's own, and not a shadow table of an FTS5 table.
 /// Those are `<fts>_content`, `_data`, `_idx`, `_docsize` and `_config`, and only count when the
-/// catalog really has an FTS5 table `<fts>`: a plain `foo_data` stays visible.
+/// catalog really has an FTS5 table `<fts>`: a plain `foo_data` stays visible. The shadow names
+/// come from an uncorrelated subquery, built once per query, so a large catalog stays linear.
 fn user_object(master: &str, alias: &str) -> String {
     format!(
         r"{alias}.name NOT LIKE 'sqlite\_%' ESCAPE '\'
-         AND NOT ({alias}.type = 'table' AND EXISTS (
-           SELECT 1 FROM {master}.sqlite_master v
-           WHERE v.type = 'table' AND v.sql LIKE 'CREATE VIRTUAL TABLE%USING fts5%'
-             AND {alias}.name IN (v.name || '_content', v.name || '_data', v.name || '_idx',
-                                  v.name || '_docsize', v.name || '_config')))"
+         AND NOT ({alias}.type = 'table' AND {alias}.name IN (
+           SELECT v.name || s.suffix FROM {master}.sqlite_master v,
+             (SELECT '_content' AS suffix UNION ALL SELECT '_data' UNION ALL SELECT '_idx'
+              UNION ALL SELECT '_docsize' UNION ALL SELECT '_config') s
+           WHERE v.type = 'table' AND v.sql LIKE 'CREATE VIRTUAL TABLE%USING fts5%'))"
     )
 }
 
