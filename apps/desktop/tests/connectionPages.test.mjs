@@ -11,8 +11,9 @@ test("a plain connection has no dot on either page", () => {
 });
 
 test("each network setting shows the dot", () => {
-  assert.equal(networkHasSettings({ ...base, ssl_mode: "require" }), true);
-  assert.equal(networkHasSettings({ ...base, ssl_mode: "disable" }), true);
+  // The SSL mode alone is not a setting worth the dot: presets set one everywhere.
+  assert.equal(networkHasSettings({ ...base, ssl_mode: "require" }), false);
+  assert.equal(networkHasSettings({ ...base, ssl_mode: "disable" }), false);
   assert.equal(networkHasSettings({ ...base, ssl_root_cert: "C:\\ca.pem" }), true);
   assert.equal(networkHasSettings({ ...base, ssl_client_key: "k.pem" }), true);
   assert.equal(networkHasSettings({ ...base, network_profile: "p" }), true);

@@ -4,14 +4,14 @@ import type { SavedConnection } from "../api";
 
 const filled = (v: string | null | undefined) => !!v?.trim();
 
-/** The Network page: a profile, an SSH tunnel, TLS other than the default `prefer`, a
- *  certificate, a proxy, a cloud port forward or a command around the connection. */
+/** The Network page: a profile, an SSH tunnel, a certificate, a proxy, a cloud port forward
+ *  or a command around the connection. The SSL mode alone does not count: drivers and cloud
+ *  presets set one on almost every connection. */
 export function networkHasSettings(c: SavedConnection): boolean {
   const o = c.options ?? {};
   return (
     !!c.network_profile ||
     !!c.ssh ||
-    (c.ssl_mode !== undefined && c.ssl_mode !== "prefer") ||
     [c.ssl_root_cert, c.ssl_client_cert, c.ssl_client_key, o.proxy, o.forward, o.before_connect, o.after_disconnect].some(filled)
   );
 }
