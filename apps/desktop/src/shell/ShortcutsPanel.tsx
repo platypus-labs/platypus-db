@@ -33,6 +33,7 @@ const SCOPES: Record<string, string> = {
   "navigator.folder": msg("Navigator: folder"),
   project: msg("Project"),
   "project.folder": msg("Project folder"),
+  "project.add": msg("Project rail: add"),
   script: msg("Saved script"),
   "dashboard.widget": msg("Dashboard widget"),
 };

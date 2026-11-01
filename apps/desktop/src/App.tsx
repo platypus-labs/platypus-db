@@ -1118,6 +1118,10 @@ export function App() {
         onNew={() => setDialog({ kind: "project", project: null })}
         onMenu={(p, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
         folders={projectFolders}
+        onAddMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.add", arg: undefined } });
+        }}
         onFolderMenu={(f, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
       <div className="sidebar-column" hidden={sidebarCollapsed}>

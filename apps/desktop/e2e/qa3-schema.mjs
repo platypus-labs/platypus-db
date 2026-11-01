@@ -8,6 +8,7 @@ import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { clientRoot, installClient } from "./qa-ora.mjs";
+import { revealItem } from "./menu-sub.mjs";
 
 export const SRC = "qa3s_src";
 export const DST = "qa3s_dst";
@@ -297,6 +298,7 @@ export async function rowMenu(page, chain, last, title) {
   await page.eval(`document.getElementById('qa3-row')?.removeAttribute('id')`);
   await page.click(box.x + 5, box.y + box.h / 2, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, title);
   const found = `[...document.querySelectorAll('.context-menu button')].find(b => (b.querySelector('span')?.textContent ?? '').startsWith(${JSON.stringify(title)}))`;
   if (!(await page.eval(`!!${found}`))) {
     const items = await page.eval(`[...document.querySelectorAll('.context-menu button span:first-child')].map(s => s.textContent)`);

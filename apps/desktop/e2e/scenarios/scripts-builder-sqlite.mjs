@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "E2E SQLite";
 const row = (label) =>
@@ -84,7 +85,7 @@ export default async function (page, { dir }) {
   await page.eval(`${row(NAME)}.querySelector(".twisty").click()`);
   await page.waitFor(`${row("customers")} !== undefined`, 15_000);
   const tableItems = await rightClick(page, row("customers"));
-  assert.ok(tableItems.includes("Visual query builder"), `${tableItems}`);
+  assert.ok(await revealItem(page, "Visual query builder"), `in the Analyze submenu, not in ${tableItems}`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent === 'Visual query builder').click()`);
   await page.waitFor(`${builderSql}.includes('FROM customers c')`, 10_000);
   await page.waitFor(`[...document.querySelectorAll('.builder-source')].some(r => r.textContent === 'orders')`, 10_000);

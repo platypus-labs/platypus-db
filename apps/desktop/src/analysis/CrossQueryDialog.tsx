@@ -378,6 +378,7 @@ registerAction({
   scope: "navigator.object",
   title: "Query across databases…",
   group: "open",
+  submenu: "Analyze",
   order: 39,
   when: ({ connection, object }) => !isNoSql(connection.driver) && READABLE_KINDS.has(object.kind),
   run: (arg) =>

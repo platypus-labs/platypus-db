@@ -3129,6 +3129,9 @@ const zh: Record<string, string> = {
   "Click a shortcut, then press the new keys. Backspace removes it, Esc cancels.": "点击快捷键，然后按下新的按键。Backspace 删除，Esc 取消。",
   "Rows of the SELECT that the table menu generates.": "表菜单生成的 SELECT 的行数。",
   "Sharing…": "正在共享…",
+  "Added to bookmarks": "已添加到书签",
+  "A project folder a colleague shared on a drive or in Git.": "同事在云盘或 Git 中共享的项目文件夹。",
+  "Project rail: add": "项目栏：添加",
 };
 
 export default zh;

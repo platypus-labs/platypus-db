@@ -147,7 +147,8 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
           <Icon name="new-folder" />
         </button>
       </div>
-      {open && <GitBar project={projectId} status={git} problem={gitProblem} reload={load} onError={onError} />}
+      {/* With no scripts the Git proposal goes after the empty state: it is not the main action. */}
+      {open && !(list && entries.length === 0) && <GitBar project={projectId} status={git} problem={gitProblem} reload={load} onError={onError} />}
       {open && (
         <ul className="tree scripts-tree">
           {entries.map((entry) => {
@@ -228,9 +229,22 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
               </li>
             );
           })}
-          {list && entries.length === 0 && <li className="scripts-empty"><EmptyState compact title={t("No saved scripts")} /></li>}
+          {list && entries.length === 0 && (
+            <li className="scripts-empty">
+              <EmptyState
+                compact
+                title={t("No saved scripts")}
+                actions={
+                  <button type="button" onClick={() => void create(false)}>
+                    {t("New script")}
+                  </button>
+                }
+              />
+            </li>
+          )}
         </ul>
       )}
+      {open && list && entries.length === 0 && <GitBar project={projectId} status={git} problem={gitProblem} reload={load} onError={onError} />}
       {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={fail} />}
     </section>
   );

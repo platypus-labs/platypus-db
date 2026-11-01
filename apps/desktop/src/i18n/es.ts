@@ -3129,6 +3129,9 @@ const es: Record<string, string> = {
   "Click a shortcut, then press the new keys. Backspace removes it, Esc cancels.": "Haz clic en un atajo y pulsa las teclas nuevas. Retroceso lo quita, Esc cancela.",
   "Rows of the SELECT that the table menu generates.": "Filas del SELECT que genera el menú de la tabla.",
   "Sharing…": "Compartiendo…",
+  "Added to bookmarks": "Añadido a los marcadores",
+  "A project folder a colleague shared on a drive or in Git.": "Una carpeta de proyecto que un compañero compartió en una unidad o en Git.",
+  "Project rail: add": "Barra de proyectos: añadir",
 };
 
 export default es;
