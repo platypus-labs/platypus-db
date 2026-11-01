@@ -449,7 +449,10 @@ pub(crate) fn mysql(design: &mut TableDesign, definition: &create::Definition) {
         .collect();
     // The CHECK the server makes for an application-time period (`start < end`, named like
     // the period) comes with `PERIOD FOR`: creating it again would add a duplicate.
-    let flat = |text: &str| text.replace(['`', '"', ' ', '(', ')'], "").to_ascii_lowercase();
+    let flat = |text: &str| {
+        text.replace(['`', '"', ' ', '(', ')'], "")
+            .to_ascii_lowercase()
+    };
     let implicit_periods: Vec<(String, String)> = design
         .periods
         .iter()

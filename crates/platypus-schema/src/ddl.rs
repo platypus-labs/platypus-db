@@ -123,7 +123,7 @@ pub(crate) fn add_foreign_key(
     let ddl = Ddl { d: dialect, schema };
     let mut fk = fk.clone();
     if needs_name(dialect, fk.disabled, &fk.name) {
-        fk.name = unique_name(foreign_key_name(table, &fk), taken);
+        fk.name = unique_name(&foreign_key_name(table, &fk), taken);
     }
     ddl.add_constraint(table, &ddl.foreign_key(&fk), &fk.name, fk.disabled)
 }
@@ -192,8 +192,8 @@ pub(crate) fn taken_names(design: &TableDesign) -> HashSet<String> {
 
 /// `name`, or with `_2`, `_3`.. appended (still within 128 characters) until it is not in
 /// `taken`; the name chosen joins `taken`.
-fn unique_name(name: String, taken: &mut HashSet<String>) -> String {
-    let mut chosen = name.clone();
+fn unique_name(name: &str, taken: &mut HashSet<String>) -> String {
+    let mut chosen = name.to_owned();
     let mut n = 2;
     while taken.contains(&chosen.to_lowercase()) {
         let suffix = format!("_{n}");
@@ -223,12 +223,12 @@ fn name_disabled(dialect: Dialect, design: &TableDesign) -> Cow<'_, TableDesign>
     let mut taken = taken_names(design);
     for f in &mut named.foreign_keys {
         if unnamed(f.disabled, &f.name) {
-            f.name = unique_name(foreign_key_name(&design.name, f), &mut taken);
+            f.name = unique_name(&foreign_key_name(&design.name, f), &mut taken);
         }
     }
     for c in &mut named.constraints {
         if unnamed(c.disabled, &c.name) {
-            c.name = unique_name(constraint_name(&design.name, c), &mut taken);
+            c.name = unique_name(&constraint_name(&design.name, c), &mut taken);
         }
     }
     Cow::Owned(named)
@@ -2416,25 +2416,23 @@ mod tests {
             check: "note <> ''".to_owned(),
             ..ConstraintDesign::default()
         });
-        let named = name_disabled(Dialect::SqlServer, &design);
-        let names: Vec<_> = named.foreign_keys.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(names, ["FK_orders_note_2", "FK_orders_note_3"]);
+        let disabled = name_disabled(Dialect::SqlServer, &design);
+        let keys: Vec<_> = disabled
+            .foreign_keys
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect();
+        assert_eq!(keys, ["FK_orders_note_2", "FK_orders_note_3"]);
 
         let mut taken = taken_names(&design);
-        let first = add_foreign_key(Dialect::SqlServer, "dbo", "orders", &fk("a"), &mut taken);
-        let second = add_foreign_key(Dialect::SqlServer, "dbo", "orders", &fk("b"), &mut taken);
-        assert!(
-            first[0].contains("CONSTRAINT FK_orders_note_2 "),
-            "{first:?}"
-        );
-        assert!(
-            second[0].contains("CONSTRAINT FK_orders_note_3 "),
-            "{second:?}"
-        );
+        let one = add_foreign_key(Dialect::SqlServer, "dbo", "orders", &fk("a"), &mut taken);
+        let two = add_foreign_key(Dialect::SqlServer, "dbo", "orders", &fk("b"), &mut taken);
+        assert!(one[0].contains("CONSTRAINT FK_orders_note_2 "), "{one:?}");
+        assert!(two[0].contains("CONSTRAINT FK_orders_note_3 "), "{two:?}");
 
         let long = "x".repeat(128);
         let mut taken = HashSet::from([long.clone()]);
-        let name = unique_name(long, &mut taken);
+        let name = unique_name(&long, &mut taken);
         assert_eq!(name.chars().count(), 128);
         assert!(name.ends_with("_2"));
     }
