@@ -23,6 +23,7 @@ import {
   VENDOR_DRIVERS,
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
+import { initHasSettings, networkHasSettings } from "./connectionPages";
 import { asksPassword, CONNECTION_TYPES, noteText } from "../connections";
 import { applyUrlEdit, cleanFilePath, hostOptional, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed, type ConnectBy } from "../connectionUrl";
 import { PasswordPrompt } from "../App";
@@ -594,14 +595,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     </button>
   );
   const pageTitle = { general: "General", safety: "Appearance and safety", network: "Network", init: "Init" }[page];
-  const networkSet =
-    conn.network_profile ||
-    conn.ssh ||
-    conn.ssl_client_cert ||
-    conn.options?.proxy ||
-    conn.options?.before_connect ||
-    conn.options?.after_disconnect;
-  const initSet = !!(init.schema || init.time_zone || init.statements.trim());
+  const networkSet = networkHasSettings(conn);
+  const initSet = initHasSettings(conn);
 
   if (picking) {
     return (
@@ -656,7 +651,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           <div className="dialog-tabs" role="tablist" aria-orientation="vertical">
             {tab("general", t("General"))}
             {tab("safety", t("Appearance and safety"))}
-            {server && !adbcProfile && tab("network", t("Network"), !!networkSet)}
+            {server && !adbcProfile && tab("network", t("Network"), networkSet)}
             {tab("init", t("Init"), initSet)}
           </div>
 
