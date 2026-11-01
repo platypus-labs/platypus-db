@@ -141,11 +141,13 @@ export function App() {
   useEffect(() => {
     void startupDriverCheck();
   }, []);
-  const [toast, showToast] = useState<string | null>(null);
+  const [toast, setToastState] = useState<{ text: string; ok: boolean } | null>(null);
+  /** Shows a notice that is not an error, in green. */
+  const showToast = (text: string | null) => setToastState(text ? { text, ok: true } : null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   /** Shows an error, and keeps it in the Activity log. */
   const setToast = (message: string | null) => {
-    showToast(message);
+    setToastState(message ? { text: message, ok: false } : null);
     if (message) logError(message);
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1178,8 +1180,8 @@ export function App() {
           />
         )}
         {toast && (
-          <div className="notice error toast" role="alert" onClick={() => showToast(null)}>
-            {toast}
+          <div className={`notice ${toast.ok ? "ok" : "error"} toast`} role={toast.ok ? "status" : "alert"} onClick={() => showToast(null)}>
+            {toast.text}
           </div>
         )}
         <div className={`panes${split ? " split" : ""}`} hidden={visibleTabs.length === 0} ref={panes}>

@@ -1370,7 +1370,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
     registerAction({
       id: "connection.export",
       scope: "navigator.connection",
-      title: "Export…",
+      title: "Export connections…",
       group: "manage",
       order: 89,
       run: ({ connection }) => workbench().exportConnections([connection.id]),

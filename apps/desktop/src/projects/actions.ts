@@ -146,7 +146,7 @@ registerAction({
 registerAction({
   id: "project.export",
   scope: "project",
-  title: "Export…",
+  title: "Export connections…",
   order: 14,
   run: (project) => workbench().exportConnections(project.connections),
 });
