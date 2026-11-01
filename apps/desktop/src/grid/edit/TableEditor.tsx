@@ -58,6 +58,8 @@ export interface TableEditTarget {
 /** The data editor as grid actions see it, in `source.edit`. */
 export interface TableEdit {
   editable: boolean;
+  /** The table's columns are still being read: editing is neither possible nor refused yet. */
+  loading: boolean;
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -259,6 +261,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   const keys = meta && "key" in meta ? meta : null;
   const readOnly = reason ?? (meta && "reason" in meta ? meta.reason : null);
   const editable = readOnly === null && keys !== null && !busy;
+  const loading = readOnly === null && keys === null;
   const dirty = !edits.isEmpty(state);
 
   useEffect(() => latest.current?.onDirtyChange(dirty), [dirty]);
@@ -342,6 +345,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   });
 
   async function editCell(cell: Cell, typed?: string) {
+    if (loading) return setError(t("The table's columns are still loading"));
     if (!editable || !keys) return;
     if (!writable(cell.col)) {
       // A computed column is the grid's, not the result's.
@@ -482,6 +486,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
 
   const edit: TableEdit = {
     editable,
+    loading,
     dirty,
     canUndo: history.canUndo,
     canRedo: history.canRedo,

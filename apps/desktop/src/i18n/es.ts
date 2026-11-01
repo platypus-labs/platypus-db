@@ -511,6 +511,7 @@ const es: Record<string, string> = {
   "its keys could not be read ({message})": "no se pudieron leer sus claves ({message})",
   "{column} is not a column of {table}: it cannot be edited": "{column} no es una columna de {table}: no se puede editar",
   "{column} is filled in by the database: it cannot be edited": "{column} la rellena la base de datos: no se puede editar",
+  "The table's columns are still loading": "Las columnas de la tabla aún se están cargando",
   "Read-only: {reason}.": "Solo lectura: {reason}.",
   "Columns that tell the rows apart": "Columnas que distinguen las filas",
   "Set a virtual key…": "Establecer una clave virtual…",

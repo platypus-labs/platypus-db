@@ -3,6 +3,7 @@
 import { isMac, registerAction } from "../../actions";
 import type { GridActionContext } from "../DataGrid";
 import { msg } from "../../i18n";
+import { offersEdit } from "./loading";
 import { type ColumnRule, isNumberRule, loadsFromFile } from "./massEdit";
 
 const editable = ({ source }: GridActionContext) => source?.edit?.editable === true;
@@ -16,7 +17,8 @@ registerAction({
   shortcut: ["F2", "Enter"],
   group: "edit",
   order: 20,
-  when: (ctx) => editable(ctx) && ctx.grid.focused() !== null,
+  // While the columns load it still runs, to say so.
+  when: (ctx) => offersEdit(ctx.source?.edit) && ctx.grid.focused() !== null,
   run: ({ grid, source }) => source!.edit!.editCell(grid.focused()!),
 });
 

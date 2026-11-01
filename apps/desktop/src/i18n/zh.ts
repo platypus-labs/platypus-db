@@ -511,6 +511,7 @@ const zh: Record<string, string> = {
   "its keys could not be read ({message})": "无法读取其键（{message}）",
   "{column} is not a column of {table}: it cannot be edited": "{column} 不是 {table} 的列：无法编辑",
   "{column} is filled in by the database: it cannot be edited": "{column} 由数据库填充：无法编辑",
+  "The table's columns are still loading": "表的列仍在加载",
   "Read-only: {reason}.": "只读：{reason}。",
   "Columns that tell the rows apart": "用于区分各行的列",
   "Set a virtual key…": "设置虚拟键…",
