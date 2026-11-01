@@ -7,6 +7,7 @@ import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { ALT, CTRL, SHIFT } from "./cdp.mjs";
+import { revealItem } from "./menu-sub.mjs";
 
 export { ALT, CTRL, SHIFT };
 
@@ -145,6 +146,7 @@ export async function treeMenu(page, label, item, row = treeRow(label)) {
   const r = await page.rect("#qa-row");
   await page.click(r.x + 20, r.y + r.h / 2, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, item);
   await page.waitFor(`[...document.querySelectorAll('.context-menu button')].some(b => b.textContent.startsWith(${JSON.stringify(item)}))`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(item)})).click()`);
 }

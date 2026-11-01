@@ -39,6 +39,9 @@ async function menuOf(page, label, index = 0) {
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  // Import, export, copy and generated data live in the Data submenu: open it to list them.
+  await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.hasAttribute('aria-haspopup') && b.textContent.startsWith('Data'))?.click()`);
+  await page.sleep(150);
   const items = await page.eval(menuItems);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.context-menu') === null`);

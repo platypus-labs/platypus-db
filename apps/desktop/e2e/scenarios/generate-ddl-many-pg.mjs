@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { ENGINES, SRC, needsEngines, openPath, psql, queryText, saveEngines, visibleQuery } from "../qa3-schema.mjs";
 import { SHIFT } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 export const skip = needsEngines("pg");
 
@@ -60,6 +61,7 @@ async function generateAll(page) {
       if (Date.now() > deadline) throw e;
     }
   }
+  await revealItem(page, "Generate DDL");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate DDL')).click()`);
 }
 

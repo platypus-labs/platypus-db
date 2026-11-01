@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL, SHIFT } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "Select db";
 const ROWS = 5000;
@@ -74,8 +75,9 @@ export default async function (page) {
   await clickRow(page, "c", { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   const items = await page.eval(`[...document.querySelectorAll('.context-menu button')].map(b => b.textContent)`);
-  assert.ok(items.some((i) => i.startsWith("Generate DDL")), `DDL in ${items}`);
+  assert.ok(items.some((i) => i.startsWith("Generate SQL")), `Generate SQL in ${items}`);
   assert.ok(!items.some((i) => i.startsWith("Drop")), `no Drop in ${items}`);
+  await revealItem(page, "Generate DDL");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate DDL')).click()`);
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('DDL of 2 objects')`, 10_000);
   // The tab opens at once and fills as the DDL is read.

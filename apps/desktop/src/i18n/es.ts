@@ -826,6 +826,7 @@ const es: Record<string, string> = {
   "Own cost": "Coste propio",
   "Own time, all loops (ms)": "Tiempo propio, todos los bucles (ms)",
   "{what} needs a primary key on {name}.": "{what} requiere una clave primaria en {name}.",
+  "Generate SQL": "Generar SQL",
   "Generate SELECT": "Generar SELECT",
   "Generate INSERT": "Generar INSERT",
   "Generate UPDATE": "Generar UPDATE",

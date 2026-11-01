@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { revealItem } from "../menu-sub.mjs";
 
 const TABLE = "qa \"q' [b] `t` ; -- x";
 const COL = "c \"q' [b] `t`";
@@ -85,6 +86,7 @@ export default async function (page, { dir }) {
   await page.eval(`${treeRow(TABLE)}.querySelector('.tree-label').id = 'e2e-row'`);
   await page.clickSel("#e2e-row", { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, "Export data");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Export data')).click()`);
   const tables = `document.querySelector('.modal.export-tables')`;
   await page.waitFor(`[...(${tables}?.querySelectorAll('button') ?? [])].some(b => b.textContent.trim() === 'Export to folder…' && !b.disabled)`, 15_000);

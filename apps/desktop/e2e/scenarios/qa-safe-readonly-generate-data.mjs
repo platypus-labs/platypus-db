@@ -41,6 +41,8 @@ export default async function (page, { dir, shots }) {
   await page.clickSel("#e2e-row", { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   // A read-only connection takes no rows: the table's menu offers no data generation.
+  await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.hasAttribute('aria-haspopup') && b.textContent.startsWith('Data'))?.click()`);
+  await page.sleep(150);
   const items = await page.eval(`[...document.querySelectorAll('.context-menu button')].map(b => b.textContent)`);
   if (shots) await page.screenshot(join(shots, "qa-safe-readonly-generate-data.png"));
   assert.ok(!items.some((t) => t.startsWith("Generate data")), `Generate data offered on a read-only connection: ${items.join(" | ")}`);

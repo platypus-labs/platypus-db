@@ -2,6 +2,7 @@
 // and the rename and drop dialogs. Skipped when PostgreSQL is not running.
 import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 import { setup as pgSetup, skip as pgSkip } from "./dev-postgres.mjs";
 
 export const skip = pgSkip;
@@ -21,6 +22,7 @@ async function rightClick(page, label) {
 }
 
 async function choose(page, item) {
+  await revealItem(page, item);
   await page.eval(
     `[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span').textContent === ${JSON.stringify(item)}).click()`,
   );

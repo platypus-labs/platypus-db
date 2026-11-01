@@ -8,6 +8,7 @@ import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "E2E Mongo";
 const PORT = 57017;
@@ -78,8 +79,9 @@ export default async function (page) {
   await page.waitFor(`${row("customers")} !== undefined && ${row("Views")} !== undefined`, 20_000);
   await page.eval(`${row("customers")}.id = 'e2e-customers'`);
   const items = await menu(page, "#e2e-customers");
-  for (const item of ["Open data", "Generate SELECT", "Drop…"]) assert.ok(items.includes(item), `${item} in ${items}`);
+  for (const item of ["Open data", "Generate SQL", "Drop…"]) assert.ok(items.includes(item), `${item} in ${items}`);
   assert.ok(!items.includes("Visual query builder"), `no SQL builder in ${items}`);
+  await revealItem(page, "Open data");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent === 'Open data').click()`);
 
   // The data viewer runs mongosh and shows the document of the focused row.
@@ -127,10 +129,12 @@ async function generateData(page) {
   await run(page, `db.fake_e2e.insertOne({ _id: 1, name: "seed", tags: ["a"], address: { city: "Roma" } })`);
   await page.eval(`${row("platypus")}.id = 'e2e-db'`);
   await menu(page, "#e2e-db");
+  await revealItem(page, "Refresh");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Refresh')).click()`);
   await page.waitFor(`${row("fake_e2e")} !== undefined`, 15_000);
   await page.eval(`${row("fake_e2e")}.id = 'e2e-fake'`);
   await menu(page, "#e2e-fake");
+  await revealItem(page, "Generate data");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Generate data')).click()`);
 
   const gen = `document.querySelector('.modal.generate-data')`;

@@ -826,6 +826,7 @@ const zh: Record<string, string> = {
   "Own cost": "自身成本",
   "Own time, all loops (ms)": "自身时间，所有循环（毫秒）",
   "{what} needs a primary key on {name}.": "{what}需要 {name} 上的主键。",
+  "Generate SQL": "生成 SQL",
   "Generate SELECT": "生成 SELECT",
   "Generate INSERT": "生成 INSERT",
   "Generate UPDATE": "生成 UPDATE",
