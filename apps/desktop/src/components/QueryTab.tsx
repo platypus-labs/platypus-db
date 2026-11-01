@@ -1623,13 +1623,34 @@ export function QueryTab({
         const inGrid = !focus || focus === document.body || !!focus.closest(".grid-scroll");
         const again = memory.current.readOf(result.id);
         if (!again) return;
-        void run("statement", false, [again], false, result.id).then(() => {
-          if (!inGrid || (document.activeElement && document.activeElement !== document.body)) return;
-          root.current?.querySelector<HTMLElement>(".grid-scroll")?.focus();
-        });
+        const reload = () =>
+          void run("statement", false, [again], false, result.id).then(() => {
+            if (!inGrid || (document.activeElement && document.activeElement !== document.body)) return;
+            root.current?.querySelector<HTMLElement>(".grid-scroll")?.focus();
+          });
+        // DuckDB writes an edited row of a table with a key at the end of the table: the rows
+        // come back in the key's order, which an edit leaves alone.
+        if (viewer && connection.driver === "duckdb") void keepKeyOrder(result).then((done) => !done && reload());
+        else reload();
       },
       onDirtyChange: setUnsaved,
     };
+  }
+
+  /** Data viewer on DuckDB, which moves an edited row to the end of the table when the table has
+   *  a key: writes `ORDER BY` the single-column primary key into the viewer's own statement and
+   *  runs it. False when it did not (a sort already there, no such key, a rewrite that does not
+   *  fit): the caller runs the statement as it is. */
+  async function keepKeyOrder(result: Result): Promise<boolean> {
+    try {
+      if (await api.sqlOrderClause(result.sql, connection.driver)) return false;
+      const keys = (await details.current)?.constraints.find((c) => c.kind === "primary_key");
+      if (keys?.columns.length !== 1) return false;
+      const column = keys.columns[0] ?? null;
+      return (await rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, column, false))) !== null;
+    } catch {
+      return false;
+    }
   }
 
   /** The viewer's table, for the notes in the grid header; none for other results. */
