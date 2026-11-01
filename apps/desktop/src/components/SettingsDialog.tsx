@@ -6,6 +6,7 @@ import { toCommandError } from "../api";
 import { type SettingDef, type SettingPicture, getSetting, getStored, setSetting, setStored, settingDefs, useSettingsVersion } from "../settings";
 import { ShortcutsPanel, actionMatches } from "../shell/ShortcutsPanel";
 import { Icon, type IconName, type IconSet } from "../ui/Icon";
+import { toHex } from "../ui/colorHex";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
@@ -412,6 +413,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** The theme variable behind each color setting. */
+const THEME_VAR: Record<string, string> = {
+  "appearance.accent": "--accent",
+  "appearance.background": "--bg",
+  "appearance.sidebar": "--bg-sidebar",
+  "appearance.text": "--fg",
+};
+
+/** The color the theme gives now: a color input needs a value, and an empty one would show grey. */
+function themeHex(key: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(THEME_VAR[key] ?? "");
+  return toHex(v) ?? "#808080";
+}
+
 function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: Value | null) => void }) {
   const value = getSetting(def);
   const changed = value !== def.default;
@@ -450,7 +465,7 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
           {!hex && <span className="muted small">{t("Theme's")}</span>}
           <input
             type="color"
-            value={hex ?? "#808080"}
+            value={hex ?? themeHex(def.key)}
             title={hex ?? t("The theme's color")}
             onChange={(e) => onSave(e.target.value)}
           />

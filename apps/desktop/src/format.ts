@@ -10,6 +10,13 @@ export function formatBytes(bytes: number): string {
   return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
+/** A share (0 to 1) as a percentage with one decimal; a share above 0 that would round to
+ *  "0%" reads "<0.1%", so a count of 1 among thousands does not look like none. */
+export function formatShare(share: number, locale: string): string {
+  const percent = (n: number) => n.toLocaleString(locale, { style: "percent", maximumFractionDigits: 1 });
+  return share > 0 && share < 0.0005 ? `<${percent(0.001)}` : percent(share);
+}
+
 /** `name-2026-10-29.ext`, without the characters file systems refuse in a name. */
 export function datedFileName(name: string, ext: string, today = new Date()): string {
   const day = today.toISOString().slice(0, 10);

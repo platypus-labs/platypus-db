@@ -169,6 +169,13 @@ test("the export is a page with every cell", () => {
   assert.ok(page.includes('class="summary failed">no such column'));
 });
 
+test("indented items nest as lists of their own, ordered or not", () => {
+  assert.equal(markdownHtml("- a\n  - b\n  - c\n- d"), "<ul><li>a<ul><li>b</li><li>c</li></ul></li><li>d</li></ul>");
+  assert.equal(markdownHtml("- a\n\t- b"), "<ul><li>a<ul><li>b</li></ul></li></ul>");
+  assert.equal(markdownHtml("1. a\n   1. b\n      - c\n2. d"), "<ol><li>a<ol><li>b<ul><li>c</li></ul></li></ol></li><li>d</li></ol>");
+  assert.equal(markdownHtml("- a\n  1. b"), "<ul><li>a<ol><li>b</li></ol></li></ul>");
+});
+
 test("a numbered list keeps the number it starts at", () => {
   const [list] = parseMarkdown("3. three\n4. four");
   assert.equal(list.start, 3);

@@ -39,6 +39,14 @@ export interface ActionScopes {
     object: ObjectMeta;
     column: string;
   };
+  /** An index of a table, listed under its Indexes section. */
+  "navigator.index": {
+    connection: SavedConnection;
+    database: string | null;
+    schema: SchemaMeta;
+    object: ObjectMeta;
+    index: string;
+  };
   /** A result grid with focus or a context menu. */
   grid: GridActionContext;
 }

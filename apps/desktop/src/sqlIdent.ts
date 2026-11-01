@@ -153,3 +153,10 @@ export function routineBase(name: string): string {
   const open = name.indexOf("(");
   return open > 0 ? name.slice(0, open).trimEnd() : name;
 }
+
+/** The `ORDER BY` that keeps the rows of a DuckDB table viewer in place after an edit: all the
+ *  primary key's columns, or the `rowid` of a table (not a view) without one; `null` otherwise. */
+export function keyOrderClause(driver: DriverKind, keys: string[], isTable: boolean): string | null {
+  if (keys.length > 0) return `ORDER BY ${keys.map((k) => quoteIdent(k, driver)).join(", ")}`;
+  return isTable ? "ORDER BY rowid" : null;
+}

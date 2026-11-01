@@ -6725,6 +6725,108 @@ async fn qa_fixnav_keyword_table_names_are_quoted_where_needed() {
     }
 }
 
+/// PostgreSQL shows the catalog properties of sequences, types and domains on their pages.
+#[tokio::test]
+async fn pg_sequence_type_and_domain_properties() {
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        if b.name != "postgres" {
+            continue;
+        }
+        let conn = b.connect().await;
+        let s = "t_seqprops";
+        run(&*conn, &format!("DROP SCHEMA IF EXISTS {s} CASCADE"))
+            .await
+            .unwrap();
+        for sql in [
+            format!("CREATE SCHEMA {s}"),
+            format!("CREATE TABLE {s}.t (id int)"),
+            format!(
+                "CREATE SEQUENCE {s}.q INCREMENT BY 5 MINVALUE 10 MAXVALUE 500 START 20 CYCLE \
+                 OWNED BY {s}.t.id"
+            ),
+            format!("CREATE TYPE {s}.mood AS ENUM ('sad', 'ok')"),
+            format!("CREATE TYPE {s}.pt AS (x int, y text)"),
+            format!("CREATE TYPE {s}.span AS RANGE (SUBTYPE = int4)"),
+            format!(
+                "CREATE DOMAIN {s}.pos AS int DEFAULT 1 NOT NULL CONSTRAINT gt0 CHECK (VALUE > 0)"
+            ),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
+        let props = |name: &'static str, kind| {
+            let conn = &conn;
+            async move {
+                conn.object_properties(&ObjectRef {
+                    schema: s,
+                    name,
+                    kind,
+                    parent: None,
+                })
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|p| (p.name, p.value))
+                .collect::<Vec<_>>()
+            }
+        };
+        let get = |v: &[(String, String)], k: &str| {
+            v.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone())
+        };
+        let seq = props("q", ObjectKind::Sequence).await;
+        assert_eq!(get(&seq, "Increment").as_deref(), Some("5"), "{seq:?}");
+        assert_eq!(get(&seq, "Minimum").as_deref(), Some("10"), "{seq:?}");
+        assert_eq!(get(&seq, "Maximum").as_deref(), Some("500"), "{seq:?}");
+        assert_eq!(get(&seq, "Start").as_deref(), Some("20"), "{seq:?}");
+        assert_eq!(get(&seq, "Cycle").as_deref(), Some("yes"), "{seq:?}");
+        assert_eq!(
+            get(&seq, "Last value").as_deref(),
+            Some("not used yet"),
+            "{seq:?}"
+        );
+        assert_eq!(
+            get(&seq, "Owned by").as_deref(),
+            Some("t_seqprops.t.id"),
+            "{seq:?}"
+        );
+        run(&*conn, &format!("SELECT nextval('{s}.q')"))
+            .await
+            .unwrap();
+        let seq = props("q", ObjectKind::Sequence).await;
+        assert_eq!(get(&seq, "Last value").as_deref(), Some("20"), "{seq:?}");
+        let en = props("mood", ObjectKind::Type).await;
+        assert_eq!(get(&en, "Values").as_deref(), Some("sad, ok"), "{en:?}");
+        let comp = props("pt", ObjectKind::Type).await;
+        assert_eq!(
+            get(&comp, "Attributes").as_deref(),
+            Some("x integer, y text"),
+            "{comp:?}"
+        );
+        let range = props("span", ObjectKind::Type).await;
+        assert_eq!(
+            get(&range, "Subtype").as_deref(),
+            Some("integer"),
+            "{range:?}"
+        );
+        let dom = props("pos", ObjectKind::Domain).await;
+        assert_eq!(
+            get(&dom, "Base type").as_deref(),
+            Some("integer"),
+            "{dom:?}"
+        );
+        assert_eq!(get(&dom, "Default").as_deref(), Some("1"), "{dom:?}");
+        assert_eq!(get(&dom, "Not null").as_deref(), Some("yes"), "{dom:?}");
+        assert_eq!(
+            get(&dom, "Constraint").as_deref(),
+            Some("gt0: CHECK (VALUE > 0)"),
+            "{dom:?}"
+        );
+        run(&*conn, &format!("DROP SCHEMA {s} CASCADE"))
+            .await
+            .unwrap();
+    }
+}
+
 /// PostgreSQL lists routines with their named arguments (`f(a integer)`); their details and
 /// DDL are read by that name. A table dropped since it was listed has no details.
 #[tokio::test]

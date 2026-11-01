@@ -656,10 +656,33 @@ pub async fn object_properties(conn: &MssqlConnection, o: &ObjectRef<'_>) -> Res
         | ObjectKind::Function
         | ObjectKind::Procedure
         | ObjectKind::Trigger
-        | ObjectKind::Sequence
         | ObjectKind::Synonym => (
             format!("SELECT o.type_desc, {common} FROM sys.objects o WHERE o.object_id = {id}"),
             &["Type", "Owner", "Created", "Modified"],
+        ),
+        ObjectKind::Sequence => (
+            format!(
+                "SELECT TYPE_NAME(q.user_type_id), CAST(q.current_value AS NVARCHAR(40)),
+                        CAST(q.increment AS NVARCHAR(40)), CAST(q.minimum_value AS NVARCHAR(40)),
+                        CAST(q.maximum_value AS NVARCHAR(40)), CAST(q.start_value AS NVARCHAR(40)),
+                        CAST(q.cache_size AS NVARCHAR(40)),
+                        CASE q.is_cycling WHEN 1 THEN 'yes' ELSE 'no' END, {common}
+                 FROM sys.sequences q JOIN sys.objects o ON o.object_id = q.object_id
+                 WHERE q.object_id = {id}"
+            ),
+            &[
+                "Data type",
+                "Current value",
+                "Increment",
+                "Minimum",
+                "Maximum",
+                "Start",
+                "Cache",
+                "Cycle",
+                "Owner",
+                "Created",
+                "Modified",
+            ],
         ),
         _ => return Ok(Vec::new()),
     };

@@ -89,18 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| CockroachDB: le tabelle senza chiave primaria si modificano (con `rowid`) solo se aperte dal navigator; aperte da riferimenti, ricerca o palette non selezionano `rowid` e restano in sola lettura (`viewerSql`, `hiddenKey`) | correzioni S, 2026-11-01 |
-| DuckDB: dopo il salvataggio la riga modificata resta al suo posto solo con una chiave primaria di una colonna (la vista aggiunge `ORDER BY` sulla chiave); con chiave composta o senza chiave cambia ancora posizione (`QueryTab.tsx`) | correzioni S, 2026-11-01 |
-| Notebook: le liste Markdown annidate non si vedono annidate (`apps/desktop/src/notebook/Markdown.tsx`) | collaudo S, 2026-11-01 |
-| Profilo di colonna: un conteggio diverso da zero si mostra come "1 (0%)" invece del valore e della percentuale veri | collaudo S, 2026-11-01 |
-| Grafico a torta: con molte categorie la legenda non si legge; raggruppare le piccole in "Other" o farla scorrere (`apps/desktop/src/analysis/Chart.tsx`, `chartConfig.ts`) | collaudo S, 2026-11-01 |
-| F2 mentre la tabella sta ancora caricando le colonne non fa niente; deve dare un messaggio (`apps/desktop/src/grid/edit/actions.ts`) | collaudo S, 2026-11-01 |
-| Navigator: le righe degli indici non hanno un menu contestuale | collaudo S, 2026-11-01 |
-| Navigator: scrivere un nome con il focus sull'albero non porta alla riga (ricerca type-ahead) | collaudo S, 2026-11-01 |
-| Le pagine di dettaglio di sequenze, tipi e domini non mostrano le proprietà del catalogo (valore corrente, incremento, tipo base, vincoli…) | collaudo S, 2026-11-01 |
-| Filtro del navigator: `#nome` è letto come tag, quindi le tabelle temporanee di SQL Server (`#temp`) non si possono cercare | collaudo S, 2026-11-01 |
-| Personalizzazione, "From theme": i campioni di colore si vedono grigi invece dei colori del tema | collaudo S, 2026-11-01 |
-| Tab fissati: hanno la stessa icona dei tab normali; serve un'icona diversa (`apps/desktop/src/shell/TabBar.tsx`) | collaudo S, 2026-11-01 |
 
 ### Lock dei gruppi
 

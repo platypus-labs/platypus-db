@@ -4,12 +4,15 @@ import type { CatalogEntry } from "../api";
 
 /**
  * `#pii orders` → tags `["pii"]`, text `orders`. A `#` alone, or inside a word, is plain text.
- * The text keeps its spacing.
+ * The text keeps its spacing. With `known`, a `#word` that is not a known tag stays in the text,
+ * so `#temp` (SQL Server temp tables) can be searched by name.
  */
-export function parseFilter(text: string): { text: string; tags: string[] } {
+export function parseFilter(text: string, known?: (tag: string) => boolean): { text: string; tags: string[] } {
   const tags: string[] = [];
-  const rest = text.replace(/(^|\s)#+([^\s#]\S*)/g, (_, _space: string, tag: string) => {
-    tags.push(tag.toLowerCase());
+  const rest = text.replace(/(^|\s)(#+([^\s#]\S*))/g, (all: string, _space: string, _word: string, tag: string) => {
+    const lower = tag.toLowerCase();
+    if (known && !known(lower)) return all;
+    tags.push(lower);
     return "";
   });
   return { tags, text: rest.trim() };

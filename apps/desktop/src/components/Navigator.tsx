@@ -20,10 +20,11 @@ import { FilterDialog } from "../navigator/FilterDialog";
 import { ROW_HEIGHT, rowWindow, scrollToRow, stepAt } from "../navigator/rowWindow";
 import { routineBase } from "../sqlIdent";
 import { textFilter } from "../navigator/filter";
+import { isTypeAheadKey, nextTyped, typeAheadIndex } from "../navigator/typeAhead";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
-import { annotation, catalogEntry, catalogKey, parseFilter, useCatalogVersion } from "../catalog/catalog";
+import { annotation, catalogEntry, catalogKey, isKnownTag, parseFilter, useCatalogVersion } from "../catalog/catalog";
 import { openDocs } from "../catalog/DocsDialog";
 import { toggled } from "../sets";
 import { type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewerSql } from "../sqlNames";
@@ -482,7 +483,7 @@ export function Navigator(props: Props) {
     [],
   );
 
-  const parsed = parseFilter(filter);
+  const parsed = parseFilter(filter, isKnownTag);
   const needle = parsed.text.toLowerCase();
   const needTags = parsed.tags;
   const rows: Row[] = [];
@@ -900,6 +901,7 @@ export function Navigator(props: Props) {
         depth: depth + 2,
         label: ix.name,
         icon: ix.primary ? "key" : "index",
+        menu: { scope: "navigator.index", arg: { connection: c, database: db, schema, object, index: ix.name } },
         detail: `(${ix.columns.join(", ")})${ix.primary ? ` · ${t("primary")}` : ix.unique ? ` · ${t("unique")}` : ""}${ix.size != null ? ` · ${formatBytes(ix.size)}` : ""}`,
       })),
     );
@@ -958,6 +960,8 @@ export function Navigator(props: Props) {
   // shortly after the key only, so a later click elsewhere keeps its own. A connection just
   // made gets it the same way once its row shows, when its dialog has left the focus nowhere.
   const moved = useRef<{ key: string; at: number } | null>(null);
+  /** What was typed to jump to a row, and when the last key came. */
+  const typedAhead = useRef({ text: "", at: 0 });
   const treeRef = useRef<HTMLUListElement>(null);
   useEffect(() => {
     if (!moved.current || document.activeElement !== document.body) return;
@@ -1073,6 +1077,13 @@ export function Navigator(props: Props) {
       const target = menuOf(row);
       const r = (e.target as HTMLElement).getBoundingClientRect();
       if (target) setMenu({ x: r.left + 24, y: r.bottom, target });
+    } else if (isTypeAheadKey(e)) {
+      const now = Date.now();
+      const typed = nextTyped(typedAhead.current.text, e.key, now - typedAhead.current.at);
+      if (typed.trim() === "") return;
+      typedAhead.current = { text: typed, at: now };
+      const hit = typeAheadIndex(rows.map((r) => r.label), at, typed);
+      if (hit >= 0) go(hit, false);
     } else return;
     e.preventDefault();
   }
@@ -1609,6 +1620,22 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
           n().refresh(key, () => n().loadObjects(connection, database, schema.name));
         }
       },
+    }),
+    registerAction({
+      id: "index.copy_name",
+      scope: "navigator.index",
+      title: "Copy name",
+      group: "copy",
+      order: 40,
+      run: ({ index }) => copy(index),
+    }),
+    registerAction({
+      id: "index.open",
+      scope: "navigator.index",
+      title: "Open details",
+      group: "open",
+      order: 15,
+      run: ({ connection, database, schema, object }) => n().openObject(connection, database, schema, object),
     }),
     registerAction({
       id: "column.copy_name",
