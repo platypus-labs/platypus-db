@@ -17,7 +17,7 @@ export type Inline =
 export type Block =
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; children: Inline[] }
   | { kind: "paragraph"; children: Inline[] }
-  | { kind: "list"; ordered: boolean; /** The number the first item has (ordered lists). */ start: number; items: Inline[][] }
+  | { kind: "list"; ordered: boolean; /** The number the first item has (ordered lists). */ start: number; items: Inline[][]; /** The lists nested under each item, in the order of `items`. */ nested: Block[][] }
   | { kind: "quote"; children: Block[] }
   | { kind: "code"; lang: string; text: string }
   | { kind: "rule" };
@@ -28,6 +28,9 @@ const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const NUMBERED = /^\s*(\d+)[.)]\s+(.*)$/;
 const QUOTE = /^\s*>\s?(.*)$/;
+
+/** The width of the indent of `line`, a tab counting four. */
+const indentOf = (line: string) => /^\s*/.exec(line)![0].replace(/\t/g, "    ").length;
 
 /** Whether `line` starts a block other than a paragraph, which ends the paragraph before. */
 const startsBlock = (line: string) =>
@@ -74,15 +77,25 @@ export function parseMarkdown(text: string): Block[] {
     const item = ordered ? NUMBERED : BULLET;
     if (item.test(line)) {
       const items: Inline[][] = [];
+      const nested: Block[][] = [];
       const start = ordered ? Number(NUMBERED.exec(line)![1]) : 1;
-      while (i < lines.length && item.test(lines[i]!)) {
+      const base = indentOf(line);
+      const isItem = (l: string) => BULLET.test(l) || NUMBERED.test(l);
+      while (i < lines.length && item.test(lines[i]!) && indentOf(lines[i]!) < base + 2) {
         const match = item.exec(lines[i++]!)!;
         let content = match[ordered ? 2 : 1]!;
         // Indented lines continue the item.
         while (i < lines.length && /^\s{2,}\S/.test(lines[i]!) && !startsBlock(lines[i]!)) content += ` ${lines[i++]!.trim()}`;
         items.push(parseInline(content));
+        // Items indented two spaces (or a tab) deeper make a list of their own, under this item.
+        const sub: string[] = [];
+        while (i < lines.length && isItem(lines[i]!) && indentOf(lines[i]!) >= base + 2) {
+          sub.push(lines[i++]!);
+          while (i < lines.length && /^\s{2,}\S/.test(lines[i]!) && !startsBlock(lines[i]!)) sub.push(lines[i++]!);
+        }
+        nested.push(sub.length ? parseMarkdown(sub.join("\n")) : []);
       }
-      blocks.push({ kind: "list", ordered, start, items });
+      blocks.push({ kind: "list", ordered, start, items, nested });
       continue;
     }
     const body: string[] = [];
@@ -181,7 +194,7 @@ function blockHtml(block: Block): string {
     case "list": {
       const tag = block.ordered ? "ol" : "ul";
       const start = block.ordered && block.start !== 1 ? ` start="${block.start}"` : "";
-      return `<${tag}${start}>${block.items.map((item) => `<li>${inlineHtml(item)}</li>`).join("")}</${tag}>`;
+      return `<${tag}${start}>${block.items.map((item, j) => `<li>${inlineHtml(item)}${(block.nested[j] ?? []).map(blockHtml).join("")}</li>`).join("")}</${tag}>`;
     }
     case "quote":
       return `<blockquote>${block.children.map(blockHtml).join("")}</blockquote>`;
