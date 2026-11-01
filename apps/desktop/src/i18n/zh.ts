@@ -3091,6 +3091,10 @@ const zh: Record<string, string> = {
   "A file written by Export connections…, with a password if it was encrypted.": "由“导出连接…”写入的文件；如已加密则需要密码。",
   "This file is encrypted. Enter its password.": "此文件已加密。请输入其密码。",
   "Wrong password, or the file is damaged.": "密码错误，或文件已损坏。",
+  "replaces “{name}”": "替换“{name}”",
+  "Replace the connections already saved": "替换已保存的连接",
+  "Same server, database and user: the saved connection takes the file's settings and keeps its projects and the passwords the file does not bring.": "相同的服务器、数据库和用户：已保存的连接采用文件中的设置，并保留其项目以及文件未带来的密码。",
+  "The ticked ones are added beside the saved ones.": "勾选的连接会添加在已保存的连接旁边。",
   "To a file for another computer or a colleague.": "导出到文件，供另一台电脑或同事使用。",
 };
 

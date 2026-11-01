@@ -26,7 +26,9 @@ import {
   importRequest,
   isEmptyImport,
   projectTree,
+  replacements,
   savedPasswords,
+  savedTwin,
   skippedIds,
   toggleAll,
 } from "./importTree";
@@ -73,13 +75,6 @@ function projectNoteText(note: ProjectNote): string {
   }
 }
 
-/** Whether `c` looks like a connection that is already saved. */
-function duplicate(c: SavedConnection, existing: SavedConnection[]) {
-  return existing.some(
-    (e) => e.driver === c.driver && e.host === c.host && e.port === c.port && e.database === c.database && e.user === c.user,
-  );
-}
-
 /** Reads the projects, folders and connections of DBeaver, DataGrip, pgAdmin or
  *  `pg_service.conf`, and saves the ticked ones. DBeaver's saved passwords come along unless
  *  the user opts out; other connections ask for theirs on first use. */
@@ -92,6 +87,8 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
   const [into, setInto] = useState<ImportInto[]>([]);
   const [railFolder, setRailFolder] = useState<string | null>(null);
   const [passwords, setPasswords] = useState(true);
+  /** Ticked connections already saved replace theirs, rather than being added beside. */
+  const [replacing, setReplacing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** The encrypted file waiting for its password. */
   const [locked, setLocked] = useState<ImportFile | null>(null);
@@ -112,10 +109,11 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
     setError(null);
     setRead(null);
     setTicked(new Set());
+    setReplacing(true);
     try {
       const all = await api.readImport(next.source, next.path, pass);
       setRead(all);
-      setTicked(new Set(all.flatMap((p) => p.connections).filter((c) => !duplicate(c, existing)).map((c) => c.id)));
+      setTicked(new Set(all.flatMap((p) => p.connections).filter((c) => !savedTwin(c, existing)).map((c) => c.id)));
       setInto(all.map((p) => defaultInto(p, project, projects)));
       setRailFolder(all.filter((p) => p.name).length > 1 ? railName(next.path) : null);
     } catch (e) {
@@ -147,13 +145,21 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
 
   const count = ticked.size;
   const newProjects = (read ?? []).filter((p, i) => into[i]?.kind === "new_project" && p.connections.some((c) => ticked.has(c.id)));
+  const twins = read ? replacements(read, ticked, existing) : {};
+  const replace = replacing ? twins : {};
+  /** What the row of `c` says about the saved connection it looks like. */
+  const savedNote = (c: SavedConnection) => {
+    const twin = savedTwin(c, existing);
+    if (!twin) return "";
+    return replace[c.id] ? t("replaces “{name}”", { name: twin.name }) : t("already saved");
+  };
 
   async function save() {
     if (!read || saving) return;
     setSaving(true);
     try {
       // The rail folder is offered for two new projects or more.
-      onImported(await api.saveImported(importRequest(read, ticked, into, newProjects.length > 1 ? railFolder : null, passwords)));
+      onImported(await api.saveImported(importRequest(read, ticked, into, newProjects.length > 1 ? railFolder : null, passwords, replace)));
     } catch (e) {
       setError(toCommandError(e).message);
       setSaving(false);
@@ -230,7 +236,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
                   key={i}
                   project={p}
                   ticked={ticked}
-                  existing={existing}
+                  savedNote={savedNote}
                   projects={projects}
                   into={into[i] ?? { kind: "none" }}
                   onTicked={setTicked}
@@ -252,6 +258,19 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
               </label>
             ) : (
               <p className="muted small">{t("Passwords are not imported: each connection asks for its own the first time.")}</p>
+            )}
+            {Object.keys(twins).length > 0 && (
+              <label className="check import-replace">
+                <input type="checkbox" checked={replacing} onChange={(e) => setReplacing(e.target.checked)} />
+                <span>
+                  {t("Replace the connections already saved")}
+                  <span className="muted small import-passwords-hint">
+                    {replacing
+                      ? t("Same server, database and user: the saved connection takes the file's settings and keeps its projects and the passwords the file does not bring.")
+                      : t("The ticked ones are added beside the saved ones.")}
+                  </span>
+                </span>
+              </label>
             )}
           </>
         )}
@@ -293,7 +312,7 @@ export function Tick({ ids, ticked, onTicked }: { ids: string[]; ticked: Readonl
 interface ProjectRowsProps {
   project: ImportedProject;
   ticked: ReadonlySet<string>;
-  existing: SavedConnection[];
+  savedNote: (c: SavedConnection) => string;
   projects: Project[];
   into: ImportInto;
   onTicked: (next: Set<string>) => void;
@@ -301,7 +320,7 @@ interface ProjectRowsProps {
 }
 
 /** A project of the file, with where it goes, then its folders and connections. */
-function ProjectRows({ project, ticked, existing, projects, into, onTicked, onInto }: ProjectRowsProps) {
+function ProjectRows({ project, ticked, savedNote, projects, into, onTicked, onInto }: ProjectRowsProps) {
   const root = projectTree(project);
   const ids = project.connections.map((c) => c.id);
   const value = into.kind === "existing" ? into.id : into.kind;
@@ -334,7 +353,7 @@ function ProjectRows({ project, ticked, existing, projects, into, onTicked, onIn
           {projectNoteText(note)}
         </div>
       ))}
-      <FolderRows folder={root} depth={1} ticked={ticked} existing={existing} notes={project.notes} onTicked={onTicked} />
+      <FolderRows folder={root} depth={1} ticked={ticked} savedNote={savedNote} notes={project.notes} onTicked={onTicked} />
       {project.skipped.map((s, i) => (
         <div key={i} className="import-row skipped" role="treeitem" style={{ paddingLeft: 18 }}>
           <input type="checkbox" disabled checked={false} />
@@ -350,14 +369,14 @@ function FolderRows({
   folder,
   depth,
   ticked,
-  existing,
+  savedNote,
   notes,
   onTicked,
 }: {
   folder: FolderView;
   depth: number;
   ticked: ReadonlySet<string>;
-  existing: SavedConnection[];
+  savedNote: (c: SavedConnection) => string;
   notes: Record<string, ImportNote[]>;
   onTicked: (next: Set<string>) => void;
 }) {
@@ -370,12 +389,12 @@ function FolderRows({
             <Icon name="open" />
             <span>{f.path[f.path.length - 1]}</span>
           </div>
-          <FolderRows folder={f} depth={depth + 1} ticked={ticked} existing={existing} notes={notes} onTicked={onTicked} />
+          <FolderRows folder={f} depth={depth + 1} ticked={ticked} savedNote={savedNote} notes={notes} onTicked={onTicked} />
         </div>
       ))}
       {folder.connections.map((c) => {
         const badge = typeBadge(c);
-        const saved = duplicate(c, existing);
+        const saved = savedNote(c);
         return (
           <Fragment key={c.id}>
           <label className="import-row connection" role="treeitem" style={{ paddingLeft: depth * 18 }}>
@@ -386,7 +405,7 @@ function FolderRows({
             <span className="muted small import-target">
               {isEmbedded(c.driver) ? c.database : `${c.user ? `${c.user}@` : ""}${c.host}:${c.port ?? ""}/${c.database}`}
               {c.ssh ? ` · SSH ${c.ssh.host}` : ""}
-              {saved ? ` · ${t("already saved")}` : ""}
+              {saved ? ` · ${saved}` : ""}
             </span>
           </label>
           {(notes[c.id] ?? []).map((note) => (

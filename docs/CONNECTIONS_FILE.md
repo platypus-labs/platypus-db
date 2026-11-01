@@ -43,14 +43,23 @@ encrypted with AES-256-GCM; the header is authenticated too. Only an encrypted f
 carry, per project, a `secrets` object:
 
 ```json
-"secrets": { "<connection id>": { "password": "…", "ssh": "…" } }
+"secrets": { "<connection id>": { "password": "…", "ssh": "…", "jumps": ["…", null] } }
 ```
 
-`ssh` is the password of the connection's SSH server or the passphrase of its key. A wrong
-password, or any changed byte, gives an error and no data.
+`ssh` is the password of the connection's SSH server or the passphrase of its key; `jumps`
+gives the same for each jump host behind it, in the order of the `jump` chain (`null` for one
+without). Files written before `jumps` existed simply lack it. A wrong password, or any
+changed byte, gives an error and no data.
 
 ## Reading
 
 The file is untrusted like a shared project's: each connection gets a new id, its
 `${env:…}` references are held until the user edits them, it cannot make the ODBC driver
 manager load a library, and agents are kept out of it until the user lets them in.
+
+A connection like a saved one (same database, server, port, database name, user and SSH
+hops) starts unticked; one reached another way is never taken for it, so a file cannot send
+saved passwords to another server. Ticked, it replaces the saved one by default: the saved connection keeps its id, so
+its projects, tabs and history, the passwords the file does not bring, and what only this
+machine set: certificate and key paths, the password command, options the file leaves out,
+agent access and its restrictions.

@@ -1,12 +1,14 @@
 //! Saving what the import dialog picked: connections, the projects they go into (new or
 //! existing) with their folders, and optionally a rail folder for the new projects.
 
+use std::collections::{BTreeMap, HashSet};
+
 use platypus_core::Secret;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{ConnectionStore, Project};
-use crate::{ImportedProject, Result};
+use super::{ConnectionStore, Project, SavedConnection, SavedSsh};
+use crate::{ImportedProject, Result, StoreError};
 
 /// The colors given to new projects, the same as the project dialog's.
 const PROJECT_COLORS: [&str; 8] = [
@@ -44,11 +46,17 @@ pub struct ImportRequest {
     /// if typed in the connection dialog; otherwise each connection asks on first use.
     #[serde(default)]
     pub passwords: bool,
+    /// Imported connections that replace a saved one, imported id → saved id. The saved
+    /// connection keeps its id (so its projects, tabs and history) and the passwords the
+    /// file does not bring.
+    #[serde(default)]
+    pub replace: BTreeMap<Uuid, Uuid>,
 }
 
 impl ConnectionStore {
     /// Saves an import in one write of the file: nothing is saved if any part is refused.
     pub fn apply_import(&mut self, mut request: ImportRequest) -> Result<()> {
+        let replaced = self.adopt_replaced(&mut request)?;
         for target in &request.targets {
             if let ImportInto::Existing { id } = target.into {
                 self.require_project(id)?;
@@ -57,14 +65,17 @@ impl ConnectionStore {
                 self.check_connection(c)?;
             }
         }
-        let mut ids = std::collections::HashSet::new();
+        let mut ids = HashSet::new();
         if request
             .targets
             .iter()
             .flat_map(|t| &t.project.connections)
-            .any(|c| !ids.insert(c.id) || self.connections.iter().any(|s| s.id == c.id))
+            .any(|c| {
+                !ids.insert(c.id)
+                    || (!replaced.contains(&c.id) && self.connections.iter().any(|s| s.id == c.id))
+            })
         {
-            return Err(crate::StoreError::Invalid(
+            return Err(StoreError::Invalid(
                 "these connections are saved already".to_owned(),
             ));
         }
@@ -73,7 +84,7 @@ impl ConnectionStore {
         } else {
             Vec::new()
         };
-        self.store_secrets(&secrets)?;
+        let secrets_before = self.store_secrets(&secrets)?;
         let before = (
             self.projects.clone(),
             self.project_folders.clone(),
@@ -82,12 +93,17 @@ impl ConnectionStore {
         let mut made = Vec::new();
         for target in request.targets {
             let ids: Vec<Uuid> = target.project.connections.iter().map(|c| c.id).collect();
-            // A connection without a saved password asks for it on first use.
-            self.connections
-                .extend(target.project.connections.into_iter().map(|mut c| {
-                    c.save_password = secrets.iter().any(|(id, _)| *id == c.id);
-                    c
-                }));
+            for mut c in target.project.connections {
+                // A connection without a saved password asks for it on first use; a
+                // replaced one keeps its own.
+                let old = self.connections.iter().position(|s| s.id == c.id);
+                c.save_password = secrets.iter().any(|(id, _)| *id == c.id)
+                    || old.is_some_and(|i| self.connections[i].save_password);
+                match old {
+                    Some(i) => self.connections[i] = c,
+                    None => self.connections.push(c),
+                }
+            }
             let index = match target.into {
                 ImportInto::None => continue,
                 ImportInto::Existing { id } => self.projects.iter().position(|p| p.id == id),
@@ -121,25 +137,81 @@ impl ConnectionStore {
         let written = self.write();
         if written.is_err() {
             (self.projects, self.project_folders, self.connections) = before;
-            self.forget_secrets(&secrets);
+            self.restore_secrets(&secrets_before);
         }
         written
     }
 
-    /// Saves the secrets, or none of them.
-    fn store_secrets(&self, secrets: &[(Uuid, Secret)]) -> Result<()> {
-        for (done, (id, secret)) in secrets.iter().enumerate() {
-            if let Err(e) = self.secrets.set(*id, secret) {
-                self.forget_secrets(&secrets[..done]);
-                return Err(e);
+    /// Gives each imported connection of `request.replace` the id of the saved one it
+    /// replaces, and the saved tunnel's secret ids hop by hop, so the saved SSH passwords
+    /// stay unless the file brings new ones. Returns the replaced ids. Refused for a
+    /// connection that goes elsewhere than the one it replaces.
+    fn adopt_replaced(&self, request: &mut ImportRequest) -> Result<HashSet<Uuid>> {
+        let mut replaced = HashSet::new();
+        for project in request.targets.iter_mut().map(|t| &mut t.project) {
+            for c in &mut project.connections {
+                let Some(&to) = request.replace.get(&c.id) else {
+                    continue;
+                };
+                let saved = self.get(to).ok_or(StoreError::NotFound(to))?;
+                // Its passwords stay: the file may not send them anywhere else.
+                if !same_route(c, saved) {
+                    return Err(StoreError::Invalid(format!(
+                        "{} goes to another server or through another tunnel than {}",
+                        c.name, saved.name
+                    )));
+                }
+                if !replaced.insert(to) {
+                    return Err(StoreError::Invalid(format!(
+                        "two connections replace {}",
+                        saved.name
+                    )));
+                }
+                let from = std::mem::replace(&mut c.id, to);
+                if let Some(s) = project.secrets.remove(&from) {
+                    project.secrets.insert(to, s);
+                }
+                if let Some(path) = project.placement.remove(&from) {
+                    project.placement.insert(to, path);
+                }
+                keep_local(c, saved);
+                // The same hops (`same_route`): each keeps its keychain entry and key file.
+                let mut hop = c.ssh.as_mut();
+                for old in saved.ssh.iter().flat_map(SavedSsh::chain) {
+                    let Some(new) = hop else { break };
+                    new.secret_id = old.secret_id;
+                    if new.key_path.is_none() {
+                        new.key_path.clone_from(&old.key_path);
+                    }
+                    hop = new.jump.as_deref_mut();
+                }
             }
         }
-        Ok(())
+        Ok(replaced)
     }
 
-    fn forget_secrets(&self, secrets: &[(Uuid, Secret)]) {
-        for (id, _) in secrets {
-            let _ = self.secrets.delete(*id);
+    /// Saves the secrets, or none of them. Returns what each id held before, to put back.
+    fn store_secrets(&self, secrets: &[(Uuid, Secret)]) -> Result<Vec<(Uuid, Option<Secret>)>> {
+        let mut before = Vec::new();
+        for (id, secret) in secrets {
+            let stored = self
+                .secrets
+                .get(*id)
+                .and_then(|old| self.secrets.set(*id, secret).map(|()| old));
+            match stored {
+                Ok(old) => before.push((*id, old)),
+                Err(e) => {
+                    self.restore_secrets(&before);
+                    return Err(e);
+                }
+            }
+        }
+        Ok(before)
+    }
+
+    fn restore_secrets(&self, before: &[(Uuid, Option<Secret>)]) {
+        for (id, old) in before.iter().rev() {
+            let _ = self.set_secret(*id, old.as_ref());
         }
     }
 
@@ -171,8 +243,51 @@ impl ConnectionStore {
     }
 }
 
+/// Whether `a` and `b` reach the same database the same way: driver, server, database,
+/// user, and each SSH hop.
+fn same_route(a: &SavedConnection, b: &SavedConnection) -> bool {
+    let hops = |c: &SavedConnection| -> Vec<(String, u16, String)> {
+        c.ssh
+            .iter()
+            .flat_map(SavedSsh::chain)
+            .map(|s| (s.host.clone(), s.port, s.user.clone()))
+            .collect()
+    };
+    (a.driver, &a.host, a.port, &a.database, &a.user)
+        == (b.driver, &b.host, b.port, &b.database, &b.user)
+        && hops(a) == hops(b)
+}
+
+/// What `saved` set on this machine that the import does not bring: an imported connection
+/// replacing it keeps it. Certificate paths, the password command and options it leaves
+/// out, virtual keys when it has none, agent access, and the stricter of the restrictions.
+fn keep_local(c: &mut SavedConnection, saved: &SavedConnection) {
+    if c.ssl_client_cert.is_none() && c.ssl_client_key.is_none() {
+        c.ssl_client_cert.clone_from(&saved.ssl_client_cert);
+        c.ssl_client_key.clone_from(&saved.ssl_client_key);
+    }
+    if c.ssl_root_cert.is_none() {
+        c.ssl_root_cert.clone_from(&saved.ssl_root_cert);
+    }
+    if c.password_command.is_none() {
+        c.password_command.clone_from(&saved.password_command);
+    }
+    c.pgpass |= saved.pgpass;
+    for (key, value) in &saved.options {
+        c.options
+            .entry(key.clone())
+            .or_insert_with(|| value.clone());
+    }
+    if c.virtual_keys.is_empty() {
+        c.virtual_keys.clone_from(&saved.virtual_keys);
+    }
+    c.agent_access = saved.agent_access;
+    c.restrictions.no_export |= saved.restrictions.no_export;
+    c.restrictions.no_data_editing |= saved.restrictions.no_data_editing;
+}
+
 /// The secrets to save for the connections of `targets`, under the ids the store keeps
-/// them by: the connection's own for its password, the SSH server's `secret_id` for the
+/// them by: the connection's own for its password, each SSH hop's `secret_id` for the
 /// tunnel's. The connection's password comes first.
 fn take_secrets(targets: &mut [ImportTarget]) -> Vec<(Uuid, Secret)> {
     let mut out = Vec::new();
@@ -185,8 +300,12 @@ fn take_secrets(targets: &mut [ImportTarget]) -> Vec<(Uuid, Secret)> {
             if let Some(password) = s.password {
                 out.push((c.id, password));
             }
-            if let (Some(ssh), Some(secret)) = (&c.ssh, s.ssh) {
-                out.push((ssh.secret_id, secret));
+            let hops = c.ssh.iter().flat_map(SavedSsh::chain);
+            let hop_secrets = std::iter::once(s.ssh).chain(s.jumps);
+            for (hop, secret) in hops.zip(hop_secrets) {
+                if let Some(secret) = secret {
+                    out.push((hop.secret_id, secret));
+                }
             }
         }
     }
@@ -265,6 +384,7 @@ mod tests {
             targets: vec![new_project(first), new_project(imported("Interno"))],
             rail_folder: Some("lavoro".to_owned()),
             passwords: false,
+            replace: BTreeMap::new(),
         })
         .unwrap();
         assert_eq!(s.list().len(), 4);
@@ -282,27 +402,157 @@ mod tests {
         assert!(again.list().iter().all(|c| !c.save_password));
     }
 
-    /// `imported` where `a` comes with a password and an SSH tunnel with its own.
-    fn with_secrets() -> ImportedProject {
-        let mut project = imported("Rossi");
-        let a = &mut project.connections[0];
-        a.ssh = Some(SavedSsh {
-            host: "bastion".to_owned(),
+    fn ssh(host: &str, jump: Option<SavedSsh>) -> SavedSsh {
+        SavedSsh {
+            host: host.to_owned(),
             port: 22,
             user: "ops".to_owned(),
             auth: SshAuthKind::Password,
             key_path: None,
             secret_id: Uuid::new_v4(),
-            jump: None,
-        });
+            jump: jump.map(Box::new),
+        }
+    }
+
+    /// `imported` where `a` comes with a password and an SSH tunnel through a jump host,
+    /// each with its own.
+    fn with_secrets() -> ImportedProject {
+        let mut project = imported("Rossi");
+        let a = &mut project.connections[0];
+        a.ssh = Some(ssh("bastion", Some(ssh("jump", None))));
         project.secrets.insert(
             a.id,
             crate::ImportedSecrets {
                 password: Some(Secret::new("db-pass")),
                 ssh: Some(Secret::new("ssh-pass")),
+                jumps: vec![Some(Secret::new("jump-pass"))],
             },
         );
         project
+    }
+
+    #[test]
+    fn import_replaces_a_saved_connection_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        // Saved: `old` in a project, with a password and a two-hop tunnel.
+        let mut old = SavedConnection::new("old", DriverKind::Sqlite);
+        old.save_password = true;
+        old.password_command = Some("pass show db".to_owned());
+        old.restrictions.no_export = true;
+        old.options.insert("app_name".to_owned(), "mine".to_owned());
+        old.ssh = Some(ssh("bastion", Some(ssh("jump", None))));
+        let (id, hops) = (old.id, old.ssh.as_ref().unwrap().clone());
+        let other = SavedConnection::new("other", DriverKind::Sqlite);
+        s.save(old, crate::PasswordUpdate::Set(Secret::new("old-pass")))
+            .unwrap();
+        s.save(other.clone(), crate::PasswordUpdate::Keep).unwrap();
+        s.set_ssh_secret(hops.secret_id, Some(&Secret::new("old-ssh")))
+            .unwrap();
+        let jump_secret = hops.jump.as_ref().unwrap().secret_id;
+        s.set_ssh_secret(jump_secret, Some(&Secret::new("old-jump")))
+            .unwrap();
+        let mut team = Project::new("Team", "#d08f20");
+        team.connections = vec![id];
+        s.save_project(team).unwrap();
+
+        // The file's `a`, through the same tunnel (new keychain ids, a key file), replaces
+        // it with a new SSH password only.
+        let mut project = imported("Rossi");
+        let mut tunnel = ssh("bastion", Some(ssh("jump", None)));
+        tunnel.auth = SshAuthKind::Key;
+        project.connections[0].ssh = Some(tunnel);
+        project.connections[0].color = Some("#123456".to_owned());
+        let (a, b) = (project.connections[0].id, project.connections[1].id);
+        project.secrets.insert(
+            a,
+            crate::ImportedSecrets {
+                ssh: Some(Secret::new("new-ssh")),
+                ..crate::ImportedSecrets::default()
+            },
+        );
+        s.apply_import(ImportRequest {
+            targets: vec![new_project(project)],
+            rail_folder: None,
+            passwords: true,
+            replace: BTreeMap::from([(a, id)]),
+        })
+        .unwrap();
+        // In place: same id, same spot, still in its project, now in the new one too.
+        let names: Vec<_> = s.list().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["a", "other", "b"]);
+        let c = s.get(id).unwrap();
+        assert!(s.get(a).is_none() && s.get(b).is_some());
+        // The file's settings.
+        assert_eq!(c.color.as_deref(), Some("#123456"));
+        assert_eq!(c.ssh.as_ref().unwrap().auth, SshAuthKind::Key);
+        // What only this machine set stays.
+        assert_eq!(c.password_command.as_deref(), Some("pass show db"));
+        assert!(c.restrictions.no_export);
+        assert_eq!(c.options["app_name"], "mine");
+        assert!(named(&s, "Team").connections.contains(&id));
+        assert_eq!(
+            folder_of(named(&s, "Rossi"), id),
+            path(&["Prod", "Replica"])
+        );
+        // The password the file does not bring stays; the one it brings replaces.
+        assert!(c.save_password);
+        assert_eq!(s.password(id).unwrap(), Some(Secret::new("old-pass")));
+        assert_eq!(
+            s.ssh_secret(hops.secret_id).unwrap(),
+            Some(Secret::new("new-ssh"))
+        );
+        assert_eq!(
+            s.ssh_secret(jump_secret).unwrap(),
+            Some(Secret::new("old-jump"))
+        );
+        let hops: Vec<_> = c.ssh.iter().flat_map(SavedSsh::chain).collect();
+        assert_eq!(hops[1].secret_id, jump_secret);
+    }
+
+    #[test]
+    fn import_refuses_a_replacement_that_goes_elsewhere() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        let mut old = SavedConnection::new("old", DriverKind::Sqlite);
+        old.ssh = Some(ssh("bastion", None));
+        let id = old.id;
+        s.save(old, crate::PasswordUpdate::Keep).unwrap();
+        // Through another bastion: the saved SSH password would go there.
+        let mut project = imported("Rossi");
+        project.connections[0].ssh = Some(ssh("evil", None));
+        let a = project.connections[0].id;
+        let request = |project: &ImportedProject, replace| ImportRequest {
+            targets: vec![new_project(project.clone())],
+            rail_folder: None,
+            passwords: false,
+            replace,
+        };
+        let result = s.apply_import(request(&project, BTreeMap::from([(a, id)])));
+        assert!(matches!(result, Err(StoreError::Invalid(_))));
+        // Two connections for one saved one.
+        project.connections[0].ssh = Some(ssh("bastion", None));
+        project.connections[1].ssh = Some(ssh("bastion", None));
+        let b = project.connections[1].id;
+        let result = s.apply_import(request(&project, BTreeMap::from([(a, id), (b, id)])));
+        assert!(matches!(result, Err(StoreError::Invalid(_))));
+        assert_eq!(s.list().len(), 1);
+    }
+
+    #[test]
+    fn import_refuses_to_replace_an_unknown_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        let project = imported("Rossi");
+        let a = project.connections[0].id;
+        let result = s.apply_import(ImportRequest {
+            targets: vec![new_project(project)],
+            rail_folder: None,
+            passwords: false,
+            replace: BTreeMap::from([(a, Uuid::new_v4())]),
+        });
+        assert!(matches!(result, Err(StoreError::NotFound(_))));
+        assert_eq!(s.list(), []);
     }
 
     #[test]
@@ -313,16 +563,22 @@ mod tests {
             ConnectionStore::open(dir.path().join("connections.toml"), secrets.clone()).unwrap();
         let project = with_secrets();
         let (a, b) = (project.connections[0].id, project.connections[1].id);
-        let tunnel = project.connections[0].ssh.as_ref().unwrap().secret_id;
+        let tunnel = project.connections[0].ssh.clone().unwrap();
         s.apply_import(ImportRequest {
             targets: vec![new_project(project)],
             rail_folder: None,
             passwords: true,
+            replace: BTreeMap::new(),
         })
         .unwrap();
         assert!(s.get(a).unwrap().save_password);
         assert_eq!(s.password(a).unwrap(), Some(Secret::new("db-pass")));
-        assert_eq!(s.ssh_secret(tunnel).unwrap(), Some(Secret::new("ssh-pass")));
+        assert_eq!(
+            s.ssh_secret(tunnel.secret_id).unwrap(),
+            Some(Secret::new("ssh-pass"))
+        );
+        let jump = tunnel.jump.unwrap().secret_id;
+        assert_eq!(s.ssh_secret(jump).unwrap(), Some(Secret::new("jump-pass")));
         // Without a saved password it asks on first use.
         assert!(!s.get(b).unwrap().save_password);
         // The file holds no password.
@@ -343,6 +599,7 @@ mod tests {
             targets: vec![new_project(project)],
             rail_folder: None,
             passwords: false,
+            replace: BTreeMap::new(),
         })
         .unwrap();
         assert!(s.list().iter().all(|c| !c.save_password));
@@ -362,6 +619,7 @@ mod tests {
             ],
             rail_folder: None,
             passwords: false,
+            replace: BTreeMap::new(),
         })
         .unwrap();
         let names: Vec<_> = s.projects().iter().map(|p| p.name.as_str()).collect();
@@ -386,6 +644,7 @@ mod tests {
             }],
             rail_folder: Some("unused".to_owned()),
             passwords: false,
+            replace: BTreeMap::new(),
         })
         .unwrap();
         let rossi = named(&s, "Rossi");
@@ -407,6 +666,7 @@ mod tests {
             }],
             rail_folder: None,
             passwords: false,
+            replace: BTreeMap::new(),
         })
         .unwrap();
         assert_eq!(s.list().len(), 2);
@@ -421,6 +681,7 @@ mod tests {
             targets: vec![new_project(imported("Rossi"))],
             rail_folder: None,
             passwords: false,
+            replace: BTreeMap::new(),
         };
         s.apply_import(request.clone()).unwrap();
         // A second submit of the same pick: the connections are saved already.
@@ -446,6 +707,7 @@ mod tests {
             ],
             rail_folder: None,
             passwords: false,
+            replace: BTreeMap::new(),
         });
         assert!(matches!(result, Err(StoreError::NotFound(_))));
         assert_eq!(s.list(), []);

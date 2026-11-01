@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, HashSet};
 use platypus_core::Secret;
 use platypus_store::{
     AgentAccess, ConnectionFolder, ConnectionStore, ImportedProject, ImportedSecrets,
-    SavedConnection,
+    SavedConnection, SavedSsh,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -74,6 +74,9 @@ struct ExportSecrets {
     /// The SSH tunnel's password, or the passphrase of its key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ssh: Option<String>,
+    /// The same for each jump host behind it, the outermost last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    jumps: Vec<Option<String>>,
 }
 
 /// The names from the root of `folder` in `folders`; a broken parent chain stops there.
@@ -98,14 +101,22 @@ fn secrets_of(store: &ConnectionStore, c: &SavedConnection) -> Result<ExportSecr
             .map(|s| s.map(|s| s.expose().to_owned()))
             .map_err(|e| SyncError::Invalid(e.to_string()))
     };
+    let mut hops = c
+        .ssh
+        .iter()
+        .flat_map(SavedSsh::chain)
+        .map(|s| read(s.secret_id))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter();
+    let ssh = hops.next().flatten();
+    let mut jumps: Vec<_> = hops.collect();
+    if jumps.iter().all(Option::is_none) {
+        jumps.clear();
+    }
     Ok(ExportSecrets {
         password: if c.save_password { read(c.id)? } else { None },
-        ssh: c
-            .ssh
-            .as_ref()
-            .map(|s| read(s.secret_id))
-            .transpose()?
-            .flatten(),
+        ssh,
+        jumps,
     })
 }
 
@@ -120,7 +131,7 @@ fn add(
     shared.network_profile = None;
     if credentials {
         let secrets = secrets_of(store, c)?;
-        if secrets.password.is_some() || secrets.ssh.is_some() {
+        if secrets.password.is_some() || secrets.ssh.is_some() || !secrets.jumps.is_empty() {
             project.secrets.insert(c.id, secrets);
         }
     }
@@ -266,8 +277,9 @@ fn imported(p: ExportProject, sealed: bool) -> ImportedProject {
             let s = ImportedSecrets {
                 password: secret(s.password),
                 ssh: secret(s.ssh).filter(|_| c.ssh.is_some()),
+                jumps: s.jumps.into_iter().map(secret).collect(),
             };
-            if s.password.is_some() || s.ssh.is_some() {
+            if s.password.is_some() || s.ssh.is_some() || s.jumps.iter().any(Option::is_some) {
                 out.with_password.push(c.id);
                 out.secrets.insert(c.id, s);
             }
@@ -313,15 +325,26 @@ mod tests {
             auth: SshAuthKind::Password,
             key_path: None,
             secret_id: Uuid::new_v4(),
-            jump: None,
+            jump: Some(Box::new(SavedSsh {
+                host: "jump".to_owned(),
+                port: 22,
+                user: "carol".to_owned(),
+                auth: SshAuthKind::Password,
+                key_path: None,
+                secret_id: Uuid::new_v4(),
+                jump: None,
+            })),
         });
         let ssh_secret = a.ssh.as_ref().unwrap().secret_id;
+        let jump_secret = a.ssh.as_ref().unwrap().jump.as_ref().unwrap().secret_id;
         let b = SavedConnection::new("Local", DriverKind::Sqlite);
         let c = SavedConnection::new("Loose", DriverKind::Sqlite);
         let (aid, bid, cid) = (a.id, b.id, c.id);
         s.save(a, PasswordUpdate::Set(Secret::new("s3cret-pw")))
             .unwrap();
         s.set_ssh_secret(ssh_secret, Some(&Secret::new("ssh-pw")))
+            .unwrap();
+        s.set_ssh_secret(jump_secret, Some(&Secret::new("jump-pw")))
             .unwrap();
         s.save(b, PasswordUpdate::Keep).unwrap();
         s.save(c, PasswordUpdate::Keep).unwrap();
@@ -355,6 +378,7 @@ mod tests {
             "CANARY",
             "s3cret-pw",
             "ssh-pw",
+            "jump-pw",
             "password_command",
             "secret_id",
         ] {
@@ -405,6 +429,7 @@ mod tests {
         let secrets = &project.secrets[&id];
         assert_eq!(secrets.password.as_ref().unwrap().expose(), "s3cret-pw");
         assert_eq!(secrets.ssh.as_ref().unwrap().expose(), "ssh-pw");
+        assert_eq!(secrets.jumps, [Some(Secret::new("jump-pw"))]);
     }
 
     #[test]

@@ -2081,6 +2081,8 @@ export interface ImportRequest {
   rail_folder: string | null;
   /** Saves the passwords read with the file; otherwise each connection asks on first use. */
   passwords: boolean;
+  /** Imported connections that replace a saved one, imported id → saved id. */
+  replace: Record<string, string>;
 }
 
 /** Connections, projects and rail folders, after a change that touches more than one. */
