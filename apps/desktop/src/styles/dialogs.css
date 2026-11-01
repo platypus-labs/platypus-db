@@ -181,7 +181,21 @@
   border-right: 1px solid var(--border);
 }
 
+.connection-dialog .dialog-page-title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-lg);
+  color: var(--fg-strong);
+}
+
+.connection-dialog .dialog-tabs .tab-dot {
+  margin-left: var(--space-4);
+  font-size: 0.7em;
+  color: var(--accent);
+}
+
 .connection-dialog .dialog-tabs button {
+  display: flex;
+  align-items: center;
   height: var(--control-md);
   padding: 0 var(--space-6);
   border: none;

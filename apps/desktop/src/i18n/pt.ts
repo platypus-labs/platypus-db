@@ -3098,6 +3098,7 @@ const pt: Record<string, string> = {
   "Same server, database and user: the saved connection takes the file's settings and keeps its projects and the passwords the file does not bring.": "Mesmo servidor, banco e usuário: a conexão salva recebe as configurações do arquivo e mantém seus projetos e as senhas que o arquivo não traz.",
   "The ticked ones are added beside the saved ones.": "As marcadas são adicionadas ao lado das salvas.",
   "To a file for another computer or a colleague.": "Para um arquivo para outro computador ou um colega.",
+  "Has settings": "Tem configurações",
 };
 
 export default pt;
