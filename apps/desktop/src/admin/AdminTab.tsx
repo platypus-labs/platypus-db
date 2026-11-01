@@ -14,6 +14,7 @@ import {
 import type { TabBase, TabProps } from "../tabs/registry";
 import { workbench } from "../workbench";
 import { ask } from "../ui/ask";
+import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
 import { msg, t } from "../i18n";
 import { Dashboard } from "./Dashboard";
@@ -118,6 +119,8 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
   const [only, setOnly] = useState<Activity | null>(null);
   const [onlyWaiting, setOnlyWaiting] = useState(false);
   const [version, setVersion] = useState(0);
+  /** The session being ended or cancelled: its buttons wait. */
+  const [ending, setEnding] = useState<string | null>(null);
   const [statistics, setStatistics] = useState<Statistics>({ queries: null, objects: null, error: null });
   const [parameters, setParameters] = useState<{ list: ServerParameter[] | null; error: string | null }>({
     list: null,
@@ -255,13 +258,17 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
       danger: true,
     });
     if (!confirmed) return;
+    setEnding(session.id);
     try {
       const sid = await sideSession();
       if (sid === null) return;
       await api.endServerSession(sid, session.id, how);
       setVersion((v) => v + 1);
+      toast(t(how === "cancel" ? "Statement of session {id} cancelled" : "Session {id} ended", { id: session.id }));
     } catch (e) {
       setError(toCommandError(e).message);
+    } finally {
+      setEnding(null);
     }
   }
 
@@ -388,6 +395,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
               session={chosen}
               caps={caps}
               readOnly={connection.read_only}
+              ending={ending}
               onSelect={setSelected}
               onEnd={(s, how) => void end(s, how)}
               onOpen={(sql) => workbench().openTab("query", connection.id, { sql })}
@@ -511,6 +519,7 @@ function SessionDetails({
   session,
   caps,
   readOnly,
+  ending,
   onSelect,
   onEnd,
   onOpen,
@@ -518,6 +527,7 @@ function SessionDetails({
   session: ServerSession | null;
   caps: Capabilities | null;
   readOnly: boolean;
+  ending: string | null;
   onSelect: (id: string) => void;
   onEnd: (session: ServerSession, how: EndSession) => void;
   onOpen: (sql: string) => void;
@@ -580,15 +590,15 @@ function SessionDetails({
         </button>
         {caps?.cancel_server_queries && (
           <button
-            disabled={!running || !!why}
+            disabled={!running || !!why || ending !== null}
             title={why ?? (running ? undefined : t("It runs no statement"))}
             onClick={() => onEnd(session, "cancel")}
           >
             {t("Cancel statement")}
           </button>
         )}
-        <button className="admin-end" disabled={!!why} title={why} onClick={() => onEnd(session, "terminate")}>
-          {t("End session")}
+        <button className="admin-end" disabled={!!why || ending !== null} title={why} onClick={() => onEnd(session, "terminate")}>
+          {ending === session.id ? t("Ending…") : t("End session")}
         </button>
       </div>
     </aside>
@@ -632,11 +642,11 @@ function Locks({
         </label>
       </div>
       {locksError && <div className="notice error small">{locksError}</div>}
-      {locks && (
+      {locks && shown.length > 0 && (
         <table className="meta-table admin-table admin-locks">
           <thead>
             <tr>
-              <th className="num">{t("Session")}</th>
+              <th>{t("Session")}</th>
               <th>{t("Kind")}</th>
               <th>{t("Object")}</th>
               <th>{t("Mode")}</th>
@@ -646,7 +656,7 @@ function Locks({
           <tbody>
             {shown.map((l, i) => (
               <tr key={i} className={l.granted ? "" : "waiting"}>
-                <td className="num">
+                <td>
                   <button className="link" onClick={() => onSelect(l.session)}>
                     {l.session}
                   </button>

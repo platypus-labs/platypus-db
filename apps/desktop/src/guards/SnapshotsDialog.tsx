@@ -5,6 +5,8 @@ import { api, type SnapshotMeta, toCommandError } from "../api";
 import { registerAction } from "../actions";
 import { defineSetting, getSetting } from "../settings";
 import { workbench } from "../workbench";
+import { ask } from "../ui/ask";
+import { toast } from "../ui/toast";
 import { preview } from "./GuardDialog";
 import { t, plural } from "../i18n";
 import { EmptyState, LoadingState } from "../ui/State";
@@ -29,9 +31,15 @@ export async function snapshotBefore(sessionId: number, database: string | null,
 /** Opens the statements that put a snapshot's rows back in a new editor, to look at and run. */
 export async function openRestore(connectionId: string, database: string | null, id: string) {
   try {
-    const statements = await api.snapshotRestore(id);
-    const head = `-- ${t("Puts back the rows of snapshot {id}: look them over, then run them.", { id })}\n`;
-    workbench().openTab("query", connectionId, { sql: head + statements.map((s) => `${s};`).join("\n"), database: database ?? undefined });
+    const [statements, all] = await Promise.all([api.snapshotRestore(id), api.listSnapshots().catch(() => [])]);
+    const meta = all.find((s) => s.id === id);
+    const what = meta ? t("{verb} of {time}", { verb: meta.verb, time: time(meta.taken_at) }) : id;
+    const head = `-- ${t("Puts back the rows of {table} ({what}): look them over, then run them.", { table: meta?.table ?? "", what })}\n`;
+    workbench().openTab("query", connectionId, {
+      sql: head + statements.map((s) => `${s};`).join("\n"),
+      database: database ?? undefined,
+      title: meta ? t("Restore of {table}", { table: meta.table }) : undefined,
+    });
   } catch (e) {
     workbench().showError(toCommandError(e).message);
   }
@@ -43,6 +51,8 @@ const time = (at: number) => new Date(at).toLocaleString();
 export function SnapshotsDialog({ onClose }: { onClose: () => void }) {
   const [list, setList] = useState<SnapshotMeta[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The snapshot whose restore script is being read. */
+  const [opening, setOpening] = useState<string | null>(null);
   const load = () =>
     api.listSnapshots().then(setList, (e) => {
       setList([]);
@@ -50,10 +60,13 @@ export function SnapshotsDialog({ onClose }: { onClose: () => void }) {
     });
   useEffect(() => void load(), []);
 
-  async function remove(id: string) {
+  async function remove(s: SnapshotMeta) {
+    const sure = await ask(t("Delete the snapshot of {verb} {table}? Its rows cannot be put back any more.", { verb: s.verb, table: s.table }), { confirm: t("Delete"), danger: true });
+    if (!sure) return;
     try {
-      await api.deleteSnapshot(id);
+      await api.deleteSnapshot(s.id);
       await load();
+      toast(t("Snapshot deleted"));
     } catch (e) {
       setError(toCommandError(e).message);
     }
@@ -88,18 +101,19 @@ export function SnapshotsDialog({ onClose }: { onClose: () => void }) {
                 </div>
                 <code>{preview(s.statement)}</code>
                 <div className="snapshot-actions">
-                  <button type="button" onClick={() => void remove(s.id)}>
+                  <button type="button" onClick={() => void remove(s)}>
                     {t("Delete")}
                   </button>
                   <button
                     type="button"
                     className="primary"
+                    disabled={opening !== null}
                     onClick={() => {
-                      onClose();
-                      void openRestore(s.connection_id, s.database, s.id);
+                      setOpening(s.id);
+                      void openRestore(s.connection_id, s.database, s.id).finally(onClose);
                     }}
                   >
-                    {t("Open restore script")}
+                    {opening === s.id ? t("Opening…") : t("Open restore script")}
                   </button>
                 </div>
               </li>

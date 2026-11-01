@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ALT, CTRL } from "../cdp.mjs";
+import { confirmDanger } from "../admin.mjs";
 
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
@@ -88,7 +89,15 @@ export default async function (page) {
   assert.equal(log[0].tone, "commit", JSON.stringify(log));
   assert.match(log[0].head, /Committed at/);
 
-  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Clear').click()`);
+  // Clear asks first: Cancel keeps the log, the red button empties it.
+  const clear = `[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Clear')`;
+  await page.eval(`${clear}.click()`);
+  await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
+  await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Cancel').click()`);
+  await page.waitFor(`document.querySelector('.modal.confirm') === null`);
+  assert.ok((await page.eval(`${dialog}.querySelectorAll('.tx-log-group').length`)) > 0, "Cancel keeps the log");
+  await page.eval(`${clear}.click()`);
+  await confirmDanger(page);
   await page.waitFor(`${dialog}.querySelectorAll('.tx-log-group').length === 0`);
   await closeLog(page);
 }

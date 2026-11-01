@@ -154,6 +154,8 @@ interface Props {
   headerTitle?: (col: number) => string | undefined;
   /** Draws a discreet mark in the header of annotated columns. */
   headerMarked?: (col: number) => boolean;
+  /** Draws a crossed-out eye in the header of masked columns. */
+  headerMasked?: (col: number) => boolean;
   /** Bumped when the annotations change, to repaint the marks. */
   headerVersion?: number;
   /** Called when the mouse comes onto a column header and, with `null`, when it leaves it,
@@ -233,6 +235,7 @@ export function DataGrid({
   onHeaderClick,
   headerTitle,
   headerMarked,
+  headerMasked,
   headerVersion = 0,
   onHeaderHover,
   source = null,
@@ -275,6 +278,7 @@ export function DataGrid({
     onHeaderClick,
     headerTitle,
     headerMarked,
+    headerMasked,
     onHeaderHover,
     decorate,
     onFocusChange,
@@ -587,6 +591,16 @@ export function DataGrid({
         ctx.arc(x + cw - PAD, 28, 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
+      if (props.current.headerMasked?.(c)) {
+        const cx = x + cw - PAD - 6;
+        ctx.strokeStyle = t.muted;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(cx, 26, 5.5, 3.5, 0, 0, Math.PI * 2);
+        ctx.moveTo(cx - 5, 31);
+        ctx.lineTo(cx + 5, 21);
+        ctx.stroke();
+      }
       ctx.restore();
       if (x + cw - 1 > edge) {
         ctx.fillStyle = t.border;
@@ -721,7 +735,7 @@ export function DataGrid({
   useEffect(schedule, [schedule, decorate]);
 
   // Redraw on data, size, layout and theme changes.
-  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion]);
+  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion, !!headerMasked]);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;

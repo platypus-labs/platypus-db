@@ -90,10 +90,11 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
           <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         {error && <div className="notice error small">{error}</div>}
+        <p className="muted small">{t("It cannot be recovered: without it the saved passwords are lost.")}</p>
         <div className="actions">
           <span className="spacer" />
           <button type="submit" className="primary" disabled={busy || password === ""}>
-            {t("Unlock")}
+            {busy ? t("Unlocking…") : t("Unlock")}
           </button>
         </div>
       </form>

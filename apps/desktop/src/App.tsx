@@ -901,10 +901,13 @@ export function App() {
   useTray();
   /** Locks the app behind the master password, closing the production sessions; without a
    *  master password, says what it needs. */
+  const idleWarned = useRef(false);
   async function lockApp(asked: boolean) {
     const status = await api.vaultStatus().catch(() => null);
     if (!status?.enabled) {
-      if (asked) setToast(t("Locking needs a master password: set one in Settings › Master password."));
+      // The idle lock says it once, not every time the timer fires.
+      if (asked || !idleWarned.current) setToast(t("Locking needs a master password: set one in Settings › Master password."));
+      if (!asked) idleWarned.current = true;
       return;
     }
     await api.lockVault().catch(() => {});

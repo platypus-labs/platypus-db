@@ -25,6 +25,7 @@ import {
 } from "./usersModel";
 import { EmptyState, LoadingState } from "../ui/State";
 import { Icon } from "../ui/Icon";
+import { AdminSplit } from "./AdminSplit";
 
 type Kind = "all" | "user" | "role";
 
@@ -139,9 +140,10 @@ export function Users({ connection, active, refresh, sideSession }: Props) {
           {error}
         </div>
       )}
-      <div className="admin-split">
-        <PrincipalTable principals={shown} selected={selected} onSelect={setSelected} loading={loading && !principals} />
-        <PrincipalDetails
+      <AdminSplit
+        list={<PrincipalTable principals={shown} selected={selected} onSelect={setSelected} loading={loading && !principals} />}
+        details={
+          <PrincipalDetails
           principal={chosen}
           principals={all}
           sideSession={sideSession}
@@ -151,7 +153,8 @@ export function Users({ connection, active, refresh, sideSession }: Props) {
           onSelect={setSelected}
           onOpen={setDialog}
         />
-      </div>
+        }
+      />
       {env && dialog && <UserDialog dialog={dialog} env={env} />}
     </div>
   );

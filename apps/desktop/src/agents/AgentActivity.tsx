@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { api, toCommandError, type AgentCall, type AgentCallQuery, type AgentSession, type HistoryStatus } from "../api";
 import { ask } from "../ui/ask";
 import { t } from "../i18n";
+import { EmptyState } from "../ui/State";
 
 /** Calls a page loads. */
 const PAGE = 100;
@@ -30,7 +31,7 @@ function argumentsText(call: AgentCall): string {
 
 /** The Activity page of Agents: every call agents made to the tools, by session, with a
  *  filter and a CSV export. */
-export function AgentActivity() {
+export function AgentActivity({ onSetup }: { onSetup: () => void }) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [session, setSession] = useState<string>("");
   const [status, setStatus] = useState<HistoryStatus | "">("");
@@ -183,8 +184,16 @@ export function AgentActivity() {
           ))}
           {calls.length === 0 && (
             <tr>
-              <td colSpan={7} className="muted">
-                {t("No agent calls yet.")}
+              <td colSpan={7}>
+                <EmptyState
+                  compact
+                  title={t("No agent calls yet.")}
+                  actions={
+                    <button type="button" onClick={onSetup}>
+                      {t("Connect an agent")}
+                    </button>
+                  }
+                />
               </td>
             </tr>
           )}
