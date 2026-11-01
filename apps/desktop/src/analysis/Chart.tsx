@@ -120,7 +120,9 @@ export function Chart({ data: full, kind, width, height, colors, otherLabel, lab
     top: MARGIN.top,
     bottom: Math.max(MARGIN.top + 10, height - MARGIN.bottom),
   };
-  const color = (i: number) => colors.series[i % colors.series.length] || colors.text;
+  // Neighbouring slices skip three colours of the palette, so that similar tones are not side by side.
+  const stride = kind === "pie" && colors.series.length % 3 !== 0 ? 3 : 1;
+  const color = (i: number) => colors.series[(i * stride) % colors.series.length] || colors.text;
   // A pie's legend names the slices drawn, in their colours.
   const slices = pieParts(data.series[0]?.values ?? []).drawn;
   const names = data.series.map((s) => s.name);
@@ -330,6 +332,25 @@ function Pie({ data, categories, plot, color, colors, locale }: ShapeProps) {
           <title>{`${categories[drawn[k] ?? 0] ?? ""}: ${formatNumber(values[k] ?? 0, locale)}`}</title>
         </path>
       ))}
+      {pieAngles(values).map(([a0, a1], k) => {
+        // The share of the slices big enough to hold it.
+        const share = (a1 - a0) / (2 * Math.PI);
+        if (share < 0.06 || share > 0.9999) return null;
+        const mid = (a0 + a1) / 2;
+        return (
+          <text
+            key={k}
+            className="chart-slice-label"
+            x={cx + r * 0.62 * Math.cos(mid)}
+            y={cy + r * 0.62 * Math.sin(mid) + 4}
+            textAnchor="middle"
+            fontWeight={600}
+            fill={colors.background}
+          >
+            {`${Math.round(share * 100)}%`}
+          </text>
+        );
+      })}
     </g>
   );
 }

@@ -34,6 +34,7 @@ import {
   type KeyBinding,
   keymap,
   lineNumbers,
+  placeholder,
   rectangularSelection,
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
@@ -113,6 +114,8 @@ interface Props {
   database?: string | null;
   /** The connection is a production one: the linter warns about `SELECT *`. */
   production?: boolean;
+  /** A hint shown while the editor is empty. */
+  placeholder?: string;
   host?: EditorHost;
 }
 
@@ -316,6 +319,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
       extensions: [
         vimConf.current.of(vimMode(vimOn)),
         lineNumbers(),
+        ...(props.placeholder ? [placeholder(props.placeholder)] : []),
         highlightActiveLineGutter(),
         highlightSpecialChars(),
         history(),

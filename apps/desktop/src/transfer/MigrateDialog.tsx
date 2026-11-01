@@ -139,12 +139,18 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, ob
         <p className="muted small">
           {tables === null
             ? t("Reading the tables…")
-            : `${t(
+            : t(
                 !whole
                   ? "Each table is created with its columns, NOT NULL, primary key and identity, then filled; defaults, indexes, foreign keys and CHECKs come last."
                   : "Each table is created with its columns, NOT NULL, primary key and identity, then filled; defaults, indexes, foreign keys and CHECKs come last, then the views and routines.",
-              )} ${tables.join(", ") || t("No tables")}.`}
+              )}
         </p>
+        {tables !== null && (
+          <p className="small migrate-tables">
+            <strong>{t("Tables: {n}", { n: tables.length })}</strong>
+            {tables.length > 0 ? ` — ${tables.join(", ")}` : ` — ${t("No tables")}`}
+          </p>
+        )}
         {saved && !candidates.some((c) => c.id === saved.target_connection_id) && (
           <div className="notice warn small">{t("The target connection of the profile is gone or takes no tables: pick another.")}</div>
         )}

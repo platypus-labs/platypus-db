@@ -15,7 +15,8 @@ import { openProfile } from "./profileActions";
 import { profileConnections, profilesOf } from "./profiles";
 import { runTracked } from "./ProfileSave";
 import { toggleSidebar, useSidebarCollapsed } from "../shell/sidebar";
-import { EmptyState } from "../ui/State";
+import { EmptyState, LoadingState } from "../ui/State";
+import { toast } from "../ui/toast";
 
 const KINDS: Record<ProfileTask["kind"], string> = {
   export_query: msg("Export a query"),
@@ -79,12 +80,14 @@ export function ProfilesDialog({ connectionId, onClose }: { connectionId?: strin
   }
 
   const shown = profiles && profilesOf(profiles, connectionId);
+  const empty = shown?.length === 0;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal schedules-dialog" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
         <h2>{connectionId ? t("Transfer profiles of {name}", { name: nameOf(connectionId) }) : t("Transfer profiles")}</h2>
-        <p className="muted small">{t("Save a profile from the export, import, copy and migration dialogs.")}</p>
+        {!empty && <p className="muted small">{t("Save a profile from the export, import, copy and migration dialogs.")}</p>}
         {error && <div className="notice error small">{error}</div>}
+        {shown === null && !error && <LoadingState compact title={t("Loading…")} />}
         {shown && shown.length === 0 && (
           <EmptyState
             className="schedules-empty"
@@ -96,6 +99,9 @@ export function ProfilesDialog({ connectionId, onClose }: { connectionId?: strin
                 onClick={() => {
                   if (collapsed) toggleSidebar();
                   onClose();
+                  // The navigator takes the focus, so the next step (a table's menu) is at hand.
+                  requestAnimationFrame(() => document.querySelector<HTMLElement>("ul.tree[role=tree]")?.focus());
+                  toast(t("Right-click a table, then Export data…"), "info");
                 }}
               >
                 {t("Go to the navigator")}
@@ -128,7 +134,7 @@ export function ProfilesDialog({ connectionId, onClose }: { connectionId?: strin
         )}
         <div className="actions">
           <span className="spacer" />
-          <button type="button" className="primary" onClick={onClose}>
+          <button type="button" className={empty ? undefined : "primary"} onClick={onClose}>
             {t("Close")}
           </button>
         </div>

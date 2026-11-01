@@ -341,7 +341,7 @@ export async function compareUi(page, chain, last, targetConnection, targetSchem
   if (await page.eval(`${compareDialog} !== null`)) {
     const notice = await page.eval(`${compareDialog}.querySelector('.notice').textContent`);
     const error = await page.eval(`${compareDialog}.querySelector('.notice.error') !== null`);
-    await page.eval(`${buttonIn(compareDialog, "Close")}.click()`);
+    await page.eval(`${buttonIn(compareDialog, "Cancel")}.click()`);
     await page.waitFor(`${compareDialog} === null`);
     return error ? { error: notice } : { same: true, notice };
   }

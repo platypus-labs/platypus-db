@@ -32,6 +32,7 @@ import { hasSessionTimeZone, withoutUnusableInit } from "../connectionEdit";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
 import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
+import { Icon } from "../ui/Icon";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 import { t, tNodes, msg } from "../i18n";
@@ -1162,6 +1163,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       >
                         <span className="dot" style={{ background: p.color }} />
                         {p.name}
+                        {on && <Icon name="commit" size={12} />}
                       </button>
                     );
                   })}
@@ -1232,7 +1234,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   env: <code>{"${env:PROXY_PASSWORD}"}</code>,
                 })}
               </p>
-              <div className="field-grid">
+              <>
                 <label className="field">
                   <span>{t("Command before connecting")}</span>
                   <input
@@ -1253,7 +1255,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     data-field="after_disconnect"
                   />
                 </label>
-              </div>
+              </>
               <p className="muted small">
                 {t("Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.")}
               </p>
