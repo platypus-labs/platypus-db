@@ -29,7 +29,8 @@
   color: var(--error);
 }
 
-.state.loading .state-icon {
+.state.loading .state-icon,
+.busy-icon {
   animation: state-spin 0.9s linear infinite;
 }
 
@@ -88,4 +89,18 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* The inline spinner of an action under way (ui/State.tsx Busy): in a button, next to a label. */
+.busy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+/* Data being reloaded: kept in view, dimmed. */
+.is-reloading {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s;
 }

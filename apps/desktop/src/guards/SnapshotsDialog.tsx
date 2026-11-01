@@ -7,7 +7,7 @@ import { defineSetting, getSetting } from "../settings";
 import { workbench } from "../workbench";
 import { preview } from "./GuardDialog";
 import { t, plural } from "../i18n";
-import { LoadingState } from "../ui/State";
+import { EmptyState, LoadingState } from "../ui/State";
 
 export const snapshotSetting = defineSetting<boolean>({
   key: "safety.snapshots",
@@ -70,7 +70,9 @@ export function SnapshotsDialog({ onClose }: { onClose: () => void }) {
         {list === null ? (
           <LoadingState compact title={t("Loading…")} />
         ) : list.length === 0 ? (
-          <LoadingState compact title={t("No snapshot yet.")} />
+          <EmptyState className="snapshots-empty" title={t("No snapshot yet.")}>
+            {t("A snapshot is taken when you run an UPDATE or DELETE from the SQL editor, if the setting \"Keep the rows an UPDATE or DELETE changes, to put them back\" is on.")}
+          </EmptyState>
         ) : (
           <ul className="snapshot-list">
             {list.map((s) => (

@@ -66,3 +66,16 @@ export function LoadingState(props: StateProps) {
 export function ErrorState(props: StateProps) {
   return <State kind="error" role="alert" {...props} />;
 }
+
+/**
+ * The inline form of waiting, for an action under way: a spinner with an optional label. In a
+ * button, set `aria-busy` on the button and put `<Busy />` before its "…ing" label.
+ */
+export function Busy({ label, className }: { label?: ReactNode; className?: string }) {
+  return (
+    <span className={["busy", className].filter(Boolean).join(" ")} role="status">
+      <Icon name="loading" className="busy-icon" />
+      {label}
+    </span>
+  );
+}

@@ -3110,6 +3110,10 @@ const fr: Record<string, string> = {
   "Has settings": "Contient des réglages",
   "Go to the navigator": "Aller au navigateur",
   "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Un profil s'enregistre depuis la fenêtre d'export, d'import, de copie ou de migration d'une table : clic droit sur une table dans le navigateur.",
+  "Testing…": "Test en cours…",
+  "Cancel test": "Annuler le test",
+  "Syncing…": "Synchronisation…",
+  "A snapshot is taken when you run an UPDATE or DELETE from the SQL editor, if the setting \"Keep the rows an UPDATE or DELETE changes, to put them back\" is on.": "Un instantané est créé quand vous exécutez un UPDATE ou un DELETE depuis l'éditeur SQL, si le réglage « Keep the rows an UPDATE or DELETE changes, to put them back » est activé.",
 };
 
 export default fr;

@@ -34,6 +34,7 @@ import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
 import { t, tNodes, msg } from "../i18n";
+import { Busy } from "../ui/State";
 import { type ManagerId, MANAGERS, managerById, managerOf } from "../credentialManagers";
 import { SIGN_INS, type SignInId, signInOf, signInsFor, withSignIn } from "../signIn";
 import { suggestedPooler } from "./pooler";
@@ -253,6 +254,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [urlError, setUrlError] = useState<string | null>(null);
   /** Counts the URL edits, so that a slow answer for an old text is ignored. */
   const urlEdits = useRef(0);
+  // The test in flight; a Cancel bumps it, and the late answer of the older one is ignored.
+  const testRun = useRef(0);
+  const [testing, setTesting] = useState(false);
   /** The last URL edit is still being read: leaving the field keeps it as typed. */
   const urlReading = useRef(false);
   const urlInput = useRef<HTMLInputElement>(null);
@@ -435,16 +439,29 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     if (problem) return setResult({ ok: false, message: problem });
     const password = await testPassword(c, typed);
     if (password === null) return;
+    const run = ++testRun.current;
     setBusy(true);
+    setTesting(true);
     setResult(null);
     try {
       const server = await withDriver(() => api.testConnection(ownNetwork(c), passwordInput(password), sshSecrets()));
-      setResult({ ok: true, server });
+      if (run === testRun.current) setResult({ ok: true, server });
     } catch (e) {
-      setResult({ ok: false, message: toCommandError(e).message });
+      if (run === testRun.current) setResult({ ok: false, message: toCommandError(e).message });
     } finally {
-      setBusy(false);
+      if (run === testRun.current) {
+        setBusy(false);
+        setTesting(false);
+      }
     }
+  }
+
+  /** There is no backend cancel for a test: stop waiting, the late answer is dropped. */
+  function cancelTest() {
+    testRun.current++;
+    setBusy(false);
+    setTesting(false);
+    setResult(null);
   }
 
   async function save(e: React.FormEvent) {
@@ -1335,9 +1352,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           )}
 
           <div className="actions">
-            <button type="button" onClick={test} disabled={busy}>
-              {t("Test connection")}
+            <button type="button" onClick={test} disabled={busy} aria-busy={testing || undefined} data-action="test-connection">
+              {testing ? <Busy label={t("Testing…")} /> : t("Test connection")}
             </button>
+            {testing && (
+              <button type="button" onClick={cancelTest} data-action="cancel-test">
+                {t("Cancel test")}
+              </button>
+            )}
             {result && (
               <div className={result.ok ? "notice ok" : "notice error"}>
                 {result.ok
