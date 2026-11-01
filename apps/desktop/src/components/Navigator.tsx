@@ -20,6 +20,7 @@ import { FilterDialog } from "../navigator/FilterDialog";
 import { ROW_HEIGHT, rowWindow, scrollToRow, stepAt } from "../navigator/rowWindow";
 import { routineBase } from "../sqlIdent";
 import { textFilter } from "../navigator/filter";
+import { isTypeAheadKey, nextTyped, typeAheadIndex } from "../navigator/typeAhead";
 import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
@@ -958,6 +959,8 @@ export function Navigator(props: Props) {
   // shortly after the key only, so a later click elsewhere keeps its own. A connection just
   // made gets it the same way once its row shows, when its dialog has left the focus nowhere.
   const moved = useRef<{ key: string; at: number } | null>(null);
+  /** What was typed to jump to a row, and when the last key came. */
+  const typedAhead = useRef({ text: "", at: 0 });
   const treeRef = useRef<HTMLUListElement>(null);
   useEffect(() => {
     if (!moved.current || document.activeElement !== document.body) return;
@@ -1073,6 +1076,13 @@ export function Navigator(props: Props) {
       const target = menuOf(row);
       const r = (e.target as HTMLElement).getBoundingClientRect();
       if (target) setMenu({ x: r.left + 24, y: r.bottom, target });
+    } else if (isTypeAheadKey(e)) {
+      const now = Date.now();
+      const typed = nextTyped(typedAhead.current.text, e.key, now - typedAhead.current.at);
+      if (typed.trim() === "") return;
+      typedAhead.current = { text: typed, at: now };
+      const hit = typeAheadIndex(rows.map((r) => r.label), at, typed);
+      if (hit >= 0) go(hit, false);
     } else return;
     e.preventDefault();
   }
