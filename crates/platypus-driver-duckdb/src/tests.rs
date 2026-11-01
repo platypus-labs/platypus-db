@@ -723,3 +723,22 @@ async fn generated_columns_are_read_from_the_table_definition() {
         ]
     );
 }
+
+#[tokio::test]
+async fn an_updated_row_of_a_keyed_table_keeps_its_place_in_key_order() {
+    crate::testing::load();
+    let conn = memory().await;
+    run(
+        &conn,
+        "CREATE TABLE k (id INTEGER PRIMARY KEY, v VARCHAR UNIQUE)",
+    )
+    .await;
+    run(&conn, "INSERT INTO k VALUES (1, 'a'), (2, 'b'), (3, 'c')").await;
+    // A change to an indexed column is a delete and an insert: the row leaves its place...
+    run(&conn, "UPDATE k SET v = 'z' WHERE id = 1").await;
+    let ids = "SELECT string_agg(id::VARCHAR, ',') FROM (SELECT id FROM k{order})";
+    assert_eq!(value(&conn, &ids.replace("{order}", "")).await, "2,3,1");
+    // ...and the key's order puts it back.
+    let ordered = ids.replace("{order}", " ORDER BY id");
+    assert_eq!(value(&conn, &ordered).await, "1,2,3");
+}

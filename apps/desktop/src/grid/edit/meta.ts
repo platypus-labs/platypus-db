@@ -66,7 +66,9 @@ export function resultColumns(source: EditSource, columns: ColumnInfo[]): (Colum
   const find = byName(source.details);
   const expected: (string | null)[] = source.items
     ? source.items.flatMap((item) =>
-        item.kind === "all" ? source.details.columns.map((c) => c.name) : [item.kind === "column" ? item.name : null],
+        item.kind === "all"
+          ? source.details.columns.filter((c) => !c.hidden).map((c) => c.name)
+          : [item.kind === "column" ? item.name : null],
       )
     : columns.map((c) => c.name);
   if (expected.length !== columns.length) return msg("its columns do not match the query");

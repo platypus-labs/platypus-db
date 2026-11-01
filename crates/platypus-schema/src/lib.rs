@@ -72,6 +72,27 @@ pub struct TableDesign {
     /// column list, and its history table.
     #[serde(default)]
     pub system_time: Option<SystemTime>,
+    /// The `PERIOD FOR` clauses of a MariaDB table, written in its column list: the
+    /// application-time periods and, for a system-versioned table with row start and end
+    /// columns of its own, `SYSTEM_TIME`.
+    #[serde(default)]
+    pub periods: Vec<PeriodDesign>,
+}
+
+/// `PERIOD FOR name (start, end)` of a MariaDB table.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeriodDesign {
+    pub name: String,
+    pub start: String,
+    pub end: String,
+}
+
+impl PeriodDesign {
+    /// The period of system versioning, whose name is a keyword.
+    #[must_use]
+    pub fn is_system_time(&self) -> bool {
+        self.name.eq_ignore_ascii_case("SYSTEM_TIME")
+    }
 }
 
 /// `PERIOD FOR SYSTEM_TIME (start, end)` and, when the table is versioned,
@@ -713,6 +734,7 @@ fn apply_definition(design: &mut TableDesign, definition: &create::Definition) {
         column.collation.clone_from(&parsed.collation);
     }
     design.options.clone_from(&definition.options);
+    design.periods.clone_from(&definition.periods);
     // What the catalogs leave out of the keys and constraints: SQLite's deferral, MATCH and
     // ON CONFLICT, MySQL's NOT ENFORCED. Unnamed there, keys and UNIQUEs are found by their
     // columns.

@@ -297,6 +297,7 @@ pub async fn table_details(
                 comment: role_comment(c),
                 enum_values: Vec::new(),
                 fields: Vec::new(),
+                hidden: false,
             })
             .collect(),
         ..TableDetails::default()

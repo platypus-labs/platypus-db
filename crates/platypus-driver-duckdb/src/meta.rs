@@ -192,6 +192,7 @@ async fn columns(conn: &dyn Connection, at: &str, primary: &[String]) -> Result<
                 comment: r.opt(4).filter(|c| !c.is_empty()),
                 enum_values,
                 fields: Vec::new(),
+                hidden: false,
             }
         })
         .collect())

@@ -457,6 +457,7 @@ pub async fn table_details(
             comment: c.comment,
             enum_values: Vec::new(),
             fields: Vec::new(),
+            hidden: false,
         })
         .collect();
     let constraints = constraints(&indexes, checks);

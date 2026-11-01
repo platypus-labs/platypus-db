@@ -379,6 +379,7 @@ impl Connection for PluginConnection {
                     comment: c.comment,
                     enum_values: Vec::new(),
                     fields: Vec::new(),
+                    hidden: false,
                 })
                 .collect(),
             ..TableDetails::default()

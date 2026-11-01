@@ -8,9 +8,75 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Added
 
+- **Connections**: export connections to a `.platypusconn` file, with or without their projects
+  and folders and, encrypted behind a password, their saved passwords; import it back from
+  Import connections › PlatypusDB.
+- The main window opens where it was left, on the same screen, or centred on the primary
+  screen when that one is gone.
+
+### Fixed
+
+- Numbers wider than 38 digits and SQL Server `time(7)` keep every digit in Query with SQL and
+  queries across databases.
+- CockroachDB tables without a primary key are edited by their hidden `rowid`.
+- SQL Server gives a disabled constraint without a name one of its own, so it can be disabled.
+- MariaDB schema compare reads and writes `PERIOD FOR` clauses.
+- SQLite hides the shadow tables of FTS5 tables.
+- On DuckDB an edited row of a table with a one-column primary key keeps its place after saving.
+
+## [0.3.0] - 2026-11-01
+
+### Added
+
+- **Databases**: Redis (commands in the editor, key types as tables edited in the grid, a
+  `redis-cli` terminal), Elasticsearch and OpenSearch (console requests, SQL, paged searches,
+  grid edits, index export), Cassandra and ScyllaDB over CQL; several versions of a downloaded
+  driver, with activation and update lookup.
+- **Schema tools**: the ER diagram full screen, with a minimap and an edit mode that draws the
+  schema and generates the DDL; views, functions, triggers and sequences created from a form;
+  data comparison of two tables with the script that syncs them; schema comparison written as a
+  Flyway migration or a Liquibase changelog; schema history with snapshots and the changes
+  between two of them; migration status of a project folder (Flyway, Liquibase, Prisma, Alembic,
+  Rails).
+- **Server administration**: server parameters and a server dashboard; users, roles and
+  privileges with create, edit, drop, grant and revoke; a PL/pgSQL debugger.
+- **Analysis**: pivot of results, profile of a whole table with patterns, outliers and
+  duplicate rows, queries across databases, saved results as Parquet files opened offline,
+  dashboards of widgets from saved scripts, computed columns in the result grid.
+- **Import, export and transfer**: saved transfer profiles, run by hand or from a scheduled
+  task; bulk loading with the SQL Server bulk copy and the DuckDB appender.
+- **Collaboration**: Git status, diff, commit, pull and push for saved scripts; queries shared
+  as a link or a `.platypus` file; encrypted folder sync; shared team projects, whose init
+  statements need approval before they run.
+- **Plugins**: sandboxed WebAssembly plugins for actions and drivers, in Settings > Plugins.
+- **Catalog**: sensitive columns, from name and type rules or the user's mark, masked in
+  exports and for agents; where a column is used (views, routines, triggers, saved scripts).
+- **Agents**: schemas and tables as MCP resources, read-only tools over saved scripts and query
+  history, the user's context and active tab shared on consent, a ready-made plugin and Codex
+  configuration, client cards with logos in Settings > Agents.
+- **Interface**: a redesign of the welcome page, the connection dialog, Settings and the object
+  pages; a choice of where the navigator, results, tab bar and side panels go; Lucide, Tabler or
+  Phosphor icons; animations off or reduced; Settings pages in sub-tabs; Enter confirms every
+  dialog; driver logos in the navigator; recent scripts on the welcome page.
+- **Distribution**: winget, Homebrew, AUR and Flatpak manifests filled from a release; updates
+  left to the package manager that installed the app.
+
+### Fixed
+
+- Over 230 fixes from the final testing: two rounds of testers by area and on every database, a
+  code review and a security review. Among them, each profile keeps its sync passphrase and
+  transfer keys under its own keychain name.
+- Drags inside the app use pointer events, so they work on Windows; projects reorder in the rail.
+- Snapshot restore quotes names and restores rows in order; SQL files count their statements
+  exactly; a script run on several connections merges its results.
+
+## [0.2.1] - 2026-10-29
+
+### Added
+
 - **Databases**: SQL Server and Azure SQL, DuckDB (also opening CSV, JSON, Parquet and XLSX
-  files as a database), ClickHouse, libSQL and Turso, MongoDB with a mongosh editor, Redis (commands in the editor, key types
-  as tables edited in the grid), Oracle;
+  files as a database, named in-memory databases, the library downloaded on first use),
+  ClickHouse, libSQL and Turso, MongoDB with a mongosh editor, Oracle;
   CockroachDB, YugabyteDB and the other PostgreSQL-compatible servers; Snowflake, BigQuery,
   Databricks and Trino through ADBC drivers downloaded on first use; Db2 and any ODBC source on
   Windows. A picker with the database logos for new connections.
@@ -44,6 +110,35 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Interface**: a new look with the Platypus Dark and Light themes, bundled fonts and icons; a
   title bar framed by the connection type; pinned and grouped tabs, an activity log, zoom keys;
   a resizable navigator and sidebar; Settings in tabs with a search; Italian translation.
+- **More connection options**: `${env:NAME}` and `.env` files in connection settings; SOCKS5
+  and HTTP proxies; commands before connecting and after disconnecting; passwords from
+  1Password, Bitwarden, Vault and AWS Secrets Manager; cloud tokens and Windows sign-in; port
+  forwards through kubectl or AWS SSM; the pooler mode of PostgreSQL connections (Supabase,
+  Neon); a test of every connection of a project; restrictions per connection (no exports, no
+  data editing). Errors name the server's product and version, and a server older than the
+  oldest version tested says so.
+- **Server administration**: a Server activity tab with sessions, waiting chains and locks, to
+  cancel or end a session; the costliest statements, table statistics and maintenance; backup
+  and restore with `pg_dump`, `pg_restore`, `mysqldump` and `mysql`; scheduled scripts, exports
+  and backups.
+- **Safety**: pending changes, read-only tabs and an automatic `LIMIT`; snapshots of the rows an
+  `UPDATE` or `DELETE` changes, with their restore scripts; a transaction log of each session;
+  the app locked after idle minutes; sensitive columns masked for screen sharing.
+- **Editor and results**: Vim mode; a script run on several connections at once; conditional
+  formatting of cells and rows; JSON in text columns shown indented; notebooks of SQL and
+  Markdown cells.
+- **Query plans**: pasted plans of PostgreSQL, CockroachDB, MySQL, MariaDB, SQLite and SQL
+  Server; two plans compared step by step; a graph view.
+- **More import, export and schema tools**: bulk loading with `COPY` and `LOAD DATA`; SQL files
+  of any size run, a schema dumped to an SQL file; an ER diagram, a schema linter and schema
+  comparison.
+- **More for agents**: a bridge with the open app, which confirms agents' changes; the
+  `explain`, `sample_rows` and `propose_sql` tools; a call log of every tool call; one-click
+  install of the server in the MCP clients; `platypus-db --mcp` serving MCP from the app.
+- **More interface**: tabs and the quick query in windows of their own, a tray icon; panel
+  sizes kept for the next start; a sample database on the welcome screen; portable mode;
+  Spanish, German, French, Portuguese and Chinese; themes exported and imported as JSON; a
+  rotated log file and a diagnostic package.
 
 ### Changed
 
@@ -90,6 +185,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/PaoloCisly/platypus-db/releases/tag/v0.1.0

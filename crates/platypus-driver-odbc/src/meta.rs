@@ -185,6 +185,7 @@ pub fn table_details(
             comment: c.remarks,
             enum_values: Vec::new(),
             fields: Vec::new(),
+            hidden: false,
         })
         .collect();
     let indexes = primary
