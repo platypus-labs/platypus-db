@@ -92,9 +92,13 @@ const nameChars = (width: number, type: string, mark = MARK) => Math.max(4, Math
 
 const typeText = (type: string) => truncate(type, 24);
 
+/** The columns of `table` that are part of a foreign key. */
+const fkColumns = (table: Drawn) => new Set(table.foreign_keys.flatMap((f) => f.columns));
+
 const boxWidth = (table: Drawn) => {
   const tag = table.state === "plain" ? 0 : t(TAGS[table.state]).length + 1;
-  const both = table.columns.some((c) => c.primary_key && table.foreign_keys.some((f) => f.columns.includes(c.name)));
+  const fks = fkColumns(table);
+  const both = table.columns.some((c) => c.primary_key && fks.has(c.name));
   const longest = Math.max(table.name.length + 2 + tag, ...table.columns.map((c) => c.name.length + c.data_type.length + 3));
   return Math.min(340, Math.max(140, 16 + (both ? MARK_BOTH : MARK) + CHAR * longest));
 };
@@ -733,7 +737,7 @@ interface TableBoxProps {
 }
 
 function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }: TableBoxProps) {
-  const keys = new Set(table.foreign_keys.flatMap((f) => f.columns));
+  const keys = fkColumns(table);
   const dropped = table.state === "dropped";
   // Tables edited stand out: created ones in green with a dashed border, changed ones in the
   // warning colour, dropped ones faded with their name struck through.
