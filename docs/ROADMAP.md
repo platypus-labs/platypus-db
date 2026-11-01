@@ -89,6 +89,27 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| "Query with SQL" e query tra database: i numeri con più di 38 cifre diventano `DOUBLE` in DuckDB e perdono precisione; vanno passati come `VARCHAR` (`platypus-local`, `duck.rs`) | collaudo S, 2026-11-01 |
+| Posizione e dimensione della finestra non si ripristinano al riavvio; vanno ripristinate anche su più monitor, con un ripiego se il monitor non c'è più (in `apps/desktop/src-tauri` manca un salvataggio dello stato della finestra) | collaudo S, 2026-11-01 |
+| SQL Server `time(7)`: in DuckDB ("Query with SQL", query tra database) si perde la settima cifra decimale | collaudo S, 2026-11-01 |
+| CockroachDB: le tabelle senza chiave primaria non si possono modificare nella griglia; usare la colonna nascosta `rowid` come chiave | collaudo S, 2026-11-01 |
+| DuckDB: dopo il salvataggio una riga modificata cambia posizione nella griglia invece di restare dov'era | collaudo S, 2026-11-01 |
+| Notebook: le liste Markdown annidate non si vedono annidate (`apps/desktop/src/notebook/Markdown.tsx`) | collaudo S, 2026-11-01 |
+| SQL Server: aggiungendo a una tabella esistente un vincolo disabilitato senza nome, l'app non avvisa e non gli dà un nome; deve fare una delle due | collaudo S, 2026-11-01 |
+| MariaDB: il confronto schemi non gestisce le tabelle con colonne di periodo esplicite (`PERIOD FOR`) | collaudo S, 2026-11-01 |
+| Profilo di colonna: un conteggio diverso da zero si mostra come "1 (0%)" invece del valore e della percentuale veri | collaudo S, 2026-11-01 |
+| Grafico a torta: con molte categorie la legenda non si legge; raggruppare le piccole in "Other" o farla scorrere (`apps/desktop/src/analysis/Chart.tsx`, `chartConfig.ts`) | collaudo S, 2026-11-01 |
+| F2 mentre la tabella sta ancora caricando le colonne non fa niente; deve dare un messaggio (`apps/desktop/src/grid/edit/actions.ts`) | collaudo S, 2026-11-01 |
+| MySQL: le variabili `@var` non restano tra due chiamate dello stesso agente sulla stessa sessione; farle restare, oppure scrivere il limite in `docs/AGENTS.md` | collaudo S, 2026-11-01 |
+| Navigator: le righe degli indici non hanno un menu contestuale | collaudo S, 2026-11-01 |
+| Navigator: scrivere un nome con il focus sull'albero non porta alla riga (ricerca type-ahead) | collaudo S, 2026-11-01 |
+| SQLite: le tabelle ombra di FTS5 (`<tabella>_content`, `_data`, `_idx`, `_docsize`, `_config`) compaiono come tabelle normali nel navigator | collaudo S, 2026-11-01 |
+| Le pagine di dettaglio di sequenze, tipi e domini non mostrano le proprietà del catalogo (valore corrente, incremento, tipo base, vincoli…) | collaudo S, 2026-11-01 |
+| Filtro del navigator: `#nome` è letto come tag, quindi le tabelle temporanee di SQL Server (`#temp`) non si possono cercare | collaudo S, 2026-11-01 |
+| Personalizzazione, "From theme": i campioni di colore si vedono grigi invece dei colori del tema | collaudo S, 2026-11-01 |
+| Tab fissati: hanno la stessa icona dei tab normali; serve un'icona diversa (`apps/desktop/src/shell/TabBar.tsx`) | collaudo S, 2026-11-01 |
+| `docs/README.md`: l'indice non elenca PLUGINS.md, COVERAGE.md, COLLAUDO.md, INVENTORY.md e `mockups/`, e dice EVOLUTIONS.md in italiano mentre è in inglese | revisione della documentazione, 2026-11-01 |
+| `CHANGELOG.md`: mancano le voci 0.2.1 e 0.3.0 (i tag esistono), le modifiche dopo la 0.2.0 sono ancora tutte sotto `[Unreleased]` | revisione della documentazione, 2026-11-01 |
 
 ### Lock dei gruppi
 
