@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, type ColumnInfo, type ColumnProfile } from "../api";
 import { formatShare } from "../format";
+import { barShare, yMax } from "./histogramAxis";
 import type { HeaderHover } from "../grid/DataGrid";
 import { shown as masked, useMask } from "../guards/mask";
 import { locale, t } from "../i18n";
@@ -109,22 +110,44 @@ function ProfileBox({ hover, column, profile }: { hover: HeaderHover; column: Co
   );
 }
 
-/** The ranges of a number or date column as bars, with the first and last bound under them. */
+/** The ranges of a number or date column as bars, titled and explained, with the row-count scale
+ *  beside them and the first and last bound under them. Each bar's tooltip has its range and count. */
 export function Histogram({ bins, hide }: { bins: ColumnProfile["histogram"]; hide: boolean }) {
-  const max = Math.max(1, ...bins.map((b) => b.count));
+  const max = yMax(bins);
   const step = 200 / bins.length;
+  const first = masked(bins[0]?.from, hide);
+  const last = masked(bins.at(-1)?.to, hide);
   return (
-    <>
-      <svg className="column-profile-bars" viewBox="0 0 200 36" preserveAspectRatio="none" aria-hidden="true">
-        {bins.map((b, i) => {
-          const h = (b.count / max) * 36;
-          return <rect key={i} x={i * step + 0.5} y={36 - h} width={Math.max(1, step - 1)} height={h} />;
-        })}
-      </svg>
-      <div className="column-profile-range muted">
-        <span>{masked(bins[0]?.from, hide)}</span>
-        <span>{masked(bins.at(-1)?.to, hide)}</span>
+    <div className="column-profile-hist">
+      <div className="column-profile-hist-title">
+        <strong>{t("Distribution")}</strong>
+        <span className="muted">{t("How many rows fall in each range of values")}</span>
       </div>
-    </>
+      <div className="column-profile-hist-plot">
+        <div className="column-profile-axis muted" title={t("Row count")}>
+          <span>{count(max)}</span>
+          <span>0</span>
+        </div>
+        <svg className="column-profile-bars" viewBox="0 0 200 36" preserveAspectRatio="none" role="img" aria-label={t("Distribution")}>
+          {bins.map((b, i) => {
+            const h = barShare(b, max) * 36;
+            const label = t(b.count === 1 ? "{from} to {to}: {n} row" : "{from} to {to}: {n} rows", {
+              from: masked(b.from, hide),
+              to: masked(b.to, hide),
+              n: count(b.count),
+            });
+            return (
+              <rect key={i} x={i * step + 0.5} y={36 - h} width={Math.max(1, step - 1)} height={h}>
+                <title>{label}</title>
+              </rect>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="column-profile-range muted">
+        <span title={first}>{first}</span>
+        <span title={last}>{last}</span>
+      </div>
+    </div>
   );
 }

@@ -1325,6 +1325,11 @@ const es: Record<string, string> = {
   // Analysis (group M): column statistics
   "NULL values": "Valores NULL",
   "Most frequent": "Los más frecuentes",
+  "Distribution": "Distribución",
+  "How many rows fall in each range of values": "Cuántas filas caen en cada rango de valores",
+  "{from} to {to}: {n} row": "{from} – {to}: {n} fila",
+  "{from} to {to}: {n} rows": "{from} – {to}: {n} filas",
+  "Row count": "Número de filas",
   "of all {n} row": "de {n} fila en total",
   "of all {n} rows": "de las {n} filas en total",
   "of {n} loaded row": "de {n} fila cargada",
