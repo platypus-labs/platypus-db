@@ -41,6 +41,11 @@ export default async function (page) {
     await page.waitFor(`${tileValue("uptime")} !== null && ${tileValue("uptime")} !== '—'`, 30_000);
     assert.equal(await page.eval(tileValue("transactions")), "—", "a rate needs two readings");
     assert.match(await page.eval(tileTitle("transactions")), /two readings/);
+    // The reason for "—" is on the tile, not only in a tooltip.
+    assert.match(
+      await page.eval(`${adminTab}.querySelector('.dash-tile[data-tile="transactions"] [data-field="reason"]').textContent`),
+      /two readings/,
+    );
     // The hit ratio since the start is known from the first reading.
     assert.match(await page.eval(tileValue("cache")), /^\d+\.\d%$/);
     assert.match(await page.eval(tileValue("uptime")), /^\d+(d \d+h|h \d+m|m \d+s|s)$/);
@@ -54,6 +59,15 @@ export default async function (page) {
     await setRefresh(page, 2);
     await page.waitFor(`${tileValue("connections")} !== null && Number(${tileValue("connections")}) >= 1`, 30_000);
     assert.match(await page.eval(`${adminTab}.querySelector('.dash-tile[data-tile="connections"] .dash-note').textContent`), /max 100/);
+    // The tile says its count leaves the app's own session out, and each sparkline its span.
+    assert.match(
+      await page.eval(`${adminTab}.querySelector('.dash-tile[data-tile="connections"] .dash-note').textContent`),
+      /not counting this app's own session/,
+    );
+    assert.match(
+      await page.eval(`${adminTab}.querySelector('.dash-tile[data-tile="connections"] [data-field="spark-caption"]').textContent`),
+      /^last \d+ (s|min) · max \d+$/,
+    );
 
     // A stream of short statements, each its own transaction: well over one a second.
     load = background(DB, "SELECT pg_sleep(0.05);\n".repeat(400));
