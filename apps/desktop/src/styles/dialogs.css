@@ -878,6 +878,8 @@ button.primary.danger:hover:not(:disabled) {
 .palette input {
   /* Over the 30px of every text input in base.css, whose selector is more specific. */
   height: 44px !important;
+  /* In the palette's column, a long list squeezes it down to the 28px minimum otherwise. */
+  flex: none;
   margin: 0;
   padding: 0 var(--space-16);
   border: none;
