@@ -2,6 +2,7 @@
  *  NULLs, distinct values, extremes and a small histogram or the most frequent values. */
 import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, type ColumnInfo, type ColumnProfile } from "../api";
+import { formatShare } from "../format";
 import type { HeaderHover } from "../grid/DataGrid";
 import { shown as masked, useMask } from "../guards/mask";
 import { locale, t } from "../i18n";
@@ -12,7 +13,7 @@ const DELAY_MS = 500;
 const WIDTH = 300;
 /** Counts and shares as the interface language writes them, not the system. */
 export const count = (n: number) => n.toLocaleString(locale());
-export const percent = (n: number) => n.toLocaleString(locale(), { style: "percent", maximumFractionDigits: 1 });
+export const percent = (n: number) => formatShare(n, locale());
 
 /** The profile of the column whose header the mouse rests on, cached by result, column and
  *  rows loaded: more rows compute it again. */
