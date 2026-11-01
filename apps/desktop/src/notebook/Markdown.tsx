@@ -36,7 +36,10 @@ function block(b: Block, i: number): ReactNode {
       return (
         <Tag key={i} start={b.ordered && b.start !== 1 ? b.start : undefined}>
           {b.items.map((item, j) => (
-            <li key={j}>{inline(item)}</li>
+            <li key={j}>
+              {inline(item)}
+              {b.nested[j]?.map(block)}
+            </li>
           ))}
         </Tag>
       );
