@@ -162,8 +162,8 @@ enum Store {
     /// Numbers a driver sends as text (PostgreSQL's `numeric` without a precision), cast by
     /// the copy to a DECIMAL of this scale, which holds them all.
     Decimal(u8),
-    /// Numbers past `MAX_DIGITS` or with NaN or infinities (also a decimal column holding a
-    /// numeric NaN): as text, cast to DOUBLE by the copy.
+    /// Numbers with NaN or infinities (also a decimal column holding a numeric NaN): as text,
+    /// cast to DOUBLE by the copy.
     Double,
 }
 
@@ -356,7 +356,8 @@ fn numeric_text(field: &Field) -> bool {
 }
 
 /// How a column of numbers as text goes into DuckDB: a DECIMAL that holds every value
-/// exactly, else DOUBLE; text when one of them is not a number.
+/// exactly; text when one of them is not a number or when they are wider than a DECIMAL (a
+/// DOUBLE would round them); DOUBLE when some are NaN or infinities.
 fn text_numbers(batches: &[RecordBatch], column: usize) -> Result<Store, ArrowError> {
     let (mut whole, mut fraction, mut special) = (0, 0, false);
     for batch in batches {
@@ -376,9 +377,11 @@ fn text_numbers(batches: &[RecordBatch], column: usize) -> Result<Store, ArrowEr
             }
         }
     }
-    let fits = whole + fraction <= usize::from(MAX_DIGITS);
+    if whole + fraction > usize::from(MAX_DIGITS) {
+        return Ok(Store::Text);
+    }
     Ok(match u8::try_from(fraction) {
-        Ok(scale) if fits && !special => Store::Decimal(scale),
+        Ok(scale) if !special => Store::Decimal(scale),
         _ => Store::Double,
     })
 }
@@ -919,7 +922,11 @@ mod tests {
         let type_of = |c: &str| text(&conn, &format!("SELECT typeof({c}) FROM n LIMIT 1"));
         assert_eq!(type_of("exact"), "DECIMAL(38,1)");
         assert_eq!(type_of("nan"), "DOUBLE");
-        assert_eq!(type_of("long"), "DOUBLE");
+        assert_eq!(type_of("long"), "VARCHAR");
+        assert_eq!(
+            text(&conn, "SELECT long FROM n WHERE length(long) > 10"),
+            long
+        );
         assert_eq!(type_of("odd"), "VARCHAR");
         assert_eq!(type_of("plain"), "VARCHAR");
         assert_eq!(
