@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { gridTsv, runStatement, editorText, treeRow, visibleTab } from "../qa-sql.mjs";
 import { closeMenu, connection, drop, es, expandCluster, openIndex, rowMenu, saveConnections, seed, skip as skipSearch, table } from "../search-helpers.mjs";
-import { revealItem } from "../menu-sub.mjs";
+import { revealItem, submenuItems } from "../menu-sub.mjs";
 
 const NAME = "E2E ES navigator";
 const NARROW = "E2E ES pattern";
@@ -103,6 +103,8 @@ export default async function (page) {
   for (const item of ["Visual query builder", "Generate INSERT", "Generate UPDATE", "Generate DELETE", "Generate UPSERT", "Truncate…", "Edit table…"]) {
     assert.ok(!items.includes(item), `no ${item} in ${items}`);
   }
+  const sql = await submenuItems(page, "Generate SQL");
+  for (const item of ["Generate INSERT", "Generate UPDATE", "Generate DELETE", "Generate UPSERT"]) assert.ok(!sql.some((i) => i.startsWith(item)), `no ${item} in ${sql}`);
   await closeMenu(page);
   // An alias reads, and cannot be dropped as a table.
   const viewItems = await rowMenu(page, "e2e_nav_alias");

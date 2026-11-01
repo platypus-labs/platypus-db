@@ -2,6 +2,7 @@
 // copy to another database, and its result has no Export…; one whose rows change only by SQL
 // offers no import or generated data, and its table opens read-only in the grid.
 import assert from "node:assert/strict";
+import { openSubmenu } from "../menu-sub.mjs";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -40,8 +41,7 @@ async function menuOf(page, label, index = 0) {
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   // Import, export, copy and generated data live in the Data submenu: open it to list them.
-  await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.hasAttribute('aria-haspopup') && b.textContent.startsWith('Data'))?.click()`);
-  await page.sleep(150);
+  await openSubmenu(page, "Data");
   const items = await page.eval(menuItems);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.context-menu') === null`);

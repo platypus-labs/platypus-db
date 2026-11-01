@@ -19,3 +19,19 @@ export async function revealItem(page, item) {
   }
   return false;
 }
+
+/** Opens the submenu of the open context menu whose label starts with `name` and waits until it
+ *  is rendered; `false` if the menu has no such submenu. */
+export async function openSubmenu(page, name) {
+  const clicked = await page.eval(
+    `(() => { const b = ${buttons}.find(b => b.hasAttribute('aria-haspopup') && b.textContent.startsWith(${JSON.stringify(name)})); b?.click(); return !!b; })()`,
+  );
+  if (clicked) await page.waitFor(`document.querySelector('.context-menu.submenu') !== null`, 5_000);
+  return clicked;
+}
+
+/** The labels of the submenu `name` of the open context menu ([] if there is none). */
+export async function submenuItems(page, name) {
+  if (!(await openSubmenu(page, name))) return [];
+  return page.eval(`[...document.querySelectorAll('.context-menu.submenu button span:first-child')].map(s => s.textContent)`);
+}
