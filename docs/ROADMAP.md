@@ -1370,7 +1370,7 @@ nei file delle aree toccate, in commit piccoli e separati
 
 ### Gruppo T — Revisione UX
 
-**Stato: in corso.** Fatte le correzioni già note (toast unico per conferme ed errori, copia con conferma, sottomenu nel menu delle tabelle, niente menu del browser, istogramma del profilo con titolo e assi, costruttore di query ridimensionabile, diagramma ER con caricamento, etichetta nuova e trascinamento della visuale, dialog di connessione, stato vuoto dei profili, palette, pagina iniziale, spunta dei menu). Restano la scheda di controllo con il rapporto, i problemi gravi che ne escono e un solo componente di caricamento usato ovunque.
+**Stato: fatto (P1).** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). Restano i P2 (pannelli ridimensionabili ovunque, menu di tutta l'app con la stessa regola, problemi medi e minori del rapporto) e il secondo giro (P3).
 
 Il gruppo R ha reso l'app coerente nell'aspetto; questo gruppo controlla se si **usa** bene. Le
 segnalazioni dell'utente del 1° novembre 2026 mostrano problemi che nessun inventario visivo
@@ -1417,9 +1417,9 @@ condivisi; task pianificati.
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ 🆕 **Correzioni già note** (segnalazioni del 1° novembre 2026): <br>• menu contestuale delle tabelle troppo lungo: raggruppare in sottomenu le voci affini (es. tutti i "Genera …") <br>• tasto destro ovunque: disattivare il menu del browser (WebView2) e mostrare quello dell'app <br>• profilo dei dati: l'istogramma non ha titolo, assi né spiegazione; nella colonna di destra le etichette minimo/massimo dei timestamp si sovrappongono e sbordano <br>• costruttore visuale di query: sidebar e riquadri delle tabelle ridimensionabili <br>• diagramma ER: caricamento visibile quando si aggiungono tabelle (e verificare che le carichi tutte), etichetta del selettore delle tabelle da riscrivere, trascinare sul vuoto sposta la visuale <br>• "Copia il nome" e tutte le azioni di copia: toast di conferma <br>• dialog di connessione: titolo della sezione in alto, il pallino accanto a "Rete" spiegato o tolto, voci del menu laterale centrate in verticale <br>• profili di trasferimento: lo stato vuoto dice dove si crea un profilo, con un'azione <br>• palette dei comandi: il campo di ricerca è schiacciato <br>• pagina iniziale non centrata <br>• dashboard: la voce "Impostazioni grafico" mostra caratteri rotti al posto dell'icona | P1 | N |
-| 🆕 **Scheda di controllo e rapporto** (`docs/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
-| 🆕 **Correzione dei problemi gravi** trovati dal rapporto (azioni senza riscontro, caricamenti invisibili, testo che sborda, stati vuoti senza azione) | P1 | N |
-| 🆕 **Riscontro e attesa uniformi**: un solo componente per il toast di conferma e uno per il caricamento, usati da tutte le azioni | P1 | N |
+| ✅ 🆕 **Scheda di controllo e rapporto** (`docs/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
+| ✅ 🆕 **Correzione dei problemi gravi** trovati dal rapporto (azioni senza riscontro, caricamenti invisibili, testo che sborda, stati vuoti senza azione) | P1 | N |
+| ✅ 🆕 **Riscontro e attesa uniformi**: un solo componente per il toast di conferma e uno per il caricamento, usati da tutte le azioni | P1 | N |
 | 🆕 Pannelli ridimensionabili ovunque il contenuto varia, con la misura ricordata | P2 | N |
 | 🆕 Menu contestuali riorganizzati in tutta l'app con la stessa regola (azioni principali in alto, sottomenu per i gruppi, voci distruttive in fondo) | P2 | N |
 | 🆕 Correzione dei problemi minori del rapporto | P2 | N |
