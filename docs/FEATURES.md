@@ -87,6 +87,15 @@ to the package manager.
   master-password vault) like typed ones. Untick *Import saved users and passwords* to bring
   only the user names. Passwords DBeaver protects with its own master password cannot be read;
   those connections ask for theirs on first use, as do the ones of the other tools.
+- **Export** connections to a `.platypusconn` file, to take them to another computer or give
+  them to a colleague: pick them one by one, by folder or by project, and keep or drop the
+  projects and folders they are in. Without a password the file holds no credential; with
+  one (8 characters at least) it is encrypted (Argon2id and AES-256-GCM) and may carry the
+  saved passwords, SSH ones included. Like a shared project, the file never carries
+  certificate or key paths, password commands or the shell commands run around a connection.
+  Import it from *Import connections › PlatypusDB*: the connections get new ids, agents are
+  kept out of them until you let them in, and an encrypted file asks for its password. The
+  format is described in [CONNECTIONS_FILE.md](CONNECTIONS_FILE.md).
 - **Folders**: connections inside a project go in nested folders (drag them, or *Move to
   folder*); projects in the rail go in folders too, by dropping one project on another. In
   the rail, drag a project to the edge of another to move it there (a line shows where), onto

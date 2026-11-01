@@ -420,6 +420,42 @@ mod tests {
         ));
     }
 
+    /// A version 1 file as written by hand: what older apps wrote keeps opening.
+    #[test]
+    fn reads_a_version_1_file() {
+        let file = r##"{
+          "format": "platypusdb-connections",
+          "version": 1,
+          "projects": [{
+            "name": "Team",
+            "folders": [["Servers"]],
+            "connections": [{
+              "id": "6f1c1d2e-0000-4000-8000-000000000001",
+              "name": "Prod",
+              "driver": "postgres",
+              "host": "db.example.com",
+              "port": 5432,
+              "database": "sales",
+              "user": "alice",
+              "agent_access": "read_write",
+              "secrets_are_ignored_in_clear": true
+            }],
+            "placement": { "6f1c1d2e-0000-4000-8000-000000000001": ["Servers"] },
+            "secrets": { "6f1c1d2e-0000-4000-8000-000000000001": { "password": "x" } }
+          }]
+        }"##;
+        let read = read(file.as_bytes(), None).unwrap();
+        let team = &read[0];
+        let c = &team.connections[0];
+        assert_eq!(
+            (c.host.as_str(), c.port, c.user.as_str()),
+            ("db.example.com", Some(5432), "alice")
+        );
+        assert_eq!(c.agent_access, AgentAccess::Off);
+        assert_eq!(team.placement[&c.id], ["Servers"]);
+        assert!(team.secrets.is_empty(), "a clear file brings no password");
+    }
+
     #[test]
     fn other_files_are_refused() {
         assert!(
