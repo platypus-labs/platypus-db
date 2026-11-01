@@ -89,11 +89,6 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
-| Navigator: scrivere un nome con il focus sull'albero non porta alla riga (ricerca type-ahead) | collaudo S, 2026-11-01 |
-| Le pagine di dettaglio di sequenze, tipi e domini non mostrano le proprietà del catalogo (valore corrente, incremento, tipo base, vincoli…) | collaudo S, 2026-11-01 |
-| Filtro del navigator: `#nome` è letto come tag, quindi le tabelle temporanee di SQL Server (`#temp`) non si possono cercare | collaudo S, 2026-11-01 |
-| Personalizzazione, "From theme": i campioni di colore si vedono grigi invece dei colori del tema | collaudo S, 2026-11-01 |
-| Tab fissati: hanno la stessa icona dei tab normali; serve un'icona diversa (`apps/desktop/src/shell/TabBar.tsx`) | collaudo S, 2026-11-01 |
 
 ### Lock dei gruppi
 
