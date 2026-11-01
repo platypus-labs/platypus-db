@@ -3099,6 +3099,8 @@ const zh: Record<string, string> = {
   "The ticked ones are added beside the saved ones.": "勾选的连接会添加在已保存的连接旁边。",
   "To a file for another computer or a colleague.": "导出到文件，供另一台电脑或同事使用。",
   "Has settings": "已有设置",
+  "Go to the navigator": "前往导航器",
+  "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "配置文件在表的导出、导入、复制或迁移对话框中保存：在导航器中右键单击一张表。",
 };
 
 export default zh;

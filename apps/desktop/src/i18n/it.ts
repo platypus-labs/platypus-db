@@ -3099,6 +3099,8 @@ const it: Record<string, string> = {
   "The ticked ones are added beside the saved ones.": "Quelle spuntate si aggiungono accanto a quelle salvate.",
   "To a file for another computer or a colleague.": "In un file per un altro computer o un collega.",
   "Has settings": "Ha impostazioni",
+  "Go to the navigator": "Vai al navigator",
+  "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Un profilo si salva dalla finestra di esportazione, importazione, copia o migrazione di una tabella: clic destro su una tabella nel navigator.",
 };
 
 export default it;

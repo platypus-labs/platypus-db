@@ -3099,6 +3099,8 @@ const fr: Record<string, string> = {
   "The ticked ones are added beside the saved ones.": "Celles cochées s'ajoutent à côté de celles enregistrées.",
   "To a file for another computer or a colleague.": "Vers un fichier pour un autre ordinateur ou un collègue.",
   "Has settings": "Contient des réglages",
+  "Go to the navigator": "Aller au navigateur",
+  "A profile is saved from the export, import, copy or migration dialog of a table: right-click a table in the navigator.": "Un profil s'enregistre depuis la fenêtre d'export, d'import, de copie ou de migration d'une table : clic droit sur une table dans le navigateur.",
 };
 
 export default fr;
