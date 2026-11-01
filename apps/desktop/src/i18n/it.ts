@@ -3091,6 +3091,10 @@ const it: Record<string, string> = {
   "A file written by Export connections…, with a password if it was encrypted.": "Un file scritto da Esporta le connessioni…, con una password se è cifrato.",
   "This file is encrypted. Enter its password.": "Questo file è cifrato. Inserisci la sua password.",
   "Wrong password, or the file is damaged.": "Password sbagliata, oppure il file è danneggiato.",
+  "replaces “{name}”": "sostituisce “{name}”",
+  "Replace the connections already saved": "Sostituisci le connessioni già salvate",
+  "Same server, database and user: the saved connection takes the file's settings and keeps its projects and the passwords the file does not bring.": "Stesso server, database e utente: la connessione salvata prende le impostazioni del file e tiene i suoi progetti e le password che il file non porta.",
+  "The ticked ones are added beside the saved ones.": "Quelle spuntate si aggiungono accanto a quelle salvate.",
   "To a file for another computer or a colleague.": "In un file per un altro computer o un collega.",
 };
 

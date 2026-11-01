@@ -102,14 +102,36 @@ export default async function (page, { dir }) {
   for (const name of NAMES) assert.ok(text.includes(name), `${name} in the file`);
   assert.doesNotMatch(text, /password/i);
 
-  // It reads back in the import dialog; the connections exist, so they come unticked.
+  // It reads back in the import dialog; the connections exist, so they come unticked and
+  // the replace option waits for a ticked one.
+  const replaceBox = `${importDialog}.querySelector('.import-replace input')`;
+  const rowsText = `${importDialog}.querySelector('.import-tree').textContent`;
+  const tickAll = `[...${importDialog}.querySelectorAll('.import-row.connection input')].forEach(i => { if (!i.checked) i.click(); })`;
+  const savedToml = () => readFileSync(join(dir, "connections.toml"), "utf8");
+  const savedCount = () => savedToml().split("[[connections]]").length - 1;
   await openImportOf(page, plain);
   await page.waitFor(`${importDialog}.querySelectorAll('.import-row.connection').length === 3`, 15_000);
   assert.equal(await page.eval(`${importDialog}.querySelector('.import-password') === null`), true);
-  await page.eval(`[...${importDialog}.querySelectorAll('.import-row.connection input')].forEach(i => { if (!i.checked) i.click(); })`);
+  assert.match(await page.eval(rowsText), /already saved/);
+  assert.equal(await page.eval(`${replaceBox} === null`), true);
+  // Ticked, they replace the saved ones (on by default): same ids, no new connection.
+  await page.eval(tickAll);
+  await page.waitFor(`${replaceBox}?.checked === true`);
+  assert.match(await page.eval(rowsText), /replaces “Exp A”/);
   await saveImport(page);
-  const saved = readFileSync(join(dir, "connections.toml"), "utf8").split("[[connections]]").length - 1;
-  assert.equal(saved, 6, "the three connections were imported next to the first three");
+  assert.equal(savedCount(), 3, "replaced, not added");
+  for (let i = 0; i < 3; i++) assert.ok(savedToml().includes(`0000000000a${i}`), `connection ${i} kept its id`);
+
+  // Again with the option off: they are added beside the saved ones.
+  await openImportOf(page, plain);
+  await page.waitFor(`${importDialog}.querySelectorAll('.import-row.connection').length === 3`, 15_000);
+  await page.eval(tickAll);
+  await page.waitFor(`${replaceBox}?.checked === true`);
+  await page.eval(`${replaceBox}.click()`);
+  await page.waitFor(`!${replaceBox}.checked && !(${rowsText}).includes('replaces')`);
+  assert.match(await page.eval(rowsText), /already saved/);
+  await saveImport(page);
+  assert.equal(savedCount(), 6, "the three connections were imported next to the first three");
 
   // Encrypted, with the saved passwords option on: not readable text.
   await openExport(page, "Exp A");

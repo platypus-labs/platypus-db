@@ -1,7 +1,7 @@
 // Unit tests of the import dialog's preview (src/components/importTree.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultInto, importRequest, isEmptyImport, savedPasswords, skippedIds } from "../src/components/importTree.ts";
+import { defaultInto, importRequest, isEmptyImport, replacements, savedPasswords, savedTwin, skippedIds } from "../src/components/importTree.ts";
 
 const connection = (id, name) => ({ id, name, driver: "sql_server", host: "h", port: 1433, database: "d", user: "" });
 
@@ -66,4 +66,21 @@ test("a project imported again goes into the saved project of its name", () => {
   // Plain connections join the active project, as before.
   assert.deepEqual(defaultInto(project({ name: "" }), "p2", saved), { kind: "existing", id: "p2" });
   assert.deepEqual(defaultInto(project({ name: "" }), null, saved), { kind: "none" });
+});
+
+test("a ticked connection like a saved one replaces it, each saved one once", () => {
+  const saved = [{ ...connection("s1", "Saved"), user: "sa" }, connection("s2", "Other")];
+  saved[1].database = "other";
+  const read = [
+    project({ connections: [{ ...connection("a", "A"), user: "sa" }, { ...connection("b", "B"), user: "sa" }, connection("c", "C")] }),
+    project({ name: "More", connections: [{ ...connection("d", "D"), database: "other" }] }),
+  ];
+  assert.equal(savedTwin(read[0].connections[0], saved)?.id, "s1");
+  assert.equal(savedTwin(read[0].connections[2], saved), undefined, "another user");
+  // `b` matches `s1` too, but `a` took it; `d` is not ticked.
+  const replace = replacements(read, new Set(["a", "b", "c"]), saved);
+  assert.deepEqual(replace, { a: "s1" });
+  assert.deepEqual(replacements(read, new Set(["b", "d"]), saved), { b: "s1", d: "s2" });
+  assert.deepEqual(importRequest(read, new Set(["a"]), [{ kind: "none" }, { kind: "none" }], null, false, replace).replace, { a: "s1" });
+  assert.deepEqual(importRequest(read, new Set(["a"]), [{ kind: "none" }, { kind: "none" }], null).replace, {});
 });

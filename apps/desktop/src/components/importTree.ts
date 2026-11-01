@@ -92,6 +92,32 @@ export function savedPasswords(projects: ImportedProject[]): number {
   return projects.reduce((n, p) => n + (p.with_password?.length ?? 0), 0);
 }
 
+/** The saved connection `c` looks like: same database, server, port, database name and user. */
+export function savedTwin(c: SavedConnection, existing: readonly SavedConnection[]): SavedConnection | undefined {
+  return existing.find(
+    (e) => e.driver === c.driver && e.host === c.host && e.port === c.port && e.database === c.database && e.user === c.user,
+  );
+}
+
+/** The ticked connections that replace their saved twin, imported id → saved id. Each saved
+ *  connection is replaced once, by the first that matches it; the others are added. */
+export function replacements(
+  projects: ImportedProject[],
+  ticked: ReadonlySet<string>,
+  existing: readonly SavedConnection[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const taken = new Set<string>();
+  for (const c of projects.flatMap((p) => p.connections)) {
+    const twin = ticked.has(c.id) ? savedTwin(c, existing) : undefined;
+    if (twin && !taken.has(twin.id)) {
+      taken.add(twin.id);
+      out[c.id] = twin.id;
+    }
+  }
+  return out;
+}
+
 /** Whether the file held no connection at all, imported or left out. */
 export function isEmptyImport(projects: ImportedProject[]): boolean {
   return projects.every((p) => p.connections.length === 0 && p.skipped.length === 0);
@@ -108,9 +134,10 @@ export function importRequest(
   into: ImportInto[],
   railFolder: string | null,
   passwords = false,
+  replace: Record<string, string> = {},
 ): ImportRequest {
   const targets = projects
     .map((p, i) => ({ project: picked(p, ticked), into: into[i] ?? { kind: "none" as const } }))
     .filter((t) => t.project.connections.length > 0);
-  return { targets, rail_folder: railFolder?.trim() || null, passwords };
+  return { targets, rail_folder: railFolder?.trim() || null, passwords, replace };
 }
