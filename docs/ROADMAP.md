@@ -1370,7 +1370,7 @@ nei file delle aree toccate, in commit piccoli e separati
 
 ### Gruppo T — Revisione UX
 
-**Stato: fatto (P1).** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). Restano i P2 (pannelli ridimensionabili ovunque, menu di tutta l'app con la stessa regola, problemi medi e minori del rapporto) e il secondo giro (P3).
+**Stato: fatto (P1).** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). Restano i P2 (spaziatura in tutte le schermate, pannelli ridimensionabili ovunque, menu di tutta l'app con la stessa regola, problemi medi e minori del rapporto) e il secondo giro (P3).
 
 Il gruppo R ha reso l'app coerente nell'aspetto; questo gruppo controlla se si **usa** bene. Le
 segnalazioni dell'utente del 1° novembre 2026 mostrano problemi che nessun inventario visivo
@@ -1395,6 +1395,8 @@ non si ridimensionano, menu troppo lunghi, stati vuoti che non dicono dove andar
 - *Stati vuoti*: dicono cosa manca e portano all'azione che lo crea (un pulsante, non solo un testo).
 - *Spazio*: niente testo che sborda o si sovrappone; pannelli e sidebar ridimensionabili dove il
   contenuto varia; finestra piccola (1280×720) e grande (2560×1440); allineamenti e centrature.
+- *Respiro*: spaziatura coerente e sufficiente tra gli elementi (campi, etichette, testi di aiuto,
+  gruppi di pulsanti, sezioni), presa dalla scala dei design token; niente elementi appiccicati.
 - *Menu*: brevi, con le voci affini raggruppate in sottomenu; sempre il menu dell'app, mai
   quello del browser.
 - *Interazione diretta*: trascinare, zoomare, ridimensionare dove l'utente se lo aspetta (canvas,
@@ -1423,6 +1425,7 @@ condivisi; task pianificati.
 | 🆕 Pannelli ridimensionabili ovunque il contenuto varia, con la misura ricordata | P2 | N |
 | 🆕 Menu contestuali riorganizzati in tutta l'app con la stessa regola (azioni principali in alto, sottomenu per i gruppi, voci distruttive in fondo) | P2 | N |
 | 🆕 Correzione dei problemi minori del rapporto | P2 | N |
+| 🆕 **Spaziatura** in tutte le schermate: margini e distanze tra campi, etichette, testi di aiuto, pulsanti e sezioni dalla scala dei token (es. impostazioni › Sync, dove è tutto appiccicato) | P2 | N |
 | 🆕 Secondo giro della scheda con occhi nuovi, su tutte le sezioni | P3 | N |
 
 ---
