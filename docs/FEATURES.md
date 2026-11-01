@@ -162,6 +162,11 @@ to the package manager.
 - The tree is cached on disk: it shows at once on start, and offline. Nothing connects until
   you open it. Each connection shows its database's logo, with its color and its state (an open
   session, a failed connection) as small marks on the logo.
+- A table's menu keeps the main actions at the top, groups the rest in submenus (*Generate SQL*,
+  *Maintenance*, *Data*) and puts *Truncate* and *Drop* last; the browser's own menu never shows,
+  except in text fields. Index rows have their menu too. Copy actions confirm with a short
+  notice at the bottom of the window.
+- Type the start of a name with the tree focused to jump to the next row that matches.
 - Generate SELECT, INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a
   preview of the statement. `Ctrl`/`Shift`+click selects several objects, for example to get
   the DDL of many tables at once: the tab opens at once and fills a block of objects at a
@@ -334,7 +339,8 @@ to the package manager.
   Dashboards are saved per project and reopened from *Dashboards…*.
 - **Profile data…**: right-click a table or view for a card per column over the first 10,000
   to 1,000,000 rows (or all of them): NULLs, empty strings, distinct values, range, mean,
-  quartiles, a histogram, the most frequent values, the formats of text values (emails, URLs,
+  quartiles, a histogram of the distribution (its value range on the x axis, the row count on
+  the y axis, each bar's range and count on hover), the most frequent values, the formats of text values (emails, URLs,
   UUIDs, dates, numbers stored as text, phone numbers, stray spaces) with the values that do
   not fit, and outliers. Click a value to see its rows.
 
@@ -384,7 +390,7 @@ created again with its rows copied.
 - **ER diagram**: right-click a schema, *ER diagram*, or some selected tables, *Show in ER
   diagram*. Tables are laid out from their foreign keys, right of the tables they reference,
   each group of linked tables in its own block, in an order that keeps lines from crossing,
-  with the lines running between the tables rather than over them; drag them where you want them, choose the tables with *Tables…*, add notes. The diagram is
+  with the lines running between the tables rather than over them; drag them where you want them, drag the empty background to move the view, choose the tables with *Add tables…* (a loading state shows while they are read), add notes. The diagram is
   kept with its tab and exports to SVG or PNG. A schema of more than 100 tables asks which
   ones to show first. *Full screen* gives the diagram the whole window (Esc leaves it);
   *Refresh* reads the schema again and keeps every table where it is, new tables below.
@@ -425,7 +431,8 @@ created again with its rows copied.
 ![Two tables joined on their foreign key](screenshots/query-builder.png)
 
 Drag tables onto a canvas: they join on their foreign keys. Tick the columns, add a `WHERE`,
-then run the SELECT or open it in the editor.
+then run the SELECT or open it in the editor. The tables list beside the canvas and each table
+box resize by their edge or corner; the list keeps its width.
 
 ## Query plans and performance
 
