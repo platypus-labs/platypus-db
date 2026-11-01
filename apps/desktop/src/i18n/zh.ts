@@ -3163,6 +3163,11 @@ const zh: Record<string, string> = {
   "Compare {connection} · {schema} with…": "将 {connection} · {schema} 与…比较",
   "Tables: {n}": "表：{n}",
   "Right-click a table, then Export data…": "右键单击表，然后选择导出数据…",
+  "Cursors": "光标",
+  "Folding": "折叠",
+  "Dashboard saved": "仪表板已保存",
+  "PK primary key · FK foreign key · * NOT NULL": "PK 主键 · FK 外键 · * NOT NULL",
+  "DDL": "DDL",
 };
 
 export default zh;

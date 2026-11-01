@@ -11,6 +11,7 @@ import { PlanDialog } from "./PlanDialog";
 import { PlanGraph } from "./PlanGraph";
 import { createIndexSql, filterKeys } from "./indexSql";
 import { copyText } from "../ui/copy";
+import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 
 export type ExplainView = "tree" | "graph" | "text" | "table" | "compare";
 
@@ -209,6 +210,27 @@ export function ExplainTab({ tab, connection, active, ensureSession, onChange }:
     };
   }, [version]);
 
+  // SQLite's "QUERY PLAN" heading is a line, not a step: the first real step is shown first.
+  useEffect(() => {
+    if (explain?.root.operation === "QUERY PLAN" && explain.root.children.length) setSelected("0.0");
+  }, [explain]);
+
+  const [propsWidth, setPropsWidth] = useStoredSize("layout.explain_properties", 380);
+  const splitStyle = { "--explain-props-width": `${propsWidth}px` } as CSSProperties;
+  const resizer = (
+    <PanelResizer
+      storeKey="layout.explain_properties"
+      size={propsWidth}
+      fallback={380}
+      min={240}
+      max={() => window.innerWidth - 400}
+      direction="column"
+      after
+      onResize={setPropsWidth}
+      label={t("Resize the side panels")}
+    />
+  );
+
   const all = explain ? steps(explain.root) : [];
   const node = all.find((s) => s.path === selected)?.node ?? explain?.root;
   const share = shares(all, explain?.analyzed ?? false);
@@ -331,7 +353,7 @@ ${s.filter}`;
           );
         })}
         {explain && view === "tree" && (
-          <div className="explain-split">
+          <div className="explain-split" style={splitStyle}>
             <div className="explain-tree" role="tree">
               {steps(explain.root, collapsed).map(({ node: n, depth, path }) => (
                 <div
@@ -372,12 +394,14 @@ ${s.filter}`;
                 </div>
               ))}
             </div>
+            {node && resizer}
             {node && <Properties node={node} />}
           </div>
         )}
         {explain && view === "graph" && (
-          <div className="explain-split">
+          <div className="explain-split" style={splitStyle}>
             <PlanGraph root={explain.root} selected={selected} onSelect={setSelected} shareOf={shareOf} figures={graphFigures} />
+            {node && resizer}
             {node && <Properties node={node} />}
           </div>
         )}

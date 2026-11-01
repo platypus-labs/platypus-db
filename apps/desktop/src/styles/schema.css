@@ -71,6 +71,11 @@
   gap: var(--space-6);
 }
 
+.erd-legend {
+  white-space: nowrap;
+  padding: 0 var(--space-6);
+}
+
 .erd-zoom {
   min-width: 36px;
   text-align: center;

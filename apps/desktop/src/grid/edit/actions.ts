@@ -167,8 +167,8 @@ registerAction({
   scope: "grid",
   title: "Delete row",
   shortcut: "Delete",
-  group: "rows",
-  order: 32,
+  group: "danger",
+  order: 90,
   when: withSelection,
   run: ({ source }) => source!.edit!.deleteSelection(),
 });
@@ -220,8 +220,8 @@ registerAction({
   id: "grid.discard_changes",
   scope: "grid",
   title: "Discard changes",
-  group: "save",
-  order: 43,
+  group: "danger",
+  order: 91,
   when: dirty,
   run: ({ source }) => source!.edit!.discard(),
 });

@@ -3163,6 +3163,11 @@ const es: Record<string, string> = {
   "Compare {connection} · {schema} with…": "Comparar {connection} · {schema} con…",
   "Tables: {n}": "Tablas: {n}",
   "Right-click a table, then Export data…": "Clic derecho en una tabla y luego Exportar datos…",
+  "Cursors": "Cursores",
+  "Folding": "Plegado",
+  "Dashboard saved": "Panel guardado",
+  "PK primary key · FK foreign key · * NOT NULL": "PK clave primaria · FK clave externa · * NOT NULL",
+  "DDL": "DDL",
 };
 
 export default es;
