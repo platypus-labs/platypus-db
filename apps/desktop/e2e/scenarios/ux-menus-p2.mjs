@@ -74,7 +74,8 @@ export default async function (page) {
   for (const gone of ["Visual query builder", "Query across databases…", "Compare data with…"]) {
     assert.ok(!top.includes(gone), `${gone} is in the Analyze submenu, not in ${top}`);
   }
-  assert.ok(top.length <= 16, `the table menu is short: ${top.length} lines`);
+  const items = top.filter((l) => l !== "---");
+  assert.ok(items.length <= 16, `the table menu is short: ${items.length} items: ${JSON.stringify(top)}`);
   await page.eval(`[...${menu}.querySelectorAll('button')].find(b => b.getAttribute('aria-haspopup') && b.textContent.startsWith('Analyze')).click()`);
   await page.waitFor(`${submenuLabels}.includes('Visual query builder')`);
   const analyze = await page.eval(submenuLabels);

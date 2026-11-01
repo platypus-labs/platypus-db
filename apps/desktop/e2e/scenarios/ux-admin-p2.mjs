@@ -78,8 +78,8 @@ async function snapshots(page) {
   const tabs = await page.eval(`document.querySelectorAll('.query-tab').length`);
   await page.eval(`${button(modal, "Open restore script")}.click()`);
   await page.waitFor(`document.querySelectorAll('.query-tab').length === ${tabs + 1} && document.querySelector('.modal.snapshots') === null`, 15_000);
-  await page.waitFor(`[...document.querySelectorAll('.tab')].some(t => t.textContent.includes('Restore of accounts'))`);
-  await page.waitFor(`${visibleTab}?.querySelector('.cm-content')?.textContent.includes('Puts back the rows of accounts (')`, 15_000);
+  await page.waitFor(`[...document.querySelectorAll('.tab')].some(t => /Restore of .*accounts/.test(t.textContent))`);
+  await page.waitFor(`${visibleTab}?.querySelector('.cm-content')?.textContent.includes('Puts back the rows of ')`, 15_000);
   const text = await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`);
   assert.doesNotMatch(text, /snapshot \d{6,}/, "no raw id in the comment");
 

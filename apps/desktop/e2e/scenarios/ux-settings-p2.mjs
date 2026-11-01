@@ -18,6 +18,8 @@ const typeInto = (expr, value) => `(() => {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 })()`;
 
+export const ready = `document.querySelector('.shell') !== null`;
+
 export default async function (page, { dir }) {
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`${modal} !== null`);

@@ -52,14 +52,14 @@ async function editor(page) {
 
   // The History panel is resizable, and Home brings it back to its default.
   await page.eval(`${visibleTab}.querySelector('.toolbar button[aria-label="History"]').click()`);
-  await page.waitFor(`${visibleTab}.parentElement.querySelector('.history') !== null`);
-  const panel = `${visibleTab}.parentElement.querySelector('.history')`;
-  const resizer = `${visibleTab}.parentElement.querySelector(':scope > .panel-resizer')`;
+  await page.waitFor(`${visibleTab}.querySelector('.history') !== null`);
+  const panel = `${visibleTab}.querySelector('.history')`;
+  const resizer = `${visibleTab}.querySelector(':scope > .panel-resizer')`;
   assert.equal(Math.abs(await nudge(page, resizer, panel)), 16, "an arrow key moves the panel by 16 px");
   await page.key("Home", "Home", 36);
   await page.waitFor(`Math.round(${panel}.getBoundingClientRect().width) === 340`);
   await page.eval(`${visibleTab}.querySelector('.toolbar button[aria-label="History"]').click()`);
-  await page.waitFor(`${visibleTab}.parentElement.querySelector('.history') === null`);
+  await page.waitFor(`${visibleTab}.querySelector('.history') === null`);
 }
 
 async function explain(page) {
@@ -81,7 +81,7 @@ async function grid(page) {
   await page.click(r.x + 60, r.y + 52);
   await page.click(r.x + 60, r.y + 52, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  const labels = await page.eval(`[...document.querySelectorAll('.context-menu > button span:first-child')].map(s => s.textContent)`);
+  const labels = await page.eval(`[...document.querySelectorAll('.context-menu > button span:first-child, .context-menu > .submenu-anchor > button span:first-child')].map(s => s.textContent)`);
   assert.ok(labels.includes("Analyze"), `analysis is a submenu in ${labels}`);
   assert.ok(!labels.includes("Count by value"), "no analysis item on the first level");
   assert.ok(labels.indexOf("Delete row") > labels.indexOf("Add row"), `Delete row after the other row actions in ${labels}`);
@@ -100,6 +100,8 @@ async function objectPage(page) {
   );
   const section = (name) => `[...${objectTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith(${JSON.stringify(name)}))`;
   // Columns: the sensitivity choice keeps to its column.
+  await page.eval(`${section("Columns")}.click()`);
+  await page.waitFor(`${objectTab}.querySelector('select.cell-input') != null`, 15_000);
   assert.ok((await page.eval(`${objectTab}.querySelector('select.cell-input').offsetWidth`)) <= 150);
   // Indexes: yes and no in both columns.
   await page.eval(`${section("Indexes")}.click()`);

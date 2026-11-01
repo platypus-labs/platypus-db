@@ -2,7 +2,8 @@
 //
 // Steps: Settings > SQL editor, type 2.5 in "Indentation when formatting (spaces)" and
 // leave the field. In a SQL editor press Ctrl+Shift+F.
-// Expected: the field refuses 2.5 (step 1: back to 2, or rounded), and formatting works.
+// Expected: the field refuses 2.5 (it stays in the field, marked invalid, with a toast saying
+// what is accepted) and never saves it; a valid value is saved, and formatting works.
 // Actual: 2.5 is saved (format_indent = 2.5 in settings.toml) and every Format SQL fails with
 // "invalid args `settings` for command `format_sql`: invalid type: floating point `2.5`,
 // expected usize". The same for "LIMIT of Generate SELECT" (10.5), the font sizes (13.7) and
@@ -10,6 +11,7 @@
 // Code: components/SettingsDialog.tsx NumberInput.commit checks min/max but not `step`.
 import assert from "node:assert/strict";
 import { CTRL, SHIFT } from "../cdp.mjs";
+import { settingsFile, settingsLack } from "../settings.mjs";
 import { sqliteConnection, treeRow, visibleTab, editorText } from "../query.mjs";
 
 const NAME = "QA UI integer";
@@ -25,7 +27,7 @@ export function setup({ dir }) {
   });
 }
 
-export default async function (page) {
+export default async function (page, { dir }) {
   await page.waitFor(`${treeRow(NAME)} !== undefined`);
   await page.eval(`${treeRow(NAME)}.id = 'e2e-conn'`);
   await page.clickSel("#e2e-conn", { clickCount: 2 });
@@ -38,7 +40,16 @@ export default async function (page) {
   await page.eval(`${indent}.focus(); ${indent}.select()`);
   await page.type("2.5");
   await page.eval(`${indent}.blur()`);
-  await page.sleep(300);
+  await page.waitFor(`${indent}.getAttribute('aria-invalid') === 'true'`);
+  await page.waitFor(`document.querySelector('.toast.error')?.textContent.includes('Between 1 and 8')`);
+  assert.equal(await page.eval(`${indent}.value`), "2.5", "the rejected value stays in the field");
+  await settingsLack(dir, /format_indent\s*=\s*2\.5/);
+  // A valid value clears the mark and is saved.
+  await page.eval(`${indent}.focus(); ${indent}.select()`);
+  await page.type("4");
+  await page.eval(`${indent}.blur()`);
+  await page.waitFor(`${indent}.getAttribute('aria-invalid') === null`);
+  await settingsFile(dir, /format_indent\s*=\s*4/);
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
 
@@ -46,7 +57,7 @@ export default async function (page) {
   await page.type("select a from qa_ui_t where a = 1");
   await page.waitFor(`${editorText} === 'select a from qa_ui_t where a = 1'`);
   await page.key("F", "KeyF", 70, CTRL | SHIFT);
-  await page.waitFor(`${editorText} !== 'select a from qa_ui_t where a = 1' || document.querySelector('.toast') !== null`, 5000);
-  assert.equal(await page.eval(`document.querySelector('.toast')?.textContent ?? null`), null, "Format SQL failed");
+  await page.waitFor(`${editorText} !== 'select a from qa_ui_t where a = 1'`, 5000);
+  assert.ok(!(await page.eval(`[...document.querySelectorAll('.toast')].some(t => /format|invalid args/i.test(t.textContent))`)), "Format SQL failed");
   assert.match(await page.eval(editorText), /^SELECT/);
 }
