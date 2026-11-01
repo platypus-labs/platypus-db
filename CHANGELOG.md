@@ -6,6 +6,24 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Connections**: export connections to a `.platypusconn` file, with or without their projects
+  and folders and, encrypted behind a password, their saved passwords; import it back from
+  Import connections › PlatypusDB.
+- The main window opens where it was left, on the same screen, or centred on the primary
+  screen when that one is gone.
+
+### Fixed
+
+- Numbers wider than 38 digits and SQL Server `time(7)` keep every digit in Query with SQL and
+  queries across databases.
+- CockroachDB tables without a primary key are edited by their hidden `rowid`.
+- SQL Server gives a disabled constraint without a name one of its own, so it can be disabled.
+- MariaDB schema compare reads and writes `PERIOD FOR` clauses.
+- SQLite hides the shadow tables of FTS5 tables.
+- On DuckDB an edited row of a table with a one-column primary key keeps its place after saving.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added
