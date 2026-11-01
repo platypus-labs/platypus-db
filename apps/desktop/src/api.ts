@@ -1314,6 +1314,8 @@ export interface ColumnMeta {
   enum_values: string[];
   /** Fields of a composite type, or of an array's composite elements (PostgreSQL). */
   fields: FieldMeta[];
+  /** Left out of `SELECT *` by the database (CockroachDB's hidden `rowid`). */
+  hidden?: boolean;
 }
 
 export interface FieldMeta {

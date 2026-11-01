@@ -244,6 +244,7 @@ async fn columns(
         comment: None,
         enum_values: Vec::new(),
         fields: Vec::new(),
+        hidden: false,
     })
     .collect())
 }

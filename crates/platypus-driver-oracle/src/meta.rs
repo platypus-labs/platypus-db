@@ -232,6 +232,7 @@ fn column(r: &TextRow) -> ColumnMeta {
         comment: r.opt(8),
         enum_values: Vec::new(),
         fields: Vec::new(),
+        hidden: false,
     }
 }
 

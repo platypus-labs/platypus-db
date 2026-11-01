@@ -121,6 +121,7 @@ pub fn table_details(table: &str) -> Result<TableDetails> {
             comment: None,
             enum_values: Vec::new(),
             fields: Vec::new(),
+            hidden: false,
         })
         .collect();
     Ok(TableDetails {

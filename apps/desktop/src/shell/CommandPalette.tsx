@@ -50,17 +50,19 @@ async function openTable(
   const current = schema === catalog.default_schema;
   const target = qualifiedName(connection.driver, { name: schema, current }, table);
   let kind: "table" | "view" = "table";
+  let hiddenKey: string | null = null;
   try {
     const id = await workbench().sideSession(connection, database);
     if (id !== null) {
       const found = (await api.listObjects(id, schema)).find((o) => o.name === table);
       if (found && found.kind !== "table") kind = "view";
+      hiddenKey = found?.hidden_key ?? null;
     }
   } catch {
     // Opened as a table; the editor checks the keys again.
   }
   workbench().openTab("query", connection.id, {
-    sql: viewerSql(connection.driver, target),
+    sql: viewerSql(connection.driver, target, "", hiddenKey),
     autorun: true,
     title: table,
     table: target,

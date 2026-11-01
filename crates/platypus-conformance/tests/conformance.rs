@@ -7382,6 +7382,8 @@ async fn cockroach_hidden_rowid_is_the_row_key() {
         "CREATE SCHEMA qa_rowid",
         "CREATE TABLE qa_rowid.loose (name STRING)",
         "CREATE TABLE qa_rowid.keyed (id INT8 PRIMARY KEY, name STRING)",
+        // A `rowid` the user declared is a visible column, not the hidden key.
+        "CREATE TABLE qa_rowid.declared (rowid INT8 PRIMARY KEY DEFAULT unique_rowid(), name STRING)",
         "INSERT INTO qa_rowid.loose VALUES ('a'), ('b')",
     ] {
         run(&*crdb, sql)
@@ -7399,6 +7401,9 @@ async fn cockroach_hidden_rowid_is_the_row_key() {
     };
     assert_eq!(hidden("loose").as_deref(), Some("rowid"));
     assert_eq!(hidden("keyed"), None);
+    assert_eq!(hidden("declared"), None);
+    let declared = crdb.table_details("qa_rowid", "declared").await.unwrap();
+    assert!(declared.columns.iter().all(|c| !c.hidden), "{declared:?}");
     // The viewer's query selects the key, and its values tell the rows apart.
     let rows =
         platypus_core::query_text(&*crdb, "SELECT *, rowid FROM qa_rowid.loose ORDER BY name")
@@ -7408,7 +7413,7 @@ async fn cockroach_hidden_rowid_is_the_row_key() {
     assert_ne!(rows[0][1], rows[1][1]);
     let details = crdb.table_details("qa_rowid", "loose").await.unwrap();
     let key = details.columns.iter().find(|c| c.name == "rowid").unwrap();
-    assert!(key.primary_key, "{key:?}");
+    assert!(key.primary_key && key.hidden, "{key:?}");
     run(&*crdb, "DROP SCHEMA qa_rowid CASCADE").await.unwrap();
 }
 

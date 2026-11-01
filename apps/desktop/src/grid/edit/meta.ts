@@ -60,12 +60,6 @@ export function unquoted(name: string): string {
   return /^"(?:[^"]|"")*"$/.test(name) ? name.slice(1, -1).replace(/""/g, '"') : name;
 }
 
-/** CockroachDB's `rowid`: the key it adds to a table without a primary key, which `SELECT *`
- *  leaves out. */
-function isHiddenRowid(c: ColumnMeta): boolean {
-  return c.name === "rowid" && c.primary_key && !!c.default?.startsWith("unique_rowid()");
-}
-
 /** The table column behind each result column, by the select list; a string says why the
  *  columns cannot be matched. */
 export function resultColumns(source: EditSource, columns: ColumnInfo[]): (ColumnMeta | undefined)[] | string {
@@ -73,7 +67,7 @@ export function resultColumns(source: EditSource, columns: ColumnInfo[]): (Colum
   const expected: (string | null)[] = source.items
     ? source.items.flatMap((item) =>
         item.kind === "all"
-          ? source.details.columns.filter((c) => !isHiddenRowid(c)).map((c) => c.name)
+          ? source.details.columns.filter((c) => !c.hidden).map((c) => c.name)
           : [item.kind === "column" ? item.name : null],
       )
     : columns.map((c) => c.name);

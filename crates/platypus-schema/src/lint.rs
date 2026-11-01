@@ -286,6 +286,7 @@ mod tests {
             comment: None,
             enum_values: Vec::new(),
             fields: Vec::new(),
+            hidden: false,
         }
     }
 

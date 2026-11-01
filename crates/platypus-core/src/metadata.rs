@@ -109,6 +109,9 @@ pub struct ColumnMeta {
     /// The fields of a composite type, or of an array's composite element type (PostgreSQL);
     /// empty for other types.
     pub fields: Vec<FieldMeta>,
+    /// A column the database hides from `SELECT *` (CockroachDB's `rowid`, added to a table
+    /// without a primary key).
+    pub hidden: bool,
 }
 
 /// A field of a composite type.

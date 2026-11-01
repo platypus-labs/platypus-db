@@ -123,6 +123,7 @@ pub async fn table_details(
             comment: None,
             enum_values: Vec::new(),
             fields: Vec::new(),
+            hidden: false,
         })
         .collect();
     let is_view = collections(conn, schema)

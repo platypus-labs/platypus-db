@@ -115,13 +115,12 @@ pub async fn catalog_foreign_keys(conn: &dyn Connection) -> Result<Vec<CatalogFo
 
 /// The hidden key of the table `c` (a `pg_class` row): the `rowid` CockroachDB adds, with
 /// `unique_rowid()` as its default, when the table declares no primary key. It is the primary
-/// index then, and `SELECT *` leaves it out.
+/// index then, and `SELECT *` leaves it out: CockroachDB marks it `attishidden`, which tells
+/// it from a `rowid` column the user declared.
 const HIDDEN_ROWID: &str = "(SELECT a.attname
         FROM pg_index i
         JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
-        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-        WHERE i.indrelid = c.oid AND i.indisprimary AND i.indnkeyatts = 1
-          AND a.attname = 'rowid' AND pg_get_expr(d.adbin, d.adrelid) LIKE 'unique_rowid()%')";
+        WHERE i.indrelid = c.oid AND i.indisprimary AND i.indnkeyatts = 1 AND a.attishidden)";
 
 pub async fn objects(conn: &dyn Connection, schema: &str) -> Result<Vec<ObjectMeta>> {
     let schema = literal(schema);
@@ -285,6 +284,12 @@ fn object_kind(code: &str) -> ObjectKind {
 
 /// The columns of `relation` (an oid subquery), in table order.
 async fn columns(conn: &dyn Connection, relation: &str) -> Result<Vec<ColumnMeta>> {
+    // Only CockroachDB has `attishidden`.
+    let hidden = if crate::is_cockroach(conn) {
+        "a.attishidden"
+    } else {
+        "false"
+    };
     Ok(query_text(
         conn,
         &format!(
@@ -301,7 +306,8 @@ async fn columns(conn: &dyn Connection, relation: &str) -> Result<Vec<ColumnMeta
                                                     THEN t.typelem ELSE t.oid END
                      JOIN pg_attribute f ON f.attrelid = c.typrelid
                      WHERE t.oid = a.atttypid AND c.typtype = 'c'
-                       AND f.attnum > 0 AND NOT f.attisdropped)
+                       AND f.attnum > 0 AND NOT f.attisdropped),
+                    {hidden}
              FROM pg_attribute a
              LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
              LEFT JOIN pg_index i ON i.indrelid = a.attrelid AND i.indisprimary
@@ -323,6 +329,7 @@ async fn columns(conn: &dyn Connection, relation: &str) -> Result<Vec<ColumnMeta
             .map(|labels| labels.split('\n').map(str::to_owned).collect())
             .unwrap_or_default(),
         fields: r.opt(7).map(|f| composite_fields(&f)).unwrap_or_default(),
+        hidden: r.flag(8),
     })
     .collect())
 }

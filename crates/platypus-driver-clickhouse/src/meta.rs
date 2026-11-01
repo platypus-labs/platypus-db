@@ -160,6 +160,7 @@ fn column_meta(r: &platypus_core::TextRow) -> ColumnMeta {
         primary_key: r.flag(5),
         comment: r.opt(4),
         fields: Vec::new(),
+        hidden: false,
     }
 }
 
