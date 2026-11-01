@@ -112,8 +112,12 @@ export default async function (page, { dir, shots }) {
     [await css("--bg-sidebar"), await css("--bg-rail"), await css("--border"), await css("--accent")],
     ["#1b1f22", "#111416", "#262c30", "#ff8d28"],
   );
+  // The colors not customized show the theme's, not grey.
+  assert.equal(await page.eval(`${setting("Background")}.querySelector('input[type=color]').value`), "#16191b");
+  assert.equal(await page.eval(`${setting("Accent color")}.querySelector('input[type=color]').value`), "#ff8d28");
   await pick("Classic Dark");
   await page.waitFor(`${cssVar("--bg")} === '#1b1d21'`); // the former "Dark"
+  await page.waitFor(`${setting("Background")}.querySelector('input[type=color]').value === '#1b1d21'`);
 
   // A custom background on Platypus Dark: the tab bar follows it; the rail and the active row
   // go with the sidebar and the accent, so they keep the theme's colors.
