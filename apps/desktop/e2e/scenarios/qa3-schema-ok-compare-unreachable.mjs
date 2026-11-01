@@ -38,7 +38,7 @@ export default async function (page) {
     await page.waitFor(`[...document.querySelectorAll('.notice, .toast')].some(n => n.textContent.includes('QA3 PG down'))`, 30_000);
     assert.equal(await page.eval(`${compareDialog}.querySelectorAll('select')[1].options.length`), 0);
     assert.equal(await page.eval(`${buttonIn(compareDialog, "Compare")}.disabled`), true, "Compare disabled without a schema");
-    assert.equal(await page.eval(`${buttonIn(compareDialog, "Close")}.disabled`), false);
+    assert.equal(await page.eval(`${buttonIn(compareDialog, "Cancel")}.disabled`), false);
     await pickConnection(page, "QA3 PG");
     await page.waitFor(`[...${compareDialog}.querySelectorAll('select')[1].options].some(o => o.value === ${JSON.stringify(DST)})`, 20_000);
     const left = await page.eval(`${compareDialog}.querySelector('.notice.error')?.textContent ?? null`);

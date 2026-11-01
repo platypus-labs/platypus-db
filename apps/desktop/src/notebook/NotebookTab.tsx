@@ -36,6 +36,7 @@ import {
   planLines,
   resultTables,
 } from "./model";
+import { ask } from "../ui/ask";
 import { EmptyState } from "../ui/State";
 import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
@@ -357,7 +358,12 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     edit({ cells });
   };
 
-  const deleteCell = (id: string) => {
+  const deleteCell = async (id: string) => {
+    // A cell with a text or a result is asked about; an empty one goes at once.
+    const cell = tabNow.current.cells.find((c) => c.id === id);
+    if (cell && (cell.text.trim() || runsNow.current[id]?.result)) {
+      if (!(await ask(t("Delete this cell, with its text and result?"), { confirm: t("Delete"), danger: true }))) return;
+    }
     const job = runsNow.current[id]?.result?.jobId;
     if (job != null) void api.closeQuery(job);
     const { [id]: _, ...rest } = runsNow.current;
@@ -523,7 +529,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
               })
             }
             onMove={(by) => moveCell(cell.id, by)}
-            onDelete={() => deleteCell(cell.id)}
+            onDelete={() => void deleteCell(cell.id)}
             onSave={() => void saveFile()}
             onFocus={() => onNeedCatalog(false)}
           />

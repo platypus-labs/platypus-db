@@ -77,6 +77,7 @@ function TextBody({ cell, editing, onChange, onEdit }: Pick<Props, "cell" | "edi
         rows={Math.max(3, cell.text.split("\n").length + 1)}
         spellCheck
         aria-label={t("Text (Markdown)")}
+        placeholder={t("Write in Markdown… Esc to finish")}
         onChange={(e) => onChange({ text: e.target.value })}
         onKeyDown={(e) => {
           if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
@@ -151,7 +152,7 @@ export function NotebookCellView(props: Props) {
         {sql && (
           <label className="check small" title={t("Query the rows the other cells loaded, as the tables c1, c2…, without running them again")}>
             <input type="checkbox" checked={cell.onResults} data-field="on_results" onChange={(e) => onChange({ onResults: e.target.checked })} />
-            {t("On the results of the other cells")}
+            {t("On the results c1, c2…")}
           </label>
         )}
         {sql && !cell.onResults && <span className="muted small">{props.connectionName}</span>}
@@ -197,6 +198,7 @@ export function NotebookCellView(props: Props) {
               initialValue={cell.text}
               driver={props.driver}
               catalog={props.catalog}
+              placeholder={t("SELECT … — Ctrl+Enter to run")}
               onChange={(text) => onChange({ text })}
               onRun={onRun}
               onSave={props.onSave}

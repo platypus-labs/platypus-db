@@ -84,7 +84,7 @@ export function SshFields({ ssh, onChange, secret, onSecret, saved }: Props) {
       )}
       {ssh.auth !== "agent" && (
         <label className="field">
-          <span>{t(ssh.auth === "key" ? "Key passphrase (if any) — saved in the system keychain" : "SSH password — saved in the system keychain")}</span>
+          <span>{t(ssh.auth === "key" ? "Key passphrase (if any)" : "SSH password")}</span>
           <input
             type="password"
             autoComplete="off"
@@ -92,6 +92,7 @@ export function SshFields({ ssh, onChange, secret, onSecret, saved }: Props) {
             placeholder={saved ? t("Empty keeps the saved one") : ""}
             onChange={(e) => onSecret(e.target.value)}
           />
+          <small className="muted">{t("Saved in the system keychain.")}</small>
         </label>
       )}
     </>

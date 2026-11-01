@@ -65,7 +65,7 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
   const ssh = value.ssh ?? null;
   const verifies = value.ssl_mode === "verify-ca" || value.ssl_mode === "verify-full";
 
-  const pathField = (key: "ssl_root_cert" | "ssl_client_cert" | "ssl_client_key", label: string, placeholder: string) => (
+  const pathField = (key: "ssl_root_cert" | "ssl_client_cert" | "ssl_client_key", label: string, placeholder: string, hint?: string) => (
     <label className="field">
       <span>{label}</span>
       <div className="row tight">
@@ -82,6 +82,7 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
           {t("Browse…")}
         </button>
       </div>
+      {hint && <small className="muted">{hint}</small>}
     </label>
   );
 
@@ -136,19 +137,17 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
       {verifies &&
         pathField(
           "ssl_root_cert",
-          t(
-            driver === "mysql"
-              ? "CA certificate (PEM) — empty uses the built-in Mozilla roots"
-              : "CA certificate (PEM) — empty uses the system trust store",
-          ),
+          t("CA certificate (PEM)"),
           "C:\\certs\\root.crt",
+          t(driver === "mysql" ? "Empty uses the built-in Mozilla roots." : "Empty uses the system trust store."),
         )}
       {value.ssl_mode !== "disable" && (
         <>
           {pathField(
             "ssl_client_cert",
-            t("Client certificate (PEM) — for servers that authenticate clients by certificate"),
+            t("Client certificate (PEM)"),
             "C:\\certs\\client.crt",
+            t("For servers that authenticate clients by certificate."),
           )}
           {pathField("ssl_client_key", t("Client key (PEM)"), "C:\\certs\\client.key")}
         </>

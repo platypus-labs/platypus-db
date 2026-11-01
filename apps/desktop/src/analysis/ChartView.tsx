@@ -3,6 +3,7 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { api, type ChartData, type ColumnInfo, toCommandError } from "../api";
 import { locale, msg, t } from "../i18n";
+import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 import { workbench } from "../workbench";
 import { Chart, useChartColors } from "./Chart";
 import { type Aggregate, type ChartConfig, type ChartKind, autoConfig, toRequest, validConfig } from "./chartConfig";
@@ -53,6 +54,7 @@ function useSize(ref: RefObject<HTMLElement | null>): { width: number; height: n
 }
 
 export function ChartView({ jobId, columns, rows, complete, config, onConfig, bare = false }: Props) {
+  const [sideWidth, setSideWidth] = useStoredSize("layout.chart_side", 200);
   const valid = config ? validConfig(config, columns) : null;
   // A saved chart naming a column that is gone asks for the choice again.
   const stale = config !== null && valid === null;
@@ -114,7 +116,18 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig, ba
   return (
     <div className="chart-view">
       {!bare && (
-      <div className="chart-side">
+      <>
+      <div className="chart-side" style={{ width: sideWidth }}>
+        {/* On top, where a short window does not cut it off. */}
+        <div className="chart-export">
+          <span className="muted small">{t("Export")}</span>
+          <button type="button" onClick={() => save("png")}>
+            {t("PNG image…")}
+          </button>
+          <button type="button" onClick={() => save("svg")}>
+            {t("SVG image…")}
+          </button>
+        </div>
         <label>
           {t("Chart type")}
           <select aria-label={t("Chart type")} value={shown.kind} onChange={(e) => set({ kind: e.target.value as ChartKind })}>
@@ -167,16 +180,18 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig, ba
             </select>
           </label>
         )}
-        <div className="chart-export">
-          <span className="muted small">{t("Export")}</span>
-          <button type="button" onClick={() => save("png")}>
-            {t("PNG image…")}
-          </button>
-          <button type="button" onClick={() => save("svg")}>
-            {t("SVG image…")}
-          </button>
-        </div>
       </div>
+      <PanelResizer
+        storeKey="layout.chart_side"
+        size={sideWidth}
+        fallback={200}
+        min={140}
+        max={() => 500}
+        direction="column"
+        onResize={setSideWidth}
+        label={t("Resize the chart options")}
+      />
+      </>
       )}
       <div className="chart-main">
         {stale && (

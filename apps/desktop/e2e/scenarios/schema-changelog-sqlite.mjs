@@ -54,7 +54,7 @@ async function compareAndWait(page) {
 }
 
 const closeDialog = async (page) => {
-  await page.eval(`${buttonIn(compareDialog, "Close")}.click()`);
+  await page.eval(`${buttonIn(compareDialog, "Cancel")}.click()`);
   await page.waitFor(`${compareDialog} === null`);
 };
 
