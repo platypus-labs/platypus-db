@@ -4,7 +4,7 @@
 //! created again and its rows copied.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use platypus_core::ObjectKind;
@@ -111,17 +111,19 @@ pub(crate) fn phased(
 }
 
 /// `ALTER TABLE .. ADD` of the foreign key `fk` of `schema.table`, and what disables it
-/// where it is disabled.
+/// where it is disabled. `taken` holds the names (lower case) of the table's other keys,
+/// constraints and indexes: a name made up here avoids them and joins them.
 pub(crate) fn add_foreign_key(
     dialect: Dialect,
     schema: &str,
     table: &str,
     fk: &ForeignKeyDesign,
+    taken: &mut HashSet<String>,
 ) -> Vec<String> {
     let ddl = Ddl { d: dialect, schema };
     let mut fk = fk.clone();
     if needs_name(dialect, fk.disabled, &fk.name) {
-        fk.name = foreign_key_name(table, &fk);
+        fk.name = unique_name(foreign_key_name(table, &fk), taken);
     }
     ddl.add_constraint(table, &ddl.foreign_key(&fk), &fk.name, fk.disabled)
 }
@@ -174,6 +176,35 @@ fn generated_name(prefix: &str, table: &str, detail: &str) -> String {
     plain.chars().take(128).collect()
 }
 
+/// The names (lower case) a design's keys, constraints and indexes already carry.
+pub(crate) fn taken_names(design: &TableDesign) -> HashSet<String> {
+    let names = design
+        .foreign_keys
+        .iter()
+        .map(|f| &f.name)
+        .chain(design.constraints.iter().map(|c| &c.name))
+        .chain(design.indexes.iter().map(|i| &i.name));
+    names
+        .filter(|n| !n.trim().is_empty())
+        .map(|n| n.to_lowercase())
+        .collect()
+}
+
+/// `name`, or with `_2`, `_3`.. appended (still within 128 characters) until it is not in
+/// `taken`; the name chosen joins `taken`.
+fn unique_name(name: String, taken: &mut HashSet<String>) -> String {
+    let mut chosen = name.clone();
+    let mut n = 2;
+    while taken.contains(&chosen.to_lowercase()) {
+        let suffix = format!("_{n}");
+        let room = 128 - suffix.chars().count();
+        chosen = format!("{}{suffix}", name.chars().take(room).collect::<String>());
+        n += 1;
+    }
+    taken.insert(chosen.to_lowercase());
+    chosen
+}
+
 /// `design` with a name for each key and constraint SQL Server could not disable without one.
 fn name_disabled(dialect: Dialect, design: &TableDesign) -> Cow<'_, TableDesign> {
     let unnamed = |disabled: bool, name: &str| needs_name(dialect, disabled, name);
@@ -189,14 +220,15 @@ fn name_disabled(dialect: Dialect, design: &TableDesign) -> Cow<'_, TableDesign>
         return Cow::Borrowed(design);
     }
     let mut named = design.clone();
+    let mut taken = taken_names(design);
     for f in &mut named.foreign_keys {
         if unnamed(f.disabled, &f.name) {
-            f.name = foreign_key_name(&design.name, f);
+            f.name = unique_name(foreign_key_name(&design.name, f), &mut taken);
         }
     }
     for c in &mut named.constraints {
         if unnamed(c.disabled, &c.name) {
-            c.name = constraint_name(&design.name, c);
+            c.name = unique_name(constraint_name(&design.name, c), &mut taken);
         }
     }
     Cow::Owned(named)
@@ -2363,6 +2395,48 @@ mod tests {
                 "ALTER TABLE db.t ADD COLUMN m Nullable(Int64) MATERIALIZED id * 2",
             ]
         );
+    }
+
+    #[test]
+    fn generated_names_stay_unique_within_the_design() {
+        let fk = |ref_table: &str| ForeignKeyDesign {
+            columns: vec!["note".to_owned()],
+            ref_schema: "dbo".to_owned(),
+            ref_table: ref_table.to_owned(),
+            ref_columns: vec!["id".to_owned()],
+            disabled: true,
+            ..ForeignKeyDesign::default()
+        };
+        let mut design = orders();
+        design.foreign_keys = vec![fk("a"), fk("b")];
+        // A key already carrying the name the first one would get.
+        design.constraints.push(ConstraintDesign {
+            name: "fk_orders_note".to_owned(),
+            kind: ConstraintType::Check,
+            check: "note <> ''".to_owned(),
+            ..ConstraintDesign::default()
+        });
+        let named = name_disabled(Dialect::SqlServer, &design);
+        let names: Vec<_> = named.foreign_keys.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["FK_orders_note_2", "FK_orders_note_3"]);
+
+        let mut taken = taken_names(&design);
+        let first = add_foreign_key(Dialect::SqlServer, "dbo", "orders", &fk("a"), &mut taken);
+        let second = add_foreign_key(Dialect::SqlServer, "dbo", "orders", &fk("b"), &mut taken);
+        assert!(
+            first[0].contains("CONSTRAINT FK_orders_note_2 "),
+            "{first:?}"
+        );
+        assert!(
+            second[0].contains("CONSTRAINT FK_orders_note_3 "),
+            "{second:?}"
+        );
+
+        let long = "x".repeat(128);
+        let mut taken = HashSet::from([long.clone()]);
+        let name = unique_name(long, &mut taken);
+        assert_eq!(name.chars().count(), 128);
+        assert!(name.ends_with("_2"));
     }
 
     #[test]

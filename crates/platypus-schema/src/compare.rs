@@ -5,7 +5,9 @@ use std::borrow::Cow;
 
 use platypus_sql::Dialect;
 
-use crate::ddl::{Keys, add_foreign_key, phased, same_check, transactional, warn_one_by_one};
+use crate::ddl::{
+    Keys, add_foreign_key, phased, same_check, taken_names, transactional, warn_one_by_one,
+};
 use crate::{ColumnDesign, ConstraintDesign, ForeignKeyDesign, Script, TableDesign};
 
 /// The script that turns the tables `current` of `schema` into `wanted`, read from
@@ -218,10 +220,11 @@ fn create_new(
                 .into_iter()
                 .partition(|f| f.ref_schema != schema || find(current, &f.ref_table).is_none());
             t.foreign_keys = now;
+            let mut taken = taken_names(&t);
             later.extend(
                 after
                     .iter()
-                    .flat_map(|f| add_foreign_key(dialect, schema, &t.name, f)),
+                    .flat_map(|f| add_foreign_key(dialect, schema, &t.name, f, &mut taken)),
             );
         }
         new.push(t);
