@@ -24,6 +24,9 @@ test("finds the next row forward, wrapping, case-insensitive", () => {
   assert.equal(typeAheadIndex(labels, 1, "o"), 2);
   assert.equal(typeAheadIndex(labels, 2, "o"), 1);
   assert.equal(typeAheadIndex(labels, 3, "AL"), 0);
+  // A longer prefix stays on the row that still matches it.
+  assert.equal(typeAheadIndex(["zebra", "zero"], 0, "ze"), 0);
+  assert.equal(typeAheadIndex(["zebra", "zero"], 0, "zer"), 1);
   assert.equal(typeAheadIndex(labels, 0, "zz"), -1);
 });
 

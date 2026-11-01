@@ -16,14 +16,16 @@ export function nextTyped(typed: string, key: string, sinceLast: number): string
 
 /**
  * The index of the row to move to: the first of `labels` after `from` (wrapping, `from` last)
- * that starts with `typed`, case-insensitively; -1 when none does. One letter repeated ("aa")
- * searches for that letter alone, so it cycles through the rows starting with it.
+ * that starts with `typed`, case-insensitively; -1 when none does. A longer prefix keeps `from`
+ * while it still matches. One letter repeated ("aa") searches for that letter alone, so it
+ * cycles through the rows starting with it.
  */
 export function typeAheadIndex(labels: string[], from: number, typed: string): number {
   const first = typed[0]?.toLowerCase() ?? "";
   const repeated = typed.length > 1 && [...typed].every((c) => c.toLowerCase() === first);
   const prefix = repeated ? first : typed.toLowerCase();
-  for (let i = 1; i <= labels.length; i++) {
+  const start = typed.length > 1 && !repeated ? 0 : 1;
+  for (let i = start; i < start + labels.length; i++) {
     const at = (from + i) % labels.length;
     if (labels[at]!.toLowerCase().startsWith(prefix)) return at;
   }
