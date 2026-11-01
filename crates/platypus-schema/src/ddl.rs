@@ -3,6 +3,7 @@
 //! alter a table that way (SQLite and DuckDB, beyond renaming and adding columns) the table is
 //! created again and its rows copied.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -74,6 +75,8 @@ pub(crate) fn phased(
     keys: Option<&mut Keys>,
 ) -> Result<Script, String> {
     validate(dialect, design)?;
+    let named = name_disabled(dialect, design);
+    let design = named.as_ref();
     let mut script = Script {
         transactional: transactional(dialect),
         ..Script::default()
@@ -116,7 +119,87 @@ pub(crate) fn add_foreign_key(
     fk: &ForeignKeyDesign,
 ) -> Vec<String> {
     let ddl = Ddl { d: dialect, schema };
-    ddl.add_constraint(table, &ddl.foreign_key(fk), &fk.name, fk.disabled)
+    let mut fk = fk.clone();
+    if needs_name(dialect, fk.disabled, &fk.name) {
+        fk.name = foreign_key_name(table, &fk);
+    }
+    ddl.add_constraint(table, &ddl.foreign_key(&fk), &fk.name, fk.disabled)
+}
+
+/// SQL Server disables a key or constraint by its name (`NOCHECK CONSTRAINT <name>`): one that
+/// is disabled and has none gets the name the database would not give it (it would pick a
+/// random one).
+fn needs_name(dialect: Dialect, disabled: bool, name: &str) -> bool {
+    dialect == Dialect::SqlServer && disabled && name.trim().is_empty()
+}
+
+/// `FK_<table>_<columns>` for a foreign key without a name.
+fn foreign_key_name(table: &str, fk: &ForeignKeyDesign) -> String {
+    generated_name("FK", table, &fk.columns.join("_"))
+}
+
+/// `UQ_<table>_<columns>` or `CK_<table>_<hash of the expression>` for a constraint without a name.
+fn constraint_name(table: &str, c: &ConstraintDesign) -> String {
+    match c.kind {
+        ConstraintType::Unique => generated_name("UQ", table, &c.columns.join("_")),
+        ConstraintType::Check | ConstraintType::Exclusion => {
+            // FNV-1a of the expression: the same expression always gets the same name.
+            let hash = c.check.trim().bytes().fold(0x811c_9dc5_u32, |h, b| {
+                (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+            });
+            let prefix = if c.kind == ConstraintType::Check {
+                "CK"
+            } else {
+                "EX"
+            };
+            generated_name(prefix, table, &format!("{hash:08x}"))
+        }
+    }
+}
+
+/// `<prefix>_<table>_<detail>` with plain identifier characters, within SQL Server's limit of
+/// 128 characters.
+fn generated_name(prefix: &str, table: &str, detail: &str) -> String {
+    let bare = table.rsplit('.').next().unwrap_or(table);
+    let plain: String = format!("{prefix}_{bare}_{detail}")
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    plain.chars().take(128).collect()
+}
+
+/// `design` with a name for each key and constraint SQL Server could not disable without one.
+fn name_disabled(dialect: Dialect, design: &TableDesign) -> Cow<'_, TableDesign> {
+    let unnamed = |disabled: bool, name: &str| needs_name(dialect, disabled, name);
+    if !design
+        .foreign_keys
+        .iter()
+        .any(|f| unnamed(f.disabled, &f.name))
+        && !design
+            .constraints
+            .iter()
+            .any(|c| unnamed(c.disabled, &c.name))
+    {
+        return Cow::Borrowed(design);
+    }
+    let mut named = design.clone();
+    for f in &mut named.foreign_keys {
+        if unnamed(f.disabled, &f.name) {
+            f.name = foreign_key_name(&design.name, f);
+        }
+    }
+    for c in &mut named.constraints {
+        if unnamed(c.disabled, &c.name) {
+            c.name = constraint_name(&design.name, c);
+        }
+    }
+    Cow::Owned(named)
 }
 
 /// `CREATE INDEX` of `index` on `schema.table`.
@@ -809,7 +892,7 @@ impl Ddl<'_> {
     }
 
     /// The statements that disable the disabled keys and constraints of `design`, created as
-    /// `table` (SQL Server). One without a name cannot be disabled, which a warning says.
+    /// `table` (SQL Server); `name_disabled` gave each a name.
     fn disable_constraints(&self, design: &TableDesign, table: &str, script: &mut Script) {
         if self.d != Dialect::SqlServer {
             return;
@@ -827,13 +910,7 @@ impl Ddl<'_> {
                     .map(|c| &c.name),
             );
         for name in disabled {
-            if name.trim().is_empty() {
-                script.warnings.push(format!(
-                    "A disabled (NOCHECK) constraint of {table} has no name of its own: it is created enabled; disable it by hand."
-                ));
-            } else {
-                script.statements.push(self.nocheck(table, name));
-            }
+            script.statements.push(self.nocheck(table, name));
         }
     }
 
@@ -3044,7 +3121,13 @@ mod tests {
             s.statements[1],
             "ALTER TABLE dbo.orders NOCHECK CONSTRAINT fk"
         );
-        assert!(s.warnings[0].starts_with("A disabled (NOCHECK) constraint of orders"));
+        // The check without a name gets one, so that it can be disabled too.
+        assert!(s.statements[0].contains("CONSTRAINT CK_orders_"), "{s:?}");
+        assert!(
+            s.statements[2].starts_with("ALTER TABLE dbo.orders NOCHECK CONSTRAINT CK_orders_"),
+            "{s:?}"
+        );
+        assert!(s.warnings.is_empty(), "{s:?}");
 
         let mut there = design.clone();
         there.system_time = None;
@@ -3063,6 +3146,63 @@ mod tests {
         );
         assert!(
             s.warnings[0].starts_with("The system versioning of orders"),
+            "{s:?}"
+        );
+    }
+
+    #[test]
+    fn sqlserver_names_an_unnamed_disabled_constraint_it_adds() {
+        let there = orders();
+        let mut wanted = there.clone();
+        wanted.foreign_keys.push(ForeignKeyDesign {
+            columns: vec!["note".to_owned()],
+            ref_table: "customers".to_owned(),
+            disabled: true,
+            ..ForeignKeyDesign::default()
+        });
+        wanted.constraints.push(ConstraintDesign {
+            kind: ConstraintType::Check,
+            check: "total > 0".to_owned(),
+            disabled: true,
+            ..ConstraintDesign::default()
+        });
+        let s = script(Dialect::SqlServer, "dbo", Some(&there), &wanted).unwrap();
+        assert!(s.warnings.is_empty(), "{s:?}");
+        let check = s
+            .statements
+            .iter()
+            .find(|x| x.contains("CHECK (total > 0)"))
+            .unwrap_or_else(|| panic!("{s:?}"));
+        let name = check
+            .split("CONSTRAINT ")
+            .nth(1)
+            .and_then(|r| r.split(' ').next())
+            .unwrap();
+        assert!(name.starts_with("CK_orders_"), "{check}");
+        assert!(
+            check.starts_with("ALTER TABLE dbo.orders WITH NOCHECK ADD"),
+            "{check}"
+        );
+        assert!(
+            s.statements
+                .contains(&format!("ALTER TABLE dbo.orders NOCHECK CONSTRAINT {name}"))
+        );
+        assert!(
+            s.statements.contains(&"ALTER TABLE dbo.orders WITH NOCHECK ADD CONSTRAINT FK_orders_note FOREIGN KEY (note) REFERENCES dbo.customers".to_owned()),
+            "{s:?}"
+        );
+        assert!(
+            s.statements
+                .contains(&"ALTER TABLE dbo.orders NOCHECK CONSTRAINT FK_orders_note".to_owned())
+        );
+        // Enabled, or on another database: left as they are.
+        wanted.foreign_keys[0].disabled = false;
+        let s = script(Dialect::SqlServer, "dbo", Some(&there), &wanted).unwrap();
+        assert!(
+            s.statements.contains(
+                &"ALTER TABLE dbo.orders ADD FOREIGN KEY (note) REFERENCES dbo.customers"
+                    .to_owned()
+            ),
             "{s:?}"
         );
     }
