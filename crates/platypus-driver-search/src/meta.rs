@@ -277,6 +277,7 @@ pub async fn table_details(shared: &Shared, table: &str) -> Result<TableDetails>
         comment: None,
         enum_values: Vec::new(),
         fields: Vec::new(),
+        hidden: false,
     }];
     columns.extend(
         with_containers(&reply)
@@ -290,6 +291,7 @@ pub async fn table_details(shared: &Shared, table: &str) -> Result<TableDetails>
                 comment,
                 enum_values: Vec::new(),
                 fields: Vec::new(),
+                hidden: false,
             }),
     );
     Ok(TableDetails {

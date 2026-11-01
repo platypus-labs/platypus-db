@@ -9,7 +9,7 @@ use std::fmt::Write;
 use platypus_core::{Connection, Result, TextRow, TextRowExt, query_text};
 use platypus_sql::Dialect;
 
-use crate::{IndexDesign, PartitionDesign, TableDesign, UserType, create};
+use crate::{ConstraintType, IndexDesign, PartitionDesign, TableDesign, UserType, create};
 
 /// The rows of `sql`, none when the catalog cannot answer it: PostgreSQL's dialect also
 /// speaks to CockroachDB and YugabyteDB, which lack some of these catalogs; the design then
@@ -447,12 +447,32 @@ pub(crate) fn mysql(design: &mut TableDesign, definition: &create::Definition) {
             c.name.clone()
         })
         .collect();
+    // The CHECK the server makes for an application-time period (`start < end`, named like
+    // the period) comes with `PERIOD FOR`: creating it again would add a duplicate.
+    let flat = |text: &str| {
+        text.replace(['`', '"', ' ', '(', ')'], "")
+            .to_ascii_lowercase()
+    };
+    let implicit_periods: Vec<(String, String)> = design
+        .periods
+        .iter()
+        .filter(|p| !p.is_system_time())
+        .map(|p| {
+            (
+                p.name.to_ascii_lowercase(),
+                flat(&format!("{}<{}", p.start, p.end)),
+            )
+        })
+        .collect();
+    design.constraints.retain(|c| {
+        !(c.kind == ConstraintType::Check
+            && implicit_periods
+                .iter()
+                .any(|(name, check)| c.name.eq_ignore_ascii_case(name) && flat(&c.check) == *check))
+    });
     design.constraints.retain(|c| {
         let implicit = json.contains(&c.name)
-            && c.check
-                .replace(['`', ' ', '(', ')'], "")
-                .to_ascii_lowercase()
-                == format!("json_valid{}", c.name.to_ascii_lowercase());
+            && flat(&c.check) == format!("json_valid{}", c.name.to_ascii_lowercase());
         !implicit
     });
 }
@@ -549,5 +569,36 @@ mod tests {
         assert_eq!(design.columns[0].collation, None);
         let names: Vec<&str> = design.constraints.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["other"]);
+    }
+
+    #[test]
+    fn mysql_drops_the_check_a_period_brings() {
+        let check = |name: &str, text: &str| crate::ConstraintDesign {
+            name: name.to_owned(),
+            kind: ConstraintType::Check,
+            check: text.to_owned(),
+            ..crate::ConstraintDesign::default()
+        };
+        let mut design = TableDesign {
+            constraints: vec![
+                check("validity", "`d1` < `d2`"),
+                check("mine", "`d1` < `d2`"),
+                // ANSI_QUOTES: the server writes the identifiers in double quotes.
+                check("quoted", "\"d1\" < \"d2\""),
+            ],
+            periods: vec![crate::PeriodDesign {
+                name: "validity".to_owned(),
+                start: "d1".to_owned(),
+                end: "d2".to_owned(),
+            }],
+            ..TableDesign::default()
+        };
+        design.periods.push(crate::PeriodDesign {
+            name: "quoted".to_owned(),
+            ..design.periods[0].clone()
+        });
+        mysql(&mut design, &create::Definition::default());
+        let names: Vec<&str> = design.constraints.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["mine"]);
     }
 }

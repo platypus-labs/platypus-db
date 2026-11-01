@@ -268,6 +268,7 @@ pub fn table_details(catalogs: &[Catalog]) -> TableDetails {
             comment: c.remarks.clone(),
             enum_values: Vec::new(),
             fields: Vec::new(),
+            hidden: false,
         })
         .collect();
     let indexes = primary

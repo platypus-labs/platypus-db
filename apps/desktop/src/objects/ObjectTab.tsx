@@ -251,7 +251,7 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
             onClick={() =>
               focusData(connection.id, tab.database, qualified) ||
               workbench().openTab("query", connection.id, {
-                sql: viewerSql(connection.driver, qualified),
+                sql: viewerSql(connection.driver, qualified, "", data?.details?.columns.find((c) => c.hidden)?.name),
                 autorun: true,
                 title: tab.name,
                 table: qualified,

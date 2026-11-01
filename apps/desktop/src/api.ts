@@ -1293,6 +1293,9 @@ export interface ObjectMeta {
   rows: number | null;
   /** Bytes on disk of a table with its indexes. */
   size: number | null;
+  /** A column that identifies the rows but that `SELECT *` leaves out (CockroachDB's hidden
+   *  `rowid`); the data viewer selects it so the rows can be edited. */
+  hidden_key?: string | null;
 }
 
 export interface MetadataMatch {
@@ -1323,6 +1326,8 @@ export interface ColumnMeta {
   enum_values: string[];
   /** Fields of a composite type, or of an array's composite elements (PostgreSQL). */
   fields: FieldMeta[];
+  /** Left out of `SELECT *` by the database (CockroachDB's hidden `rowid`). */
+  hidden?: boolean;
 }
 
 export interface FieldMeta {
@@ -1464,6 +1469,8 @@ export interface TableDesign {
   types?: { schema: string; name: string; kind: string; body: string }[];
   /** The period and history table of a system-versioned table (SQL Server). */
   system_time?: { start: string; end: string; history: string | null } | null;
+  /** The `PERIOD FOR` clauses of a MariaDB table. */
+  periods?: { name: string; start: string; end: string }[];
 }
 
 /** When a key or constraint is checked: `deferred` for `DEFERRABLE INITIALLY DEFERRED`. */

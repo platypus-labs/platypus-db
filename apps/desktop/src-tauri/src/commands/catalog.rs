@@ -726,6 +726,7 @@ mod tests {
                 comment: None,
                 enum_values: vec![],
                 fields: vec![],
+                hidden: false,
             }],
             indexes: vec![],
             foreign_keys: vec![],

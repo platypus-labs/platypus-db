@@ -483,6 +483,8 @@ export function QueryTab({
   const cliRun = useRef<number | null>(null);
   /** SQL that undoes the last saved edits. */
   const [undoScript, setUndoScript] = useState<string | null>(null);
+  /** The next run keeps the undo script: it reloads the rows just saved, it is not a new query. */
+  const keepUndoOnce = useRef(false);
   /** Seconds between runs of the last statements again; `null` is off. */
   const [refreshEvery, setRefreshEvery] = useState<number | null>(null);
   /** "Compare with previous run": the result a run of the same statement replaces is kept. */
@@ -852,6 +854,8 @@ export function QueryTab({
    *  editor as it is, and stops refreshing when a statement fails. */
   async function run(mode: RunMode, force = false, again?: Planned[], auto = false, replace?: number) {
     const history = !auto;
+    const keepUndo = keepUndoOnce.current;
+    keepUndoOnce.current = false;
     if (running && !force) return;
     if (!(await discardEdits())) return;
     const append = mode === "append";
@@ -872,7 +876,7 @@ export function QueryTab({
     if (!(again && rerunsUnasked(again)) && !(await confirmed(planned))) return;
     const sessionId = await ensureSession();
     if (sessionId === null) return;
-    if (!again) setUndoScript(null);
+    if (!again && !keepUndo) setUndoScript(null);
     const replaced = replace === undefined ? undefined : results.find((r) => r.id === replace);
     // Remembered only now that it passed its checks: a declined run never runs again unasked.
     if (replaced) memory.current.forget(replaced.id);
@@ -1330,9 +1334,13 @@ export function QueryTab({
    * Data viewer: rewrites the statement that produced `result` in the editor (only that
    * statement, the rest of the text stays) and runs it. Returns the new statement; null when
    * the editor no longer holds the statement or the rewrite cannot place the change with
-   * certainty.
+   * certainty. With `keepUndo`, the run leaves the undo script of the last save in place.
    */
-  async function rewriteStatement(result: Result, rewrite: (sql: string) => Promise<string | null>): Promise<string | null> {
+  async function rewriteStatement(
+    result: Result,
+    rewrite: (sql: string) => Promise<string | null>,
+    keepUndo = false,
+  ): Promise<string | null> {
     const ed = editor.current!;
     let next: string | null = null;
     try {
@@ -1352,6 +1360,7 @@ export function QueryTab({
     // The cursor inside the statement, so that it is the one that runs.
     const inside = range.from + Math.floor(next.length / 2);
     ed.select(inside, inside);
+    keepUndoOnce.current = keepUndo;
     void run("statement");
     return next;
   }
@@ -1623,13 +1632,34 @@ export function QueryTab({
         const inGrid = !focus || focus === document.body || !!focus.closest(".grid-scroll");
         const again = memory.current.readOf(result.id);
         if (!again) return;
-        void run("statement", false, [again], false, result.id).then(() => {
-          if (!inGrid || (document.activeElement && document.activeElement !== document.body)) return;
-          root.current?.querySelector<HTMLElement>(".grid-scroll")?.focus();
-        });
+        const reload = () =>
+          void run("statement", false, [again], false, result.id).then(() => {
+            if (!inGrid || (document.activeElement && document.activeElement !== document.body)) return;
+            root.current?.querySelector<HTMLElement>(".grid-scroll")?.focus();
+          });
+        // DuckDB writes an edited row of a table with a key at the end of the table: the rows
+        // come back in the key's order, which an edit leaves alone.
+        if (viewer && connection.driver === "duckdb") void keepKeyOrder(result).then((done) => !done && reload());
+        else reload();
       },
       onDirtyChange: setUnsaved,
     };
+  }
+
+  /** Data viewer on DuckDB, which moves an edited row to the end of the table when the table has
+   *  a key: writes `ORDER BY` the single-column primary key into the viewer's own statement and
+   *  runs it. False when it did not (a sort already there, no such key, a rewrite that does not
+   *  fit): the caller runs the statement as it is. */
+  async function keepKeyOrder(result: Result): Promise<boolean> {
+    try {
+      if (await api.sqlOrderClause(result.sql, connection.driver)) return false;
+      const keys = (await details.current)?.constraints.find((c) => c.kind === "primary_key");
+      if (keys?.columns.length !== 1) return false;
+      const column = keys.columns[0] ?? null;
+      return (await rewriteStatement(result, (sql) => api.sqlOrderBy(sql, connection.driver, column, false), true)) !== null;
+    } catch {
+      return false;
+    }
   }
 
   /** The viewer's table, for the notes in the grid header; none for other results. */
