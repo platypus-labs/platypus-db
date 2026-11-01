@@ -150,6 +150,8 @@ blocco cade.
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ✅ completato |
 | S — Collaudo finale | ✅ fatto (P1 in parte: inventario, giro per aree, tutti i database, secondo giro; P2 in parte: revisione di sicurezza) |
+| T — Revisione UX | libero |
+| U — Esportazione delle connessioni | libero |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
 
 ### Gruppo A — Modifica dei dati
@@ -1387,6 +1389,95 @@ nei file delle aree toccate, in commit piccoli e separati
 
 ---
 
+### Gruppo T — Revisione UX
+
+**Stato: da fare.**
+
+Il gruppo R ha reso l'app coerente nell'aspetto; questo gruppo controlla se si **usa** bene. Le
+segnalazioni dell'utente del 1° novembre 2026 mostrano problemi che nessun inventario visivo
+coglie: grafici senza spiegazione, azioni senza riscontro, caricamenti invisibili, pannelli che
+non si ridimensionano, menu troppo lunghi, stati vuoti che non dicono dove andare.
+
+**Metodo.** Una sezione alla volta, con l'app compilata:
+1. si passa la sezione con la **scheda di controllo** qui sotto e si scrive un rapporto
+   (`docs/UX_REVIEW.md`, un paragrafo per sezione: problemi, gravità, screenshot);
+2. le correzioni si fanno in commit piccoli, uno per sezione; ogni correzione che si può provare
+   diventa uno scenario E2E (`apps/desktop/e2e/scenarios/ux-*`);
+3. una modifica che cambia molto una schermata passa prima da un mockup approvato dall'utente,
+   come nel gruppo R.
+
+**Scheda di controllo** (uguale per ogni sezione):
+- *Si capisce?* Titolo della schermata o del dialog, etichette chiare, ogni grafico con titolo,
+  assi o legenda e una riga che dice cosa mostra.
+- *Riscontro*: ogni azione dà un segno visibile (toast "Copiato", stato del pulsante, riga
+  aggiornata); niente azioni silenziose.
+- *Attesa*: ogni operazione che può durare più di ~300 ms mostra un caricamento e si può annullare
+  quando ha senso.
+- *Stati vuoti*: dicono cosa manca e portano all'azione che lo crea (un pulsante, non solo un testo).
+- *Spazio*: niente testo che sborda o si sovrappone; pannelli e sidebar ridimensionabili dove il
+  contenuto varia; finestra piccola (1280×720) e grande (2560×1440); allineamenti e centrature.
+- *Menu*: brevi, con le voci affini raggruppate in sottomenu; sempre il menu dell'app, mai
+  quello del browser.
+- *Interazione diretta*: trascinare, zoomare, ridimensionare dove l'utente se lo aspetta (canvas,
+  diagrammi, colonne).
+- *Tastiera*: ci si arriva e si chiude da tastiera; focus visibile.
+
+**Sezioni da controllare:** pagina iniziale; rail dei progetti e navigator (menu contestuali
+compresi); tab e barra dei tab; editor SQL e risultati; griglia e modifica dei dati; pagine degli
+oggetti; editor grafico della tabella; diagramma ER; costruttore visuale di query; explain;
+profilo dei dati; grafici, pivot e dashboard; notebook; import, export, copia, migrazione e
+profili di trasferimento; confronto schemi e altri strumenti di schema; amministrazione del
+server; dialog di connessione e import delle connessioni; palette dei comandi e ricerca;
+impostazioni; sicurezza (blocco, mascheramento, snapshot); agenti e MCP; sync e progetti
+condivisi; task pianificati.
+
+**Area:** i componenti di `apps/desktop/src/` (markup, CSS, testi e logica di sola interfaccia),
+`apps/desktop/e2e/`, `docs/UX_REVIEW.md`; niente modifiche a backend, driver o formati dei file
+**Dipende da:** gruppo R completato
+
+| Funzionalità | Prio | Origine |
+|---|---|---|
+| 🆕 **Correzioni già note** (segnalazioni del 1° novembre 2026): <br>• menu contestuale delle tabelle troppo lungo: raggruppare in sottomenu le voci affini (es. tutti i "Genera …") <br>• tasto destro ovunque: disattivare il menu del browser (WebView2) e mostrare quello dell'app <br>• profilo dei dati: l'istogramma non ha titolo, assi né spiegazione; nella colonna di destra le etichette minimo/massimo dei timestamp si sovrappongono e sbordano <br>• costruttore visuale di query: sidebar e riquadri delle tabelle ridimensionabili <br>• diagramma ER: caricamento visibile quando si aggiungono tabelle (e verificare che le carichi tutte), etichetta del selettore delle tabelle da riscrivere, trascinare sul vuoto sposta la visuale <br>• "Copia il nome" e tutte le azioni di copia: toast di conferma <br>• dialog di connessione: titolo della sezione in alto, il pallino accanto a "Rete" spiegato o tolto, voci del menu laterale centrate in verticale <br>• profili di trasferimento: lo stato vuoto dice dove si crea un profilo, con un'azione <br>• palette dei comandi: il campo di ricerca è schiacciato <br>• pagina iniziale non centrata <br>• dashboard: la voce "Impostazioni grafico" mostra caratteri rotti al posto dell'icona | P1 | N |
+| 🆕 **Scheda di controllo e rapporto** (`docs/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
+| 🆕 **Correzione dei problemi gravi** trovati dal rapporto (azioni senza riscontro, caricamenti invisibili, testo che sborda, stati vuoti senza azione) | P1 | N |
+| 🆕 **Riscontro e attesa uniformi**: un solo componente per il toast di conferma e uno per il caricamento, usati da tutte le azioni | P1 | N |
+| 🆕 Pannelli ridimensionabili ovunque il contenuto varia, con la misura ricordata | P2 | N |
+| 🆕 Menu contestuali riorganizzati in tutta l'app con la stessa regola (azioni principali in alto, sottomenu per i gruppi, voci distruttive in fondo) | P2 | N |
+| 🆕 Correzione dei problemi minori del rapporto | P2 | N |
+| 🆕 Secondo giro della scheda con occhi nuovi, su tutte le sezioni | P3 | N |
+
+---
+
+### Gruppo U — Esportazione delle connessioni
+
+**Stato: da fare.**
+
+Oggi le connessioni si importano da DBeaver, DataGrip e pgAdmin, si sincronizzano (gruppo O,
+senza password) e si condividono nei progetti (senza credenziali), ma non si possono esportare in
+un file da portare su un altro computer o dare a un collega.
+
+**Formato.** Un file `.platypusconn`: JSON con `version`, le connessioni scelte e, se richiesto,
+la struttura dei progetti (progetti, cartelle, ordine). Senza password il file è in chiaro e le
+credenziali restano fuori. Con la password il file è una busta cifrata (KDF Argon2id + cifratura
+autenticata, con salt e nonce nel file) e può contenere anche le credenziali. Prima di scrivere
+codice si controlla cosa riusare di `platypus-sync` (`crypto.rs`, `portable.rs`) e di
+`platypus-store` (`import`, `vault.rs`), invece di inventare un formato o una cifratura nuovi.
+
+**Area:** `crates/platypus-store/` (nuovo modulo di esportazione e lettore nell'`import` esistente),
+i comandi Tauri relativi, la UI di esportazione e il flusso "Importa le connessioni" in
+`apps/desktop/src/`
+**Dipende da:** nessun gruppo aperto
+
+| Funzionalità | Prio | Origine |
+|---|---|---|
+| 🆕 **Esportazione**: finestra con l'elenco delle connessioni da spuntare (tutte, per progetto, una per una), opzione "includi la struttura dei progetti", salvataggio in `.platypusconn` | P1 | D |
+| 🆕 **Importazione** del file nel flusso "Importa le connessioni" esistente, con anteprima, scelta delle connessioni e gestione dei nomi già presenti (salta, rinomina, sostituisci) | P1 | D |
+| 🆕 **Cifratura con password**: con la password si possono includere le credenziali; password sbagliata o file alterato danno un errore chiaro, mai dati a metà | P1 | N |
+| 🆕 Esportazione dal menu contestuale di una connessione o di un progetto e dalla palette dei comandi | P2 | D |
+| 🆕 Formato documentato (`docs/`) e versionato, con un test che rilegge i file delle versioni precedenti | P2 | N |
+
+---
+
 ## 3. Mappa dei conflitti
 
 Le "x" indicano i gruppi che toccano la stessa area. Dove c'è conflitto si serve il contratto
@@ -1400,7 +1491,7 @@ della fase 0 (un'API piccola), non la condivisione del file.
 | `App.tsx`, tab | C, E, I, J, K | 0.3: registro dei tipi di tab |
 | Menu e scorciatoie | tutti | 0.2: registro delle azioni |
 | `ConnectionDialog.tsx` | F, G | Sezioni per driver registrabili |
-| `platypus-store` (connessioni, segreti, cronologia) | F, N, Q | API pubblica dello store; il formato dei file cambia solo con una migrazione |
+| `platypus-store` (connessioni, segreti, cronologia) | F, N, Q, U | API pubblica dello store; il formato dei file cambia solo con una migrazione |
 | Tab oggetto (`apps/desktop/src/objects/`) | C, Q | Sezioni del tab registrabili, aggiunte con un commit separato |
 
 ---
@@ -1419,6 +1510,7 @@ dell'ondata.
 | **4** | **O**, i P3 | Collaborazione ed ecosistema | v0.5+ | O completato; restano P3 di F, J, N, Q |
 | **5** | **R** | Revisione grafica di tutta l'app, a funzionalità finite | v1.0 | In attesa |
 | **6** | **S** | Collaudo finale di tutta l'app, dopo la revisione grafica | v1.0 | In attesa |
+| **7** | **T**, **U** in parallelo | Revisione dell'usabilità sezione per sezione; esportazione delle connessioni | v1.0 | Da fare |
 
 Per ogni gruppo, la Definition of Done segue quella dell'MVP:
 - test di conformance o E2E per ciò che è stato aggiunto;
