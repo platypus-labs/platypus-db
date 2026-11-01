@@ -6,7 +6,7 @@
 
 use platypus_sql::{Dialect, Lexer, Token, TokenKind};
 
-use crate::Deferral;
+use crate::{Deferral, PeriodDesign};
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Definition {
@@ -24,6 +24,8 @@ pub struct Definition {
     pub uniques: Vec<UniqueDefinition>,
     /// The named CHECK constraints of the table.
     pub checks: Vec<CheckDefinition>,
+    /// MariaDB's `PERIOD FOR name (start, end)`.
+    pub periods: Vec<PeriodDesign>,
 }
 
 /// A `FOREIGN KEY (..) REFERENCES ..`, or a column's `REFERENCES ..`.
@@ -264,6 +266,18 @@ pub fn parse(sql: &str, dialect: Dialect) -> Definition {
         if from >= to {
             continue;
         }
+        // `PERIOD FOR name (start, end)`: a clause of the list, not a column.
+        if dialect == Dialect::MySql && t.is_word(from, "PERIOD") && t.is_word(from + 1, "FOR") {
+            let names = t.names(from + 3).map(|(n, _)| n).filter(|n| n.len() == 2);
+            if let Some([start, end]) = names.as_deref() {
+                out.periods.push(PeriodDesign {
+                    name: unquote(t.text(from + 2)),
+                    start: start.clone(),
+                    end: end.clone(),
+                });
+            }
+            continue;
+        }
         if CONSTRAINT_WORDS.iter().any(|w| t.is_word(from, w)) {
             constraint(&t, from, to, &mut out);
             continue;
@@ -410,6 +424,20 @@ fn column(t: &Tokens<'_>, from: usize, to: usize) -> ColumnDefinition {
         if t.is_word(i, "COLLATE") && i + 1 < to {
             c.collation = Some(t.text(i + 1).to_owned());
             i += 2;
+            continue;
+        }
+        // MariaDB's row start and end of a system-versioned table.
+        if t.is_word(i, "GENERATED")
+            && t.is_word(i + 1, "ALWAYS")
+            && t.is_word(i + 2, "AS")
+            && t.is_word(i + 3, "ROW")
+            && (t.is_word(i + 4, "START") || t.is_word(i + 4, "END"))
+        {
+            c.generated = Some(format!(
+                "GENERATED ALWAYS AS ROW {}",
+                t.text(i + 4).to_ascii_uppercase()
+            ));
+            i += 5;
             continue;
         }
         // `GENERATED ALWAYS AS (…)` or `AS (…)`, then `VIRTUAL` or `STORED`.
@@ -576,6 +604,49 @@ mod tests {
             Some("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 WITH SYSTEM VERSIONING")
         );
         assert_eq!(mariadb.indexes[0].visibility.as_deref(), Some("IGNORED"));
+    }
+
+    #[test]
+    fn reads_mariadb_periods_and_row_start_end_columns() {
+        let d = parse(
+            "CREATE TABLE `p` (
+  `id` int(11) NOT NULL,
+  `d1` date NOT NULL,
+  `d2` date NOT NULL,
+               `s` timestamp(6) GENERATED ALWAYS AS ROW START,
+  `e` timestamp(6) GENERATED ALWAYS AS ROW END,
+               PERIOD FOR `validity` (`d1`, `d2`),
+  PERIOD FOR SYSTEM_TIME (`s`, `e`),
+               PRIMARY KEY (`id`)
+) ENGINE=InnoDB WITH SYSTEM VERSIONING",
+            Dialect::MySql,
+        );
+        let names: Vec<&str> = d.columns.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["id", "d1", "d2", "s", "e"]);
+        let period = |name: &str, start: &str, end: &str| PeriodDesign {
+            name: name.into(),
+            start: start.into(),
+            end: end.into(),
+        };
+        assert_eq!(
+            d.periods,
+            [
+                period("validity", "d1", "d2"),
+                period("SYSTEM_TIME", "s", "e")
+            ]
+        );
+        assert_eq!(
+            d.columns[3].generated.as_deref(),
+            Some("GENERATED ALWAYS AS ROW START")
+        );
+        assert_eq!(
+            d.columns[4].generated.as_deref(),
+            Some("GENERATED ALWAYS AS ROW END")
+        );
+        assert_eq!(
+            d.options.as_deref(),
+            Some("ENGINE=InnoDB WITH SYSTEM VERSIONING")
+        );
     }
 
     #[test]

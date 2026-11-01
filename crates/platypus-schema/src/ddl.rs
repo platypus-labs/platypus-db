@@ -977,6 +977,20 @@ impl Ddl<'_> {
                 self.q(&period.end)
             ));
         }
+        if self.d == Dialect::MySql {
+            parts.extend(design.periods.iter().map(|p| {
+                let period = if p.is_system_time() {
+                    "SYSTEM_TIME".to_owned()
+                } else {
+                    self.q(&p.name)
+                };
+                format!(
+                    "PERIOD FOR {period} ({}, {})",
+                    self.q(&p.start),
+                    self.q(&p.end)
+                )
+            }));
+        }
         let mut sql = format!(
             "CREATE TABLE {} (\n  {}\n)",
             self.table(name),
@@ -1456,6 +1470,12 @@ impl Ddl<'_> {
         if old.system_time != new.system_time {
             script.warnings.push(format!(
                 "The system versioning of {} differs and cannot be changed in place: create the table again by hand.",
+                new.name
+            ));
+        }
+        if old.periods != new.periods {
+            script.warnings.push(format!(
+                "The periods (PERIOD FOR) of {} differ and cannot be changed in place: create the table again by hand.",
                 new.name
             ));
         }
@@ -3203,6 +3223,48 @@ mod tests {
                 &"ALTER TABLE dbo.orders ADD FOREIGN KEY (note) REFERENCES dbo.customers"
                     .to_owned()
             ),
+            "{s:?}"
+        );
+    }
+
+    #[test]
+    fn mariadb_writes_periods_in_the_column_list() {
+        let mut design = orders();
+        design.columns.push(column("d1", "date"));
+        design.columns.push(column("d2", "date"));
+        design.periods = vec![
+            crate::PeriodDesign {
+                name: "validity".to_owned(),
+                start: "d1".to_owned(),
+                end: "d2".to_owned(),
+            },
+            crate::PeriodDesign {
+                name: "SYSTEM_TIME".to_owned(),
+                start: "d1".to_owned(),
+                end: "d2".to_owned(),
+            },
+        ];
+        design.options = Some("WITH SYSTEM VERSIONING".to_owned());
+        let s = statements(Dialect::MySql, None, &design);
+        assert!(
+            s[0].ends_with(
+                "PERIOD FOR validity (d1, d2),
+  PERIOD FOR SYSTEM_TIME (d1, d2)
+) WITH SYSTEM VERSIONING"
+            ),
+            "{s:?}"
+        );
+        // The same periods need nothing; others are left to the user, with a warning.
+        let same = script(Dialect::MySql, "shop", Some(&design), &design).unwrap();
+        assert!(
+            same.statements.is_empty() && same.warnings.is_empty(),
+            "{same:?}"
+        );
+        let mut other = design.clone();
+        other.periods.truncate(1);
+        let s = script(Dialect::MySql, "shop", Some(&design), &other).unwrap();
+        assert!(
+            s.warnings[0].starts_with("The periods (PERIOD FOR) of orders"),
             "{s:?}"
         );
     }

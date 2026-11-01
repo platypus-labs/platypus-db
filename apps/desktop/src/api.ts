@@ -1455,6 +1455,8 @@ export interface TableDesign {
   types?: { schema: string; name: string; kind: string; body: string }[];
   /** The period and history table of a system-versioned table (SQL Server). */
   system_time?: { start: string; end: string; history: string | null } | null;
+  /** The `PERIOD FOR` clauses of a MariaDB table. */
+  periods?: { name: string; start: string; end: string }[];
 }
 
 /** When a key or constraint is checked: `deferred` for `DEFERRABLE INITIALLY DEFERRED`. */
