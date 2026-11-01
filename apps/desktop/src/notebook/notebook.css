@@ -202,3 +202,7 @@
   text-decoration: underline;
 }
 
+
+.notebook-running {
+  padding: var(--space-4) var(--space-10);
+}

@@ -6,6 +6,7 @@ import { describe, type Result, ResultPanel } from "../components/ResultPanel";
 import { SqlEditor } from "../editor/SqlEditor";
 import { t } from "../i18n";
 import { Icon } from "../ui/Icon";
+import { LoadingState } from "../ui/State";
 import { Markdown } from "./Markdown";
 import { type NotebookCell as Cell, planLines } from "./model";
 
@@ -36,6 +37,7 @@ interface Props {
   connectionName: string;
   onChange: (patch: Partial<Cell>) => void;
   onRun: () => void;
+  onStop: () => void;
   onPlan: () => void;
   onEdit: (editing: boolean) => void;
   onMove: (by: -1 | 1) => void;
@@ -159,10 +161,16 @@ export function NotebookCellView(props: Props) {
             <button type="button" className={cell.plan ? "toggled" : ""} aria-pressed={cell.plan} onClick={onPlan} data-action="plan">
               {t("Plan")}
             </button>
-            <button type="button" className="primary" disabled={run.running} onClick={onRun} data-action="run" title={t("Run (Ctrl+Enter)")}>
-              <Icon name="run" />
-              {t("Run")}
-            </button>
+            {run.running ? (
+              <button type="button" onClick={props.onStop} data-action="stop" title={t("Cancel the running statement")}>
+                {t("Stop")}
+              </button>
+            ) : (
+              <button type="button" className="primary" onClick={onRun} data-action="run" title={t("Run (Ctrl+Enter)")}>
+                <Icon name="run" />
+                {t("Run")}
+              </button>
+            )}
           </>
         )}
         {!sql && (
@@ -194,6 +202,7 @@ export function NotebookCellView(props: Props) {
               onSave={props.onSave}
             />
           </div>
+          {run.running && <LoadingState compact className="notebook-running" title={t("Running…")} />}
           <SqlOutput cell={cell} run={run} onChange={onChange} />
         </>
       ) : (

@@ -117,6 +117,8 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [editing, setEditing] = useState<ReadonlySet<string>>(() => new Set(tab.cells.filter((c) => c.kind === "markdown" && !c.text.trim()).map((c) => c.id)));
   const [runningAll, setRunningAll] = useState(false);
+  // "Stop" was pressed during "Run all": the next cells do not start.
+  const stopped = useRef(false);
   const copy = useRef<Copy | null>(null);
   // The copy is made or loaded again by one cell at a time.
   const copying = useRef<Promise<unknown>>(Promise.resolve());
@@ -301,11 +303,23 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
     }
   }
 
+  /** Cancels the statement `id` is running, with the cancel the SQL editor uses. */
+  function stopCell(id: string) {
+    const job = runsNow.current[id]?.result?.jobId;
+    if (job != null) void api.cancelQuery(job).catch(() => undefined);
+  }
+
+  function stopAll() {
+    stopped.current = true;
+    for (const [id, run] of Object.entries(runsNow.current)) if (run.running) stopCell(id);
+  }
+
   async function runAll() {
+    stopped.current = false;
     setRunningAll(true);
     try {
       for (const cell of tabNow.current.cells) {
-        if (!(await runCell(cell.id))) break;
+        if (stopped.current || !(await runCell(cell.id))) break;
       }
     } finally {
       setRunningAll(false);
@@ -430,6 +444,11 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
         <button type="button" className="primary" disabled={runningAll} onClick={() => void runAll()} data-action="run_all">
           {t("Run all")}
         </button>
+        {runningAll && (
+          <button type="button" onClick={stopAll} data-action="stop_all">
+            {t("Stop")}
+          </button>
+        )}
         <button type="button" onClick={() => addCell("sql")} data-action="add_sql">
           {t("+ SQL")}
         </button>
@@ -485,6 +504,7 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
             connectionName={connection.name}
             onChange={(patch) => changeCell(cell.id, patch)}
             onRun={() => void runCell(cell.id)}
+            onStop={() => stopCell(cell.id)}
             onPlan={() => togglePlan(cell)}
             onEdit={(on) =>
               setEditing((e) => {
