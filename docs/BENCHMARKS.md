@@ -44,6 +44,46 @@ the Parquet file is 45 MB, the CSV 374 MB.
 The GPU runs inside the WebView2 browser process (`--in-process-gpu`): one process fewer and
 about 55 MB less at rest, with the same scrolling performance as a separate GPU process.
 
+## Windows, 2 November 2026 (group S)
+
+Release build of PlatypusDB 0.3.0 on the same machine as above (Ryzen 7 9700X, 32 GB, Windows
+11 Pro; WebView2 is now 156). The scenarios are `apps/desktop/e2e/scenarios/s-perf-*.mjs`; each
+prints its numbers and asserts bounds with a wide margin.
+
+**Memory at rest, 1 connection open** (SQLite, 3 s after expanding it; three runs): 167-168 MB
+private (app 10 MB + WebView2 158 MB). The MVP target is < 150 MB and 0.1.0 measured 126-132 MB:
+this build is over the target. The start time was not re-measured.
+
+**Long session** (`s-perf-soak.mjs`, SQLite, no Docker): cycles of open an editor, run and scroll
+100,000 rows, chart them, open a table's data, edit a cell and discard, close every tab, open
+and close Settings. The private memory of the app and WebView2 is sampled after each cycle
+(`target/perf/soak-<time>.csv`, with the JS heap and the DOM node count).
+
+| Run | Cycles | Warm-up level | End | Slope after warm-up |
+|---|---|---|---|---|
+| 60 minutes | 1,793 | 504 MB | 525 MB (+21 MB) | 32 MB/hour over 45 min |
+| 4 minutes (default), twice | 118 | 417-443 MB | 458-461 MB (+18, +41 MB) | not checked under 10 min |
+
+Memory climbs from 165 MB to about 500 MB in the first ten minutes (WebView2's allocator and
+the 100,000-row buffers), then stays flat: no leak was found. The JS heap stays at 20-50 MB and
+the DOM at 260 nodes throughout. The checks: the end is at most 150 MB above the warm-up level
+(the first quarter, at least 90 s) and, for runs of 10 minutes or more, the slope is at most
+60 MB/hour. The app process alternates between 15 and 50 MB as a result is freed and the next
+is loaded.
+
+**Slow remote database** (`s-perf-slow-remote.mjs`, a node TCP proxy adding 150 ms per chunk each
+way and capping the link at 1 MB/s): a server that accepts the connection and never answers made
+the connect hang for good, since `connect_timeout` only bounds the TCP connect. Fixed: it now
+ends after the timeout (10 s by default) with "the server did not answer within 10 s", the page
+drawing frames (longest 7 ms) meanwhile. The rest of the scenario (connect, navigator, cancel,
+50,000 rows over the slow link) and the two below were written but **not measured**: the
+Docker engine of the test machine failed to start (Docker Desktop 4.80 error "initializing
+Inference manager") for the whole session.
+
+**Millions of rows** (`s-perf-millions-postgres.mjs`, 5,000,000 rows) and **thousands of
+objects** (`s-perf-objects-postgres.mjs`, 5,000 tables, 500 views, 200 functions): not measured,
+for the same reason.
+
 ## Linux
 
 Release build of 28 October 2026 on Ubuntu 24.04 (WebKitGTK 2.52), in a 4-vCPU cloud

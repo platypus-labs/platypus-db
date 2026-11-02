@@ -142,3 +142,54 @@ export function memory(dir) {
   const [app, webview] = out.split(/\s+/).map((n) => Math.round(Number(n) / 1e6));
   return { app, webview };
 }
+
+/** Milliseconds from running `act` in the page to the first poll where `done` holds. */
+export async function timed(page, act, done, timeout = 60_000) {
+  const started = performance.now();
+  if (act) await page.eval(act);
+  await page.waitFor(done, timeout);
+  return Math.round(performance.now() - started);
+}
+
+/** Starts recording the page's animation frames (`stopFrames` ends it). */
+export function startFrames(page) {
+  return page.eval(`(() => {
+    const frames = (window.__frames = { times: [], on: true });
+    const tick = (t) => { if (!frames.on) return; frames.times.push(t); requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  })()`);
+}
+
+const frameStats = `(times) => {
+  const gaps = times.slice(1).map((t, i) => t - times[i]).sort((a, b) => a - b);
+  const span = times.length > 1 ? times.at(-1) - times[0] : 0;
+  return { frames: times.length, fps: span > 0 ? Math.round((gaps.length / span) * 1000) : 0,
+    p95: gaps.length ? Math.round(gaps[Math.floor(gaps.length * 0.95)] * 10) / 10 : 0, max: gaps.length ? Math.round(gaps.at(-1)) : 0 };
+}`;
+
+/** Stops `startFrames`: the frames drawn, the frame rate, the p95 and the longest frame (ms). */
+export function stopFrames(page) {
+  return page.eval(`(${frameStats})((() => { window.__frames.on = false; return window.__frames.times; })())`);
+}
+
+/** Scrolls the element `el` (an expression) down by `px` every frame for `ms` and returns the
+ *  statistics of those frames, like `stopFrames`, and where it got to (`top`). */
+export function scrollFrames(page, el, px, ms) {
+  return page.eval(`new Promise((resolve) => {
+    const el = ${el}; const times = []; const end = performance.now() + ${ms};
+    const tick = (t) => {
+      times.push(t);
+      el.scrollTop += ${px};
+      if (t < end) return requestAnimationFrame(tick);
+      resolve({ ...(${frameStats})(times), top: el.scrollTop });
+    };
+    requestAnimationFrame(tick);
+  })`);
+}
+
+/** Memory of the app now, printed as `label: app N MB + webview N MB`; returns the total (MB). */
+export function memoryNow(dir, label) {
+  const m = memory(dir);
+  console.log(`  memory ${label}: app ${m.app} MB + webview ${m.webview} MB = ${m.app + m.webview} MB`);
+  return m.app + m.webview;
+}

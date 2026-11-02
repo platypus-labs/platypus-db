@@ -26,7 +26,7 @@ tokio-postgres-rustls.workspace = true
 [dev-dependencies]
 arrow-cast.workspace = true
 criterion.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net"] }
 
 [[bench]]
 name = "decode"
