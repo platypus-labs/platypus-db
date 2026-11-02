@@ -575,7 +575,7 @@
 /* Wide controls (theme cards, pictures) take a full-width row under their label. */
 .setting.pictures > :not(span):not(.setting-reset),
 .setting:has(> .swatches-control) > .swatches-control,
-.setting > textarea {
+.setting > textarea:not(span):not(.setting-reset) {
   grid-column: 1 / -1;
   grid-row: 2;
 }
