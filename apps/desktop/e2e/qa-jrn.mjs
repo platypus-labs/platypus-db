@@ -56,7 +56,8 @@ const portFree = () =>
  *  anything: the text of a dialog that asked first, or null once the app has exited. With
  *  `answer` the dialog's button of that text is clicked. */
 export async function closeApp(page, { answer = null, timeout = 20_000 } = {}) {
-  await page.eval(`(() => {
+  // Not awaited: the window can go before the page answers, and the answer then never comes.
+  page.eval(`(() => {
     const own = document.querySelector('.window-controls .close');
     if (own) own.click();
     else window.__TAURI_INTERNALS__.invoke('plugin:window|close', { label: 'main' });

@@ -879,6 +879,7 @@
 }
 
 .toaster .toast {
+  margin: 0;
   pointer-events: auto;
   cursor: pointer;
   max-width: 480px;

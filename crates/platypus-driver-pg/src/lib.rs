@@ -254,13 +254,24 @@ where
     T: MakeTlsConnect<Socket> + Send + 'static,
     T::Stream: Send + 'static,
 {
-    let (client, connection) = config
-        .connect(tls)
-        .await
-        .map_err(|e| match e.as_db_error() {
-            Some(_) => map_error(e),
-            None => Error::Connect(error_chain(&e)),
-        })?;
+    // `connect_timeout` of tokio-postgres bounds only the TCP connect: a server (or a proxy)
+    // that accepts the socket and never answers the startup would hang the connect for good.
+    let connecting = config.connect(tls);
+    let connected = match config.get_connect_timeout() {
+        Some(limit) => tokio::time::timeout(*limit, connecting)
+            .await
+            .map_err(|_| {
+                Error::Connect(format!(
+                    "the server did not answer within {} s",
+                    limit.as_secs()
+                ))
+            })?,
+        None => connecting.await,
+    };
+    let (client, connection) = connected.map_err(|e| match e.as_db_error() {
+        Some(_) => map_error(e),
+        None => Error::Connect(error_chain(&e)),
+    })?;
     // The connection drives the socket, keeping the notices it reads; it ends when the
     // client is dropped. A notice is read before the end of the statement that raised it.
     let mut connection = connection;

@@ -1321,7 +1321,7 @@ procede solo con i mockup approvati; una pagina senza mockup approvato non si to
 
 ### Gruppo S — Collaudo finale
 
-**Stato: fatto in parte (restano i collaudi a mano, le prestazioni, Linux e macOS).** Si prende ora che il gruppo R è completato, sull'app finita e ridisegnata: è il collaudo
+**Stato: fatto in parte (resta il collaudo a mano degli installer; Linux e macOS).** Si prende ora che il gruppo R è completato, sull'app finita e ridisegnata: è il collaudo
 prima della v1.0, fatto con calma e con metodo, non una passata veloce.
 
 Fatto: l'inventario in [COVERAGE.md](COVERAGE.md) e i test per i suoi buchi; conformance nuova
@@ -1330,11 +1330,21 @@ due giri di tester, uno per area (scenari `qa4-*`, 83 bug) e uno con tester nuov
 48 bug), tutti corretti, ognuno con il suo scenario; la revisione del codice (20 correzioni) e la
 revisione di sicurezza (17 correzioni, SR1-SR17); la verifica finale tutta verde: `cargo fmt`,
 clippy, tutti i test, la conformance su ogni database raggiungibile (Oracle compreso) e i circa 680
-scenari E2E. Le liste del collaudo a mano sono in [COLLAUDO.md](COLLAUDO.md).
+scenari E2E. Le liste del collaudo a mano sono in [COLLAUDO.md](COLLAUDO.md). Poi (novembre 2026):
+i sei percorsi da utente come scenari completi `s-jrn-*`, ognuno in inglese, in italiano e da sola
+tastiera con un riavvio vero a metà (6 bug trovati e corretti, tra cui la rinomina di uno script che
+non aggiornava la scheda aperta); l'aggiornamento da ogni release pubblicata (`s-upgrade-*`: l'eseguibile
+di 0.2.1 e 0.3.0, estratto dall'MSI senza installarlo, scrive i dati di un utente, anche con il
+master password, e la build nuova li ritrova); le prestazioni (`s-perf-*`: 5 milioni di righe, 5.000
+tabelle, un'ora di lavoro senza crescita di memoria, database remoto lento dietro un proxy), con i
+numeri in [BENCHMARKS.md](BENCHMARKS.md) e due correzioni del driver PostgreSQL (connect che non
+finiva con un server muto, opzione `connect_timeout` ignorata).
 
-Resta: il collaudo a mano di installer e aggiornamento da 0.2.1 e dell'integrazione col sistema
-(vassoio, notifiche, associazioni dei file) e i percorsi da utente a mano, con le liste di
-COLLAUDO.md da spuntare; le prestazioni e la memoria (numeri in BENCHMARKS.md); Linux (`⛔ bloccato`:
+Resta: il collaudo a mano, su una VM pulita, della meccanica degli installer (NSIS e MSI sopra una
+versione installata, disinstallazione, download dell'aggiornamento automatico) e dell'integrazione col
+sistema (vassoio, notifiche, associazioni dei file), con le liste di COLLAUDO.md da spuntare; due
+problemi aperti in BENCHMARKS.md (memoria a riposo 167 MB contro i 150 dell'obiettivo, un Annulla
+premuto prima che la query arrivi a un server lento va perso); Linux (`⛔ bloccato`:
 serve un desktop Linux con GPU, come per il gruppo P); `⏭ serve un Mac` per macOS.
 
 Verificare che tutto funzioni su tutti i database e i sistemi, come lo usa una persona vera, e
@@ -1358,11 +1368,11 @@ nei file delle aree toccate, in commit piccoli e separati
 | ✅ 🆕 **Inventario delle funzionalità** con, per ognuna, lo scenario E2E o il test di conformance che la copre; i buchi diventano test | P1 | N |
 | ✅ 🆕 **Giro per aree** con un tester ciascuna (connessioni, navigator, editor, griglia e modifica, analisi, import/export, impostazioni e tab, sicurezza e MCP, schema, amministrazione) sui casi normali, i casi limite e gli errori | P1 | N |
 | ✅ 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
-| 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
-| 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano | P1 | N |
+| ✅ 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
+| 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano — fatto per i dati (`s-upgrade-*`); resta la meccanica degli installer a mano su una VM | P1 | N |
 | ⛔ 🆕 **Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
 | ⏭ serve un Mac — 🆕 **macOS**: gli scenari E2E o un collaudo a mano con la stessa lista | P2 | N |
-| 🆕 **Prestazioni e memoria**: tabelle da milioni di righe, schemi con migliaia di oggetti, una sessione di ore senza che la memoria cresca, database remoto lento; i numeri in BENCHMARKS.md | P2 | N |
+| ✅ 🆕 **Prestazioni e memoria**: tabelle da milioni di righe, schemi con migliaia di oggetti, una sessione di ore senza che la memoria cresca, database remoto lento; i numeri in BENCHMARKS.md | P2 | N |
 | ✅ 🆕 **Revisione di sicurezza** del codice: credenziali, MCP, sola lettura, SQL generato, file letti e scritti | P2 | N |
 | ✅ 🆕 Secondo giro con tester nuovi che non hanno visto i rapporti del primo, poi la verifica completa (fmt, clippy, test, E2E, conformance) tutta verde prima della v1.0 | P1 | N |
 

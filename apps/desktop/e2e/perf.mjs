@@ -3,36 +3,21 @@
 // app's processes.
 import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
-import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { CTRL } from "./cdp.mjs";
+import { needsPort } from "./conn-helpers.mjs";
 import { revealItem } from "./menu-sub.mjs";
+import { status, treeRow, visibleTab } from "./qa-jrn.mjs";
 
-export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
-export const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
+export { status, treeRow, visibleTab };
 export const statusbar = `(${visibleTab}?.querySelector('.statusbar')?.textContent ?? '')`;
 export const grid = `${visibleTab}.querySelector('.grid-scroll')`;
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
-export const treeRow = (label) =>
-  `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 
 export const PG = { name: "QA perf PG", port: 55432, password: "platypus" };
 export const MSSQL = { name: "QA perf SQL Server", port: 51433, password: "Platypus-2026" };
 
-/** `skip()` of a scenario that needs the database container listening on `port`. */
-export function needsPort(port, what) {
-  return () =>
-    new Promise((resolve) => {
-      const socket = tcp({ host: "127.0.0.1", port, timeout: 1000 });
-      const done = (reason) => {
-        socket.destroy();
-        resolve(reason);
-      };
-      socket.on("connect", () => done(null));
-      socket.on("error", () => done(`no ${what} on port ${port} (docker compose -f docker/compose.yml up -d)`));
-      socket.on("timeout", () => done(`no ${what} on port ${port}`));
-    });
-}
+export { needsPort };
 
 export const sqliteEntry = (name, file) =>
   `[[connections]]\nid = "00000000-0000-4000-8000-0000000e0001"\nname = "${name}"\ndriver = "sqlite"\ndatabase = '${file}'\nsave_password = false\n`;
@@ -141,4 +126,55 @@ export function memory(dir) {
   const out = spawnSync("powershell", ["-NoProfile", "-Command", script], { encoding: "utf8" }).stdout.trim();
   const [app, webview] = out.split(/\s+/).map((n) => Math.round(Number(n) / 1e6));
   return { app, webview };
+}
+
+/** Milliseconds from running `act` in the page to the first poll where `done` holds. */
+export async function timed(page, act, done, timeout = 60_000) {
+  const started = performance.now();
+  if (act) await page.eval(act);
+  await page.waitFor(done, timeout);
+  return Math.round(performance.now() - started);
+}
+
+/** Starts recording the page's animation frames (`stopFrames` ends it). */
+export function startFrames(page) {
+  return page.eval(`(() => {
+    const frames = (window.__frames = { times: [], on: true });
+    const tick = (t) => { if (!frames.on) return; frames.times.push(t); requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  })()`);
+}
+
+const frameStats = `(times) => {
+  const gaps = times.slice(1).map((t, i) => t - times[i]).sort((a, b) => a - b);
+  const span = times.length > 1 ? times.at(-1) - times[0] : 0;
+  return { frames: times.length, fps: span > 0 ? Math.round((gaps.length / span) * 1000) : 0,
+    p95: gaps.length ? Math.round(gaps[Math.floor(gaps.length * 0.95)] * 10) / 10 : 0, max: gaps.length ? Math.round(gaps.at(-1)) : 0 };
+}`;
+
+/** Stops `startFrames`: the frames drawn, the frame rate, the p95 and the longest frame (ms). */
+export function stopFrames(page) {
+  return page.eval(`(${frameStats})((() => { window.__frames.on = false; return window.__frames.times; })())`);
+}
+
+/** Scrolls the element `el` (an expression) down by `px` every frame for `ms` and returns the
+ *  statistics of those frames, like `stopFrames`, and where it got to (`top`). */
+export function scrollFrames(page, el, px, ms) {
+  return page.eval(`new Promise((resolve) => {
+    const el = ${el}; const times = []; const end = performance.now() + ${ms};
+    const tick = (t) => {
+      times.push(t);
+      el.scrollTop += ${px};
+      if (t < end) return requestAnimationFrame(tick);
+      resolve({ ...(${frameStats})(times), top: el.scrollTop });
+    };
+    requestAnimationFrame(tick);
+  })`);
+}
+
+/** Memory of the app now, printed as `label: app N MB + webview N MB`; returns the total (MB). */
+export function memoryNow(dir, label) {
+  const m = memory(dir);
+  console.log(`  memory ${label}: app ${m.app} MB + webview ${m.webview} MB = ${m.app + m.webview} MB`);
+  return m.app + m.webview;
 }

@@ -160,8 +160,8 @@ to the package manager.
 - Large schemas stay quick: with 10,000 tables the tree opens in a fraction of a second and
   renders only the rows in view.
 - The tree is cached on disk: it shows at once on start, and offline. Nothing connects until
-  you open it. Each connection shows its database's logo, with its color and its state (an open
-  session, a failed connection) as small marks on the logo.
+  you open it. Each connection shows its database's logo, ringed with its color, and its state (an open
+  session, a failed connection) as a small mark on the logo.
 - A table's menu keeps the main actions at the top, groups the rest in submenus (*Generate SQL*,
   *Maintenance*, *Data*) and puts *Truncate* and *Drop* last; the browser's own menu never shows,
   except in text fields. Index rows have their menu too. Copy actions confirm with a short
@@ -694,8 +694,8 @@ through the MCP server.
   the active tab, and the window frame takes the color of its type, green for development,
   blue for test and red for production. On Windows and Linux the bar is also the window's title
   bar, with its buttons (Settings › Appearance › Title bar puts the system's back).
-- **Command palette** (`Ctrl+K`): actions, connections, tables and recent queries, found by
-  typing a few letters.
+- **Command palette** (`Ctrl+K`): actions, connections, tables, saved scripts (by name) and
+  recent queries, found by typing a few letters.
 - **Resizable navigator**: drag the edge between the connections and the work (or focus it and
   use the arrows); a double-click brings back the default width. `Ctrl+B`, or the button at the
   left of the top bar, hides and shows it.
@@ -727,8 +727,8 @@ through the MCP server.
   background, such as connections and catalog loads, with their time, to copy into a report.
   A query that runs longer than 10 seconds (Settings › SQL editor) ends with a system
   notification when the window is in the background.
-- From the keyboard: arrows, Enter and the menu key in the navigator, the tab bar and the
-  context menus; dialogs keep the focus inside them and give it back when they close, and Enter
+- From the keyboard: arrows, Enter and the menu key (or `Shift+F10`) in the navigator, the tab
+  bar, the result grid and the context menus; dialogs keep the focus inside them and give it back when they close, and Enter
   confirms a dialog's main action (never a destructive one, which takes a click).
 
 ## Sharing and sync

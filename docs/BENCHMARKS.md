@@ -44,6 +44,89 @@ the Parquet file is 45 MB, the CSV 374 MB.
 The GPU runs inside the WebView2 browser process (`--in-process-gpu`): one process fewer and
 about 55 MB less at rest, with the same scrolling performance as a separate GPU process.
 
+## Windows, 2 November 2026 (group S)
+
+Release build of PlatypusDB 0.3.0 on the same machine as above (Ryzen 7 9700X, 32 GB, Windows
+11 Pro; WebView2 is now 156). The scenarios are `apps/desktop/e2e/scenarios/s-perf-*.mjs`; each
+prints its numbers and asserts bounds with a wide margin.
+
+**Memory at rest, 1 connection open** (SQLite, 3 s after expanding it; three runs): 167-168 MB
+private (app 10 MB + WebView2 158 MB). The MVP target is < 150 MB and 0.1.0 measured 126-132 MB:
+this build is over the target. The start time was not re-measured.
+
+**Long session** (`s-perf-soak.mjs`, SQLite, no Docker): cycles of open an editor, run and scroll
+100,000 rows, chart them, open a table's data, edit a cell and discard, close every tab, open
+and close Settings. The private memory of the app and WebView2 is sampled after each cycle
+(`target/perf/soak-<time>.csv`, with the JS heap and the DOM node count).
+
+| Run | Cycles | Warm-up level | End | Slope after warm-up |
+|---|---|---|---|---|
+| 60 minutes | 1,793 | 504 MB | 525 MB (+21 MB) | 32 MB/hour over 45 min |
+| 4 minutes (default), twice | 118 | 417-443 MB | 458-461 MB (+18, +41 MB) | not checked under 10 min |
+
+Memory climbs from 165 MB to about 500 MB in the first ten minutes (WebView2's allocator and
+the 100,000-row buffers), then stays flat: no leak was found. The JS heap stays at 20-50 MB and
+the DOM at 260 nodes throughout. The checks: the end is at most 150 MB above the warm-up level
+(the first quarter, at least 90 s) and, for runs of 10 minutes or more, the slope is at most
+60 MB/hour. The app process alternates between 15 and 50 MB as a result is freed and the next
+is loaded.
+
+**Slow remote database** (`s-perf-slow-remote.mjs`, a node TCP proxy adding 150 ms per chunk each
+way and capping the link at 1 MB/s, PostgreSQL in Docker behind it). Two findings, both fixed:
+a server that accepts the connection and never answers made the connect hang for good (`connect_timeout`
+only bounds the TCP connect), and the `connect_timeout` option of a saved connection never reached
+the driver (it waited the default 10 s whatever the option said).
+
+| Step | Measured | Bound |
+|---|---|---|
+| Silent server, default timeout | gives up after 10.1 s, "did not answer within 10 s" | 9-12.5 s |
+| Silent server, `connect_timeout = 3` option | 3.1 s, "did not answer within 3 s" | 2.5-6 s |
+| Connect through the slow link | 6.4 s (password dialog, connect, completion metadata) | < 15 s |
+| Page lag / longest frame while connecting or loading | 0-1 ms / 6-11 ms | < 200 ms / < 250 ms |
+| Cancel of `pg_sleep(60)`, once running on the server | 0.68 s | < 2.5 s |
+| 50,000 rows (4 columns) over the link | 37.4 s (500-row fetches, one round trip each) | < 90 s |
+
+While the 50,000 rows arrive the page answers within 2-5 ms and draws 6,700 frames (longest 10 ms).
+A Cancel clicked at once, before the statement reaches the server over this link, is lost (the
+statement runs to its end and Cancel stays enabled); a second click works. Not fixed: see the
+`BUG` note in the scenario.
+
+**Millions of rows** (`s-perf-millions-postgres.mjs`, `s_perf_5m`: 5,000,000 rows, 6 columns, primary
+key on `id`), table data opened from the navigator and as queries; memory is the private memory of
+the app plus WebView2:
+
+| Step | Measured | Bound |
+|---|---|---|
+| First rows on screen (table data) | 170 ms | < 1.5 s |
+| Count rows | 60-130 ms | < 2 s |
+| Scrolling the streamed table / query | 180 fps, longest frame 6-9 ms | >= 40 fps, < 250 ms |
+| "Fetch all" of the 5M rows | 7.5 s | < 20 s |
+| Sort by the key from the header, both ways | 115-140 ms | < 1 s |
+| Filter `grp = …` from the grid menu (5,000 rows, all fetched) | 500 ms | < 2 s |
+| Query `SELECT *`, first rows | 120 ms | < 1 s |
+| Query ordered by an unindexed column (server sorts 5M rows) | 1.9 s | < 6 s |
+| Cancel of a 5M x 5M x 5M cross join | 62-64 ms | < 1.5 s |
+| Memory: idle / table opened / 5M rows buffered / at the end | 177 / 198 / 556 / 300 MB | < 1200 MB buffered, < 800 MB end |
+
+The 5M rows buffered cost 280 MB in the app process (the backend holds the result; the grid keeps
+100 blocks of 500 rows). The grid caps its scroll height at 10,000,000 px and maps it to the row,
+so the last row is reached with Ctrl+End.
+
+**Thousands of objects** (`s-perf-objects-postgres.mjs`: schema with 5,000 tables chained by
+foreign keys, 500 views, 200 functions):
+
+| Step | Measured | Bound |
+|---|---|---|
+| Expand the schema (5,000 tables listed) / each folder | 70-115 ms / 20-45 ms | < 500 ms |
+| Navigator filter to one table | 7 ms | < 500 ms |
+| Completion of a table name after `schema.` (32 options) | 380-390 ms | < 1.5 s |
+| Metadata search, narrow / 1,000 hits shown | 61 ms / 105-115 ms | < 500 ms / < 1 s |
+| One table's object page (from the menu) | 260 ms | < 1 s |
+| ER diagram of 100 tables, 99 foreign keys | 0.91-0.96 s | < 3 s |
+| Memory: connected / schema expanded / end | 180 / 242 / 431 MB | < 900 MB at the end |
+
+The navigator keeps fewer than 1,500 rows in the DOM with 5,700 objects open.
+
 ## Linux
 
 Release build of 28 October 2026 on Ubuntu 24.04 (WebKitGTK 2.52), in a 4-vCPU cloud

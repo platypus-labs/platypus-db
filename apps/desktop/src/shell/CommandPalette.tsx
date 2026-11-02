@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { actionsFor, runAction, shortcutLabel } from "../actions";
-import { api, type CompletionCatalog, type HistoryEntry, isEmbedded, type SavedConnection, toCommandError } from "../api";
+import { api, type CompletionCatalog, type HistoryEntry, isEmbedded, type SavedConnection, type ScriptList, toCommandError } from "../api";
+import { connectionFor, nameOf, openScript } from "../scripts/scripts";
 import { projectKey } from "../projects/state";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import { parseDbKey, workbench } from "../workbench";
@@ -9,7 +10,7 @@ import { type FuzzyMatch, fuzzy, highlightRuns } from "./fuzzy";
 import { t } from "../i18n";
 
 /** The icon of each kind of result, by the kind's untranslated name. */
-const KIND_ICONS: Record<string, IconName> = { Action: "run", Project: "folder", Connection: "database", "Table or view": "table", "Recent query": "history" };
+const KIND_ICONS: Record<string, IconName> = { Action: "run", Project: "folder", Connection: "database", "Table or view": "table", "Recent query": "history", Script: "sql" };
 
 /** Results shown at most. */
 const LIMIT = 60;
@@ -82,12 +83,14 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [scripts, setScripts] = useState<ScriptList | null>(null);
   const list = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     // In a project, its connections' queries only: the limit counts them alone.
     const connectionIds = workbench().activeProject() ? connections.map((c) => c.id) : undefined;
     api.searchHistory({ connectionIds, limit: 30 }).then(setHistory, () => setHistory([]));
+    api.listScripts(workbench().activeProject()?.id ?? null).then(setScripts, () => setScripts(null));
   }, []);
 
   const items = useMemo((): Item[] => {
@@ -145,6 +148,21 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
           })),
         );
       }),
+      // Saved scripts, found by name; Enter opens one on its connection.
+      ...(scripts?.entries ?? []).flatMap((e) => {
+        const connection = connectionFor(e, connections);
+        if (e.folder || !connection) return [];
+        return [
+          {
+            key: `script:${e.path}`,
+            kind: t("Script"),
+            kindId: "Script",
+            label: nameOf(e.path).replace(/\.sql$/i, ""),
+            detail: connection.name,
+            run: () => openScript(scripts!.root, e, connection),
+          },
+        ];
+      }),
       ...history.flatMap((h) => {
         const connection = byId.get(h.connection_id);
         if (!connection) return [];
@@ -160,7 +178,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         ];
       }),
     ];
-  }, [connections, catalogs, history]);
+  }, [connections, catalogs, history, scripts]);
 
   const results = useMemo(() => {
     const scored = items.flatMap((item) => {

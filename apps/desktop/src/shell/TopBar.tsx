@@ -2,7 +2,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
 import { runAction, shortcutLabel, titleWithKeys, useActions } from "../actions";
 import type { Project, SavedConnection } from "../api";
-import mark from "../assets/brand/platypus-mark.png";
+// The app's own icon, as the taskbar shows it.
+import mark from "../assets/brand/platypus-icon.png";
 import { CONNECTION_TYPES } from "../connections";
 import { setSetting, setStored, useSetting } from "../settings";
 import { maskSetting } from "../guards/mask";
@@ -45,7 +46,7 @@ export function TopBar({ project, connection }: Props) {
   return (
     <header className={`topbar${ownTitleBar ? " own-title-bar" : ""}`} {...drag} {...barHandlers}>
       {/* Not draggable: on Linux the bar moves the window once the pointer moves (windowDrag.ts). */}
-      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={26} height={26} draggable={false} {...drag} />
+      <img className="topbar-mark" src={mark} alt="PlatypusDB" width={22} height={22} draggable={false} {...drag} />
       <button
         type="button"
         id={SIDEBAR_TOGGLE_ID}

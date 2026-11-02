@@ -4,7 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting } from "@codemirror/language";
-import { Annotation, Compartment, EditorState } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import type { CompletionCatalog, DriverKind } from "../api";
 import { highlight, language, theme } from "./SqlEditor";
@@ -87,7 +87,9 @@ export const SqlLine = forwardRef<SqlLineHandle, Props>(function SqlLine(props, 
           }
         }),
         theme,
-        lineTheme,
+        // Above the editor's theme, whose padding and background would make the line taller
+        // than its field and hide the field's border.
+        Prec.highest(lineTheme),
       ],
     });
     const v = new EditorView({ state, parent: host.current! });
