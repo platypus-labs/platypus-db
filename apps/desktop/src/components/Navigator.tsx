@@ -1248,9 +1248,8 @@ export function Navigator(props: Props) {
               {row.expanded !== undefined && <Icon name={row.expanded ? "chevron-down" : "chevron-right"} size={12} />}
             </span>
             {row.driver ? (
-              <span className="conn-logo">
+              <span className={row.color ? "conn-logo colored" : "conn-logo"} style={row.color ? ({ "--conn-color": row.color } as React.CSSProperties) : undefined}>
                 <DriverIcon driver={row.driver} />
-                {row.color && <span className="conn-color" style={{ background: row.color }} />}
                 {row.connected && <span className="connected-mark" role="img" aria-label={t("Connected")} />}
                 {row.status === "error" && <span className="conn-failed" />}
               </span>

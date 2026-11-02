@@ -413,14 +413,9 @@
   height: 11px;
 }
 
-.conn-color {
-  position: absolute;
-  left: -2px;
-  top: -2px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius);
-  box-shadow: 0 0 0 1.5px var(--frame, var(--bg-rail));
+/* The connection's color: a ring around its logo, a hair away from it. */
+.conn-logo.colored .driver-icon .driver-logo {
+  box-shadow: 0 0 0 1px var(--frame, var(--bg-rail)), 0 0 0 2.5px var(--conn-color);
 }
 
 .conn-logo .connected-mark,
