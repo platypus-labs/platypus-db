@@ -150,13 +150,13 @@ export function TableEditor({ tab, connection, active, sideSession, catalog, onN
           </span>
         </label>
         <span className="spacer" />
-        <button className="square" disabled={!dirty} onClick={() => setDesign(original ?? blankDesign())} title={t("Revert the changes")} aria-label={t("Revert")}>
+        <button className="square" disabled={!dirty} onClick={() => setDesign(original ?? blankDesign())} title={t("Discard the changes")} aria-label={t("Discard")}>
           <Icon name="revert" />
         </button>
         <button
           className="primary"
           disabled={!ready || connection.read_only}
-          title={connection.read_only ? t("{name} is read-only", { name: connection.name }) : undefined}
+          title={connection.read_only ? t("{name} is read-only", { name: connection.name }) : dirty ? undefined : t("No changes to save")}
           onClick={() => setConfirming(true)}
         >
           {t(tab.table === null ? "Create…" : "Save…")}

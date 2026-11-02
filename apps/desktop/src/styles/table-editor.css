@@ -10,11 +10,15 @@
   min-width: 220px;
 }
 
+/* A wide window does not stretch the fields: the table stops at a readable width. */
 .table-editor .edit-table {
   width: 100%;
+  max-width: 1100px;
 }
 
 .table-editor .edit-table td {
+  height: 40px;
+  padding-block: var(--space-4);
   vertical-align: middle;
 }
 

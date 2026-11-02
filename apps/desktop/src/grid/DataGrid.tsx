@@ -367,7 +367,7 @@ export function DataGrid({
 
   /** Widens columns to fit the first rows, once per result; saved widths stay. */
   function sizeToData() {
-    const { columns, rowCount, cache, layout } = props.current;
+    const { columns, rowCount, cache, layout, decorate, topRows } = props.current;
     if (sizedToData.current || rowCount === 0 || cache.get(0, 0) === undefined) return;
     sizedToData.current = true;
     const canvas = canvasRef.current;
@@ -381,7 +381,8 @@ export function DataGrid({
       if (saved !== undefined) return saved;
       let max = headerWidth(c);
       for (let r = 0; r < sample; r++) {
-        const v = cache.get(r, col);
+        // A foreign key's label ("1 Giulia Fer…") is part of what the cell shows.
+        const v = cellText(r + topRows, col, decorate?.(r + topRows, col)) || cache.get(r, col);
         if (v) max = Math.max(max, measure(v, FONT) + PAD * 2);
       }
       return Math.min(MAX_INITIAL_COL_W, Math.ceil(max));
@@ -746,7 +747,11 @@ export function DataGrid({
   const context = (): GridActionContext => ({ grid: api, source });
   useImperativeHandle(ref, () => api);
   // Decorations come from outside the grid: redraw when they change.
-  useEffect(schedule, [schedule, decorate]);
+  useEffect(() => {
+    // Labels of foreign keys arrive after the rows: the columns fit them too (saved widths stay).
+    sizedToData.current = false;
+    schedule();
+  }, [schedule, decorate]);
 
   // Redraw on data, size, layout and theme changes.
   useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion, !!headerMasked]);

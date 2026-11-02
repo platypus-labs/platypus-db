@@ -94,6 +94,8 @@ interface PanelProps {
   /** The table whose rows the result shows, to edit them. */
   edit?: TableEditTarget | null;
   notes?: NotesScope | null;
+  /** Where a failed statement stopped in the editor, and a way to select it there. */
+  errorAt?: { line: number; column: number; goTo: () => void } | null;
   /** Shown as a chart instead of the grid: what it draws, and where a change of it goes. */
   chart?: { config: ChartConfig | null; onConfig: (config: ChartConfig) => void; bare?: boolean } | null;
   /** Above the grid or the chart: the result's SQL field. */
@@ -130,7 +132,7 @@ function errorText(e: CommandError): string {
   return [`${codePrefix(e)}${e.message}`, e.detail, e.hint].filter(Boolean).join("\n");
 }
 
-function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, notes, chart, toolbar }: PanelProps) {
+function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, notes, errorAt, chart, toolbar }: PanelProps) {
   const [cache, setCache] = useState<RowCache | null>(null);
   const [version, setVersion] = useState(0);
   const { jobId, columns, status } = result;
@@ -155,11 +157,19 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
         className="result-error"
         title={`${codePrefix(e)}${e.message}`}
         actions={
-          <button type="button" onClick={() => void copyText(errorText(e))}>
-            <Icon name="copy" size={14} /> {t("Copy error")}
-          </button>
+          <>
+            {errorAt && (
+              <button type="button" onClick={errorAt.goTo}>
+                {t("Go to the error")}
+              </button>
+            )}
+            <button type="button" onClick={() => void copyText(errorText(e))}>
+              <Icon name="copy" size={14} /> {t("Copy error")}
+            </button>
+          </>
         }
       >
+        {errorAt && <span className="state-line">{t("Line {line}, column {column}", { line: errorAt.line, column: errorAt.column })}</span>}
         {e.detail && <span className="state-line">{t("DETAIL: {text}", { text: e.detail })}</span>}
         {e.hint && <span className="state-line">{t("HINT: {text}", { text: e.hint })}</span>}
       </ErrorState>

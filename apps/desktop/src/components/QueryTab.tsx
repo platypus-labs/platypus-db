@@ -326,6 +326,8 @@ export function QueryTab({
   const editor = useRef<SqlEditorHandle>(null);
   const root = useRef<HTMLDivElement>(null);
   const [tx, setTx] = useState<TransactionState | null>(null);
+  /** Where the last failed statement stopped, for the error panel's "Go to the error". */
+  const [errorAt, setErrorAt] = useState<{ from: number; to: number; message: string; line: number; column: number } | null>(null);
   /** A run waiting for the answer to its checks. */
   const [guard, setGuard] = useState<{ request: GuardRequest; resolve: (run: boolean) => void } | null>(null);
   /** When the open transaction began, as far as the tab saw it. */
@@ -736,11 +738,11 @@ export function QueryTab({
       inSent === null || sent === planned.sql ? inSent : originalOffset(planned.sql, planned.params, values, connection.driver, inSent);
     const from = planned.offset + (inPlanned ?? 0);
     const word = /^[\w$"]+/.exec(text.slice(from));
-    editor.current!.setError({
-      from,
-      to: inPlanned !== null ? from + (word?.[0].length ?? 1) : planned.offset + planned.sql.length,
-      message: status.error.message,
-    });
+    const to = inPlanned !== null ? from + (word?.[0].length ?? 1) : planned.offset + planned.sql.length;
+    const before = text.slice(0, from);
+    const mark = { from, to, message: status.error.message };
+    editor.current!.setError(mark);
+    if (inPlanned !== null) setErrorAt({ ...mark, line: before.split("\n").length, column: from - before.lastIndexOf("\n") });
   }
 
   /** After `USE other` (MySQL, SQL Server), `use other` (MongoDB) or a change of PostgreSQL's
@@ -917,6 +919,7 @@ export function QueryTab({
     cancelAsked.current = false;
     setRunning(true);
     editor.current!.setError(null);
+    setErrorAt(null);
 
     // A run again after saving edited rows reuses the values answered last time.
     if (!again) lastAnswers.current = {};
@@ -2145,6 +2148,7 @@ export function QueryTab({
                 viewer: tab.table && sortable ? { addCondition, columns: shownFilters } : undefined,
               }}
               edit={editTarget(shown)}
+              errorAt={errorAt && { line: errorAt.line, column: errorAt.column, goTo: () => editor.current?.setError(errorAt) }}
               notes={notesScope(shown)}
               chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
               toolbar={resultSql.bar}
