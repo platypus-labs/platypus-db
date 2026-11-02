@@ -4,8 +4,12 @@ import { api, type CompletionCatalog, type HistoryEntry, isEmbedded, type SavedC
 import { projectKey } from "../projects/state";
 import { qualifiedName, viewerSql } from "../sqlNames";
 import { parseDbKey, workbench } from "../workbench";
+import { Icon, type IconName } from "../ui/Icon";
 import { type FuzzyMatch, fuzzy, highlightRuns } from "./fuzzy";
 import { t } from "../i18n";
+
+/** The icon of each kind of result, by the kind's untranslated name. */
+const KIND_ICONS: Record<string, IconName> = { Action: "run", Project: "folder", Connection: "database", "Table or view": "table", "Recent query": "history" };
 
 /** Results shown at most. */
 const LIMIT = 60;
@@ -14,6 +18,8 @@ interface Item {
   key: string;
   /** What it is, as shown: Action, Project, Connection, Table or Recent query. */
   kind: string;
+  /** The kind before translation, to pick its icon. */
+  kindId: string;
   label: string;
   detail?: string;
   shortcut?: string;
@@ -93,6 +99,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         return {
           key: `action:${a.id}`,
           kind: t("Action"),
+          kindId: "Action",
           label: t(a.title),
           detail: reason ? t(reason) : undefined,
           shortcut: shortcutLabel(a),
@@ -104,12 +111,14 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
       ...[{ id: null, name: t("All connections") }, ...workbench().projects()].map((p) => ({
         key: `project:${projectKey(p.id)}`,
         kind: t("Project"),
+          kindId: "Project",
         label: p.name,
         run: () => workbench().switchProject(p.id),
       })),
       ...connections.map((c) => ({
         key: `connection:${c.id}`,
         kind: t("Connection"),
+          kindId: "Connection",
         label: t("Open SQL editor: {name}", { name: c.name }),
         detail: isEmbedded(c.driver) ? c.database : `${c.host}/${c.database}`,
         run: () => workbench().openTab("query", c.id),
@@ -117,6 +126,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
       ...connections.map((c) => ({
         key: `duplicate:${c.id}`,
         kind: t("Connection"),
+          kindId: "Connection",
         label: t("Duplicate connection: {name}", { name: c.name }),
         run: () => workbench().duplicateConnection(c).catch((e: unknown) => workbench().showError(toCommandError(e).message)),
       })),
@@ -127,7 +137,8 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
         return Object.entries(catalog.schemas).flatMap(([schema, tables]) =>
           Object.keys(tables).map((table) => ({
             key: `table:${connectionId}:${database ?? ""}:${schema}.${table}`,
-            kind: t("Table"),
+            kind: t("Table or view"),
+          kindId: "Table or view",
             label: schema === catalog.default_schema ? table : `${schema}.${table}`,
             detail: database ? `${connection.name} · ${database}` : connection.name,
             run: () => openTable(connection, database, catalog, schema, table),
@@ -141,6 +152,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
           {
             key: `history:${h.id}`,
             kind: t("Recent query"),
+          kindId: "Recent query",
             label: h.sql.replace(/\s+/g, " ").trim().slice(0, 140),
             detail: connection.name,
             run: () => workbench().openTab("query", connection.id, { sql: h.sql }),
@@ -213,6 +225,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
                 choose(i);
               }}
             >
+              <Icon name={KIND_ICONS[item.kindId] ?? "sql"} size={14} />
               <span className="palette-label">
                 <Highlight text={item.label} match={match} />
               </span>

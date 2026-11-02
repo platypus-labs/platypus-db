@@ -397,6 +397,13 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
     setVersion((v) => v + 1);
   };
   const zoom = (by: number) => onChange({ zoom: Math.min(2, Math.max(0.25, Math.round((tab.zoom + by) * 100) / 100)) });
+  /** Sets the zoom so the whole diagram fits the visible canvas (within the zoom limits). */
+  const fit = () => {
+    const c = canvas.current;
+    if (!c) return;
+    const by = Math.min((c.clientWidth - 8) / size.w, (c.clientHeight - 8) / size.h);
+    onChange({ zoom: Math.min(2, Math.max(0.25, Math.floor(by * 100) / 100)) });
+  };
   const note = editing === null ? undefined : tab.notes.find((n) => n.id === editing);
 
   // The edit mode.
@@ -606,6 +613,10 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
           <button className="square" type="button" onClick={() => zoom(0.25)} aria-label={t("Zoom in")} title={t("Zoom in")}>
             <Icon name="plus" />
           </button>
+          <button type="button" data-testid="erd-fit" onClick={fit} title={t("Zoom so the whole diagram fits the view")}>
+            <Icon name="expand" />
+            {t("Fit")}
+          </button>
           <span className="erd-sep" />
           <button type="button" onClick={() => onChange({ positions: {} })} title={t("Place every table again from the foreign keys")}>
             <Icon name="schema" />
@@ -655,7 +666,7 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
               markerStart={`url(#${id("many")})`}
               markerEnd={`url(#${id("one")})`}
             >
-              <title>{`${fk.name}: ${table.name} (${fk.columns.join(", ")}) → ${fk.ref_table} (${fk.ref_columns.join(", ")})`}</title>
+              <title>{`${fk.name}: ${table.name} (${fk.columns.join(", ")}) → ${fk.ref_table} (${fk.ref_columns.join(", ")}) · ${t("many to one")}`}</title>
             </path>
           ))}
           {drawn.map((table, i) => (

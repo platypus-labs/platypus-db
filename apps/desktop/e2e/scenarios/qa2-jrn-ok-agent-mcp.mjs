@@ -51,7 +51,7 @@ export default async function (page, ctx) {
 
     // Then marks it Production: read only for agents again.
     await editConnection(page, NAME);
-    await page.eval(fill(formField("Type"), "prod"));
+    await page.eval(fill(formField("Environment"), "prod"));
     await saveForm(page);
     const refused = await run(update("y", 2));
     assert.ok(refused.error && /read-only for agents/.test(refused.text), refused.text);

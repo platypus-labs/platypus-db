@@ -479,3 +479,8 @@
   display: block;
   margin: 0 auto;
 }
+
+.explain-meaning {
+  margin: var(--space-8) 0 0;
+  padding: 0 var(--space-8);
+}

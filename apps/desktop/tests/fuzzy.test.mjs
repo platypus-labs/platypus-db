@@ -19,3 +19,8 @@ test("runs keep every character in order", () => {
   assert.equal(runs.map((r) => r.text).join(""), "Open table");
   assert.equal(bold("Open table", "otb"), "Otb");
 });
+
+test("a prefix of the text beats a scattered match", () => {
+  assert.ok(fuzzy("or", "Order sets").score > fuzzy("or", "customers").score);
+  assert.ok(fuzzy("or", "New order").score > fuzzy("or", "customers").score);
+});

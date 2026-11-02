@@ -228,6 +228,20 @@ registerAction({
     ),
 });
 
+/** " Referenced by N foreign keys: …" when other tables point at the table about to be dropped; empty when none or unknown. */
+async function referencedNote(arg: ObjectArg): Promise<string> {
+  if (arg.object.kind !== "table") return "";
+  try {
+    const id = await workbench().sideSession(arg.connection, arg.database);
+    if (id === null) return "";
+    const keys = (await api.referencingKeys(id, arg.schema.name, arg.object.name)).filter((k) => k.table !== arg.object.name);
+    if (keys.length === 0) return "";
+    return ` ${t("Referenced by {n} foreign key(s) of: {tables}.", { n: keys.length, tables: [...new Set(keys.map((k) => k.table))].join(", ") })}`;
+  } catch {
+    return "";
+  }
+}
+
 registerAction({
   id: "object.drop",
   scope: "navigator.object",
@@ -237,12 +251,12 @@ registerAction({
   group: "danger",
   order: 960,
   when: ({ connection, object }) => can(connection.driver, "droppable", object.kind),
-  run: (arg) =>
+  run: async (arg) =>
     confirmStatement(
       arg,
       {
         title: t("Drop {name}", { name: arg.object.name }),
-        description: t("Removes the object and, for a table, all of its data."),
+        description: t("Removes the object and, for a table, all of its data.") + (await referencedNote(arg)),
         confirm: t("Drop"),
         options: { cascade: support.get(arg.connection.driver)?.cascade ?? false },
       },

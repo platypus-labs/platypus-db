@@ -1380,6 +1380,7 @@ function tabIcon(t: TabModel): IconName {
   if (t.kind === "table-editor") return "edit";
   if (t.kind === "erd" || t.kind === "schema-history") return "schema";
   if (t.kind === "table-profile") return "activity";
+  if (t.kind === "dashboard") return "dashboard";
   return "tableRef" in t && t.tableRef ? "table" : "sql";
 }
 
