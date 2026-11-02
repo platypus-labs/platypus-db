@@ -29,8 +29,9 @@ export function texts(mode) {
 }
 
 /** On an Italian run, fails if the screen shows an English label that has an Italian one
- *  (a text left untranslated), and if a label is cut. `allow` lists texts that may stay. */
-export async function screenIsItalian(page, mode, where, allow = []) {
+ *  (a text left untranslated), and if a label is cut. `allow` lists texts that may stay;
+ *  `cutOk` the parts of a cut label's description that may be cut. */
+export async function screenIsItalian(page, mode, where, allow = [], cutOk = []) {
   if (languageOf(mode) !== "it") return;
   const dict = italian();
   const { texts: shown, cut } = await page.eval(pageTexts);
@@ -38,7 +39,7 @@ export async function screenIsItalian(page, mode, where, allow = []) {
     .map((s) => s.replace(/^@[a-z-]+: /, ""))
     .filter((s) => dict[s] !== undefined && dict[s] !== s && !allow.includes(s));
   assert.deepEqual(english, [], `${where}: English left on an Italian screen`);
-  assert.deepEqual(cut, [], `${where}: texts cut`);
+  assert.deepEqual(cut.filter((c) => !cutOk.some((ok) => c.includes(ok))), [], `${where}: texts cut`);
 }
 
 /** A key as the keyboard sends it: Enter also types its character, so it presses buttons. */
@@ -58,16 +59,32 @@ export const keys = {
   right: (page) => press(page, "ArrowRight", "ArrowRight", 39),
 };
 
-/** Presses Tab until `test` (a page expression) holds; each press waits for the focus to move. */
-export async function tabUntil(page, test, max = 40) {
-  for (let i = 0; i < max; i++) {
-    if (await page.eval(test)) return;
-    await page.eval(`void (window.__focusBefore = document.activeElement)`);
-    await keys.tab(page);
-    await page.waitFor(`document.activeElement !== window.__focusBefore`, 5_000);
+/** The focus is in a SQL editor, which Tab would indent. The field of "SQL on the result" is one
+ *  line: Tab leaves it, and Escape would close the SQL view. */
+const inEditor = `!!document.activeElement?.closest?.('.cm-content') && !document.activeElement.closest('.result-sql')`;
+
+/** One Tab press (Shift+Tab when `back`) that waits for the focus to move. It leaves an editor
+ *  first (Escape twice: the first may be taken by the completion list). With `attempts` > 1 a
+ *  Tab that moved nothing is pressed again. */
+export async function tabStep(page, { back = false, attempts = 1, wait = 5_000 } = {}) {
+  await page.eval(`void (window.__focusBefore = document.activeElement)`);
+  for (let attempt = 1; ; attempt++) {
+    if (await page.eval(inEditor)) {
+      await keys.escape(page);
+      await keys.escape(page);
+    }
+    await keys.tab(page, back ? 8 : 0);
+    try {
+      await page.waitFor(`document.activeElement !== window.__focusBefore`, wait);
+      return;
+    } catch (e) {
+      if (attempt >= attempts) throw new Error(`${e.message}; the focus stays on ${await page.eval(`document.activeElement.outerHTML.slice(0, 160)`)}`);
+    }
   }
-  throw new Error(`Tab never reached ${test}`);
 }
+
+/** The space bar: it types a space, so it also toggles a focused checkbox. */
+export const space = (page) => press(page, " ", "Space", 32).then(() => {});
 
 /** The focused element shows a focus ring (outline or box shadow), as the keyboard user sees it. */
 export const focusVisible = `(() => {

@@ -4,14 +4,11 @@
 // menus, typing in fields), asserting at each stop that the focus is visible.
 import assert from "node:assert/strict";
 import { CTRL } from "./cdp.mjs";
-import { focusVisible, keys, press, screenIsItalian, texts } from "./journey.mjs";
-import { italian, pageTexts, status, visibleTab } from "./qa-jrn.mjs";
+import { focusVisible, keys, press, screenIsItalian, space, tabStep, texts } from "./journey.mjs";
+import { status, visibleTab } from "./qa-jrn.mjs";
 import { row } from "./qa-xfer.mjs";
 
 export { status, visibleTab };
-
-// The field of "SQL on the result" is one line: Tab leaves it, and Escape would close the SQL view.
-const inEditor = `!!document.activeElement?.closest?.('.cm-content') && !document.activeElement.closest('.result-sql')`;
 
 export function ui(page, mode) {
   const kb = mode === "keys";
@@ -21,26 +18,6 @@ export function ui(page, mode) {
     t,
     /** The focus rings seen so far; the keys run asserts it is not empty at the end. */
     stops: 0,
-
-    /** One Tab press that leaves an editor first (Escape, which Tab alone would not). */
-    async tabOnce() {
-      await page.eval(`void (window.__focusBefore = document.activeElement)`);
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (await page.eval(inEditor)) {
-          // The first Escape may be taken by the completion; the second lets Tab leave.
-          await keys.escape(page);
-          await keys.escape(page);
-        }
-        await keys.tab(page);
-        try {
-          await page.waitFor(`document.activeElement !== window.__focusBefore`, 1_500);
-          return;
-        } catch {
-          // Tab indented the editor or did nothing: leave it with Escape and try again.
-        }
-      }
-      throw new Error("Tab did not move the focus");
-    },
 
     /** Presses Tab until the focus is on the element `expr` evaluates to; the ring must show. */
     async tabTo(expr, max = 300, { ring = true } = {}) {
@@ -52,7 +29,7 @@ export function ui(page, mode) {
           self.stops++;
           return;
         }
-        await self.tabOnce();
+        await tabStep(page, { attempts: 3, wait: 1_500 });
       }
       throw new Error(`Tab never reached ${expr}`);
     },
@@ -92,7 +69,7 @@ export function ui(page, mode) {
       if (!kb) await page.eval(`(${expr}).click()`);
       else {
         await self.tabTo(expr);
-        await press(page, " ", "Space", 32);
+        await space(page);
       }
       await page.waitFor(`(${expr}).checked === ${on}`, 5_000);
     },
@@ -258,17 +235,10 @@ export function ui(page, mode) {
       await page.waitFor(active, 5_000);
     },
 
-    /** On an Italian run, the screen has no English left (`where` names it for the failure). */
-    italian: async (where, allow = []) => {
-      if (mode !== "it") return;
-      // journey.mjs's check, except that a long detail line that ends in an ellipsis (the saved
-      // result's date and rows in the sidebar) is allowed to be cut: its title holds the rest.
-      const { texts: shown, cut } = await page.eval(pageTexts);
-      const dict = italian();
-      const english = shown.map((s) => s.replace(/^@[a-z-]+: /, "")).filter((s) => dict[s] !== undefined && dict[s] !== s && !allow.includes(s));
-      assert.deepEqual(english, [], `${where}: English left on an Italian screen`);
-      assert.deepEqual(cut.filter((c) => !c.includes("span.tree-detail")), [], `${where}: texts cut`);
-    },
+    /** On an Italian run, the screen has no English left (`where` names it for the failure). A long
+     *  detail line that ends in an ellipsis (the saved result's date and rows in the sidebar) may
+     *  be cut: its title holds the rest. */
+    italian: (where, allow = []) => screenIsItalian(page, mode, where, allow, ["span.tree-detail"]),
     screenIsItalian,
   };
   return self;

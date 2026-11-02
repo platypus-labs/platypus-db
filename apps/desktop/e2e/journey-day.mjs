@@ -9,7 +9,7 @@ import { connect as tcp } from "node:net";
 import { crc32 } from "node:zlib";
 import { ALT, CTRL } from "./cdp.mjs";
 import { fill } from "./conn-helpers.mjs";
-import { focusVisible, keys, press, screenIsItalian, texts } from "./journey.mjs";
+import { focusVisible, keys, screenIsItalian, space, tabStep, texts } from "./journey.mjs";
 import { reopen, restart, status, visibleTab } from "./qa-jrn.mjs";
 
 export { focusVisible, keys, screenIsItalian, status, visibleTab };
@@ -28,16 +28,7 @@ export async function tabTo(j, test, max = 60, { back = false, ring = true } = {
   const holds = `(() => { const el = document.activeElement; return !!el && el !== document.body && !!(${test}); })()`;
   for (let i = 0; i <= max; i++) {
     if (await j.page.eval(holds)) return ring ? assert.equal(await j.page.eval(focusVisible), true, `the focus is not visible on ${test}`) : undefined;
-    await j.page.eval(`(window.__focusBefore = document.activeElement, 0)`);
-    // In the SQL editor Tab indents: Escape lets go of it first.
-    if (await j.page.eval(`document.activeElement?.classList.contains('cm-content') === true`)) {
-      await keys.escape(j.page);
-      await keys.escape(j.page);
-    }
-    await keys.tab(j.page, back ? 8 : 0);
-    await j.page.waitFor(`document.activeElement !== window.__focusBefore`, 5_000).catch(async (e) => {
-      throw new Error(`${e.message}; the focus stays on ${await j.page.eval(`document.activeElement.outerHTML.slice(0, 160)`)}`);
-    });
+    await tabStep(j.page, { back });
   }
   throw new Error(`Tab never reached ${test}`);
 }
@@ -358,9 +349,6 @@ export async function restartApp(page, ctx, options = { ready: `document.querySe
   return restart(page, ctx, options);
 }
 
-/** The space bar: it types a space, so it also toggles a focused checkbox. */
-export const space = (page) => press(page, " ", "Space", 32).then(() => {});
-
 /** Ticks or unticks the checkbox of the `label.check` whose text starts with `english`. */
 export async function setCheck(j, scope, english, want) {
   const label = j.t(english);
@@ -409,6 +397,3 @@ export async function treeMenu(j, labels, ...path) {
     else await keys.enter(page);
   }
 }
-
-/** Keeps `press` importable beside the keys. */
-export { press };

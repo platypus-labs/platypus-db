@@ -3,36 +3,21 @@
 // app's processes.
 import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
-import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { CTRL } from "./cdp.mjs";
+import { needsPort } from "./conn-helpers.mjs";
 import { revealItem } from "./menu-sub.mjs";
+import { status, treeRow, visibleTab } from "./qa-jrn.mjs";
 
-export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
-export const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
+export { status, treeRow, visibleTab };
 export const statusbar = `(${visibleTab}?.querySelector('.statusbar')?.textContent ?? '')`;
 export const grid = `${visibleTab}.querySelector('.grid-scroll')`;
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
-export const treeRow = (label) =>
-  `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 
 export const PG = { name: "QA perf PG", port: 55432, password: "platypus" };
 export const MSSQL = { name: "QA perf SQL Server", port: 51433, password: "Platypus-2026" };
 
-/** `skip()` of a scenario that needs the database container listening on `port`. */
-export function needsPort(port, what) {
-  return () =>
-    new Promise((resolve) => {
-      const socket = tcp({ host: "127.0.0.1", port, timeout: 1000 });
-      const done = (reason) => {
-        socket.destroy();
-        resolve(reason);
-      };
-      socket.on("connect", () => done(null));
-      socket.on("error", () => done(`no ${what} on port ${port} (docker compose -f docker/compose.yml up -d)`));
-      socket.on("timeout", () => done(`no ${what} on port ${port}`));
-    });
-}
+export { needsPort };
 
 export const sqliteEntry = (name, file) =>
   `[[connections]]\nid = "00000000-0000-4000-8000-0000000e0001"\nname = "${name}"\ndriver = "sqlite"\ndatabase = '${file}'\nsave_password = false\n`;
