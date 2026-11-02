@@ -137,6 +137,15 @@
   white-space: nowrap;
 }
 
+/* The attributes of a user wrap instead of leaving the cell. */
+.admin-table td.users-flags-cell {
+  white-space: normal;
+}
+
+.admin-section-gap {
+  margin-top: var(--space-24);
+}
+
 .admin-table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -192,7 +201,7 @@
 
 /* Nothing selected: a narrow panel, the list keeps the room. */
 .admin-details.empty {
-  width: min(var(--admin-details-w, 380px), 220px);
+  width: min(var(--admin-details-w, 380px), 160px);
   justify-content: center;
   text-align: center;
 }
@@ -493,8 +502,17 @@
 
 .dash-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  /* Tiles of a comfortable size, so five fit one row and a wide window does not stretch them. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
   gap: var(--space-10);
+}
+
+/* Databases and replication side by side when the window is wide enough for both. */
+.dash-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: var(--space-16) var(--space-24);
+  align-items: start;
 }
 
 .dash-tile {

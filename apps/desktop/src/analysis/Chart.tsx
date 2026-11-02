@@ -21,6 +21,7 @@ import {
   pieAngles,
   pieParts,
   rightAxisSeries,
+  sliceColor,
   timeTicks,
   truncate,
   valueAxisTitle,
@@ -120,9 +121,8 @@ export function Chart({ data: full, kind, width, height, colors, otherLabel, lab
     top: MARGIN.top,
     bottom: Math.max(MARGIN.top + 10, height - MARGIN.bottom),
   };
-  // Neighbouring slices skip three colours of the palette, so that similar tones are not side by side.
-  const stride = kind === "pie" && colors.series.length % 3 !== 0 ? 3 : 1;
-  const color = (i: number) => colors.series[(i * stride) % colors.series.length] || colors.text;
+  // A pie's slices each get their own hue; the other charts take the theme's series colours.
+  const color = (i: number) => (kind === "pie" ? sliceColor(i) : colors.series[i % colors.series.length] || colors.text);
   // A pie's legend names the slices drawn, in their colours.
   const slices = pieParts(data.series[0]?.values ?? []).drawn;
   const names = data.series.map((s) => s.name);

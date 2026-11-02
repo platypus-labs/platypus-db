@@ -213,3 +213,8 @@
   align-items: center;
   gap: var(--space-4);
 }
+
+/* Save and Export: secondary buttons with a border, so they read as buttons beside Run all. */
+.notebook-toolbar button.boxed:not(.primary):not(.toggled) {
+  border-color: var(--border-strong);
+}

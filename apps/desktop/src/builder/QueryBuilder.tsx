@@ -123,6 +123,19 @@ function aliasFor(name: string, taken: string[]): string {
   return alias;
 }
 
+/** Free space kept between two boxes, so the join's label fits between them. */
+const BOX_GAP = 80;
+
+/** `x` moved right of any box on the same row that would sit closer than `BOX_GAP`. */
+export function spacedX(x: number, y: number, placed: Pick<BuilderTable, "x" | "y" | "w" | "h">[]): number {
+  let out = x;
+  for (const b of [...placed].sort((a, c) => a.x - c.x)) {
+    const sameRow = Math.abs(b.y - y) < (b.h ?? 260);
+    if (sameRow && out > b.x - BOX - BOX_GAP && out < b.x + boxWidth(b) + BOX_GAP) out = b.x + boxWidth(b) + BOX_GAP;
+  }
+  return out;
+}
+
 let nextTableId = Date.now();
 
 export function QueryBuilder({ tab, connection, active, sideSession, onChange, onError }: TabProps<BuilderTabModel>) {
@@ -197,7 +210,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
       schema: tab.schema,
       name,
       alias: aliasFor(name, tab.tables.map((t) => t.alias)),
-      x: x ?? 20 + (n % 4) * (BOX + 80),
+      x: spacedX(x ?? 20 + (n % 4) * (BOX + BOX_GAP), y ?? 20 + Math.floor(n / 4) * 260, tab.tables),
       y: y ?? 20 + Math.floor(n / 4) * 260,
       columns: [],
     };
@@ -337,6 +350,9 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
           ref={canvas}
         >
           {tab.tables.length === 0 && <EmptyState className="builder-empty" title={t("Drag tables here from the list. Their foreign keys join them.")} />}
+          {tab.tables.length > 0 && tab.tables.length < 3 && (
+            <p className="builder-hint muted small">{t("Drag another table here to join it")}</p>
+          )}
           <svg className="builder-lines" style={extent}>
             {joins.map((j) => {
               const { a, b } = anchors(j.left, j.right);
@@ -408,7 +424,6 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
           </label>
           <pre className="builder-sql">{sql || `-- ${t("No tables yet")}`}</pre>
           <div className="actions">
-            <span className="spacer" />
             <button disabled={!sql} onClick={() => open(false)}>
               {t("Open in editor")}
             </button>

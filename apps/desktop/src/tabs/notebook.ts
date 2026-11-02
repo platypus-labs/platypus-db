@@ -29,7 +29,7 @@ registerAction({
   order: 12,
   run: ({ connection }) =>
     workbench().openTab("notebook", connection.id, {
-      cells: [newCell("markdown"), newCell("sql")],
+      cells: [newCell("sql")],
     }),
 });
 

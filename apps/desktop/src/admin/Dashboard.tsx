@@ -87,6 +87,14 @@ function Spark({
 }) {
   const span = spanText(samples);
   const known = values.filter((v): v is number => v !== null);
+  // One reading is a dot, not a trend.
+  if (known.length < 2) {
+    return (
+      <div className="dash-spark-caption muted small" data-field="spark-waiting">
+        {t("Waiting for readings")}
+      </div>
+    );
+  }
   return (
     <>
       <Sparkline values={values} domain={domain} label={label} />
@@ -164,8 +172,10 @@ export function Dashboard({ samples }: { samples: Sample[] }) {
           reason={why([m.uptime_seconds], 2)}
         />
       </div>
-      <Databases metrics={m} />
-      <Replication metrics={m} />
+      <div className="dash-sections">
+        <Databases metrics={m} />
+        <Replication metrics={m} />
+      </div>
     </div>
   );
 }

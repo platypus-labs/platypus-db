@@ -118,16 +118,6 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig, ba
       {!bare && (
       <>
       <div className="chart-side" style={{ width: sideWidth }}>
-        {/* On top, where a short window does not cut it off. */}
-        <div className="chart-export">
-          <span className="muted small">{t("Export")}</span>
-          <button type="button" onClick={() => save("png")}>
-            {t("PNG image…")}
-          </button>
-          <button type="button" onClick={() => save("svg")}>
-            {t("SVG image…")}
-          </button>
-        </div>
         <label>
           {t("Chart type")}
           <select aria-label={t("Chart type")} value={shown.kind} onChange={(e) => set({ kind: e.target.value as ChartKind })}>
@@ -180,6 +170,16 @@ export function ChartView({ jobId, columns, rows, complete, config, onConfig, ba
             </select>
           </label>
         )}
+        {/* After the options, which are used more. */}
+        <div className="chart-export">
+          <span className="muted small">{t("Export")}</span>
+          <button type="button" onClick={() => save("png")}>
+            {t("PNG image…")}
+          </button>
+          <button type="button" onClick={() => save("svg")}>
+            {t("SVG image…")}
+          </button>
+        </div>
       </div>
       <PanelResizer
         storeKey="layout.chart_side"

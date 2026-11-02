@@ -31,6 +31,12 @@ export type AdminView = "sessions" | "locks" | "statements" | "objects" | "param
  *  they do not change while the tab is open. */
 const ON_DEMAND = new Set<AdminView>(["statements", "objects", "parameters"]);
 
+/** What the views that are not self-explanatory show, as the tooltip of their button. */
+const VIEW_HINTS: Partial<Record<AdminView, string>> = {
+  statements: msg("The statements that took the most time on the server, read on demand"),
+  objects: msg("The size, rows and indexes of each table, read on demand"),
+};
+
 /** The label of each view's button. */
 const VIEW_LABELS: Record<AdminView, string> = {
   sessions: msg("Sessions"),
@@ -293,7 +299,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
         </div>
         <span className="spacer" />
         {snapshot && (
-          <span className="muted small" title={t("When the lists were read")}>
+          <span className="muted small" title={t("Last reading: when the lists were read")}>
             {snapshot.at.toLocaleTimeString()}
           </span>
         )}
@@ -321,7 +327,7 @@ export function AdminTab({ tab, connection, active, sideSession, onChange }: Tab
       </header>
       <nav className="object-sections">
         {offered.map((v) => (
-          <button key={v} className={view === v ? "active" : ""} onClick={() => onChange({ view: v })}>
+          <button key={v} className={view === v ? "active" : ""} title={VIEW_HINTS[v] && t(VIEW_HINTS[v])} onClick={() => onChange({ view: v })}>
             {t(VIEW_LABELS[v])}
             {v === "sessions" && <span className="count">{sessions.length}</span>}
             {v === "locks" && waiting > 0 && (
@@ -634,7 +640,7 @@ function Locks({
           ))}
         </ul>
       )}
-      <div className="admin-toolbar">
+      <div className="admin-toolbar admin-section-gap">
         <h3 className="admin-heading">{t("Locks")}</h3>
         <label className="check small">
           <input type="checkbox" checked={onlyWaiting} onChange={(e) => onOnlyWaiting(e.target.checked)} />
@@ -675,7 +681,11 @@ function Locks({
           </tbody>
         </table>
       )}
-      {locks && shown.length === 0 && <p className="muted small">{t("No locks.")}</p>}
+      {locks && shown.length === 0 && (
+        <EmptyState compact title={t("No locks.")}>
+          {t("A lock appears here when a session holds one, and the waiting ones when a session waits for another.")}
+        </EmptyState>
+      )}
     </div>
   );
 }

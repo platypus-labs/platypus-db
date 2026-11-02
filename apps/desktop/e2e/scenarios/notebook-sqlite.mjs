@@ -102,6 +102,8 @@ async function newNotebook(page, connection) {
 
 /** Text, a query, its chart and plan, and a cell on its results. */
 async function textQueryAndResults(page) {
+  // A new notebook has only the SQL cell: the text cell is added.
+  await page.eval(click(tab, "add_text"));
   await page.waitFor(`${tab}.querySelector('textarea.notebook-text') !== null`);
   await setField(page, ".notebook-tab textarea.notebook-text", "# Sales\n\nBy **region**, from `sales`.\n\n<script>alert(1)</script>");
   await page.eval(click(`${tab}.querySelector('.notebook-cell.markdown')`, "edit"));

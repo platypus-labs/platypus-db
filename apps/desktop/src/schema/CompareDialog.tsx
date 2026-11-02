@@ -109,7 +109,8 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
         t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}`, source: `${connection.name} · ${schema}` }),
         [summary, ...(drops ? [drops] : []), ...script.warnings.map(translateWarning)],
       );
-      workbench().openTab("query", target.id, { sql: `${head}${sql}`, database: targetDatabase });
+      const title = t("{target} — compared with {source}", { target: target.name, source: `${connection.name} · ${schema}` });
+      workbench().openTab("query", target.id, { sql: `${head}${sql}`, database: targetDatabase, title });
       onClose();
     } catch (e) {
       setError(toCommandError(e).message);

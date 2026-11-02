@@ -71,18 +71,25 @@ async function notebook(page) {
   const before = await page.eval(`document.querySelectorAll('.notebook-tab').length`);
   await treeMenu(page, NAME, "New notebook");
   await page.waitFor(`document.querySelectorAll('.notebook-tab').length > ${before} && ${cell("c1")} != null`);
+  // A new notebook is one SQL cell; the text cell is added by "+ Text".
+  assert.equal(await page.eval(cellCount), 1);
+  await page.eval(click(tab, "add_text"));
+  await page.waitFor(`${tab}.querySelector('textarea.notebook-text') !== null`);
   // The empty cells say how they are written.
   assert.match(await page.eval(`${tab}.querySelector('textarea.notebook-text').placeholder`), /Markdown/);
+  await page.eval(click(`${tab}.querySelector('.notebook-cell.markdown')`, "delete"));
+  await page.waitFor(`${cellCount} === 1`);
   await page.waitFor(`${cell("c1")}.querySelector('.cm-placeholder') !== null`);
   assert.match(await page.eval(`${cell("c1")}.querySelector('.cm-placeholder').textContent`), /Ctrl\+Enter/);
-  // A short label, not the sentence.
-  assert.equal(await page.eval(`${cell("c1")}.querySelector('label.check').textContent.trim()`), "On the results c1, c2…");
+  // The first cell has no cells before it: no "on the results" box.
+  assert.equal(await page.eval(`${cell("c1")}.querySelector('label.check')`), null);
 
-  // An empty cell goes at once: no question.
+  // An empty cell goes at once: no question. The next one has a short label, not the sentence.
   await page.eval(click(tab, "add_sql"));
-  await page.waitFor(`${cellCount} === 3`);
-  await page.eval(click(cell("c2"), "delete"));
   await page.waitFor(`${cellCount} === 2`);
+  assert.equal(await page.eval(`${cell("c2")}.querySelector('label.check').textContent.trim()`), "On results");
+  await page.eval(click(cell("c2"), "delete"));
+  await page.waitFor(`${cellCount} === 1`);
   assert.equal(await page.eval(`document.querySelector('.modal.confirm')`), null);
 
   // One with a text asks; Cancel keeps it.
@@ -94,8 +101,10 @@ async function notebook(page) {
   await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
   await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Cancel').click()`);
   await page.waitFor(`document.querySelector('.modal.confirm') === null`);
-  assert.equal(await page.eval(cellCount), 2, "Cancel keeps the cell");
-  // Deleting it takes the text with it.
+  assert.equal(await page.eval(cellCount), 1, "Cancel keeps the cell");
+  // Deleting it takes the text with it (a second cell keeps the notebook from being empty).
+  await page.eval(click(tab, "add_sql"));
+  await page.waitFor(`${cellCount} === 2`);
   await page.eval(click(cell("c1"), "delete"));
   await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
   await page.eval(`document.querySelector('.modal.confirm button.danger').click()`);
