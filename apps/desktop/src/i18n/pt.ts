@@ -627,7 +627,6 @@ const pt: Record<string, string> = {
   "Access key": "Chave de acesso",
   "Secret key": "Chave secreta",
   "Compression": "Compactação",
-  "No": "Não",
   "To a signed URL (S3, GCS)": "Para uma URL assinada (S3, GCS)",
   "To a bucket (S3, GCS, R2, MinIO)": "Para um bucket (S3, GCS, R2, MinIO)",
   "Signed URL": "URL assinada",

@@ -627,7 +627,6 @@ const zh: Record<string, string> = {
   "Access key": "访问密钥",
   "Secret key": "秘密密钥",
   "Compression": "压缩",
-  "No": "否",
   "To a signed URL (S3, GCS)": "到签名 URL（S3、GCS）",
   "To a bucket (S3, GCS, R2, MinIO)": "到存储桶（S3、GCS、R2、MinIO）",
   "Signed URL": "签名 URL",
