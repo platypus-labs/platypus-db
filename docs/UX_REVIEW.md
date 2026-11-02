@@ -355,3 +355,158 @@ Lo stato vuoto (già corretto dal gruppo T) dice dove si crea un profilo e ha un
 - ✅ **minore** — Nessun caricamento mentre la lista si carica (`ProfilesDialog.tsx:88`, `shown === null`) — `LoadingState compact`.
 
 Va bene: stato vuoto con icona, titolo, spiegazione e azione; conferma prima di eseguire su produzione e prima di eliminare; esecuzione tracciata con `runTracked`; Esc chiude.
+
+## Secondo giro (P3)
+
+La scheda di controllo ripassata con occhi nuovi dopo le correzioni dei P2, sugli screenshot a 1280×720 e 2560×1440 (`target/ux-shots/p3/`). Non ripete i 15 punti ancora aperti del primo giro.
+
+### Pagina iniziale
+- **minore** — "Recent" e "Keyboard shortcuts" cambiano posto a seconda che ci siano connessioni recenti: senza recenti gli shortcut stanno a sinistra (01), con i recenti passano a destra (30); a 1280×720 la tabella degli shortcut è tagliata dal fondo e serve scorrere (01, 30; Welcome) — colonna fissa per gli shortcut e un limite di altezza, oppure nasconderli sotto una certa altezza.
+- **minore** — A 2560×1440 il blocco è centrato ma le due colonne (logo/CTA a sinistra, schede a destra) restano separate da un vuoto largo, e la riga della versione è minuscola (2560/01) — larghezza massima più stretta per l'intero blocco.
+
+### Rail dei progetti e navigator
+- **minore** — Nel navigator, il testo "Turn this project's scripts into a Git repository" è testo semplice sotto "No saved scripts": non si capisce se è un'azione (01, 02, tutti) — renderlo un link/pulsante "Turn into a Git repository…" o toglierlo se non è cliccabile.
+- **minore** — Il menu della tabella è ancora di 16 voci: "Copy name", "Copy qualified name" e "Add bookmark" sono tre voci affini sullo stesso livello (102) — sottomenu "Copy" per le due copie.
+- **minore** — Le icone del rail progetti (SH, AN) non dicono nulla senza passarci sopra (30, 101) — controllare che abbiano il tooltip con il nome esteso; il pulsante "+" tratteggiato non dice "Nuovo progetto".
+
+### Tab e barra dei tab
+- **minore** — Il menu del tab si apre sopra la barra degli strumenti, con il bordo sinistro sulla sidebar (x≈300) e non sotto il tab (106) — posizionarlo sotto il tab cliccato.
+- **minore** — Il tab fissato mostra solo l'icona, con un punto arancione quasi invisibile per il pin (107) — titolo nel tooltip e un'icona pin più leggibile.
+
+### Editor SQL e risultati
+- **media** — Il campo "SQL on the loaded rows: WHERE …" viene tagliato senza ellissi, a metà parola o carattere, quando ci sono i pulsanti di modifica accanto (06, 07, 110, 111; `analysis/ResultSql.tsx:403`) — accorciare il segnaposto ("Filter these rows with SQL…") e `text-overflow: ellipsis`.
+- **minore** — L'elenco di completamento mostra la stessa icona (chiave) per le parole chiave SQL: DESC, DESCRIBE… sembrano chiavi (03) — icona diversa per le parole chiave.
+- **minore** — Errore: il messaggio sta centrato in grande con solo "Copy error"; manca la posizione (riga/colonna) e un "Go to the error" (05) — mostrare la posizione e selezionarla nell'editor.
+- **minore** — A 2560×1440 le colonne del risultato restano strette in alto a sinistra e il resto è vuoto (03) — nessuna larghezza minima per riempire; accettabile, ma ridurre l'altezza vuota dell'editor.
+
+### Griglia e modifica dei dati
+- **media** — La colonna di una chiave esterna mostra "1 Giulia Fer", "2 Marco Cont": il valore con l'etichetta viene tagliato perché la larghezza è calcolata sull'intestazione (106, 107) — larghezza iniziale calcolata anche sul contenuto con l'etichetta (o doppio clic sul bordo per adattarla).
+- **minore** — Con una riga nuova e una modificata la barra dice "2 rows changed" mentre la barra di stato dice "8 rows" (111) — "1 modified, 1 new".
+- **minore** — "Changes to save": il focus iniziale è su "Close" e non su "Save" (110) — è sicuro, ma il pulsante primario dovrebbe essere raggiungibile con Invio; verificare e mettere "Save" come predefinito oppure rinominare "Close" in "Cancel".
+- **minore** — I pulsanti della barra dati hanno solo icone (cestino, annulla, cancella, anteprima SQL) (07, 111) — controllare i tooltip e le etichette accessibili.
+
+### Pagine degli oggetti
+- **minore** — Le tabelle Indexes e Foreign keys hanno la colonna "Details" sempre vuota (10, 12) — nasconderla se vuota o riempirla (ON DELETE/ON UPDATE).
+- **minore** — "Properties" è una tabella di tre righe in una pagina vuota (08) — aggiungere righe utili (righe stimate, dimensione, creazione) o ridurre.
+- **minore** — Il campo Note ha la maniglia del textarea sovrapposta a "Add a tag" e "Add a tag" è testo grigio non riconoscibile come pulsante (08–15) — stile da pulsante/chip.
+
+### Editor grafico della tabella
+- **media** — Il pulsante "Save…" è spento quando non ci sono modifiche, senza dire perché; l'unica icona a destra (ripristina) non ha etichetta (16) — tooltip "No changes" e "Discard changes".
+- **minore** — Le righe sono strette: gli input (28 px) riempiono la riga da 32 px, quasi attaccati l'uno all'altro (16) — altezza riga 40 px con padding.
+- **minore** — A 2560×1440 gli input diventano larghissimi (Name/Type/Default 340 px) e il resto è vuoto (2560/16) — larghezza massima del contenuto.
+- **minore** — Non si vede come riordinare le colonne (nessuna maniglia di trascinamento) (16) — maniglia di riordino per riga.
+
+### Diagramma ER
+- **media** — A 2560×1440 il diagramma resta piccolo in alto a sinistra in un canvas enorme e non si adatta alla vista (2560/17) — "Fit to view" all'apertura e un pulsante "Fit".
+- **minore** — La barra degli strumenti fluttuante nasconde il bordo superiore dei riquadri quando si trascina in alto e la legenda è piccola (17) — spostarla fuori dal canvas o dare margine al layout.
+- **minore** — Gli elementi del canvas (riquadri e linee) non hanno cardinalità leggibile (solo un segno) (17) — "1" e "N" o piedi di gallina con tooltip.
+
+### Explain
+- **media** — Il riquadro dei dettagli mostra solo "Operation / SCAN o"; il piano è piatto e senza costo né spiegazione, per un piano incollato (19) — mostrare un testo "No timing in this plan" e spiegare cosa significa l'operazione scelta; indentare i figli.
+- **minore** — Il pulsante con l'icona di copia accanto a "Compare…" non ha etichetta (19) — tooltip "Copy plan" e toast di conferma.
+
+### Profilo dei dati
+- **minore** — I quattro riquadri di sintesi (Rows, Columns, Null values, Duplicates) occupano solo metà larghezza e lasciano un vuoto a destra (20) — distribuire a griglia sull'intera larghezza.
+- **minore** — Le etichette "Standard deviation" e "Quartiles" vanno a capo e spezzano l'allineamento dei valori (20) — colonna etichette più larga o "Std. dev.".
+- **minore** — Il titolo della colonna destra cambia posizione tra le colonne con e senza istogramma (20) — altezza di riga uniforme.
+
+### Dashboard
+- **minore** — Il pulsante dello stato vuoto mostra "+Add widget" con il più attaccato al testo, a differenza di quello in alto (21) — stesso componente con gap.
+- **minore** — Il titolo "Dashboard" è grigio a differenza degli altri titoli di pagina (bianchi) e il tab ha l'icona SQL invece di quella della dashboard (21) — stesso colore del titolo e icona propria.
+
+### Import, export, copia e profili di trasferimento
+- **media** — Nel dialog di export "Also upload: No" non dice dove (server, cloud, quale) né perché (22) — "Also upload to…" con il nome della destinazione oppure nasconderlo senza destinazioni configurate.
+- **minore** — Nel dialog di import c'è solo il campo File e tre pulsanti, di cui "Save as profile…" spento senza spiegazione; si capisce solo dopo che passo viene (23) — testo di aiuto sopra ("Choose a file; you will map the columns next").
+- **minore** — Il dialog "Copy main to a database" ripete in piccolo la spiegazione e l'elenco delle tabelle in grassetto: poco respiro tra descrizione, elenco e campi (24) — più margine e separare "Tables" con un'etichetta.
+- **media** — "Transfer profiles" vuoto è un dialog di 980 px per un solo messaggio, senza pulsante X e con il focus su "Close" invece che sull'azione (101; già noto il "Go to the navigator") — dialog stretto quando è vuoto.
+
+### Dialog di connessione e import delle connessioni
+- **media** — Il menu laterale "Network" ha un punto arancione senza spiegazione (113) — tooltip "Customised" o toglierlo.
+- **media** — "Network" è una pagina lunga senza titoli di gruppo (SSL, Proxy, hook), a differenza di "General" che ha CONNECTION e AUTHENTICATION; i comandi prima/dopo la connessione sono in fondo, sotto la piega (28, 113) — sezioni con titolo e separatori.
+- **minore** — "Type" in Appearance non dice che è l'ambiente (Development/Production) e "Projects" è senza spiegazione (27) — etichetta "Environment" e una riga "Show this connection in these projects".
+- **minore** — I segnaposto (C:\certs\client.crt, bastion.example.com) hanno quasi lo stesso colore dei valori veri (28, 113) — grigio più tenue o "e.g.".
+- **minore** — Il dialog ha molto vuoto sotto i campi nelle pagine General e Init (26, 29) — altezza adattata al contenuto.
+- **media** — Nell'import delle connessioni due riquadri hanno il bordo arancione (PlatypusDB per il focus e DBeaver per la selezione): non si capisce quale è selezionato (114) — la selezione con sfondo e segno di spunta, il focus con un anello diverso (non sicuro: potrebbe essere il focus da tastiera). "Found: DBeaver" è un riquadro tratteggiato poco chiaro: "Detected on this computer: DBeaver".
+- **minore** — Il colore personalizzato del progetto è un rettangolo viola senza etichetta (31) — etichetta "Custom".
+
+### Palette dei comandi e ricerca
+- **media** — "paid_orders" (una vista) compare sotto "TABLE" (32) — gruppo/icona "View".
+- **minore** — La ricerca fuzzy mette "customers" per "or" prima delle azioni che iniziano con "Or…" (32) — ordinare prima i prefissi e le parole intere.
+- **minore** — I risultati non hanno icona del tipo (tabella, azione) (32) — icona a sinistra.
+
+### Dialog di conferma
+- **minore** — "Drop empty_notes" mostra l'SQL ma non dice se ci sono viste o chiavi esterne che dipendono dalla tabella (64) — avviso "Used by 1 view" se noto (l'informazione "Used by" esiste nella pagina oggetto).
+
+### Costruttore visuale di query
+
+- **media** — L'etichetta delle colonne del join ("o.customer_id = c.id") è appiccicata sotto la pastiglia JOIN e tocca la linea e il bordo dei riquadri; i due riquadri restano a 14 px di distanza (66; `apps/desktop/src/builder/QueryBuilder.tsx`, posizione della seconda tabella e del testo del join) — Distanziare la seconda tabella di almeno 60-80 px e mettere l'etichetta sotto la pastiglia con un margine e uno sfondo, non sovrapposta alla linea.
+- **minore** — Il canvas non mostra come si aggiunge un'altra tabella una volta che ce ne sono due: nessun suggerimento, e a 2560x1440 i riquadri restano piccoli in alto a sinistra in un canvas enorme (66 a 2560) — Suggerimento discreto in un angolo ("Trascina un'altra tabella per unirla") finché ce ne sono meno di 3, o dimensioni dei riquadri più generose.
+- **minore** — Il campo WHERE e il blocco SQL sono attaccati (8 px) e a ridosso del bordo del canvas; "Open in editor"/"Run" sono distanti dal blocco SQL che governano (65, 66) — Raggruppare WHERE, SQL e pulsanti in un pannello con padding 12 px e gap 8-12 px.
+
+### Notebook
+
+- **media** — Nel notebook con celle (68) la cella di testo vuota resta in modifica con "Done" mentre tutta la pagina scorre: la prima cella occupa spazio senza contenuto e una cella di testo vuota non si distingue da una in lavorazione dimenticata (67, 68; `NotebookCell.tsx`) — Togliere la cella di testo dal notebook nuovo (basta la cella SQL) o lasciarla solo con il pulsante "+ Text".
+- **minore** — L'etichetta "On the results c1, c2…" è tagliata con i puntini nell'intestazione della cella, ed è comparsa anche in c1, dove non ha senso (nessuna cella prima) (67, 68; `NotebookCell.tsx:150-153`) — Nascondere la casella nella prima cella e abbreviarla ("Su c1…") con il testo intero nel tooltip.
+- **minore** — Barra superiore: "Save" e "Export HTML…" sono due testi nudi senza aspetto di pulsante e senza scorciatoia indicata; "Run all" è l'unico pulsante pieno (67, 68; `NotebookTab.tsx`) — Stile pulsante secondario per Save/Export e tooltip con Ctrl+S.
+
+### Grafici, pivot e dashboard
+
+- **media** — Torta (70): con 8 categorie Napoli e Udine hanno lo stesso viola e Genova/Trieste/Torino sono tre arancioni-gialli vicini: le fette non si distinguono dalla legenda (`apps/desktop/src/analysis/Chart.tsx`, palette) — Palette di almeno 8-10 tonalità distinte, o tratteggio/etichetta con il nome sulla fetta.
+- **minore** — Pannello delle opzioni del grafico (69, 70): lo scorrimento nasconde "Aggregate" e le opzioni sotto; la scrollbar è sottile e l'area è alta solo ~300 px, con i due pulsanti Export che occupano la parte alta e spingono giù le opzioni che si usano di più — Portare i pulsanti Export dopo le opzioni o nella barra del grafico, così Tipo/X/Y/Aggregate si vedono senza scorrere.
+- **minore** — Pivot (71): il pulsante "Pivot" è attivo anche senza nessun campo riga selezionato e "Aggregate" disattivato è ancora in vista; non c'è nessuna indicazione di cosa succede con 0 campi — Disattivare "Pivot" finché non c'è almeno un campo riga (o un valore), con tooltip.
+- **minore** — Risultato del pivot (72): le colonne sono "city / count" mentre l'utente ha pivotato su "orders/revenue"; non c'è nessuna indicazione del pivot applicato oltre alla query SQL lunga nella barra, che a larghezze minori si taglia — Mostrare un riepilogo breve ("Pivot: city, conteggio") accanto a "SQL view · 8 rows".
+
+### Confronto schemi e altri strumenti di schema
+
+- **minore** — Lo script del confronto (74) si apre in una scheda che si chiama solo "Archive db", identica a quella di un editor normale, e il riepilogo "5 created…" sta solo in un toast che sparisce: dopo pochi secondi nulla dice che lo script è un confronto — Titolo "Archive db — confronto con Shop dev · main" e il riepilogo già presente nel commento in cima.
+- **minore** — Il pulsante "Close" del controllo schema (75) è primario e ha lo stesso peso di "Open 1 fix in editor"; "Open in editor" per singolo problema è un testo arancione senza aspetto di pulsante — Chiudere come azione secondaria, "Open 1 fix in editor" primario; "Apri" come pulsante piccolo con bordo.
+- **minore** — Compare (73): il campo "Output" e le spiegazioni funzionano, ma "Connection" è pre-selezionato con focus sul select e il pulsante "Compare" è attivo senza alcun riassunto di cosa verrà letto (schemi grandi = attesa) — Nessuna correzione urgente: solo aggiungere "Può richiedere qualche secondo" se lo schema ha molte tabelle (poco sicuro, non verificato).
+
+### Amministrazione del server
+
+- **media** — Dashboard (78): cinque tessere su quattro colonne, quindi "Uptime" resta sola nella seconda riga a 1280x720, mentre a 2560x1440 le tessere si allargano a 330 px con poco contenuto e il resto della pagina è vuoto (78 a 1280 e 2560; `admin/Dashboard.tsx`, `admin.css`) — Griglia `repeat(auto-fit, minmax(220px, 1fr))` o mettere Uptime nella riga dei titoli; a larghezze grandi mettere Databases e Replication a fianco.
+- **media** — Le sparkline sono righe quasi invisibili (una linea a 1 px e un puntino) con "last 0 s · max 0" sotto: con meno di due letture il grafico non dice niente (78) — Nascondere la sparkline finché non ci sono almeno 3 punti, o scrivere "In attesa di letture" invece di "last 0 s · max 0".
+- **media** — Le tabelle di Sessioni, Utenti e ruoli, Costliest statements e Tables and indexes tagliano l'ultima colonna ("Datal", "Notes", "Replication"): il pannello dei dettagli vuoto (220 px) toglie larghezza e compare la scrollbar orizzontale per colonne essenziali (76, 79, 80, 81; `admin.css:181-196`) — Con il pannello vuoto, chiuderlo del tutto (appare alla selezione) oppure ridurre le colonne a larghezza fissa piccola per Database/Notes.
+- **minore** — Gli attributi degli utenti (79) si tagliano a "Replication" senza puntini e senza tooltip: l'elenco di pastiglie esce dalla cella — Andare a capo (`flex-wrap`) oppure puntini di sospensione con tooltip dell'elenco completo.
+- **minore** — Locks (77): "Waiting chains", "Locks" e "No locks." sono ravvicinati e senza separazione tra le due sezioni; l'intera schermata è un vuoto di testo grigio piccolo — Spazio tra le sezioni (almeno 24 px) e testo di stato vuoto con icona e spiegazione ("Nessun blocco in corso: appare qui quando una sessione ne aspetta un'altra").
+- **minore** — Ultima riga delle tabelle (80, 81, 82) ancora coperta in parte dalla scrollbar orizzontale e il testo sotto taglia a metà ("qa3_app_pkey", "appay_nulls") — Padding in fondo al contenitore scorrevole pari all'altezza della scrollbar.
+- **minore** — Tab dei titoli della schermata: "Costliest statements" e "Tables and indexes" sono etichette lunghe senza spiegazione di cosa mostrino né ordine; nessun suggerimento sul tempo di aggiornamento ("01:30:28" ha un senso solo se si legge "ultima lettura") (76-82) — Tooltip sull'ora ("Ultima lettura") e etichette più brevi ("Costose", "Tabelle e indici").
+
+Impostazioni, sicurezza, agenti e sync:
+
+Causa comune dello "attaccato": in `apps/desktop/src/styles/dialogs.css:580` il margine sotto l'intestazione esiste solo per `.settings-head + .setting`. Le pagine il cui primo elemento è un paragrafo (`<p class="muted small">`) o un gruppo di pulsanti non lo ricevono.
+
+### Impostazioni (spaziatura, ogni pagina)
+- **media** — Themes, Master password, Plugins, Diagnostics, Sync, Drivers e Agents: il paragrafo introduttivo (11px, grigio) parte a ~20px dall'intestazione, senza il respiro delle altre pagine (47, 54, 61, 62, 55, 60, 57; `dialogs.css:580`, `themes/ThemesPanel.tsx:98`, `plugins/PluginsPanel.tsx:100`, `components/MasterPassword.tsx`) — regola unica `.settings-head + *` (o un wrapper del corpo della pagina) con `margin-top: var(--space-8/12)`, e `gap` verticale fisso tra paragrafo, avvisi e pulsanti.
+- **media** — Plugins (61): "Install from a folder…/.zip…" e subito sotto "No plugin installed." a ~14px, tutto compresso in 130px di altezza; senza stato vuoto vero (`PluginsPanel.tsx:100-112`) — `EmptyState` (icona, frase, i due pulsanti) al posto di riga di testo.
+- **media** — Themes (47) e Master password (54): una pagina con solo un paragrafo e uno o due pulsanti, attaccati tra loro (paragrafo a ~10px dai pulsanti) — `gap` di 12-16px tra paragrafo e pulsanti; per Master password dire lo stato (impostata/non impostata) con un titolo di sezione.
+- **media** — Sync (55, 95): il gruppo di pulsanti "Turn on sync / Sync now / Turn off" segue la riga "Sync when the app starts" senza separazione e a 1280×720 finisce sul bordo inferiore dell'area scorrevole, con "Last sync / Not synced yet" fuori vista; "Turn off" è staccato all'estremità destra, lontano dagli altri (`sync/SyncPanel.tsx`) — margine superiore sopra i pulsanti, riga di stato sopra i pulsanti (o sticky) e "Turn off" accanto agli altri come azione secondaria.
+- **minore** — Diagnostics (62): quattro righe di testo a 11px senza paragrafi, poi il percorso dei log in monospace attaccato, poi il pulsante a 20px (`diagnostics/Diagnostics.tsx`) — dividere in 2 paragrafi (cosa contiene / avvertenza sui messaggi di errore), percorso in una riga con "Copy" e "Show in folder", spazio prima del pulsante.
+- **minore** — Drivers (60): quattro blocchi di testo piccolo uno dietro l'altro, "Install" e "Remove" come testi arancioni minuscoli (11px) su righe da 43px, "Check for updates" a ~12px dalla frase "No driver downloaded yet." — titoli di sezione ("Downloaded drivers", "Client drivers"), "Install"/"Remove" come veri pulsanti piccoli.
+- **minore** — Shortcuts (48): il filtro, la riga di istruzioni e il titolo del primo gruppo ("Dashboard widget") sono a 12-26px l'uno dall'altro; le righe sono alte 33px con la casella dei tasti larga quanto il testo di "Shift+Alt+Down" (si tocca ai bordi) — più aria sopra i titoli dei gruppi (16px), padding orizzontale e `min-width` nelle caselle.
+- **minore** — Layout (36): le due colonne di anteprime non sono allineate sulle righe ("Results" a 236, "Side panels" a 411 contro "Tab bar" a 415) perché i testi di descrizione hanno 2 o 3 righe — griglia con righe a stessa altezza (`align-items: start` su righe condivise) o descrizioni di una sola riga.
+- **minore** — Animations (37): il menu mostra "No" accanto al pallino "cambiato", ma le opzioni sono "Sì / Ridotte / No" e la descrizione parla di "Reduced" — etichette "On / Reduced / Off", e il valore predefinito senza pallino se lo è.
+- **minore** — Masking (50): "Sensitive columns, by name" è ancora tagliato a 1280 dopo "*api_key*," (campo da 340px, `dialogs.css:570`) e "by type" ha il campo vuoto senza segnaposto — textarea di 2-3 righe a tutta larghezza (o chip) e segnaposto "inet, bytea".
+- **minore** — Toolbar (45): sette checkbox in righe da 56px con ampio vuoto in mezzo e l'ultima voce ("Buttons") fuori vista — raggruppare i checkbox con titolo ("Buttons shown") e righe da 40px, o una griglia a due colonne.
+
+### Sicurezza (blocco, mascheramento, snapshot, transaction log)
+- **minore** — Lock screen (83): testo grigio a 11px a basso contrasto; la frase sul perdere la password è centrata mentre l'etichetta è a sinistra; nessun "mostra password" e nessun messaggio di errore previsto sotto il campo prima di provare — allineare a sinistra, testo 12-13px, pulsante per mostrare la password.
+- **minore** — Transaction log (85): le due righe uguali non dicono quale statement è l'ultimo né la durata, e "Restore…" è un link piccolo uguale per tutte — pulsante piccolo e riga in evidenza per l'ultima; ore con secondi e data se cambia giorno.
+- **minore** — Impostazioni › Safety › Before changes (49): sulla prima riga "Reset" occupa il posto a sinistra della checkbox e sposta il controllo di 15px rispetto alle altre righe — riservare sempre lo spazio di "Reset" (riga con colonna fissa).
+
+### Agenti e MCP
+- **media** — Activity (58): i due menu dei filtri sono troncati ("All se…", "Any ou…") e il segnaposto della ricerca è tagliato ("…or argumer"); l'intestazione della tabella è senza griglia con la riga vuota e "Export CSV"/"Clear" sembrano disattivati anche quando non lo sono (`agents/AgentActivity.tsx:114-135`) — larghezza minima di 140px ai menu (la ricerca va a capo su una seconda riga), segnaposto più corto ("Search calls…"), stile attivo per Export/Clear quando la lista non è vuota.
+- **minore** — Dettaglio del client (88, 89): tre livelli di scorrimento annidati (dialog, pagina, riquadro del JSON) e il percorso del file va a capo a metà parola ("claude_desk/top_config.json"); sotto i client il blocco "Bridge with the open app" è fuori vista (89 a 2560) — `word-break: break-all` solo per il percorso con `overflow-wrap: anywhere` ai separatori, riquadro JSON con altezza massima e senza scorrimento proprio finché non serve, ancora al blocco "Bridge" nell'intestazione della pagina.
+- **minore** — Setup (57): la scheda di Gemini CLI resta sola su una riga (7 client in una griglia a 3) e il testo "How it works" a 11px è quasi invisibile accanto al triangolo — 4 colonne a larghezze maggiori, "How it works" come link a 12px.
+- **minore** — Security (59): le righe delle connessioni mostrano solo "Read only" per tutte (anche per Archive db) senza distinguere produzione o sola lettura, e il pannello dei livelli non dice dove si modifica se i radio sono davvero modificabili — nota accanto al livello disattivato per produzione.
+
+### Sync e progetti condivisi
+- **minore** — Share project (97): il campo "Folder" non ha segnaposto, e la casella "Include the user names…" non spiega perché (privacy) — segnaposto "Folder in the repository or on the drive" e una riga sotto la casella.
+- **minore** — New project (98): il pulsante "Open shared project…" nel piede ha la stessa forza di "Cancel" e sta a sinistra, lontano dal contesto — va bene ora che c'è anche nel menu (96) e nella home; valutare solo di toglierlo dal piede per evitare tre azioni diverse (Open shared, Cancel, Save).
+
+### Task pianificati
+- **media** — Stato vuoto (99): due pulsanti "New task…" nello stesso dialog (arancione in linea e secondario in basso, quello con il focus), più "Close" arancione: tre azioni di cui due uguali; la frase "No scheduled tasks yet." in linea col pulsante, senza icona né titolo, a differenza dei profili (101) (`admin/SchedulesDialog.tsx:159`) — `EmptyState` con icona, titolo e un solo "New task…"; nascondere il pulsante in basso se la lista è vuota; "Close" secondario.
+- **minore** — Nuovo task (100): le righe del modulo sono a ~19px una dall'altra, con "Task" a tutta larghezza tra due righe a due colonne; "SQL file" è un campo vuoto senza segnaposto e con "Choose file…" — stesso passo di 16px tra i gruppi, segnaposto ("A .sql file") e riga di aiuto sotto "Tries again" ("0 = no retry").
+
+### Profili di trasferimento
+- **minore** — Dialog (101, 2560): per un piccolo stato vuoto il dialog occupa 980×350px (a 2560 una finestra 770×280 con il titolo isolato in alto a sinistra, "Close" in basso a destra a 150px di distanza), e due pulsanti arancioni ("Go to the navigator" e "Close", quest'ultimo con il focus) restano in competizione (`transfer/ProfilesDialog.tsx:93-102`) — dialog stretto (`small`) quando la lista è vuota, "Close" secondario.
