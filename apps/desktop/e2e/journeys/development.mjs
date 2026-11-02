@@ -204,10 +204,6 @@ export async function run(page, ctx, mode) {
   await page.waitFor(`document.activeElement === ${visibleTab}.querySelector('.cm-content')`, 5_000);
   await page.type("select 1");
   await page.waitFor(`${editorText} === 'select 1'`, 5_000);
-  // BUG?: right after typing, the first Escape is taken by the completion (even with no list in
-  // view) and Tab still indents; the second Escape arms the editor to let Tab leave (docs/SHORTCUTS.md
-  // says Escape then Tab). The journey presses Escape twice, as a user does who sees nothing happen.
-  await keys.escape(page);
   await keys.escape(page);
   await page.eval(`void (window.__focusBefore = document.activeElement)`);
   await keys.tab(page);

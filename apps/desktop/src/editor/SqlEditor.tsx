@@ -4,7 +4,9 @@ import {
   autocompletion,
   closeBrackets,
   closeBracketsKeymap,
+  closeCompletion,
   completionKeymap,
+  completionStatus,
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { MSSQL, MySQL, PLSQL, PostgreSQL, SQLite, StandardSQL } from "@codemirror/lang-sql";
@@ -343,6 +345,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(p
           keymap.of([
             { key: "Enter", run: closeOnTypedWord },
             { key: "Tab", run: acceptCompletion },
+            // With no list in view Escape is left unhandled (a pending query is dropped), so it arms
+            // the editor to let Tab leave it at the first press.
+            { key: "Escape", run: (view) => (completionStatus(view.state) === "active" ? closeCompletion(view) : (closeCompletion(view), false)) },
           ]),
         ),
         autocompletion(),
