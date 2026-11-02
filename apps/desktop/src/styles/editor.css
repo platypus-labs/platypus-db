@@ -914,8 +914,9 @@ button.toggled {
 }
 
 .builder-join-on {
-  margin-top: var(--space-2);
-  padding: 0 var(--space-4);
+  margin-top: var(--space-6);
+  padding: var(--space-2) var(--space-6);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
   font-size: var(--text-xs);
@@ -997,10 +998,18 @@ button.toggled {
 
 .builder-bottom {
   border-top: 1px solid var(--border);
-  padding: var(--space-6) var(--space-10);
+  padding: var(--space-12);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-8);
+}
+
+.builder-hint {
+  position: absolute;
+  right: var(--space-12);
+  bottom: var(--space-8);
+  margin: 0;
+  pointer-events: none;
 }
 
 .builder-where {

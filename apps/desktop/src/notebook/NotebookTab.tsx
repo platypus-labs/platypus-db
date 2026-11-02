@@ -471,10 +471,10 @@ export function NotebookTab({ tab, connection, active, ensureSession, sideSessio
         </button>
         <span className="spacer" />
         {copy.current?.partial && <span className="notice warn small">{t("Partial: reading stopped at the memory limit.")}</span>}
-        <button type="button" onClick={() => void saveFile()} data-action="save" title={t("Save (Ctrl+S)")}>
+        <button type="button" className="boxed" onClick={() => void saveFile()} data-action="save" title={t("Save (Ctrl+S)")}>
           {t("Save")}
         </button>
-        <button type="button" onClick={() => void exportHtml()} data-action="export_html">
+        <button type="button" className="boxed" onClick={() => void exportHtml()} data-action="export_html" title={t("Export the notebook as a single HTML page")}>
           {t("Export HTML…")}
         </button>
       </div>

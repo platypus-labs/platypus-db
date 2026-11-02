@@ -231,7 +231,7 @@ function PrincipalTable({
                 {p.host && <span className="muted">@{p.host}</span>}
               </td>
               <td>{p.kind === "user" ? t("user") : t("role")}</td>
-              <td>
+              <td className="users-flags-cell">
                 <Flags principal={p} />
               </td>
               <td className="admin-query">{p.member_of.join(", ")}</td>

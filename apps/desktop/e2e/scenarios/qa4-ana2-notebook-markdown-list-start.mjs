@@ -21,6 +21,8 @@ export function setup({ dir }) {
 
 export default async function (page, { dir }) {
   await newNotebook(page, NAME);
+  // A new notebook is one SQL cell: the text cell is added.
+  await page.eval(click(tab, "add_text"));
   await page.waitFor(`${tab}.querySelector('textarea.notebook-text') !== null`);
   await setField(page, ".notebook-tab textarea.notebook-text", "Steps 3 and 4:\n\n3. three\n4. four");
   await page.eval(click(`${tab}.querySelector('.notebook-cell.markdown')`, "edit"));

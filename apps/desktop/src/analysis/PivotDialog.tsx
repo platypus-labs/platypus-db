@@ -136,7 +136,7 @@ export function PivotDialog({
           <button type="button" onClick={onClose}>
             {t("Cancel")}
           </button>
-          <button type="button" className="primary" disabled={!valid} onClick={run}>
+          <button type="button" className="primary" disabled={!valid} title={valid ? undefined : t("Choose at least one row field")} onClick={run}>
             {t("Pivot")}
           </button>
         </div>

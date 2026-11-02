@@ -81,7 +81,7 @@ export function LintDialog({ connection, database, schema, onClose }: Props) {
                   {f.fix && (
                     <div className="lint-fix">
                       <code>{f.fix}</code>
-                      <button type="button" className="link" onClick={() => openSql(`${f.fix};\n`)}>
+                      <button type="button" onClick={() => openSql(`${f.fix};\n`)}>
                         {t("Open in editor")}
                       </button>
                     </div>
@@ -94,11 +94,11 @@ export function LintDialog({ connection, database, schema, onClose }: Props) {
         <div className="actions">
           <span className="spacer" />
           {fixes.length > 0 && (
-            <button type="button" onClick={() => openSql(`${fixes.join("\n")}\n`)}>
+            <button type="button" className="primary" onClick={() => openSql(`${fixes.join("\n")}\n`)}>
               {plural(fixes.length, "Open {n} fix in editor", "Open {n} fixes in editor")}
             </button>
           )}
-          <button type="button" className="primary" onClick={onClose}>
+          <button type="button" className={fixes.length > 0 ? undefined : "primary"} onClick={onClose}>
             {t("Close")}
           </button>
         </div>
