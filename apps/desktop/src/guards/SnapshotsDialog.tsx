@@ -29,10 +29,13 @@ export async function snapshotBefore(sessionId: number, database: string | null,
 }
 
 /** Opens the statements that put a snapshot's rows back in a new editor, to look at and run. */
-export async function openRestore(connectionId: string, database: string | null, id: string) {
+export async function openRestore(connectionId: string, database: string | null, id: string, known?: SnapshotMeta) {
   try {
-    const [statements, all] = await Promise.all([api.snapshotRestore(id), api.listSnapshots().catch(() => [])]);
-    const meta = all.find((s) => s.id === id);
+    // Only the transaction log has no metadata at hand: it is looked up there.
+    const [statements, meta] = await Promise.all([
+      api.snapshotRestore(id),
+      known ?? api.listSnapshots().then((all) => all.find((s) => s.id === id), () => undefined),
+    ]);
     const what = meta ? t("{verb} of {time}", { verb: meta.verb, time: time(meta.taken_at) }) : id;
     const head = `-- ${t("Puts back the rows of {table} ({what}): look them over, then run them.", { table: meta?.table ?? "", what })}\n`;
     workbench().openTab("query", connectionId, {
@@ -110,7 +113,7 @@ export function SnapshotsDialog({ onClose }: { onClose: () => void }) {
                     disabled={opening !== null}
                     onClick={() => {
                       setOpening(s.id);
-                      void openRestore(s.connection_id, s.database, s.id).finally(onClose);
+                      void openRestore(s.connection_id, s.database, s.id, s).finally(onClose);
                     }}
                   >
                     {opening === s.id ? t("Opening…") : t("Open restore script")}

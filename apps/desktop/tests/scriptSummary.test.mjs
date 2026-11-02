@@ -9,9 +9,12 @@ test("the summary counts created, altered and dropped tables, and every DROP", (
     "  create table if not exists b (id int);",
     "ALTER TABLE c ADD COLUMN x int;",
     "ALTER TABLE c DROP COLUMN y;",
+    "ALTER TABLE e ALTER COLUMN z DROP DEFAULT;",
+    "ALTER TABLE e ALTER COLUMN z DROP NOT NULL;",
     "DROP TABLE d;",
     "CREATE INDEX i ON a (id);",
   ]);
+  // c and e are altered by two statements each; dropping a default or a NOT NULL loses nothing.
   assert.deepEqual(s, { created: 2, altered: 2, dropped: 1, drops: 2 });
 });
 

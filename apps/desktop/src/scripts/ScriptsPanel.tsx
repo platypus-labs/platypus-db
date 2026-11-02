@@ -133,6 +133,9 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
       drop: (folder) => moveScript(latestProject.current, path, folder).catch(fail),
     });
 
+  const gitBar = <GitBar project={projectId} status={git} problem={gitProblem} reload={load} onError={onError} />;
+  // With no scripts the Git proposal goes after the empty state: it is not the main action.
+  const gitLast = !!list && entries.length === 0;
   return (
     <section className={`scripts-panel${open ? " open" : ""}`} aria-label={t("Scripts")}>
       <div className={`sidebar-header scripts-header${dropInto === "" ? " drop-into" : ""}`} data-script-folder="">
@@ -147,8 +150,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
           <Icon name="new-folder" />
         </button>
       </div>
-      {/* With no scripts the Git proposal goes after the empty state: it is not the main action. */}
-      {open && !(list && entries.length === 0) && <GitBar project={projectId} status={git} problem={gitProblem} reload={load} onError={onError} />}
+      {open && !gitLast && gitBar}
       {open && (
         <ul className="tree scripts-tree">
           {entries.map((entry) => {
@@ -244,7 +246,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
           )}
         </ul>
       )}
-      {open && list && entries.length === 0 && <GitBar project={projectId} status={git} problem={gitProblem} reload={load} onError={onError} />}
+      {open && gitLast && gitBar}
       {menu && <ContextMenu menu={menu} onClose={closeMenu} onError={fail} />}
     </section>
   );

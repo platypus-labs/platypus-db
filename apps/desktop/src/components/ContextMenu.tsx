@@ -104,7 +104,8 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
     // Taller than the window (a small window, a large interface size): it scrolls, so every
-    // item can be reached. Its submenus are fixed panels, which the scrolling does not clip.
+    // item can be reached. Its submenus are fixed panels, which the scrolling does not clip
+    // (the class drops the glass: a backdrop-filter would make the menu their containing block).
     const room = window.innerHeight - 8;
     setPos({
       left: Math.max(0, Math.min(menu.x, window.innerWidth - width - 4)),
@@ -191,9 +192,11 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   return (
     <div
       ref={ref}
-      className="context-menu"
+      className={pos.overflowY ? "context-menu scrolls" : "context-menu"}
       role="menu"
       style={pos}
+      // A fixed submenu would stay where its row was: scrolling closes it.
+      onScroll={() => setOpen(null)}
       onKeyDown={onKey}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}

@@ -365,6 +365,13 @@
     background: var(--glass-menu);
   }
 
+  /* A menu that scrolls is solid: with the glass it would clip its fixed submenus. */
+  .context-menu.scrolls {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--bg-sidebar);
+  }
+
   .modal {
     background: var(--glass-dialog);
   }

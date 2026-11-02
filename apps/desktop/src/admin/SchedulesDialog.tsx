@@ -195,7 +195,11 @@ export function SchedulesDialog({
                         onRun={() => {
                           setStarted((old) => new Set(old).add(s.id));
                           api.runScheduleNow(s.id).catch((e) => {
-                            setStarted(new Set());
+                            setStarted((old) => {
+                              const left = new Set(old);
+                              left.delete(s.id);
+                              return left;
+                            });
                             setError(toCommandError(e).message);
                           });
                         }}
