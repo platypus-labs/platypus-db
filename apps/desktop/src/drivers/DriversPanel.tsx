@@ -57,6 +57,7 @@ export function DriversPanel() {
           : t("The drivers for PostgreSQL, MySQL, SQLite, SQL Server and the other databases are built into PlatypusDB and update with the app.")}
       </p>
       {error && <div className="notice error small">{error}</div>}
+      <h4 className="settings-subhead">{t("Downloaded drivers")}</h4>
       <div className="driver-actions">
         <button type="button" data-action="check-updates" disabled={checking} onClick={() => void checkNow()}>
           {checking ? t("Checking…") : t("Check for updates")}

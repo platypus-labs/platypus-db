@@ -1313,7 +1313,6 @@ const es: Record<string, string> = {
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Esta consulta no se puede ordenar desde el encabezado: el editor no la tiene tal como se ejecutó (se ha modificado desde entonces, se sustituyeron sus variables o viene de un @include).",
   // Diagnostics: the log, crashes and the diagnostic package
   "Diagnostics": "Diagnóstico",
-  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "PlatypusDB guarda en este equipo un registro de sus inicios, errores y cierres inesperados; no se envía nada a ningún sitio. Para informar de un problema, guarda el paquete de diagnóstico y adjúntalo al informe: contiene la versión, el sistema, los ajustes sin contraseñas, cuántas conexiones tienes de cada base de datos y los registros. Los mensajes de error de los registros pueden nombrar un servidor o una tabla: revísalos antes de compartir el paquete.",
   "Logs": "Registros",
   "Save diagnostic package…": "Guardar el paquete de diagnóstico…",
   "Saved to {path}": "Guardado en {path}",
@@ -1669,7 +1668,6 @@ const es: Record<string, string> = {
   "{n} errors": "{n} errores",
   "Outcome": "Resultado",
   "Any outcome": "Cualquier resultado",
-  "Filter by tool, agent, connection or argument": "Filtrar por herramienta, agente, conexión o argumento",
   "Export CSV": "Exportar CSV",
   "When": "Cuándo",
   "Agent": "Agente",
@@ -3060,7 +3058,6 @@ const es: Record<string, string> = {
   "Animations": "Animaciones",
   "Panels and dialogs opening, tabs appearing. Reduced: short fades only.": "Apertura de paneles y diálogos, aparición de pestañas. Reducidas: solo fundidos breves.",
   "Like the system": "Como el sistema",
-  "Yes": "Sí",
   "Reduced": "Reducidas",
   "Dashboard widget": "Widget del panel",
   "Only the first {shown} of {total} rows are in this export.": "Esta exportación solo contiene las primeras {shown} de {total} filas.",
@@ -3168,6 +3165,21 @@ const es: Record<string, string> = {
   "Dashboard saved": "Panel guardado",
   "PK primary key · FK foreign key · * NOT NULL": "PK clave primaria · FK clave externa · * NOT NULL",
   "DDL": "DDL",
+  // Settings P3 (group T)
+  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report.": "PlatypusDB guarda un registro de inicios, errores y cierres inesperados en este equipo; no se envía nada. Para informar de un problema, guarda el paquete de diagnóstico y adjúntalo al informe.",
+  "The package holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "El paquete contiene la versión, el sistema, los ajustes sin contraseñas, cuántas conexiones tienes de cada base de datos y los registros. Los mensajes de error pueden nombrar un servidor o una tabla: revísalos antes de compartir el paquete.",
+  "The master password is on": "La contraseña maestra está activada",
+  "The master password is off": "La contraseña maestra está desactivada",
+  "Downloaded drivers": "Controladores descargados",
+  "Client drivers": "Controladores de cliente",
+  "Show password": "Mostrar la contraseña",
+  "Latest": "Última",
+  "Search calls…": "Buscar llamadas…",
+  "Not available: production and read-only connections stay read only.": "No disponible: las conexiones de producción y de solo lectura siguen en solo lectura.",
+  "Folder in the repository or on the drive": "Carpeta en el repositorio o en la unidad",
+  "User names can identify people: leave this off if the folder is public.": "Los nombres de usuario pueden identificar a personas: déjalo desactivado si la carpeta es pública.",
+  "A .sql file": "Un archivo .sql",
+  "Tries again: 0 means no retry.": "Reintentos: 0 significa sin reintento.",
 };
 
 export default es;

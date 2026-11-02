@@ -1313,7 +1313,6 @@ const fr: Record<string, string> = {
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Cette requête ne peut pas être triée depuis l'en-tête : l'éditeur ne la contient pas telle qu'elle a été exécutée (elle a été modifiée depuis, ses variables ont été remplacées, ou elle vient d'un @include).",
   // Diagnostics: the log, crashes and the diagnostic package
   "Diagnostics": "Diagnostic",
-  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "PlatypusDB tient sur cet ordinateur un journal de ses démarrages, erreurs et plantages ; rien n'est envoyé. Pour signaler un problème, enregistrez le paquet de diagnostic et joignez-le au signalement : il contient la version, le système, les paramètres sans les mots de passe, le nombre de connexions par base de données et les journaux. Les messages d'erreur des journaux peuvent nommer un serveur ou une table : vérifiez-les avant de partager le paquet.",
   "Logs": "Journaux",
   "Save diagnostic package…": "Enregistrer le paquet de diagnostic…",
   "Saved to {path}": "Enregistré dans {path}",
@@ -1669,7 +1668,6 @@ const fr: Record<string, string> = {
   "{n} errors": "{n} erreurs",
   "Outcome": "Résultat",
   "Any outcome": "Tout résultat",
-  "Filter by tool, agent, connection or argument": "Filtrer par outil, agent, connexion ou argument",
   "Export CSV": "Exporter en CSV",
   "When": "Quand",
   "Agent": "Agent",
@@ -3060,7 +3058,6 @@ const fr: Record<string, string> = {
   "Animations": "Animations",
   "Panels and dialogs opening, tabs appearing. Reduced: short fades only.": "Ouverture des panneaux et des dialogues, apparition des onglets. Réduites : seulement de brefs fondus.",
   "Like the system": "Comme le système",
-  "Yes": "Oui",
   "Reduced": "Réduites",
   "Dashboard widget": "Widget du tableau de bord",
   "Only the first {shown} of {total} rows are in this export.": "Cet export ne contient que les {shown} premières lignes sur {total}.",
@@ -3168,6 +3165,21 @@ const fr: Record<string, string> = {
   "Dashboard saved": "Tableau de bord enregistré",
   "PK primary key · FK foreign key · * NOT NULL": "PK clé primaire · FK clé étrangère · * NOT NULL",
   "DDL": "DDL",
+  // Settings P3 (group T)
+  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report.": "PlatypusDB tient un journal des démarrages, erreurs et plantages sur cet ordinateur ; rien n’est envoyé. Pour signaler un problème, enregistrez le paquet de diagnostic et joignez-le au signalement.",
+  "The package holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "Le paquet contient la version, le système, les réglages sans mots de passe, le nombre de connexions par base de données et les journaux. Les messages d’erreur peuvent nommer un serveur ou une table : relisez-les avant de partager le paquet.",
+  "The master password is on": "Le mot de passe principal est activé",
+  "The master password is off": "Le mot de passe principal est désactivé",
+  "Downloaded drivers": "Pilotes téléchargés",
+  "Client drivers": "Pilotes clients",
+  "Show password": "Afficher le mot de passe",
+  "Latest": "Dernière",
+  "Search calls…": "Rechercher dans les appels…",
+  "Not available: production and read-only connections stay read only.": "Indisponible : les connexions de production et en lecture seule restent en lecture seule.",
+  "Folder in the repository or on the drive": "Dossier du dépôt ou du lecteur",
+  "User names can identify people: leave this off if the folder is public.": "Les noms d’utilisateur peuvent identifier des personnes : laissez désactivé si le dossier est public.",
+  "A .sql file": "Un fichier .sql",
+  "Tries again: 0 means no retry.": "Nouvelles tentatives : 0 signifie aucune.",
 };
 
 export default fr;

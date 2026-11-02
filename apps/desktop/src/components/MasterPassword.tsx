@@ -106,6 +106,9 @@ export function MasterPasswordPanel() {
   if (!status) return null;
   return (
     <div className="master-password">
+      <h4 className="settings-subhead" data-field="vault-state">
+        {t(status.enabled ? "The master password is on" : "The master password is off")}
+      </h4>
       <p className="muted small">
         {t(
           status.enabled

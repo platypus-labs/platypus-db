@@ -50,6 +50,7 @@ export function useIdleLock(lock: () => void, locked: boolean) {
 export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const backdrop = useRef<HTMLDivElement>(null);
 
@@ -87,7 +88,11 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         <p className="muted small">{t("Enter the master password to go on. Production connections were closed: they reconnect when used.")}</p>
         <label className="field">
           <span>{t("Master password")}</span>
-          <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input autoFocus type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        <label className="check lock-show">
+          <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
+          {t("Show password")}
         </label>
         {error && <div className="notice error small">{error}</div>}
         <p className="muted small">{t("It cannot be recovered: without it the saved passwords are lost.")}</p>

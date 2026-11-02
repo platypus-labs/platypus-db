@@ -454,7 +454,15 @@ function SettingRow({ def, onSave }: { def: SettingDef<Value>; onSave: (value: V
       );
       break;
     case "text":
-      input = (
+      input = c.multiline ? (
+        <textarea
+          key={value as string}
+          rows={3}
+          defaultValue={value as string}
+          placeholder={c.placeholder}
+          onBlur={(e) => e.target.value !== value && onSave(e.target.value)}
+        />
+      ) : (
         <input
           // A new field when the value changes elsewhere (Reset): blur would save the old one.
           key={value as string}

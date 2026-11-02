@@ -1313,7 +1313,6 @@ const it: Record<string, string> = {
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Questa query non si ordina dall'intestazione: l'editor non la contiene così come è stata eseguita (è stata modificata, ha variabili sostituite o viene da un @include).",
   // Diagnostics: the log, crashes and the diagnostic package
   "Diagnostics": "Diagnostica",
-  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "PlatypusDB tiene su questo computer un log di avvii, errori e crash; non invia niente. Per segnalare un problema, salva il pacchetto diagnostico e allegalo alla segnalazione: contiene versione, sistema, impostazioni senza password, quante connessioni hai per ogni database e i log. I messaggi di errore nei log possono nominare un server o una tabella: controllali prima di condividere il pacchetto.",
   "Logs": "Log",
   "Save diagnostic package…": "Salva pacchetto diagnostico…",
   "Saved to {path}": "Salvato in {path}",
@@ -1669,7 +1668,6 @@ const it: Record<string, string> = {
   "{n} errors": "{n} errori",
   "Outcome": "Esito",
   "Any outcome": "Qualsiasi esito",
-  "Filter by tool, agent, connection or argument": "Filtra per strumento, agente, connessione o argomento",
   "Export CSV": "Esporta CSV",
   "When": "Quando",
   "Agent": "Agente",
@@ -3060,7 +3058,6 @@ const it: Record<string, string> = {
   "Animations": "Animazioni",
   "Panels and dialogs opening, tabs appearing. Reduced: short fades only.": "Apertura di pannelli e finestre, comparsa delle schede. Ridotte: solo dissolvenze brevi.",
   "Like the system": "Come il sistema",
-  "Yes": "Sì",
   "Reduced": "Ridotte",
   "Dashboard widget": "Widget della dashboard",
   "Only the first {shown} of {total} rows are in this export.": "In questo export ci sono solo le prime {shown} righe su {total}.",
@@ -3168,6 +3165,21 @@ const it: Record<string, string> = {
   "Dashboard saved": "Dashboard salvata",
   "PK primary key · FK foreign key · * NOT NULL": "PK chiave primaria · FK chiave esterna · * NOT NULL",
   "DDL": "DDL",
+  // Settings P3 (group T)
+  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report.": "PlatypusDB tiene un registro di avvii, errori e arresti anomali su questo computer; non viene inviato nulla. Per segnalare un problema, salva il pacchetto diagnostico e allegalo alla segnalazione.",
+  "The package holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "Il pacchetto contiene la versione, il sistema, le impostazioni senza password, quante connessioni hai per ogni database e i log. I messaggi di errore nei log possono nominare un server o una tabella: controllali prima di condividere il pacchetto.",
+  "The master password is on": "La master password è attiva",
+  "The master password is off": "La master password è disattivata",
+  "Downloaded drivers": "Driver scaricati",
+  "Client drivers": "Driver client",
+  "Show password": "Mostra la password",
+  "Latest": "Ultimo",
+  "Search calls…": "Cerca nelle chiamate…",
+  "Not available: production and read-only connections stay read only.": "Non disponibile: le connessioni di produzione e di sola lettura restano in sola lettura.",
+  "Folder in the repository or on the drive": "Cartella nel repository o sul disco condiviso",
+  "User names can identify people: leave this off if the folder is public.": "I nomi utente possono identificare le persone: lascia spento se la cartella è pubblica.",
+  "A .sql file": "Un file .sql",
+  "Tries again: 0 means no retry.": "Nuovi tentativi: 0 vuol dire nessun nuovo tentativo.",
 };
 
 export default it;

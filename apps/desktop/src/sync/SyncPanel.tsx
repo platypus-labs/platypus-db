@@ -166,6 +166,9 @@ export function SyncPanel() {
         </span>
         <input data-field="sync-on-start" type="checkbox" checked={onStart} onChange={(e) => setOnStart(e.target.checked)} />
       </label>
+      <div className="muted small" data-field="sync-last">
+        {status?.last_sync ? t("Last sync: {time}", { time: new Date(status.last_sync).toLocaleString() }) : t("Not synced yet.")}
+      </div>
       {message && (
         <div className={`notice ${message.ok ? "ok" : "error"} small`} data-field="sync-message">
           {message.text}
@@ -178,15 +181,11 @@ export function SyncPanel() {
         <button type="button" data-action="sync-now" aria-busy={doing === "sync" || undefined} disabled={busy || !on} onClick={() => void syncNow()}>
           {doing === "sync" ? <Busy label={t("Syncing…")} /> : t("Sync now")}
         </button>
-        <span className="spacer" />
         <button type="button" data-action="sync-off" disabled={busy || !on} onClick={() => void turnOff()}>
           {t("Turn off")}
         </button>
       </div>
       {mismatch && passphrase !== "" && confirm !== "" && <div className="muted small">{t("The passphrases do not match.")}</div>}
-      <div className="muted small" data-field="sync-last">
-        {status?.last_sync ? t("Last sync: {time}", { time: new Date(status.last_sync).toLocaleString() }) : t("Not synced yet.")}
-      </div>
       {status && status.conflicts.length > 0 && (
         <section data-field="sync-conflicts">
           <h4>{plural(status.conflicts.length, "{n} change on both computers", "{n} changes on both computers")}</h4>

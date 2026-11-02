@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, toCommandError, type DiagnosticsInfo } from "../api";
 import { t } from "../i18n";
+import { copyText } from "../ui/copy";
 
 /** Asks where to save the diagnostic package, then saves it; resolves with the path, or
  *  `null` when the dialog was closed. */
@@ -46,14 +47,20 @@ export function DiagnosticsPanel() {
   return (
     <div className="diagnostics-panel">
       <p className="muted small">
-        {t(
-          "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.",
-        )}
+        {t("PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report.")}
+      </p>
+      <p className="muted small">
+        {t("The package holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.")}
       </p>
       {info?.log_dir && (
-        <p className="small">
-          {t("Logs")}: <code data-field="log_dir">{info.log_dir}</code>
-        </p>
+        <div className="row tight diagnostics-logs">
+          <span className="small">
+            {t("Logs")}: <code data-field="log_dir">{info.log_dir}</code>
+          </span>
+          <button type="button" className="small" onClick={() => void copyText(info.log_dir ?? "", t("Logs"))}>
+            {t("Copy")}
+          </button>
+        </div>
       )}
       <div className="row tight">
         <button type="button" onClick={() => void saveIt()} data-action="save-diagnostics">
