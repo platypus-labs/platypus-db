@@ -41,6 +41,7 @@ async function queryBuilder(page) {
   assert.match(await page.eval(`${builder}.querySelector('.builder-hint')?.textContent ?? ''`), /Drag another table/);
   await page.eval(`${source("orders")}.querySelector('.builder-add').click()`);
   await page.waitFor(`${builderSql}.includes('JOIN orders o')`, 10_000);
+  await page.waitFor(`${builder}.querySelector('.builder-join-on') !== null`, 10_000);
   // The join's label is a box of its own, in the room between the two tables.
   const rects = await page.eval(`(() => {
     const r = (el) => el.getBoundingClientRect();

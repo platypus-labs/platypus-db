@@ -87,6 +87,7 @@ export default async function (page) {
   await page.eval(`document.getElementById('e2e-table').removeAttribute('id')`);
   await page.waitFor(`${editBar}.includes('to edit a cell')`, 15_000);
   await page.eval(`${grid}.focus()`);
+  await page.key("ArrowDown", "ArrowDown", 40);
   await page.key("Delete", "Delete", 46);
   await page.waitFor(`${editBar}.includes('1 row changed')`);
   assert.ok(!(await page.eval(editBar)).includes("("), "one kind of change has no breakdown");
