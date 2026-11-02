@@ -1059,6 +1059,11 @@ export function DataGrid({
       e.preventDefault();
       const next = move() ?? { row: 0, col: first };
       setFocus(next, e.shiftKey);
+    } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      // The grid's menu from the keyboard, as the navigator's rows have it, at the top left of the data.
+      e.preventDefault();
+      const box = scrollRef.current!.getBoundingClientRect();
+      setMenu({ x: box.left + 40, y: box.top + HEADER_H + ROW_H, target: { scope: "grid", arg: context() } });
     } else {
       dispatchKey("grid", context(), e.nativeEvent, showError);
     }
