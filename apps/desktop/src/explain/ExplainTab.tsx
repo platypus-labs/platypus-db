@@ -502,6 +502,16 @@ function Figures({ node }: { node: PlanNode }) {
   );
 }
 
+/** What a step does, in a sentence, for the usual scan and join operations. */
+function operationMeaning(operation: string): string | null {
+  const op = operation.toUpperCase();
+  if (op.includes("INDEX") || op.startsWith("SEARCH")) return t("Reads the rows through an index: fast for a few rows.");
+  if (op.includes("SCAN")) return t("Reads every row of the table: slow on a big table unless most rows are needed.");
+  if (op.includes("JOIN")) return t("Combines the rows of two inputs on a condition.");
+  if (op.includes("SORT")) return t("Orders the rows.");
+  return null;
+}
+
 function Properties({ node }: { node: PlanNode }) {
   const rows: [string, string][] = [
     [t("Operation"), node.operation],
@@ -519,16 +529,22 @@ function Properties({ node }: { node: PlanNode }) {
       .map(([k, v]) => [k, num(v)] as [string, string]),
     ...node.properties,
   ];
+  const timed = node.cost !== null || node.actual_ms !== null;
+  const meaning = operationMeaning(node.operation);
   return (
-    <table className="meta-table explain-properties">
-      <tbody>
-        {rows.map(([k, v]) => (
-          <tr key={k}>
-            <th>{k}</th>
-            <td>{v}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="explain-properties">
+      <table className="meta-table">
+        <tbody>
+          {rows.map(([k, v]) => (
+            <tr key={k}>
+              <th>{k}</th>
+              <td>{v}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {meaning && <p className="muted small explain-meaning">{meaning}</p>}
+      {!timed && <p className="muted small explain-meaning">{t("No cost or timing in this plan.")}</p>}
+    </div>
   );
 }

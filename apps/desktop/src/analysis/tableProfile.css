@@ -8,7 +8,7 @@
 /* The figures of the table: a row of cards. */
 .tp-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--space-10);
   margin-bottom: var(--space-16);
 }
@@ -48,6 +48,7 @@
   display: grid;
   grid-template-columns: 140px 260px minmax(120px, 1fr) minmax(120px, 200px);
   column-gap: var(--space-16);
+  align-content: start;
   align-items: start;
   min-width: 0;
   min-height: 64px;
@@ -90,7 +91,7 @@
 .tp-card dl {
   display: grid;
   /* One label column for every card: the values start at the same place in each. */
-  grid-template-columns: 8em 1fr;
+  grid-template-columns: 11em 1fr;
   gap: var(--space-2) var(--space-10);
   margin: 0;
 }

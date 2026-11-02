@@ -454,6 +454,8 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
             </label>
           </div>
         ) : (
+          <>
+          {!preview && <p className="muted small">{t("Choose a file; you will map the columns next.")}</p>}
           <div className="row">
             <label className="field grow">
               <span>{t("File")}</span>
@@ -496,6 +498,7 @@ export function ImportDataDialog({ target: start, source, path: initial, newTabl
               </label>
             )}
           </div>
+          </>
         )}
         {error && (
           <div className="notice error small">

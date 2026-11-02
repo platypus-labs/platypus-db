@@ -192,7 +192,7 @@ export function ImportDialog({ existing, projects, project, onImported, onClose 
               title={f.path}
               onClick={() => void load(f)}
             >
-              <strong>{t("Found: {source}", { source: label(f.source) })}</strong>
+              <strong>{t("Detected on this computer: {source}", { source: label(f.source) })}</strong>
               <span className="muted small">{fileName(f.path)}</span>
             </button>
           ))}

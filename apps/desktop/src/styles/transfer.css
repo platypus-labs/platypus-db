@@ -94,3 +94,15 @@
   color: var(--fg-muted);
 }
 
+
+.migrate-tables {
+  margin: var(--space-12) 0;
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* The profiles dialog with nothing to list is as narrow as a message. */
+.modal.schedules-dialog.narrow {
+  width: min(var(--modal-sm), calc(100vw - 32px));
+}

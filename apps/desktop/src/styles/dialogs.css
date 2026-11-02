@@ -92,7 +92,10 @@
    inside the dialog, so the buttons stay where they are. */
 .modal.connection-dialog {
   width: min(880px, calc(100vw - 48px));
-  height: min(660px, calc(100vh - 96px));
+  /* As tall as the page needs, between a floor that keeps the dialog from jumping and the window. */
+  height: auto;
+  min-height: min(460px, calc(100vh - 96px));
+  max-height: min(660px, calc(100vh - 96px));
   overflow: hidden;
 }
 
@@ -299,6 +302,15 @@
 .connection-dialog .form-section + .field,
 .connection-dialog .field + .form-section {
   padding-top: var(--space-12);
+}
+
+.connection-dialog .form-section + .form-section {
+  border-top: 1px solid var(--border);
+}
+
+/* An example is paler than a value. */
+.connection-dialog ::placeholder {
+  opacity: 0.55;
 }
 
 .connection-dialog .swatches {
@@ -1249,6 +1261,22 @@ button.primary.danger:hover:not(:disabled) {
 
 .import-tile.found {
   border-style: dashed;
+}
+
+/* The choice is the filled tile with a check mark; the keyboard focus is a separate ring. */
+.import-tile.toggled {
+  background: var(--active);
+  border-color: var(--accent);
+}
+
+.import-tile.toggled strong::after {
+  content: " ✓";
+  color: var(--accent);
+}
+
+.import-tile:focus-visible {
+  outline: 2px solid var(--fg-muted);
+  outline-offset: 2px;
 }
 
 .import-drop {
@@ -2809,4 +2837,9 @@ label.multi-run-row:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+
+.palette li > svg {
+  flex: none;
+  color: var(--fg-muted);
 }

@@ -146,10 +146,10 @@ export function MigrateDialog({ connection, database, schema, tables: chosen, ob
               )}
         </p>
         {tables !== null && (
-          <p className="small migrate-tables">
-            <strong>{t("Tables: {n}", { n: tables.length })}</strong>
-            {tables.length > 0 ? ` — ${tables.join(", ")}` : ` — ${t("No tables")}`}
-          </p>
+          <div className="small migrate-tables">
+            <div className="muted">{t("Tables: {n}", { n: tables.length })}</div>
+            <div>{tables.length > 0 ? tables.join(", ") : t("No tables")}</div>
+          </div>
         )}
         {saved && !candidates.some((c) => c.id === saved.target_connection_id) && (
           <div className="notice warn small">{t("The target connection of the profile is gone or takes no tables: pick another.")}</div>

@@ -1072,7 +1072,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             <h3>{t("Appearance")}</h3>
             <div className="row">
               <label className="field">
-                <span>{t("Type")}</span>
+                <span>{t("Environment")}</span>
                 <select
                   value={conn.connection_type ?? ""}
                   onChange={(e) => set("connection_type", (e.target.value || null) as ConnectionType | null)}
@@ -1150,6 +1150,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             {projects.length > 0 && (
               <section className="form-section">
                 <h3>{t("Projects")}</h3>
+                <p className="muted small">{t("Show this connection in these projects.")}</p>
                 <div className="project-chips">
                   {projects.map((p) => {
                     const on = inProjects.has(p.id);
@@ -1174,6 +1175,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
           {server && (
             <div data-page="network" hidden={page !== "network"} className="dialog-page">
+              <section className="form-section">
               <label className="field">
                 <span>{t("Network profile")}</span>
                 <div className="row tight">
@@ -1216,6 +1218,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   saved={savedSsh}
                 />
               )}
+              </section>
+              <section className="form-section">
+              <h3>{t("Proxy and port forward")}</h3>
               <PortForwardFields conn={conn} tunnel={!!(profile ? profile.ssh : conn.ssh)} setOption={setOption} />
               <label className="field">
                 <span>{t("Proxy")}</span>
@@ -1234,6 +1239,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   env: <code>{"${env:PROXY_PASSWORD}"}</code>,
                 })}
               </p>
+              </section>
+              <section className="form-section">
+              <h3>{t("Commands around the connection")}</h3>
               <label className="field">
                 <span>{t("Command before connecting")}</span>
                 <input
@@ -1257,6 +1265,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               <p className="muted small">
                 {t("Run by the system's shell, e.g. to bring a VPN up. The first runs before the first session that needs it, which waits for its end, a minute at most, and fails with it; the second runs when the last such session closes.")}
               </p>
+              </section>
             </div>
           )}
 

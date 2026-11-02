@@ -55,7 +55,7 @@ async function exportToBucket(page, path, { format = "csv", compression, fields 
   await page.waitFor(`${dialog} !== undefined`);
   await page.eval(fill(`${dialog}.querySelector('select')`, format));
   if (compression) await page.eval(fill(field("Compression"), compression));
-  await page.eval(fill(field("Also upload"), "bucket"));
+  await page.eval(fill(field("Also upload to…"), "bucket"));
   await page.waitFor(`${field("Endpoint")} != null`);
   if (keepForm) return;
   for (const [label, value] of Object.entries(fields)) {

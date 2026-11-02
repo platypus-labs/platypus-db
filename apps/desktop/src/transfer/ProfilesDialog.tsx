@@ -7,6 +7,7 @@ import { GuardDialog } from "../guards/GuardDialog";
 import { type GuardRequest, needsProductionConfirm } from "../guards/guards";
 import { msg, t } from "../i18n";
 import { ask } from "../ui/ask";
+import { DialogHeader } from "../ui/DialogHeader";
 import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
 import { changes } from "./ImportDataDialog";
@@ -83,8 +84,8 @@ export function ProfilesDialog({ connectionId, onClose }: { connectionId?: strin
   const empty = shown?.length === 0;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal schedules-dialog" role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{connectionId ? t("Transfer profiles of {name}", { name: nameOf(connectionId) }) : t("Transfer profiles")}</h2>
+      <div className={`modal schedules-dialog${empty ? " narrow" : ""}`} role="dialog" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+        <DialogHeader title={connectionId ? t("Transfer profiles of {name}", { name: nameOf(connectionId) }) : t("Transfer profiles")} onClose={onClose} />
         {!empty && <p className="muted small">{t("Save a profile from the export, import, copy and migration dialogs.")}</p>}
         {error && <div className="notice error small">{error}</div>}
         {shown === null && !error && <LoadingState compact title={t("Loading…")} />}

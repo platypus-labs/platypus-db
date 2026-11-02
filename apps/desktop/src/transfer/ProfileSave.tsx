@@ -47,7 +47,7 @@ export function ProfileButtons(props: {
           {t("Save profile")}
         </button>
       )}
-      <button type="button" disabled={disabled} onClick={() => void saveNew()}>
+      <button type="button" disabled={disabled} title={disabled ? t("Choose what to transfer first") : undefined} onClick={() => void saveNew()}>
         {t(current ? "Save as new profile…" : "Save as profile…")}
       </button>
     </>

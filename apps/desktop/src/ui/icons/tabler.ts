@@ -1,5 +1,6 @@
 /** The Tabler family: the closest icon for every name of the Lucide list. */
 import {
+  IconLayoutDashboard,
   IconActivity,
   IconAlertCircle,
   IconArrowBackUp,
@@ -157,4 +158,5 @@ export const TABLER = {
   "tx-log": IconListDetails,
   masked: IconEyeOff,
   agent: IconRobot,
+  dashboard: IconLayoutDashboard,
 } satisfies Record<IconName, TablerIcon>;
