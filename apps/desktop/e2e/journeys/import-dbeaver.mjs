@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { savedConnections } from "../import-helpers.mjs";
 import {
-  restartApp, fmt, journey, keys, palette, pressButton, runSql, screenIsItalian, setCheck, setSelect, tabTo, treeMenu, treeOpen, writeZip,
+  restartApp, fmt, journey, keys, palette, pressButton, runSql, screenIsItalian, setCheck, setSelect, tabTo, treeMenu, writeZip,
 } from "../journey-day.mjs";
 import { setLanguage } from "../journey.mjs";
 import { visibleTab } from "../qa-jrn.mjs";

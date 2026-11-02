@@ -12,7 +12,7 @@ import { CTRL } from "../cdp.mjs";
 import { savedConnections } from "../import-helpers.mjs";
 import {
   restartApp, fmt, journey, keys, openSettings, closeSettings, setSettingSelect, pickDriver, pressButton, screenIsItalian, selectEl, setField,
-  status, tabTo, testConnection, treeOpen, until, visibleTab, waitRows,
+  tabTo, testConnection, treeOpen, until, visibleTab, waitRows,
 } from "../journey-day.mjs";
 import { setLanguage } from "../journey.mjs";
 import { psql } from "../qa-jrn.mjs";
