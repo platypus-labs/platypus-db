@@ -47,8 +47,11 @@ async function editor(page) {
   await page.waitFor(`${visibleTab}.querySelector('.result-error .state-title') !== null`);
   assert.ok(!/^\d+:/.test(await page.eval(`${visibleTab}.querySelector('.result-error .state-title').textContent`)), "an error code is named, not a bare number");
 
-  // The auto-refresh selector says what it is when it is off.
-  assert.equal(await page.eval(`${visibleTab}.querySelector('.auto-refresh select option').textContent`), "Auto-refresh off");
+  // The auto-refresh selector says what it is when it is off: its icon and name, with a short
+  // "Off" that keeps the toolbar on one line (qa2-jrn-toolbar-wrap-transaction).
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.auto-refresh select').getAttribute('aria-label')`), "Auto-refresh");
+  assert.ok(await page.eval(`${visibleTab}.querySelector('.auto-refresh svg') !== null`), "the auto-refresh selector has its icon");
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.auto-refresh select option').textContent`), "Off");
 
   // The History panel is resizable, and Home brings it back to its default.
   await page.eval(`${visibleTab}.querySelector('.toolbar button[aria-label="History"]').click()`);

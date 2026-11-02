@@ -104,7 +104,7 @@ import { rememberScript } from "../scripts/recent";
 
 /** Auto-refresh intervals in seconds, `0` for off. */
 const REFRESH_CHOICES: [number, string][] = [
-  [0, msg("Auto-refresh off")],
+  [0, msg("Off")],
   [2, "2 s"],
   [5, "5 s"],
   [10, "10 s"],
