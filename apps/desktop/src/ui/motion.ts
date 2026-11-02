@@ -16,7 +16,7 @@ export const animationsSetting = defineSetting<string>({
     type: "select",
     options: [
       { value: "system", label: "Like the system" },
-      { value: "on", label: "On" },
+      { value: "on", label: "Enabled" },
       { value: "reduced", label: "Reduced" },
       { value: "off", label: "Off" },
     ],

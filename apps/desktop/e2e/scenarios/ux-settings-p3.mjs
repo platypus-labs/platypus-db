@@ -79,7 +79,7 @@ export default async function (page) {
   await page.settingsTab("Appearance", "Icons and animations");
   const options = `${settingRow("appearance.animations")}.querySelector('select')`;
   await page.waitFor(`${options}?.offsetParent != null`);
-  assert.deepEqual(await page.eval(`[...${options}.options].map((o) => o.textContent)`), ["Like the system", "On", "Reduced", "Off"]);
+  assert.deepEqual(await page.eval(`[...${options}.options].map((o) => o.textContent)`), ["Like the system", "Enabled", "Reduced", "Off"]);
 
   // Toolbar: the checkbox rows are short.
   await page.settingsTab("Toolbar");
