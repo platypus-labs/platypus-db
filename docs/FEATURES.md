@@ -214,7 +214,8 @@ to the package manager.
 ![JOIN completion from the foreign keys](screenshots/autocomplete.png)
 
 - Run the statement under the cursor (`Ctrl+Enter`) or the whole script (`Alt+X`); errors are
-  pointed out in the text.
+  pointed out in the text, and the error panel gives their line and column with *Go to the
+  error*.
 - **Completion** of keywords, tables, columns and built-in functions with their signature. The
   columns offered are those of the tables the statement under the cursor reads (even when FROM
   comes later), and `alias.` completes the columns of a table, a CTE or a subquery. A column
@@ -392,7 +393,7 @@ created again with its rows copied.
   each group of linked tables in its own block, in an order that keeps lines from crossing,
   with the lines running between the tables rather than over them; drag them where you want them, drag the empty background to move the view, choose the tables with *Add tables…* (a loading state shows while they are read), add notes. The diagram is
   kept with its tab and exports to SVG or PNG. A schema of more than 100 tables asks which
-  ones to show first. *Full screen* gives the diagram the whole window (Esc leaves it);
+  ones to show first. *Fit* zooms so the whole diagram shows; *Full screen* gives the diagram the whole window (Esc leaves it);
   *Refresh* reads the schema again and keeps every table where it is, new tables below.
 - **Draw the schema**: *Edit* on the diagram (not on read-only connections) adds tables,
   changes or drops existing ones in the table editor's form, and draws a foreign key by
