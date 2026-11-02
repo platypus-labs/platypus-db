@@ -34,7 +34,7 @@ const data = (text) => text.replace(/^#.*$/gm, "").replace(/^save_password = .*$
 const team = (dir) => join(dir, "team");
 const projectFile = (folder) => join(folder, "platypus-project.toml");
 const square = (id) => `document.querySelector('.project-square[data-project="${id}"]')`;
-const toast = `(document.querySelector('.toast')?.textContent ?? '')`;
+const toast = `([...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | '))`;
 const row = (label) => `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
 const labels = `[...document.querySelectorAll('.tree-row .tree-label')].map(l => l.textContent)`;
 const invoke = (command, args) => `window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`;
@@ -220,7 +220,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`${row("Fresh")} !== undefined`);
   assert.equal(await page.eval(`getComputedStyle(${square(SHARED)}).backgroundColor`), "rgb(224, 90, 90)");
   // Reading it again changes nothing and says nothing.
-  await page.eval(`document.querySelector('.toast')?.click()`);
+  await page.eval(`document.querySelectorAll('.toast').forEach((t) => t.click())`);
   await focus(page);
   await page.sleep(500);
   assert.equal(await page.eval(toast), "");

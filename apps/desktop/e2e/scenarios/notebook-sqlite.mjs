@@ -171,7 +171,7 @@ async function paramsErrorsAndGuards(page, dir) {
   await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
   await page.eval(`document.querySelector('.modal.confirm button.danger').click()`);
   await page.waitFor(`${cell("c5")} == null`);
-  assert.deepEqual(await page.eval(cells), ["text", "c1", "c2", "c3", "c4"]);
+  assert.deepEqual(await page.eval(cells), ["c1", "text", "c2", "c3", "c4"]);
   // Moving c4 above c3 swaps their names.
   await page.eval(click(cell("c4"), "up"));
   await page.waitFor(`${tab}.querySelectorAll('.notebook-cell')[3].querySelector('.cm-line')?.textContent === '@set x = 1'`);
