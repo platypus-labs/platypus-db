@@ -72,17 +72,60 @@ the DOM at 260 nodes throughout. The checks: the end is at most 150 MB above the
 is loaded.
 
 **Slow remote database** (`s-perf-slow-remote.mjs`, a node TCP proxy adding 150 ms per chunk each
-way and capping the link at 1 MB/s): a server that accepts the connection and never answers made
-the connect hang for good, since `connect_timeout` only bounds the TCP connect. Fixed: it now
-ends after the timeout (10 s by default) with "the server did not answer within 10 s", the page
-drawing frames (longest 7 ms) meanwhile. The rest of the scenario (connect, navigator, cancel,
-50,000 rows over the slow link) and the two below were written but **not measured**: the
-Docker engine of the test machine failed to start (Docker Desktop 4.80 error "initializing
-Inference manager") for the whole session.
+way and capping the link at 1 MB/s, PostgreSQL in Docker behind it). Two findings, both fixed:
+a server that accepts the connection and never answers made the connect hang for good (`connect_timeout`
+only bounds the TCP connect), and the `connect_timeout` option of a saved connection never reached
+the driver (it waited the default 10 s whatever the option said).
 
-**Millions of rows** (`s-perf-millions-postgres.mjs`, 5,000,000 rows) and **thousands of
-objects** (`s-perf-objects-postgres.mjs`, 5,000 tables, 500 views, 200 functions): not measured,
-for the same reason.
+| Step | Measured | Bound |
+|---|---|---|
+| Silent server, default timeout | gives up after 10.1 s, "did not answer within 10 s" | 9-12.5 s |
+| Silent server, `connect_timeout = 3` option | 3.1 s, "did not answer within 3 s" | 2.5-6 s |
+| Connect through the slow link | 6.4 s (password dialog, connect, completion metadata) | < 15 s |
+| Page lag / longest frame while connecting or loading | 0-1 ms / 6-11 ms | < 200 ms / < 250 ms |
+| Cancel of `pg_sleep(60)`, once running on the server | 0.68 s | < 2.5 s |
+| 50,000 rows (4 columns) over the link | 37.4 s (500-row fetches, one round trip each) | < 90 s |
+
+While the 50,000 rows arrive the page answers within 2-5 ms and draws 6,700 frames (longest 10 ms).
+A Cancel clicked at once, before the statement reaches the server over this link, is lost (the
+statement runs to its end and Cancel stays enabled); a second click works. Not fixed: see the
+`BUG` note in the scenario.
+
+**Millions of rows** (`s-perf-millions-postgres.mjs`, `s_perf_5m`: 5,000,000 rows, 6 columns, primary
+key on `id`), table data opened from the navigator and as queries; memory is the private memory of
+the app plus WebView2:
+
+| Step | Measured | Bound |
+|---|---|---|
+| First rows on screen (table data) | 170 ms | < 1.5 s |
+| Count rows | 60-130 ms | < 2 s |
+| Scrolling the streamed table / query | 180 fps, longest frame 6-9 ms | >= 40 fps, < 250 ms |
+| "Fetch all" of the 5M rows | 7.5 s | < 20 s |
+| Sort by the key from the header, both ways | 115-140 ms | < 1 s |
+| Filter `grp = …` from the grid menu (5,000 rows, all fetched) | 500 ms | < 2 s |
+| Query `SELECT *`, first rows | 120 ms | < 1 s |
+| Query ordered by an unindexed column (server sorts 5M rows) | 1.9 s | < 6 s |
+| Cancel of a 5M x 5M x 5M cross join | 62-64 ms | < 1.5 s |
+| Memory: idle / table opened / 5M rows buffered / at the end | 177 / 198 / 556 / 300 MB | < 1200 MB buffered, < 800 MB end |
+
+The 5M rows buffered cost 280 MB in the app process (the backend holds the result; the grid keeps
+100 blocks of 500 rows). The grid caps its scroll height at 10,000,000 px and maps it to the row,
+so the last row is reached with Ctrl+End.
+
+**Thousands of objects** (`s-perf-objects-postgres.mjs`: schema with 5,000 tables chained by
+foreign keys, 500 views, 200 functions):
+
+| Step | Measured | Bound |
+|---|---|---|
+| Expand the schema (5,000 tables listed) / each folder | 70-115 ms / 20-45 ms | < 500 ms |
+| Navigator filter to one table | 7 ms | < 500 ms |
+| Completion of a table name after `schema.` (32 options) | 380-390 ms | < 1.5 s |
+| Metadata search, narrow / 1,000 hits shown | 61 ms / 105-115 ms | < 500 ms / < 1 s |
+| One table's object page (from the menu) | 260 ms | < 1 s |
+| ER diagram of 100 tables, 99 foreign keys | 0.91-0.96 s | < 3 s |
+| Memory: connected / schema expanded / end | 180 / 242 / 431 MB | < 900 MB at the end |
+
+The navigator keeps fewer than 1,500 rows in the DOM with 5,700 objects open.
 
 ## Linux
 
