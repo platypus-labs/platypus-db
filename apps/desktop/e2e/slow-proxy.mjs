@@ -14,6 +14,12 @@ class Lane {
     this.free = 0; // when the link is free again (ms, performance.now())
   }
 
+  /** Ends the socket once what was pushed has been written. */
+  finish() {
+    const wait = Math.max(0, this.free + this.proxy.latencyMs - performance.now()) + 20;
+    setTimeout(() => this.socket.end(), wait);
+  }
+
   push(chunk) {
     const { latencyMs, bytesPerSecond } = this.proxy;
     const now = performance.now();
@@ -40,14 +46,16 @@ export async function startProxy(target, { latencyMs = 150, bytesPerSecond = 2_0
     if (proxy.mode === "blackhole") return client.resume();
     const upstream = connect(target);
     sockets.add(upstream);
-    upstream.on("close", () => {
-      sockets.delete(upstream);
-      client.destroy();
-    });
-    upstream.on("error", () => client.destroy());
-    client.on("close", () => upstream.destroy());
     const up = new Lane(upstream, proxy);
     const down = new Lane(client, proxy);
+    // A side that closes still has its last chunks in flight (a PostgreSQL cancel request is one
+    // packet and a close): the other side ends once they have been written, not before.
+    upstream.on("close", () => {
+      sockets.delete(upstream);
+      down.finish();
+    });
+    upstream.on("error", () => client.destroy());
+    client.on("close", () => up.finish());
     client.on("data", (chunk) => (proxy.mode === "slow" ? up.push(chunk) : undefined));
     upstream.on("data", (chunk) => (proxy.mode === "slow" ? down.push(chunk) : undefined));
   });
