@@ -222,14 +222,18 @@ volta da sola tastiera. Dove esiste uno scenario automatico, la lista copre solo
 prova (installer, file e database veri, sistema, giudizio sulla resa). Atteso generale: nessun
 errore in `platypus.log`, nessun testo in lingua sbagliata, il focus sempre visibile.
 
+Ogni percorso ha uno scenario completo `s-jrn-<percorso>-<en|it|keys>` (in inglese, in italiano
+con il controllo che nessun testo resti in inglese o tagliato, e da sola tastiera), con un riavvio
+vero dell'app a metà; restano a mano solo le parti fuori dalla portata degli E2E.
+
 | Percorso | Scenari automatici |
 |---|---|
-| Primo avvio | `qa2-jrn-ok-first-day`, `qa2-jrn-ok-keyboard`, `languages-sqlite`, `qa3-url-italian` |
-| Import da DBeaver | `qa2-jrn-ok-import-organise`, `qa2-jrn-import-relative-sqlite` |
-| Giornata di lavoro | `qa2-jrn-restore-table-tab`, `qa2-jrn-new-editor-focus`, `qa2-jrn-toolbar-wrap-transaction`, `qa2-jrn-prod-drop-uncommitted` |
-| Analisi | `qa2-jrn-ok-analyst`, `qa2-jrn-count-locale` |
-| Sviluppo | `qa2-jrn-ok-developer`, `qa3-schema-it-compare-warnings` |
-| Agenti | `qa2-jrn-ok-agent-mcp` |
+| Primo avvio | `s-jrn-first-start-*`, `qa2-jrn-ok-first-day`, `qa2-jrn-ok-keyboard`, `languages-sqlite`, `qa3-url-italian` |
+| Import da DBeaver | `s-jrn-import-dbeaver-*`, `qa2-jrn-ok-import-organise`, `qa2-jrn-import-relative-sqlite` |
+| Giornata di lavoro | `s-jrn-workday-*`, `qa2-jrn-restore-table-tab`, `qa2-jrn-new-editor-focus`, `qa2-jrn-toolbar-wrap-transaction`, `qa2-jrn-prod-drop-uncommitted` |
+| Analisi | `s-jrn-analysis-*`, `qa2-jrn-ok-analyst`, `qa2-jrn-count-locale` |
+| Sviluppo | `s-jrn-development-*`, `qa2-jrn-ok-developer`, `qa3-schema-it-compare-warnings` |
+| Agenti | `s-jrn-agents-*`, `qa2-jrn-ok-agent-mcp` |
 | Italiano | `qa2-jrn-it-backend-errors`, `qa2-jrn-it-lint-messages`, `qa2-jrn-it-menu-wording`, `qa2-jrn-it-query-manager` |
 
 ### 5.1 Primo avvio
