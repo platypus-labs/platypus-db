@@ -134,6 +134,7 @@ registerAction({
   scope: "navigator.object",
   title: "Copy qualified name",
   group: "copy",
+  submenu: "Copy",
   order: 41,
   multiple: true,
   run: (arg) => void copyText((arg.selection ?? [arg]).map(qualified).join("\n")),

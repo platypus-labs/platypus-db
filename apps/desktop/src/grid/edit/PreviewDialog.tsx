@@ -56,7 +56,7 @@ export function PreviewDialog({ statements, busy, production = false, commands, 
           </button>
           <span className="spacer" />
           <button type="button" onClick={onClose} autoFocus>
-            {t("Close")}
+            {t("Cancel")}
           </button>
           <button type="button" className="primary" onClick={onSave} disabled={busy}>
             {t("Save")}

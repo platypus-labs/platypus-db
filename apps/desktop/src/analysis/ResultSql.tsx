@@ -400,7 +400,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
             value={oneLine(state.text)}
             driver="duckdb"
             catalog={catalog}
-            placeholder={t("SQL on the loaded rows: WHERE …, ORDER BY …, GROUP BY … or SELECT … FROM result")}
+            placeholder={t("Filter these rows with SQL…")}
             label={t("SQL on the result")}
             autoFocus={keepFocus.current}
             onChange={(text) => fields.setText(key, text)}

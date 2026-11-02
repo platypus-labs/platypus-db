@@ -180,6 +180,8 @@ export const theme = EditorView.theme({
   ".cm-tooltip-autocomplete > ul": { borderRadius: "inherit" },
   // Beside the list it would blur nothing (its backdrop is the list's own box): solid.
   ".cm-tooltip.cm-completionInfo": { backgroundColor: "var(--bg-sidebar)", backdropFilter: "none", WebkitBackdropFilter: "none" },
+  // SQL keywords (DESC, DESCRIBE…) are not keys: CodeMirror's default icon for them is a key.
+  ".cm-completionIcon-keyword:after": { content: '"Aa"', fontSize: "80%" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "color-mix(in srgb, var(--accent) 18%, transparent)",
     color: "var(--fg-strong)",

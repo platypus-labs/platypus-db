@@ -2,10 +2,20 @@
 // rows for deletion is one state change, and the request lists every row once.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { EMPTY, addRows, changedRows, deleteRows, setCells, toChanges } from "../src/grid/edit/state.ts";
+import { EMPTY, addRows, changedRows, deleteRows, kindsChanged, setCells, toChanges } from "../src/grid/edit/state.ts";
 
 const target = { table: { schema: "public", name: "study_type" }, key: [0], unique_key: true, table_columns: [0, 1], defaults: [null, null], generated: [null, null] };
 const range = (from, n) => Array.from({ length: n }, (_, i) => from + i);
+
+test("kindsChanged counts the kinds of pending change, not the rows", () => {
+  assert.equal(kindsChanged(EMPTY), 0);
+  let s = addRows(EMPTY, [new Map([[1, { kind: "value", text: "new" }]])]);
+  assert.equal(kindsChanged(s), 1);
+  s = setCells(s, [{ gridRow: 1, col: 1, value: { kind: "value", text: "x" } }]);
+  assert.equal(kindsChanged(s), 2);
+  s = deleteRows(s, [3]);
+  assert.equal(kindsChanged(s), 3);
+});
 
 test("deleting rows drops their changes and new rows, once each", () => {
   let s = addRows(EMPTY, [new Map([[1, { kind: "value", text: "new" }]])]);

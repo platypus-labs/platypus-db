@@ -37,6 +37,11 @@ export function changedRows(state: EditState): number {
   return state.updates.size + state.inserts.length + state.deletes.size;
 }
 
+/** How many of the three kinds of change (modified, new, deleted rows) are pending. */
+export function kindsChanged(state: EditState): number {
+  return [state.updates.size, state.inserts.length, state.deletes.size].filter((n) => n > 0).length;
+}
+
 /** The pending value of a cell, if it was changed. */
 export function cellEdit(state: EditState, gridRow: number, col: number): CellInput | undefined {
   const ref = rowRef(state, gridRow);

@@ -1583,6 +1583,7 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       scope: "navigator.object",
       title: "Copy name",
       group: "copy",
+      submenu: "Copy",
       order: 40,
       multiple: true,
       // The bare name, as for a column; Copy qualified name has the schema and the quotes.

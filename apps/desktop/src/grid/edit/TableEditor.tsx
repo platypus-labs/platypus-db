@@ -739,6 +739,14 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
             <>
               <span className="edit-count">
                 {plural(edits.changedRows(state), "{n} row changed", "{n} rows changed")}
+                {edits.kindsChanged(state) > 1 &&
+                  ` (${[
+                    state.updates.size > 0 && t("{n} modified", { n: state.updates.size }),
+                    state.inserts.length > 0 && t("{n} new", { n: state.inserts.length }),
+                    state.deletes.size > 0 && t("{n} deleted", { n: state.deletes.size }),
+                  ]
+                    .filter(Boolean)
+                    .join(", ")})`}
               </span>
               <button className="primary" onClick={() => void edit.save()} disabled={!editable} title={t("Save (Ctrl+S)")}>
                 {t(busy ? "Saving…" : "Save")}

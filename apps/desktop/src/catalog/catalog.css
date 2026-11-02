@@ -32,18 +32,32 @@
   color: var(--fg-muted);
 }
 
+/* The field to add a tag looks like a chip waiting to be filled, not like grey text. */
 .tag-input input {
   flex: 1;
-  min-width: 56px;
-  border: 0;
+  min-width: 80px;
+  height: 20px;
+  padding: 0 var(--space-8);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
   background: transparent;
+}
+
+.tag-input input::placeholder {
+  color: var(--fg);
+}
+
+.tag-input input:focus {
+  border-style: solid;
+  border-color: var(--accent);
 }
 
 .notes-panel {
   display: grid;
   grid-template-columns: 1fr minmax(160px, 30%);
   align-items: center;
-  gap: var(--space-8);
+  /* The wider column gap keeps the textarea's resize handle off the tags. */
+  gap: var(--space-8) var(--space-20);
   padding: var(--space-4) var(--space-20);
   border-bottom: 1px solid var(--border);
   font-size: var(--text-sm);

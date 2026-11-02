@@ -490,21 +490,19 @@ export function ObjectTab({ tab, connection, active, sideSession, onChange }: Ta
 
 function MetaTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }) {
   if (rows.length === 0) return <div className="muted small">{t("None")}</div>;
+  // A "Details" column no row fills is left out.
+  const shown = head.map((h, i) => h !== t("Details") || rows.some((r) => r[i] !== ""));
   return (
     <table className="meta-table">
       <thead>
         <tr>
-          {head.map((h) => (
-            <th key={h}>{h}</th>
-          ))}
+          {head.map((h, i) => shown[i] && <th key={h}>{h}</th>)}
         </tr>
       </thead>
       <tbody>
         {rows.map((r, i) => (
           <tr key={i}>
-            {r.map((cell, j) => (
-              <td key={j}>{cell}</td>
-            ))}
+            {r.map((cell, j) => shown[j] && <td key={j}>{cell}</td>)}
           </tr>
         ))}
       </tbody>

@@ -155,7 +155,7 @@ export const TabBar = forwardRef<HTMLDivElement, Props>(function TabBar(props, r
               >
                 <span className="tab-icon">
                   <Icon name={props.icon(tab)} size={13} />
-                  {tab.pinned && <Icon name="pin" size={9} className="tab-pin" />}
+                  {tab.pinned && <Icon name="pin" size={12} className="tab-pin" />}
                 </span>
                 {tab.pinned ? (
                   <span className="sr-only">{props.title(tab)}</span>
