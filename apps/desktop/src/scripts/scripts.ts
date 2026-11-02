@@ -24,6 +24,16 @@ export function scriptFile(root: string, path: string): string {
   return `${root}${sep}${path.replaceAll("/", sep)}`;
 }
 
+/** Renames a script or folder on disk; the open editors on it follow to the new path. */
+export async function renameScript(project: string | null, from: string, to: string) {
+  await api.renameScript(project, from, to);
+  const { root } = await api.listScripts(project);
+  const [old, next] = [scriptFile(root, from), scriptFile(root, to)];
+  const sep = root.includes("\\") ? "\\" : "/";
+  workbench().renameTabFiles((f) => (f === old ? next : f.startsWith(old + sep) ? next + f.slice(old.length) : null));
+  scriptsChanged();
+}
+
 /** The folder part of a relative path, `""` at the top. */
 export function parentOf(path: string): string {
   return path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";

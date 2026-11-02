@@ -43,6 +43,8 @@ export interface Workbench {
   openTemporaryTab<K extends TabKindName>(kind: K, connection: SavedConnection, init: TabInit<K>, onClosed: () => void): void;
   /** Makes active the first tab of the active project that `match` accepts; `false` if none. */
   focusTab(match: (tab: TabModel) => boolean): boolean;
+  /** Points the query tabs whose file `rename` changes to the new path (`null` leaves one). */
+  renameTabFiles(rename: (filePath: string) => string | null): void;
   /** The navigator session of the connection (and database, `null` for the saved one),
    *  opened on first use; `null` if cancelled. */
   sideSession(connection: SavedConnection, database?: string | null): Promise<number | null>;

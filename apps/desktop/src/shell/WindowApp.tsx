@@ -206,6 +206,7 @@ export function WindowApp({ label }: { label: string }) {
     openTab: (kind, connectionId, init) => void emitTo("main", WINDOW_EVENTS.openTab, { kind, connectionId, init }),
     openTemporaryTab: () => setToast(t("Open it from the main window.")),
     focusTab: () => false,
+    renameTabFiles: () => {},
     sideSession,
     openSession: (c, s = false) => connect(c, null, s),
     closeSession: (id) => void api.closeSession(id),

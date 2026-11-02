@@ -7,7 +7,7 @@ import { moveScript, registerScriptConnections } from "./actions";
 import { GitBar } from "./GitBar";
 import { badgeTitle } from "./GitDialogs";
 import { changedInFolder, statusByPath } from "./gitModel";
-import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, scriptsChanged } from "./scripts";
+import { connectionFor, nameOf, onScriptsChanged, openScript, parentOf, renameScript, scriptsChanged } from "./scripts";
 import { t } from "../i18n";
 import { EmptyState } from "../ui/State";
 import { markedTarget } from "../ui/pointerDrag";
@@ -90,8 +90,7 @@ export function ScriptsPanel({ project, connections, onError }: Props) {
     const to = parent ? `${parent}/${file}` : file;
     if (to === entry.path) return;
     try {
-      await api.renameScript(projectId, entry.path, to);
-      scriptsChanged();
+      await renameScript(projectId, entry.path, to);
     } catch (e) {
       fail(e);
     }
