@@ -4,6 +4,7 @@
 // and saved; a query in a new editor, exported to CSV; the app restarted (the connections connect
 // without asking, the tabs are back); the language changed in the Settings and the app restarted
 // again (the interface is in the chosen language). Run in English, in Italian and keyboard only.
+import { pressF2 } from "../qa-grid.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -66,8 +67,8 @@ export async function editFirstName(j, text) {
   else await page.eval(`${visibleTab}.querySelector('.grid-scroll').focus()`);
   await page.key("Home", "Home", 36, CTRL);
   await keys.right(page);
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor') !== null`, 10_000);
+  // The grid may still be taking the focus: F2 again until the editor opens.
+  await pressF2(page, ".cell-editor");
   await page.eval(`document.querySelector('.cell-editor').focus(); document.querySelector('.cell-editor').select()`);
   await page.type(text);
   await keys.enter(page);

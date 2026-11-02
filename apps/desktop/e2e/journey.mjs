@@ -39,7 +39,9 @@ export async function screenIsItalian(page, mode, where, allow = [], cutOk = [])
     .map((s) => s.replace(/^@[a-z-]+: /, ""))
     .filter((s) => dict[s] !== undefined && dict[s] !== s && !allow.includes(s));
   assert.deepEqual(english, [], `${where}: English left on an Italian screen`);
-  assert.deepEqual(cut.filter((c) => !cutOk.some((ok) => c.includes(ok))), [], `${where}: texts cut`);
+  // A navigator row count gives way first when the row is narrow: cut by design.
+  const byDesign = ["span.tree-count", ...cutOk];
+  assert.deepEqual(cut.filter((c) => !byDesign.some((ok) => c.includes(ok))), [], `${where}: texts cut`);
 }
 
 /** A key as the keyboard sends it: Enter also types its character, so it presses buttons. */
