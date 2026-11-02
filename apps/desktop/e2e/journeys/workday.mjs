@@ -15,7 +15,7 @@ import { setLanguage } from "../journey.mjs";
 import { closeApp } from "../qa-jrn.mjs";
 import { editorText } from "../query.mjs";
 
-const KNOWN_RENAME_BUG = true;
+
 const tabs = `[...document.querySelectorAll('.tab')].map(t => t.textContent.replace(/×$/, ''))`;
 const toolbar = `${visibleTab}.querySelector('.toolbar')`;
 const settings = (dir) => readFileSync(join(dir, "settings.toml"), "utf8");
@@ -99,12 +99,10 @@ export async function run(page, ctx, mode) {
   assert.equal(readFileSync(join(scripts, "Weekly sales.sql"), "utf8"), SCRIPT);
   await page.waitFor(`[...document.querySelectorAll('.script-row .tree-label')].some(l => l.textContent === 'Weekly sales')`, 10_000);
   await screenIsItalian(page, mode, "the Scripts panel");
-  // BUG: the editor tab open on the script keeps the old file name after the rename (its title
-  // stays "Day A.sql" and Ctrl+S would write that file again): ScriptsPanel.commitRename and
-  // moveScript do not tell the tabs. Switch KNOWN_RENAME_BUG off once the tab follows the file.
-  if (!KNOWN_RENAME_BUG) assert.equal(await page.eval(`document.querySelector(".tab.active")?.textContent.startsWith("Weekly sales.sql")`), true);
-  // Found from the global search by its text: the query it ran.
-  await palette(j, "qty > 2", "qty > 2");
+  // The editor tab open on the script follows the rename.
+  assert.equal(await page.eval(`document.querySelector(".tab.active")?.textContent.startsWith("Weekly sales.sql")`), true);
+  // Found from the global search by its new name.
+  await palette(j, "Weekly sales");
   await page.waitFor(`document.querySelectorAll('.tab').length === 5`, 10_000);
   assert.equal(await page.eval(editorText), SCRIPT);
 
@@ -119,8 +117,7 @@ export async function run(page, ctx, mode) {
   await runSql(j, "BEGIN;\nINSERT INTO s_jrn_log VALUES ('tx');", { script: true });
   const txLabel = j.t("Transaction open {time}").split("{time}")[0].trim();
   await page.waitFor(`${toolbar}.textContent.includes(${JSON.stringify(txLabel)})`, 20_000);
-  // Not checked here: at 1280 px the Italian label "Transazione aperta 0:00 · 1 modifica" is cut
-  // (an ellipsis since JRN-09, 190 px of 244), so `screenIsItalian` would report it as cut text.
+  await screenIsItalian(page, mode, "the open transaction");
   const before = await page.eval(tabs);
   const asked = await closeApp(page);
   assert.ok(asked, "closing the window with a transaction open asked nothing");
