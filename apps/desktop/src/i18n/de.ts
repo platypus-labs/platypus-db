@@ -1313,7 +1313,6 @@ const de: Record<string, string> = {
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "Diese Abfrage kann nicht über die Überschrift sortiert werden: Der Editor enthält sie nicht mehr so, wie sie ausgeführt wurde (sie wurde seitdem bearbeitet, ihre Variablen wurden ersetzt, oder sie stammt aus @include).",
   // Diagnostics: the log, crashes and the diagnostic package
   "Diagnostics": "Diagnose",
-  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "PlatypusDB führt auf diesem Computer ein Protokoll über Starts, Fehler und Abstürze; nichts wird irgendwohin gesendet. Um ein Problem zu melden, das Diagnosepaket speichern und an die Meldung anhängen: Es enthält die Version, das System, die Einstellungen ohne Passwörter, die Anzahl der Verbindungen je Datenbank und die Protokolle. Fehlermeldungen in den Protokollen können einen Server oder eine Tabelle nennen: Vor dem Weitergeben des Pakets ansehen.",
   "Logs": "Protokolle",
   "Save diagnostic package…": "Diagnosepaket speichern…",
   "Saved to {path}": "Gespeichert unter {path}",
@@ -1669,7 +1668,6 @@ const de: Record<string, string> = {
   "{n} errors": "{n} Fehler",
   "Outcome": "Ergebnis",
   "Any outcome": "Jedes Ergebnis",
-  "Filter by tool, agent, connection or argument": "Nach Werkzeug, Agent, Verbindung oder Argument filtern",
   "Export CSV": "CSV exportieren",
   "When": "Wann",
   "Agent": "Agent",
@@ -3060,7 +3058,6 @@ const de: Record<string, string> = {
   "Animations": "Animationen",
   "Panels and dialogs opening, tabs appearing. Reduced: short fades only.": "Öffnen von Leisten und Dialogen, Erscheinen von Tabs. Reduziert: nur kurze Überblendungen.",
   "Like the system": "Wie das System",
-  "Yes": "Ja",
   "Reduced": "Reduziert",
   "Dashboard widget": "Dashboard-Widget",
   "Only the first {shown} of {total} rows are in this export.": "Dieser Export enthält nur die ersten {shown} von {total} Zeilen.",
@@ -3168,6 +3165,21 @@ const de: Record<string, string> = {
   "Dashboard saved": "Dashboard gespeichert",
   "PK primary key · FK foreign key · * NOT NULL": "PK Primärschlüssel · FK Fremdschlüssel · * NOT NULL",
   "DDL": "DDL",
+  // Settings P3 (group T)
+  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report.": "PlatypusDB führt auf diesem Computer ein Protokoll der Starts, Fehler und Abstürze; es wird nichts gesendet. Um ein Problem zu melden, speichern Sie das Diagnosepaket und hängen Sie es an die Meldung an.",
+  "The package holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "Das Paket enthält die Version, das System, die Einstellungen ohne Passwörter, wie viele Verbindungen Sie je Datenbank haben, und die Protokolle. Fehlermeldungen in den Protokollen können einen Server oder eine Tabelle nennen: prüfen Sie sie, bevor Sie das Paket weitergeben.",
+  "The master password is on": "Das Master-Passwort ist aktiv",
+  "The master password is off": "Das Master-Passwort ist aus",
+  "Downloaded drivers": "Heruntergeladene Treiber",
+  "Client drivers": "Client-Treiber",
+  "Show password": "Passwort anzeigen",
+  "Latest": "Neueste",
+  "Search calls…": "Aufrufe durchsuchen…",
+  "Not available: production and read-only connections stay read only.": "Nicht verfügbar: Produktions- und schreibgeschützte Verbindungen bleiben schreibgeschützt.",
+  "Folder in the repository or on the drive": "Ordner im Repository oder auf dem Laufwerk",
+  "User names can identify people: leave this off if the folder is public.": "Benutzernamen können Personen identifizieren: lassen Sie das aus, wenn der Ordner öffentlich ist.",
+  "A .sql file": "Eine .sql-Datei",
+  "Tries again: 0 means no retry.": "Wiederholungen: 0 bedeutet keine Wiederholung.",
 };
 
 export default de;

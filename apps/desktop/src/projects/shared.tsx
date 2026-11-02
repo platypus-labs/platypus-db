@@ -71,16 +71,19 @@ function ShareDialog({ project, onClose }: { project: Project; onClose: () => vo
         <label className="field">
           <span>{t("Folder")}</span>
           <div className="row tight">
-            <input data-field="share-folder" autoFocus value={folder} onChange={(e) => setFolder(e.target.value)} />
+            <input data-field="share-folder" autoFocus value={folder} placeholder={t("Folder in the repository or on the drive")} onChange={(e) => setFolder(e.target.value)} />
             <button type="button" data-action="share-browse" onClick={() => void browse()}>
               {t("Browse…")}
             </button>
           </div>
         </label>
-        <label className="check">
-          <input data-field="share-user" type="checkbox" checked={shareUser} onChange={(e) => setShareUser(e.target.checked)} />
-          <span>{t("Include the user names of the connections")}</span>
-        </label>
+        <div className="field">
+          <label className="check">
+            <input data-field="share-user" type="checkbox" checked={shareUser} onChange={(e) => setShareUser(e.target.checked)} />
+            <span>{t("Include the user names of the connections")}</span>
+          </label>
+          <span className="muted small">{t("User names can identify people: leave this off if the folder is public.")}</span>
+        </div>
         {error && (
           <div className="notice error small" data-field="share-error">
             {error}

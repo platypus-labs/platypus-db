@@ -27,7 +27,7 @@ export const maskNamesSetting = defineSetting<string>({
   label: "Sensitive columns, by name",
   description: "Comma-separated; * is any characters, case is ignored. A column marked in its table's tab counts over these rules.",
   default: DEFAULT_NAMES,
-  control: { type: "text" },
+  control: { type: "text", multiline: true },
 });
 
 export const maskTypesSetting = defineSetting<string>({
@@ -36,7 +36,7 @@ export const maskTypesSetting = defineSetting<string>({
   label: "Sensitive columns, by type",
   description: "Comma-separated, e.g. inet, bytea; * is any characters.",
   default: "",
-  control: { type: "text" },
+  control: { type: "text", placeholder: "inet, bytea" },
 });
 
 /** The table the columns shown below belong to, when known (a data viewer, a table's profile):

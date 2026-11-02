@@ -381,6 +381,11 @@
   width: min(360px, calc(100vw - 32px));
 }
 
+/* Tasks and profiles with nothing in the list: a small dialog, not a wide one with a lonely title. */
+.modal.schedules-dialog.empty {
+  width: min(480px, calc(100vw - 32px));
+}
+
 /* A yes/no question (ui/ask.tsx), in place of the browser's confirm box. */
 .modal.confirm {
   width: min(420px, calc(100vw - 32px));
@@ -507,6 +512,11 @@
   border-top: 1px solid var(--border);
 }
 
+/* A checkbox row, short as its label: a list of them (Toolbar) is not a column of gaps. */
+.setting:has(> input[type="checkbox"]):not(:has(> span > .muted)) {
+  padding: var(--space-8) 0;
+}
+
 .setting:first-of-type {
   border-top: 0;
 }
@@ -552,14 +562,21 @@
 
 /* Wide controls (theme cards, pictures) take a full-width row under their label. */
 .setting.pictures > :not(span):not(.setting-reset),
-.setting:has(> .swatches-control) > .swatches-control {
+.setting:has(> .swatches-control) > .swatches-control,
+.setting > textarea {
   grid-column: 1 / -1;
   grid-row: 2;
 }
 
 .setting.pictures > span,
-.setting:has(> .swatches-control) > span {
+.setting:has(> .swatches-control) > span,
+.setting:has(> textarea) > span {
   max-width: none;
+}
+
+/* The browser margin of a checkbox would set it off the right edge the other controls end at. */
+.setting input[type="checkbox"] {
+  margin: 0;
 }
 
 .setting input[type="number"] {
@@ -572,25 +589,30 @@
   max-width: 100%;
 }
 
+.setting > textarea {
+  width: 100%;
+  resize: vertical;
+}
+
 .setting input[aria-invalid="true"] {
   border-color: var(--error);
 }
 
-/* A page without sub-tabs: the first setting does not touch the heading. */
-.settings-head + .setting {
-  margin-top: var(--space-8);
+/* Every page: its first content (setting, text, buttons, tabs) does not touch the heading. */
+.settings-head {
+  margin-bottom: var(--space-8);
 }
 
 .schedule-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-12);
+  gap: var(--space-16);
 }
 
 .sync-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-12);
+  gap: var(--space-16);
 }
 
 .sync-panel > .setting {
@@ -804,6 +826,8 @@ button.primary.danger:hover:not(:disabled) {
 
 .dialog-page.layout-choices > .setting {
   border-top: 0;
+  /* Descriptions of 2 or 3 lines: the pictures start at the same height in both columns. */
+  align-content: start;
 }
 
 .theme-card {
@@ -1200,15 +1224,15 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .shortcuts-scope th {
-  padding: var(--space-8) var(--space-4) var(--space-2);
+  padding: var(--space-16) var(--space-4) var(--space-4);
   text-align: left;
   font-weight: 600;
   color: var(--fg-muted);
 }
 
 .shortcut-key {
-  min-width: 110px;
-  padding: var(--space-2) var(--space-8);
+  min-width: 140px;
+  padding: var(--space-4) var(--space-12);
 }
 
 .shortcut-key.recording {
@@ -1459,10 +1483,11 @@ button.primary.danger:hover:not(:disabled) {
 .master-password,
 .master-password-form,
 .drivers-panel,
-.vendor-drivers {
+.vendor-drivers,
+.plugins-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-12);
+  gap: var(--space-16);
 }
 
 .shortcuts {
@@ -1475,13 +1500,37 @@ button.primary.danger:hover:not(:disabled) {
   max-width: 360px;
 }
 
+/* A titled part of a Settings page (Drivers, Master password). */
+.settings-subhead {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.diagnostics-logs {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* "Install" and "Remove" of a vendor client: small buttons, not text links. */
+.driver-state button.link {
+  padding: var(--space-2) var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
 /* The Agents page of the Settings. */
 .agents-panel,
 .themes-panel,
 .diagnostics-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-12);
+  gap: var(--space-16);
 }
 
 .agent-command {
@@ -1650,9 +1699,13 @@ button.primary.danger:hover:not(:disabled) {
   font-weight: 600;
 }
 
-.agent-client-path code,
 .agent-call-args {
   word-break: break-all;
+}
+
+/* A path breaks after its separators (<wbr>), and inside a name only when one does not fit. */
+.agent-client-path code {
+  overflow-wrap: anywhere;
 }
 
 .agent-activity,
@@ -1675,9 +1728,13 @@ button.primary.danger:hover:not(:disabled) {
   gap: var(--space-16);
 }
 
+.agents-intro summary {
+  font-size: var(--text-sm);
+}
+
 .client-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-10);
 }
 
@@ -1827,9 +1884,18 @@ button.primary.danger:hover:not(:disabled) {
   word-break: break-all;
 }
 
+.agent-activity-filters {
+  flex-wrap: wrap;
+}
+
+.agent-activity-filters select {
+  min-width: 140px;
+  max-width: 260px;
+}
+
 .agent-activity-filters input[type="search"] {
   flex: 1;
-  min-width: 300px;
+  min-width: 200px;
 }
 
 .agent-calls tr {
@@ -2527,6 +2593,25 @@ label.multi-run-row:hover {
 
 .tx-log-restore {
   flex: none;
+  min-height: var(--control-sm, 22px);
+  padding: 0 var(--space-8);
+  font-size: var(--text-sm);
+}
+
+.tx-log-latest-tag {
+  flex: none;
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--active);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.tx-log-group li.latest {
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--active);
 }
 
 /* Snapshots before changes: one block each, its restore script a click away. */
@@ -2583,8 +2668,15 @@ label.multi-run-row:hover {
   text-align: center;
 }
 
+.lock-dialog p {
+  align-self: stretch;
+  text-align: left;
+  font-size: var(--text-md);
+}
+
 .lock-dialog .field,
 .lock-dialog .notice,
+.lock-dialog .lock-show,
 .lock-dialog .actions {
   align-self: stretch;
   text-align: left;

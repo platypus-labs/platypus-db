@@ -1313,7 +1313,6 @@ const zh: Record<string, string> = {
   "This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).": "无法通过表头对此查询排序：编辑器中的内容与运行时不一致（之后被编辑过、变量已被填入，或来自 @include）。",
   // Diagnostics: the log, crashes and the diagnostic package
   "Diagnostics": "诊断",
-  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report: it holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "PlatypusDB 会在本机记录其启动、错误和崩溃日志；不会发送到任何地方。要报告问题，请保存诊断包并附加到报告中：其中包含版本、系统、不含密码的设置、各类数据库的连接数量以及日志。日志中的错误消息可能包含服务器名或表名：分享诊断包前请先查看。",
   "Logs": "日志",
   "Save diagnostic package…": "保存诊断包…",
   "Saved to {path}": "已保存到 {path}",
@@ -1669,7 +1668,6 @@ const zh: Record<string, string> = {
   "{n} errors": "{n} 个错误",
   "Outcome": "结果",
   "Any outcome": "任意结果",
-  "Filter by tool, agent, connection or argument": "按工具、代理、连接或参数过滤",
   "Export CSV": "导出 CSV",
   "When": "时间",
   "Agent": "代理",
@@ -3060,7 +3058,6 @@ const zh: Record<string, string> = {
   "Animations": "动画",
   "Panels and dialogs opening, tabs appearing. Reduced: short fades only.": "面板和对话框打开、标签出现。减少：仅短暂淡入淡出。",
   "Like the system": "跟随系统",
-  "Yes": "是",
   "Reduced": "减少",
   "Dashboard widget": "仪表板小组件",
   "Only the first {shown} of {total} rows are in this export.": "此导出仅包含 {total} 行中的前 {shown} 行。",
@@ -3168,6 +3165,21 @@ const zh: Record<string, string> = {
   "Dashboard saved": "仪表板已保存",
   "PK primary key · FK foreign key · * NOT NULL": "PK 主键 · FK 外键 · * NOT NULL",
   "DDL": "DDL",
+  // Settings P3 (group T)
+  "PlatypusDB keeps a log of its starts, errors and crashes on this computer; nothing is sent anywhere. To report a problem, save the diagnostic package and attach it to the report.": "PlatypusDB 在此电脑上保存启动、错误和崩溃的日志;不会发送任何内容。要报告问题,请保存诊断包并附在报告中。",
+  "The package holds the version, the system, the settings without passwords, how many connections of each database you have, and the logs. Error messages in the logs may name a server or a table: look at them before sharing the package.": "包中含有版本、系统、不含密码的设置、每种数据库的连接数量以及日志。日志中的错误信息可能包含服务器或表名:分享前请先检查。",
+  "The master password is on": "主密码已启用",
+  "The master password is off": "主密码未启用",
+  "Downloaded drivers": "已下载的驱动",
+  "Client drivers": "客户端驱动",
+  "Show password": "显示密码",
+  "Latest": "最新",
+  "Search calls…": "搜索调用…",
+  "Not available: production and read-only connections stay read only.": "不可用:生产连接和只读连接保持只读。",
+  "Folder in the repository or on the drive": "仓库或驱动器中的文件夹",
+  "User names can identify people: leave this off if the folder is public.": "用户名可能识别个人:文件夹公开时请保持关闭。",
+  "A .sql file": "一个 .sql 文件",
+  "Tries again: 0 means no retry.": "重试次数:0 表示不重试。",
 };
 
 export default zh;
