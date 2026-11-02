@@ -4,7 +4,7 @@ import { api, type GitFileStatus, type SavedConnection, type ScriptEntry } from 
 import { openDiff } from "./GitDialogs";
 import { workbench } from "../workbench";
 import { ask } from "../ui/ask";
-import { connectionFor, nameOf, openScript, parentOf, scriptFile, scriptsChanged } from "./scripts";
+import { connectionFor, nameOf, openScript, parentOf, renameScript, scriptFile, scriptsChanged } from "./scripts";
 import { t } from "../i18n";
 import { copyText } from "../ui/copy";
 
@@ -175,6 +175,5 @@ registerAction({
 export async function moveScript(project: string | null, path: string, folder: string) {
   const to = folder ? `${folder}/${nameOf(path)}` : nameOf(path);
   if (to === path || parentOf(path) === folder || to.startsWith(`${path}/`)) return;
-  await api.renameScript(project, path, to);
-  scriptsChanged();
+  await renameScript(project, path, to);
 }

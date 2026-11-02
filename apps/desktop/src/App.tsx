@@ -1001,6 +1001,13 @@ export function App() {
       if (tab) shell.current.setActiveTab(tab.key);
       return tab !== undefined;
     },
+    renameTabFiles: (rename) =>
+      setTabs((all) =>
+        all.map((t) => {
+          const to = t.kind === "query" && t.filePath ? rename(t.filePath) : null;
+          return to ? { ...t, filePath: to } : t;
+        }),
+      ),
     sideSession: (connection, database) => shell.current.navigatorSession(connection, database),
     openSession: (connection, side = false) => connect(connection, null, side),
     closeSession: (sessionId) => closeSession(sessionId),
