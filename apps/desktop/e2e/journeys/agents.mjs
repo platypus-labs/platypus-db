@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
-import { keys, setLanguage } from "../journey.mjs";
+import { keys, press, setLanguage } from "../journey.mjs";
 import { noMcp, startMcp } from "../mcp.mjs";
 import { needsPostgres, psql, psqlTry, restart } from "../qa-jrn.mjs";
 import { ui } from "../journey-work.mjs";
@@ -42,6 +42,15 @@ function loggedCalls(dir) {
   }
 }
 
+/** Chooses Host or URL in the dialog: a click, or the arrows of the radio group (one Tab stop). */
+async function connectBy(page, u, mode) {
+  const option = `document.querySelector('.connection-dialog [data-field="connect_by_${mode}"]')`;
+  if (!u.kb) return u.tap(option);
+  await u.tabTo(`document.querySelector('.connection-dialog .connect-by [aria-checked=true]')`);
+  await press(page, mode === "url" ? "ArrowRight" : "ArrowLeft", mode === "url" ? "ArrowRight" : "ArrowLeft", mode === "url" ? 39 : 37);
+  await page.waitFor(`document.activeElement === ${option} && ${option}.getAttribute('aria-checked') === 'true'`, 5_000);
+}
+
 /** Makes the connection from a URL, as a user does in the connection dialog. */
 async function newConnection(page, u) {
   const t = u.t;
@@ -49,16 +58,19 @@ async function newConnection(page, u) {
   await page.waitFor(`${picker} !== null`, 15_000);
   await page.waitFor(`[...document.querySelectorAll('.driver-tile')].some(b => b.textContent === 'PostgreSQL')`, 15_000);
   if (u.kb) {
-    await page.type("postgres");
-    await page.waitFor(`[...document.querySelectorAll('.driver-tile')].filter(b => b.getClientRects().length).length < 5`, 5_000);
+    const all = await page.eval(`document.querySelectorAll('.driver-tile').length`);
+    await page.type("PostgreSQL");
+    // The search leaves PostgreSQL and its variants.
+    await page.waitFor(`[...document.querySelectorAll('.driver-tile')].filter(b => b.getClientRects().length).length < ${all}`, 5_000);
   }
   await u.tap(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === 'PostgreSQL')`);
   await page.waitFor(`${dialog} !== null`, 15_000);
   await u.italian("new connection form", ["PostgreSQL", "localhost", "platypus"]);
-  await u.tap(`document.querySelector('.connection-dialog [data-field="connect_by_url"]')`);
+  await connectBy(page, u, "url");
   await u.type(`document.querySelector('.connection-dialog [data-field="connection_url"]')`, URL);
-  await page.waitFor(`document.querySelector('.connection-dialog [data-field="connection_url"]').value === ${JSON.stringify(URL)}`);
-  await u.tap(`document.querySelector('.connection-dialog [data-field="connect_by_host"]')`);
+  // Once read, the field may show the URL without its password, which moves to the Password field.
+  await page.waitFor(`document.querySelector('.connection-dialog [data-field="connection_url"]').value.endsWith('@localhost:55432/platypus?sslmode=disable')`);
+  await connectBy(page, u, "host");
   await page.waitFor(`${formField(t("Host"))}?.value === 'localhost'`, 10_000);
   await u.type(formField(t("Name")), NAME);
   await page.waitFor(`${formField(t("Name"))}.value === ${JSON.stringify(NAME)}`);
