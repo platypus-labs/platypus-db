@@ -6,6 +6,7 @@ import { ask } from "../ui/ask";
 import { answerFor } from "../testAnswers";
 import { reloadPlugins, usePlugins } from "./store";
 import { pickFolder } from "../projects/shared";
+import { EmptyState } from "../ui/State";
 
 const SCOPES: Record<string, string> = {
   editor: msg("SQL editor"),
@@ -95,6 +96,16 @@ export function PluginsPanel() {
     });
   }
 
+  const installButtons = (
+    <>
+      <button type="button" data-action="install-folder" disabled={busy} onClick={() => void pick(false)}>
+        {t("Install from a folder…")}
+      </button>
+      <button type="button" data-action="install-zip" disabled={busy} onClick={() => void pick(true)}>
+        {t("Install from a .zip…")}
+      </button>
+    </>
+  );
   return (
     <div className="plugins-panel">
       <p className="muted small">
@@ -105,14 +116,7 @@ export function PluginsPanel() {
           {error}
         </div>
       )}
-      <div className="driver-actions">
-        <button type="button" data-action="install-folder" disabled={busy} onClick={() => void pick(false)}>
-          {t("Install from a folder…")}
-        </button>
-        <button type="button" data-action="install-zip" disabled={busy} onClick={() => void pick(true)}>
-          {t("Install from a .zip…")}
-        </button>
-      </div>
+      {(plugins.length > 0 || review) && <div className="driver-actions">{installButtons}</div>}
       {review && (
         <div className="driver-block plugin-review" data-field="plugin-review" data-plugin={review.plugin.manifest.id}>
           <strong>
@@ -138,7 +142,9 @@ export function PluginsPanel() {
           </div>
         </div>
       )}
-      {plugins.length === 0 && <p className="muted small">{t("No plugin installed.")}</p>}
+      {plugins.length === 0 && !review && (
+        <EmptyState icon="extension" title={t("No plugin installed.")} actions={installButtons} />
+      )}
       {plugins.map((p) => (
         <div key={p.manifest.id} className="driver-block" data-plugin={p.manifest.id} data-enabled={p.enabled}>
           <div className="driver-row-inner">

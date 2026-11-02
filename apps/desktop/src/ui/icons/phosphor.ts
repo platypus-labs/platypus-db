@@ -1,5 +1,6 @@
 /** The Phosphor family: the closest icon for every name of the Lucide list. */
 import {
+  SquaresFourIcon,
   ArrowCounterClockwiseIcon,
   ArrowDownIcon,
   ArrowElbowDownLeftIcon,
@@ -156,4 +157,5 @@ export const PHOSPHOR = {
   "tx-log": ScrollIcon,
   masked: EyeSlashIcon,
   agent: RobotIcon,
+  dashboard: SquaresFourIcon,
 } satisfies Record<IconName, PhosphorIcon>;

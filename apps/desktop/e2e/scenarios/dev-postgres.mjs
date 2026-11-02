@@ -77,7 +77,7 @@ export default async function (page) {
 
   await page.eval(`${row("orders")}.id = 'e2e-orders'`);
   const items = await menu(page, "#e2e-orders");
-  for (const item of ["Open data", "Open details", "Generate SQL", "Copy name", "Refresh", "Drop…"]) {
+  for (const item of ["Open data", "Open details", "Generate SQL", "Copy", "Refresh", "Drop…"]) {
     assert.ok(items.includes(item), `${item} in ${items}`);
   }
   await revealItem(page, "Open data");

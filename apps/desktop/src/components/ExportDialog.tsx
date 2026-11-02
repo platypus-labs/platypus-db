@@ -137,7 +137,7 @@ export function OutputOptions(props: {
         </label>
       )}
       <label className="field">
-        <span>{t("Also upload")}</span>
+        <span>{t("Also upload to…")}</span>
         <select
           value={upload}
           disabled={disabled}
@@ -146,7 +146,7 @@ export function OutputOptions(props: {
             onChange({ ...options, upload_url: to === "url" ? "" : null, bucket: to === "bucket" ? lastBucket() : null });
           }}
         >
-          <option value="none">{t("No")}</option>
+          <option value="none">{t("Nowhere: only save the file")}</option>
           {signedUrl && <option value="url">{t("To a signed URL (S3, GCS)")}</option>}
           <option value="bucket">{t("To a bucket (S3, GCS, R2, MinIO)")}</option>
         </select>

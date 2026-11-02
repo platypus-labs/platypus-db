@@ -3,7 +3,11 @@ import { groups, type TxLog, type TxRecord } from "./txLog";
 import { t, plural } from "../i18n";
 import { ask } from "../ui/ask";
 
-const time = (at: number) => new Date(at).toLocaleTimeString();
+/** The time with seconds; with the date when it is not today. */
+const time = (at: number) => {
+  const d = new Date(at);
+  return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString() : d.toLocaleString();
+};
 
 function ended(tx: TxRecord) {
   if (tx.ended === null) return { label: t("Open"), tone: "open" };
@@ -42,7 +46,7 @@ export function TransactionLogDialog({
         </p>
         {all.length > 0 && (
           <div className="tx-log-groups">
-            {all.map(({ tx, entries }) => {
+            {all.map(({ tx, entries }, g) => {
               const end = tx && ended(tx);
               return (
                 <section key={tx ? `tx${tx.id}` : `at${entries[0]!.at}-${entries[0]!.sql}`} className={`tx-log-group ${end ? end.tone : "auto"}`}>
@@ -58,13 +62,14 @@ export function TransactionLogDialog({
                   </header>
                   <ol>
                     {[...entries].reverse().map((e, i) => (
-                      <li key={i} className={e.failed ? "failed" : undefined}>
+                      <li key={i} className={[e.failed && "failed", g === 0 && i === 0 && "latest"].filter(Boolean).join(" ") || undefined}>
                         <span className="tx-log-time">{time(e.at)}</span>
                         <code>{preview(e.sql)}</code>
+                        {g === 0 && i === 0 && <span className="tx-log-latest-tag">{t("Latest")}</span>}
                         {e.failed && <span className="tx-log-failed">{t("Failed")}</span>}
                         {/* A change rolled back has nothing to restore. */}
                         {e.snapshot && tx?.end !== "rollback" && (
-                          <button type="button" className="link tx-log-restore" onClick={() => onRestore(e.snapshot!)} title={t("Open the statements that put back the rows it changed")}>
+                          <button type="button" className="small tx-log-restore" onClick={() => onRestore(e.snapshot!)} title={t("Open the statements that put back the rows it changed")}>
                             {t("Restore…")}
                           </button>
                         )}

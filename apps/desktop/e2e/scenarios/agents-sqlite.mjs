@@ -125,7 +125,7 @@ async function connectionDialog(page, dir, shots) {
   await page.waitFor(`${access} !== null`);
   assert.equal(await page.eval(`${access}.value`), "read_write");
   // Production: read-only at most for agents.
-  const type = `[...document.querySelectorAll('.modal label.field')].find(l => l.querySelector('span')?.textContent === 'Type').querySelector('select')`;
+  const type = `[...document.querySelectorAll('.modal label.field')].find(l => l.querySelector('span')?.textContent === 'Environment').querySelector('select')`;
   await page.eval(choose(type, "prod"));
   await page.waitFor(`${access}.value === 'read_only'`);
   assert.equal(await page.eval(`${access}.querySelector('option[value="read_write"]').disabled`), true);

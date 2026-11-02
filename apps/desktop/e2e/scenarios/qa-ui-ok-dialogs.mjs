@@ -44,9 +44,9 @@ export default async function (page) {
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings input') === document.activeElement`);
   await page.type("font");
-  await page.waitFor(`document.querySelectorAll('.settings-results .setting').length === 2`);
+  await page.waitFor(`document.querySelectorAll('.settings-results section:not([hidden]) .setting').length === 2`);
   assert.deepEqual(
-    await page.eval(`[...document.querySelectorAll('.settings-results .setting')].map(s => s.querySelector('span')?.firstChild?.textContent)`),
+    await page.eval(`[...document.querySelectorAll('.settings-results section:not([hidden]) .setting')].map(s => s.querySelector('span')?.firstChild?.textContent)`),
     ["SQL editor font size", "Result grid font size"],
   );
   await page.key("a", "KeyA", 65, CTRL);

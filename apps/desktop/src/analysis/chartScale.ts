@@ -189,3 +189,9 @@ export function rightAxisSeries(maxes: readonly number[]): number | null {
 export function valueAxisTitle(names: readonly string[], fallback: string): string {
   return names.length === 1 ? (names[0] ?? fallback) : fallback;
 }
+
+/** The colour of the `i`th slice of a pie: hues a golden angle apart, so that no two of many
+ *  slices look alike (the theme's eight colours repeat, and some themes give two the same tone). */
+export function sliceColor(i: number): string {
+  return `hsl(${Math.round((i * 137.508) % 360)} 58% ${i % 2 ? 62 : 50}%)`;
+}

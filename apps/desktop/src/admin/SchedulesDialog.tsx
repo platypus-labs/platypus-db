@@ -140,7 +140,7 @@ export function SchedulesDialog({
   const close = () => (editing && !direct ? setEditing(null) : onClose());
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal schedules-dialog" role="dialog" onKeyDown={(e) => e.key === "Escape" && close()}>
+      <div className={`modal schedules-dialog${!editing && schedules?.length === 0 ? " empty" : ""}`} role="dialog" onKeyDown={(e) => e.key === "Escape" && close()}>
         {editing ? (
           <ScheduleForm
             initial={editing}
@@ -161,7 +161,7 @@ export function SchedulesDialog({
             {schedules === null && !error && <LoadingState compact title={t("Reading the tasks…")} />}
             {schedules && schedules.length === 0 && (
               <EmptyState
-                compact
+                icon="history"
                 className="schedules-empty"
                 title={t("No scheduled tasks yet.")}
                 actions={
@@ -212,11 +212,13 @@ export function SchedulesDialog({
               </div>
             )}
             <div className="actions">
-              <button type="button" onClick={() => setEditing(newSchedule(connections[0]?.id ?? "", crypto.randomUUID()))} disabled={connections.length === 0}>
-                {t("New task…")}
-              </button>
+              {schedules?.length !== 0 && (
+                <button type="button" onClick={() => setEditing(newSchedule(connections[0]?.id ?? "", crypto.randomUUID()))} disabled={connections.length === 0}>
+                  {t("New task…")}
+                </button>
+              )}
               <span className="spacer" />
-              <button type="button" className="primary" onClick={onClose}>
+              <button type="button" className={schedules?.length === 0 ? undefined : "primary"} onClick={onClose}>
                 {t("Close")}
               </button>
             </div>
@@ -461,6 +463,7 @@ function ScheduleForm({
             <input
               value={s.task.path}
               data-field="script"
+              placeholder={t("A .sql file")}
               spellCheck={false}
               onChange={(e) => s.task.kind === "script" && setTask({ ...s.task, path: e.target.value })}
             />
@@ -686,6 +689,7 @@ function ScheduleForm({
           />
         </label>
       </div>
+      <p className="muted small">{t("Tries again: 0 means no retry.")}</p>
       <label className="check">
         <input type="checkbox" checked={s.enabled} data-field="enabled" onChange={(e) => set({ enabled: e.target.checked })} />
         {t("Enabled")}

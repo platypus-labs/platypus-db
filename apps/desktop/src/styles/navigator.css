@@ -334,7 +334,8 @@
   padding: 0;
   border: none;
   background: none;
-  color: var(--fg-muted);
+  color: var(--accent);
+  text-decoration: underline;
   font-size: var(--text-sm);
   text-align: left;
   white-space: normal;

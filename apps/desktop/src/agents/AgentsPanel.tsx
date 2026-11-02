@@ -77,6 +77,11 @@ function AccessLevels({ connection, onChange }: { connection: SavedConnection; o
           <div>
             <div className="agent-level-title">{t(a.label)}</div>
             <div className="muted small">{t(LEVEL_NOTES[a.value])}</div>
+            {a.value === "read_write" && isCapped(connection) && (
+              <div className="small agent-blocked" data-field="level-capped">
+                {t("Not available: production and read-only connections stay read only.")}
+              </div>
+            )}
           </div>
         </label>
       ))}

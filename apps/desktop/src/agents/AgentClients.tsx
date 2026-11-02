@@ -178,7 +178,9 @@ export function AgentClients() {
               <div>
                 <div className="client-label">{t("Configuration file")}</div>
                 <div className="small agent-client-path">
-                  <code>{shown.path}</code>
+                  <code>
+                    {shown.path.split(/([\\/])/).map((part, i) => (/^[\\/]$/.test(part) ? [part, <wbr key={i} />] : part))}
+                  </code>
                 </div>
                 {!shown.exists && <div className="muted small">{t("Not there yet: Install creates it.")}</div>}
               </div>

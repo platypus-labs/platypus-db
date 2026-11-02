@@ -37,7 +37,7 @@ export default async function (page) {
   await page.waitFor(`${treeRow("qa_ui_orders")} !== undefined`, 15_000);
   await page.eval(`${treeRow("qa_ui_orders")}.id = 'e2e-table'`);
   await page.clickSel("#e2e-table", { clickCount: 2 });
-  await page.waitFor(`${placeholder}.startsWith('SQL on the loaded rows')`, 15_000);
+  await page.waitFor(`${placeholder}.startsWith('Filter these rows')`, 15_000);
 
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
@@ -47,5 +47,5 @@ export default async function (page) {
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Fatto').click()`);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
   await page.waitFor(`(${visibleTab}?.querySelector('.edit-bar')?.textContent ?? '').includes('Doppio clic')`);
-  assert.match(await page.eval(placeholder), /^SQL sulle righe caricate/);
+  assert.match(await page.eval(placeholder), /^Filtra queste righe/);
 }

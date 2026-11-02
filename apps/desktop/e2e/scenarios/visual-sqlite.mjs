@@ -97,7 +97,7 @@ export default async function (page, { shots }) {
   // No tab yet: the welcome screen, with its actions and the shell's shortcuts.
   assert.deepEqual(
     JSON.parse(await page.eval(`JSON.stringify([...document.querySelectorAll('.welcome-card strong')].map(s => s.textContent))`)),
-    ["Open a data file", "Try the sample database", "Import connections"],
+    ["Open a data file", "Try the sample database", "Import connections", "Open shared project…", "Export connections"],
   );
   assert.equal(await page.eval(`document.querySelector('.welcome-keys kbd')?.textContent`), "Ctrl+K");
   await page.key("2", "Digit2", 50, CTRL);

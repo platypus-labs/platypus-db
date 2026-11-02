@@ -108,6 +108,7 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
               />
             ))}
             <input type="color" value={color} onChange={(e) => setColor(e.target.value)} title={t("Another color")} aria-label={t("Another color")} />
+            <span className="muted small">{t("Custom")}</span>
           </div>
         </label>
         <label className="field">

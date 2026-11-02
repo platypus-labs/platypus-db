@@ -341,6 +341,8 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
 
   /** The pivot form's last settings, by statement, as the fields are kept. */
   const pivots = useRef(new Map<string, PivotSettings>());
+  /** The query of the last pivot by statement, with its summary for the status. */
+  const pivotNotes = useRef(new Map<string, { sql: string; label: string }>());
   useEffect(() => {
     for (const k of [...pivots.current.keys()]) if (!statements.includes(k)) pivots.current.delete(k);
   }, [statementsKey]);
@@ -381,7 +383,11 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
         );
       }
     }
-    await fields.run(key, pivotSql(ready, t("Total")), tables, of, columnNames);
+    const sql = pivotSql(ready, t("Total"));
+    const measure = ready.value === null ? t("count") : `${ready.aggregate}(${ready.value})`;
+    const across = ready.column === null ? "" : ` × ${ready.column}`;
+    pivotNotes.current.set(key, { sql, label: t("Pivot: {fields}", { fields: `${ready.rows.join(", ")}${across} · ${measure}` }) });
+    await fields.run(key, sql, tables, of, columnNames);
   };
 
   const bar =
@@ -400,7 +406,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
             value={oneLine(state.text)}
             driver="duckdb"
             catalog={catalog}
-            placeholder={t("SQL on the loaded rows: WHERE …, ORDER BY …, GROUP BY … or SELECT … FROM result")}
+            placeholder={t("Filter these rows with SQL…")}
             label={t("SQL on the result")}
             autoFocus={keepFocus.current}
             onChange={(text) => fields.setText(key, text)}
@@ -426,7 +432,7 @@ export function useResultSql({ connection, results, shown, enabled, canLeave }: 
         <button type="button" className="result-pivot-open" onClick={pivot} title={t("Pivot the rows: fields down, a field across, an aggregate in the cells")}>
           {t("Pivot…")}
         </button>
-        <FieldStatus state={state} output={output} />
+        <FieldStatus state={state} output={output} note={pivotNotes.current.get(key)} />
         {expanded && (
           <SqlPopover
             text={state.text}
@@ -460,7 +466,7 @@ const FIELD_TITLE = msg(
 );
 
 /** After the field: running, the error, or what the grid shows instead of the result. */
-function FieldStatus({ state, output }: { state: FieldState; output: Result | null }) {
+function FieldStatus({ state, output, note }: { state: FieldState; output: Result | null; note?: { sql: string; label: string } }) {
   if (state.busy) return <span className="muted small">{t("Executing…")}</span>;
   if (state.error) {
     return (
@@ -473,6 +479,7 @@ function FieldStatus({ state, output }: { state: FieldState; output: Result | nu
   return (
     <span className="result-sql-mark small" title={t("The grid shows the output of the SQL, not the result: × or Escape returns to it.")}>
       {plural(output.rows, "SQL view · {n} row", "SQL view · {n} rows")}
+      {note && note.sql.replace(/\s+/g, " ") === state.text.replace(/\s+/g, " ") && <span title={note.label}>{` · ${note.label}`}</span>}
       {state.partial && (
         <span
           className="result-sql-partial"

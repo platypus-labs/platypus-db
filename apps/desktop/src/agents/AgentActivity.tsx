@@ -133,7 +133,7 @@ export function AgentActivity({ onSetup }: { onSetup: () => void }) {
           type="search"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={t("Filter by tool, agent, connection or argument")}
+          placeholder={t("Search calls…")}
           data-filter="text"
         />
         <span className="spacer" />

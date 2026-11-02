@@ -192,7 +192,12 @@
 .lint-fix {
   display: flex;
   gap: var(--space-8);
-  align-items: baseline;
+  align-items: center;
+}
+
+.lint-fix button {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-8);
 }
 
 .lint-fix code {

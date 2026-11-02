@@ -386,7 +386,7 @@
   min-height: 0;
   max-height: 100%;
   width: 100%;
-  max-width: 1180px;
+  max-width: 1040px;
   padding: var(--space-48) var(--space-32);
   font-size: var(--text-lg);
   display: flex;
@@ -405,6 +405,9 @@
   }
   .welcome-card {
     padding-block: var(--space-12);
+  }
+  .welcome-keys > div {
+    min-height: var(--control-md);
   }
 }
 
@@ -443,6 +446,7 @@
 
 .welcome-intro .muted {
   margin: 0;
+  font-size: var(--text-md);
 }
 
 .welcome-cta {
@@ -501,8 +505,22 @@
 .welcome-more {
   flex: 1 1 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-24);
+}
+
+/* The shortcuts keep the right column with or without recent items. */
+.welcome-more > section:last-child {
+  grid-column: 2;
+}
+
+@media (max-width: 760px) {
+  .welcome-more {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .welcome-more > section:last-child {
+    grid-column: 1;
+  }
 }
 
 .welcome-heading {
@@ -674,8 +692,9 @@
 
 .tab-pin {
   position: absolute;
-  right: -5px;
-  top: -5px;
+  right: -7px;
+  top: -7px;
+  padding: 1px;
   color: var(--accent);
   background: var(--bg);
   border-radius: 50%;

@@ -5,6 +5,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "Copy toast db";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
@@ -54,6 +55,7 @@ export default async function (page) {
   const r = await page.rect("#e2e-table");
   await page.click(r.x + 40, r.y + r.h / 2, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  assert.ok(await revealItem(page, "Copy name"));
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span')?.textContent === 'Copy name').click()`);
   await page.waitFor(`${toasts}.includes('Copied')`);
   assert.ok((await page.eval(`window.__copied`)).includes("items"));

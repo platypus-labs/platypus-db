@@ -9,7 +9,7 @@ import { api } from "./api";
 export type SettingControl =
   | { type: "boolean" }
   | { type: "number"; min?: number; max?: number; step?: number }
-  | { type: "text"; placeholder?: string }
+  | { type: "text"; placeholder?: string; /** A few lines, for a list that does not fit one. */ multiline?: boolean }
   | { type: "select"; options: { value: string; label: string }[] }
   /** A `#rrggbb` color; empty means none (e.g. the theme's own). */
   | { type: "color" }

@@ -1,6 +1,7 @@
 /** The Lucide family: the reference list of icon names. */
 import {
   Activity,
+  LayoutDashboard,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
@@ -156,6 +157,7 @@ export const LUCIDE = {
   "tx-log": ScrollText,
   masked: EyeOff,
   agent: Bot,
+  dashboard: LayoutDashboard,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof LUCIDE;

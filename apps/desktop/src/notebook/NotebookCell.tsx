@@ -149,10 +149,10 @@ export function NotebookCellView(props: Props) {
     <section className={`notebook-cell ${cell.kind}${run.running ? " running" : ""}`} data-cell={cell.id} data-name={name ?? undefined}>
       <div className="notebook-cell-bar">
         {sql ? <span className="notebook-name">{name}</span> : <span className="notebook-name muted">{t("Text")}</span>}
-        {sql && (
+        {sql && (name !== "c1" || cell.onResults) && (
           <label className="check small" title={t("Query the rows the other cells loaded, as the tables c1, c2…, without running them again")}>
             <input type="checkbox" checked={cell.onResults} data-field="on_results" onChange={(e) => onChange({ onResults: e.target.checked })} />
-            {t("On the results c1, c2…")}
+            {t("On results")}
           </label>
         )}
         {sql && !cell.onResults && <span className="muted small">{props.connectionName}</span>}

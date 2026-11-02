@@ -48,6 +48,10 @@ export function fuzzy(query: string, text: string): FuzzyMatch | null {
     positions.push(i);
     from = i + 1;
   }
+  // A text or a word that starts with the whole query comes before scattered matches.
+  const compact = q.replace(/ /g, "");
+  if (t.startsWith(compact)) score += 10;
+  else if (t.split(/[\s._\-/:]+/).some((w) => w.startsWith(compact))) score += 5;
   // Shorter texts with the same matches are closer.
   return { score: score - text.length * 0.01, positions };
 }

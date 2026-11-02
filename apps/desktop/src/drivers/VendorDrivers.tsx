@@ -217,6 +217,7 @@ export function VendorDriversSection() {
   }, []);
   return (
     <div className="vendor-drivers">
+      <h4 className="settings-subhead">{t("Client drivers")}</h4>
       <p className="muted small">
         {t("Oracle connects through Oracle Instant Client, IBM Db2 through IBM's ODBC driver, and DuckDB databases and data files through DuckDB's library: each installed from its vendor the first time it is needed.")}
       </p>

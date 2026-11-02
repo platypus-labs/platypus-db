@@ -30,6 +30,15 @@
   overflow: hidden;
   color: var(--fg);
 }
+/* A placeholder longer than the field ends in an ellipsis, not in half a word. */
+.sql-line .cm-placeholder {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
 .edit-bar .result-sql-clear {
   padding: 0 var(--space-4);
   font-size: var(--text-lg);

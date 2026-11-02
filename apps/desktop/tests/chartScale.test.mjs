@@ -18,9 +18,14 @@ import {
   pieParts,
   timeTicks,
   rightAxisSeries,
+  sliceColor,
   truncate,
   valueAxisTitle,
 } from "../src/analysis/chartScale.ts";
+
+test("sliceColor gives twenty slices twenty different colours", () => {
+  assert.equal(new Set(Array.from({ length: 20 }, (_, i) => sliceColor(i))).size, 20);
+});
 
 const DAY = 86_400_000;
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);

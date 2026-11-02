@@ -172,7 +172,7 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
     <div className="object-tab dashboard-tab" style={{ display: active ? "flex" : "none" }}>
       <header className="object-header dashboard-toolbar">
         <span className="object-icon" data-kind="schema">
-          <Icon name="activity" size={16} />
+          <Icon name="dashboard" size={16} />
         </span>
         <div className="object-title">
           <div className="dashboard-title-row">
@@ -235,7 +235,7 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
         {tab.widgets.length === 0 && (
           <EmptyState
             className="dashboard-empty"
-            icon="activity"
+            icon="dashboard"
             title={t("An empty dashboard: add a widget.")}
             actions={
               <button type="button" className="primary" onClick={() => openForm(null)}>

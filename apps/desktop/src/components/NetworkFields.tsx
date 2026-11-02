@@ -88,6 +88,7 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
 
   return (
     <>
+      <h3>{t("SSH tunnel")}</h3>
       <label className="check">
         <input type="checkbox" checked={ssh !== null} onChange={(e) => set("ssh", e.target.checked ? newSsh() : null)} />
         {t("Connect through an SSH tunnel")}
@@ -124,6 +125,7 @@ export function NetworkFields<T extends NetworkSettings>({ value, onChange, driv
         </fieldset>
       )}
 
+      <h3>{t("SSL")}</h3>
       <label className="field">
         <span>{t("SSL mode")}</span>
         <select value={value.ssl_mode} onChange={(e) => set("ssl_mode", e.target.value as SslMode)}>

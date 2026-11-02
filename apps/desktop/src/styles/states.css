@@ -58,6 +58,12 @@
   margin-top: var(--space-10);
 }
 
+.state-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
 /* One line, for a list or a small panel. */
 .state.compact {
   flex-direction: row;

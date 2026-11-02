@@ -1370,7 +1370,7 @@ nei file delle aree toccate, in commit piccoli e separati
 
 ### Gruppo T — Revisione UX
 
-**Stato: fatto (P1, P2).** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). P2: 78 problemi medi e minori corretti (restano nel rapporto i 15 che servono il backend, un mockup o una scelta), pannelli laterali e di dettaglio ridimensionabili con la misura ricordata (editor, explain, amministrazione, grafici, agenti), menu con la stessa regola (sottomenu "Analyze" nelle tabelle e nella griglia, "Lines"/"Cursors"/"Folding" nell'editor, azioni distruttive in fondo) e un giro di spaziatura sulle classi condivise dei dialog. Resta il secondo giro (P3).
+**Stato: completato** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). P2: 78 problemi medi e minori corretti (restano nel rapporto i 15 che servono il backend, un mockup o una scelta), pannelli laterali e di dettaglio ridimensionabili con la misura ricordata (editor, explain, amministrazione, grafici, agenti), menu con la stessa regola (sottomenu "Analyze" nelle tabelle e nella griglia, "Lines"/"Cursors"/"Folding" nell'editor, azioni distruttive in fondo) e un giro di spaziatura sulle classi condivise dei dialog. P3: secondo giro della scheda su tutte le sezioni (90 punti, in [UX_REVIEW.md](UX_REVIEW.md) "Secondo giro"), corretti tranne quelli che servono il backend o un mockup, elencati lì.
 
 Il gruppo R ha reso l'app coerente nell'aspetto; questo gruppo controlla se si **usa** bene. Le
 segnalazioni dell'utente del 1° novembre 2026 mostrano problemi che nessun inventario visivo
@@ -1426,7 +1426,7 @@ condivisi; task pianificati.
 | ✅ 🆕 Menu contestuali riorganizzati in tutta l'app con la stessa regola (azioni principali in alto, sottomenu per i gruppi, voci distruttive in fondo) | P2 | N |
 | ✅ 🆕 Correzione dei problemi minori del rapporto | P2 | N |
 | ✅ 🆕 **Spaziatura** in tutte le schermate: margini e distanze tra campi, etichette, testi di aiuto, pulsanti e sezioni dalla scala dei token (es. impostazioni › Sync, dove è tutto appiccicato) | P2 | N |
-| 🆕 Secondo giro della scheda con occhi nuovi, su tutte le sezioni | P3 | N |
+| ✅ 🆕 Secondo giro della scheda con occhi nuovi, su tutte le sezioni | P3 | N |
 
 ---
 

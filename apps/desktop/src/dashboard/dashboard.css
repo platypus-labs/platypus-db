@@ -25,7 +25,7 @@
 /* The name is a title even before one is typed, and a pencil says it can be changed. */
 .dashboard-title::placeholder {
   color: var(--fg-strong);
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .dashboard-title-row {
