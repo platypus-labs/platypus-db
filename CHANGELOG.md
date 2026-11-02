@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-02
+
 ### Added
 
 - **Connections**: export connections to a `.platypusconn` file, with or without their projects
@@ -13,6 +15,18 @@ All notable changes to PlatypusDB are listed here. The format follows
   Import connections › PlatypusDB.
 - The main window opens where it was left, on the same screen, or centred on the primary
   screen when that one is gone.
+- **Usability review**: a title, axes and a line of explanation on every chart (histograms,
+  profiles, a right-hand axis for series of different scales); a toast for every copy, save
+  and export; a shared waiting indicator for slow actions; empty states that lead to the action
+  that fills them; consistent spacing in forms and dialogs.
+- Resizable side and detail panels (editor history, explain, administration, charts, agents,
+  query builder), with their size remembered.
+- Shorter menus: related items in submenus (a table's *Analyze* and *Copy*, the editor's
+  *Lines*, *Cursors* and *Folding*), destructive actions last, and the app's menu everywhere
+  instead of the browser's.
+- The notebook shows the running cell, stops it, and runs all cells.
+- The command palette finds saved scripts by name.
+- The result grid's menu opens from the keyboard (menu key or Shift+F10).
 
 ### Fixed
 
@@ -23,6 +37,15 @@ All notable changes to PlatypusDB are listed here. The format follows
 - MariaDB schema compare reads and writes `PERIOD FOR` clauses.
 - SQLite hides the shadow tables of FTS5 tables.
 - On DuckDB an edited row of a table with a one-column primary key keeps its place after saving.
+- Renaming or moving a saved script updates the editor tabs open on it, so saving writes to the
+  new file.
+- PostgreSQL: a server that accepts the connection and never answers ends the connect at the
+  timeout instead of hanging, and the `connect_timeout` option of a saved connection is used.
+- One Escape is enough before Tab leaves the SQL editor.
+- The open-transaction label keeps its time and change count in a tight toolbar.
+- The result's SQL filter shows its whole border; toasts stack closer together; the connection
+  color is a ring around its logo; the top bar shows the app's icon.
+- Submenus stay inside the window, also in a menu that scrolls.
 
 ## [0.3.0] - 2026-11-01
 
@@ -185,7 +208,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.1.0...v0.2.0
