@@ -160,8 +160,8 @@ to the package manager.
 - Large schemas stay quick: with 10,000 tables the tree opens in a fraction of a second and
   renders only the rows in view.
 - The tree is cached on disk: it shows at once on start, and offline. Nothing connects until
-  you open it. Each connection shows its database's logo, with its color and its state (an open
-  session, a failed connection) as small marks on the logo.
+  you open it. Each connection shows its database's logo, ringed with its color, and its state (an open
+  session, a failed connection) as a small mark on the logo.
 - A table's menu keeps the main actions at the top, groups the rest in submenus (*Generate SQL*,
   *Maintenance*, *Data*) and puts *Truncate* and *Drop* last; the browser's own menu never shows,
   except in text fields. Index rows have their menu too. Copy actions confirm with a short
