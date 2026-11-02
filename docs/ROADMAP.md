@@ -1370,7 +1370,7 @@ nei file delle aree toccate, in commit piccoli e separati
 
 ### Gruppo T — Revisione UX
 
-**Stato: fatto (P1).** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). Restano i P2 (spaziatura in tutte le schermate, pannelli ridimensionabili ovunque, menu di tutta l'app con la stessa regola, problemi medi e minori del rapporto) e il secondo giro (P3).
+**Stato: fatto (P1, P2).** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). P2: 78 problemi medi e minori corretti (restano nel rapporto i 15 che servono il backend, un mockup o una scelta), pannelli laterali e di dettaglio ridimensionabili con la misura ricordata (editor, explain, amministrazione, grafici, agenti), menu con la stessa regola (sottomenu "Analyze" nelle tabelle e nella griglia, "Lines"/"Cursors"/"Folding" nell'editor, azioni distruttive in fondo) e un giro di spaziatura sulle classi condivise dei dialog. Resta il secondo giro (P3).
 
 Il gruppo R ha reso l'app coerente nell'aspetto; questo gruppo controlla se si **usa** bene. Le
 segnalazioni dell'utente del 1° novembre 2026 mostrano problemi che nessun inventario visivo
@@ -1422,10 +1422,10 @@ condivisi; task pianificati.
 | ✅ 🆕 **Scheda di controllo e rapporto** (`docs/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
 | ✅ 🆕 **Correzione dei problemi gravi** trovati dal rapporto (azioni senza riscontro, caricamenti invisibili, testo che sborda, stati vuoti senza azione) | P1 | N |
 | ✅ 🆕 **Riscontro e attesa uniformi**: un solo componente per il toast di conferma e uno per il caricamento, usati da tutte le azioni | P1 | N |
-| 🆕 Pannelli ridimensionabili ovunque il contenuto varia, con la misura ricordata | P2 | N |
-| 🆕 Menu contestuali riorganizzati in tutta l'app con la stessa regola (azioni principali in alto, sottomenu per i gruppi, voci distruttive in fondo) | P2 | N |
-| 🆕 Correzione dei problemi minori del rapporto | P2 | N |
-| 🆕 **Spaziatura** in tutte le schermate: margini e distanze tra campi, etichette, testi di aiuto, pulsanti e sezioni dalla scala dei token (es. impostazioni › Sync, dove è tutto appiccicato) | P2 | N |
+| ✅ 🆕 Pannelli ridimensionabili ovunque il contenuto varia, con la misura ricordata | P2 | N |
+| ✅ 🆕 Menu contestuali riorganizzati in tutta l'app con la stessa regola (azioni principali in alto, sottomenu per i gruppi, voci distruttive in fondo) | P2 | N |
+| ✅ 🆕 Correzione dei problemi minori del rapporto | P2 | N |
+| ✅ 🆕 **Spaziatura** in tutte le schermate: margini e distanze tra campi, etichette, testi di aiuto, pulsanti e sezioni dalla scala dei token (es. impostazioni › Sync, dove è tutto appiccicato) | P2 | N |
 | 🆕 Secondo giro della scheda con occhi nuovi, su tutte le sezioni | P3 | N |
 
 ---
