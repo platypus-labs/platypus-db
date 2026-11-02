@@ -94,6 +94,8 @@ async function focusCell(page, row, col) {
 async function openRules(page) {
   const r = await page.rect(`#e2e-grid`);
   await page.click(r.x + 4, r.y + 52, { button: "right" });
+  await page.waitFor(`${menuButton("Analyze")} !== undefined`);
+  await page.eval(`${menuButton("Analyze")}.click()`);
   await page.waitFor(`${menuButton("Conditional formatting…")} !== undefined`);
   await page.eval(`${menuButton("Conditional formatting…")}.click()`);
   await page.waitFor(`${dialog} !== null`);

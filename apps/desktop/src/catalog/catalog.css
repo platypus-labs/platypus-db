@@ -34,7 +34,7 @@
 
 .tag-input input {
   flex: 1;
-  min-width: 80px;
+  min-width: 56px;
   border: 0;
   background: transparent;
 }
@@ -69,9 +69,16 @@
 
 .cell-input {
   width: 100%;
-  min-width: 120px;
+  min-width: 80px;
   border: 0;
   background: transparent;
+}
+
+/* The sensitivity choice keeps to its column: the long "by the rules" wording is cut in the box. */
+select.cell-input {
+  min-width: 0;
+  max-width: 150px;
+  text-overflow: ellipsis;
 }
 
 /* The schema documentation export (DocsDialog). */

@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
 import { workbench } from "../workbench";
 import { openSharedProject } from "./shared";
+import { DialogHeader } from "../ui/DialogHeader";
 
 /** The colors offered for a project; any other can be picked too. */
 export const PROJECT_COLORS = ["#6c63ff", "#d08f20", "#3d7bf7", "#a46be0", "#2f9e6e", "#e05a5a", "#1aa3b8", "#8a93a3"];
@@ -79,7 +80,7 @@ export function ProjectDialog({ project, onSaved, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="modal small project-dialog" onSubmit={save} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{t(project ? "Edit project" : "New project")}</h2>
+        <DialogHeader title={t(project ? "Edit project" : "New project")} onClose={onClose} />
         <label className="field">
           <span>{t("Name")}</span>
           <input

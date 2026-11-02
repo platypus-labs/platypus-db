@@ -95,6 +95,7 @@ registerAction({
   scope: "navigator.object",
   title: "Compare data with…",
   group: "open",
+  submenu: "Analyze",
   order: 38,
   when: ({ connection, object }) => !isNoSql(connection.driver) && object.kind === "table",
   run: ({ connection, database, schema, object }) =>

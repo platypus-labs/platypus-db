@@ -18,6 +18,8 @@ declare module "../actions" {
     project: Project;
     /** A folder of projects in the rail. */
     "project.folder": ProjectFolder;
+    /** The "+" of the rail. */
+    "project.add": undefined;
   }
 }
 
@@ -84,6 +86,7 @@ registerAction({
   id: "project.rename",
   scope: "project",
   title: "Rename…",
+  group: "look",
   order: 10,
   run: (project) => workbench().editProject(project),
 });
@@ -92,6 +95,7 @@ registerAction({
   id: "project.color",
   scope: "project",
   title: "Color…",
+  group: "look",
   order: 11,
   run: (project) => workbench().editProject(project),
 });
@@ -107,6 +111,7 @@ registerAction({
   id: "project.test_connections",
   scope: "project",
   title: "Test connections",
+  group: "share",
   order: 12,
   run: (project) => testConnections(project),
 });
@@ -115,6 +120,7 @@ registerAction({
   id: "project.share",
   scope: "project",
   title: "Share project…",
+  group: "share",
   order: 13,
   when: (project) => !project.shared,
   run: (project) => shareProject(project),
@@ -124,6 +130,7 @@ registerAction({
   id: "project.refresh_shared",
   scope: "project",
   title: "Read the shared folder again",
+  group: "share",
   order: 13,
   when: (project) => project.shared !== undefined,
   run: () => {
@@ -144,9 +151,35 @@ registerAction({
 });
 
 registerAction({
+  id: "project.open_shared_here",
+  scope: "project",
+  title: "Open shared project…",
+  group: "share",
+  order: 15,
+  run: () => void openSharedProject(),
+});
+
+registerAction({
+  id: "project.add.new",
+  scope: "project.add",
+  title: "New project…",
+  order: 10,
+  run: () => workbench().editProject(null),
+});
+
+registerAction({
+  id: "project.add.open_shared",
+  scope: "project.add",
+  title: "Open shared project…",
+  order: 11,
+  run: () => void openSharedProject(),
+});
+
+registerAction({
   id: "project.export",
   scope: "project",
   title: "Export connections…",
+  group: "share",
   order: 14,
   run: (project) => workbench().exportConnections(project.connections),
 });

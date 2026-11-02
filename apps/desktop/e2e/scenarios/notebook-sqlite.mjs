@@ -166,6 +166,8 @@ async function paramsErrorsAndGuards(page, dir) {
 
   // Deleting the failing cell renames the ones after it.
   await page.eval(click(cell(c4), "delete"));
+  await page.waitFor(`document.querySelector('.modal.confirm') !== null`);
+  await page.eval(`document.querySelector('.modal.confirm button.danger').click()`);
   await page.waitFor(`${cell("c5")} == null`);
   assert.deepEqual(await page.eval(cells), ["text", "c1", "c2", "c3", "c4"]);
   // Moving c4 above c3 swaps their names.

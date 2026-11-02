@@ -206,3 +206,10 @@
 .notebook-running {
   padding: var(--space-4) var(--space-10);
 }
+
+/* The Run button: its icon apart from the word, as the editor's. */
+.notebook-cell-bar button[data-action="run"] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}

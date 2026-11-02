@@ -430,7 +430,9 @@ created again with its rows copied.
 
 ![Two tables joined on their foreign key](screenshots/query-builder.png)
 
-Drag tables onto a canvas: they join on their foreign keys. Tick the columns, add a `WHERE`,
+Drag tables onto a canvas, or add them from the list with Enter or their *+*: they join on
+their foreign keys. The join button between two tables shows its condition and switches
+between `JOIN` and `LEFT JOIN`. Tick the columns, add a `WHERE`,
 then run the SELECT or open it in the editor. The tables list beside the canvas and each table
 box resize by their edge or corner; the list keeps its width.
 
@@ -703,8 +705,14 @@ through the MCP server.
 - **Split editor** (`Ctrl+Shift+D`): two tabs side by side; a click in one makes it the active
   one.
 - **Panels you can size**: drag the bar between the editor and its results, the edge of the
-  side panels of a result, or the line between the halves of a split editor; the sizes stay for
-  the next start, and a double-click brings back the default.
+  side panels of a result or of the editor (history, variables, outline), the details of the
+  server activity, of a query plan and of the agents' access, the options of a chart, or the
+  line between the halves of a split editor; the sizes stay for the next start, and a
+  double-click brings back the default.
+- **Short menus**: the main actions come first, related ones sit in a submenu (*Analyze* on
+  tables and on the grid; *Lines*, *Cursors* and *Folding* in the editor) and the actions that
+  delete or discard come last, after a line. A right-click on the rail's *+* offers *Open shared
+  project…* too.
 - **A tab in its own window** (right-click on the tab › *Open in a new window*), for a second
   monitor: it runs there on a session of its own, and *Move to the main window* brings it back;
   closing the window keeps it for `Ctrl+Shift+T`.

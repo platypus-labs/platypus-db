@@ -4,6 +4,7 @@ import type { ChartConfig } from "../analysis/chartConfig";
 import { msg, t } from "../i18n";
 import type { TabBase, TabProps } from "../tabs/registry";
 import { ask } from "../ui/ask";
+import { toast } from "../ui/toast";
 import { workbench } from "../workbench";
 import { WidgetForm } from "./WidgetForm";
 import { WidgetView } from "./WidgetView";
@@ -161,6 +162,7 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
       const content = { widgets: tab.widgets, refresh: tab.refresh, connection: tab.connectionId };
       await api.saveDashboard(project, name, dashboardFile(name, content));
       onChange({ name, title: name, unsaved: false });
+      toast(t("Dashboard saved"));
     } catch (e) {
       workbench().showError(toCommandError(e).message);
     }
@@ -173,14 +175,18 @@ export function DashboardTab({ tab, connection, active, onChange }: TabProps<Das
           <Icon name="activity" size={16} />
         </span>
         <div className="object-title">
-          <input
-          className="dashboard-title"
-          data-field="title"
-          aria-label={t("Dashboard name")}
-          placeholder={t("Dashboard")}
-          value={tab.title ?? ""}
-          onChange={(e) => edit({ title: e.target.value })}
-          />
+          <div className="dashboard-title-row">
+            <input
+              className="dashboard-title"
+              data-field="title"
+              aria-label={t("Dashboard name")}
+              title={t("Dashboard name")}
+              placeholder={t("Dashboard")}
+              value={tab.title ?? ""}
+              onChange={(e) => edit({ title: e.target.value })}
+            />
+            <Icon name="edit" size={14} />
+          </div>
           <span className="muted small">{connection.name}</span>
         </div>
         <span className="spacer" />

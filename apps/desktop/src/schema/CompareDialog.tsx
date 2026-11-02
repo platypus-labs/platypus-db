@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { api, type ChangelogFormat, type SavedConnection, type SchemaMeta, type TableScript, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
 import { commentHeader, compareTargets } from "./script";
 import { translateWarning } from "./warnings";
+import { toast } from "../ui/toast";
+import { scriptSummary } from "./scriptSummary";
 
 interface Props {
   connection: SavedConnection;
@@ -31,6 +33,12 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
   const [error, setError] = useState<string | null>(null);
   const [same, setSame] = useState(false);
   const [output, setOutput] = useState<Output>("editor");
+  /** The dialog was closed while the comparison ran: its result is dropped. */
+  const cancelled = useRef(false);
+  const close = () => {
+    cancelled.current = true;
+    onClose();
+  };
   const sameConnection = target.id === connection.id;
   const targetDatabase = sameConnection ? database : null;
 
@@ -86,14 +94,20 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
       if (source === null || to === null) return;
       const { script, sql } = await api.compareSchemas(source, schema, to, targetSchema);
       // A difference the script leaves to the user (its warnings) still is one.
+      // Cancelled while it worked: the dialog is gone, the result is not wanted.
+      if (cancelled.current) return;
       if (script.statements.length === 0 && script.warnings.length === 0) return setSame(true);
+      const sum = scriptSummary(script.statements);
+      const summary = t("{created} created, {altered} altered, {dropped} dropped", sum);
+      const drops = sum.drops > 0 ? t("{n} statements drop something: check them before running.", { n: sum.drops }) : null;
+      toast([summary, drops].filter(Boolean).join(" · "), drops ? "info" : "ok");
       if (output !== "editor" && script.statements.length > 0) {
         if (await writeChangelog(script, output)) onClose();
         return;
       }
       const head = commentHeader(
         t("Makes {target} like {source}", { target: `${target.name} · ${targetSchema}`, source: `${connection.name} · ${schema}` }),
-        script.warnings.map(translateWarning),
+        [summary, ...(drops ? [drops] : []), ...script.warnings.map(translateWarning)],
       );
       workbench().openTab("query", target.id, { sql: `${head}${sql}`, database: targetDatabase });
       onClose();
@@ -105,9 +119,9 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="modal schema-compare" onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
-        <h2>{t("Compare {schema} with…", { schema })}</h2>
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <div className="modal schema-compare" onKeyDown={(e) => e.key === "Escape" && close()}>
+        <h2>{t("Compare {connection} · {schema} with…", { connection: connection.name, schema })}</h2>
         <p className="muted small">
           {t("The script makes the target schema like {schema}: tables created, altered and dropped. It opens in the SQL editor of the target, to review before running.", { schema })}
         </p>
@@ -155,8 +169,8 @@ export function CompareDialog({ connection, database, schema, onClose }: Props) 
         {error && <div className="notice error small">{error}</div>}
         <div className="actions">
           <span className="spacer" />
-          <button type="button" disabled={busy} onClick={onClose}>
-            {t("Close")}
+          <button type="button" onClick={close}>
+            {t("Cancel")}
           </button>
           <button type="button" className="primary" disabled={busy || !targetSchema} onClick={() => void compare()}>
             {busy ? t("Comparing…") : t("Compare")}

@@ -10,6 +10,7 @@ import { api, type Project, toCommandError } from "../api";
 import { t } from "../i18n";
 import { storeMessage } from "../storeErrors";
 import { answerFor } from "../testAnswers";
+import { Busy } from "../ui/State";
 import { workbench } from "../workbench";
 
 /** The messages of the backend's shared-project errors are already readable. */
@@ -69,7 +70,7 @@ function ShareDialog({ project, onClose }: { project: Project; onClose: () => vo
         </p>
         <label className="field">
           <span>{t("Folder")}</span>
-          <div className="row">
+          <div className="row tight">
             <input data-field="share-folder" autoFocus value={folder} onChange={(e) => setFolder(e.target.value)} />
             <button type="button" data-action="share-browse" onClick={() => void browse()}>
               {t("Browse…")}
@@ -90,8 +91,8 @@ function ShareDialog({ project, onClose }: { project: Project; onClose: () => vo
           <button type="button" onClick={onClose}>
             {t("Cancel")}
           </button>
-          <button type="submit" className="primary" data-action="share-submit" disabled={busy || folder.trim() === ""}>
-            {t("Share")}
+          <button type="submit" className="primary" data-action="share-submit" aria-busy={busy || undefined} disabled={busy || folder.trim() === ""}>
+            {busy ? <Busy label={t("Sharing…")} /> : t("Share")}
           </button>
         </div>
       </form>

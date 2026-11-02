@@ -48,7 +48,9 @@ function prepare(modal: HTMLElement) {
   // A field with autoFocus keeps it; otherwise the first control, or the dialog itself.
   requestAnimationFrame(() => {
     if (!modal.isConnected || modal.contains(document.activeElement)) return;
-    const first = focusables(modal)[0];
+    // Not the close button of the header: the first useful control comes before it.
+    const all = focusables(modal);
+    const first = all.find((el) => !el.matches(".modal-close")) ?? all[0];
     if (first) first.focus();
     else {
       modal.tabIndex = -1;

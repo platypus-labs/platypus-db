@@ -29,7 +29,7 @@ export default async function (page) {
   await page.waitFor(`${compareDialog}?.querySelectorAll('select')[1]?.value === 'main'`, 15_000);
   // The dialog itself is Italian.
   const dialog = await page.eval(`${compareDialog}.textContent`);
-  assert.ok(dialog.includes(IT["Compare"]) && dialog.includes(IT["Close"]), dialog);
+  assert.ok(dialog.includes(IT["Compare"]) && dialog.includes(IT["Cancel"]), dialog);
   await page.eval(`${buttonIn(compareDialog, IT["Compare"])}.click()`);
   await page.waitFor(`${compareDialog} === null && (${queryText}).includes('DROP TABLE')`, 15_000);
   const comments = (await page.eval(queryText)).split("\n").filter((l) => l.startsWith("--"));

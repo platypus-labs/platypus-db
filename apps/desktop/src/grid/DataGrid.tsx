@@ -154,6 +154,8 @@ interface Props {
   headerTitle?: (col: number) => string | undefined;
   /** Draws a discreet mark in the header of annotated columns. */
   headerMarked?: (col: number) => boolean;
+  /** Draws a crossed-out eye in the header of masked columns. */
+  headerMasked?: (col: number) => boolean;
   /** Bumped when the annotations change, to repaint the marks. */
   headerVersion?: number;
   /** Called when the mouse comes onto a column header and, with `null`, when it leaves it,
@@ -187,6 +189,20 @@ interface Theme {
   border: string;
   selection: string;
   focus: string;
+}
+
+/** `text` cut to `max` pixels with an ellipsis, in the context's current font. */
+function ellipsize(ctx: CanvasRenderingContext2D, text: string, max: number): string {
+  // A glyph is never 16 px wide at this size: a few characters surely fit, unmeasured.
+  if (text.length * 16 < max || ctx.measureText(text).width <= max) return text;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + "…").width <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? text.slice(0, lo) + "…" : "";
 }
 
 function readTheme(el: Element): Theme {
@@ -233,6 +249,7 @@ export function DataGrid({
   onHeaderClick,
   headerTitle,
   headerMarked,
+  headerMasked,
   headerVersion = 0,
   onHeaderHover,
   source = null,
@@ -275,6 +292,7 @@ export function DataGrid({
     onHeaderClick,
     headerTitle,
     headerMarked,
+    headerMasked,
     onHeaderHover,
     decorate,
     onFocusChange,
@@ -540,7 +558,7 @@ export function DataGrid({
         // A hint follows the value, so both start on the left.
         const right = !!column?.numeric && !dec?.hint;
         ctx.textAlign = right ? "right" : "left";
-        ctx.fillText(value, right ? x + cw - PAD : x + PAD, y);
+        ctx.fillText(right || dec?.hint ? value : ellipsize(ctx, value, cw - PAD * 2), right ? x + cw - PAD : x + PAD, y);
         if (dec?.strike) {
           const tw = Math.min(ctx.measureText(value).width, cw - PAD * 2);
           ctx.fillRect(right ? x + cw - PAD - tw : x + PAD, y, tw, 1);
@@ -586,6 +604,16 @@ export function DataGrid({
         ctx.beginPath();
         ctx.arc(x + cw - PAD, 28, 2.5, 0, Math.PI * 2);
         ctx.fill();
+      }
+      if (props.current.headerMasked?.(c)) {
+        const cx = x + cw - PAD - 6;
+        ctx.strokeStyle = t.muted;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(cx, 26, 5.5, 3.5, 0, 0, Math.PI * 2);
+        ctx.moveTo(cx - 5, 31);
+        ctx.lineTo(cx + 5, 21);
+        ctx.stroke();
       }
       ctx.restore();
       if (x + cw - 1 > edge) {
@@ -721,7 +749,7 @@ export function DataGrid({
   useEffect(schedule, [schedule, decorate]);
 
   // Redraw on data, size, layout and theme changes.
-  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion]);
+  useEffect(schedule, [schedule, version, rowCount, topRows, columns, sort, resolved, headerVersion, !!headerMasked]);
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;

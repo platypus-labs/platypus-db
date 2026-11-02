@@ -120,6 +120,17 @@ export default async function (page) {
     assert.match(await page.eval(`${adminTab}.querySelector('.admin-details').textContent`), /does not let this parameter be set/);
     assert.equal(await page.eval(`${adminButton("Open in the editor")}`), undefined);
 
+    // The details panel resizes with the keyboard (Left grows it) and Home restores it.
+    const detailsWidth = `${adminTab}.querySelector('.admin-details').getBoundingClientRect().width`;
+    const resizer = `${adminTab}.querySelector('.admin-split .panel-resizer')`;
+    const press = (key) =>
+      page.eval(`${resizer}.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }))`);
+    const base = await page.eval(detailsWidth);
+    await press("ArrowLeft");
+    await page.waitFor(`${detailsWidth} > ${base}`);
+    await press("Home");
+    await page.waitFor(`Math.abs(${detailsWidth} - ${base}) < 1`);
+
     // Reading again keeps the view.
     await page.eval(`${adminTab}.querySelector('button[aria-label="Refresh now"]').click()`);
     await page.waitFor(`${adminTab}.querySelector('button[aria-label="Refresh now"]').disabled === false`, 20_000);

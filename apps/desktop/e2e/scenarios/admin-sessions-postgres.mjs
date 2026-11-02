@@ -107,6 +107,7 @@ export default async function (page) {
     // Ending it closes the holder's psql and rolls back its update.
     await page.eval(`${adminButton("End session")}.click()`);
     await confirmDanger(page);
+    await page.waitFor(`[...document.querySelectorAll('.toaster .toast')].some(t => t.textContent === 'Session ${holderId} ended')`, 20_000);
     assert.match(await holder.exited, /terminat/);
     await page.waitFor(`${rowWith("e2e_holder")} === undefined`, 20_000);
     assert.equal(sh(DB, `SELECT v FROM ${TABLE} WHERE id = 1`), "0", "the holder's update was rolled back");

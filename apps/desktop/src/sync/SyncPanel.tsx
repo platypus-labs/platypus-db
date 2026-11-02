@@ -134,7 +134,7 @@ export function SyncPanel() {
       </p>
       <label className="field">
         <span>{t("Sync folder")}</span>
-        <div className="row">
+        <div className="row tight">
           <input data-field="sync-folder" value={folder} onChange={(e) => setFolder(e.target.value)} placeholder={t("A folder on a cloud drive or network share")} />
           <button type="button" data-action="sync-browse" onClick={() => void browse()}>
             {t("Browse…")}
@@ -154,13 +154,17 @@ export function SyncPanel() {
       <p className="muted small">
         {t("This is not the master password. Keep it safe: it is not stored in the folder, and without it the synced copy cannot be read. On another computer, choose the same folder and enter the same passphrase.")}
       </p>
-      <label className="field">
-        <span>{t("Sync every (minutes)")}</span>
+      <label className="setting">
+        <span>
+          <span className="setting-title">{t("Sync every (minutes)")}</span>
+        </span>
         <input data-field="sync-interval" type="number" min={1} max={1440} value={minutes} onChange={(e) => setMinutes(Math.max(1, Number(e.target.value) || 1))} />
       </label>
-      <label className="check">
+      <label className="setting">
+        <span>
+          <span className="setting-title">{t("Sync when the app starts")}</span>
+        </span>
         <input data-field="sync-on-start" type="checkbox" checked={onStart} onChange={(e) => setOnStart(e.target.checked)} />
-        <span>{t("Sync when the app starts")}</span>
       </label>
       {message && (
         <div className={`notice ${message.ok ? "ok" : "error"} small`} data-field="sync-message">

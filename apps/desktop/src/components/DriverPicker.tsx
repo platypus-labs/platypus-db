@@ -1,3 +1,4 @@
+import { DialogHeader } from "../ui/DialogHeader";
 import {
   siApachearrow,
   siApachecassandra,
@@ -236,7 +237,7 @@ export function DriverPicker({ onPick, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal driver-picker" onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>{t("New connection")}</h2>
+        <DialogHeader title={t("New connection")} onClose={onClose} />
         <p className="muted small">{t("Choose the database.")}</p>
         <div className="modal-search">
           <Icon name="search" className="modal-search-icon" />

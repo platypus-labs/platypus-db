@@ -64,10 +64,10 @@
   flex-direction: column;
 }
 
+/* Fixed, placed in window coordinates by ContextMenu: not clipped by a scrolling parent menu. */
 .context-menu.submenu {
-  position: absolute;
-  left: calc(100% - 4px);
-  top: -5px;
+  position: fixed;
+  width: max-content;
 }
 
 /* A panel under a field, like a menu: the larger editor of a result's SQL field. */
@@ -220,7 +220,7 @@
 .connection-dialog .form-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--space-12);
 }
 
 .connection-dialog .dialog-page[hidden] {
@@ -231,7 +231,7 @@
 .connection-dialog .field-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-8) var(--space-16);
+  gap: var(--space-12) var(--space-16);
   align-items: start;
 }
 
@@ -274,6 +274,12 @@
 .connection-dialog .form-section > small,
 .connection-dialog .form-section > p {
   margin-left: calc(var(--label-w) + var(--space-10));
+}
+
+/* A help line hugs the field above it, and leaves the full gap to the next one. */
+.connection-dialog .dialog-page > small,
+.connection-dialog .form-section > small {
+  margin-top: calc(var(--space-6) * -1);
 }
 
 .connection-dialog .connect-by {
@@ -359,6 +365,13 @@
     background: var(--glass-menu);
   }
 
+  /* A menu that scrolls is solid: with the glass it would clip its fixed submenus. */
+  .context-menu.scrolls {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--bg-sidebar);
+  }
+
   .modal {
     background: var(--glass-dialog);
   }
@@ -405,7 +418,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -475,7 +488,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  margin-top: var(--space-8);
+  margin-top: var(--space-12);
 }
 
 .modal.settings h3 {
@@ -501,7 +514,7 @@
 .setting > span {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-4);
   grid-column: 1;
   max-width: 520px;
 }
@@ -551,6 +564,37 @@
 
 .setting input[type="number"] {
   width: 90px;
+}
+
+/* Text fields hold patterns and formats: wide enough not to cut them. */
+.setting input:not([type]) {
+  width: 340px;
+  max-width: 100%;
+}
+
+.setting input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+/* A page without sub-tabs: the first setting does not touch the heading. */
+.settings-head + .setting {
+  margin-top: var(--space-8);
+}
+
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.sync-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.sync-panel > .setting {
+  padding: var(--space-8) 0;
 }
 
 button.primary.danger {
@@ -992,8 +1036,9 @@ button.primary.danger:hover:not(:disabled) {
 }
 
 .modal.settings {
-  width: min(960px, calc(100vw - 32px));
-  height: min(720px, calc(100vh - 96px));
+  /* Grows with big windows, so the whole page list fits without scrolling. */
+  width: min(clamp(960px, 70vw, 1280px), calc(100vw - 32px));
+  height: min(clamp(720px, 75vh, 960px), calc(100vh - 96px));
   overflow: hidden;
 }
 
@@ -1089,7 +1134,7 @@ button.primary.danger:hover:not(:disabled) {
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-10);
+  gap: var(--space-12);
   min-height: 0;
   overflow: auto;
   padding: 0 var(--space-4) 0 var(--space-16);
@@ -1143,6 +1188,10 @@ button.primary.danger:hover:not(:disabled) {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-sm);
+}
+
+.shortcuts td:nth-child(2) {
+  text-align: right;
 }
 
 .shortcuts td {
@@ -1387,7 +1436,7 @@ button.primary.danger:hover:not(:disabled) {
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-10);
+  gap: var(--space-12);
 }
 
 .form-section + .form-section,
@@ -1410,7 +1459,12 @@ button.primary.danger:hover:not(:disabled) {
 .master-password,
 .master-password-form,
 .drivers-panel,
-.vendor-drivers,
+.vendor-drivers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
 .shortcuts {
   display: flex;
   flex-direction: column;
@@ -1424,15 +1478,16 @@ button.primary.danger:hover:not(:disabled) {
 /* The Agents page of the Settings. */
 .agents-panel,
 .themes-panel,
-.diagnostics-panel,
+.diagnostics-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
 .agent-command {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-}
-
-.agents-panel {
-  gap: var(--space-10);
 }
 
 .agents-connections {
@@ -1774,7 +1829,7 @@ button.primary.danger:hover:not(:disabled) {
 
 .agent-activity-filters input[type="search"] {
   flex: 1;
-  min-width: 160px;
+  min-width: 300px;
 }
 
 .agent-calls tr {
@@ -2004,7 +2059,7 @@ button.primary.danger:hover:not(:disabled) {
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-10);
+  gap: var(--space-12);
 }
 
 .field-grid.three {

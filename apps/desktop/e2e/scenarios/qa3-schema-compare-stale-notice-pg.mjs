@@ -40,7 +40,7 @@ export default async function (page) {
     await page.sleep(500);
     if (await page.eval(`${compareDialog} !== null`)) {
       problems.push("Escape does not close Compare with…");
-      await page.eval(`${buttonIn(compareDialog, "Close")}.click()`);
+      await page.eval(`${buttonIn(compareDialog, "Cancel")}.click()`);
     }
 
     await rowMenu(page, chain, SRC, "Check schema");
@@ -62,7 +62,7 @@ export default async function (page) {
     await page.sleep(300);
     const stale = await page.eval(`${compareDialog}.querySelector('.notice')?.textContent ?? null`);
     if (stale !== null) problems.push(`after picking ${OTHER} the dialog still says: ${stale}`);
-    await page.eval(`${buttonIn(compareDialog, "Close")}.click()`);
+    await page.eval(`${buttonIn(compareDialog, "Cancel")}.click()`);
   } finally {
     for (const s of [SRC, DST, OTHER]) ENGINES.pg.drop(s);
   }

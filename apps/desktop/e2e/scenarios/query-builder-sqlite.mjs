@@ -69,7 +69,7 @@ export default async function (page) {
   const join = `${builder}.querySelector('.builder-join')`;
   await page.eval(`${join}.click()`);
   await page.waitFor(`${builderSql}.includes('LEFT JOIN orders o')`);
-  assert.equal(await page.eval(`${join}.textContent`), "LEFT");
+  assert.equal(await page.eval(`${join}.textContent`), "LEFT JOIN");
   await page.eval(`${join}.click()`);
   await page.waitFor(`!${builderSql}.includes('LEFT JOIN')`);
 

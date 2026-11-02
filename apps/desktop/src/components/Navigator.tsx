@@ -40,6 +40,7 @@ import { testConnections } from "./TestConnectionsDialog";
 import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
 import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
+import { toast } from "../ui/toast";
 import { focusData, openObjectTab } from "../objects/open";
 import { EmptyState } from "../ui/State";
 import type { Point } from "../ui/pointerDrag";
@@ -1594,7 +1595,10 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       group: "copy",
       order: 45,
       when: (arg) => !isBookmarked(bookmarkOf(arg)),
-      run: (arg) => toggleBookmark(bookmarkOf(arg)),
+      run: (arg) => {
+        toggleBookmark(bookmarkOf(arg));
+        toast(t("Added to bookmarks"));
+      },
     }),
     registerAction({
       id: "object.unbookmark",

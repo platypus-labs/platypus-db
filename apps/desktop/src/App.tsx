@@ -36,7 +36,7 @@ import "./plugins/actions";
 import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
-import type { IconName } from "./ui/Icon";
+import { objectIcon, type IconName } from "./ui/Icon";
 import { ask, choose, isAsking } from "./ui/ask";
 import { withInitApproval } from "./ui/initApproval";
 import { Toaster } from "./ui/Toaster";
@@ -901,10 +901,13 @@ export function App() {
   useTray();
   /** Locks the app behind the master password, closing the production sessions; without a
    *  master password, says what it needs. */
+  const idleWarned = useRef(false);
   async function lockApp(asked: boolean) {
     const status = await api.vaultStatus().catch(() => null);
     if (!status?.enabled) {
-      if (asked) setToast(t("Locking needs a master password: set one in Settings › Master password."));
+      // The idle lock says it once, not every time the timer fires.
+      if (asked || !idleWarned.current) setToast(t("Locking needs a master password: set one in Settings › Master password."));
+      if (!asked) idleWarned.current = true;
       return;
     }
     await api.lockVault().catch(() => {});
@@ -1118,6 +1121,10 @@ export function App() {
         onNew={() => setDialog({ kind: "project", project: null })}
         onMenu={(p, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project", arg: p } })}
         folders={projectFolders}
+        onAddMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.add", arg: undefined } });
+        }}
         onFolderMenu={(f, e) => setMenu({ x: e.clientX, y: e.clientY, target: { scope: "project.folder", arg: f } })}
       />
       <div className="sidebar-column" hidden={sidebarCollapsed}>
@@ -1368,7 +1375,7 @@ export function App() {
 
 /** A tab's icon: what it shows. */
 function tabIcon(t: TabModel): IconName {
-  if (t.kind === "object") return "object";
+  if (t.kind === "object") return objectIcon(t.objectKind);
   if (t.kind === "builder") return "builder";
   if (t.kind === "table-editor") return "edit";
   if (t.kind === "erd" || t.kind === "schema-history") return "schema";

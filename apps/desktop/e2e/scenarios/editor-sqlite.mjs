@@ -2,6 +2,7 @@
 // line commands and the editor's context menu.
 import assert from "node:assert/strict";
 import { ALT, CTRL, SHIFT } from "../cdp.mjs";
+import { submenuItems } from "../menu-sub.mjs";
 
 export { setup } from "./smoke-sqlite.mjs";
 
@@ -87,9 +88,12 @@ export default async function (page) {
   await page.click(r.x + 40, r.y + 10, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   const items = await page.eval(`[...document.querySelectorAll('.context-menu button span:first-child')].map(s => s.textContent)`);
-  for (const item of ["Format SQL", "Select statement", "Duplicate line", "Add cursor below"]) {
+  for (const item of ["Format SQL", "Select statement", "Lines", "Cursors", "Folding"]) {
     assert.ok(items.includes(item), `${item} in ${items}`);
   }
+  // The line, cursor and fold commands are in submenus.
+  assert.ok((await submenuItems(page, "Lines")).includes("Duplicate line"), "Duplicate line is under Lines");
+  assert.ok((await submenuItems(page, "Cursors")).includes("Add cursor below"), "Add cursor below is under Cursors");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Select statement')).click()`);
   await page.waitFor(`document.querySelector('.context-menu') === null`);
 }

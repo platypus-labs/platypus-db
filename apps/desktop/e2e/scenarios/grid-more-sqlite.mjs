@@ -102,7 +102,7 @@ async function panels(page, shot) {
   const panelText = (selector) => `(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '')`;
   await focusCell(page, 0, 2);
   await openMenu(page);
-  await menu(page, "Column metadata");
+  await menu(page, "Analyze", "Column metadata");
   await page.waitFor(`${panelText(".metadata-list")}.includes('Tablemain.orders')`);
   const metadata = await page.eval(panelText(".metadata-list"));
   for (const part of ["TypeREAL", "Columntotal", "Nullableyes", "Primary keyno", "Row keyno"]) {
@@ -112,7 +112,7 @@ async function panels(page, shot) {
 
   // The calc panel follows the selection: all of `total`.
   await openMenu(page);
-  await menu(page, "Calculate");
+  await menu(page, "Analyze", "Calculate");
   await page.waitFor(`document.querySelector('.calc-panel') !== null`);
   await page.eval(`document.getElementById('e2e-grid').focus()`);
   await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
@@ -128,7 +128,7 @@ async function panels(page, shot) {
   await focusCell(page, 0, 0);
   await page.key("ArrowDown", "ArrowDown", 40, SHIFT);
   await openMenu(page);
-  await menu(page, "Compare the two rows");
+  await menu(page, "Analyze", "Compare the two rows");
   await page.waitFor(`document.querySelectorAll('.compare-list tbody tr').length === 3`);
   assert.deepEqual(
     await page.eval(`[...document.querySelectorAll('.compare-list tbody tr.differs th')].map(t => t.textContent)`),
@@ -165,7 +165,7 @@ async function map(page, shot) {
   const size = `(document.querySelector('.map-panel .value-size')?.textContent ?? '')`;
   await focusCell(page, 0, 1);
   await openMenu(page);
-  await menu(page, "Show on map");
+  await menu(page, "Analyze", "Show on map");
   await page.waitFor(`${size} === '3 geometries · 1 not readable'`);
   // The WKB point of the next column joins in.
   await page.eval(`document.getElementById('e2e-grid').focus()`);
@@ -235,7 +235,7 @@ export default async function (page, { shots, dir }) {
   // Counts by value of the focused column.
   await focusCell(page, 0, 2);
   await openMenu(page);
-  await menu(page, "Count by value");
+  await menu(page, "Analyze", "Count by value");
   await page.waitFor(`document.querySelectorAll('.grouping-list tbody tr').length === 2`);
   assert.deepEqual(
     await page.eval(`[...document.querySelectorAll('.grouping-list tbody tr')].map(r => r.textContent)`),

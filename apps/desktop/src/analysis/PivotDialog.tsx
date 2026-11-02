@@ -109,7 +109,7 @@ export function PivotDialog({
         </label>
         <label>
           {t("Aggregate")}
-          <select aria-label={t("Aggregate")} value={settings.aggregate} onChange={(e) => set({ aggregate: e.target.value as PivotAggregate })}>
+          <select aria-label={t("Aggregate")} disabled={!settings.value} title={settings.value ? undefined : t("Counting the rows needs no aggregate")} value={settings.aggregate} onChange={(e) => set({ aggregate: e.target.value as PivotAggregate })}>
             {aggregatesFor(value).map((a) => (
               <option key={a} value={a}>
                 {t(AGGREGATE_LABELS[a])}

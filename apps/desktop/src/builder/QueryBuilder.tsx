@@ -197,7 +197,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
       schema: tab.schema,
       name,
       alias: aliasFor(name, tab.tables.map((t) => t.alias)),
-      x: x ?? 20 + (n % 4) * (BOX + 40),
+      x: x ?? 20 + (n % 4) * (BOX + 80),
       y: y ?? 20 + Math.floor(n / 4) * 260,
       columns: [],
     };
@@ -263,7 +263,18 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
         latestAdd.current(name, Math.max(0, at.x - r.left + el.scrollLeft - BOX / 2), Math.max(0, at.y - r.top + el.scrollTop - 12));
       },
     });
-  const center = (t: BuilderTable) => ({ x: t.x + boxWidth(t) / 2, y: t.y + 16 });
+  /** The ends of the line of a join: the facing sides of the two boxes at header height. */
+  const anchors = (l: BuilderTable, r: BuilderTable) => {
+    const [lw, rw] = [boxWidth(l), boxWidth(r)];
+    if (r.x >= l.x + lw) return { a: { x: l.x + lw, y: l.y + 16 }, b: { x: r.x, y: r.y + 16 } };
+    if (l.x >= r.x + rw) return { a: { x: l.x, y: l.y + 16 }, b: { x: r.x + rw, y: r.y + 16 } };
+    return { a: { x: l.x + lw / 2, y: l.y + 16 }, b: { x: r.x + rw / 2, y: r.y + 16 } };
+  };
+  // The lines' drawing is as big as the boxes need, so the canvas scrolls only when they overflow.
+  const extent = {
+    width: Math.max(0, ...tab.tables.map((b) => b.x + boxWidth(b))) + 40,
+    height: Math.max(0, ...tab.tables.map((b) => b.y + (b.h ?? 260))) + 40,
+  };
   const visible = objects.filter((o) => o.name.toLowerCase().includes(filter.toLowerCase()));
 
   return (
@@ -282,14 +293,30 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
             <li
               key={o.name}
               className="tree-row builder-source"
-              title={t("Drag onto the canvas, or double-click")}
+              title={t("Drag onto the canvas, double-click or press Enter")}
+              tabIndex={0}
               onPointerDown={(e) => dragTable(e, o.name)}
               onDoubleClick={() => add(o.name)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || e.target !== e.currentTarget) return;
+                e.preventDefault();
+                add(o.name);
+              }}
             >
               <span className="tree-icon" data-kind={o.kind === "table" ? "table" : "view"}>
                 <Icon name={o.kind === "table" ? "table" : "view"} />
               </span>
               <span className="tree-label">{o.name}</span>
+              <button
+                type="button"
+                className="icon builder-add"
+                title={t("Add to the canvas")}
+                aria-label={t("Add {name} to the canvas", { name: o.name })}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => add(o.name)}
+              >
+                <Icon name="plus" size={12} />
+              </button>
             </li>
           ))}
         </ul>
@@ -310,29 +337,30 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
           ref={canvas}
         >
           {tab.tables.length === 0 && <EmptyState className="builder-empty" title={t("Drag tables here from the list. Their foreign keys join them.")} />}
-          <svg className="builder-lines">
+          <svg className="builder-lines" style={extent}>
             {joins.map((j) => {
-              const a = center(j.left);
-              const b = center(j.right);
+              const { a, b } = anchors(j.left, j.right);
               return <line key={j.key} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
             })}
           </svg>
           {joins.map((j) => {
-            const a = center(j.left);
-            const b = center(j.right);
+            const { a, b } = anchors(j.left, j.right);
             const left = tab.leftJoins.includes(j.key);
+            const on = j.on.map(([l, r]) => `${j.right.alias}.${r} = ${j.left.alias}.${l}`).join(" AND ");
             return (
-              <button
-                key={j.key}
-                className="builder-join"
-                style={{ left: (a.x + b.x) / 2, top: (a.y + b.y) / 2 }}
-                title={`${j.on.map(([l, r]) => `${j.right.alias}.${r} = ${j.left.alias}.${l}`).join(" AND ")}\n${t("Click for {join}", { join: left ? "JOIN" : "LEFT JOIN" })}`}
-                onClick={() =>
-                  onChange({ leftJoins: left ? tab.leftJoins.filter((k) => k !== j.key) : [...tab.leftJoins, j.key] })
-                }
-              >
-                {left ? "LEFT" : "JOIN"}
-              </button>
+              <div key={j.key} className="builder-join-wrap" style={{ left: (a.x + b.x) / 2, top: (a.y + b.y) / 2 }}>
+                <button
+                  className="builder-join"
+                  title={`${on}\n${t("Click for {join}", { join: left ? "JOIN" : "LEFT JOIN" })}`}
+                  onClick={() =>
+                    onChange({ leftJoins: left ? tab.leftJoins.filter((k) => k !== j.key) : [...tab.leftJoins, j.key] })
+                  }
+                >
+                  {left ? "LEFT JOIN" : "JOIN"}
+                  <Icon name="chevron-down" size={10} />
+                </button>
+                <span className="builder-join-on">{on}</span>
+              </div>
             );
           })}
           {tab.tables.map((box) => {
@@ -384,7 +412,7 @@ export function QueryBuilder({ tab, connection, active, sideSession, onChange, o
             <button disabled={!sql} onClick={() => open(false)}>
               {t("Open in editor")}
             </button>
-            <button className="primary" disabled={!sql} onClick={() => open(true)}>
+            <button className="primary" disabled={!sql} title={t("Opens a new editor tab with this query and runs it")} onClick={() => open(true)}>
               {t("Run")}
             </button>
           </div>

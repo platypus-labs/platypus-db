@@ -74,6 +74,8 @@ const HEAD = 28;
 const ROW = 22;
 /** The room of the key mark (PK, FK) at the start of a column row. */
 const MARK = 24;
+/** The room of the marks of a column that is both a primary key and a foreign key. */
+const MARK_BOTH = 2 * MARK - 2;
 const CHAR = 7;
 const NOTE_WIDTH = 200;
 const NOTE_CHARS = 28;
@@ -86,14 +88,19 @@ const TAGS: Record<TableState, string> = { plain: "", new: msg("new"), changed: 
 
 /** The characters of a column row that the name has: the box less the key mark, the type and
  *  the margins. */
-const nameChars = (width: number, type: string) => Math.max(4, Math.floor((width - MARK - 6 - 10 - 8 - type.length * 6.5) / CHAR));
+const nameChars = (width: number, type: string, mark = MARK) => Math.max(4, Math.floor((width - mark - 6 - 10 - 8 - type.length * 6.5) / CHAR));
 
 const typeText = (type: string) => truncate(type, 24);
 
+/** The columns of `table` that are part of a foreign key. */
+const fkColumns = (table: Drawn) => new Set(table.foreign_keys.flatMap((f) => f.columns));
+
 const boxWidth = (table: Drawn) => {
   const tag = table.state === "plain" ? 0 : t(TAGS[table.state]).length + 1;
+  const fks = fkColumns(table);
+  const both = table.columns.some((c) => c.primary_key && fks.has(c.name));
   const longest = Math.max(table.name.length + 2 + tag, ...table.columns.map((c) => c.name.length + c.data_type.length + 3));
-  return Math.min(340, Math.max(140, 16 + MARK + CHAR * longest));
+  return Math.min(340, Math.max(140, 16 + (both ? MARK_BOTH : MARK) + CHAR * longest));
 };
 
 /** Whether `fk` references a table of `schema`, the diagram's: a table of another schema is
@@ -605,6 +612,8 @@ export function ErdTab({ tab, connection, active, sideSession, onChange, onError
             {t("Auto layout")}
           </button>
           <span className="erd-sep" />
+          <span className="small muted erd-legend">{t("PK primary key · FK foreign key · * NOT NULL")}</span>
+          <span className="erd-sep" />
           <button type="button" onClick={() => save("svg")} title={t("Save the diagram as an SVG image")}>
             <Icon name="download" />
             SVG…
@@ -728,7 +737,7 @@ interface TableBoxProps {
 }
 
 function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }: TableBoxProps) {
-  const keys = new Set(table.foreign_keys.flatMap((f) => f.columns));
+  const keys = fkColumns(table);
   const dropped = table.state === "dropped";
   // Tables edited stand out: created ones in green with a dashed border, changed ones in the
   // warning colour, dropped ones faded with their name struck through.
@@ -747,42 +756,46 @@ function TableBox({ table, box: b, at, colors, editing, onPointerDown, onLink }:
           {t(TAGS[table.state])}
         </text>
       )}
-      {table.columns.map((c, i) => (
-        <g key={c.name} transform={`translate(0,${HEAD + i * ROW})`}>
-          {c.primary_key && <KeyMark label="PK" fill={colors.series[0]!} />}
-          {!c.primary_key && keys.has(c.name) && <KeyMark label="FK" fill={colors.series[4]!} />}
-          <text x={MARK + 6} y={15} fill={c.primary_key ? colors.series[0] : colors.text} fontWeight={c.primary_key ? 600 : 400}>
-            {truncate(c.name, nameChars(b.width, typeText(c.data_type)) - (c.nullable ? 0 : 2)) + (c.nullable ? "" : " *")}
-          </text>
-          <text x={b.width - (editing && !dropped ? 22 : 10)} y={15} fill={colors.muted} fontSize={11} textAnchor="end">
-            {typeText(c.data_type)}
-          </text>
-          {editing && !dropped && c.name !== "" && (
-            <circle
-              className="erd-handle"
-              data-table={table.name}
-              data-column={c.name}
-              cx={b.width - HANDLE - 3}
-              cy={ROW / 2}
-              r={HANDLE}
-              fill={colors.background}
-              stroke={colors.series[0]}
-              strokeWidth={1.5}
-              onPointerDown={(e) => onLink(e, c.name, i)}
-            >
-              <title>{t("Drag onto a table to add a foreign key")}</title>
-            </circle>
-          )}
-        </g>
-      ))}
+      {table.columns.map((c, i) => {
+        const both = c.primary_key && keys.has(c.name);
+        const mark = both ? MARK_BOTH : MARK;
+        return (
+          <g key={c.name} transform={`translate(0,${HEAD + i * ROW})`}>
+            {c.primary_key && <KeyMark label="PK" fill={colors.series[0]!} />}
+            {keys.has(c.name) && <KeyMark label="FK" fill={colors.series[4]!} at={c.primary_key ? MARK - 2 : 0} />}
+            <text x={mark + 6} y={15} fill={c.primary_key ? colors.series[0] : colors.text} fontWeight={c.primary_key ? 600 : 400}>
+              {truncate(c.name, nameChars(b.width, typeText(c.data_type), mark) - (c.nullable ? 0 : 2)) + (c.nullable ? "" : " *")}
+            </text>
+            <text x={b.width - (editing && !dropped ? 22 : 10)} y={15} fill={colors.muted} fontSize={11} textAnchor="end">
+              {typeText(c.data_type)}
+            </text>
+            {editing && !dropped && c.name !== "" && (
+              <circle
+                className="erd-handle"
+                data-table={table.name}
+                data-column={c.name}
+                cx={b.width - HANDLE - 3}
+                cy={ROW / 2}
+                r={HANDLE}
+                fill={colors.background}
+                stroke={colors.series[0]}
+                strokeWidth={1.5}
+                onPointerDown={(e) => onLink(e, c.name, i)}
+              >
+                <title>{t("Drag onto a table to add a foreign key")}</title>
+              </circle>
+            )}
+          </g>
+        );
+      })}
     </g>
   );
 }
 
 /** The small PK or FK mark at the start of a column row. */
-function KeyMark({ label, fill }: { label: string; fill: string }) {
+function KeyMark({ label, fill, at = 0 }: { label: string; fill: string; at?: number }) {
   return (
-    <g className="erd-key" pointerEvents="none">
+    <g className="erd-key" pointerEvents="none" transform={`translate(${at},0)`}>
       <rect x={6} y={4} width={MARK - 4} height={14} rx={3} fill={fill} fillOpacity={0.18} />
       <text x={6 + (MARK - 4) / 2} y={14} fill={fill} fontSize={9} fontWeight={600} textAnchor="middle">
         {label}

@@ -41,7 +41,8 @@ function entries(actions: Action[]): Entry[] {
   return out;
 }
 
-/** A submenu kept inside the window: it flips or shifts from its anchor row. */
+/** A submenu kept inside the window: it flips or shifts from its anchor row. It is a fixed
+ *  panel in window coordinates, so a menu that scrolls (taller than the window) cannot clip it. */
 function Submenu({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<React.CSSProperties>({ visibility: "hidden" });
@@ -49,9 +50,14 @@ function Submenu({ children }: { children: React.ReactNode }) {
     const el = ref.current;
     const anchor = el?.parentElement;
     if (!el || !anchor) return;
-    const { width, height } = el.getBoundingClientRect();
+    // A parent with backdrop-filter is the containing block of a fixed child: its origin is
+    // not the window's, so measure where left/top 0 land and subtract that.
+    el.style.left = "0";
+    el.style.top = "0";
+    const { width, height, left: originX, top: originY } = el.getBoundingClientRect();
     const p = submenuPlacement(anchor.getBoundingClientRect(), { width, height }, { width: window.innerWidth, height: window.innerHeight });
-    setPos({ left: p.left, top: p.top, ...(p.maxHeight && { maxHeight: p.maxHeight, overflowY: "auto" }) });
+    const a = anchor.getBoundingClientRect();
+    setPos({ left: a.left + p.left - originX, top: a.top + p.top - originY, ...(p.maxHeight && { maxHeight: p.maxHeight, overflowY: "auto" }) });
   }, []);
   return (
     <div ref={ref} className="context-menu submenu" role="menu" style={pos}>
@@ -98,7 +104,8 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
     // Taller than the window (a small window, a large interface size): it scrolls, so every
-    // item can be reached. Only then, since a scrolling menu clips its submenus.
+    // item can be reached. Its submenus are fixed panels, which the scrolling does not clip
+    // (the class drops the glass: a backdrop-filter would make the menu their containing block).
     const room = window.innerHeight - 8;
     setPos({
       left: Math.max(0, Math.min(menu.x, window.innerWidth - width - 4)),
@@ -185,9 +192,11 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
   return (
     <div
       ref={ref}
-      className="context-menu"
+      className={pos.overflowY ? "context-menu scrolls" : "context-menu"}
       role="menu"
       style={pos}
+      // A fixed submenu would stay where its row was: scrolling closes it.
+      onScroll={() => setOpen(null)}
       onKeyDown={onKey}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
