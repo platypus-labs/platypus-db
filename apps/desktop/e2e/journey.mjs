@@ -62,7 +62,7 @@ export const keys = {
 export async function tabUntil(page, test, max = 40) {
   for (let i = 0; i < max; i++) {
     if (await page.eval(test)) return;
-    await page.eval(`window.__focusBefore = document.activeElement`);
+    await page.eval(`void (window.__focusBefore = document.activeElement)`);
     await keys.tab(page);
     await page.waitFor(`document.activeElement !== window.__focusBefore`, 5_000);
   }
