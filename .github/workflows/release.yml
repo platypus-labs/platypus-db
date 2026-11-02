@@ -14,29 +14,42 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Only the platforms whose name contains one of these words, comma-separated (e.g. macOS); empty for all"
+        default: ""
 
 permissions:
   contents: write
 
 jobs:
+  # The platforms to build: all of them, or those a manual run names (to add the ones that
+  # failed to the same draft release without building the others again).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        env:
+          ONLY: ${{ inputs.platforms }}
+        run: |
+          all='[
+            {"name": "Windows x64", "os": "windows-latest", "args": ""},
+            {"name": "macOS (Apple silicon)", "os": "macos-latest", "args": "--target aarch64-apple-darwin"},
+            {"name": "macOS (Intel)", "os": "macos-latest", "args": "--target x86_64-apple-darwin"},
+            {"name": "Linux x64", "os": "ubuntu-22.04", "args": ""}
+          ]'
+          words=$(jq -c -n --arg only "$ONLY" '$only | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(. != ""))')
+          echo "matrix=$(jq -c --argjson words "$words" 'map(select(($words | length) == 0 or ((.name | ascii_downcase) as $n | any($words[]; . as $w | $n | contains($w)))))' <<<"$all")" >> "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.name }}
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Windows x64
-            os: windows-latest
-            args: ""
-          - name: macOS (Apple silicon)
-            os: macos-latest
-            args: --target aarch64-apple-darwin
-          - name: macOS (Intel)
-            os: macos-latest
-            args: --target x86_64-apple-darwin
-          - name: Linux x64
-            os: ubuntu-22.04
-            args: ""
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -75,17 +88,27 @@ jobs:
           $json.bundle.windows | Add-Member -Force digestAlgorithm "sha256"
           $json.bundle.windows | Add-Member -Force timestampUrl "http://timestamp.digicert.com"
           $json | ConvertTo-Json -Depth 20 | Set-Content $config
-      - uses: tauri-apps/tauri-action@v0
+      # Tauri signs as soon as APPLE_CERTIFICATE is set, even empty: the variables are set only
+      # when the certificate exists, otherwise the app is left unsigned.
+      - name: Use the macOS signing certificate
+        if: runner.os == 'macOS'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then echo "No macOS certificate: the app is not signed"; exit 0; fi
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -n "${!v}" ]; then printf '%s<<__END__\n%s\n__END__\n' "$v" "${!v}" >> "$GITHUB_ENV"; fi
+          done
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', '__VERSION__') }}
