@@ -493,13 +493,13 @@ impl SavedConnection {
         config.init.time_zone.clone_from(&self.init.time_zone);
         config.options.clone_from(&self.options);
         // The option is the user's way to bound a connect (the default is 10 s); a value that
-        // is no number of seconds leaves the default.
+        // is no number of seconds leaves the default, and 0 waits without a limit, as in libpq.
         if let Some(secs) = self
             .options
             .get("connect_timeout")
             .and_then(|v| v.trim().parse::<u64>().ok())
         {
-            config.connect_timeout = Some(std::time::Duration::from_secs(secs));
+            config.connect_timeout = (secs > 0).then(|| std::time::Duration::from_secs(secs));
         }
         config.read_only = self.read_only;
         config
@@ -1172,6 +1172,9 @@ mod tests {
         c.options
             .insert("connect_timeout".to_owned(), "soon".to_owned());
         assert_eq!(c.config(None).connect_timeout, default);
+        c.options
+            .insert("connect_timeout".to_owned(), "0".to_owned());
+        assert_eq!(c.config(None).connect_timeout, None);
     }
 
     #[test]
