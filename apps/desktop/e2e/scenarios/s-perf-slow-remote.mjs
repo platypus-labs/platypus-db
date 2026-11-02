@@ -23,6 +23,7 @@ export const skip = needsPort(PG.port, "PostgreSQL");
 
 const SLOW = "S slow remote";
 const DEAD = "S unreachable remote";
+const SHORT = "S short timeout";
 const LATENCY_MS = 150;
 const BYTES_PER_SECOND = 1_000_000;
 const cancel = `[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Cancel')`;
@@ -31,6 +32,7 @@ const row = (label) => `[...document.querySelectorAll('.tree-row')].find(r => r.
 
 let slow;
 let dead;
+let short;
 
 const entry = (n, name, port, extra = "") =>
   `[[connections]]\nid = "00000000-0000-4000-8000-00000e5000${n}0"\nname = "${name}"\ndriver = "postgres"\nhost = "127.0.0.1"\nport = ${port}\ndatabase = "platypus"\nuser = "platypus"\nssl_mode = "disable"\nsave_password = false\n${extra}`;
@@ -40,9 +42,16 @@ export async function setup({ dir }) {
   slow = await startProxy(target, { latencyMs: LATENCY_MS, bytesPerSecond: BYTES_PER_SECOND });
   // The "unreachable" one drops everything until the test lets it through.
   dead = await startProxy(target, { latencyMs: LATENCY_MS, bytesPerSecond: BYTES_PER_SECOND, mode: "blackhole" });
+  short = await startProxy(target, { latencyMs: LATENCY_MS, bytesPerSecond: BYTES_PER_SECOND, mode: "blackhole" });
   writeFileSync(
     join(dir, "connections.toml"),
-    `version = 6\n\n${entry(1, SLOW, slow.port)}\n${entry(2, DEAD, dead.port)}`,
+    `version = 6
+
+${entry(1, SLOW, slow.port)}
+${entry(2, DEAD, dead.port)}
+${entry(3, SHORT, short.port, `[connections.options]
+connect_timeout = "3"
+`)}`,
   );
 }
 
@@ -70,12 +79,26 @@ async function activityEntries(page) {
 
 export default async function (page) {
   try {
+    await shortTimeout(page);
     await unreachable(page);
     await slowLink(page);
   } finally {
     slow?.close();
     dead?.close();
+    short?.close();
   }
+}
+
+/** `[connections.options] connect_timeout` bounds the connect: 3 s here, not the default 10 s. */
+async function shortTimeout(page) {
+  const started = performance.now();
+  await password(page, SHORT);
+  await page.waitFor(`${unseenErrors} > 0`, 30_000);
+  const took = Math.round(performance.now() - started);
+  const failed = (await activityEntries(page)).find((e) => e.includes(`Connect to ${SHORT}`));
+  console.log(`  connect_timeout = 3 option: gave up after ${took} ms, "${failed}"`);
+  assert.ok(took >= 2500 && took < 6000, `the connect gave up after ${took} ms (option 3 s)`);
+  assert.match(failed ?? "", /did not answer within 3 s/);
 }
 
 /** The server never answers: waiting, then a readable error, then it works when the link is back. */
