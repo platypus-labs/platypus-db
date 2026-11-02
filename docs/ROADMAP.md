@@ -128,7 +128,7 @@ blocco cade.
 | P — Piattaforma, qualità e release | ⛔ bloccato |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ✅ completato |
-| S — Collaudo finale | 🔒 Paolo · group-s-percorsi · 2026-11-02 |
+| S — Collaudo finale | ✅ fatto (P1 in parte: inventario, giro per aree, tutti i database, percorsi da utente, secondo giro, aggiornamento dei dati; P2: revisione di sicurezza, prestazioni) |
 | T — Revisione UX | ✅ completato |
 | U — Esportazione delle connessioni | ✅ completato |
 | Progetti (spazi di lavoro) | ✅ fatto (parte B) |
