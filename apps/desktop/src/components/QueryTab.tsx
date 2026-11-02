@@ -1887,8 +1887,15 @@ export function QueryTab({
               onClick={() => setPendingOpen(true)}
               title={t("A transaction is open: changes are not visible to others yet, and locks are held")}
             >
-              ● {t("Transaction open {time}", { time: elapsed(txAge) })}
-              {uncommitted.length > 0 && ` · ${plural(uncommitted.length, "{n} change", "{n} changes")}`}
+              <span className="tx-text">
+                <span className="tx-wrap">
+                  <span>● {t("Transaction open {time}", { time: "" }).trim()}</span>{" "}
+                  <span>
+                    {elapsed(txAge)}
+                    {uncommitted.length > 0 && ` · ${plural(uncommitted.length, "{n} change", "{n} changes")}`}
+                  </span>
+                </span>
+              </span>
             </button>
           )}
           {toolbar.visible.files && (

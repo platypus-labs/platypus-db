@@ -256,6 +256,23 @@ button.toggled {
   display: block;
 }
 
+/* One line high, showing the last line of the wrapped text: with little room the words
+   "Transaction open" drop out and the time and changes stay whole. */
+.tx-open .tx-text {
+  display: flex;
+  align-items: flex-end;
+  height: 1lh;
+  overflow: hidden;
+}
+
+.tx-open .tx-wrap {
+  white-space: normal;
+}
+
+.tx-open .tx-wrap > span {
+  white-space: nowrap;
+}
+
 .editor {
   min-height: 0;
   overflow: hidden;
@@ -475,6 +492,23 @@ button.toggled {
 
 .toolbar button.tx-open {
   display: block;
+}
+
+/* One line high, showing the last line of the wrapped text: with little room the words
+   "Transaction open" drop out and the time and changes stay whole. */
+.tx-open .tx-text {
+  display: flex;
+  align-items: flex-end;
+  height: 1lh;
+  overflow: hidden;
+}
+
+.tx-open .tx-wrap {
+  white-space: normal;
+}
+
+.tx-open .tx-wrap > span {
+  white-space: nowrap;
 }
 
 .editor {
