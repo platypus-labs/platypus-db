@@ -92,19 +92,21 @@ export default async function (page, { dir }) {
   await page.eval(`${treeRow(SCHEMA)}.id = 's-schema'; document.getElementById('s-schema').scrollIntoView({ block: 'start' })`);
   let ms = await timed(page, `document.querySelector('#s-schema .twisty').click()`, folder("Tables", TABLES), 120_000);
   console.log(`  expanding the schema (${TABLES} tables listed): ${ms} ms`);
-  assert.ok(ms < 8000, `expanding took ${ms} ms`);
+  assert.ok(ms < 500, `expanding took ${ms} ms`);
+  // Tables opens on its own; fold it so the other folders are near, then open each in turn.
+  await page.eval(`(() => { const r = [...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === "Tables" && r.textContent.endsWith("5000")); r.querySelector('.twisty').click(); })()`);
   await page.waitFor(`${folder("Views", VIEWS)} && ${folder("Functions", FUNCTIONS)}`, 30_000);
-  for (const name of ["Views", "Functions", "Tables"]) {
+  for (const name of ["Functions", "Views", "Tables"]) {  // bottom-up: an open folder pushes the next ones out of view
     const n = { Tables: TABLES, Views: VIEWS, Functions: FUNCTIONS }[name];
     const first = name === "Tables" ? table(1) : name === "Views" ? "v_00001" : "f_00001";
     ms = await timed(
       page,
-      `(() => { const r = [...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(name)}); r.scrollIntoView({ block: 'start' }); r.querySelector('.twisty').click(); })()`,
-      `[...document.querySelectorAll('.tree-row')].some(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(first)})`,
+      `(() => { const r = [...document.querySelectorAll('.tree-row')].findLast(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(name)}); r.scrollIntoView({ block: 'start' }); r.querySelector('.twisty').click(); })()`,
+      `[...document.querySelectorAll('.tree-row')].some(r => r.querySelector('.tree-label')?.textContent?.startsWith(${JSON.stringify(first)}))`,
       60_000,
     );
     console.log(`  expanding ${name} (${n}): ${ms} ms`);
-    assert.ok(ms < 5000, `expanding ${name} took ${ms} ms`);
+    assert.ok(ms < 500, `expanding ${name} took ${ms} ms`);
   }
   const rendered = await page.eval(`document.querySelectorAll('.tree-row').length`);
   assert.ok(rendered < 1500, `${rendered} tree rows in the DOM: the navigator renders only what is in view`);
@@ -119,7 +121,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`document.querySelectorAll('.tree-row').length < 12 && [...document.querySelectorAll('.tree-row')].some(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(table(4999))})`, 20_000);
   ms = Math.round(performance.now() - started);
   console.log(`  tree filter "${table(4999)}": ${ms} ms`);
-  assert.ok(ms < 3000, `filter took ${ms} ms`);
+  assert.ok(ms < 500, `filter took ${ms} ms`);
   await page.type("x");
   await page.waitFor(`![...document.querySelectorAll('.tree-row')].some(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(table(4999))})`, 10_000);
   await page.key("Escape", "Escape", 27);
@@ -127,7 +129,7 @@ export default async function (page, { dir }) {
   console.log(`  filter cleared, tree back: ${ms} ms`);
   const typing = await stopFrames(page);
   console.log(`  frames while filtering: ${typing.frames}, longest ${typing.max} ms`);
-  assert.ok(typing.max < 2000, `a frame took ${typing.max} ms`);
+  assert.ok(typing.max < 300, `a frame took ${typing.max} ms`);
 
   // 3. Completion of a table name in the editor, qualified with the schema.
   await openEditor(page, PG.name);
@@ -137,7 +139,7 @@ export default async function (page, { dir }) {
   ms = Math.round(performance.now() - completeStarted);
   const listed = await page.eval(options);
   console.log(`  table name completion: ${ms} ms (${listed.length} options)`);
-  assert.ok(ms < 5000, `completion took ${ms} ms`);
+  assert.ok(ms < 1500, `completion took ${ms} ms`);
   assert.ok(!listed.some((o) => o.startsWith(table(1))), "the list keeps to the typed prefix");
   await page.sleep(200); // CodeMirror ignores keys for 75 ms after the list opens
   await page.key("Escape", "Escape", 27);
@@ -150,15 +152,15 @@ export default async function (page, { dir }) {
   await search(page, "t_0499");
   ms = await timed(page, null, `${hits}.some(t => t.startsWith(${JSON.stringify(table(4999))}))`, 60_000);
   console.log(`  search "t_0499": ${ms} ms, ${(await page.eval(hits)).length} hits`);
-  assert.ok(ms < 5000, `search took ${ms} ms`);
+  assert.ok(ms < 500, `search took ${ms} ms`);
   await search(page, "parent_id");
   ms = await timed(page, null, `${hits}.length > 100`, 60_000);
   const many = (await page.eval(hits)).length;
   console.log(`  search "parent_id" (a column of every table): ${ms} ms, ${many} hits shown`);
-  assert.ok(ms < 10_000, `the big search took ${ms} ms`);
+  assert.ok(ms < 1000, `the big search took ${ms} ms`);
   const idle = await lag(page);
   console.log(`  page answers in ${Math.round(idle)} ms after it`);
-  assert.ok(idle < 1000, `the page was busy for ${Math.round(idle)} ms`);
+  assert.ok(idle < 200, `the page was busy for ${Math.round(idle)} ms`);
   mem("search");
 
   // 5. One table's object page, from the filtered navigator.
@@ -170,7 +172,7 @@ export default async function (page, { dir }) {
   await page.waitFor(`${objectTab}?.querySelector('.object-title strong')?.textContent === ${JSON.stringify(table(2500))} && /parent_id/.test(${objectTab}.textContent)`, 30_000);
   ms = Math.round(performance.now() - opened);
   console.log(`  object page of ${table(2500)}: ${ms} ms (includes the menu)`);
-  assert.ok(ms < 5000, `the object page took ${ms} ms`);
+  assert.ok(ms < 1000, `the object page took ${ms} ms`);
   await page.eval(`${filter}.focus()`);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`${filter}.value === ''`);
@@ -180,6 +182,9 @@ export default async function (page, { dir }) {
   await treeMenu(page, SCHEMA, "ER diagram");
   const picker = `document.querySelector('.modal.erd-tables')`;
   await page.waitFor(`${picker} !== null`, 60_000);
+  // Every table starts chosen: clear them all, then choose just the filtered 100.
+  await page.eval(`[...${picker}.querySelectorAll('button')].find(b => b.textContent === 'Clear shown').click()`);
+  await page.waitFor(`/^(0|No) /.test(${picker}.querySelector('.muted')?.textContent ?? '')`, 10_000);
   await page.eval(`${picker}.querySelector('input[aria-label="Filter"]').focus()`);
   await page.type("t_020");
   await page.waitFor(`${picker}.querySelectorAll('.erd-table-list li').length === 100`, 10_000);
@@ -187,8 +192,8 @@ export default async function (page, { dir }) {
   await page.waitFor(`/^100 tables? chosen/.test(${picker}.querySelector('.muted')?.textContent ?? '')`, 10_000);
   ms = await timed(page, `[...${picker}.querySelectorAll('button')].find(b => b.textContent === 'Show').click()`, `${visibleErd}?.querySelectorAll('.erd-table').length === 100`, 120_000);
   console.log(`  ER diagram of 100 tables: ${ms} ms`);
-  assert.ok(ms < 15_000, `the diagram took ${ms} ms`);
+  assert.ok(ms < 3000, `the diagram took ${ms} ms`);
   assert.equal(await page.eval(`${visibleErd}.querySelectorAll('path[marker-start]').length`), 99, "the 99 foreign keys are drawn");
   const final = mem("ER diagram");
-  assert.ok(final < 2000, `${final} MB at the end`);
+  assert.ok(final < 900, `${final} MB at the end`);
 }
