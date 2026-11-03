@@ -2,12 +2,13 @@
 // when the statements are apart by a blank line and have no `;`; a SQL editor shows no empty
 // results panel until something runs; the first color swatch means no ring, whatever the
 // connection's type; the connection dialog's check boxes keep their size beside a long label
-// and take the pointer, and the Projects help sits beside its title.
+// and take the pointer, and the Projects help sits beside its title; a field left invalid shows
+// the app's message, not the browser's bubble.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
-import { dialog, editConnection, saveForm } from "../conn-helpers.mjs";
+import { dialog, editConnection, fill, formField, saveForm } from "../conn-helpers.mjs";
 import { sqliteConnection, treeRow } from "../query.mjs";
 import { openEditor } from "../qa-grid.mjs";
 import { visibleTab } from "../qa-jrn.mjs";
@@ -83,6 +84,24 @@ export default async function (page) {
   await page.waitFor(`!${logo}.classList.contains('colored')`);
   await editConnection(page, NAME);
   assert.equal(await page.eval(`document.querySelector('.connection-dialog .swatches .swatch').classList.contains('selected')`), true, "no color is kept");
+  // A required field left empty: the app's message under it, not the browser's bubble (the
+  // invalid event is taken), and typing ends it.
+  const pop = `document.querySelector('.field-error-pop')`;
+  await page.eval(`[...document.querySelectorAll('.connection-dialog .dialog-tabs [role=tab]')][0].click()`);
+  await page.eval(fill(formField("Database file"), ""));
+  await page.eval(`(() => { window.__nativeBubble = false; document.addEventListener('invalid', (e) => { if (!e.defaultPrevented) window.__nativeBubble = true; }, true); })()`);
+  await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Save').click()`);
+  await page.waitFor(`${pop} !== null`);
+  const shown = await page.eval(`(() => {
+    const p = ${pop}.getBoundingClientRect(), f = ${formField("Database file")}.getBoundingClientRect();
+    return { text: ${pop}.textContent, under: p.top >= f.bottom && p.top - f.bottom < 12, marked: ${formField("Database file")}.classList.contains('field-invalid'),
+      focused: document.activeElement === ${formField("Database file")}, native: window.__nativeBubble };
+  })()`);
+  assert.deepEqual(shown, { text: "Fill in this field.", under: true, marked: true, focused: true, native: false });
+  assert.equal(await page.eval(`${dialog} !== null`), true, "not saved");
+  await page.type("x");
+  await page.waitFor(`${pop} === null && !${formField("Database file")}.classList.contains('field-invalid')`);
+
   await page.eval(`[...${dialog}.querySelectorAll('button')].find(b => b.textContent === 'Cancel').click()`);
   await page.waitFor(`${dialog} === null`);
 }
