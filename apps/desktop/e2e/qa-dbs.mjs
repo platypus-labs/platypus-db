@@ -32,14 +32,14 @@ Object.assign(DBS, {
   cockroach: {
     port: 56257,
     password: "",
-    toml: `driver = "postgres"\nhost = "localhost"\nport = 56257\ndatabase = "platypus"\nuser = "root"\nssl_mode = "disable"\npassword_command = "echo x"`,
+    toml: `driver = "postgres"\nhost = "localhost"\nport = 56257\ndatabase = "platypus"\nuser = "root"\nssl_mode = "disable"\nshow_all_databases = true\npassword_command = "echo x"`,
     shell: ["exec", "-i", "platypus-db-cockroach-1", "cockroach", "sql", "--insecure", "-d", "platypus", "--format=tsv"],
     noPrompt: true,
   },
   yugabyte: {
     port: 55434,
     password: "yugabyte",
-    toml: `driver = "postgres"\nhost = "localhost"\nport = 55434\ndatabase = "yugabyte"\nuser = "yugabyte"\nssl_mode = "disable"\npassword_command = "echo yugabyte"`,
+    toml: `driver = "postgres"\nhost = "localhost"\nport = 55434\ndatabase = "yugabyte"\nuser = "yugabyte"\nssl_mode = "disable"\nshow_all_databases = true\npassword_command = "echo yugabyte"`,
     get shell() {
       return psql("platypus-db-yugabyte-1", "yugabyte", "yugabyte", hostname("platypus-db-yugabyte-1"));
     },
@@ -48,7 +48,7 @@ Object.assign(DBS, {
   timescale: {
     port: 55433,
     password: "platypus",
-    toml: `driver = "postgres"\nhost = "localhost"\nport = 55433\ndatabase = "qa_dbs_ts"\nuser = "platypus"\nssl_mode = "disable"\npassword_command = "echo platypus"`,
+    toml: `driver = "postgres"\nhost = "localhost"\nport = 55433\ndatabase = "qa_dbs_ts"\nuser = "platypus"\nssl_mode = "disable"\nshow_all_databases = true\npassword_command = "echo platypus"`,
     shell: psql("platypus-db-timescale-1", "platypus", "qa_dbs_ts"),
     noPrompt: true,
   },
