@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { type Action, type ActionScope, type ActionScopes, actionsFor, runAction, shortcutLabel } from "../actions";
-import { t } from "../i18n";
+import { msg, t } from "../i18n";
 import { Icon } from "../ui/Icon";
 import { submenuPlacement } from "./menuPlacement";
 
@@ -22,20 +22,67 @@ interface Props {
 /** A menu line: an action, or a submenu holding the actions that name it. */
 type Entry = { action: Action } | { submenu: string; group?: string; actions: Action[] };
 
+const NEW = msg("New");
+const OPEN = msg("Open");
+const TOOLS = msg("Tools");
+const EXPORT = msg("Export");
+const DATA = msg("Data");
+const ANALYZE = msg("Analyze");
+const RUN = msg("Run");
+const EXPLAIN = msg("Explain");
+
+/** The submenus of the menus that grew too long (the connection's, the schema's, the SQL
+ *  editor's), by action id: their actions come from many modules, so the layout is kept here.
+ *  An action's own `submenu` comes first. */
+const SUBMENU_OF: Record<string, string> = {
+  "connection.new_connection": NEW,
+  "script.new_for_connection": NEW,
+  "connection.new_notebook": NEW,
+  "connection.new_dashboard": NEW,
+  "connection.open_notebook": OPEN,
+  "connection.open_dashboard": OPEN,
+  "connection.run_sql_file": OPEN,
+  "connection.server_activity": TOOLS,
+  "connection.backup": TOOLS,
+  "connection.restore": TOOLS,
+  "connection.schedule": TOOLS,
+  "connection.transfer_profiles": TOOLS,
+  "connection.export_docs": TOOLS,
+  "connection.export": EXPORT,
+  "connection.copy_url": EXPORT,
+  "schema.import_data": DATA,
+  "schema.paste_table": DATA,
+  "schema.export_tables": DATA,
+  "schema.dump_sql": DATA,
+  "schema.migrate": DATA,
+  "schema.backup": DATA,
+  "schema.lint": ANALYZE,
+  "schema.compare": ANALYZE,
+  "schema.migrations": ANALYZE,
+  "schema.history": ANALYZE,
+  "schema.export_docs": ANALYZE,
+  "editor.run_append": RUN,
+  "editor.run_on_connections": RUN,
+  "editor.run_cli": RUN,
+  "editor.explain": EXPLAIN,
+  "editor.explain_analyze": EXPLAIN,
+};
+
 function entries(actions: Action[]): Entry[] {
   const out: Entry[] = [];
   const submenus = new Map<string, Action[]>();
   for (const action of actions) {
-    if (!action.submenu) {
+    const submenu = action.submenu ?? SUBMENU_OF[action.id];
+    if (!submenu) {
       out.push({ action });
       continue;
     }
-    const existing = submenus.get(action.submenu);
+    const existing = submenus.get(submenu);
     if (existing) existing.push(action);
     else {
       const list = [action];
-      submenus.set(action.submenu, list);
-      out.push({ submenu: action.submenu, group: action.group, actions: list });
+      submenus.set(submenu, list);
+      out.push({ submenu, group: action.group, actions: list });
     }
   }
   return out;

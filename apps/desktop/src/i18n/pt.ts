@@ -3214,6 +3214,14 @@ const pt: Record<string, string> = {
   "Show all databases": "Mostrar todas as bases de dados",
   "Off: the navigator shows only the database above, as in DBeaver.": "Desligado: o navegador mostra apenas a base de dados acima, como no DBeaver.",
   "With no database named, the navigator shows them all.": "Sem uma base de dados indicada, o navegador mostra todas.",
+  "New": "Novo",
+  "Tick this box.": "Marque esta caixa.",
+  "Fill in this field.": "Preencha este campo.",
+  "At least {n}.": "Pelo menos {n}.",
+  "At most {n}.": "No máximo {n}.",
+  "At least {n} characters.": "Pelo menos {n} caracteres.",
+  "Enter a number.": "Introduza um número.",
+  "This value is not valid.": "Este valor não é válido.",
 };
 
 export default pt;
