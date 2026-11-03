@@ -453,7 +453,8 @@ fn dbeaver_connection(
     c.show_all_databases = config
         .get("provider-properties")
         .and_then(|p| p.get("@dbeaver-show-non-default-db@"))
-        .is_some_and(|v| v == true || v == "true");
+        .is_some_and(|v| v == true || v == "true")
+        .into();
     c.connection_type = match text(config, "type").as_deref() {
         Some("dev") => Some(ConnectionType::Dev),
         Some("test") => Some(ConnectionType::Test),
@@ -858,8 +859,12 @@ mod tests {
             (pg.host.as_str(), pg.port, pg.database.as_str()),
             ("db.example.com", Some(6543), "app")
         );
-        assert!(pg.show_all_databases, "DBeaver's Show all databases");
-        assert!(!local.show_all_databases);
+        assert_eq!(
+            pg.show_all_databases,
+            crate::DatabaseList::All,
+            "DBeaver's Show all databases"
+        );
+        assert_eq!(local.show_all_databases, crate::DatabaseList::Named);
         assert_eq!(pg.user, "me");
         assert_eq!(pg.connection_type, Some(ConnectionType::Prod));
         let ssh = pg.ssh.as_ref().unwrap();

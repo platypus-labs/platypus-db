@@ -15,8 +15,8 @@ use std::path::PathBuf;
 
 use platypus_core::{DriverKind, SslMode};
 use platypus_store::{
-    AgentAccess, ConnectBy, ConnectionType, NetworkProfile, Restrictions, SavedConnection,
-    SavedInit, SavedSsh, SshAuthKind, TextJson, VirtualKey,
+    AgentAccess, ConnectBy, ConnectionType, DatabaseList, NetworkProfile, Restrictions,
+    SavedConnection, SavedInit, SavedSsh, SshAuthKind, TextJson, VirtualKey,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -247,8 +247,8 @@ pub struct ShareConnection {
     pub network_profile: Option<Uuid>,
     #[serde(default)]
     pub read_only: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub show_all_databases: bool,
+    #[serde(default, skip_serializing_if = "DatabaseList::is_named")]
+    pub show_all_databases: DatabaseList,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

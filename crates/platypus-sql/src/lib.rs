@@ -72,8 +72,6 @@ struct Current {
     parens: usize,
     /// The last token, upper-cased.
     last: String,
-    /// A `SELECT` or `VALUES` was seen: an `INSERT` has its rows.
-    has_rows: bool,
 }
 
 /// Words that start a statement, so one after a blank line starts a new statement when the
@@ -188,22 +186,37 @@ impl Current {
     /// Whether `token`, the first after a blank line, starts a new statement although no `;`
     /// ended this one: it is a word that starts one, and this one is complete as far as its
     /// last token tells (no open parenthesis, no `UNION`, `,`, `AS`… left waiting).
-    fn ends_at_blank_line(&self, src: &str, token: &Token) -> bool {
-        if self.start.is_none() {
+    fn ends_at_blank_line(&self, src: &str, token: &Token, dialect: Dialect) -> bool {
+        let Some(start) = self.start else {
+            return false;
+        };
+        // A line with nothing on it between the two, besides the ones they stand on.
+        let gap = &src[self.end..token.start];
+        let blank = match (gap.find('\n'), gap.rfind('\n')) {
+            (Some(first), Some(last)) if first < last => gap[first + 1..last]
+                .split('\n')
+                .any(|l| l.trim().is_empty()),
+            _ => false,
+        };
+        let word = token.text(src).to_ascii_uppercase();
+        if !blank
+            || token.kind != TokenKind::Word
+            || !self.at_boundary()
+            || self.parens != 0
+            || !STATEMENT_STARTS.contains(&word.as_str())
+            || CONTINUES.contains(&self.last.as_str())
+        {
             return false;
         }
-        let gap: Vec<&str> = src[self.end..token.start].split('\n').collect();
-        let blank = gap.len() > 2 && gap[1..gap.len() - 1].iter().any(|l| l.trim().is_empty());
-        // `INSERT INTO t` / `SELECT …`: the rows to insert, not a new statement.
-        let insert_waits = self.head.first().is_some_and(|w| w == "INSERT") && !self.has_rows;
-        let word = token.text(src).to_ascii_uppercase();
-        blank
-            && token.kind == TokenKind::Word
-            && self.at_boundary()
-            && self.parens == 0
-            && STATEMENT_STARTS.contains(&word.as_str())
-            && !CONTINUES.contains(&self.last.as_str())
-            && !(insert_waits && (word == "SELECT" || word == "WITH"))
+        // `INSERT INTO t` / `SELECT …`: the rows to insert, unless it has its rows already.
+        let inserting = self.head.first().is_some_and(|w| w == "INSERT");
+        !(inserting && (word == "SELECT" || word == "WITH"))
+            || Lexer::new(&src[start..self.end], dialect).any(|t| {
+                t.kind == TokenKind::Word
+                    && ["SELECT", "VALUES"]
+                        .iter()
+                        .any(|w| t.text(&src[start..self.end]).eq_ignore_ascii_case(w))
+            })
     }
 
     fn word(&mut self, word: &str, dialect: Dialect) {
@@ -523,7 +536,7 @@ fn scan(src: &str, dialect: Dialect) -> Scan {
         }
         // A custom delimiter (MySQL `DELIMITER $$`) is there for bodies whose `;` and blank
         // lines do not end them.
-        if delimiter == ";" && current.ends_at_blank_line(src, &token) {
+        if delimiter == ";" && current.ends_at_blank_line(src, &token, dialect) {
             statements.extend(current.take());
         }
         current.start.get_or_insert(token.start);
@@ -539,7 +552,6 @@ fn scan(src: &str, dialect: Dialect) -> Scan {
             current.last.push_str(&text.to_ascii_uppercase());
         }
         if token.kind == TokenKind::Word {
-            current.has_rows |= current.last == "SELECT" || current.last == "VALUES";
             current.word(text, dialect);
         }
     }
