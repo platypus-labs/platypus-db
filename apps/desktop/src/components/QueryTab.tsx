@@ -1774,6 +1774,10 @@ export function QueryTab({
     };
   }, [active, stoppable]);
 
+  // Nothing to show under the editor yet (a new editor, a DDL): the editor takes the tab.
+  const hasResults =
+    results.length > 0 || running || tab.terminal || !!tab.across || !!tab.savedResult || !!tab.resultSource || !!tab.shared || blocked !== null;
+
   return (
     <div
       className="query-tab"
@@ -1786,7 +1790,9 @@ export function QueryTab({
         // The editor gives up height before the toolbar does in a small window; beside the
         // results, it gives up width before they go under 240 px.
         style={
-          beside
+          !hasResults
+            ? { gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, 1fr) auto` }
+            : beside
             ? {
                 gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(0, 1fr) auto`,
                 gridTemplateColumns: `minmax(120px, ${editorWidth}px) 6px minmax(240px, 1fr)`,
@@ -2031,7 +2037,7 @@ export function QueryTab({
           onSave={() => void saveFile()}
           onOpen={() => void openFile()}
         />
-        {beside ? (
+        {!hasResults ? null : beside ? (
           <PanelResizer
             storeKey="layout.editor_width"
             size={editorWidth}
@@ -2056,112 +2062,114 @@ export function QueryTab({
             className="splitter"
           />
         )}
-        <div className="results">
-          {tab.across && (
-            <AcrossBar
-              origin={tab.across}
-              connection={connection}
-              onReloaded={(across) => {
-                onChange({ across });
-                onNeedCatalog(true);
-                // The last statements run again on the new rows, if they only read.
-                const again = memory.current.lastReads();
-                if (again) void run("statement", false, again);
-              }}
-            />
-          )}
-          {tab.savedResult && <SavedResultBar saved={tab.savedResult} />}
-          {tab.resultSource && (
-            <ResultSourceBar
-              source={tab.resultSource}
-              connection={connection}
-              onReloaded={(source) => {
-                onChange({ resultSource: source });
-                onNeedCatalog(true);
-                // The last statements run again on the new rows, if they only read.
-                const again = memory.current.lastReads();
-                if (again) void run("statement", false, again);
-              }}
-            />
-          )}
-          {tab.shared && (
-            <div className="notice warn" data-field="shared_notice">
-              {t("Shared query: review before running.")}
-              <button onClick={() => onChange({ shared: false })}>{t("Dismiss")}</button>
-            </div>
-          )}
-          {blocked !== null && (
-            <div className="notice warn">
-              {t("{name} is read-only and this may modify data.", { name: connection.name })}
-              {/* Only this tab is read-only: the connection, like every other entry point, refuses. */}
-              {!saved.read_only && <button onClick={() => void run(blocked, true)}>{t("Run anyway")}</button>}
-            </div>
-          )}
-          {tab.terminal && <TerminalView blocks={terminalLog} onClear={() => setTerminalLog([])} />}
-          {!tab.terminal && results.length > 1 && (
-            <div className="result-tabs" onWheel={scrollSideways}>
-              {results.map((r, i) => (
-                <button
-                  key={r.id}
-                  className={`result-tab ${r.status.kind}${i === activeResult ? " active" : ""}`}
-                  onClick={() => i !== activeResult && leavingEdits(() => setActiveResult(i))}
-                  onAuxClick={(e) => e.button === 1 && closeResult(r.id)}
-                  title={r.sql}
-                >
-                  {i + 1}. {describe(r)}
-                  <span
-                    className="result-tab-close"
-                    role="button"
-                    aria-label={t("Close result")}
-                    title={t("Close result")}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeResult(r.id);
-                    }}
+        {hasResults && (
+          <div className="results">
+            {tab.across && (
+              <AcrossBar
+                origin={tab.across}
+                connection={connection}
+                onReloaded={(across) => {
+                  onChange({ across });
+                  onNeedCatalog(true);
+                  // The last statements run again on the new rows, if they only read.
+                  const again = memory.current.lastReads();
+                  if (again) void run("statement", false, again);
+                }}
+              />
+            )}
+            {tab.savedResult && <SavedResultBar saved={tab.savedResult} />}
+            {tab.resultSource && (
+              <ResultSourceBar
+                source={tab.resultSource}
+                connection={connection}
+                onReloaded={(source) => {
+                  onChange({ resultSource: source });
+                  onNeedCatalog(true);
+                  // The last statements run again on the new rows, if they only read.
+                  const again = memory.current.lastReads();
+                  if (again) void run("statement", false, again);
+                }}
+              />
+            )}
+            {tab.shared && (
+              <div className="notice warn" data-field="shared_notice">
+                {t("Shared query: review before running.")}
+                <button onClick={() => onChange({ shared: false })}>{t("Dismiss")}</button>
+              </div>
+            )}
+            {blocked !== null && (
+              <div className="notice warn">
+                {t("{name} is read-only and this may modify data.", { name: connection.name })}
+                {/* Only this tab is read-only: the connection, like every other entry point, refuses. */}
+                {!saved.read_only && <button onClick={() => void run(blocked, true)}>{t("Run anyway")}</button>}
+              </div>
+            )}
+            {tab.terminal && <TerminalView blocks={terminalLog} onClear={() => setTerminalLog([])} />}
+            {!tab.terminal && results.length > 1 && (
+              <div className="result-tabs" onWheel={scrollSideways}>
+                {results.map((r, i) => (
+                  <button
+                    key={r.id}
+                    className={`result-tab ${r.status.kind}${i === activeResult ? " active" : ""}`}
+                    onClick={() => i !== activeResult && leavingEdits(() => setActiveResult(i))}
+                    onAuxClick={(e) => e.button === 1 && closeResult(r.id)}
+                    title={r.sql}
                   >
-                    <Icon name="close" />
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-          {!tab.terminal && view && resultSql.output && (
-            <ResultPanel
-              key={view.id}
-              result={view}
-              source={{ connection: resultSql.connection ?? connection, sql: view.sql, jobId: view.jobId, table: null }}
-              chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
-              toolbar={resultSql.bar}
-            />
-          )}
-          {!tab.terminal && shown && !resultSql.output && (
-            <ResultPanel
-              key={shown.id}
-              result={shown}
-              sort={shownSort}
-              onHeaderClick={tab.table && sortable && !running ? sortBy : undefined}
-              headerHint={
-                tab.table && !sortable && shown.status.kind === "rows"
-                  ? rewritable === shown.sql
-                    ? t("This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).")
-                    : t("This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.")
-                  : undefined
-              }
-              source={{
-                connection,
-                sql: shown.sql,
-                jobId: shown.jobId,
-                table: tab.table ?? null,
-                viewer: tab.table && sortable ? { addCondition, columns: shownFilters } : undefined,
-              }}
-              edit={editTarget(shown)}
-              errorAt={errorAt && { line: errorAt.line, column: errorAt.column, goTo: () => editor.current?.setError(errorAt) }}
-              notes={notesScope(shown)}
-              chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
-              toolbar={resultSql.bar}
-            />
-          )}
-        </div>
+                    {i + 1}. {describe(r)}
+                    <span
+                      className="result-tab-close"
+                      role="button"
+                      aria-label={t("Close result")}
+                      title={t("Close result")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeResult(r.id);
+                      }}
+                    >
+                      <Icon name="close" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!tab.terminal && view && resultSql.output && (
+              <ResultPanel
+                key={view.id}
+                result={view}
+                source={{ connection: resultSql.connection ?? connection, sql: view.sql, jobId: view.jobId, table: null }}
+                chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
+                toolbar={resultSql.bar}
+              />
+            )}
+            {!tab.terminal && shown && !resultSql.output && (
+              <ResultPanel
+                key={shown.id}
+                result={shown}
+                sort={shownSort}
+                onHeaderClick={tab.table && sortable && !running ? sortBy : undefined}
+                headerHint={
+                  tab.table && !sortable && shown.status.kind === "rows"
+                    ? rewritable === shown.sql
+                      ? t("This query cannot be sorted from the header: the editor does not hold it as it ran (it was edited since, its variables were filled in, or it comes from @include).")
+                      : t("This query cannot be sorted from the header: it is not one read-only query that an ORDER BY can be added to.")
+                    : undefined
+                }
+                source={{
+                  connection,
+                  sql: shown.sql,
+                  jobId: shown.jobId,
+                  table: tab.table ?? null,
+                  viewer: tab.table && sortable ? { addCondition, columns: shownFilters } : undefined,
+                }}
+                edit={editTarget(shown)}
+                errorAt={errorAt && { line: errorAt.line, column: errorAt.column, goTo: () => editor.current?.setError(errorAt) }}
+                notes={notesScope(shown)}
+                chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
+                toolbar={resultSql.bar}
+              />
+            )}
+          </div>
+        )}
         <div className="statusbar" role="status">
           {view && (
             <>
