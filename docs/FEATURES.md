@@ -170,8 +170,12 @@ to the package manager.
   setting.
 - A table's menu keeps the main actions at the top, groups the rest in submenus (*Generate SQL*,
   *Maintenance*, *Data*) and puts *Truncate* and *Drop* last; the browser's own menu never shows,
-  except in text fields. Index rows have their menu too. Copy actions confirm with a short
-  notice at the bottom of the window.
+  except in text fields. So do a connection's (*New*, *Open*, *Tools*, *Export*), a schema's
+  (*Data*, *Analyze*, *Create*) and the SQL editor's (*Run*, *Explain*). Index rows have their
+  menu too. Copy actions confirm with a short notice at the bottom of the window.
+- A field left empty or out of range when a form is sent shows the app's own message under it,
+  in the interface's language (*Fill in this field.*, *At most 65535.*), in place of the
+  browser's bubble; typing in the field or leaving it clears it.
 - Type the start of a name with the tree focused to jump to the next row that matches.
 - Generate SELECT, INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a
   preview of the statement. `Ctrl`/`Shift`+click selects several objects, for example to get
