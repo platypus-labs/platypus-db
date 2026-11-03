@@ -1,6 +1,6 @@
 // The connection list's own menu and "New connection…" on a connection, the search of the
 // database picker and of the Settings, the handle that resizes the navigator, and the glass
-// of menus and dialogs.
+// of menus (dialogs are solid).
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -150,7 +150,8 @@ export default async function (page, { dir, shots }) {
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   await page.waitFor(`document.activeElement === document.querySelector('.modal.settings .modal-search input')`);
-  assert.match(await page.eval(`getComputedStyle(document.querySelector('.modal.settings')).backdropFilter`), /blur/);
+  // Solid: the glass behind a dialog this large made its scrolling lag (s-fix-settings-scroll).
+  assert.equal(await page.eval(`getComputedStyle(document.querySelector('.modal.settings')).backdropFilter`), "none");
   // A tab other than the first, to find it again after the search.
   await page.settingsTab("Toolbar");
   // The search matches at the start of a word: "tab" finds the tabs, not "databases".

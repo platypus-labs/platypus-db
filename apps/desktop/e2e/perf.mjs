@@ -26,7 +26,7 @@ export const pgEntry = () =>
   `[[connections]]\nid = "00000000-0000-4000-8000-0000000e0002"\nname = "${PG.name}"\ndriver = "postgres"\nhost = "localhost"\nport = ${PG.port}\ndatabase = "platypus"\nuser = "platypus"\nssl_mode = "disable"\nsave_password = false\n`;
 
 export const mssqlEntry = () =>
-  `[[connections]]\nid = "00000000-0000-4000-8000-0000000e0003"\nname = "${MSSQL.name}"\ndriver = "sqlserver"\nhost = "localhost"\nport = ${MSSQL.port}\ndatabase = "platypus"\nuser = "sa"\nsave_password = false\n`;
+  `[[connections]]\nid = "00000000-0000-4000-8000-0000000e0003"\nname = "${MSSQL.name}"\ndriver = "sqlserver"\nhost = "localhost"\nport = ${MSSQL.port}\ndatabase = "platypus"\nuser = "sa"\nshow_all_databases = true\nsave_password = false\n`;
 
 export function saveConnections(dir, ...entries) {
   writeFileSync(join(dir, "connections.toml"), `version = 6\n\n${entries.join("\n")}`);

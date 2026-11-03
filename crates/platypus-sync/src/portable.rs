@@ -247,6 +247,8 @@ pub struct ShareConnection {
     pub network_profile: Option<Uuid>,
     #[serde(default)]
     pub read_only: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub show_all_databases: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -287,6 +289,7 @@ impl ShareConnection {
             ssl_mode: c.ssl_mode,
             network_profile: c.network_profile,
             read_only: c.read_only,
+            show_all_databases: c.show_all_databases,
             color: c.color.clone(),
             connection_type: c.connection_type,
             agent_access: c.agent_access,
@@ -323,6 +326,7 @@ impl ShareConnection {
         c.ssl_mode = self.ssl_mode;
         c.network_profile = self.network_profile;
         c.read_only = self.read_only;
+        c.show_all_databases = self.show_all_databases;
         c.color = self.color;
         c.connection_type = self.connection_type;
         c.agent_access = self.agent_access;

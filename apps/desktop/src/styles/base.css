@@ -261,6 +261,20 @@ textarea::placeholder {
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--accent);
+  cursor: pointer;
+  /* Beside a label long enough to wrap, a box in a flex row would shrink. */
+  flex-shrink: 0;
+}
+
+/* A label around a box or a radio is clicked as the box is. */
+label:has(> input[type="checkbox"]:not(:disabled)),
+label:has(> input[type="radio"]:not(:disabled)) {
+  cursor: pointer;
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  cursor: default;
 }
 
 input:focus,

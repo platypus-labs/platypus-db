@@ -449,6 +449,11 @@ fn dbeaver_connection(
         .get("read-only")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    // PostgreSQL's "Show all databases".
+    c.show_all_databases = config
+        .get("provider-properties")
+        .and_then(|p| p.get("@dbeaver-show-non-default-db@"))
+        .is_some_and(|v| v == true || v == "true");
     c.connection_type = match text(config, "type").as_deref() {
         Some("dev") => Some(ConnectionType::Dev),
         Some("test") => Some(ConnectionType::Test),
@@ -826,7 +831,7 @@ mod tests {
             "postgres-jdbc-1": {"provider": "postgresql", "driver": "postgres-jdbc", "name": "Prod PG",
               "folder": "Work", "configuration": {"host": "db.example.com", "port": "6543",
               "database": "app", "url": "jdbc:postgresql://db.example.com:6543/app", "type": "prod",
-              "user": "me", "handlers": {"ssh_tunnel": {"enabled": true, "properties":
+              "user": "me", "provider-properties": {"@dbeaver-show-non-default-db@": "true"}, "handlers": {"ssh_tunnel": {"enabled": true, "properties":
               {"host": "bastion", "port": "2222", "user": "ops", "authType": "PUBLIC_KEY", "keyPath": "C:/k/id"}}}}},
             "sqlite-1": {"provider": "generic", "driver": "sqlite_jdbc", "name": "Local",
               "configuration": {"url": "jdbc:sqlite:C:/data/app.db"}},
@@ -853,6 +858,8 @@ mod tests {
             (pg.host.as_str(), pg.port, pg.database.as_str()),
             ("db.example.com", Some(6543), "app")
         );
+        assert!(pg.show_all_databases, "DBeaver's Show all databases");
+        assert!(!local.show_all_databases);
         assert_eq!(pg.user, "me");
         assert_eq!(pg.connection_type, Some(ConnectionType::Prod));
         let ssh = pg.ssh.as_ref().unwrap();

@@ -3211,6 +3211,9 @@ const fr: Record<string, string> = {
   "The size, rows and indexes of each table, read on demand": "La taille, les lignes et les index de chaque table, lus à la demande",
   "Last reading: when the lists were read": "Dernier relevé : quand les listes ont été lues",
   "A lock appears here when a session holds one, and the waiting ones when a session waits for another.": "Un verrou apparaît ici quand une session en détient un, et ceux en attente quand une session en attend une autre.",
+  "Show all databases": "Afficher toutes les bases de données",
+  "Off: the navigator shows only the database above, as in DBeaver.": "Désactivé : le navigateur n’affiche que la base de données ci-dessus, comme dans DBeaver.",
+  "With no database named, the navigator shows them all.": "Sans base de données indiquée, le navigateur les affiche toutes.",
 };
 
 export default fr;

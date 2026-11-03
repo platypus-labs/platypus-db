@@ -19,7 +19,7 @@ export const skip = needsPostgres;
 const NAME = "QA jrn refresh";
 
 export function setup({ dir }) {
-  writeFileSync(join(dir, "connections.toml"), `version = 7\n${pgConnection("00000000-0000-4000-8000-0000000a7001", NAME)}`);
+  writeFileSync(join(dir, "connections.toml"), `version = 7\n${pgConnection("00000000-0000-4000-8000-0000000a7001", NAME, "show_all_databases = true")}`);
 }
 
 export default async function (page) {

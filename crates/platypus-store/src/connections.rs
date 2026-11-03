@@ -62,6 +62,10 @@ pub struct SavedConnection {
     /// Blocks statements that modify data (enforced by the app, not the database).
     #[serde(default)]
     pub read_only: bool,
+    /// With a database named, the navigator lists the server's other databases too (as
+    /// DBeaver's "Show all databases"); without, only that one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub show_all_databases: bool,
     /// Accent colour for tabs and the navigator, e.g. `#d64545` for production.
     pub color: Option<String>,
     /// Development, test or production: production asks before changes and starts in manual
@@ -463,6 +467,7 @@ impl SavedConnection {
             pgpass: false,
             network_profile: None,
             read_only: false,
+            show_all_databases: false,
             color: None,
             connection_type: None,
             agent_access: AgentAccess::default(),
