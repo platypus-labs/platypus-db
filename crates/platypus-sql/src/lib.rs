@@ -521,7 +521,9 @@ fn scan(src: &str, dialect: Dialect) -> Scan {
             lexer.seek(token.start + delimiter.len());
             continue;
         }
-        if current.ends_at_blank_line(src, &token) {
+        // A custom delimiter (MySQL `DELIMITER $$`) is there for bodies whose `;` and blank
+        // lines do not end them.
+        if delimiter == ";" && current.ends_at_blank_line(src, &token) {
             statements.extend(current.take());
         }
         current.start.get_or_insert(token.start);
@@ -1127,6 +1129,14 @@ mod tests {
             ["insert into t values (1)", "select * from t"]
         );
         assert_eq!(pg("select 1;\n\nselect 2;"), ["select 1", "select 2"]);
+        // A procedure body under `DELIMITER $$` keeps its blank lines.
+        let body = "DELIMITER $$\nCREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n\n  SELECT 2;\nEND$$\nDELIMITER ;\n\nselect 3";
+        assert_eq!(
+            parts(body, Dialect::MySql).len(),
+            2,
+            "{:?}",
+            parts(body, Dialect::MySql)
+        );
         let src = "select 1\n\nselect 2";
         assert_eq!(
             statement_at(src, Dialect::Postgres, src.len()).map(|s| s.text(src)),
