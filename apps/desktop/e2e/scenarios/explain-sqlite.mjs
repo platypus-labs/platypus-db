@@ -5,6 +5,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL, SHIFT } from "../cdp.mjs";
 import { setup as sqlite } from "./smoke-sqlite.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 export function setup(ctx) {
   sqlite(ctx);
@@ -65,6 +66,7 @@ export default async function (page) {
   const r = await page.rect("#e2e-editor");
   await page.click(r.x + 40, r.y + 10, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, "Explain analyze");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Explain analyze')).click()`);
   await page.waitFor(`document.querySelector('.tab.active')?.textContent.startsWith('Explain analyze')`, 10_000);
   await page.waitFor(`${explainTab}?.querySelector('.explain-node') != null`, 15_000);

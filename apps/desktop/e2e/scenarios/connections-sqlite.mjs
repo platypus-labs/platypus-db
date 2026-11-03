@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { revealItem } from "../menu-sub.mjs";
 
 const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
@@ -226,6 +227,7 @@ async function connectionUrls(page, shots) {
   await page.eval(`navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
   await page.eval(`${treeRow("Remote PG")}.id = 'e2e-remote'`);
   await page.clickSel("#e2e-remote", { button: "right" });
+  await revealItem(page, "Copy as URL");
   const copyItem = `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.trim().startsWith('Copy as URL'))`;
   await page.waitFor(`${copyItem} !== undefined`);
   await page.eval(`${copyItem}.click()`);

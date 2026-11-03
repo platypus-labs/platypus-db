@@ -73,7 +73,7 @@ export async function run(page, ctx, mode) {
 
   // 2. A script: saved on the connection, renamed in the Scripts panel, found again.
   const SCRIPT = "SELECT item FROM s_jrn_sales WHERE qty > 2 ORDER BY item";
-  await treeMenu(j, ["Day A"], "New saved script");
+  await treeMenu(j, ["Day A"], "New", "New saved script");
   await page.waitFor(`document.querySelectorAll('.tab').length === 4`, 15_000);
   await typeSql(j, SCRIPT);
   await page.key("s", "KeyS", 83, CTRL);

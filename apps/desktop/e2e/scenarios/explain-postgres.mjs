@@ -2,6 +2,7 @@
 // heatmap of each step's own time and an index suggestion. Skipped when it is not running.
 import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 export { setup, skip } from "./dev-postgres.mjs";
 
@@ -34,6 +35,7 @@ export default async function (page) {
   const r = await page.rect("#e2e-editor");
   await page.click(r.x + r.w / 2, r.y + 10, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, "Explain analyze");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Explain analyze')).click()`);
   await page.waitFor(`${explainTab}?.querySelector('.explain-share') != null`, 15_000);
 

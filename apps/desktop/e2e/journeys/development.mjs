@@ -129,7 +129,7 @@ export async function run(page, ctx, mode) {
   // The schema check: one fix (an index on the foreign key) opened in an editor and run.
   await u.rowMenu([NAME], [t("Refresh")]);
   const lint = `document.querySelector('.modal.schema-lint')`;
-  await openDialog(page, u, [NAME, "main"], t("Check schema…"), lint);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Check schema…")], lint);
   await page.waitFor(`${lint}.querySelectorAll('.lint-findings li').length > 0`, 15_000);
   assert.match(await page.eval(`${lint}.querySelector('.lint-findings').textContent`), /customer_id/);
   await u.italian("schema check", ["customer_id", "s_jrn_orders", "main"]);
@@ -141,13 +141,13 @@ export async function run(page, ctx, mode) {
   });
   await runScript(page, u);
   assert.equal(rowsOf(dev, "SELECT count(*) AS n FROM sqlite_master WHERE type = 'index' AND tbl_name = 's_jrn_orders' AND sql LIKE '%customer_id%'")[0].n, 1);
-  await openDialog(page, u, [NAME, "main"], t("Check schema…"), lint);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Check schema…")], lint);
   await page.waitFor(`${lint}.textContent.includes(${JSON.stringify(t("No problems found."))})`, 15_000);
   await u.dismiss(lint, t("Close"));
 
   // Migration status on a Flyway folder.
   const migrations = `document.querySelector('.modal.schema-migrations')`;
-  await openDialog(page, u, [NAME, "main"], t("Migration status…"), migrations);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Migration status…")], migrations);
   await u.type(`${migrations}.querySelector('[data-field="folder"]')`, join(ctx.dir, "project"));
   await u.tap(`${migrations}.querySelector('[data-action="check"]')`);
   const status_of = (id) => `${migrations}.querySelector('section[data-tool="flyway"] tr[data-id="${id}"]')?.dataset.status`;
@@ -158,7 +158,7 @@ export async function run(page, ctx, mode) {
 
   // The schema compared with the copy: the sync script is shown, not run.
   const compare = `document.querySelector('.modal.schema-compare')`;
-  await openDialog(page, u, [NAME, "main"], t("Compare with…"), compare);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Compare with…")], compare);
   await page.waitFor(`document.querySelectorAll('.modal.schema-compare select')[1]?.value === 'main'`, 15_000);
   const copyId = await page.eval(`[...${compare}.querySelectorAll('select')[0].options].find(o => o.textContent === ${JSON.stringify(COPY)}).value`);
   await u.pick(`${compare}.querySelectorAll('select')[0]`, copyId);

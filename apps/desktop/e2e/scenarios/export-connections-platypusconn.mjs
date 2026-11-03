@@ -27,7 +27,7 @@ export function setup({ dir }) {
 async function openExport(page, name) {
   await page.eval(`document.getElementById('qa-exp')?.removeAttribute('id'); ${treeRow(name)}.id = 'qa-exp'`);
   const items = await menu(page, "#qa-exp");
-  assert.ok(items.some((i) => i === "Export connections…"), JSON.stringify(items));
+  assert.ok(items.some((i) => i === "Export"), JSON.stringify(items));
   await menuItem(page, "Export connections…");
   await page.waitFor(`${dlg} !== null`);
 }

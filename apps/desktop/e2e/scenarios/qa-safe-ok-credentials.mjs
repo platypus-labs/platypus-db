@@ -9,6 +9,7 @@ import { spawnSync } from "../proc.mjs";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { needs } from "../qa-safe-db.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const ID = "00000000-0000-4000-8000-000000000541";
 const NAME = "QA creds PG";
@@ -68,6 +69,7 @@ async function menu(page, item) {
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, item);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(item)})).click()`);
 }
 

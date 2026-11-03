@@ -59,7 +59,7 @@ id = "${id}"
 name = "${name}"
 driver = "${driver}"
 ${host ? `host = "${host}"\nport = ${port}\n` : ""}database = '${database}'
-${user ? `user = "${user}"\n` : ""}${password ? `password_command = "echo ${password}"\nssl_mode = "disable"\n` : ""}save_password = false
+${user ? `user = "${user}"\n` : ""}${password ? `password_command = "echo ${password}"\nssl_mode = "disable"\n` : ""}${driver === "postgres" || driver === "sqlserver" ? "show_all_databases = true\n" : ""}save_password = false
 `;
 }
 

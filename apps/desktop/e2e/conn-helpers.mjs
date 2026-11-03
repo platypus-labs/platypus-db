@@ -3,6 +3,7 @@
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";
 import { join } from "node:path";
+import { revealItem } from "./menu-sub.mjs";
 
 export const treeRow = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
@@ -145,8 +146,10 @@ export async function menu(page, selector) {
 }
 
 /** Clicks the open context menu's entry that starts with `text`. */
-export const menuItem = (page, text) =>
-  page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(text)})).click()`);
+export const menuItem = async (page, text) => {
+  await revealItem(page, text);
+  return page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(text)})).click()`);
+};
 
 /** A `skip()` for a container on `port` of docker/compose.yml. */
 export const needsPort = (port, what) => () =>

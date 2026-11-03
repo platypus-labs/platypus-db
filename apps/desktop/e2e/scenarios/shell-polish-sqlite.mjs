@@ -101,10 +101,10 @@ export default async function (page, { dir, shots }) {
   await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Cancel').click()`);
   await page.waitFor(`document.querySelector('.modal') === null`);
 
-  // A connection's menu starts with a new connection.
+  // A connection's menu starts with the New submenu (a new connection is in it).
   await page.eval(`${row(NAME)}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 }))`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  assert.equal(await page.eval(`${menuItems}[0]`), "New connection…");
+  assert.equal(await page.eval(`${menuItems}[0]`), "New");
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.context-menu') === null`);
 

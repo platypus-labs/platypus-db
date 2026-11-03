@@ -29,7 +29,7 @@ export function setup({ dir }) {
     {
       id: "00000000-0000-4000-8000-0000000c3102",
       name: "QA3 PG db2",
-      body: `driver = "postgres"\nhost = "127.0.0.1"\nport = 55432\ndatabase = "${DB2}"\nuser = "platypus"\nssl_mode = "disable"\npassword_command = "echo platypus"`,
+      body: `driver = "postgres"\nhost = "127.0.0.1"\nport = 55432\ndatabase = "${DB2}"\nuser = "platypus"\nssl_mode = "disable"\nshow_all_databases = true\npassword_command = "echo platypus"`,
     },
   ]);
 }

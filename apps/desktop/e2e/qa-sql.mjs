@@ -6,6 +6,7 @@ import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "./cdp.mjs";
+import { revealItem } from "./menu-sub.mjs";
 
 export const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;
 export const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
@@ -158,6 +159,7 @@ export async function editorMenu(page, label) {
   await page.eval(`document.getElementById('e2e-editor').removeAttribute('id')`);
   await page.click(r.x + r.w / 2, r.y + 10, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, label);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.querySelector('span')?.textContent.startsWith(${JSON.stringify(label)})).click()`);
 }
 

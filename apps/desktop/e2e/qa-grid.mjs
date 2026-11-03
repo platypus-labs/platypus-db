@@ -32,7 +32,7 @@ export const DBS = {
   pg: {
     port: 55432,
     password: "platypus",
-    toml: `driver = "postgres"\nhost = "localhost"\nport = 55432\ndatabase = "platypus"\nuser = "platypus"\nssl_mode = "disable"`,
+    toml: `driver = "postgres"\nhost = "localhost"\nport = 55432\ndatabase = "platypus"\nuser = "platypus"\nssl_mode = "disable"\nshow_all_databases = true`,
     shell: ["exec", "-i", "platypus-db-postgres-1", "psql", "-U", "platypus", "-d", "platypus", "-v", "ON_ERROR_STOP=1", "-q", "-A", "-t", "-F", "\t"],
   },
   mysql: {
@@ -50,7 +50,7 @@ export const DBS = {
   mssql: {
     port: 51433,
     password: "Platypus-2026",
-    toml: `driver = "sqlserver"\nhost = "localhost"\nport = 51433\ndatabase = "platypus"\nuser = "sa"\nssl_mode = "disable"`,
+    toml: `driver = "sqlserver"\nhost = "localhost"\nport = 51433\ndatabase = "platypus"\nuser = "sa"\nssl_mode = "disable"\nshow_all_databases = true`,
     shell: [
       "exec", "-i", "platypus-db-sqlserver-1", "/opt/mssql-tools18/bin/sqlcmd", "-C", "-b", "-S", "localhost", "-U", "sa",
       "-P", "Platypus-2026", "-d", "platypus", "-h", "-1", "-W", "-s", "\t", "-f", "65001",
