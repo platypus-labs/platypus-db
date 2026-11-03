@@ -165,7 +165,6 @@ port = 55432
 database = "platypus"
 user = "platypus"
 ssl_mode = "disable"
-show_all_databases = true
 save_password = false
 ${extra}
 `;
