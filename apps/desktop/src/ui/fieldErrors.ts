@@ -34,12 +34,16 @@ function show(field: HTMLInputElement) {
   pop.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - pop.offsetWidth - 4))}px`;
   pop.style.top = `${r.bottom + 4 + pop.offsetHeight > window.innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4}px`;
   field.classList.add("field-invalid");
-  // Typing in the field, leaving it, or anything moving it ends the message.
+  // Typing in the field, leaving it, a click or Escape anywhere (a dialog closing), or anything
+  // moving it ends the message.
   const end = () => hide();
+  const onKey = (e: KeyboardEvent) => e.key === "Escape" && hide();
   field.addEventListener("input", end);
   field.addEventListener("blur", end);
   window.addEventListener("resize", end);
   document.addEventListener("scroll", end, true);
+  document.addEventListener("mousedown", end, true);
+  document.addEventListener("keydown", onKey, true);
   shown = {
     field,
     pop,
@@ -50,6 +54,8 @@ function show(field: HTMLInputElement) {
       field.removeEventListener("blur", end);
       window.removeEventListener("resize", end);
       document.removeEventListener("scroll", end, true);
+      document.removeEventListener("mousedown", end, true);
+      document.removeEventListener("keydown", onKey, true);
     },
   };
   field.focus({ preventScroll: true });
