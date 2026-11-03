@@ -197,7 +197,8 @@ export async function run(page, ctx, mode) {
   while (!readFileSync(script, "utf8").includes("-- edited") && Date.now() < deadline) await page.sleep(200);
   assert.ok(readFileSync(script, "utf8").endsWith("-- edited"), "Ctrl+S saved the script into its file");
 
-  // The keyboard: Ctrl+T opens an editor that takes what is typed; Escape then Tab leaves it.
+  // The keyboard: Ctrl+T opens an editor that takes what is typed; Escape then Shift+Tab leaves
+  // it for the toolbar (with nothing run yet there is no results panel after it).
   const before = await page.eval(`document.querySelectorAll('.tab').length`);
   await page.key("t", "KeyT", 84, CTRL);
   await page.waitFor(`document.querySelectorAll('.tab').length === ${before + 1} && ${visibleTab}?.querySelector('.cm-content') != null`, 10_000);
@@ -206,7 +207,7 @@ export async function run(page, ctx, mode) {
   await page.waitFor(`${editorText} === 'select 1'`, 5_000);
   await keys.escape(page);
   await page.eval(`void (window.__focusBefore = document.activeElement)`);
-  await keys.tab(page);
+  await keys.tab(page, 8);
   await page.waitFor(`document.activeElement !== window.__focusBefore && document.activeElement !== document.body && !document.activeElement.closest('.cm-content')`, 5_000).catch(async (e) => { throw new Error(`${e.message} :: ${await page.eval(`(() => { const a = document.activeElement; return a.tagName + '.' + a.className + ' | before: ' + (window.__focusBefore?.className) + ' | text: ' + ${editorText}; })()`)}`); });
   assert.ok(await page.eval(focusVisible), "the focus is visible after leaving the editor");
 }

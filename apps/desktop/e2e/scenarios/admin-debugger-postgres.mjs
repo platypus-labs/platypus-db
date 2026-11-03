@@ -29,7 +29,7 @@ const DOUBLE = "e2e_dbg_double(x integer)";
 const SPIN = "e2e_dbg_spin()";
 const SQL_FN = "e2e_dbg_sql(x integer)";
 const TRIGGER_FN = "e2e_dbg_trg()";
-const FUNCTIONS = [NAME, "platypus", "public", "Functions"];
+const FUNCTIONS = [NAME, "public", "Functions"];
 
 /** The loop of e2e_dbg_sum: the line of its INSERT, then the line the breakpoint goes on. */
 const SUM_SOURCE = `

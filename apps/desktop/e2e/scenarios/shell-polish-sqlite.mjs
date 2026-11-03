@@ -15,7 +15,8 @@ const menuItems = `[...document.querySelectorAll('.context-menu [role=menuitem]'
 const menuItem = (title) =>
   `[...document.querySelectorAll('.context-menu [role=menuitem]')].find(b => b.textContent.startsWith(${JSON.stringify(title)}))`;
 const tiles = `[...document.querySelectorAll('.driver-tile')].map(b => b.textContent)`;
-const shownSettings = `[...document.querySelectorAll('.modal.settings .setting')].map(s => s.querySelector('span')?.firstChild?.textContent)`;
+// The settings in view: a panel's own rows (Sync's) stay in the DOM while the search hides them.
+const shownSettings = `[...document.querySelectorAll('.modal.settings .setting')].filter(s => s.offsetParent !== null).map(s => s.querySelector('span')?.firstChild?.textContent)`;
 const sidebarWidth = `Math.round(document.querySelector('.sidebar-column').getBoundingClientRect().width)`;
 
 /** Types into an input as the user would, for React's `onChange`. */
@@ -57,10 +58,11 @@ export default async function (page, { dir, shots }) {
   await settingsLack(dir, /sidebar_collapsed/);
   assert.equal(await page.eval(sidebarWidth), 300);
 
-  // Below the rows, the list's own menu: a new connection, the import, testing them all, a plan.
+  // Below the rows, the list's own menu: a new connection, the import and export, testing them
+  // all, a plan.
   await page.eval(`document.querySelector('.tree').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 150, clientY: 400 }))`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  assert.deepEqual(await page.eval(menuItems), ["New connection…", "Import connections…", "Test connections", "Open query plan…"]);
+  assert.deepEqual(await page.eval(menuItems), ["New connection…", "Import connections…", "Export connections…", "Test connections", "Open query plan…"]);
   const glass = await page.eval(`getComputedStyle(document.querySelector('.context-menu')).backdropFilter`);
   assert.match(glass, /blur/);
   await page.eval(`${menuItem("New connection…")}.click()`);

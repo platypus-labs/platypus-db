@@ -38,7 +38,7 @@ export default async function (page, { dir }) {
   const memory = {};
   const mem = (label) => (memory[label] = memoryNow(dir, label));
   await connectWith(page, PG.name);
-  await openPath(page, [PG.name, "platypus", "public", "Tables"], TABLE);
+  await openPath(page, [PG.name, "public", "Tables"], TABLE);
   mem("idle, connected");
 
   // 1. The table's data, from the navigator: the first rows come before the rest is read.
