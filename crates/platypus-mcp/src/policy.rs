@@ -170,17 +170,20 @@ impl AgentPolicy {
     /// `connections`.
     #[must_use]
     pub fn loosenings(&self, approved: &Self, connections: &[SavedConnection]) -> Vec<Loosening> {
+        let name_of = |id: &Uuid| {
+            connections
+                .iter()
+                .find(|c| c.id == *id)
+                .map(|c| c.name.clone())
+                .unwrap_or_default()
+        };
         let mut found: Vec<Loosening> = self
             .connections
             .iter()
             .filter(|(id, access)| **access > approved.access(**id))
             .map(|(id, access)| Loosening::Access {
                 id: *id,
-                name: connections
-                    .iter()
-                    .find(|c| c.id == *id)
-                    .map(|c| c.name.clone())
-                    .unwrap_or_default(),
+                name: name_of(id),
                 from: approved.access(*id),
                 to: *access,
             })
@@ -196,11 +199,7 @@ impl AgentPolicy {
                 .difference(&approved.values_shown)
                 .map(|id| Loosening::ValuesShown {
                     id: *id,
-                    name: connections
-                        .iter()
-                        .find(|c| c.id == *id)
-                        .map(|c| c.name.clone())
-                        .unwrap_or_default(),
+                    name: name_of(id),
                 }),
         );
         found.extend(
@@ -209,11 +208,7 @@ impl AgentPolicy {
                 .filter(|id| self.limits(**id).loosens(&approved.limits(**id)))
                 .map(|id| Loosening::AgentLimits {
                     id: *id,
-                    name: connections
-                        .iter()
-                        .find(|c| c.id == *id)
-                        .map(|c| c.name.clone())
-                        .unwrap_or_default(),
+                    name: name_of(id),
                 }),
         );
         found
