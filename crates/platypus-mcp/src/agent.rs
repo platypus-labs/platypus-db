@@ -425,6 +425,7 @@ impl Agent {
             .map(|c| {
                 let mut c = c.clone();
                 c.agent_access = policy.access(c.id);
+                c.agent_values = policy.values(c.id);
                 c
             })
             .collect();
@@ -810,11 +811,14 @@ impl Agent {
         }
         .await;
         let (started_at, start) = (started_at + waited, start + waited);
-        let result = result.map(|outcome| QueryResult {
-            outcome,
-            elapsed: start.elapsed(),
-            limits,
-        });
+        let result = result
+            .and_then(|outcome| self.mask_outcome(&saved, &args.sql, outcome))
+            .map(|outcome| QueryResult {
+                outcome,
+                elapsed: start.elapsed(),
+                limits,
+            })
+            .map_err(|e| self.mask_statement_error(&saved, e));
         self.record(
             &saved,
             args.sql.trim(),

@@ -3,7 +3,7 @@
 //! outside it that give agents more, which the page asks about.
 
 use platypus_mcp::policy::{AgentPolicy, CONFIRM_WRITES, Loosening, Seal, Sealed, UNFILTERED};
-use platypus_store::{AgentAccess, PasswordUpdate, toml};
+use platypus_store::{AgentAccess, AgentValues, PasswordUpdate, toml};
 use tauri::State;
 use uuid::Uuid;
 
@@ -49,6 +49,24 @@ impl AppState {
         if before != Some(access) {
             self.approve_agent_change(|p| {
                 p.connections.insert(id, access);
+            });
+        }
+    }
+
+    /// After the user saved connection `id` in the app with `values`: a change of it is theirs.
+    pub(crate) fn approve_agent_values(
+        &self,
+        id: Uuid,
+        before: Option<AgentValues>,
+        values: AgentValues,
+    ) {
+        if before != Some(values) {
+            self.approve_agent_change(|p| {
+                if values == AgentValues::Shown {
+                    p.values_shown.insert(id);
+                } else {
+                    p.values_shown.remove(&id);
+                }
             });
         }
     }
@@ -110,10 +128,13 @@ pub fn answer_agent_policy(state: State<'_, AppState>, accept: bool) -> CommandR
             let back: Vec<_> = s
                 .list()
                 .iter()
-                .filter(|c| c.agent_access != honored.access(c.id))
+                .filter(|c| {
+                    c.agent_access != honored.access(c.id) || c.agent_values != honored.values(c.id)
+                })
                 .map(|c| {
                     let mut c = c.clone();
                     c.agent_access = honored.access(c.id);
+                    c.agent_values = honored.values(c.id);
                     c
                 })
                 .collect();

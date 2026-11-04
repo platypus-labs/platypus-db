@@ -19,6 +19,8 @@ function describe(c: AgentPolicyChange): string {
       return t("agents' changes run without asking");
     case "unfiltered":
       return t("agents may run UPDATE or DELETE without WHERE");
+    case "values_shown":
+      return t("{name}: agents read the values of sensitive columns", { name: c.name });
   }
 }
 

@@ -277,8 +277,8 @@ pub fn save_connection(
             )
         })?;
     }
-    let access = connection.agent_access;
-    let before = state.with_store(|s| Ok(s.get(id).map(|c| c.agent_access)))?;
+    let (access, values) = (connection.agent_access, connection.agent_values);
+    let before = state.with_store(|s| Ok(s.get(id).map(|c| (c.agent_access, c.agent_values))))?;
     let saved = state.with_store(|s| {
         let old = s.get(connection.id).and_then(|c| c.ssh.clone());
         let new = connection.ssh.clone();
@@ -296,7 +296,8 @@ pub fn save_connection(
         Ok(s.list().to_vec())
     })?;
     // The agent access chosen here is the user's: agents get it (see `agent_policy`).
-    state.approve_agent_access(id, before, access);
+    state.approve_agent_access(id, before.map(|b| b.0), access);
+    state.approve_agent_values(id, before.map(|b| b.1), values);
     Ok(saved)
 }
 

@@ -584,6 +584,140 @@ fn shares_what_the_user_works_on_only_with_consent() {
 
 /// `sample_rows` reads the first rows of a table within the limits; `explain` shows the
 /// plan of a statement allowed by the access, running it only with analyze.
+/// A profile with a table of `users`, and `extra` in its connection.
+fn users_profile(dir: &Path, extra: &str) {
+    sqlite(
+        &dir.join("users.db"),
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, nick TEXT);
+         INSERT INTO users VALUES (1, 'Ann', 'ann@example.com', 'annie'), (2, 'Bob', NULL, 'bo');",
+    );
+    std::fs::write(
+        dir.join("connections.toml"),
+        format!(
+            "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-0000000000a1\"\n\
+             name = \"Users\"\ndriver = \"sqlite\"\ndatabase = '{}'\n{extra}",
+            dir.join("users.db").display()
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn sensitive_columns_read_masked_in_results() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    let mut client = initialized(dir.path());
+    let run = |client: &mut Client, sql: &str| -> String {
+        let (text, error) = client.call("run_query", &json!({ "connection": "Users", "sql": sql }));
+        assert!(!error, "{text}");
+        text
+    };
+
+    let (rows, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "Users", "schema": "main", "table": "users" }),
+    );
+    assert!(!error, "{rows}");
+    assert!(!rows.contains("ann@example.com"), "{rows}");
+    assert!(rows.contains("••••••") && rows.contains("Ann"), "{rows}");
+    assert!(
+        rows.contains("Sensitive columns are masked: email."),
+        "{rows}"
+    );
+
+    for sql in [
+        "SELECT email FROM users",
+        "SELECT email AS contact FROM users",
+        "SELECT upper(email) FROM users",
+        "SELECT id, 'x' || email FROM users",
+        "SELECT *, email AS e FROM users",
+        "SELECT u.email FROM users u JOIN users v ON u.id = v.id",
+    ] {
+        let text = run(&mut client, sql);
+        assert!(
+            !text.to_lowercase().contains("ann@example.com"),
+            "{sql}: {text}"
+        );
+        assert!(text.contains("••••••"), "{sql}: {text}");
+    }
+
+    // NULL stays NULL, and what is not sensitive stays as it is.
+    let (json_rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT id, email, nick FROM users ORDER BY id", "format": "json" }),
+    );
+    assert!(!error, "{json_rows}");
+    let doc: Value = serde_json::from_str(&json_rows).unwrap();
+    assert_eq!(doc["rows"][0], json!([1, "••••••", "annie"]), "{doc}");
+    assert_eq!(doc["rows"][1], json!([2, null, "bo"]), "{doc}");
+    assert_eq!(doc["masked_columns"], json!(["email"]), "{doc}");
+    let plain = run(&mut client, "SELECT id, nick FROM users");
+    assert!(
+        plain.contains("annie") && !plain.contains("masked"),
+        "{plain}"
+    );
+
+    // An error that quotes a value of the column.
+    let (failed, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT no_such FROM users WHERE email = 'ann@example.com'" }),
+    );
+    assert!(error && !failed.contains("ann@example.com"), "{failed}");
+}
+
+#[test]
+fn the_rules_and_marks_of_the_app_decide_what_is_sensitive() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    std::fs::write(
+        dir.path().join("settings.toml"),
+        "[safety]\nmask_names = \"nick\"\n",
+    )
+    .unwrap();
+    let id = uuid::Uuid::parse_str("00000000-0000-4000-8000-0000000000a1").unwrap();
+    let key = |column: &str| platypus_store::CatalogKey {
+        database: String::new(),
+        schema: "main".to_owned(),
+        object: "users".to_owned(),
+        column: column.to_owned(),
+    };
+    let mut catalog = platypus_store::CatalogStore::open(&dir.path().join("catalog.db")).unwrap();
+    catalog.set_sensitive(id, &key("name"), Some(true)).unwrap();
+    catalog
+        .set_sensitive(id, &key("nick"), Some(false))
+        .unwrap();
+    drop(catalog);
+    let mut client = initialized(dir.path());
+    let (rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT name, nick, email FROM users", "format": "json" }),
+    );
+    assert!(!error, "{rows}");
+    let doc: Value = serde_json::from_str(&rows).unwrap();
+    // `name` is marked; `nick` is by the rule, but marked not sensitive on this table; the
+    // default rule on `email` was replaced.
+    assert_eq!(
+        doc["rows"][0],
+        json!(["••••••", "annie", "ann@example.com"]),
+        "{doc}"
+    );
+    assert_eq!(doc["masked_columns"], json!(["name"]), "{doc}");
+}
+
+#[test]
+fn the_values_show_only_as_the_user_approved_in_the_app() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "agent_values = \"shown\"\n");
+    // No seal: the file is taken as it is.
+    let mut client = initialized(dir.path());
+    let (rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT email FROM users ORDER BY id" }),
+    );
+    assert!(!error && rows.contains("ann@example.com"), "{rows}");
+    assert!(!rows.contains("masked"), "{rows}");
+}
+
 #[test]
 fn samples_rows_and_explains_statements() {
     let dir = tempfile::tempdir().unwrap();

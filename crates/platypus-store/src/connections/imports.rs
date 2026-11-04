@@ -282,6 +282,7 @@ fn keep_local(c: &mut SavedConnection, saved: &SavedConnection) {
         c.virtual_keys.clone_from(&saved.virtual_keys);
     }
     c.agent_access = saved.agent_access;
+    c.agent_values = saved.agent_values;
     c.restrictions.no_export |= saved.restrictions.no_export;
     c.restrictions.no_data_editing |= saved.restrictions.no_data_editing;
 }

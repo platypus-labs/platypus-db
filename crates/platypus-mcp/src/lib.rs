@@ -18,6 +18,7 @@ mod error;
 mod ident;
 mod library;
 pub mod link;
+mod masking;
 pub mod output;
 pub mod plan;
 pub mod policy;

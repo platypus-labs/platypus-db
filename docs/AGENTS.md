@@ -127,6 +127,24 @@ column is known by its name only: the names of Settings › Safety (emails, phon
 count, and so do the columns the user marked sensitive in the app; a column marked not
 sensitive is still masked where the rules name it, since the text does not say which table it
 is. When the app's catalog cannot be read, the tools fail rather than show the values.
+
+The results of `run_query` and `sample_rows`, and the editor, selection and result that
+`get_user_context` shares, mask sensitive columns too: their values read `••••••` and NULL stays
+NULL, as in the grid while it masks. The names and types of Settings › Safety count, and the
+user's marks; where a statement reads one table a mark on its column counts over the rules, a
+"not sensitive" mark included. The column's name is enough to follow it through the select list
+(`email AS contact`, `upper(email)`). A result says which columns it masked: `masked_columns`
+in JSON, a last line in text, and a note in `get_user_context`.
+
+Settings › Agents › Security can show the values on one connection. It is part of what the user
+approves, like the agent access: written in `connections.toml` by hand it changes nothing
+until the user accepts it in the app.
+
+Masking prevents accidents; it is not a wall. A subquery that renames the column, a second
+branch of a `UNION`, a `WHERE` that tests the value, or a document field below the top level of
+MongoDB still let a value through. For a real boundary, give the connection a database user
+without access to those columns.
+
 The history and the agents' call log never keep a password a statement sets
 (`CREATE ROLE … PASSWORD '…'`, `IDENTIFIED BY '…'`, `SET PASSWORD`): it is stored as
 `'********'`, in the statement, in a call's arguments and in the error, whether the app or an
@@ -203,7 +221,8 @@ platypus --connection "Local PG" query "select * from demo.orders" --max-rows 50
 ```
 
 A query prints `{"columns": [{"name", "type"}], "rows": [[...]], "row_count",
-"truncated", "truncated_by": "max_rows" | "max_bytes" | null, "values_cut", "elapsed_ms"}`,
+"truncated", "truncated_by": "max_rows" | "max_bytes" | null, "values_cut", "elapsed_ms",
+"masked_columns"}` (`masked_columns` only when there are any),
 with numbers and booleans as JSON values and everything else as text; a statement without
 rows prints `{"affected_rows", "elapsed_ms"}`. `-f table` prints the text table instead. A
 failure prints `{"error": {"kind", "message"}}` and exits with 1; `kind` is `not_found`,

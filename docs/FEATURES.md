@@ -692,7 +692,8 @@ through the MCP server.
   **data editing** (rows change only by SQL: no grid edits, imports or generated rows).
 - **Mask sensitive data** (Ctrl+Alt+M) shows the sensitive columns (named in Settings › Safety
   by name or type, or marked in the table's tab) as dots while the screen is shared; copies keep
-  the values.
+  the values. Agents read them masked on their own (`run_query`, `sample_rows`, what the user shares of a
+  tab), unless Settings › Agents › Security shows them on that connection.
 - With a master password, the app can **lock** after some idle minutes, closing the production
   connections; *Lock PlatypusDB* in the palette locks it at once.
 

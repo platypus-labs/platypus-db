@@ -83,6 +83,8 @@ export interface SavedConnection {
   /** What external agents (MCP, the CLI) may do; production and read-only connections
    *  never let them write. */
   agent_access?: AgentAccess;
+  /** What agents read of the values of sensitive columns; left out, masked. */
+  agent_values?: "masked" | "shown";
   /** JSON in a text column: indented in the value panel (the default), or as written. */
   text_json?: "format" | "plain";
   /** How the form enters the address, as it was left: the host fields or one URL. */
@@ -1105,7 +1107,8 @@ export interface SharedNotice {
 export type AgentPolicyChange =
   | { kind: "access"; id: string; name: string; from: AgentAccess; to: AgentAccess }
   | { kind: "confirm_writes" }
-  | { kind: "unfiltered" };
+  | { kind: "unfiltered" }
+  | { kind: "values_shown"; id: string; name: string };
 
 export interface OpenedShared {
   workspace: Workspace;

@@ -198,6 +198,19 @@ function AgentSecurity({
               }
             />
             {chosenBlocker && <p className="small agent-blocked">{blockerNote(chosenBlocker)}</p>}
+            <label className="check" title={t("Sensitive columns read as •••••• for agents unless this is on. It lowers accidents; only the database's own permissions stop a determined agent.")}>
+              <input
+                type="checkbox"
+                data-field="agent_values"
+                checked={chosen.agent_values === "shown"}
+                onChange={(e) =>
+                  api
+                    .saveConnection({ ...chosen, agent_values: e.target.checked ? "shown" : "masked" }, { action: "keep" })
+                    .then(onSaved, (err: unknown) => onError(toCommandError(err).message))
+                }
+              />
+              <span>{t("Show agents the values of sensitive columns")}</span>
+            </label>
           </aside>
         )}
       </div>

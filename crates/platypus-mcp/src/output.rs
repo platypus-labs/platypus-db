@@ -94,14 +94,21 @@ impl QueryResult {
                 self.elapsed,
                 &self.limits,
             ));
+            if !table.masked.is_empty() {
+                let _ = write!(
+                    out,
+                    "\nSensitive columns are masked: {}.",
+                    table.masked.join(", ")
+                );
+            }
             out
         };
         fit(cells.len(), self.limits.max_bytes, render, String::len)
     }
 
     /// The JSON document: `columns`, `rows`, `row_count`, `truncated`, `truncated_by`,
-    /// `values_cut` and `elapsed_ms`; or `affected_rows` and `elapsed_ms`. Within the byte
-    /// limit as serialized.
+    /// `values_cut`, `elapsed_ms` and, when there are any, `masked_columns`; or `affected_rows`
+    /// and `elapsed_ms`. Within the byte limit as serialized.
     #[must_use]
     pub fn json(&self) -> Value {
         let table = match &self.outcome {
@@ -122,7 +129,7 @@ impl QueryResult {
             .collect();
         let render = |shown: usize| {
             let cut = Self::cut(table, shown);
-            json!({
+            let mut doc = json!({
                 "columns": columns,
                 "row_count": shown,
                 "rows": rows[..shown],
@@ -133,7 +140,11 @@ impl QueryResult {
                 }),
                 "values_cut": table.values_cut,
                 "elapsed_ms": self.elapsed_ms(),
-            })
+            });
+            if !table.masked.is_empty() {
+                doc["masked_columns"] = json!(table.masked);
+            }
+            doc
         };
         fit(rows.len(), self.limits.max_bytes, render, |doc| {
             doc.to_string().len()
@@ -301,6 +312,7 @@ mod tests {
                     .collect(),
                 cut,
                 values_cut: false,
+                masked: Vec::new(),
             }),
             elapsed: Duration::from_millis(7),
             limits,

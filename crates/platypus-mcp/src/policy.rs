@@ -13,12 +13,14 @@
 //! agents the defaults at most (read-only, changes asked about, `WHERE` required) until the
 //! user accepts the current settings.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use platypus_core::Secret;
-use platypus_store::{AgentAccess, KeyringSecrets, SavedConnection, SecretStore, SettingsStore};
+use platypus_store::{
+    AgentAccess, AgentValues, KeyringSecrets, SavedConnection, SecretStore, SettingsStore,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -42,15 +44,20 @@ pub struct AgentPolicy {
     pub confirm_writes: bool,
     /// `UPDATE` or `DELETE` without `WHERE` and `TRUNCATE` run without asking.
     pub unfiltered_allowed: bool,
+    /// The connections that show agents the values of their sensitive columns; the others mask
+    /// them. Not in the files of older versions.
+    #[serde(default)]
+    pub values_shown: BTreeSet<Uuid>,
 }
 
 impl Default for AgentPolicy {
-    /// The app's defaults: a connection not listed gets read-only access at most.
+    /// The app's defaults: a connection not listed gets read-only access at most, and masks.
     fn default() -> Self {
         Self {
             connections: BTreeMap::new(),
             confirm_writes: true,
             unfiltered_allowed: false,
+            values_shown: BTreeSet::new(),
         }
     }
 }
@@ -70,6 +77,8 @@ pub enum Loosening {
     ConfirmWrites,
     /// Statements without `WHERE` no longer wait.
     Unfiltered,
+    /// A connection shows agents the values of its sensitive columns.
+    ValuesShown { id: Uuid, name: String },
 }
 
 impl AgentPolicy {
@@ -84,6 +93,11 @@ impl AgentPolicy {
             unfiltered_allowed: settings
                 .and_then(|s| s.get::<String>(UNFILTERED))
                 .is_some_and(|v| v == "off"),
+            values_shown: connections
+                .iter()
+                .filter(|c| c.agent_values == AgentValues::Shown)
+                .map(|c| c.id)
+                .collect(),
         }
     }
 
@@ -94,6 +108,17 @@ impl AgentPolicy {
             .get(&id)
             .copied()
             .unwrap_or(AgentAccess::ReadOnly)
+    }
+
+    /// What connection `id` does with the values of its sensitive columns: masks them unless
+    /// it is listed.
+    #[must_use]
+    pub fn values(&self, id: Uuid) -> AgentValues {
+        if self.values_shown.contains(&id) {
+            AgentValues::Shown
+        } else {
+            AgentValues::Masked
+        }
     }
 
     /// This policy, never looser than `approved`: the stricter of the two, item by item.
@@ -107,6 +132,11 @@ impl AgentPolicy {
                 .collect(),
             confirm_writes: self.confirm_writes || approved.confirm_writes,
             unfiltered_allowed: self.unfiltered_allowed && approved.unfiltered_allowed,
+            values_shown: self
+                .values_shown
+                .intersection(&approved.values_shown)
+                .copied()
+                .collect(),
         }
     }
 
@@ -135,6 +165,18 @@ impl AgentPolicy {
         if self.unfiltered_allowed && !approved.unfiltered_allowed {
             found.push(Loosening::Unfiltered);
         }
+        found.extend(
+            self.values_shown
+                .difference(&approved.values_shown)
+                .map(|id| Loosening::ValuesShown {
+                    id: *id,
+                    name: connections
+                        .iter()
+                        .find(|c| c.id == *id)
+                        .map(|c| c.name.clone())
+                        .unwrap_or_default(),
+                }),
+        );
         found
     }
 }
@@ -249,6 +291,60 @@ impl Seal {
         self.secrets
             .set(self.id, &Secret::new(digest(&bytes)))
             .map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod values_tests {
+    use super::*;
+
+    fn saved(values: AgentValues) -> SavedConnection {
+        let mut c = SavedConnection::new("c", platypus_core::DriverKind::Sqlite);
+        c.agent_values = values;
+        c
+    }
+
+    #[test]
+    fn showing_values_is_a_loosening_that_waits_for_the_user() {
+        let shown = saved(AgentValues::Shown);
+        let connections = std::slice::from_ref(&shown);
+        let current = AgentPolicy::current(connections, None);
+        assert_eq!(current.values(shown.id), AgentValues::Shown);
+
+        let approved = AgentPolicy::default();
+        assert_eq!(
+            current.loosenings(&approved, connections),
+            [Loosening::ValuesShown {
+                id: shown.id,
+                name: "c".to_owned(),
+            }]
+        );
+        let sealed = Sealed::Approved(approved);
+        for (seal, values) in [
+            (&sealed, AgentValues::Masked),
+            (&Sealed::Broken, AgentValues::Masked),
+            (&Sealed::Nothing, AgentValues::Shown),
+        ] {
+            assert_eq!(seal.honored(&current).values(shown.id), values);
+        }
+
+        let sealed = Sealed::Approved(current.clone());
+        assert_eq!(
+            sealed.honored(&current).values(shown.id),
+            AgentValues::Shown
+        );
+        assert!(sealed.loosenings(&current, connections).is_empty());
+
+        // Going back to masked needs no question, and applies at once.
+        let masked = AgentPolicy::current(&[saved(AgentValues::Masked)], None);
+        assert!(masked.loosenings(&current, &[]).is_empty());
+    }
+
+    #[test]
+    fn a_policy_file_of_an_older_version_masks() {
+        let old = r#"{"connections":{},"confirm_writes":true,"unfiltered_allowed":false}"#;
+        let policy: AgentPolicy = serde_json::from_str(old).unwrap();
+        assert!(policy.values_shown.is_empty());
     }
 }
 
