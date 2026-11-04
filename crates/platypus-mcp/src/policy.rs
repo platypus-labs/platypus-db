@@ -333,11 +333,11 @@ mod values_tests {
             sealed.honored(&current).values(shown.id),
             AgentValues::Shown
         );
-        assert!(sealed.loosenings(&current, connections).is_empty());
+        assert_eq!(sealed.loosenings(&current, connections), []);
 
         // Going back to masked needs no question, and applies at once.
         let masked = AgentPolicy::current(&[saved(AgentValues::Masked)], None);
-        assert!(masked.loosenings(&current, &[]).is_empty());
+        assert_eq!(masked.loosenings(&current, &[]), []);
     }
 
     #[test]

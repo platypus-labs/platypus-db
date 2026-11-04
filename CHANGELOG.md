@@ -11,6 +11,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Agents**: sensitive columns read `••••••` in `run_query`, `sample_rows` and `get_user_context`,
   in the CLI too, as the grid shows them while it masks. Settings › Agents › Security can show them
   on one connection.
+- **Agents**: the `get_er_diagram` tool draws a schema, or the tables near some tables, as a Mermaid
+  `erDiagram`.
 - Choosing a database for a new connection offers its driver at once, when it needs one that is
   not installed; Settings is not needed. Cancelling leaves the form as it is.
 

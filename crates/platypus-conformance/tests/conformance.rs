@@ -1031,6 +1031,26 @@ async fn typed_commit_modes(b: &Backend, conn: &dyn Connection, t: &str) {
     assert_eq!(count(b, conn).await, "2", "{}: committed", b.name);
 }
 
+/// Starts reading a query with many rows inside a transaction, and abandons it. sqld ends a
+/// transaction after 5 seconds and reads the whole series before the first row: with the other
+/// tests running, 100 000 rows can take longer.
+async fn abandon_a_result(b: &Backend, conn: &dyn Connection) {
+    let series = if b.name == "libsql" {
+        "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < 1000) \
+         SELECT id FROM s"
+    } else {
+        b.series_sql.as_str()
+    };
+    let options = ExecOptions {
+        batch_size: 100,
+        ..ExecOptions::default()
+    };
+    let ExecResult::Rows(mut stream) = conn.execute(series, &options).await.unwrap() else {
+        panic!("{}: expected rows", b.name);
+    };
+    stream.next().await.unwrap().unwrap();
+}
+
 #[tokio::test]
 async fn manual_commit_and_rollback() {
     let _serial = SERIAL.lock().await;
@@ -1070,23 +1090,7 @@ async fn manual_commit_and_rollback() {
 
         // A result abandoned inside a transaction must not abort it.
         affected(&b, conn, &insert(2)).await;
-        let options = ExecOptions {
-            batch_size: 100,
-            ..ExecOptions::default()
-        };
-        // sqld ends a transaction after 5 seconds, and it reads the whole series before the
-        // first row: with the other tests running, 100 000 rows can take longer.
-        let series = if b.name == "libsql" {
-            "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < 1000) \
-             SELECT id FROM s"
-        } else {
-            b.series_sql.as_str()
-        };
-        let ExecResult::Rows(mut stream) = conn.execute(series, &options).await.unwrap() else {
-            panic!("{}: expected rows", b.name);
-        };
-        stream.next().await.unwrap().unwrap();
-        drop(stream);
+        abandon_a_result(&b, conn).await;
         affected(&b, conn, &insert(3)).await;
         conn.commit().await.unwrap();
         assert!(!conn.transaction().open, "{}", b.name);

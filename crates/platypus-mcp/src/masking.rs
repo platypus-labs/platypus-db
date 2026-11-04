@@ -219,10 +219,11 @@ impl Agent {
         let ids: Vec<_> = saved.iter().map(|s| s.id).collect();
         let names = self.sensitivity()?.names(&ids)?;
         let dialect = saved.map_or(Dialect::Postgres, |s| Dialect::from(s.driver));
-        for text in [&mut context.editor, &mut context.selection] {
-            if let Some(sql) = text {
-                *sql = names.mask(sql, dialect);
-            }
+        for sql in [&mut context.editor, &mut context.selection]
+            .into_iter()
+            .flatten()
+        {
+            *sql = names.mask(sql, dialect);
         }
         Ok(context
             .result
