@@ -33,6 +33,21 @@ pub fn trim_url_tail(text: &str) -> &str {
     }
 }
 
+/// Whether `text` holds a URL with a password (`postgres://user:secret@host`): one the file of
+/// the connections would keep in clear.
+#[must_use]
+pub fn holds_url_password(text: &str) -> bool {
+    text.match_indices("://").any(|(at, separator)| {
+        let authority = text[at + separator.len()..]
+            .split(['/', '?', '#'])
+            .next()
+            .unwrap_or_default();
+        authority
+            .rsplit_once('@')
+            .is_some_and(|(login, _)| login.contains(':'))
+    })
+}
+
 /// SQL Server's `host,port` (SSMS, ADO.NET `Server=tcp:db,1433`) as the host and the port.
 fn split_sqlserver_host(host: &str) -> Option<(&str, u16)> {
     let (name, port) = host.trim().rsplit_once(',')?;
@@ -77,6 +92,28 @@ pub fn name_taken(saved: &[SavedConnection], connection: &SavedConnection) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_url_with_a_password_is_found_wherever_it_is() {
+        for text in [
+            "postgres://u:secret@db/app",
+            "postgres://localhost:5432/postgres://u:secret@db/app",
+            "see mysql://u:p@ss:word@db:3306",
+        ] {
+            assert!(holds_url_password(text), "{text}");
+        }
+        for text in [
+            "app",
+            "postgres://u@db/app",
+            "postgres://db:5432/app",
+            "s3://bucket/a:b@c",
+            "user:secret@db",
+            r"C:\data\app.db",
+            "",
+        ] {
+            assert!(!holds_url_password(text), "{text}");
+        }
+    }
 
     #[test]
     fn a_path_loses_its_quotes_and_blanks() {

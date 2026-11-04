@@ -67,6 +67,9 @@ async function newConnection(page, u) {
   await page.waitFor(`${dialog} !== null`, 15_000);
   await u.italian("new connection form", ["PostgreSQL", "localhost", "platypus"]);
   await connectBy(page, u, "url");
+  // The printed URL comes from the backend: arriving after the select-all, it would stay in front
+  // of the typed one.
+  await page.waitFor(`document.querySelector('.connection-dialog [data-field="connection_url"]')?.value !== ''`);
   await u.type(`document.querySelector('.connection-dialog [data-field="connection_url"]')`, URL);
   // Once read, the URL loses its password, which moves to the Password field. (The typed URL
   // already ends as the read one: waiting for that ending raced the reading.)

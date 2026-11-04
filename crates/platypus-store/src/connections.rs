@@ -941,13 +941,25 @@ impl ConnectionStore {
         }
     }
 
-    /// What `save` refuses: no name, a host that holds a login or other keys (its password
-    /// would be saved in clear), half a client certificate, an unknown network profile.
+    /// What `save` refuses: no name, a host that holds a login or other keys or another field
+    /// with a URL and its password (the password would be saved in clear), half a client
+    /// certificate, an unknown network profile.
     fn check_connection(&self, connection: &SavedConnection) -> Result<()> {
         if connection.name.trim().is_empty() {
             return Err(StoreError::Invalid(
                 "connection name is required".to_owned(),
             ));
+        }
+        for (field, text) in [
+            ("name", &connection.name),
+            ("database", &connection.database),
+            ("user", &connection.user),
+        ] {
+            if crate::holds_url_password(text) {
+                return Err(StoreError::Invalid(format!(
+                    "the {field} holds a URL with its password; put the password in its own field"
+                )));
+            }
         }
         // A variable of the host (`${env:DB_HOST}`) stands for a plain name here, and is
         // checked again once it is read, when the connection opens.
@@ -1247,6 +1259,31 @@ mod tests {
             placement: BTreeMap::new(),
             shared: None,
         }
+    }
+
+    #[test]
+    fn a_url_with_its_password_is_not_saved_in_any_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _) = store(dir.path());
+        let url = "postgres://u:s3cret@db:5432/app";
+        let set: [fn(&mut SavedConnection, &str); 3] = [
+            |c, url| url.clone_into(&mut c.name),
+            |c, url| url.clone_into(&mut c.database),
+            |c, url| url.clone_into(&mut c.user),
+        ];
+        for set in set {
+            let mut conn = sample();
+            set(&mut conn, url);
+            let err = s.save(conn, PasswordUpdate::Keep).unwrap_err().to_string();
+            assert!(err.contains("password"), "{err}");
+            assert!(!err.contains("s3cret"), "{err}");
+        }
+        let text = std::fs::read_to_string(dir.path().join("connections.toml")).unwrap_or_default();
+        assert!(!text.contains("s3cret"), "{text}");
+
+        let mut conn = sample();
+        "postgres://u@db:5432/app".clone_into(&mut conn.database);
+        s.save(conn, PasswordUpdate::Keep).unwrap();
     }
 
     #[test]
