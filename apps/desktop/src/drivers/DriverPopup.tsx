@@ -1,5 +1,7 @@
 import { createElement, useEffect, useState } from "react";
-import { api, type DriverKind, type DriverStatus, VENDOR_DRIVERS, toCommandError } from "../api";
+import { api, type DriverKind, type DriverStatus, DOWNLOADED_DRIVERS, VENDOR_DRIVERS, toCommandError } from "../api";
+import { driverToDownload } from "./missingDriver";
+import { usePopupFocus } from "./popupFocus";
 import { DRIVER_NAMES } from "./names";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
@@ -7,17 +9,20 @@ import { VendorPopup } from "./VendorDrivers";
 
 interface Props {
   driver: DriverKind;
+  /** Asked before any connection exists (the picker), so the button does not say "connect". */
+  beforeConnecting?: boolean;
   onDone: (installed: boolean) => void;
 }
 
 const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
 
 /** Asks to download the driver a database needs, then downloads it with its progress. */
-function DriverPopup({ driver, onDone }: Props) {
+function DriverPopup({ driver, beforeConnecting, onDone }: Props) {
   const [status, setStatus] = useState<DriverStatus | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const name = DRIVER_NAMES[driver];
+  const focus = usePopupFocus();
 
   useEffect(() => {
     api.driverStatus(driver).then(setStatus, (e: unknown) => setError(toCommandError(e).message));
@@ -41,7 +46,7 @@ function DriverPopup({ driver, onDone }: Props) {
   const dismiss = () => !progress && onDone(false);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && dismiss()}>
-      <div className="modal driver-popup" onKeyDown={(e) => e.key === "Escape" && dismiss()}>
+      <div ref={focus} tabIndex={-1} className="modal driver-popup" onKeyDown={(e) => e.key === "Escape" && dismiss()}>
         {progress ? (
           <>
             <h2>{t("Downloading the {name} driver…", { name })}</h2>
@@ -73,13 +78,13 @@ function DriverPopup({ driver, onDone }: Props) {
             {status?.error && <div className="notice error small">{status.error}</div>}
             {error && <div className="notice error small">{error}</div>}
             <div className="actions">
-              <span className="muted small">{t("Later: Settings › Drivers")}</span>
+              <span className="muted small">{t("You can also do it later")}</span>
               <span className="spacer" />
               <button type="button" onClick={() => onDone(false)}>
                 {t("Cancel")}
               </button>
               <button type="button" className="primary" disabled={!pkg} onClick={() => void download()}>
-                {t(error ? "Try again" : "Download and connect")}
+                {t(error ? "Try again" : beforeConnecting ? "Download" : "Download and connect")}
               </button>
             </div>
           </>
@@ -93,14 +98,15 @@ function DriverPopup({ driver, onDone }: Props) {
 const asking = new Map<DriverKind, Promise<boolean>>();
 
 /** Shows the popup for `driver` (a vendor's client for Oracle and Db2); resolves `true` once
- *  its driver is installed. */
-export function askDriver(driver: DriverKind): Promise<boolean> {
+ *  its driver is installed. `beforeConnecting`: no connection is being made yet. */
+export function askDriver(driver: DriverKind, options: { beforeConnecting?: boolean } = {}): Promise<boolean> {
   const open = asking.get(driver);
   if (open) return open;
   const answer = new Promise<boolean>((resolve) =>
     workbench().openDialog((close) =>
       createElement(VENDOR_DRIVERS.includes(driver) ? VendorPopup : DriverPopup, {
         driver,
+        beforeConnecting: options.beforeConnecting,
         onDone: (installed: boolean) => {
           close();
           resolve(installed);
@@ -110,6 +116,18 @@ export function askDriver(driver: DriverKind): Promise<boolean> {
   ).finally(() => asking.delete(driver));
   asking.set(driver, answer);
   return answer;
+}
+
+/** A database was picked for a new connection: offers its driver at once when it needs one
+ *  that is not installed. The form stays usable either way; the answer changes nothing. */
+export async function offerDriver(driver: DriverKind): Promise<void> {
+  const missing = await driverToDownload(driver, {
+    downloaded: DOWNLOADED_DRIVERS,
+    vendor: VENDOR_DRIVERS,
+    listDrivers: api.listDrivers,
+    vendorStatus: api.vendorDriverStatus,
+  });
+  if (missing) await askDriver(driver, { beforeConnecting: true });
 }
 
 /** Runs `run`; when it fails for want of a driver, offers to download it and runs it again. */

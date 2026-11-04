@@ -960,7 +960,7 @@ const zh: Record<string, string> = {
   "License: {license} · from the dbc driver registry (Columnar)": "许可证：{license} · 来自 dbc 驱动注册表（Columnar）",
   "checked with SHA-256": "已通过 SHA-256 校验",
   "Looking up the driver…": "正在查找驱动…",
-  "Later: Settings › Drivers": "稍后：设置 › 驱动",
+  "You can also do it later": "你也可以稍后再做",
   "Try again": "重试",
   "Download and connect": "下载并连接",
   "Snowflake, BigQuery, Databricks and Trino connect through ADBC drivers, downloaded the first time a connection needs one.": "Snowflake、BigQuery、Databricks 和 Trino 通过 ADBC 驱动连接，驱动会在连接首次需要时下载。",

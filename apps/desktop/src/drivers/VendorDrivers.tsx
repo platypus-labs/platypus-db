@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type DriverKind, type OdbcSystem, type VendorStatus, toCommandError, VENDOR_DRIVERS } from "../api";
 import { askDriver } from "./DriverPopup";
 import { DRIVER_NAMES } from "./names";
+import { usePopupFocus } from "./popupFocus";
 import { t, msg, tNodes } from "../i18n";
 
 const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
@@ -38,18 +39,21 @@ const ELSEWHERE: Partial<Record<DriverKind, string>> = {
 
 interface Props {
   driver: DriverKind;
+  /** Asked before any connection exists (the picker), so the button does not say "connect". */
+  beforeConnecting?: boolean;
   onDone: (installed: boolean) => void;
 }
 
 /** Asks to install the vendor's client a database needs, then installs it: the download with
  *  its progress, then, for an ODBC driver, its registration, which Windows asks
  *  administrator rights for. */
-export function VendorPopup({ driver, onDone }: Props) {
+export function VendorPopup({ driver, beforeConnecting, onDone }: Props) {
   const [status, setStatus] = useState<VendorStatus | null>(null);
   const [phase, setPhase] = useState<"ask" | "download" | "register">("ask");
   const [progress, setProgress] = useState<{ done: number; total: number | null }>({ done: 0, total: null });
   const [error, setError] = useState<string | null>(null);
   const name = DRIVER_NAMES[driver];
+  const focus = usePopupFocus();
 
   useEffect(() => {
     api.vendorDriverStatus(driver).then(setStatus, (e: unknown) => setError(toCommandError(e).message));
@@ -77,6 +81,8 @@ export function VendorPopup({ driver, onDone }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div
+        ref={focus}
+        tabIndex={-1}
         className="modal driver-popup"
         data-vendor={driver}
         onKeyDown={(e) => e.key === "Escape" && close()}
@@ -135,13 +141,13 @@ export function VendorPopup({ driver, onDone }: Props) {
             {!status && !error && <p className="muted small">{t("Looking up the client…")}</p>}
             {error && <div className="notice error small">{error}</div>}
             <div className="actions">
-              <span className="muted small">{t("Later: Settings › Drivers")}</span>
+              <span className="muted small">{t("You can also do it later")}</span>
               <span className="spacer" />
               <button type="button" onClick={() => onDone(false)}>
                 {t("Cancel")}
               </button>
               <button type="button" className="primary" disabled={!pkg} onClick={() => void install()}>
-                {t(error ? "Try again" : pkg?.register ? "Download and install" : "Download and connect")}
+                {t(error ? "Try again" : pkg?.register ? "Download and install" : beforeConnecting ? "Download" : "Download and connect")}
               </button>
             </div>
           </>

@@ -32,6 +32,7 @@ import { hasSessionTimeZone, withoutUnusableInit } from "../connectionEdit";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
 import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
+import { offerDriver } from "../drivers/DriverPopup";
 import { Icon } from "../ui/Icon";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
@@ -278,6 +279,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   >(null);
 
   useEffect(() => {
+    // Opened for a database already chosen: no picker to offer its driver.
+    if (!existing && driverChosen) void offerDriver(initial.driver);
     api.listNetworkProfiles().then(setProfiles, (e) => setResult({ ok: false, message: toCommandError(e).message }));
     // Not knowing, the placeholder says nothing is saved: the field then asks for it.
     if (existing && initial.save_password) api.connectionHasPassword(initial.id).then(setPasswordSaved, () => setPasswordSaved(false));
@@ -636,6 +639,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           setConn((c) => ({ ...c, ...preset, options: { ...c.options, ...preset.options } }));
           setTile(label);
           setPicking(false);
+          void offerDriver(driver);
         }}
         onClose={onClose}
       />

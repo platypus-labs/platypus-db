@@ -1,6 +1,6 @@
 //! JDBC URLs, as Java tools (DBeaver, DataGrip, …) keep them: PostgreSQL, MySQL/MariaDB,
 //! SQL Server (Microsoft's driver, jTDS and the old `jdbc:microsoft:` one), Oracle thin and
-//! OCI, ClickHouse, SQLite and DuckDB.
+//! OCI, IBM Db2, ClickHouse, SQLite and DuckDB.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -93,6 +93,9 @@ impl JdbcUrl {
             if let Some(r) = rest.strip_prefix(prefix) {
                 return Ok(Self::oracle(r.strip_prefix('@').unwrap_or(r)));
             }
+        }
+        if let Some(r) = rest.strip_prefix("db2:") {
+            return Ok(Self::db2(r));
         }
         for (prefix, driver) in [
             ("postgresql:", DriverKind::Postgres),
@@ -285,6 +288,34 @@ impl JdbcUrl {
         let trust = flag("trustservercertificate") == Some(true);
         if let Some(mode) = sqlserver_ssl(encrypt, trust) {
             jdbc.config.ssl_mode = mode;
+        }
+        jdbc
+    }
+
+    /// `//host[:port]/database[:key=value;…]`, or a catalog alias (`ALIAS[:key=value;…]`)
+    /// with no host, which the client resolves. Each property ends in `;`. `sslConnection=true`
+    /// asks for TLS.
+    fn db2(rest: &str) -> Self {
+        let mut jdbc = Self::new(DriverKind::Db2);
+        let (address, database) = match rest.strip_prefix("//") {
+            Some(r) => r.split_once('/').unwrap_or((r, "")),
+            None => ("", rest),
+        };
+        let (database, props) = database.split_once(':').unwrap_or((database, ""));
+        jdbc.properties = sqlserver_properties(props);
+        if address.is_empty() {
+            jdbc.config.host.clear();
+            jdbc.config.port = None;
+        } else {
+            jdbc.set_address(address);
+        }
+        database.trim().clone_into(&mut jdbc.config.database);
+        jdbc.common_properties();
+        if jdbc
+            .property(&["sslconnection"])
+            .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+        {
+            jdbc.config.ssl_mode = SslMode::Require;
         }
         jdbc
     }
@@ -607,15 +638,57 @@ mod tests {
     }
 
     #[test]
+    fn db2_urls() {
+        use DriverKind::Db2;
+        let plain = parse("jdbc:db2://db2host:50001/SampleDb");
+        assert_eq!(at(&plain), (Db2, "db2host", Some(50001), "SampleDb"));
+        assert!(plain.port_given);
+        let no_port = parse("jdbc:db2://db2host/SAMPLE");
+        assert_eq!(at(&no_port), (Db2, "db2host", Some(50000), "SAMPLE"));
+        assert!(!no_port.port_given);
+        let props = parse(
+            "jdbc:db2://h:50000/Sample:user=me;password=pw;sslConnection=true;currentSchema=APP;",
+        );
+        assert_eq!(at(&props), (Db2, "h", Some(50000), "Sample"));
+        assert_eq!(props.config.user, "me");
+        assert_eq!(
+            props.config.password.as_ref().map(Secret::expose),
+            Some("pw")
+        );
+        assert_eq!(props.config.ssl_mode, SslMode::Require);
+        assert_eq!(props.properties["currentschema"], "APP");
+        assert_eq!(
+            parse("jdbc:db2://h/D:sslConnection=false;").config.ssl_mode,
+            SslMode::Prefer
+        );
+        assert_eq!(
+            parse("jdbc:db2://h/D:sslConnection=TRUE;").config.ssl_mode,
+            SslMode::Require
+        );
+        let alias = parse("jdbc:db2:PRODDB");
+        assert_eq!(at(&alias), (Db2, "", None, "PRODDB"));
+        assert!(!alias.port_given);
+        let alias_props = parse("jdbc:db2:PRODDB:user=me;");
+        assert_eq!(at(&alias_props).3, "PRODDB");
+        assert_eq!(alias_props.config.user, "me");
+        assert_eq!(at(&parse("jdbc:db2://[::1]:50000/x")).1, "::1");
+        // Not a host: an error that does not repeat the password.
+        let err = JdbcUrl::parse("jdbc:db2://h port=1 password=hunter2/x").unwrap_err();
+        assert!(!err.to_string().contains("hunter2"), "{err}");
+        let debug = format!("{:?}", parse("jdbc:db2://h/x:password=hunter2;"));
+        assert!(!debug.contains("hunter2"), "{debug}");
+    }
+
+    #[test]
     fn embedded_and_unsupported_urls() {
         assert_eq!(
             at(&parse("jdbc:sqlite:C:/data/app.db")),
             (DriverKind::Sqlite, "", None, "C:/data/app.db")
         );
         assert_eq!(at(&parse("jdbc:duckdb:")).3, ":memory:");
-        let err = JdbcUrl::parse("jdbc:db2://h:50000/x;password=secret").unwrap_err();
+        let err = JdbcUrl::parse("jdbc:informix-sqli://h:9088/x;password=secret").unwrap_err();
         assert!(
-            err.to_string().contains("jdbc:db2:") && !err.to_string().contains("secret"),
+            err.to_string().contains("jdbc:informix-sqli:") && !err.to_string().contains("secret"),
             "{err}"
         );
         let err = JdbcUrl::parse("jdbc:foo;password=secret").unwrap_err();

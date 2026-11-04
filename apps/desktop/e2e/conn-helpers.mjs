@@ -44,14 +44,38 @@ export async function openPicker(page) {
   await page.waitFor(`${picker} !== null`);
 }
 
+/** The popup that offers to download a driver. */
+export const driverPopup = `document.querySelector('.driver-popup')`;
+/** The tiles whose database needs a driver the profile may not have: choosing one opens the popup. */
+const TILES_WITH_DRIVER = ["Oracle", "IBM Db2", "DuckDB", "Snowflake", "BigQuery", "Databricks", "Trino"];
+
+/** Waits for the driver popup a tile may open over the form (it appears once the app has
+ *  looked for the driver) and closes it with Cancel, so the scenario goes on with the form.
+ *  Nothing happens for a tile whose driver is installed. */
+export async function dismissDriverPopup(page, label) {
+  if (!TILES_WITH_DRIVER.includes(label)) return;
+  try {
+    await page.waitFor(`${driverPopup} !== null`, 3000);
+  } catch {
+    return;
+  }
+  await page.eval(`${driverPopup}.querySelector('.actions button:not(.primary)').click()`);
+  await page.waitFor(`${driverPopup} === null`);
+}
+
+/** The picker's tile `label`. */
+export const driverTile = (label) =>
+  `[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)})`;
+
 /** Opens the form of a new connection for the picker's tile `label`. */
 export async function newConnection(page, label) {
   await openPicker(page);
-  const tile = `[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)})`;
+  const tile = driverTile(label);
   // The picker fills in while the drivers are read: wait for the tile.
   await page.waitFor(`${tile} !== undefined`, 15_000);
   await page.eval(`${tile}.click()`);
   await page.waitFor(`${dialog} !== null`);
+  await dismissDriverPopup(page, label);
 }
 
 /** The picker's tile for the database a connection URL is for. */
@@ -79,6 +103,7 @@ export async function newFromUrl(page, url) {
   if (await page.eval(`${picker} === null`)) await openPicker(page);
   await page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(tileOf(url))}).click()`);
   await page.waitFor(`${dialog} !== null`);
+  await dismissDriverPopup(page, tileOf(url));
   const byUrl = `document.querySelector('.connection-dialog [data-field="connect_by_url"]')`;
   if (await page.eval(`${byUrl} === null`)) {
     await page.eval(paste(formField("Name"), url));

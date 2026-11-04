@@ -290,7 +290,7 @@ mod tests {
             "",
             "hello",
             "ftp://u:hunter2@h/x",
-            "jdbc:db2://h;password=hunter2",
+            "jdbc:informix-sqli://h;password=hunter2",
         ] {
             let err = ConnectionConfig::parse_any(bad).unwrap_err().to_string();
             assert!(!err.contains("hunter2"), "{err}");

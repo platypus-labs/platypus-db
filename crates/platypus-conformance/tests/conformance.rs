@@ -1074,8 +1074,15 @@ async fn manual_commit_and_rollback() {
             batch_size: 100,
             ..ExecOptions::default()
         };
-        let ExecResult::Rows(mut stream) = conn.execute(&b.series_sql, &options).await.unwrap()
-        else {
+        // sqld ends a transaction after 5 seconds, and it reads the whole series before the
+        // first row: with the other tests running, 100 000 rows can take longer.
+        let series = if b.name == "libsql" {
+            "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < 1000) \
+             SELECT id FROM s"
+        } else {
+            b.series_sql.as_str()
+        };
+        let ExecResult::Rows(mut stream) = conn.execute(series, &options).await.unwrap() else {
             panic!("{}: expected rows", b.name);
         };
         stream.next().await.unwrap().unwrap();

@@ -34,7 +34,10 @@ the version.
 The ADBC drivers come from the [dbc driver registry](https://docs.columnar.tech/dbc/) (Columnar):
 the first connection that needs one asks to download it, checks its SHA-256 and keeps it with
 the app's data. Oracle Instant Client and IBM's ODBC driver come from Oracle's and IBM's sites
-in the same way, with their license shown first. *Settings › Drivers* lists and removes them,
+in the same way, with their license shown first. The download is offered as soon as the database
+is chosen for a new connection, over the form (the app reads only what is on this machine, so it
+works offline); *Cancel* leaves the form usable, and the offer returns at *Test connection* or at
+the first opening. *Settings › Drivers* lists and removes them,
 and shows the ODBC drivers and data sources of the system. A downloaded ADBC driver can be
 updated from there (the app looks for new versions once a day, or on *Check for updates*;
 *Driver updates* in Settings can install them by itself), and *Versions…* installs or goes
