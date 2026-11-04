@@ -775,6 +775,12 @@ through the MCP server.
   environment variables to a server of its choosing. An ODBC driver given as a library path,
   and `FILEDSN`, `SAVEFILE` or network paths in a connection string, are left out. A shared
   query's link or `.platypus` file prefills a new connection with its references held too.
+- **Limits for agents**, per connection in Settings › Agents › Security: the most rows, bytes and
+  seconds a result or statement may take, calls per minute, and a threshold on the rows or cost a
+  read's plan expects, above which the read is refused (with the plan) before it runs. They only
+  tighten the fixed caps (10,000 rows, 1 MB, 300 s); an agent that asks for more gets the
+  connection's maximum and the result says so. Raising or removing one by editing the file waits
+  for your yes, like the access itself. See [AGENTS.md](AGENTS.md).
 - **Agent settings changed outside the app**: when `connections.toml` or `settings.toml` is
   edited to give agents more (agent access, changes run without asking, `UPDATE` or `DELETE`
   without `WHERE`), agents keep what you allowed and the app asks you, when it starts or gets

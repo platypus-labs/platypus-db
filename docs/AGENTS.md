@@ -152,6 +152,34 @@ Settings › Agents › Security can show the values on one connection. It is pa
 approves, like the agent access: written in `connections.toml` by hand it changes nothing
 until the user accepts it in the app.
 
+### Limits per connection
+
+Settings › Agents › Security also holds the limits of a connection. Each is optional (empty
+means none) and only tightens the fixed caps, which no setting can exceed (10,000 rows, 1 MB, 300
+seconds): `max_rows`, `max_bytes` and `timeout_seconds` lower what `run_query`, `sample_rows` and
+`explain` accept, so an agent that asks for more gets the connection's maximum, and a default
+above the maximum is lowered to it. When the agent asked for more, the result says so (a line in
+text, `notes` in JSON). They are part of what the user approves, like the access: raising or
+removing one in `connections.toml` by hand changes nothing until the user accepts it in the app,
+while lowering one applies at once. The fields live in the `[connections.agent_limits]` table
+of the connection. They are not carried in a project export or a shared project, and an import
+starts without them.
+
+`calls_per_minute` counts `run_query`, `sample_rows` and `explain` on the connection over a
+sliding minute. Past it a call is refused with the seconds to wait. Metadata tools are not
+counted. Each server process counts on its own: an agent that starts several (several windows
+or clients) gets the limit for each, and the CLI's calls are a process apiece.
+
+`max_estimated_rows` and `max_plan_cost` are the cost guard. Before a read (`run_query`,
+`sample_rows`) on a database that has query plans, PlatypusDB asks for the estimated plan without
+running the statement, and refuses the read when the root's estimated rows or cost, or the
+largest of the steps' when the root has none, are over a threshold. The error names the limit
+and carries the plan, so the agent can narrow the query; the values compared with sensitive
+columns in it are masked. Where there is no estimate (SQLite gives none), the database has no
+plans, or the plan cannot be had, the read goes ahead and the result says the guard could not
+check. Changes are not checked here: they already ask the user. The cost unit is the database's
+own, so it is not comparable between PostgreSQL and MySQL.
+
 Masking prevents accidents; it is not a wall. A subquery that renames the column, a second
 branch of a `UNION`, a `WHERE` that tests the value, or a document field below the top level of
 MongoDB still let a value through. For a real boundary, give the connection a database user
