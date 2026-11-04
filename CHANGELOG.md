@@ -6,6 +6,30 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-04
+
+### Added
+
+- **Connections**: a PostgreSQL or SQL Server connection that names its database shows only that
+  one in the navigator, as in DBeaver; *Show all databases*, beside the Database field, lists
+  the server's other databases too (imported from DBeaver's PostgreSQL setting).
+- Shorter menus: a connection's, a schema's and the SQL editor's actions are grouped in
+  submenus (*New*, *Open*, *Tools*, *Export*; *Data*, *Analyze*; *Run*, *Explain*).
+- A field left empty or out of range shows the app's own message under it, in the interface's
+  language, instead of the browser's bubble.
+
+### Fixed
+
+- **Ctrl+Enter** runs only the statement under the cursor when statements are apart by a blank
+  line and have no `;`, instead of the whole script.
+- A new SQL editor, or one showing a DDL, has no empty results panel: it appears with the first
+  run.
+- The first color swatch means no ring around the connection's logo, whatever its type.
+- Scrolling the Settings no longer lags: dialogs are solid instead of blurred glass.
+- Check boxes keep their size beside a long label and show the pointer; the Projects help of
+  the connection dialog sits beside its title.
+- The welcome screen no longer says to double-click a connection before the saved ones are read.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added
@@ -208,7 +232,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.0...v0.2.1
