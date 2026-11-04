@@ -283,6 +283,7 @@ fn keep_local(c: &mut SavedConnection, saved: &SavedConnection) {
     }
     c.agent_access = saved.agent_access;
     c.agent_values = saved.agent_values;
+    c.agent_limits = saved.agent_limits;
     c.restrictions.no_export |= saved.restrictions.no_export;
     c.restrictions.no_data_editing |= saved.restrictions.no_data_editing;
 }

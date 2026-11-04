@@ -5779,6 +5779,131 @@ async fn agents_read_the_catalog_notes_of_the_app() {
     }
 }
 
+/// Writes `limits` as the `[connections.agent_limits]` table of the connection in `dir`.
+fn set_agent_limits(dir: &std::path::Path, limits: &str) {
+    use std::fmt::Write as _;
+
+    let file = dir.join("connections.toml");
+    let mut toml = std::fs::read_to_string(&file).unwrap();
+    if let Some(at) = toml.find(
+        "
+[connections.agent_limits]",
+    ) {
+        toml.truncate(at);
+    }
+    write!(
+        toml,
+        "
+[connections.agent_limits]
+{limits}
+"
+    )
+    .unwrap();
+    std::fs::write(file, toml).unwrap();
+}
+
+/// A read through a new agent over the profile in `dir`.
+async fn agent_read(
+    dir: &std::path::Path,
+    sql: String,
+) -> platypus_mcp::Result<platypus_mcp::QueryResult> {
+    use platypus_mcp::{Agent, Profile, QueryArgs};
+
+    let args = QueryArgs {
+        connection: "Db".to_owned(),
+        sql,
+        max_rows: None,
+        max_bytes: None,
+        timeout_seconds: None,
+        format: None,
+    };
+    Agent::new(Profile::at(dir)).run_query(&args, "test").await
+}
+
+/// The cost guard refuses a read whose estimated plan is over a limit, on the databases whose
+/// plan carries an estimate (PostgreSQL, MySQL), and lets it run, with a note, where it does
+/// not (SQLite).
+#[tokio::test]
+async fn agents_cost_guard_reads_the_plan() {
+    use platypus_mcp::AgentError;
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        let estimates = match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+                true
+            }
+            DriverKind::MySql => {
+                save_agent_connection(dir.path(), &b, "mysql");
+                true
+            }
+            DriverKind::Sqlite => {
+                std::fs::write(
+                    dir.path().join("connections.toml"),
+                    format!(
+                        "version = 4
+
+[[connections]]
+id = \"00000000-0000-4000-8000-000000000001\"
+                         name = \"Db\"
+driver = \"sqlite\"
+database = '{}'
+",
+                        b.config.database
+                    ),
+                )
+                .unwrap();
+                false
+            }
+            _ => continue,
+        };
+        let s = &b.schema;
+        let cross = format!("SELECT * FROM {s}.orders a, {s}.orders b, {s}.orders c");
+
+        set_agent_limits(dir.path(), "max_estimated_rows = 1");
+        let result = agent_read(dir.path(), cross.clone()).await;
+        if estimates {
+            let Err(AgentError::Denied(refusal)) = result else {
+                panic!("{}: a cross join over one row ran: {result:?}", b.name);
+            };
+            assert!(
+                refusal.contains("max_estimated_rows of 1"),
+                "{}: {refusal}",
+                b.name
+            );
+            assert!(refusal.contains("orders"), "{}: no plan: {refusal}", b.name);
+        } else {
+            let text = result.unwrap_or_else(|e| panic!("{}: {e}", b.name)).text();
+            assert!(text.contains("could not be checked"), "{}: {text}", b.name);
+        }
+
+        // A limit the plan stays under lets the read through.
+        set_agent_limits(
+            dir.path(),
+            "max_estimated_rows = 1000000000
+max_plan_cost = 1000000000",
+        );
+        let text = agent_read(dir.path(), cross)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name))
+            .text();
+        assert!(!text.contains("lowered"), "{}: {text}", b.name);
+
+        // A change is not looked at by the guard.
+        set_agent_limits(dir.path(), "max_estimated_rows = 1");
+        let write = agent_read(dir.path(), format!("DELETE FROM {s}.orders WHERE 1 = 0")).await;
+        if let Err(e) = write {
+            assert!(
+                !e.to_string().contains("max_estimated_rows"),
+                "{}: {e}",
+                b.name
+            );
+        }
+    }
+}
+
 /// The first cell of what `sql` returns through `agent` (`None` for a statement without rows).
 async fn first_cell(agent: &platypus_mcp::Agent, name: &str, sql: &str) -> Option<String> {
     use platypus_mcp::QueryArgs;

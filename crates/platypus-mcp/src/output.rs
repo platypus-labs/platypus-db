@@ -28,6 +28,9 @@ pub struct QueryResult {
     pub outcome: Outcome,
     pub elapsed: Duration,
     pub limits: Limits,
+    /// What the connection's agent limits did to the call: a request lowered, a check that
+    /// could not be made.
+    pub notes: Vec<String>,
 }
 
 impl QueryResult {
@@ -59,7 +62,11 @@ impl QueryResult {
     pub fn text(&self) -> String {
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
-                return format!("{rows} {} affected.", rows_word(*rows == 1));
+                let mut out = format!("{rows} {} affected.", rows_word(*rows == 1));
+                for note in &self.notes {
+                    let _ = write!(out, "\n{note}");
+                }
+                return out;
             }
             Outcome::Rows(table) => table,
         };
@@ -101,6 +108,9 @@ impl QueryResult {
                     table.masked.join(", ")
                 );
             }
+            for note in &self.notes {
+                let _ = write!(out, "\n{note}");
+            }
             out
         };
         fit(cells.len(), self.limits.max_bytes, render, String::len)
@@ -113,7 +123,11 @@ impl QueryResult {
     pub fn json(&self) -> Value {
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
-                return json!({ "affected_rows": rows, "elapsed_ms": self.elapsed_ms() });
+                let mut doc = json!({ "affected_rows": rows, "elapsed_ms": self.elapsed_ms() });
+                if !self.notes.is_empty() {
+                    doc["notes"] = json!(self.notes);
+                }
+                return doc;
             }
             Outcome::Rows(table) => table,
         };
@@ -143,6 +157,9 @@ impl QueryResult {
             });
             if !table.masked.is_empty() {
                 doc["masked_columns"] = json!(table.masked);
+            }
+            if !self.notes.is_empty() {
+                doc["notes"] = json!(self.notes);
             }
             doc
         };
@@ -316,6 +333,7 @@ mod tests {
             }),
             elapsed: Duration::from_millis(7),
             limits,
+            notes: Vec::new(),
         }
     }
 
@@ -332,6 +350,7 @@ mod tests {
             outcome: Outcome::Affected(1),
             elapsed: Duration::ZERO,
             limits,
+            notes: Vec::new(),
         };
         assert_eq!(affected.text(), "1 row affected.");
     }
@@ -390,6 +409,7 @@ mod tests {
             outcome: Outcome::Affected(3),
             elapsed: Duration::ZERO,
             limits: Limits::default(),
+            notes: Vec::new(),
         };
         assert_eq!(
             affected.json(),
@@ -413,5 +433,21 @@ mod tests {
         assert_eq!(number("2.5"), json!(2.5));
         assert_eq!(number("1e300"), json!(1e300));
         assert_eq!(number("not a number"), json!("not a number"));
+    }
+
+    #[test]
+    fn notes_close_the_text_and_join_the_json() {
+        let mut result = table(2, None, Limits::default());
+        result.notes = vec!["max_rows was lowered to 2.".to_owned()];
+        assert!(result.text().ends_with(
+            "
+max_rows was lowered to 2."
+        ));
+        assert_eq!(
+            result.json()["notes"],
+            json!(["max_rows was lowered to 2."])
+        );
+        result.notes.clear();
+        assert!(result.json().get("notes").is_none());
     }
 }
