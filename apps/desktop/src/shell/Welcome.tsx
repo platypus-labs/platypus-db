@@ -14,8 +14,9 @@ import { openSharedProject } from "../projects/shared";
 import { SHARE_EXTENSION } from "../share/shareQuery";
 
 interface Props {
-  /** No connection saved yet: the first start. */
-  empty: boolean;
+  /** No connection saved yet (the first start); `null` while the list loads, when neither line
+   *  is shown yet. */
+  empty: boolean | null;
   version: string;
   onNew: () => void;
   onImport: () => void;
@@ -123,11 +124,13 @@ export function Welcome({ empty, version, onNew, onImport, onExport, onOpenFile,
           <img className="banner banner-on-light" src={bannerOnLight} alt="PlatypusDB" />
           <img className="banner banner-on-dark" src={bannerOnDark} alt="PlatypusDB" />
         </h1>
-        <p className="welcome-lead">
-          {empty
-            ? t("A SQL client for your databases and data files. Add a connection to get started.")
-            : t("Double-click a connection to open a SQL editor, or expand it to browse.")}
-        </p>
+        {empty !== null && (
+          <p className="welcome-lead">
+            {empty
+              ? t("A SQL client for your databases and data files. Add a connection to get started.")
+              : t("Double-click a connection to open a SQL editor, or expand it to browse.")}
+          </p>
+        )}
         <button type="button" className="primary welcome-cta" onClick={onNew}>
           <Icon name="plus" size={15} />
           {t("New connection")}

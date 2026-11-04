@@ -32,7 +32,7 @@ export function setup({ dir }) {
 export default async function (page, ctx) {
   try {
     await connectWith(page, NAME);
-    await openPath(page, [NAME, "platypus", "public", "Tables"], "qa_jrn_lock");
+    await openPath(page, [NAME, "public", "Tables"], "qa_jrn_lock");
     await menu(page, "qa_jrn_lock", "Drop…");
     await page.waitFor(`document.querySelector('.modal.sql-action button[type=submit]')?.disabled === false`, 10_000);
     await page.eval(`document.querySelector('.modal.sql-action button[type=submit]').id = 'jrn-act'`);

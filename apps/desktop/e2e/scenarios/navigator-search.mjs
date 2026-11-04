@@ -16,6 +16,7 @@ const rows = (label) =>
 const row = (label) => `${rows(label)}[0]`;
 
 async function rightClick(page, label) {
+  await page.waitFor(`${row(label)} !== undefined`, 15_000);
   await page.eval(`${row(label)}.id = 'e2e-target'`);
   const r = await page.rect("#e2e-target");
   await page.eval(`document.getElementById('e2e-target').removeAttribute('id')`);

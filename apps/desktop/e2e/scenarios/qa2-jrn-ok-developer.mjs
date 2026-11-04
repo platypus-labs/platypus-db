@@ -65,7 +65,7 @@ export default async function (page, ctx) {
 
     // The new schema, checked and fixed.
     await menu(page, NAME, "Refresh");
-    await openPath(page, [NAME, "platypus", "qa_jrn_dev", "Tables"], "orders");
+    await openPath(page, [NAME, "qa_jrn_dev", "Tables"], "orders");
     await menu(page, "qa_jrn_dev", "Check schema…");
     await page.waitFor(`${lint}?.querySelectorAll('.lint-findings li').length === 1`, 15_000);
     assert.match(await page.eval(`${lint}.querySelector('.lint-findings li').textContent`), /customer_id/);

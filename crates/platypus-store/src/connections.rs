@@ -62,6 +62,9 @@ pub struct SavedConnection {
     /// Blocks statements that modify data (enforced by the app, not the database).
     #[serde(default)]
     pub read_only: bool,
+    /// With a database named, whether the navigator lists the server's other databases too.
+    #[serde(default, skip_serializing_if = "DatabaseList::is_named")]
+    pub show_all_databases: DatabaseList,
     /// Accent colour for tabs and the navigator, e.g. `#d64545` for production.
     pub color: Option<String>,
     /// Development, test or production: production asks before changes and starts in manual
@@ -112,6 +115,36 @@ impl Restrictions {
     #[must_use]
     pub fn is_none(&self) -> bool {
         *self == Self::default()
+    }
+}
+
+/// The databases the navigator lists for a connection that names one: that one (by default,
+/// as in DBeaver) or all of the server's. Written as the `show_all_databases` flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(from = "bool", into = "bool")]
+pub enum DatabaseList {
+    #[default]
+    Named,
+    All,
+}
+
+impl From<bool> for DatabaseList {
+    fn from(all: bool) -> Self {
+        if all { Self::All } else { Self::Named }
+    }
+}
+
+impl From<DatabaseList> for bool {
+    fn from(list: DatabaseList) -> Self {
+        list == DatabaseList::All
+    }
+}
+
+impl DatabaseList {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    #[must_use]
+    pub fn is_named(&self) -> bool {
+        *self == Self::Named
     }
 }
 
@@ -463,6 +496,7 @@ impl SavedConnection {
             pgpass: false,
             network_profile: None,
             read_only: false,
+            show_all_databases: DatabaseList::Named,
             color: None,
             connection_type: None,
             agent_access: AgentAccess::default(),

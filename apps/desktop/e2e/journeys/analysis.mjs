@@ -76,7 +76,7 @@ async function exportTo(page, u, format, path) {
 /** Imports `file` into a new table `table` of the connection's main schema. */
 async function importInto(page, u, file, table) {
   const t = u.t;
-  await u.rowMenu([NAME, "main"], [t("Import data into a new table…")]);
+  await u.rowMenu([NAME, "main"], [t("Data"), t("Import data into a new table…")]);
   const dialog = `document.querySelector('.modal.import-data')`;
   await page.waitFor(`${dialog} !== null`, 15_000);
   await page.waitFor(`!(${dialog}.querySelector('button')?.disabled) && [...${dialog}.querySelectorAll('button')].some(b => b.textContent.trim() === ${JSON.stringify(t("Choose file…"))} && !b.disabled)`, 20_000);

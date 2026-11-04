@@ -9,6 +9,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const EU = "Multi EU";
 const US = "Multi US";
@@ -54,6 +55,7 @@ async function openDialog(page, all = true) {
   const r = await page.rect("#e2e-editor");
   await page.eval(`document.getElementById('e2e-editor').removeAttribute('id')`);
   await page.click(r.x + 40, r.y + 10, { button: "right" });
+  await revealItem(page, "Run on connections");
   const item = `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Run on connections'))`;
   await page.waitFor(`${item} !== undefined`);
   await page.eval(`${item}.click()`);

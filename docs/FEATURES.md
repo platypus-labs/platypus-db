@@ -160,12 +160,22 @@ to the package manager.
 - Large schemas stay quick: with 10,000 tables the tree opens in a fraction of a second and
   renders only the rows in view.
 - The tree is cached on disk: it shows at once on start, and offline. Nothing connects until
-  you open it. Each connection shows its database's logo, ringed with its color, and its state (an open
-  session, a failed connection) as a small mark on the logo.
+  you open it. Each connection shows its database's logo, ringed with the color chosen for it
+  (none by default, whatever its type), and its state (an open session, a failed connection)
+  as a small mark on the logo.
+- A PostgreSQL or SQL Server connection that names its database shows only that one, its
+  schemas right under the connection, as in DBeaver. *Show all databases*, beside the
+  Database field, lists the server's other databases too (the named one open); a connection
+  that names none lists them all. A PostgreSQL connection imported from DBeaver keeps its
+  setting.
 - A table's menu keeps the main actions at the top, groups the rest in submenus (*Generate SQL*,
   *Maintenance*, *Data*) and puts *Truncate* and *Drop* last; the browser's own menu never shows,
-  except in text fields. Index rows have their menu too. Copy actions confirm with a short
-  notice at the bottom of the window.
+  except in text fields. So do a connection's (*New*, *Open*, *Tools*, *Export*), a schema's
+  (*Data*, *Analyze*, *Create*) and the SQL editor's (*Run*, *Explain*). Index rows have their
+  menu too. Copy actions confirm with a short notice at the bottom of the window.
+- A field left empty or out of range when a form is sent shows the app's own message under it,
+  in the interface's language (*Fill in this field.*, *At most 65535.*), in place of the
+  browser's bubble; typing in the field or leaving it clears it.
 - Type the start of a name with the tree focused to jump to the next row that matches.
 - Generate SELECT, INSERT, UPDATE, DELETE, UPSERT or DDL; rename, truncate and drop with a
   preview of the statement. `Ctrl`/`Shift`+click selects several objects, for example to get
@@ -213,9 +223,11 @@ to the package manager.
 
 ![JOIN completion from the foreign keys](screenshots/autocomplete.png)
 
-- Run the statement under the cursor (`Ctrl+Enter`) or the whole script (`Alt+X`); errors are
-  pointed out in the text, and the error panel gives their line and column with *Go to the
-  error*.
+- Run the statement under the cursor (`Ctrl+Enter`) or the whole script (`Alt+X`). Statements
+  end at a `;`, or, as in DBeaver, at a blank line before a word that starts a new one
+  (SELECT, INSERT, UPDATE…). The results panel opens with the first run: until then, and on a
+  DDL, the editor takes the whole tab. Errors are pointed out in the text, and the error panel
+  gives their line and column with *Go to the error*.
 - **Completion** of keywords, tables, columns and built-in functions with their signature. The
   columns offered are those of the tables the statement under the cursor reads (even when FROM
   comes later), and `alias.` completes the columns of a table, a CTE or a subquery. A column

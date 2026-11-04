@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { revealItem } from "../menu-sub.mjs";
 
 const row = (label) =>
   `[...document.querySelectorAll('.tree-row')].find(r => r.querySelector('.tree-label')?.textContent === ${JSON.stringify(label)})`;
@@ -43,6 +44,7 @@ export default async function (page, { dir, shots }) {
   await page.eval(`${row("main")}.querySelector('.tree-label').id = 'e2e-row'`);
   await page.clickSel("#e2e-row", { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, "Copy schema to a database");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Copy schema to a database')).click()`);
   await page.waitFor(`${mig}?.querySelector('select') != null`, 15_000);
   await page.sleep(500);

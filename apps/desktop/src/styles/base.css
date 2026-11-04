@@ -261,6 +261,20 @@ textarea::placeholder {
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--accent);
+  cursor: pointer;
+  /* Beside a label long enough to wrap, a box in a flex row would shrink. */
+  flex-shrink: 0;
+}
+
+/* A label around a box or a radio is clicked as the box is. */
+label:has(> input[type="checkbox"]:not(:disabled)),
+label:has(> input[type="radio"]:not(:disabled)) {
+  cursor: pointer;
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  cursor: default;
 }
 
 input:focus,
@@ -362,4 +376,26 @@ button:focus-visible {
 .pointer-dragging * {
   cursor: grabbing !important;
   user-select: none !important;
+}
+
+/* The message of a field left invalid on submit (ui/fieldErrors.ts), in place of the browser's
+   bubble. */
+.field-error-pop {
+  position: fixed;
+  z-index: 1000;
+  max-width: 320px;
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: var(--bg-sidebar);
+  color: var(--error);
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+input.field-invalid,
+select.field-invalid,
+textarea.field-invalid {
+  border-color: var(--error);
 }

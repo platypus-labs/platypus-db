@@ -39,7 +39,7 @@ export default async function (page, ctx) {
     await page.waitFor(`${dialog} === null`, 15_000);
 
     // Explore, open the table, edit a cell and save.
-    await openPath(page, ["platypus", "platypus", "public", "Tables"], "qa_jrn_day");
+    await openPath(page, ["platypus", "public", "Tables"], "qa_jrn_day");
     await page.eval(`${treeRow("qa_jrn_day")}.id = 'jrn-t'`);
     await page.clickSel("#jrn-t", { clickCount: 2 });
     await page.waitFor(`${status} === '3 rows'`, 20_000);

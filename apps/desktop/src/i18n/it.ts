@@ -3211,6 +3211,17 @@ const it: Record<string, string> = {
   "The size, rows and indexes of each table, read on demand": "Dimensione, righe e indici di ogni tabella, letti su richiesta",
   "Last reading: when the lists were read": "Ultima lettura: quando sono state lette le liste",
   "A lock appears here when a session holds one, and the waiting ones when a session waits for another.": "Un blocco compare qui quando una sessione ne tiene uno, e quelli in attesa quando una sessione ne aspetta un'altra.",
+  "Show all databases": "Mostra tutti i database",
+  "Off: the navigator shows only the database above, as in DBeaver.": "Se spenta, il navigatore mostra solo il database qui sopra, come in DBeaver.",
+  "With no database named, the navigator shows them all.": "Senza un database indicato, il navigatore li mostra tutti.",
+  "New": "Nuovo",
+  "Tick this box.": "Spunta questa casella.",
+  "Fill in this field.": "Compila questo campo.",
+  "At least {n}.": "Almeno {n}.",
+  "At most {n}.": "Al massimo {n}.",
+  "At least {n} characters.": "Almeno {n} caratteri.",
+  "Enter a number.": "Inserisci un numero.",
+  "This value is not valid.": "Questo valore non è valido.",
 };
 
 export default it;

@@ -3211,6 +3211,17 @@ const de: Record<string, string> = {
   "The size, rows and indexes of each table, read on demand": "Größe, Zeilen und Indizes jeder Tabelle, bei Bedarf gelesen",
   "Last reading: when the lists were read": "Letzte Messung: wann die Listen gelesen wurden",
   "A lock appears here when a session holds one, and the waiting ones when a session waits for another.": "Eine Sperre erscheint hier, wenn eine Sitzung eine hält, und die wartenden, wenn eine Sitzung auf eine andere wartet.",
+  "Show all databases": "Alle Datenbanken anzeigen",
+  "Off: the navigator shows only the database above, as in DBeaver.": "Aus: Der Navigator zeigt nur die obige Datenbank, wie in DBeaver.",
+  "With no database named, the navigator shows them all.": "Ohne angegebene Datenbank zeigt der Navigator alle.",
+  "New": "Neu",
+  "Tick this box.": "Aktiviere dieses Kästchen.",
+  "Fill in this field.": "Fülle dieses Feld aus.",
+  "At least {n}.": "Mindestens {n}.",
+  "At most {n}.": "Höchstens {n}.",
+  "At least {n} characters.": "Mindestens {n} Zeichen.",
+  "Enter a number.": "Gib eine Zahl ein.",
+  "This value is not valid.": "Dieser Wert ist ungültig.",
 };
 
 export default de;

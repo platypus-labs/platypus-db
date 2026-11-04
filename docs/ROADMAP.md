@@ -89,6 +89,7 @@ Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (
 
 | Problema | Trovato |
 |---|---|
+| Da verificare: nuova connessione per URL (`postgres://utente:password@…`), poi Host e Salva subito. In 3 run su 5 di `s-jrn-agents-en`, che allora aspettava male la lettura dell'URL, `connections.toml` conteneva `platypus:platypus` o una riga `password =`. Non riprodotto con un salvataggio immediato a mano. Capire quale campo si porta la password e se il salvataggio può partire prima che l'URL sia letto | fix-segnalazioni, 2026-11-03 |
 
 ### Lock dei gruppi
 

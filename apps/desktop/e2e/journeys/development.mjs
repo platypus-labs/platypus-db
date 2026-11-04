@@ -129,7 +129,7 @@ export async function run(page, ctx, mode) {
   // The schema check: one fix (an index on the foreign key) opened in an editor and run.
   await u.rowMenu([NAME], [t("Refresh")]);
   const lint = `document.querySelector('.modal.schema-lint')`;
-  await openDialog(page, u, [NAME, "main"], t("Check schema…"), lint);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Check schema…")], lint);
   await page.waitFor(`${lint}.querySelectorAll('.lint-findings li').length > 0`, 15_000);
   assert.match(await page.eval(`${lint}.querySelector('.lint-findings').textContent`), /customer_id/);
   await u.italian("schema check", ["customer_id", "s_jrn_orders", "main"]);
@@ -141,13 +141,13 @@ export async function run(page, ctx, mode) {
   });
   await runScript(page, u);
   assert.equal(rowsOf(dev, "SELECT count(*) AS n FROM sqlite_master WHERE type = 'index' AND tbl_name = 's_jrn_orders' AND sql LIKE '%customer_id%'")[0].n, 1);
-  await openDialog(page, u, [NAME, "main"], t("Check schema…"), lint);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Check schema…")], lint);
   await page.waitFor(`${lint}.textContent.includes(${JSON.stringify(t("No problems found."))})`, 15_000);
   await u.dismiss(lint, t("Close"));
 
   // Migration status on a Flyway folder.
   const migrations = `document.querySelector('.modal.schema-migrations')`;
-  await openDialog(page, u, [NAME, "main"], t("Migration status…"), migrations);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Migration status…")], migrations);
   await u.type(`${migrations}.querySelector('[data-field="folder"]')`, join(ctx.dir, "project"));
   await u.tap(`${migrations}.querySelector('[data-action="check"]')`);
   const status_of = (id) => `${migrations}.querySelector('section[data-tool="flyway"] tr[data-id="${id}"]')?.dataset.status`;
@@ -158,7 +158,7 @@ export async function run(page, ctx, mode) {
 
   // The schema compared with the copy: the sync script is shown, not run.
   const compare = `document.querySelector('.modal.schema-compare')`;
-  await openDialog(page, u, [NAME, "main"], t("Compare with…"), compare);
+  await openDialog(page, u, [NAME, "main"], [t("Analyze"), t("Compare with…")], compare);
   await page.waitFor(`document.querySelectorAll('.modal.schema-compare select')[1]?.value === 'main'`, 15_000);
   const copyId = await page.eval(`[...${compare}.querySelectorAll('select')[0].options].find(o => o.textContent === ${JSON.stringify(COPY)}).value`);
   await u.pick(`${compare}.querySelectorAll('select')[0]`, copyId);
@@ -197,7 +197,8 @@ export async function run(page, ctx, mode) {
   while (!readFileSync(script, "utf8").includes("-- edited") && Date.now() < deadline) await page.sleep(200);
   assert.ok(readFileSync(script, "utf8").endsWith("-- edited"), "Ctrl+S saved the script into its file");
 
-  // The keyboard: Ctrl+T opens an editor that takes what is typed; Escape then Tab leaves it.
+  // The keyboard: Ctrl+T opens an editor that takes what is typed; Escape then Shift+Tab leaves
+  // it for the toolbar (with nothing run yet there is no results panel after it).
   const before = await page.eval(`document.querySelectorAll('.tab').length`);
   await page.key("t", "KeyT", 84, CTRL);
   await page.waitFor(`document.querySelectorAll('.tab').length === ${before + 1} && ${visibleTab}?.querySelector('.cm-content') != null`, 10_000);
@@ -206,7 +207,7 @@ export async function run(page, ctx, mode) {
   await page.waitFor(`${editorText} === 'select 1'`, 5_000);
   await keys.escape(page);
   await page.eval(`void (window.__focusBefore = document.activeElement)`);
-  await keys.tab(page);
+  await keys.tab(page, 8);
   await page.waitFor(`document.activeElement !== window.__focusBefore && document.activeElement !== document.body && !document.activeElement.closest('.cm-content')`, 5_000).catch(async (e) => { throw new Error(`${e.message} :: ${await page.eval(`(() => { const a = document.activeElement; return a.tagName + '.' + a.className + ' | before: ' + (window.__focusBefore?.className) + ' | text: ' + ${editorText}; })()`)}`); });
   assert.ok(await page.eval(focusVisible), "the focus is visible after leaving the editor");
 }

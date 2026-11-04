@@ -84,6 +84,8 @@ export async function run(page, ctx, mode) {
   assert.equal(await page.eval(`document.querySelectorAll('.tree-row').length`), 0);
   assert.deepEqual(savedConnections(ctx.dir), {});
   assert.equal(await page.eval(`document.documentElement.lang`), lang);
+  // The line comes once the saved connections are read.
+  await page.waitFor(`document.querySelector('.welcome-lead') !== null`);
   assert.equal(await page.eval(`document.querySelector('.welcome-lead').textContent`), j.t("A SQL client for your databases and data files. Add a connection to get started."));
   await screenIsItalian(page, mode, "the home screen", ["PlatypusDB"]);
 
@@ -129,7 +131,7 @@ export async function run(page, ctx, mode) {
   await screenIsItalian(page, mode, "the navigator with two connections");
 
   // 4. A table of PostgreSQL: its data, a cell edited and saved.
-  await treeOpen(j, [PG, "platypus", "public", j.t("Tables"), TABLE], true);
+  await treeOpen(j, [PG, "public", j.t("Tables"), TABLE], true);
   await waitRows(j, 3);
   await screenIsItalian(page, mode, "a table's data");
   await editFirstName(j, "alpha2");
@@ -155,7 +157,7 @@ export async function run(page, ctx, mode) {
   await page.waitFor(`document.querySelectorAll('.tab').length === 2`, 20_000);
   assert.deepEqual(await page.eval(tabTitles), titles);
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content')?.textContent === ${JSON.stringify(SQL)}`, 15_000);
-  await treeOpen(j, [PG, "platypus", "public", j.t("Tables"), TABLE]);
+  await treeOpen(j, [PG, "public", j.t("Tables"), TABLE]);
   assert.equal(await page.eval(`document.querySelector('.modal input[type=password]')`), null, "the saved password was asked again");
   await treeOpen(j, [LITE, "main", j.t("Tables"), "notes"]);
   assert.equal(await page.eval(`document.querySelector('.modal input[type=password]')`), null);

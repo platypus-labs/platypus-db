@@ -24,7 +24,7 @@ import {
 } from "../api";
 import { AgentAccessField, withEffectiveAgentAccess } from "../agents/access";
 import { initHasSettings, networkHasSettings } from "./connectionPages";
-import { asksPassword, CONNECTION_TYPES, noteText } from "../connections";
+import { asksPassword, CONNECTION_TYPES, listsDatabases, noteText } from "../connections";
 import { applyUrlEdit, cleanFilePath, hostOptional, looksLikeConnection, splitLogin, splitSqlServerHost, sshMissing, urlModeDriver, validPort, withParsed, type ConnectBy } from "../connectionUrl";
 import { PasswordPrompt } from "../App";
 import { workbench } from "../workbench";
@@ -896,6 +896,21 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       />
                     </label>
                   )}
+                  {(conn.driver === "postgres" || conn.driver === "sqlserver") && (
+                    <label
+                      className="check show-all-databases"
+                      title={t(conn.database.trim() ? "Off: the navigator shows only the database above, as in DBeaver." : "With no database named, the navigator shows them all.")}
+                    >
+                      <input
+                        type="checkbox"
+                        data-field="show_all_databases"
+                        disabled={!conn.database.trim()}
+                        checked={listsDatabases(conn)}
+                        onChange={(e) => set("show_all_databases", e.target.checked)}
+                      />
+                      {t("Show all databases")}
+                    </label>
+                  )}
                   {conn.driver === "postgres" && (
                     <label className="field">
                       <span>{t("Connection pooler")}</span>
@@ -1149,8 +1164,10 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
 
             {projects.length > 0 && (
               <section className="form-section">
-                <h3>{t("Projects")}</h3>
-                <p className="muted small">{t("Show this connection in these projects.")}</p>
+                <div className="form-section-title">
+                  <h3>{t("Projects")}</h3>
+                  <span className="muted small">{t("Show this connection in these projects.")}</span>
+                </div>
                 <div className="project-chips">
                   {projects.map((p) => {
                     const on = inProjects.has(p.id);

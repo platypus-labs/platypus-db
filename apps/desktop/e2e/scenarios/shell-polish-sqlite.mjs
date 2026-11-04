@@ -1,6 +1,6 @@
 // The connection list's own menu and "New connection…" on a connection, the search of the
 // database picker and of the Settings, the handle that resizes the navigator, and the glass
-// of menus and dialogs.
+// of menus (dialogs are solid).
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +15,8 @@ const menuItems = `[...document.querySelectorAll('.context-menu [role=menuitem]'
 const menuItem = (title) =>
   `[...document.querySelectorAll('.context-menu [role=menuitem]')].find(b => b.textContent.startsWith(${JSON.stringify(title)}))`;
 const tiles = `[...document.querySelectorAll('.driver-tile')].map(b => b.textContent)`;
-const shownSettings = `[...document.querySelectorAll('.modal.settings .setting')].map(s => s.querySelector('span')?.firstChild?.textContent)`;
+// The settings in view: a panel's own rows (Sync's) stay in the DOM while the search hides them.
+const shownSettings = `[...document.querySelectorAll('.modal.settings .setting')].filter(s => s.offsetParent !== null).map(s => s.querySelector('span')?.firstChild?.textContent)`;
 const sidebarWidth = `Math.round(document.querySelector('.sidebar-column').getBoundingClientRect().width)`;
 
 /** Types into an input as the user would, for React's `onChange`. */
@@ -57,10 +58,11 @@ export default async function (page, { dir, shots }) {
   await settingsLack(dir, /sidebar_collapsed/);
   assert.equal(await page.eval(sidebarWidth), 300);
 
-  // Below the rows, the list's own menu: a new connection, the import, testing them all, a plan.
+  // Below the rows, the list's own menu: a new connection, the import and export, testing them
+  // all, a plan.
   await page.eval(`document.querySelector('.tree').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 150, clientY: 400 }))`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  assert.deepEqual(await page.eval(menuItems), ["New connection…", "Import connections…", "Test connections", "Open query plan…"]);
+  assert.deepEqual(await page.eval(menuItems), ["New connection…", "Import connections…", "Export connections…", "Test connections", "Open query plan…"]);
   const glass = await page.eval(`getComputedStyle(document.querySelector('.context-menu')).backdropFilter`);
   assert.match(glass, /blur/);
   await page.eval(`${menuItem("New connection…")}.click()`);
@@ -99,10 +101,10 @@ export default async function (page, { dir, shots }) {
   await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent === 'Cancel').click()`);
   await page.waitFor(`document.querySelector('.modal') === null`);
 
-  // A connection's menu starts with a new connection.
+  // A connection's menu starts with the New submenu (a new connection is in it).
   await page.eval(`${row(NAME)}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 }))`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  assert.equal(await page.eval(`${menuItems}[0]`), "New connection…");
+  assert.equal(await page.eval(`${menuItems}[0]`), "New");
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.context-menu') === null`);
 
@@ -150,7 +152,8 @@ export default async function (page, { dir, shots }) {
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   await page.waitFor(`document.activeElement === document.querySelector('.modal.settings .modal-search input')`);
-  assert.match(await page.eval(`getComputedStyle(document.querySelector('.modal.settings')).backdropFilter`), /blur/);
+  // Solid: the glass behind a dialog this large made its scrolling lag (s-fix-settings-scroll).
+  assert.equal(await page.eval(`getComputedStyle(document.querySelector('.modal.settings')).backdropFilter`), "none");
   // A tab other than the first, to find it again after the search.
   await page.settingsTab("Toolbar");
   // The search matches at the start of a word: "tab" finds the tabs, not "databases".

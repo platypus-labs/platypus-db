@@ -31,7 +31,7 @@ import { type SqlDrag, qualifiedName, quoteIdent, selectLimit, selectSql, viewer
 import type { TabInit } from "../tabs/registry";
 import { dispatchKey, registerAction } from "../actions";
 import { workbench } from "../workbench";
-import { connectionColor, typeBadge } from "../connections";
+import { connectionColor, listsDatabases, typeBadge } from "../connections";
 import { hasUrl } from "../connectionUrl";
 import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
@@ -239,10 +239,10 @@ export function Navigator(props: Props) {
   /** The step of rows the tree is scrolled to: see rowWindow.ts. */
   const [step, setStep] = useState(0);
 
-  // Forget what was loaded through a connection whose target changed.
+  // Forget what was loaded through a connection whose target (or the databases it lists) changed.
   useEffect(() => {
     for (const c of connections) {
-      const signature = JSON.stringify([c.driver, c.host, c.port, c.database, c.user, c.ssl_mode]);
+      const signature = JSON.stringify([c.driver, c.host, c.port, c.database, c.user, c.ssl_mode, !!c.show_all_databases]);
       const previous = signatures.current.get(c.id);
       signatures.current.set(c.id, signature);
       if (previous !== undefined && previous !== signature) {
@@ -347,7 +347,7 @@ export function Navigator(props: Props) {
   async function loadDatabases(c: SavedConnection) {
     if (offline.current.has(c.id)) return;
     const sid = await session(c);
-    if (sid === null || !props.capabilities(sid)?.multiple_databases) return;
+    if (sid === null || !props.capabilities(sid)?.multiple_databases || !listsDatabases(c)) return;
     void load(c, null, `${c.id}#dbs`, (id) => api.listDatabases(id));
   }
 
@@ -535,7 +535,8 @@ export function Navigator(props: Props) {
     });
     if (!open) return;
     rows.push(...bookmarkRows(c));
-    const databases = loaded<string[]>(`${c.id}#dbs`);
+    // A list loaded before "Show all databases" was unticked stays in the cache: not shown.
+    const databases = listsDatabases(c) ? loaded<string[]>(`${c.id}#dbs`) : undefined;
     if (!databases || databases.length < 2) {
       rows.push(...schemaRows(c, null, 1));
       return;

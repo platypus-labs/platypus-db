@@ -68,8 +68,9 @@ async function newConnection(page, u) {
   await u.italian("new connection form", ["PostgreSQL", "localhost", "platypus"]);
   await connectBy(page, u, "url");
   await u.type(`document.querySelector('.connection-dialog [data-field="connection_url"]')`, URL);
-  // Once read, the field may show the URL without its password, which moves to the Password field.
-  await page.waitFor(`document.querySelector('.connection-dialog [data-field="connection_url"]').value.endsWith('@localhost:55432/platypus?sslmode=disable')`);
+  // Once read, the URL loses its password, which moves to the Password field. (The typed URL
+  // already ends as the read one: waiting for that ending raced the reading.)
+  await page.waitFor(`(() => { const url = document.querySelector('.connection-dialog [data-field="connection_url"]').value; return !url.includes(':platypus@') && url.endsWith('@localhost:55432/platypus?sslmode=disable') && document.querySelector('.connection-dialog input[type=password]')?.value === 'platypus'; })()`);
   await connectBy(page, u, "host");
   await page.waitFor(`${formField(t("Host"))}?.value === 'localhost'`, 10_000);
   await u.type(formField(t("Name")), NAME);

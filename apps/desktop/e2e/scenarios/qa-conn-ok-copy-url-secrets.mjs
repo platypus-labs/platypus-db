@@ -5,6 +5,7 @@
 // in the URL. Oracle (no URL scheme) has no Copy as URL.
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
+import { submenuItems } from "../menu-sub.mjs";
 import { join } from "node:path";
 import { button, dialog, formField, menu, menuItem, openPicker, paste, picker, treeRow, urlField, newFromUrl } from "../conn-helpers.mjs";
 
@@ -26,8 +27,9 @@ export function setup({ dir }) {
 async function copyUrl(page, name) {
   await page.eval(`window.__copied = undefined; navigator.clipboard.writeText = async (text) => { window.__copied = text; }`);
   await page.eval(`document.getElementById('qa-copy')?.removeAttribute('id'); ${treeRow(name)}.id = 'qa-copy'`);
-  const items = await menu(page, "#qa-copy");
-  if (!items.includes("Copy as URL")) {
+  await menu(page, "#qa-copy");
+  // Copy as URL sits in the Export submenu.
+  if (!(await submenuItems(page, "Export")).includes("Copy as URL")) {
     await page.key("Escape", "Escape", 27);
     await page.waitFor(`document.querySelector('.context-menu') === null`);
     return null;

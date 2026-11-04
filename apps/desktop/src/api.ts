@@ -73,6 +73,8 @@ export interface SavedConnection {
   /** Default schema, time zone and bootstrap statements, run after every connect. */
   init?: SavedInit;
   read_only: boolean;
+  /** With a database named, the navigator lists the server's other databases too. */
+  show_all_databases?: boolean;
   /** What the app does not do with the connection's data; see `platypus_store::Restrictions`. */
   restrictions?: Restrictions;
   color: string | null;

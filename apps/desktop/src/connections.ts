@@ -9,11 +9,15 @@ export const CONNECTION_TYPES: { value: ConnectionType; label: string; color: st
   { value: "prod", label: msg("Production"), color: "#c92a2a" },
 ];
 
-/** The connection's color: its own, else its type's. */
+/** The color chosen for the connection; none (the first swatch) marks nothing, whatever its
+ *  type, which its badge shows. */
 export function connectionColor(c: SavedConnection | undefined): string | null {
-  if (!c) return null;
-  return c.color ?? CONNECTION_TYPES.find((t) => t.value === c.connection_type)?.color ?? null;
+  return c?.color ?? null;
 }
+
+/** Whether the navigator lists the server's databases: when the connection names none, or
+ *  when "Show all databases" is ticked (as in DBeaver); else only the one it names. */
+export const listsDatabases = (c: SavedConnection) => !c.database.trim() || !!c.show_all_databases;
 
 /** The password is asked at each connection: none is saved, looked up in `.pgpass`,
  *  printed by a command, or replaced by a token or Windows' sign-in. */

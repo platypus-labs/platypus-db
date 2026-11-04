@@ -45,7 +45,7 @@ export default async function (page) {
   assert.equal(await run(page, onDatabase("platypus")), "1 row");
 
   await editConnection(page, "QA pg edit");
-  await fillForm(page, { Name: "QA pg renamed", Database: "postgres", Type: "prod" });
+  await fillForm(page, { Name: "QA pg renamed", Database: "postgres", Environment: "prod" });
   await saveForm(page);
   await page.waitFor(`${treeRow("QA pg renamed")}?.querySelector('.type-badge')?.textContent === 'PROD'`);
 

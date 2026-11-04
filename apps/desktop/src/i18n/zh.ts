@@ -3211,6 +3211,17 @@ const zh: Record<string, string> = {
   "The size, rows and indexes of each table, read on demand": "每张表的大小、行数和索引，按需读取",
   "Last reading: when the lists were read": "最后读取：列表读取的时间",
   "A lock appears here when a session holds one, and the waiting ones when a session waits for another.": "会话持有锁时锁会显示在此处；会话等待另一个会话时显示等待中的锁。",
+  "Show all databases": "显示所有数据库",
+  "Off: the navigator shows only the database above, as in DBeaver.": "关闭时：导航器只显示上面的数据库，与 DBeaver 相同。",
+  "With no database named, the navigator shows them all.": "未指定数据库时，导航器显示全部数据库。",
+  "New": "新建",
+  "Tick this box.": "请勾选此框。",
+  "Fill in this field.": "请填写此字段。",
+  "At least {n}.": "至少 {n}。",
+  "At most {n}.": "最多 {n}。",
+  "At least {n} characters.": "至少 {n} 个字符。",
+  "Enter a number.": "请输入数字。",
+  "This value is not valid.": "此值无效。",
 };
 
 export default zh;

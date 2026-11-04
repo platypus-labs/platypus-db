@@ -101,7 +101,7 @@ export const ENGINES = {
       {
         id: "00000000-0000-4000-8000-0000000c3101",
         name: "QA3 PG",
-        body: `driver = "postgres"\nhost = "127.0.0.1"\nport = 55432\ndatabase = "platypus"\nuser = "platypus"\nssl_mode = "disable"\npassword_command = "echo platypus"`,
+        body: `driver = "postgres"\nhost = "127.0.0.1"\nport = 55432\ndatabase = "platypus"\nuser = "platypus"\nssl_mode = "disable"\nshow_all_databases = true\npassword_command = "echo platypus"`,
       },
     ],
     schema: (name) => name,
@@ -161,7 +161,7 @@ export const ENGINES = {
       {
         id: "00000000-0000-4000-8000-0000000c3401",
         name: "QA3 MSSQL",
-        body: `driver = "sqlserver"\nhost = "127.0.0.1"\nport = 51433\ndatabase = "platypus"\nuser = "sa"\nssl_mode = "disable"\npassword_command = "echo Platypus-2026"`,
+        body: `driver = "sqlserver"\nhost = "127.0.0.1"\nport = 51433\ndatabase = "platypus"\nuser = "sa"\nssl_mode = "disable"\nshow_all_databases = true\npassword_command = "echo Platypus-2026"`,
       },
     ],
     schema: (name) => name,

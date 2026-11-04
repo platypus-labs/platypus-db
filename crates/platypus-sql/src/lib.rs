@@ -68,7 +68,62 @@ struct Current {
     whole_batch: bool,
     /// The last word was an `END` that closed a block, unless `IF`, `LOOP`… follows.
     ended_block: bool,
+    /// Open parentheses.
+    parens: usize,
+    /// The last token, upper-cased.
+    last: String,
 }
+
+/// Words that start a statement, so one after a blank line starts a new statement when the
+/// one before has no `;` (as in DBeaver). Not `SET`, `VALUES` or `DESC`, which also continue
+/// one (`UPDATE t` / `SET …`, `INSERT … (a)` / `VALUES …`, `ORDER BY a` / `DESC`).
+const STATEMENT_STARTS: &[&str] = &[
+    "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "CREATE", "ALTER", "DROP",
+    "TRUNCATE", "GRANT", "REVOKE", "EXPLAIN", "SHOW", "CALL", "EXEC", "EXECUTE", "DECLARE",
+    "BEGIN", "COMMIT", "ROLLBACK", "USE", "ANALYZE", "VACUUM", "COPY", "COMMENT", "REFRESH",
+    "DESCRIBE", "PRAGMA",
+];
+
+/// Last tokens after which a statement goes on, even past a blank line.
+const CONTINUES: &[&str] = &[
+    "UNION",
+    "INTERSECT",
+    "EXCEPT",
+    "MINUS",
+    "ALL",
+    "DISTINCT",
+    "AS",
+    "ON",
+    "AND",
+    "OR",
+    "NOT",
+    "IN",
+    "EXISTS",
+    "THEN",
+    "ELSE",
+    "WHEN",
+    "BY",
+    "FROM",
+    "JOIN",
+    "WHERE",
+    "INTO",
+    "TABLE",
+    "SELECT",
+    "SET",
+    "VALUES",
+    "RETURNS",
+    "IS",
+    ",",
+    "(",
+    "=",
+    "+",
+    "-",
+    "*",
+    "/",
+    "|",
+    "<",
+    ">",
+];
 
 /// Words between `CREATE` and the kind of object in Oracle.
 const ORACLE_CREATE_MODIFIERS: &[&str] = &["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"];
@@ -126,6 +181,42 @@ impl Current {
     /// Whether a `;` here ends the statement.
     fn at_boundary(&self) -> bool {
         self.block_depth == 0 && !self.whole_batch
+    }
+
+    /// Whether `token`, the first after a blank line, starts a new statement although no `;`
+    /// ended this one: it is a word that starts one, and this one is complete as far as its
+    /// last token tells (no open parenthesis, no `UNION`, `,`, `AS`… left waiting).
+    fn ends_at_blank_line(&self, src: &str, token: &Token, dialect: Dialect) -> bool {
+        let Some(start) = self.start else {
+            return false;
+        };
+        // A line with nothing on it between the two, besides the ones they stand on.
+        let gap = &src[self.end..token.start];
+        let blank = match (gap.find('\n'), gap.rfind('\n')) {
+            (Some(first), Some(last)) if first < last => gap[first + 1..last]
+                .split('\n')
+                .any(|l| l.trim().is_empty()),
+            _ => false,
+        };
+        let word = token.text(src).to_ascii_uppercase();
+        if !blank
+            || token.kind != TokenKind::Word
+            || !self.at_boundary()
+            || self.parens != 0
+            || !STATEMENT_STARTS.contains(&word.as_str())
+            || CONTINUES.contains(&self.last.as_str())
+        {
+            return false;
+        }
+        // `INSERT INTO t` / `SELECT …`: the rows to insert, unless it has its rows already.
+        let inserting = self.head.first().is_some_and(|w| w == "INSERT");
+        !(inserting && (word == "SELECT" || word == "WITH"))
+            || Lexer::new(&src[start..self.end], dialect).any(|t| {
+                t.kind == TokenKind::Word
+                    && ["SELECT", "VALUES"]
+                        .iter()
+                        .any(|w| t.text(&src[start..self.end]).eq_ignore_ascii_case(w))
+            })
     }
 
     fn word(&mut self, word: &str, dialect: Dialect) {
@@ -443,10 +534,25 @@ fn scan(src: &str, dialect: Dialect) -> Scan {
             lexer.seek(token.start + delimiter.len());
             continue;
         }
+        // A custom delimiter (MySQL `DELIMITER $$`) is there for bodies whose `;` and blank
+        // lines do not end them.
+        if delimiter == ";" && current.ends_at_blank_line(src, &token, dialect) {
+            statements.extend(current.take());
+        }
         current.start.get_or_insert(token.start);
         current.end = token.end;
+        let text = token.text(src);
+        match text {
+            "(" => current.parens += 1,
+            ")" => current.parens = current.parens.saturating_sub(1),
+            _ => {}
+        }
+        current.last.clear();
+        if matches!(token.kind, TokenKind::Word | TokenKind::Symbol) {
+            current.last.push_str(&text.to_ascii_uppercase());
+        }
         if token.kind == TokenKind::Word {
-            current.word(token.text(src), dialect);
+            current.word(text, dialect);
         }
     }
     statements.extend(current.take());
@@ -994,6 +1100,64 @@ mod tests {
             Some("select 9")
         );
         assert_eq!(statement_at("", Dialect::Postgres, 0), None);
+    }
+
+    #[test]
+    fn a_blank_line_ends_a_statement_without_semicolon() {
+        let parts = |src: &str, dialect| -> Vec<String> {
+            split(src, dialect)
+                .iter()
+                .map(|s| s.text(src).to_owned())
+                .collect()
+        };
+        for dialect in [
+            Dialect::Postgres,
+            Dialect::SqlServer,
+            Dialect::MySql,
+            Dialect::Oracle,
+        ] {
+            assert_eq!(
+                parts(
+                    "select 1\nfrom a\n\nselect 2\n  \n-- note\nupdate b set x = 1",
+                    dialect
+                ),
+                ["select 1\nfrom a", "select 2", "update b set x = 1"],
+                "{dialect:?}"
+            );
+        }
+        let pg = |src: &str| parts(src, Dialect::Postgres);
+        let one = |src: &str| assert_eq!(pg(src), [src.trim()], "{src:?}");
+        one("select a\nfrom t\n\nwhere x = 1\n\norder by a");
+        one("select 1\n\nunion all\n\nselect 2");
+        one("select * from t where id in (\n\nselect id from u\n)");
+        one("create view v as\n\nselect 1");
+        one("insert into t (a)\n\nselect a from u");
+        one("insert into t\n\nwith x as (select 1) select * from x");
+        one("update t\n\nset a = 1");
+        one("select a,\n\nb from t");
+        one("create function f() returns int as $$\nbegin\n\nselect 1;\nend\n$$ language plpgsql");
+        assert_eq!(
+            pg("insert into t values (1)\n\nselect * from t"),
+            ["insert into t values (1)", "select * from t"]
+        );
+        assert_eq!(pg("select 1;\n\nselect 2;"), ["select 1", "select 2"]);
+        // A procedure body under `DELIMITER $$` keeps its blank lines.
+        let body = "DELIMITER $$\nCREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n\n  SELECT 2;\nEND$$\nDELIMITER ;\n\nselect 3";
+        assert_eq!(
+            parts(body, Dialect::MySql).len(),
+            2,
+            "{:?}",
+            parts(body, Dialect::MySql)
+        );
+        let src = "select 1\n\nselect 2";
+        assert_eq!(
+            statement_at(src, Dialect::Postgres, src.len()).map(|s| s.text(src)),
+            Some("select 2")
+        );
+        assert_eq!(
+            statement_at(src, Dialect::Postgres, 3).map(|s| s.text(src)),
+            Some("select 1")
+        );
     }
 
     #[test]
