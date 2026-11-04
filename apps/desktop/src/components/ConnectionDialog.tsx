@@ -563,10 +563,13 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   }
 
   /** A URL pasted in the URL field takes the place of the one printed there, wherever the
-   *  caret is: added to it, the new one would be read as the database, password included. */
+   *  caret is: added to it, the new one would be read as the database, password included.
+   *  After a `=` it is the value of a parameter (`sslrootcert=file:///…`). */
   function pasteUrl(e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text").trim();
-    if (!looksLikeConnection(text)) return;
+    const input = e.currentTarget;
+    const before = input.value.slice(0, input.selectionStart ?? 0);
+    if (!looksLikeConnection(text) || before.endsWith("=")) return;
     e.preventDefault();
     editUrl(text);
   }

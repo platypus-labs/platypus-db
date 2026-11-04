@@ -40,6 +40,17 @@ export default async function (page, { dir }) {
     await cancel(page);
   }
 
+  // After a `=` a pasted URL is a parameter's value: the URL around it stays.
+  await newUrlForm(page, "PostgreSQL");
+  await page.eval(`${url}.focus(); ${url}.select()`);
+  await page.type("postgres://db.example/shop?sslrootcert=");
+  await page.waitFor(`${url}.value === 'postgres://db.example/shop?sslrootcert='`);
+  await page.eval(`${url}.setSelectionRange(${url}.value.length, ${url}.value.length)`);
+  await page.eval(paste(url, "file:///ca.pem"));
+  await page.sleep(300);
+  assert.match(await page.eval(`${url}.value`), /^postgres:\/\/db\.example/, "the pasted value does not replace the URL");
+  await cancel(page);
+
   // Saved as pasted: the address in its fields, the password out of the file.
   await newUrlForm(page, "PostgreSQL");
   await page.waitFor(`${url}.value !== ''`);
