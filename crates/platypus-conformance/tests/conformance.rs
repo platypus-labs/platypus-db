@@ -5873,7 +5873,7 @@ database = '{}'
                 "{}: {refusal}",
                 b.name
             );
-            assert!(refusal.contains("orders"), "{}: no plan: {refusal}", b.name);
+            assert!(refusal.contains("-> "), "{}: no plan: {refusal}", b.name);
         } else {
             let text = result.unwrap_or_else(|e| panic!("{}: {e}", b.name)).text();
             assert!(text.contains("could not be checked"), "{}: {text}", b.name);

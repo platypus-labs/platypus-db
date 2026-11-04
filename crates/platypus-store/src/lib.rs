@@ -11,6 +11,7 @@
 
 mod address;
 mod agent_calls;
+mod atomic;
 mod auth;
 mod catalog;
 mod connections;

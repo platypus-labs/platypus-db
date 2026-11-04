@@ -1275,7 +1275,7 @@ impl ConnectionStore {
         })?;
         let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(io_error)?;
         tmp.write_all(text.as_bytes()).map_err(io_error)?;
-        tmp.persist(&self.path).map_err(|e| io_error(e.error))?;
+        crate::atomic::replace(tmp, &self.path).map_err(io_error)?;
         self.revision
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(())

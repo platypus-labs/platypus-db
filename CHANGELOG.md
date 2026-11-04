@@ -24,6 +24,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 ### Fixed
 
 - IBM Db2 connections are imported from DBeaver and DataGrip, and `jdbc:db2:` URLs are read.
+- On Windows, saving connections or settings no longer fails with "Access denied" when another
+  program holds the file for a moment, as antivirus scanners and backup tools do.
 - **Security**: a connection URL pasted or typed over the one the URL field already shows no
   longer leaves its password in clear in `connections.toml`. A paste takes the field's place, and
   two URLs together are refused. Saving also refuses a name, database or user that holds a URL
