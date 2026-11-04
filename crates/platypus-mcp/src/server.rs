@@ -320,7 +320,8 @@ impl PlatypusServer {
     #[tool(
         description = "Describes a table or view: columns (type, nullable, default, primary \
         key, comment, enum values), indexes, foreign keys, other constraints and the foreign \
-        keys of other tables that point at it."
+        keys of other tables that point at it. Also the notes, tags and sensitive marks the user \
+        set in PlatypusDB (note, tags, sensitive: true or false, never values), when there are any."
     )]
     async fn describe_table(
         &self,
@@ -383,7 +384,8 @@ impl PlatypusServer {
     #[tool(
         description = "Finds objects of a connection whose name contains a text, ignoring \
         case; where the database supports it, also objects with such a column or in whose \
-        source the text appears. At most 200 matches."
+        source the text appears; also objects whose comment or the user's notes contain it \
+        (matched comment or note), and #tag finds the objects the user tagged. At most 200 matches."
     )]
     async fn search_objects(
         &self,

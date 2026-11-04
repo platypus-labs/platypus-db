@@ -12,6 +12,7 @@
 
 pub mod access;
 mod agent;
+mod catalog_view;
 mod connect;
 mod context;
 mod er;

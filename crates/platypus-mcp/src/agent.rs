@@ -662,7 +662,9 @@ impl Agent {
         offset: Option<u64>,
         limit: Option<u64>,
     ) -> Result<Value> {
-        let lease = self.open(connection).await?;
+        let (store, saved) = self.find(connection)?;
+        let lease = self.lease(&store, &saved).await?;
+        let redactor = lease.session().redactor.clone();
         let conn = lease.conn();
         // No objects may also mean no such schema: say so, rather than an empty list.
         let objects = timed(async {
@@ -675,7 +677,9 @@ impl Agent {
         let objects = lease.settle(objects)?.ok_or_else(|| {
             AgentError::NotFound(format!("`{connection}` has no schema `{schema}`"))
         })?;
-        object_page(&objects, offset, limit)
+        let page = object_page(&objects, offset, limit)?;
+        let view = self.catalog_view(saved.id, &saved.database);
+        Ok(view.list(schema, page, &redactor))
     }
 
     /// Columns, keys, foreign keys (both ways), indexes and constraints of a table or view.
@@ -685,7 +689,9 @@ impl Agent {
         schema: &str,
         table: &str,
     ) -> Result<Value> {
-        let lease = self.open(connection).await?;
+        let (store, saved) = self.find(connection)?;
+        let lease = self.lease(&store, &saved).await?;
+        let redactor = lease.session().redactor.clone();
         let conn = lease.conn();
         // A missing table reads as one without columns: say so instead.
         let details = timed(async {
@@ -700,7 +706,10 @@ impl Agent {
                 "`{connection}` has no table or view `{schema}.{table}`"
             ))
         })?;
-        Ok(json!(details))
+        let mut details = json!(details);
+        let view = self.catalog_view(saved.id, &saved.database);
+        view.describe(schema, table, &mut details, &redactor);
+        Ok(details)
     }
 
     /// A Mermaid `erDiagram` of a schema's tables and the foreign keys between them: all of
@@ -769,8 +778,12 @@ impl Agent {
         if text.trim().is_empty() {
             return Err(AgentError::Invalid("the search text is empty".to_owned()));
         }
-        let lease = self.open(connection).await?;
-        let found = timed(search(lease.conn(), text)).await;
+        let (store, saved) = self.find(connection)?;
+        let lease = self.lease(&store, &saved).await?;
+        let view = self.catalog_view(saved.id, &saved.database);
+        let query = view.query(text);
+        let redactor = lease.session().redactor.clone();
+        let found = timed(search_all(lease.conn(), text, &view, &query, &redactor)).await;
         let mut all = lease.settle(found)?;
         let truncated = all.len() > SEARCH_RESULTS;
         all.truncate(SEARCH_RESULTS);
@@ -1221,6 +1234,24 @@ async fn read_er(
         doc: er::doc_schema(schema, &order, &details),
         total,
     })
+}
+
+/// The matches of the catalog's tags, notes and comments, and (unless the text is a `#tag`
+/// query) those of the database's own search.
+async fn search_all(
+    conn: &dyn Connection,
+    text: &str,
+    view: &crate::catalog_view::CatalogView,
+    query: &crate::catalog_view::SearchQuery,
+    redactor: &Redactor,
+) -> Result<Vec<Value>, Error> {
+    let mut found = if query.tags.is_empty() {
+        search(conn, text).await?
+    } else {
+        Vec::new()
+    };
+    found.extend(crate::catalog_view::search(conn, view, query, redactor).await?);
+    Ok(found)
 }
 
 /// The catalog search of the database, else a search of the object names.

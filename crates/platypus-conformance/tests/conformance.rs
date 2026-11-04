@@ -5672,6 +5672,113 @@ database = '{}'
     }
 }
 
+/// Fills the app's catalog in `dir` as the app keys it, for `agents_read_the_catalog_notes_of_the_app`.
+fn save_catalog_notes(dir: &std::path::Path, schema: &str, database: &str) {
+    use platypus_store::{CatalogKey, CatalogStore};
+
+    let id = uuid::Uuid::parse_str("00000000-0000-4000-8000-000000000001").unwrap();
+    let key = |database: &str, object: &str, column: &str| CatalogKey {
+        database: database.to_owned(),
+        schema: schema.to_owned(),
+        object: object.to_owned(),
+        column: column.to_owned(),
+    };
+    let mut catalog = CatalogStore::open(&dir.join("catalog.db")).unwrap();
+    let mut note = |database: &str, object: &str, column: &str, note: &str, tags: &[String]| {
+        catalog
+            .save(id, &key(database, object, column), note, tags)
+            .unwrap();
+    };
+    // As the app saves it for the connection's own database: an empty database.
+    note("", "customers", "", "the buyers", &["crm".to_owned()]);
+    note("", "customers", "email", "login address", &[]);
+    // Under the database's own name, which a tab opened on it may use.
+    note(database, "orders", "", "what was bought", &[]);
+    // Another database, which agents do not reach, and an object that is gone.
+    note("another_db", "customers", "", "not ours", &[]);
+    note("", "dropped_long_ago", "", "bought once", &[]);
+    catalog
+        .set_sensitive(id, &key("", "customers", "email"), Some(true))
+        .unwrap();
+}
+
+/// The notes, tags and marks of the app's catalog reach agents on real servers. The app keys
+/// them by database (empty for the connection's own), schema and object as the driver names
+/// them, so a note saved under that key must be found by `describe_table`, `list_objects` and
+/// `search_objects`, also when the key carries the database's name.
+#[tokio::test]
+async fn agents_read_the_catalog_notes_of_the_app() {
+    use platypus_mcp::{Agent, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+            }
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                     name = \"Db\"\ndriver = \"sqlite\"\ndatabase = '{}'\n",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        save_catalog_notes(dir.path(), &b.schema, &b.config.database);
+
+        let agent = Agent::new(Profile::at(dir.path()));
+        let table = agent
+            .describe_table("Db", &b.schema, "customers")
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(table["note"], "the buyers", "{}: {table}", b.name);
+        assert_eq!(table["tags"], serde_json::json!(["crm"]), "{}", b.name);
+        let email = table["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == "email")
+            .unwrap_or_else(|| panic!("{}: {table}", b.name));
+        assert_eq!(email["note"], "login address", "{}: {table}", b.name);
+        assert_eq!(email["sensitive"], true, "{}: {table}", b.name);
+
+        let orders = agent.describe_table("Db", &b.schema, "orders").await;
+        assert_eq!(orders.unwrap()["note"], "what was bought", "{}", b.name);
+        let objects = agent
+            .list_objects("Db", &b.schema, None, None)
+            .await
+            .unwrap();
+        let customers = objects
+            .as_array()
+            .unwrap_or_else(|| panic!("{}: {objects}", b.name))
+            .iter()
+            .find(|o| o["name"] == "customers")
+            .unwrap_or_else(|| panic!("{}: {objects}", b.name));
+        assert_eq!(customers["tags"], serde_json::json!(["crm"]), "{}", b.name);
+
+        let hits = |text: &'static str| {
+            let agent = &agent;
+            async move {
+                let found = agent.search_objects("Db", text).await.unwrap();
+                let matches = found["matches"].as_array().unwrap().clone();
+                matches
+                    .iter()
+                    .map(|m| (m["name"].to_string(), m["matched"].to_string()))
+                    .collect::<Vec<_>>()
+            }
+        };
+        let pair = |n: &str, m: &str| (format!("\"{n}\""), format!("\"{m}\""));
+        assert_eq!(hits("#crm").await, [pair("customers", "tag")], "{}", b.name);
+        assert_eq!(hits("bought").await, [pair("orders", "note")], "{}", b.name);
+        assert_eq!(hits("not ours").await.len(), 0, "{}", b.name);
+    }
+}
+
 /// The first cell of what `sql` returns through `agent` (`None` for a statement without rows).
 async fn first_cell(agent: &platypus_mcp::Agent, name: &str, sql: &str) -> Option<String> {
     use platypus_mcp::QueryArgs;

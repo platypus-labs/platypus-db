@@ -1605,3 +1605,244 @@ fn reads_saved_scripts_and_the_history() {
     assert_eq!(last.1.as_deref(), Some("Hidden"));
     assert_eq!(last.3, "error");
 }
+
+/// Saves `notes` as `(connection digit, object, column, note, tags)` in the schema `main` of
+/// the app's `catalog.db` in `dir`, and marks `marks` (object, column) of the first connection
+/// sensitive.
+fn catalog_notes(dir: &Path, notes: &[(&str, &str, &str, &str, &[&str])], marks: &[(&str, &str)]) {
+    use platypus_store::{CatalogKey, CatalogStore};
+    let mut catalog = CatalogStore::open(&dir.join("catalog.db")).unwrap();
+    let key = |object: &str, column: &str| CatalogKey {
+        database: String::new(),
+        schema: "main".to_owned(),
+        object: object.to_owned(),
+        column: column.to_owned(),
+    };
+    let id = |n: &str| {
+        uuid::Uuid::parse_str(&format!("00000000-0000-4000-8000-00000000000{n}")).unwrap()
+    };
+    for (connection, object, column, note, tags) in notes {
+        let tags: Vec<String> = tags.iter().map(|t| (*t).to_owned()).collect();
+        catalog
+            .save(id(connection), &key(object, column), note, &tags)
+            .unwrap();
+    }
+    for (object, column) in marks {
+        catalog
+            .set_sensitive(id("1"), &key(object, column), Some(true))
+            .unwrap();
+    }
+}
+
+fn json_of(client: &mut Client, tool: &str, args: &Value) -> Value {
+    let (text, error) = client.call(tool, args);
+    assert!(!error, "{tool}: {text}");
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{tool}: {text}: {e}"))
+}
+
+/// What `search_objects` matched: name, what matched and the column.
+fn search_hits(client: &mut Client, text: &str) -> Vec<(String, String, Option<String>)> {
+    let found = json_of(
+        client,
+        "search_objects",
+        &json!({ "connection": "App db", "text": text }),
+    );
+    found["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            (
+                m["name"].as_str().unwrap().to_owned(),
+                m["matched"].as_str().unwrap().to_owned(),
+                m["column"].as_str().map(str::to_owned),
+            )
+        })
+        .collect()
+}
+
+/// `search_objects` by note, by the note of a column and by `#tag`.
+fn finds_by_notes_and_tags(client: &mut Client) {
+    let hit =
+        |n: &str, m: &str, c: Option<&str>| (n.to_owned(), m.to_owned(), c.map(str::to_owned));
+    // By note and by the note of a column; the dropped table finds nothing.
+    assert_eq!(
+        search_hits(client, "bills sent"),
+        [hit("invoice", "note", None)]
+    );
+    assert_eq!(
+        search_hits(client, "VAT"),
+        [hit("invoice", "note", Some("total"))]
+    );
+    assert_eq!(search_hits(client, "ledger").len(), 0);
+    assert_eq!(
+        search_hits(client, "invoice"),
+        [hit("invoice", "name", None)]
+    );
+    // By tag: only tags, as in the app's navigator.
+    assert_eq!(
+        search_hits(client, "#billing"),
+        [hit("invoice", "tag", None)]
+    );
+    assert_eq!(
+        search_hits(client, "#BILLING sent"),
+        [hit("invoice", "tag", None)]
+    );
+    assert_eq!(search_hits(client, "#billing nothing"), []);
+    assert_eq!(search_hits(client, "billing"), []);
+    // A `#word` that is no tag is plain text.
+    assert_eq!(search_hits(client, "#nope"), []);
+}
+
+#[test]
+fn agents_read_the_notes_tags_and_marks_of_the_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE invoice (id INTEGER PRIMARY KEY, total REAL, iban TEXT);
+         CREATE TABLE plain (id INTEGER PRIMARY KEY);",
+    );
+    sqlite(
+        &dir.path().join("hidden.db"),
+        "CREATE TABLE secret_plans (id INTEGER PRIMARY KEY);",
+    );
+    let nasty = "Bills sent to customers. \",\"sensitive\":false,\"columns\":[]";
+    catalog_notes(
+        dir.path(),
+        &[
+            ("1", "invoice", "", nasty, &["Billing", "core"]),
+            ("1", "invoice", "total", "gross, VAT included", &[]),
+            ("1", "invoice", "iban", "", &["pii"]),
+            // The table was dropped: the note stays in the catalog.
+            ("1", "dropped_table", "", "old ledger", &["billing"]),
+            ("3", "secret_plans", "", "ledger of the plans", &["billing"]),
+        ],
+        &[("invoice", "iban")],
+    );
+    let mut client = initialized(dir.path());
+    let table = json_of(
+        &mut client,
+        "describe_table",
+        &json!({ "connection": "App db", "schema": "main", "table": "invoice" }),
+    );
+    assert_eq!(table["note"], nasty, "{table}");
+    assert_eq!(table["tags"], json!(["billing", "core"]));
+    assert_eq!(table["columns"].as_array().unwrap().len(), 3, "{table}");
+    assert_eq!(table["columns"][1]["note"], "gross, VAT included");
+    assert_eq!(table["columns"][2]["tags"], json!(["pii"]));
+    assert_eq!(table["columns"][2]["sensitive"], true);
+    // The note stayed one string: it added no field, and only the marked column has a mark.
+    assert!(table["columns"][0].get("note").is_none(), "{table}");
+    assert!(table["columns"][0].get("sensitive").is_none(), "{table}");
+    assert!(table["columns"][1].get("sensitive").is_none(), "{table}");
+
+    // An object without entries has the fields it always had.
+    let plain = json_of(
+        &mut client,
+        "describe_table",
+        &json!({ "connection": "App db", "schema": "main", "table": "plain" }),
+    );
+    for field in ["note", "tags", "note_cut", "catalog_unavailable"] {
+        assert!(plain.get(field).is_none(), "{field}: {plain}");
+    }
+    let id_column = &plain["columns"][0];
+    assert_eq!(id_column["name"], "id");
+    assert!(id_column.get("note").is_none() && id_column.get("sensitive").is_none());
+
+    let objects = json_of(
+        &mut client,
+        "list_objects",
+        &json!({ "connection": "App db", "schema": "main" }),
+    );
+    let by_name = |n: &str| {
+        objects
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["name"] == n)
+            .unwrap()
+    };
+    assert_eq!(by_name("invoice")["tags"], json!(["billing", "core"]));
+    assert_eq!(by_name("invoice")["note"], nasty);
+    assert!(by_name("plain").get("tags").is_none() && by_name("plain").get("note").is_none());
+
+    // The resources are the same descriptions.
+    let read = client.request(
+        "resources/read",
+        &json!({ "uri": "platypus://App%20db/main/invoice" }),
+    );
+    let text = read["result"]["contents"][0]["text"].as_str().unwrap();
+    assert_eq!(serde_json::from_str::<Value>(text).unwrap(), table);
+    let read = client.request(
+        "resources/read",
+        &json!({ "uri": "platypus://App%20db/main" }),
+    );
+    let text = read["result"]["contents"][0]["text"].as_str().unwrap();
+    assert!(text.contains(r#""tags":["billing","core"]"#), "{text}");
+
+    finds_by_notes_and_tags(&mut client);
+
+    // A connection agents may not use does not leak its notes.
+    let (hidden, error) = client.call(
+        "search_objects",
+        &json!({ "connection": "Hidden", "text": "#billing" }),
+    );
+    assert!(error && !hidden.contains("ledger"), "{hidden}");
+    let (hidden, error) = client.call(
+        "describe_table",
+        &json!({ "connection": "Hidden", "schema": "main", "table": "secret_plans" }),
+    );
+    assert!(error && !hidden.contains("plans"), "{hidden}");
+}
+
+#[test]
+fn search_by_a_hash_word_works_without_a_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE \"#temp\" (id INTEGER PRIMARY KEY);",
+    );
+    let mut client = initialized(dir.path());
+    let found = search_hits(&mut client, "#temp");
+    assert_eq!(found[0].0, "#temp", "{found:?}");
+    let table = json_of(
+        &mut client,
+        "describe_table",
+        &json!({ "connection": "App db", "schema": "main", "table": "t" }),
+    );
+    assert!(table.get("note").is_none() && table.get("catalog_unavailable").is_none());
+}
+
+#[test]
+fn an_unreadable_catalog_does_not_break_describe_table() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    std::fs::write(
+        dir.path().join("catalog.db"),
+        b"this is not a database at all",
+    )
+    .unwrap();
+    let mut client = initialized(dir.path());
+    let table = json_of(
+        &mut client,
+        "describe_table",
+        &json!({ "connection": "App db", "schema": "main", "table": "t" }),
+    );
+    assert_eq!(table["columns"][0]["name"], "id");
+    assert!(
+        table["catalog_unavailable"]
+            .as_str()
+            .unwrap()
+            .contains("could not be read"),
+        "{table}"
+    );
+    let objects = json_of(
+        &mut client,
+        "list_objects",
+        &json!({ "connection": "App db", "schema": "main" }),
+    );
+    assert_eq!(objects["objects"][0]["name"], "t");
+    assert!(objects["catalog_unavailable"].is_string(), "{objects}");
+}
