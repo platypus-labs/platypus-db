@@ -54,13 +54,15 @@ impl AppState {
     }
 
     /// After the user saved connection `id` in the app with `values`: a change of it is theirs.
+    /// Only the Security page changes it, on a connection already saved: a new one, which may
+    /// be a copy of one edited outside the app, approves nothing.
     pub(crate) fn approve_agent_values(
         &self,
         id: Uuid,
         before: Option<AgentValues>,
         values: AgentValues,
     ) {
-        if before != Some(values) {
+        if before.is_some_and(|before| before != values) {
             self.approve_agent_change(|p| {
                 if values == AgentValues::Shown {
                     p.values_shown.insert(id);

@@ -9,7 +9,9 @@
 
 use platypus_core::DriverKind;
 use platypus_sql::Dialect;
-use platypus_sql::sensitive::{MASKED_VALUE, NameRules, SelectOutput, select_outputs};
+use platypus_sql::sensitive::{
+    MASKED_VALUE, NameRules, SelectOutput, has_subquery, select_outputs,
+};
 use platypus_sql::source_table;
 use platypus_store::{AgentValues, SavedConnection, SensitiveColumn};
 
@@ -112,10 +114,12 @@ fn marks_on_table(
     sql: &str,
     saved: &SavedConnection,
 ) -> Option<Vec<SensitiveColumn>> {
-    if !reads_sql(saved.driver) {
+    let dialect = Dialect::from(saved.driver);
+    // A subquery reads another table, whose marks must count: no one table here.
+    if !reads_sql(saved.driver) || has_subquery(sql, dialect) {
         return None;
     }
-    let source = source_table(sql, Dialect::from(saved.driver))?;
+    let source = source_table(sql, dialect)?;
     let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
     Some(
         marks

@@ -360,7 +360,7 @@ impl PlatypusServer {
         description = "Returns a Mermaid erDiagram of a schema's tables (columns, primary keys) \
         and the foreign keys between them, as text. Without `tables` the whole schema; with \
         `tables`, those and the tables within `depth` foreign-key hops of them (default 1, \
-        at most 3). A diagram over 32768 bytes is cut with a note: pass `tables` to choose."
+        at most 3). A diagram too long for one answer is cut with a note: pass `tables` to choose."
     )]
     async fn get_er_diagram(
         &self,

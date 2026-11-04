@@ -142,9 +142,11 @@ The results of `run_query` and `sample_rows`, and the editor, selection and resu
 `get_user_context` shares, mask sensitive columns too: their values read `••••••` and NULL stays
 NULL, as in the grid while it masks. The names and types of Settings › Safety count, and the
 user's marks; where a statement reads one table a mark on its column counts over the rules, a
-"not sensitive" mark included. The column's name is enough to follow it through the select list
-(`email AS contact`, `upper(email)`). A result says which columns it masked: `masked_columns`
-in JSON, a last line in text, and a note in `get_user_context`.
+"not sensitive" mark included. In `run_query` and `sample_rows` the name is enough to follow a
+column through the select list or a `RETURNING` (`email AS contact`, `upper(email)`). What
+`get_user_context` shares of a result is known by its column names only, so there the alias and
+the type rules do not count. A result says which columns it masked: `masked_columns` in JSON, a
+last line in text, and a note in `get_user_context`.
 
 Settings › Agents › Security can show the values on one connection. It is part of what the user
 approves, like the agent access: written in `connections.toml` by hand it changes nothing

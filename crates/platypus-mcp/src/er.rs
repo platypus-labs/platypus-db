@@ -223,12 +223,45 @@ pub fn render(schema: &DocSchema, total: usize, max_bytes: usize) -> String {
              (and `depth`) to choose the tables to draw."
         );
     }
+    if let Some(first) = schema.objects.first()
+        && columns < first.columns.len()
+    {
+        let _ = writeln!(
+            out,
+            "    %% cut: {columns} of the {} columns of the first table shown (limit {max_bytes} \
+             bytes): describe_table has them all.",
+            first.columns.len()
+        );
+    }
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lone_table_with_its_columns_cut_says_so() {
+        let schema = DocSchema {
+            name: "s".to_owned(),
+            objects: vec![DocObject {
+                name: "wide".to_owned(),
+                kind: DocKind::Table,
+                columns: (0..2000)
+                    .map(|i| DocColumn {
+                        name: format!("column_{i}"),
+                        data_type: "text".to_owned(),
+                        ..DocColumn::default()
+                    })
+                    .collect(),
+                ..DocObject::default()
+            }],
+        };
+        let text = render(&schema, 1, 4096);
+        assert!(text.contains("of the 2000 columns"), "{text}");
+        assert!(!text.contains("tables shown"), "{text}");
+        assert!(!render(&schema, 1, 1 << 20).contains("cut:"));
+    }
 
     fn edges(pairs: &[(&str, &str)]) -> HashMap<String, Vec<String>> {
         let mut map: HashMap<String, Vec<String>> = HashMap::new();

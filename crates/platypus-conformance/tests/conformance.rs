@@ -5427,6 +5427,53 @@ fn save_agent_connection(dir: &std::path::Path, b: &Backend, driver: &str) {
     .unwrap();
 }
 
+/// Sensitive columns read masked for agents on real servers: by the name the driver reports, and
+/// through the select list where the result's name says nothing.
+#[tokio::test]
+async fn agents_read_sensitive_columns_masked() {
+    use platypus_mcp::{Agent, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres => save_agent_connection(dir.path(), &b, "postgres"),
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                     name = \"Db\"\ndriver = \"sqlite\"\ndatabase = '{}'\n",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        for sql in [
+            "SELECT 'a@b.c' AS email",
+            "SELECT lower(email) FROM (SELECT 'A@B.C' AS email) t",
+            "SELECT email AS contact FROM (SELECT 'a@b.c' AS email) t",
+        ] {
+            assert_eq!(
+                first_cell(&agent, b.name, sql).await.as_deref(),
+                Some("••••••"),
+                "{}: {sql}",
+                b.name
+            );
+        }
+        assert_eq!(
+            first_cell(&agent, b.name, "SELECT 'x' AS label")
+                .await
+                .as_deref(),
+            Some("x"),
+            "{}",
+            b.name
+        );
+    }
+}
+
 /// On a read-write connection a query that writes through a function is asked about like
 /// any change: it runs first in the read-only transaction, which refuses the write.
 #[tokio::test]

@@ -724,7 +724,13 @@ impl Agent {
         }
         let lease = self.lease(&store, &saved).await?;
         let read = timed(read_er(lease.conn(), schema, tables, er::hops(depth))).await;
-        match lease.settle(read)? {
+        let read = lease.settle(read).map_err(|e| match e {
+            AgentError::Timeout(_) if tables.is_empty() => AgentError::Invalid(format!(
+                "reading all the tables of `{schema}` took too long: pass `tables` to draw some"
+            )),
+            other => other,
+        })?;
+        match read {
             ErRead::NoSchema => Err(AgentError::NotFound(format!(
                 "`{connection}` has no schema `{schema}`"
             ))),
@@ -1173,19 +1179,29 @@ async fn read_er(
         .map(|o| o.name.clone())
         .collect();
     let known: HashSet<&str> = names.iter().map(String::as_str).collect();
-    if let Some(name) = requested.iter().find(|t| !known.contains(t.as_str())) {
-        let other = objects.iter().any(|o| o.name == *name);
-        return Ok(ErRead::Unknown {
-            name: name.clone(),
-            other,
-        });
+    // As the catalog writes them: the exact name, else one that differs only in case.
+    let mut chosen = Vec::with_capacity(requested.len());
+    for name in requested {
+        let found = names
+            .iter()
+            .find(|n| *n == name)
+            .or_else(|| names.iter().find(|n| n.eq_ignore_ascii_case(name)));
+        let Some(found) = found else {
+            let other = objects.iter().any(|o| o.name.eq_ignore_ascii_case(name));
+            return Ok(ErRead::Unknown {
+                name: name.clone(),
+                other,
+            });
+        };
+        chosen.push(found.clone());
     }
+    let requested = chosen;
     let mut details = HashMap::new();
     let (order, total) = if requested.is_empty() {
         let first = names.iter().take(er::MAX_TABLES).cloned().collect();
         (first, names.len())
     } else {
-        let mut walk = er::Walk::new(requested);
+        let mut walk = er::Walk::new(&requested);
         for _ in 0..depth {
             load_details(conn, schema, walk.frontier(), &mut details).await?;
             let edges = walk

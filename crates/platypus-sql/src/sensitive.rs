@@ -423,9 +423,19 @@ fn select_output(item: &[Sig<'_>], sensitive: &dyn Fn(&str) -> bool) -> SelectOu
     }
 }
 
-/// The items of the select list of the outermost `SELECT` of `sql`, in order; none when it has
-/// no such `SELECT`. A `WITH` before it is passed over, and only the first branch of a `UNION`
-/// is read. Whether a name is sensitive is `sensitive`'s to say.
+/// Whether `sql` has more than one `SELECT`.
+#[must_use]
+pub fn has_subquery(sql: &str, dialect: Dialect) -> bool {
+    significant(sql, dialect)
+        .iter()
+        .filter(|s| s.is("select"))
+        .nth(1)
+        .is_some()
+}
+
+/// The items of the `RETURNING` list of `sql`, else of the select list of its outermost `SELECT`,
+/// in order; none when it has neither. A `WITH` before the `SELECT` is passed over, and only the
+/// first branch of a `UNION` is read. Whether a name is sensitive is `sensitive`'s to say.
 #[must_use]
 pub fn select_outputs(
     sql: &str,
@@ -447,21 +457,23 @@ pub fn select_outputs(
     ];
     let sig = significant(sql, dialect);
     let mut depth = 0usize;
-    let mut select = None;
+    let (mut select, mut returning) = (None, None);
     for (i, s) in sig.iter().enumerate() {
         if s.symbol("(") {
             depth += 1;
         } else if s.symbol(")") {
             depth = depth.saturating_sub(1);
-        } else if depth == 0 && s.is("select") {
-            select = Some(i);
-            break;
+        } else if depth == 0 && s.is("returning") {
+            returning = Some(i + 1);
+        } else if depth == 0 && select.is_none() && s.is("select") {
+            select = Some(i + 1);
         }
     }
-    let Some(select) = select else {
-        return Vec::new();
+    let start = match (returning, select) {
+        (Some(list), _) => list,
+        (None, Some(list)) => select_list_start(&sig, list),
+        (None, None) => return Vec::new(),
     };
-    let start = select_list_start(&sig, select + 1);
     let (mut outputs, mut item, mut depth, mut k) = (Vec::new(), start, 0usize, start);
     while k < sig.len() {
         let s = &sig[k];
@@ -610,6 +622,16 @@ mod tests {
             [false, false]
         );
         assert_eq!(touching("SELECT 'email' FROM t"), [false]);
+        assert_eq!(
+            touching("UPDATE t SET a = 1 RETURNING id, upper(email)"),
+            [false, true]
+        );
+        assert_eq!(
+            touching("INSERT INTO t SELECT email FROM u RETURNING id"),
+            [false]
+        );
+        assert!(has_subquery("SELECT (SELECT 1) FROM t", Dialect::Postgres));
+        assert!(!has_subquery("SELECT 'select' FROM t", Dialect::Postgres));
         assert_eq!(outputs("UPDATE t SET email = 'x'"), []);
         assert_eq!(outputs("db.users.find({})"), []);
     }
