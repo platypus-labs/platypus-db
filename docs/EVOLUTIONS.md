@@ -53,7 +53,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 | Group | Lock |
 |---|---|
-| A — Agents and MCP | free |
+| A — Agents and MCP | 🔒 Delfa · evo-a-agents · 2026-11-04 |
 | B — Plugins and mods | free |
 | C — Kerberos and authentication | free |
 | D — User documentation | free |
