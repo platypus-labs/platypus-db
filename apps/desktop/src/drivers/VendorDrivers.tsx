@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type DriverKind, type OdbcSystem, type VendorStatus, toCommandError, VENDOR_DRIVERS } from "../api";
 import { askDriver } from "./DriverPopup";
 import { DRIVER_NAMES } from "./names";
+import { usePopupFocus } from "./popupFocus";
 import { t, msg, tNodes } from "../i18n";
 
 const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
