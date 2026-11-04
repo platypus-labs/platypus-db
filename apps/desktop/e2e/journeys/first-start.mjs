@@ -84,6 +84,8 @@ export async function run(page, ctx, mode) {
   assert.equal(await page.eval(`document.querySelectorAll('.tree-row').length`), 0);
   assert.deepEqual(savedConnections(ctx.dir), {});
   assert.equal(await page.eval(`document.documentElement.lang`), lang);
+  // The line comes once the saved connections are read.
+  await page.waitFor(`document.querySelector('.welcome-lead') !== null`);
   assert.equal(await page.eval(`document.querySelector('.welcome-lead').textContent`), j.t("A SQL client for your databases and data files. Add a connection to get started."));
   await screenIsItalian(page, mode, "the home screen", ["PlatypusDB"]);
 

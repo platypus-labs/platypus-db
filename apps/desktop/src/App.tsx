@@ -1245,7 +1245,7 @@ export function App() {
         </div>
         {visibleTabs.length === 0 && (
           <Welcome
-            empty={connections?.length === 0}
+            empty={connections == null ? null : connections.length === 0}
             // Translated at each render, so it follows a change of language.
             version={portable ? `${version} · ${t("portable")}` : version}
             onNew={() => void newConnection()}
