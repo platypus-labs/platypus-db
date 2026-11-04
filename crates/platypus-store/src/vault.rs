@@ -305,7 +305,7 @@ impl VaultSecrets {
         std::fs::create_dir_all(dir).map_err(io_error)?;
         let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(io_error)?;
         tmp.write_all(text.as_bytes()).map_err(io_error)?;
-        tmp.persist(&self.path).map_err(|e| io_error(e.error))?;
+        crate::atomic::replace(tmp, &self.path).map_err(io_error)?;
         Ok(())
     }
 

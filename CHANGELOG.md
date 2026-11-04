@@ -13,12 +13,19 @@ All notable changes to PlatypusDB are listed here. The format follows
   on one connection.
 - **Agents**: the `get_er_diagram` tool draws a schema, or the tables near some tables, as a Mermaid
   `erDiagram`.
+- **Agents**: `describe_table`, `list_objects` and the table resource return the user's notes, tags
+  and sensitive marks, and `search_objects` also finds objects by comment, note and `#tag`.
+- **Agents**: Settings › Agents › Security limits rows, bytes, time and calls per minute per
+  connection, and can refuse a read whose estimated rows or plan cost are too high, with the plan
+  in the error. A limit raised by hand in the file waits for the user.
 - Choosing a database for a new connection offers its driver at once, when it needs one that is
   not installed; Settings is not needed. Cancelling leaves the form as it is.
 
 ### Fixed
 
 - IBM Db2 connections are imported from DBeaver and DataGrip, and `jdbc:db2:` URLs are read.
+- On Windows, saving connections or settings no longer fails with "Access denied" when another
+  program holds the file for a moment, as antivirus scanners and backup tools do.
 - **Security**: a connection URL pasted or typed over the one the URL field already shows no
   longer leaves its password in clear in `connections.toml`. A paste takes the field's place, and
   two URLs together are refused. Saving also refuses a name, database or user that holds a URL

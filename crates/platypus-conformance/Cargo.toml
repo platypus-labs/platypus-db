@@ -35,11 +35,13 @@ platypus-mcp.workspace = true
 platypus-net.workspace = true
 platypus-schema.workspace = true
 platypus-sql.workspace = true
+platypus-store.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 tokio-util.workspace = true
+uuid.workspace = true
 ureq = { version = "3", default-features = false }
 
 [lints]

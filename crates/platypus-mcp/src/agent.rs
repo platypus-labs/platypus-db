@@ -26,6 +26,7 @@ use crate::access::{self, UnfilteredRule};
 use crate::connect;
 use crate::er;
 use crate::error::{AgentError, Result};
+use crate::guard::{self, Asked, CallWindows};
 use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
@@ -254,7 +255,7 @@ type Slot = Arc<tokio::sync::Mutex<Option<Session>>>;
 
 /// The connection of one call, held for the call: calls on the same connection wait for
 /// each other.
-struct Lease {
+pub(crate) struct Lease {
     slot: OwnedMutexGuard<Option<Session>>,
 }
 
@@ -266,7 +267,7 @@ impl Lease {
             .unwrap_or_else(|| unreachable!("a lease always holds a session"))
     }
 
-    fn conn(&self) -> &dyn Connection {
+    pub(crate) fn conn(&self) -> &dyn Connection {
         &*self.session().conn
     }
 
@@ -288,7 +289,11 @@ impl Lease {
 
     /// The result of a request made within [`query::guarded`]: after a timeout or a
     /// cancellation the connection is closed, the request may still be running on it.
-    fn finish<T>(self, result: Result<T, RunError>, timeout: std::time::Duration) -> Result<T> {
+    pub(crate) fn finish<T>(
+        self,
+        result: Result<T, RunError>,
+        timeout: std::time::Duration,
+    ) -> Result<T> {
         match result {
             Ok(value) => Ok(value),
             Err(RunError::Database(e)) => Err(self.error(&e)),
@@ -352,6 +357,8 @@ pub struct Agent {
     session: String,
     /// The policy the user approved in the app, which edits of the files cannot loosen.
     seal: Seal,
+    /// The calls of the last minute on each connection, for `calls_per_minute`.
+    windows: CallWindows,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only
@@ -400,6 +407,7 @@ impl Agent {
             allowed: Mutex::default(),
             session: Uuid::new_v4().to_string(),
             seal,
+            windows: CallWindows::default(),
         }
     }
 
@@ -430,6 +438,7 @@ impl Agent {
                 let mut c = c.clone();
                 c.agent_access = policy.access(c.id);
                 c.agent_values = policy.values(c.id);
+                c.agent_limits = policy.limits(c.id);
                 c
             })
             .collect();
@@ -620,7 +629,11 @@ impl Agent {
 
     /// The open connection of `saved`, reopened when its settings changed, the server
     /// dropped it or a transaction was left open.
-    async fn lease(&self, store: &ConnectionStore, saved: &SavedConnection) -> Result<Lease> {
+    pub(crate) async fn lease(
+        &self,
+        store: &ConnectionStore,
+        saved: &SavedConnection,
+    ) -> Result<Lease> {
         let mut slot = self.slot(saved.id).lock_owned().await;
         let fingerprint = fingerprint(&store.effective(saved));
         let reusable = slot.as_ref().is_some_and(|s| {
@@ -662,7 +675,9 @@ impl Agent {
         offset: Option<u64>,
         limit: Option<u64>,
     ) -> Result<Value> {
-        let lease = self.open(connection).await?;
+        let (store, saved) = self.find(connection)?;
+        let lease = self.lease(&store, &saved).await?;
+        let redactor = lease.session().redactor.clone();
         let conn = lease.conn();
         // No objects may also mean no such schema: say so, rather than an empty list.
         let objects = timed(async {
@@ -675,7 +690,9 @@ impl Agent {
         let objects = lease.settle(objects)?.ok_or_else(|| {
             AgentError::NotFound(format!("`{connection}` has no schema `{schema}`"))
         })?;
-        object_page(&objects, offset, limit)
+        let page = object_page(&objects, offset, limit)?;
+        let view = self.catalog_view(saved.id, &saved.database);
+        Ok(view.list(schema, page, &redactor))
     }
 
     /// Columns, keys, foreign keys (both ways), indexes and constraints of a table or view.
@@ -685,7 +702,9 @@ impl Agent {
         schema: &str,
         table: &str,
     ) -> Result<Value> {
-        let lease = self.open(connection).await?;
+        let (store, saved) = self.find(connection)?;
+        let lease = self.lease(&store, &saved).await?;
+        let redactor = lease.session().redactor.clone();
         let conn = lease.conn();
         // A missing table reads as one without columns: say so instead.
         let details = timed(async {
@@ -700,7 +719,10 @@ impl Agent {
                 "`{connection}` has no table or view `{schema}.{table}`"
             ))
         })?;
-        Ok(json!(details))
+        let mut details = json!(details);
+        let view = self.catalog_view(saved.id, &saved.database);
+        view.describe(schema, table, &mut details, &redactor);
+        Ok(details)
     }
 
     /// A Mermaid `erDiagram` of a schema's tables and the foreign keys between them: all of
@@ -769,12 +791,22 @@ impl Agent {
         if text.trim().is_empty() {
             return Err(AgentError::Invalid("the search text is empty".to_owned()));
         }
-        let lease = self.open(connection).await?;
-        let found = timed(search(lease.conn(), text)).await;
-        let mut all = lease.settle(found)?;
+        let (store, saved) = self.find(connection)?;
+        let lease = self.lease(&store, &saved).await?;
+        let view = self.catalog_view(saved.id, &saved.database);
+        let query = view.query(text);
+        let redactor = lease.session().redactor.clone();
+        let found = timed(search_all(lease.conn(), text, &view, &query, &redactor)).await;
+        let (mut all, catalog_read) = lease.settle(found)?;
         let truncated = all.len() > SEARCH_RESULTS;
         all.truncate(SEARCH_RESULTS);
-        Ok(json!({ "matches": all, "truncated": truncated }))
+        let mut answer = json!({ "matches": all, "truncated": truncated });
+        if !catalog_read {
+            answer["catalog_incomplete"] = json!(
+                "comments, notes and tags were not searched: listing the objects took too long"
+            );
+        }
+        Ok(answer)
     }
 
     /// Runs one statement within the connection's agent access and the limits, and
@@ -794,8 +826,14 @@ impl Agent {
         (origin, session): (&str, &str),
         stop: impl Future<Output = ()>,
     ) -> Result<QueryResult> {
-        let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
+        let asked = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
+        let requested = Asked {
+            max_rows: args.max_rows,
+            max_bytes: args.max_bytes,
+            timeout_seconds: args.timeout_seconds,
+        };
+        let (limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
         let access = saved.effective_agent_access();
         let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();
@@ -816,6 +854,7 @@ impl Agent {
         let mut waited = Duration::ZERO;
         let mut stop = std::pin::pin!(stop);
         let result = async {
+            self.windows.count(&saved)?;
             let statement = checked?;
             let asked = Instant::now();
             // The client's cancellation withdraws the question too.
@@ -824,6 +863,12 @@ impl Agent {
                 () = stop.as_mut() => return Err(AgentError::Cancelled),
             }
             waited = asked.elapsed();
+            if let Some(note) = self
+                .cost_guard((&store, &saved), statement, &limits, stop.as_mut())
+                .await?
+            {
+                notes.push(note);
+            }
             if access == AgentAccess::ReadOnly {
                 return self
                     .execute(&store, &saved, statement, Some(saved.driver), &limits, stop)
@@ -861,6 +906,7 @@ impl Agent {
                 outcome,
                 elapsed: start.elapsed(),
                 limits,
+                notes,
             })
             .map_err(|e| self.mask_statement_error(&saved, e));
         self.record(
@@ -912,6 +958,8 @@ impl Agent {
         let limits = Limits::new(None, args.max_bytes, args.timeout_seconds)?;
         let analyze = args.analyze.unwrap_or(false);
         let (store, saved) = self.find(&args.connection)?;
+        self.windows.count(&saved)?;
+        let (limits, _) = guard::clamp(limits, &Asked::default(), &saved.agent_limits);
         if matches!(
             saved.driver,
             DriverKind::Mongo
@@ -972,9 +1020,15 @@ impl Agent {
                 "schema and table are both needed".to_owned(),
             ));
         }
-        let max_rows = args.max_rows.unwrap_or(SAMPLE_ROWS);
-        let limits = Limits::new(Some(max_rows), args.max_bytes, args.timeout_seconds)?;
         let (_, saved) = self.find(&args.connection)?;
+        // A default above the connection's limit is lowered without a word: nobody asked for it.
+        let max_rows = args.max_rows.unwrap_or_else(|| {
+            saved
+                .agent_limits
+                .max_rows
+                .map_or(SAMPLE_ROWS, |max| max.min(SAMPLE_ROWS))
+        });
+        let limits = Limits::new(Some(max_rows), args.max_bytes, args.timeout_seconds)?;
         let rows = u64::try_from(limits.max_rows).unwrap_or(u64::MAX);
         let query = QueryArgs {
             connection: saved.id.to_string(),
@@ -1222,6 +1276,35 @@ async fn read_er(
         total,
     })
 }
+
+/// The matches of the catalog's tags, notes and comments, and (unless the text is a `#tag`
+/// query) those of the database's own search. Listing every schema must not cost the database's
+/// own matches: it has [`CATALOG_SEARCH`], and `false` says it ran out.
+async fn search_all(
+    conn: &dyn Connection,
+    text: &str,
+    view: &crate::catalog_view::CatalogView,
+    query: &crate::catalog_view::SearchQuery,
+    redactor: &Redactor,
+) -> Result<(Vec<Value>, bool), Error> {
+    let mut found = if query.tags.is_empty() {
+        search(conn, text).await?
+    } else {
+        Vec::new()
+    };
+    let catalog = crate::catalog_view::search(conn, view, query, redactor);
+    let catalog_read = match tokio::time::timeout(CATALOG_SEARCH, catalog).await {
+        Ok(matches) => {
+            found.extend(matches?);
+            true
+        }
+        Err(_) => false,
+    };
+    Ok((found, catalog_read))
+}
+
+/// How long `search_objects` looks through the catalog after the database's own search.
+const CATALOG_SEARCH: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The catalog search of the database, else a search of the object names.
 async fn search(conn: &dyn Connection, text: &str) -> Result<Vec<Value>, Error> {

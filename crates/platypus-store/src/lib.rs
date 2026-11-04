@@ -11,6 +11,7 @@
 
 mod address;
 mod agent_calls;
+mod atomic;
 mod auth;
 mod catalog;
 mod connections;
@@ -37,10 +38,10 @@ pub use catalog::{
     normalize_tags,
 };
 pub use connections::{
-    AgentAccess, AgentValues, ConnectBy, ConnectionFolder, ConnectionStore, ConnectionType,
-    DatabaseList, ImportInto, ImportRequest, ImportTarget, NetworkProfile, PasswordUpdate, Project,
-    ProjectFolder, Restrictions, SavedConnection, SavedInit, SavedSsh, SharedLink, SshAuthKind,
-    SyncBatch, TextJson, VirtualKey, initials_of,
+    AgentAccess, AgentLimits, AgentValues, ConnectBy, ConnectionFolder, ConnectionStore,
+    ConnectionType, DatabaseList, ImportInto, ImportRequest, ImportTarget, NetworkProfile,
+    PasswordUpdate, Project, ProjectFolder, Restrictions, SavedConnection, SavedInit, SavedSsh,
+    SharedLink, SshAuthKind, SyncBatch, TextJson, VirtualKey, initials_of,
 };
 pub use history::{
     HistoryEntry, HistoryOrigin, HistoryQuery, HistoryStatus, HistoryStore, NewHistoryEntry,

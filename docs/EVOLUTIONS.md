@@ -61,7 +61,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 ### Group A — Agents and MCP
 
-**Status: P1 done (sensitive columns masked in results); `get_er_diagram` as Mermaid done; the rest of P2 and P3 to do.**
+**Status: P1 done (sensitive columns masked in results); `get_er_diagram` as Mermaid, the catalog for agents and the per-connection limits done; the rest of P2 and P3 to do.**
 
 **What exists** (roadmap group N, [AGENTS.md](AGENTS.md)): the server (`platypus-db --mcp` on
 stdio, `/mcp` over HTTP through the bridge with the open app) with the tools `list_connections`,
@@ -85,11 +85,11 @@ configuration. The rows below add only what is not there.
 | ✅ Tests for the Mermaid tool: unit tests of the FK hops, stdio on SQLite, and the conformance suite on PostgreSQL, MySQL and SQLite (tables, PKs, FKs, names with spaces) | P2 | U |
 | 🆕 `get_er_diagram` as SVG, like the app's export (`apps/desktop/src/erd/`), requested from the open app as `get_user_context` does (`/v1/context`); a `format` parameter picks between Mermaid and SVG. Needs the app open; with an E2E scenario for the request | P3 | U |
 | ✅ **Sensitive columns masked in results**: masking covers `read_script` and `search_history` only; `run_query`, `sample_rows` and `get_user_context` return as they are the values of the columns marked sensitive in `catalog.db` or matched by the Safety rules. Mask them as the grid does (`••••••`, NULL left NULL), with a per-connection choice in Settings → Agents → Security to show them | P1 | N |
-| 🆕 **Catalog for agents**: `describe_table`, `list_objects` and the table resource also return the user's notes, tags and sensitive marks from `catalog.db` (today only the database comment), and `search_objects` also matches comments, notes and `#tag`, so an agent finds "the invoices table" without knowing its name | P2 | N |
+| ✅ **Catalog for agents**: `describe_table`, `list_objects` and the table resource also return the user's notes, tags and sensitive marks from `catalog.db` (today only the database comment), and `search_objects` also matches comments, notes and `#tag`, so an agent finds "the invoices table" without knowing its name | P2 | N |
 | 🆕 Tool `compare_schemas`: the differences between two schemas (same or different connection, as the app's schema compare of roadmap group I) and the migration script as text; the script reaches the user only through `propose_sql`, the tool runs nothing | P2 | U |
 | 🆕 Tool `profile_table`: per column NULLs, distinct values, min/max, top values and patterns, from the app's table profile (`platypus-local::table_profile`), on a row sample and within the `run_query` timeout; sensitive columns give counts only, no values | P2 | U |
 | 🆕 **Dry run of a change**: tool `estimate_change` returns, without running anything, what the confirmation dialog would show the user (rows the database expects to change, plan, the Safety checks that would ask), so the agent corrects a statement before asking | P2 | U |
-| 🆕 **Per-agent limits and cost guard**: per connection in Settings → Agents → Security, the maximum rows, bytes and timeout an agent may ask for (today fixed caps: 10,000 rows, 1 MB, 300 s), calls per minute, and a threshold on estimated rows or plan cost above which a read is refused with the plan in the error | P2 | U |
+| ✅ **Per-agent limits and cost guard**: per connection in Settings → Agents → Security, the maximum rows, bytes and timeout an agent may ask for (today fixed caps: 10,000 rows, 1 MB, 300 s), calls per minute, and a threshold on estimated rows or plan cost above which a read is refused with the plan in the error | P2 | U |
 | 🆕 Read-only server tools `server_activity` (sessions, running queries, locks) and `top_queries` (`pg_stat_statements`, `performance_schema`, Query Store), from the views of roadmap group J; no kill or cancel | P2 | U |
 | 🆕 **Edits proposed by agents**: tool `propose_edits` (rows to insert, update or delete in a table, by key) opens them in the app's data viewer as pending edits, shown as a diff in the grid, which the user saves or discards; like `propose_sql`, it changes nothing by itself | P2 | U |
 | 🆕 **Large results in pages**: `run_query` returns a `cursor` to read the next pages of the same result (kept a few minutes, closed with the session) instead of running the query again with a larger `max_rows` | P3 | U |

@@ -5672,6 +5672,238 @@ database = '{}'
     }
 }
 
+/// Fills the app's catalog in `dir` as the app keys it, for `agents_read_the_catalog_notes_of_the_app`.
+fn save_catalog_notes(dir: &std::path::Path, schema: &str, database: &str) {
+    use platypus_store::{CatalogKey, CatalogStore};
+
+    let id = uuid::Uuid::parse_str("00000000-0000-4000-8000-000000000001").unwrap();
+    let key = |database: &str, object: &str, column: &str| CatalogKey {
+        database: database.to_owned(),
+        schema: schema.to_owned(),
+        object: object.to_owned(),
+        column: column.to_owned(),
+    };
+    let mut catalog = CatalogStore::open(&dir.join("catalog.db")).unwrap();
+    let mut note = |database: &str, object: &str, column: &str, note: &str, tags: &[String]| {
+        catalog
+            .save(id, &key(database, object, column), note, tags)
+            .unwrap();
+    };
+    // As the app saves it for the connection's own database: an empty database.
+    note("", "customers", "", "the buyers", &["crm".to_owned()]);
+    note("", "customers", "email", "login address", &[]);
+    // Under the database's own name, which a tab opened on it may use.
+    note(database, "orders", "", "what was bought", &[]);
+    // Another database, which agents do not reach, and an object that is gone.
+    note("another_db", "customers", "", "not ours", &[]);
+    note("", "dropped_long_ago", "", "bought once", &[]);
+    catalog
+        .set_sensitive(id, &key("", "customers", "email"), Some(true))
+        .unwrap();
+}
+
+/// The notes, tags and marks of the app's catalog reach agents on real servers. The app keys
+/// them by database (empty for the connection's own), schema and object as the driver names
+/// them, so a note saved under that key must be found by `describe_table`, `list_objects` and
+/// `search_objects`, also when the key carries the database's name.
+#[tokio::test]
+async fn agents_read_the_catalog_notes_of_the_app() {
+    use platypus_mcp::{Agent, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+            }
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                     name = \"Db\"\ndriver = \"sqlite\"\ndatabase = '{}'\n",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        save_catalog_notes(dir.path(), &b.schema, &b.config.database);
+
+        let agent = Agent::new(Profile::at(dir.path()));
+        let table = agent
+            .describe_table("Db", &b.schema, "customers")
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(table["note"], "the buyers", "{}: {table}", b.name);
+        assert_eq!(table["tags"], serde_json::json!(["crm"]), "{}", b.name);
+        let email = table["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == "email")
+            .unwrap_or_else(|| panic!("{}: {table}", b.name));
+        assert_eq!(email["note"], "login address", "{}: {table}", b.name);
+        assert_eq!(email["sensitive"], true, "{}: {table}", b.name);
+
+        let orders = agent.describe_table("Db", &b.schema, "orders").await;
+        assert_eq!(orders.unwrap()["note"], "what was bought", "{}", b.name);
+        let objects = agent
+            .list_objects("Db", &b.schema, None, None)
+            .await
+            .unwrap();
+        let customers = objects
+            .as_array()
+            .unwrap_or_else(|| panic!("{}: {objects}", b.name))
+            .iter()
+            .find(|o| o["name"] == "customers")
+            .unwrap_or_else(|| panic!("{}: {objects}", b.name));
+        assert_eq!(customers["tags"], serde_json::json!(["crm"]), "{}", b.name);
+
+        let hits = |text: &'static str| {
+            let agent = &agent;
+            async move {
+                let found = agent.search_objects("Db", text).await.unwrap();
+                let matches = found["matches"].as_array().unwrap().clone();
+                matches
+                    .iter()
+                    .map(|m| (m["name"].to_string(), m["matched"].to_string()))
+                    .collect::<Vec<_>>()
+            }
+        };
+        let pair = |n: &str, m: &str| (format!("\"{n}\""), format!("\"{m}\""));
+        assert_eq!(hits("#crm").await, [pair("customers", "tag")], "{}", b.name);
+        assert_eq!(hits("bought").await, [pair("orders", "note")], "{}", b.name);
+        assert_eq!(hits("not ours").await.len(), 0, "{}", b.name);
+    }
+}
+
+/// Writes `limits` as the `[connections.agent_limits]` table of the connection in `dir`.
+fn set_agent_limits(dir: &std::path::Path, limits: &str) {
+    use std::fmt::Write as _;
+
+    let file = dir.join("connections.toml");
+    let mut toml = std::fs::read_to_string(&file).unwrap();
+    if let Some(at) = toml.find(
+        "
+[connections.agent_limits]",
+    ) {
+        toml.truncate(at);
+    }
+    write!(
+        toml,
+        "
+[connections.agent_limits]
+{limits}
+"
+    )
+    .unwrap();
+    std::fs::write(file, toml).unwrap();
+}
+
+/// A read through a new agent over the profile in `dir`.
+async fn agent_read(
+    dir: &std::path::Path,
+    sql: String,
+) -> platypus_mcp::Result<platypus_mcp::QueryResult> {
+    use platypus_mcp::{Agent, Profile, QueryArgs};
+
+    let args = QueryArgs {
+        connection: "Db".to_owned(),
+        sql,
+        max_rows: None,
+        max_bytes: None,
+        timeout_seconds: None,
+        format: None,
+    };
+    Agent::new(Profile::at(dir)).run_query(&args, "test").await
+}
+
+/// The cost guard refuses a read whose estimated plan is over a limit, on the databases whose
+/// plan carries an estimate (PostgreSQL, MySQL), and lets it run, with a note, where it does
+/// not (SQLite).
+#[tokio::test]
+async fn agents_cost_guard_reads_the_plan() {
+    use platypus_mcp::AgentError;
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        let estimates = match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+                true
+            }
+            DriverKind::MySql => {
+                save_agent_connection(dir.path(), &b, "mysql");
+                true
+            }
+            DriverKind::Sqlite => {
+                std::fs::write(
+                    dir.path().join("connections.toml"),
+                    format!(
+                        "version = 4
+
+[[connections]]
+id = \"00000000-0000-4000-8000-000000000001\"
+                         name = \"Db\"
+driver = \"sqlite\"
+database = '{}'
+",
+                        b.config.database
+                    ),
+                )
+                .unwrap();
+                false
+            }
+            _ => continue,
+        };
+        let s = &b.schema;
+        let cross = format!("SELECT * FROM {s}.orders a, {s}.orders b, {s}.orders c");
+
+        set_agent_limits(dir.path(), "max_estimated_rows = 1");
+        let result = agent_read(dir.path(), cross.clone()).await;
+        if estimates {
+            let Err(AgentError::Denied(refusal)) = result else {
+                panic!("{}: a cross join over one row ran: {result:?}", b.name);
+            };
+            assert!(
+                refusal.contains("max_estimated_rows of 1"),
+                "{}: {refusal}",
+                b.name
+            );
+            assert!(refusal.contains("-> "), "{}: no plan: {refusal}", b.name);
+        } else {
+            let text = result.unwrap_or_else(|e| panic!("{}: {e}", b.name)).text();
+            assert!(text.contains("could not be checked"), "{}: {text}", b.name);
+        }
+
+        // A limit the plan stays under lets the read through.
+        set_agent_limits(
+            dir.path(),
+            "max_estimated_rows = 1000000000
+max_plan_cost = 1000000000",
+        );
+        let text = agent_read(dir.path(), format!("SELECT * FROM {s}.orders"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name))
+            .text();
+        assert!(!text.contains("lowered"), "{}: {text}", b.name);
+
+        // A change is not looked at by the guard.
+        set_agent_limits(dir.path(), "max_estimated_rows = 1");
+        let write = agent_read(dir.path(), format!("DELETE FROM {s}.orders WHERE 1 = 0")).await;
+        if let Err(e) = write {
+            assert!(
+                !e.to_string().contains("max_estimated_rows"),
+                "{}: {e}",
+                b.name
+            );
+        }
+    }
+}
+
 /// The first cell of what `sql` returns through `agent` (`None` for a statement without rows).
 async fn first_cell(agent: &platypus_mcp::Agent, name: &str, sql: &str) -> Option<String> {
     use platypus_mcp::QueryArgs;

@@ -3,7 +3,7 @@
 //! outside it that give agents more, which the page asks about.
 
 use platypus_mcp::policy::{AgentPolicy, CONFIRM_WRITES, Loosening, Seal, Sealed, UNFILTERED};
-use platypus_store::{AgentAccess, AgentValues, PasswordUpdate, toml};
+use platypus_store::{AgentAccess, AgentLimits, AgentValues, PasswordUpdate, toml};
 use tauri::State;
 use uuid::Uuid;
 
@@ -73,6 +73,25 @@ impl AppState {
         }
     }
 
+    /// After the user saved connection `id` in the app with `limits`: a change of them is
+    /// theirs, raised or lowered. As with the values, only on a connection already saved.
+    pub(crate) fn approve_agent_limits(
+        &self,
+        id: Uuid,
+        before: Option<AgentLimits>,
+        limits: AgentLimits,
+    ) {
+        if before.is_some_and(|before| before != limits) {
+            self.approve_agent_change(|p| {
+                if limits.is_empty() {
+                    p.limits.remove(&id);
+                } else {
+                    p.limits.insert(id, limits);
+                }
+            });
+        }
+    }
+
     /// After the user set `key` in the app's settings to `value`.
     pub(crate) fn approve_agent_setting(&self, key: &str, value: Option<&toml::Value>) {
         if key == CONFIRM_WRITES {
@@ -131,12 +150,15 @@ pub fn answer_agent_policy(state: State<'_, AppState>, accept: bool) -> CommandR
                 .list()
                 .iter()
                 .filter(|c| {
-                    c.agent_access != honored.access(c.id) || c.agent_values != honored.values(c.id)
+                    c.agent_access != honored.access(c.id)
+                        || c.agent_values != honored.values(c.id)
+                        || c.agent_limits != honored.limits(c.id)
                 })
                 .map(|c| {
                     let mut c = c.clone();
                     c.agent_access = honored.access(c.id);
                     c.agent_values = honored.values(c.id);
+                    c.agent_limits = honored.limits(c.id);
                     c
                 })
                 .collect();

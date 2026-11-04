@@ -14,8 +14,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use platypus_core::Secret;
 use platypus_store::{
-    AgentAccess, AgentValues, ConnectionFolder, ConnectionStore, ImportedProject, ImportedSecrets,
-    SavedConnection, SavedSsh,
+    AgentAccess, AgentLimits, AgentValues, ConnectionFolder, ConnectionStore, ImportedProject,
+    ImportedSecrets, SavedConnection, SavedSsh,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -270,6 +270,7 @@ fn imported(p: ExportProject, sealed: bool) -> ImportedProject {
         hold_shared_references(None, &mut c);
         c.agent_access = AgentAccess::Off;
         c.agent_values = AgentValues::Masked;
+        c.agent_limits = AgentLimits::default();
         if let Some(path) = p.placement.get(&old) {
             out.placement.insert(c.id, path.clone());
         }
