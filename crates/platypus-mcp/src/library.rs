@@ -147,51 +147,72 @@ impl Visible {
 /// columns, by name"), and the names of the columns the user marked sensitive. In text a name
 /// is not tied to a table, so a mark "not sensitive" on one column does not lift the rules for
 /// the others of that name: it is not used here. The type rules need types, which text lacks.
-struct SensitiveNames {
+pub(crate) struct SensitiveNames {
     rules: NameRules,
     /// Lower case.
     marked: std::collections::HashSet<String>,
 }
 
 impl SensitiveNames {
-    fn is(&self, name: &str) -> bool {
+    #[cfg(test)]
+    pub(crate) fn new(rules: NameRules, marked: std::collections::HashSet<String>) -> Self {
+        Self { rules, marked }
+    }
+
+    pub(crate) fn is(&self, name: &str) -> bool {
         self.marked.contains(&name.to_lowercase()) || self.rules.matches(name)
     }
 
+    /// Whether the rules alone say `name` is sensitive.
+    pub(crate) fn by_rule(&self, name: &str) -> bool {
+        self.rules.matches(name)
+    }
+
     /// `sql` with the values of sensitive columns masked.
-    fn mask(&self, sql: &str, dialect: Dialect) -> String {
+    pub(crate) fn mask(&self, sql: &str, dialect: Dialect) -> String {
         mask_literals(sql, dialect, &|c| self.is(c))
     }
 
     /// A database error with the values it quotes of sensitive columns masked.
-    fn mask_error(&self, text: &str) -> String {
+    pub(crate) fn mask_error(&self, text: &str) -> String {
         platypus_sql::sensitive::mask_error(text, &|c| self.is(c))
     }
 }
 
 /// What tells the sensitive columns, read once for a call: the rules and the user's marks.
-struct Sensitivity {
+pub(crate) struct Sensitivity {
     rules: NameRules,
+    types: NameRules,
     catalog: Option<platypus_store::CatalogStore>,
 }
 
 impl Sensitivity {
+    /// The rules on the types of columns.
+    pub(crate) const fn types(&self) -> &NameRules {
+        &self.types
+    }
+
+    /// The user's marks on the columns of `connection`. Marks that cannot be read would let
+    /// values through: the call fails instead.
+    pub(crate) fn marks(&self, connection: Uuid) -> Result<Vec<platypus_store::SensitiveColumn>> {
+        let Some(catalog) = &self.catalog else {
+            return Ok(Vec::new());
+        };
+        catalog
+            .sensitive_columns(connection)
+            .map_err(|e| AgentError::Store(format!("cannot read the sensitive columns: {e}")))
+    }
+
     /// The sensitive names of `connections`.
-    fn names(&self, connections: &[Uuid]) -> Result<SensitiveNames> {
+    pub(crate) fn names(&self, connections: &[Uuid]) -> Result<SensitiveNames> {
         let mut marked = std::collections::HashSet::new();
-        if let Some(catalog) = &self.catalog {
-            for id in connections {
-                // Marks that cannot be read would let values through: the call fails instead.
-                let marks = catalog.sensitive_columns(*id).map_err(|e| {
-                    AgentError::Store(format!("cannot read the sensitive columns: {e}"))
-                })?;
-                marked.extend(
-                    marks
-                        .into_iter()
-                        .filter(|m| m.sensitive)
-                        .map(|m| m.key.column.to_lowercase()),
-                );
-            }
+        for id in connections {
+            marked.extend(
+                self.marks(*id)?
+                    .into_iter()
+                    .filter(|m| m.sensitive)
+                    .map(|m| m.key.column.to_lowercase()),
+            );
         }
         Ok(SensitiveNames {
             rules: self.rules.clone(),
@@ -202,14 +223,14 @@ impl Sensitivity {
 
 impl Agent {
     /// The rules of the settings and the catalog of the user's marks.
-    fn sensitivity(&self) -> Result<Sensitivity> {
-        let names = self
-            .profile()
-            .settings()
-            .and_then(|s| s.get::<String>("safety.mask_names"))
-            .unwrap_or_else(|| DEFAULT_NAMES.to_owned());
+    pub(crate) fn sensitivity(&self) -> Result<Sensitivity> {
+        let settings = self.profile().settings();
+        let rule = |key: &str| settings.as_ref().and_then(|s| s.get::<String>(key));
         Ok(Sensitivity {
-            rules: NameRules::new(&names),
+            rules: NameRules::new(
+                &rule("safety.mask_names").unwrap_or_else(|| DEFAULT_NAMES.to_owned()),
+            ),
+            types: NameRules::new(&rule("safety.mask_types").unwrap_or_default()),
             catalog: self.profile().catalog()?,
         })
     }

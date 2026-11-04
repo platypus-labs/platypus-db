@@ -116,6 +116,8 @@ pub struct Table {
     pub cut: Option<Cut>,
     /// Some values were longer than [`MAX_VALUE_CHARS`] and were cut.
     pub values_cut: bool,
+    /// The columns whose values read masked, being sensitive.
+    pub masked: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -280,6 +282,7 @@ async fn read(mut stream: RecordBatchStream, limits: &Limits) -> Result<Table, E
         rows: Vec::new(),
         cut: None,
         values_cut: false,
+        masked: Vec::new(),
     };
     // Every rendering takes at least the values' bytes: once they pass the limit, no more
     // rows can fit.

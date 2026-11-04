@@ -105,7 +105,7 @@ agents and the CLI only once you approved that exact text in the app (which asks
 connect): until then they are left out, and the server's log (stderr) says so.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
-`search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql`,
+`get_er_diagram`, `search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql`,
 `list_open_sessions`, `list_scripts`, `read_script` and `search_history`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
@@ -113,6 +113,16 @@ longer than 1,000 characters were left out. In the text table SQL `NULL` reads `
 text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
 a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
 client's `notifications/cancelled` cancels the running statement.
+
+`get_er_diagram` (`connection`, `schema`, optional `tables` and `depth`) returns a Mermaid
+`erDiagram` as text, built from the catalog, so it works with the app closed: the tables of the
+schema with their columns and primary keys, and the foreign keys between them. Without `tables`
+it draws the whole schema (the first 300 tables of a larger one); with `tables` it draws those
+and the tables linked to them by foreign keys, `depth` hops away in either direction (default
+1, at most 3; 0 draws only the named tables). A diagram over 32 KB is cut at whole tables, with
+a `%%` comment saying how many were drawn and suggesting `tables`. A table that does not exist,
+a name that is a view, and a schema that does not exist are errors; MongoDB, Redis and
+Elasticsearch have no tables to draw and answer with an error.
 
 The user's saved scripts and history are readable too, never writable: `list_scripts` lists
 the scripts of a project (by its name; without one, those of All connections) with the
@@ -127,6 +137,26 @@ column is known by its name only: the names of Settings › Safety (emails, phon
 count, and so do the columns the user marked sensitive in the app; a column marked not
 sensitive is still masked where the rules name it, since the text does not say which table it
 is. When the app's catalog cannot be read, the tools fail rather than show the values.
+
+The results of `run_query` and `sample_rows`, and the editor, selection and result that
+`get_user_context` shares, mask sensitive columns too: their values read `••••••` and NULL stays
+NULL, as in the grid while it masks. The names and types of Settings › Safety count, and the
+user's marks; where a statement reads one table a mark on its column counts over the rules, a
+"not sensitive" mark included. In `run_query` and `sample_rows` the name is enough to follow a
+column through the select list or a `RETURNING` (`email AS contact`, `upper(email)`). What
+`get_user_context` shares of a result is known by its column names only, so there the alias and
+the type rules do not count. A result says which columns it masked: `masked_columns` in JSON, a
+last line in text, and a note in `get_user_context`.
+
+Settings › Agents › Security can show the values on one connection. It is part of what the user
+approves, like the agent access: written in `connections.toml` by hand it changes nothing
+until the user accepts it in the app.
+
+Masking prevents accidents; it is not a wall. A subquery that renames the column, a second
+branch of a `UNION`, a `WHERE` that tests the value, or a document field below the top level of
+MongoDB still let a value through. For a real boundary, give the connection a database user
+without access to those columns.
+
 The history and the agents' call log never keep a password a statement sets
 (`CREATE ROLE … PASSWORD '…'`, `IDENTIFIED BY '…'`, `SET PASSWORD`): it is stored as
 `'********'`, in the statement, in a call's arguments and in the error, whether the app or an
@@ -203,7 +233,8 @@ platypus --connection "Local PG" query "select * from demo.orders" --max-rows 50
 ```
 
 A query prints `{"columns": [{"name", "type"}], "rows": [[...]], "row_count",
-"truncated", "truncated_by": "max_rows" | "max_bytes" | null, "values_cut", "elapsed_ms"}`,
+"truncated", "truncated_by": "max_rows" | "max_bytes" | null, "values_cut", "elapsed_ms",
+"masked_columns"}` (`masked_columns` only when there are any),
 with numbers and booleans as JSON values and everything else as text; a statement without
 rows prints `{"affected_rows", "elapsed_ms"}`. `-f table` prints the text table instead. A
 failure prints `{"error": {"kind", "message"}}` and exits with 1; `kind` is `not_found`,

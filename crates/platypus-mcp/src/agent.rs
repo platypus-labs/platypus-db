@@ -8,7 +8,10 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
-use platypus_core::{Connection, DriverKind, Error, ObjectKind, ObjectMeta, ObjectRef};
+use platypus_core::{
+    Connection, DriverKind, Error, ObjectKind, ObjectMeta, ObjectRef, TableDetails,
+};
+use platypus_docs::DocSchema;
 use platypus_sql::Dialect;
 use platypus_store::{
     AgentAccess, AgentCallStore, ConnectionStore, HistoryStatus, HistoryStore, MAX_PENDING_ALL,
@@ -21,6 +24,7 @@ use uuid::Uuid;
 
 use crate::access::{self, UnfilteredRule};
 use crate::connect;
+use crate::er;
 use crate::error::{AgentError, Result};
 use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
 use crate::output::QueryResult;
@@ -425,6 +429,7 @@ impl Agent {
             .map(|c| {
                 let mut c = c.clone();
                 c.agent_access = policy.access(c.id);
+                c.agent_values = policy.values(c.id);
                 c
             })
             .collect();
@@ -698,6 +703,46 @@ impl Agent {
         Ok(json!(details))
     }
 
+    /// A Mermaid `erDiagram` of a schema's tables and the foreign keys between them: all of
+    /// them, or `tables` and those within `depth` foreign-key hops of them. Cut at the byte limit.
+    pub async fn er_diagram(
+        &self,
+        connection: &str,
+        schema: &str,
+        tables: &[String],
+        depth: Option<u64>,
+    ) -> Result<String> {
+        let (store, saved) = self.find(connection)?;
+        if matches!(
+            saved.driver,
+            DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+        ) {
+            return Err(AgentError::Invalid(format!(
+                "get_er_diagram works on databases with tables and foreign keys: {} has none here",
+                saved.driver.name()
+            )));
+        }
+        let lease = self.lease(&store, &saved).await?;
+        let read = timed(read_er(lease.conn(), schema, tables, er::hops(depth))).await;
+        let read = lease.settle(read).map_err(|e| match e {
+            AgentError::Timeout(_) if tables.is_empty() => AgentError::Invalid(format!(
+                "reading all the tables of `{schema}` took too long: pass `tables` to draw some"
+            )),
+            other => other,
+        })?;
+        match read {
+            ErRead::NoSchema => Err(AgentError::NotFound(format!(
+                "`{connection}` has no schema `{schema}`"
+            ))),
+            ErRead::Unknown { name, other } => Err(AgentError::NotFound(if other {
+                format!("`{schema}.{name}` is not a table: only tables are drawn")
+            } else {
+                format!("`{connection}` has no table `{schema}.{name}`")
+            })),
+            ErRead::Found { doc, total } => Ok(er::render(&doc, total, Limits::DEFAULT_BYTES)),
+        }
+    }
+
     /// The `CREATE` statement of an object. Without `kind`, the object is looked up in
     /// its schema by name.
     pub async fn object_ddl(
@@ -810,11 +855,14 @@ impl Agent {
         }
         .await;
         let (started_at, start) = (started_at + waited, start + waited);
-        let result = result.map(|outcome| QueryResult {
-            outcome,
-            elapsed: start.elapsed(),
-            limits,
-        });
+        let result = result
+            .and_then(|outcome| self.mask_outcome(&saved, &args.sql, outcome))
+            .map(|outcome| QueryResult {
+                outcome,
+                elapsed: start.elapsed(),
+                limits,
+            })
+            .map_err(|e| self.mask_statement_error(&saved, e));
         self.record(
             &saved,
             args.sql.trim(),
@@ -1077,6 +1125,102 @@ async fn ddl_of(
         parent: parent.as_deref(),
     })
     .await
+}
+
+/// What [`read_er`] found.
+enum ErRead {
+    NoSchema,
+    /// A requested table that is not one; `other` when the schema has an object of that name.
+    Unknown {
+        name: String,
+        other: bool,
+    },
+    /// The doc model of the tables to draw, of `total` that qualified.
+    Found {
+        doc: DocSchema,
+        total: usize,
+    },
+}
+
+/// The details of the tables `names` that `into` does not hold yet, four at a time.
+async fn load_details(
+    conn: &dyn Connection,
+    schema: &str,
+    names: &[String],
+    into: &mut HashMap<String, TableDetails>,
+) -> Result<(), Error> {
+    use futures::StreamExt as _;
+    let todo: Vec<&String> = names.iter().filter(|n| !into.contains_key(*n)).collect();
+    let reads: Vec<_> = todo.iter().map(|n| conn.table_details(schema, n)).collect();
+    let mut stream = futures::stream::iter(reads)
+        .buffered(4)
+        .zip(futures::stream::iter(todo));
+    while let Some((read, name)) = stream.next().await {
+        into.insert(name.clone(), read?);
+    }
+    Ok(())
+}
+
+/// The tables of `schema` to draw: `requested` and those `depth` foreign-key hops away, or
+/// (none requested) the first [`er::MAX_TABLES`] of the schema.
+async fn read_er(
+    conn: &dyn Connection,
+    schema: &str,
+    requested: &[String],
+    depth: usize,
+) -> Result<ErRead, Error> {
+    let objects = conn.objects(schema).await?;
+    if objects.is_empty() && !conn.schemas().await?.iter().any(|s| s.name == schema) {
+        return Ok(ErRead::NoSchema);
+    }
+    let names: Vec<String> = objects
+        .iter()
+        .filter(|o| o.kind == ObjectKind::Table)
+        .map(|o| o.name.clone())
+        .collect();
+    let known: HashSet<&str> = names.iter().map(String::as_str).collect();
+    // As the catalog writes them: the exact name, else one that differs only in case.
+    let mut chosen = Vec::with_capacity(requested.len());
+    for name in requested {
+        let found = names
+            .iter()
+            .find(|n| *n == name)
+            .or_else(|| names.iter().find(|n| n.eq_ignore_ascii_case(name)));
+        let Some(found) = found else {
+            let other = objects.iter().any(|o| o.name.eq_ignore_ascii_case(name));
+            return Ok(ErRead::Unknown {
+                name: name.clone(),
+                other,
+            });
+        };
+        chosen.push(found.clone());
+    }
+    let requested = chosen;
+    let mut details = HashMap::new();
+    let (order, total) = if requested.is_empty() {
+        let first = names.iter().take(er::MAX_TABLES).cloned().collect();
+        (first, names.len())
+    } else {
+        let mut walk = er::Walk::new(&requested);
+        for _ in 0..depth {
+            load_details(conn, schema, walk.frontier(), &mut details).await?;
+            let edges = walk
+                .frontier()
+                .iter()
+                .filter_map(|t| details.get(t).map(|d| (t, d)))
+                .map(|(t, d)| (t.clone(), er::neighbors(schema, d, &known)))
+                .collect();
+            if !walk.advance(&edges) {
+                break;
+            }
+        }
+        (walk.order().to_vec(), walk.order().len())
+    };
+    load_details(conn, schema, &order, &mut details).await?;
+    Ok(ErRead::Found {
+        doc: er::doc_schema(schema, &order, &details),
+        total,
+    })
 }
 
 /// The catalog search of the database, else a search of the object names.

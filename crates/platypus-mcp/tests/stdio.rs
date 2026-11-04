@@ -230,6 +230,7 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "list_objects",
         "describe_table",
         "get_ddl",
+        "get_er_diagram",
         "search_objects",
         "run_query",
         "sample_rows",
@@ -584,6 +585,284 @@ fn shares_what_the_user_works_on_only_with_consent() {
 
 /// `sample_rows` reads the first rows of a table within the limits; `explain` shows the
 /// plan of a statement allowed by the access, running it only with analyze.
+/// A profile with a table of `users`, and `extra` in its connection.
+fn users_profile(dir: &Path, extra: &str) {
+    sqlite(
+        &dir.join("users.db"),
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, nick TEXT);
+         INSERT INTO users VALUES (1, 'Ann', 'ann@example.com', 'annie'), (2, 'Bob', NULL, 'bo');",
+    );
+    std::fs::write(
+        dir.join("connections.toml"),
+        format!(
+            "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-0000000000a1\"\n\
+             name = \"Users\"\ndriver = \"sqlite\"\ndatabase = '{}'\n{extra}",
+            dir.join("users.db").display()
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn sensitive_columns_read_masked_in_results() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    let mut client = initialized(dir.path());
+    let run = |client: &mut Client, sql: &str| -> String {
+        let (text, error) = client.call("run_query", &json!({ "connection": "Users", "sql": sql }));
+        assert!(!error, "{text}");
+        text
+    };
+
+    let (rows, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "Users", "schema": "main", "table": "users" }),
+    );
+    assert!(!error, "{rows}");
+    assert!(!rows.contains("ann@example.com"), "{rows}");
+    assert!(rows.contains("••••••") && rows.contains("Ann"), "{rows}");
+    assert!(
+        rows.contains("Sensitive columns are masked: email."),
+        "{rows}"
+    );
+
+    for sql in [
+        "SELECT email FROM users",
+        "SELECT email AS contact FROM users",
+        "SELECT upper(email) FROM users",
+        "SELECT id, 'x' || email FROM users",
+        "SELECT *, email AS e FROM users",
+        "SELECT u.email FROM users u JOIN users v ON u.id = v.id",
+    ] {
+        let text = run(&mut client, sql);
+        assert!(
+            !text.to_lowercase().contains("ann@example.com"),
+            "{sql}: {text}"
+        );
+        assert!(text.contains("••••••"), "{sql}: {text}");
+    }
+
+    // NULL stays NULL, and what is not sensitive stays as it is.
+    let (json_rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT id, email, nick FROM users ORDER BY id", "format": "json" }),
+    );
+    assert!(!error, "{json_rows}");
+    let doc: Value = serde_json::from_str(&json_rows).unwrap();
+    assert_eq!(doc["rows"][0], json!([1, "••••••", "annie"]), "{doc}");
+    assert_eq!(doc["rows"][1], json!([2, null, "bo"]), "{doc}");
+    assert_eq!(doc["masked_columns"], json!(["email"]), "{doc}");
+    let plain = run(&mut client, "SELECT id, nick FROM users");
+    assert!(
+        plain.contains("annie") && !plain.contains("masked"),
+        "{plain}"
+    );
+
+    // An error that quotes a value of the column.
+    let (failed, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT no_such FROM users WHERE email = 'ann@example.com'" }),
+    );
+    assert!(error && !failed.contains("ann@example.com"), "{failed}");
+}
+
+#[test]
+fn the_rules_and_marks_of_the_app_decide_what_is_sensitive() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    std::fs::write(
+        dir.path().join("settings.toml"),
+        "[safety]\nmask_names = \"nick\"\n",
+    )
+    .unwrap();
+    let id = uuid::Uuid::parse_str("00000000-0000-4000-8000-0000000000a1").unwrap();
+    let key = |column: &str| platypus_store::CatalogKey {
+        database: String::new(),
+        schema: "main".to_owned(),
+        object: "users".to_owned(),
+        column: column.to_owned(),
+    };
+    let mut catalog = platypus_store::CatalogStore::open(&dir.path().join("catalog.db")).unwrap();
+    catalog.set_sensitive(id, &key("name"), Some(true)).unwrap();
+    catalog
+        .set_sensitive(id, &key("nick"), Some(false))
+        .unwrap();
+    drop(catalog);
+    let mut client = initialized(dir.path());
+    let (rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT name, nick, email FROM users", "format": "json" }),
+    );
+    assert!(!error, "{rows}");
+    let doc: Value = serde_json::from_str(&rows).unwrap();
+    // `name` is marked; `nick` is by the rule, but marked not sensitive on this table; the
+    // default rule on `email` was replaced.
+    assert_eq!(
+        doc["rows"][0],
+        json!(["••••••", "annie", "ann@example.com"]),
+        "{doc}"
+    );
+    assert_eq!(doc["masked_columns"], json!(["name"]), "{doc}");
+}
+
+#[test]
+fn the_values_show_only_as_the_user_approved_in_the_app() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "agent_values = \"shown\"\n");
+    // No seal: the file is taken as it is.
+    let mut client = initialized(dir.path());
+    let (rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT email FROM users ORDER BY id" }),
+    );
+    assert!(!error && rows.contains("ann@example.com"), "{rows}");
+    assert!(!rows.contains("masked"), "{rows}");
+}
+
+/// `get_er_diagram` draws the tables of a schema, or those near some tables, as Mermaid.
+#[test]
+fn draws_er_diagrams_from_the_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE customer (id INTEGER PRIMARY KEY, name TEXT);
+         CREATE TABLE \"sales order\" (id INTEGER PRIMARY KEY, customer_id INTEGER,
+             CONSTRAINT fk_customer FOREIGN KEY (customer_id) REFERENCES customer (id));
+         CREATE TABLE item (id INTEGER PRIMARY KEY, order_id INTEGER, product_id INTEGER,
+             FOREIGN KEY (order_id) REFERENCES \"sales order\" (id),
+             FOREIGN KEY (product_id) REFERENCES product (id));
+         CREATE TABLE product (id INTEGER PRIMARY KEY, label TEXT);
+         CREATE TABLE tag (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES tag (id));
+         CREATE VIEW names AS SELECT name FROM customer;",
+    );
+    let mut client = initialized(dir.path());
+    let mut draw = |args: Value| client.call("get_er_diagram", &args);
+
+    let (all, error) = draw(json!({ "connection": "App db", "schema": "main" }));
+    assert!(
+        !error
+            && all.starts_with(
+                "erDiagram
+"
+            ),
+        "{all}"
+    );
+    // Tables with primary keys, names with spaces quoted, the view left out.
+    assert!(all.contains("\"customer\" {"), "{all}");
+    assert!(all.contains("\"sales order\" {"), "{all}");
+    assert!(all.contains("INTEGER id PK"), "{all}");
+    assert!(!all.contains("names"), "{all}");
+    assert!(
+        all.contains("\"sales order\" }o--|| \"customer\" : "),
+        "{all}"
+    );
+    assert!(all.contains("\"item\" }o--|| \"sales order\""), "{all}");
+    assert!(all.contains("\"tag\" }o--|| \"tag\""), "{all}");
+    assert!(!all.contains("cut:"), "{all}");
+
+    // One hop by default, in both directions: the customer, and the items that point at it.
+    let (near, error) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["sales order"]
+    }));
+    assert!(!error, "{near}");
+    assert!(
+        near.contains("\"customer\" {") && near.contains("\"item\" {"),
+        "{near}"
+    );
+    assert!(
+        !near.contains("\"product\"") && !near.contains("\"tag\""),
+        "{near}"
+    );
+    // The key from item to product is left out: product is not drawn.
+    assert!(!near.contains("}o--|| \"product\""), "{near}");
+
+    let (alone, _) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["sales order"], "depth": 0
+    }));
+    assert!(
+        !alone.contains("\"customer\" {") && !alone.contains("}o--||"),
+        "{alone}"
+    );
+    assert!(alone.contains("no foreign keys"), "{alone}");
+    let (deep, _) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["customer"], "depth": 3
+    }));
+    assert!(
+        deep.contains("\"product\" {") && !deep.contains("\"tag\" {"),
+        "{deep}"
+    );
+
+    // Only real tables, in a real schema, on a connection open to agents.
+    let (missing, error) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["customer", "nope"]
+    }));
+    assert!(
+        error && missing.contains("no table `main.nope`"),
+        "{missing}"
+    );
+    let (view, error) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["names"]
+    }));
+    assert!(
+        error && view.contains("`main.names` is not a table"),
+        "{view}"
+    );
+    let (schema, error) = draw(json!({ "connection": "App db", "schema": "nope" }));
+    // SQLite fails on its own; other databases list nothing, which is reported as missing.
+    assert!(error && schema.contains("nope"), "{schema}");
+    let (off, error) = draw(json!({ "connection": "Hidden", "schema": "main" }));
+    assert!(error && off.contains("available to agents"), "{off}");
+    let (nowhere, error) = draw(json!({ "connection": "Nowhere", "schema": "main" }));
+    assert!(error, "{nowhere}");
+
+    // A database without tables or keys still answers.
+    sqlite(&dir.path().join("scratch.db"), "DROP TABLE t;");
+    let (empty, error) = draw(json!({ "connection": "Scratch", "schema": "main" }));
+    assert!(!error && empty.contains("no tables"), "{empty}");
+}
+
+/// A schema too big for the byte limit is cut at whole tables, with a note.
+#[test]
+fn a_big_er_diagram_is_cut_with_a_note() {
+    use std::fmt::Write as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut columns = String::new();
+    for i in 0..30 {
+        let _ = write!(columns, ", column_number_{i} INTEGER");
+    }
+    let mut big = String::new();
+    for i in 0..80 {
+        let _ = write!(
+            big,
+            "CREATE TABLE big_table_{i:02} (id INTEGER PRIMARY KEY{columns});"
+        );
+    }
+    sqlite(&dir.path().join("scratch.db"), &big);
+    let mut client = initialized(dir.path());
+    let (cut, error) = client.call(
+        "get_er_diagram",
+        &json!({ "connection": "Scratch", "schema": "main" }),
+    );
+    assert!(!error && cut.len() < 33_000, "{}", cut.len());
+    assert!(
+        cut.contains("%% cut: ") && cut.contains("of 81 tables"),
+        "{cut}"
+    );
+    assert!(cut.contains("Pass `tables`"), "{cut}");
+    assert_eq!(cut.matches('{').count(), cut.matches('}').count());
+    let (some, error) = client.call(
+        "get_er_diagram",
+        &json!({ "connection": "Scratch", "schema": "main", "tables": ["big_table_07"] }),
+    );
+    assert!(
+        !error && !some.contains("cut:") && some.contains("big_table_07"),
+        "{some}"
+    );
+}
+
 #[test]
 fn samples_rows_and_explains_statements() {
     let dir = tempfile::tempdir().unwrap();

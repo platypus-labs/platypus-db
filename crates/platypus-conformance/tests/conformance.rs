@@ -1031,6 +1031,26 @@ async fn typed_commit_modes(b: &Backend, conn: &dyn Connection, t: &str) {
     assert_eq!(count(b, conn).await, "2", "{}: committed", b.name);
 }
 
+/// Starts reading a query with many rows inside a transaction, and abandons it. sqld ends a
+/// transaction after 5 seconds and reads the whole series before the first row: with the other
+/// tests running, 100 000 rows can take longer.
+async fn abandon_a_result(b: &Backend, conn: &dyn Connection) {
+    let series = if b.name == "libsql" {
+        "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < 1000) \
+         SELECT id FROM s"
+    } else {
+        b.series_sql.as_str()
+    };
+    let options = ExecOptions {
+        batch_size: 100,
+        ..ExecOptions::default()
+    };
+    let ExecResult::Rows(mut stream) = conn.execute(series, &options).await.unwrap() else {
+        panic!("{}: expected rows", b.name);
+    };
+    stream.next().await.unwrap().unwrap();
+}
+
 #[tokio::test]
 async fn manual_commit_and_rollback() {
     let _serial = SERIAL.lock().await;
@@ -1070,23 +1090,7 @@ async fn manual_commit_and_rollback() {
 
         // A result abandoned inside a transaction must not abort it.
         affected(&b, conn, &insert(2)).await;
-        let options = ExecOptions {
-            batch_size: 100,
-            ..ExecOptions::default()
-        };
-        // sqld ends a transaction after 5 seconds, and it reads the whole series before the
-        // first row: with the other tests running, 100 000 rows can take longer.
-        let series = if b.name == "libsql" {
-            "WITH RECURSIVE s(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM s WHERE id < 1000) \
-             SELECT id FROM s"
-        } else {
-            b.series_sql.as_str()
-        };
-        let ExecResult::Rows(mut stream) = conn.execute(series, &options).await.unwrap() else {
-            panic!("{}: expected rows", b.name);
-        };
-        stream.next().await.unwrap().unwrap();
-        drop(stream);
+        abandon_a_result(&b, conn).await;
         affected(&b, conn, &insert(3)).await;
         conn.commit().await.unwrap();
         assert!(!conn.transaction().open, "{}", b.name);
@@ -5423,6 +5427,53 @@ fn save_agent_connection(dir: &std::path::Path, b: &Backend, driver: &str) {
     .unwrap();
 }
 
+/// Sensitive columns read masked for agents on real servers: by the name the driver reports, and
+/// through the select list where the result's name says nothing.
+#[tokio::test]
+async fn agents_read_sensitive_columns_masked() {
+    use platypus_mcp::{Agent, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres => save_agent_connection(dir.path(), &b, "postgres"),
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                     name = \"Db\"\ndriver = \"sqlite\"\ndatabase = '{}'\n",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        for sql in [
+            "SELECT 'a@b.c' AS email",
+            "SELECT lower(email) FROM (SELECT 'A@B.C' AS email) t",
+            "SELECT email AS contact FROM (SELECT 'a@b.c' AS email) t",
+        ] {
+            assert_eq!(
+                first_cell(&agent, b.name, sql).await.as_deref(),
+                Some("••••••"),
+                "{}: {sql}",
+                b.name
+            );
+        }
+        assert_eq!(
+            first_cell(&agent, b.name, "SELECT 'x' AS label")
+                .await
+                .as_deref(),
+            Some("x"),
+            "{}",
+            b.name
+        );
+    }
+}
+
 /// On a read-write connection a query that writes through a function is asked about like
 /// any change: it runs first in the read-only transaction, which refuses the write.
 #[tokio::test]
@@ -5530,6 +5581,94 @@ async fn agents_ask_before_a_query_that_writes() {
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name));
         run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
+/// `get_er_diagram` draws the demo tables and the key between them on the databases with
+/// foreign keys that agents reach: the view is left out, `tables` narrows by key hops.
+#[tokio::test]
+async fn agents_draw_er_diagrams() {
+    use platypus_mcp::{Agent, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+            }
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4
+
+[[connections]]
+id = \"00000000-0000-4000-8000-000000000001\"
+                     name = \"Db\"
+driver = \"sqlite\"
+database = '{}'
+",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        let draw = |tables: &[&str], depth| {
+            let tables: Vec<String> = tables.iter().map(|t| (*t).to_owned()).collect();
+            let agent = &agent;
+            let schema = b.schema.clone();
+            async move { agent.er_diagram("Db", &schema, &tables, depth).await }
+        };
+
+        let all = draw(&[], None)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert!(
+            all.starts_with(
+                "erDiagram
+"
+            ),
+            "{}: {all}",
+            b.name
+        );
+        assert!(all.contains("\"customers\" {"), "{}: {all}", b.name);
+        assert!(all.contains("\"orders\" {"), "{}: {all}", b.name);
+        assert!(all.contains(" PK"), "{}: {all}", b.name);
+        assert!(
+            all.contains("\"orders\" }o--|| \"customers\""),
+            "{}: {all}",
+            b.name
+        );
+        assert!(!all.contains("customer_totals"), "{}: {all}", b.name);
+
+        // The key is followed from the referenced side too, one hop by default.
+        let near = draw(&["customers"], None).await.unwrap();
+        assert!(
+            near.contains("\"orders\" }o--|| \"customers\""),
+            "{}: {near}",
+            b.name
+        );
+        let alone = draw(&["customers"], Some(0)).await.unwrap();
+        assert!(!alone.contains("\"orders\""), "{}: {alone}", b.name);
+        let missing = draw(&["customers", "no_such_table"], None)
+            .await
+            .unwrap_err();
+        assert!(
+            missing.to_string().contains("no_such_table"),
+            "{}: {missing}",
+            b.name
+        );
+        let view = draw(&["customer_totals"], None).await.unwrap_err();
+        assert!(
+            view.to_string().contains("not a table"),
+            "{}: {view}",
+            b.name
+        );
+        let schema = agent.er_diagram("Db", "no_such_schema", &[], None).await;
+        assert!(schema.is_err(), "{}: {schema:?}", b.name);
     }
 }
 

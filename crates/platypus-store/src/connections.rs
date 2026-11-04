@@ -74,6 +74,9 @@ pub struct SavedConnection {
     /// [`SavedConnection::effective_agent_access`].
     #[serde(default)]
     pub agent_access: AgentAccess,
+    /// What agents read of the values of sensitive columns.
+    #[serde(default, skip_serializing_if = "AgentValues::is_masked")]
+    pub agent_values: AgentValues,
     /// Whether the value panel formats a text column holding JSON as it does a JSON column.
     #[serde(default, skip_serializing_if = "TextJson::is_format")]
     pub text_json: TextJson,
@@ -145,6 +148,24 @@ impl DatabaseList {
     #[must_use]
     pub fn is_named(&self) -> bool {
         *self == Self::Named
+    }
+}
+
+/// What agents read of the values of sensitive columns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentValues {
+    /// Dots, as the grid shows them while it masks.
+    #[default]
+    Masked,
+    /// As they are, as the user chose in the app.
+    Shown,
+}
+
+impl AgentValues {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_masked(&self) -> bool {
+        *self == Self::Masked
     }
 }
 
@@ -500,6 +521,7 @@ impl SavedConnection {
             color: None,
             connection_type: None,
             agent_access: AgentAccess::default(),
+            agent_values: AgentValues::default(),
             text_json: TextJson::Format,
             connect_by: ConnectBy::Host,
             ssh: None,

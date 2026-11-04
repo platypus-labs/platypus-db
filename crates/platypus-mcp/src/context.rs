@@ -3,6 +3,7 @@
 //! side keeps the limits whatever the app sends, and never returns what belongs to a
 //! connection agents may not use.
 
+use platypus_store::SavedConnection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -173,22 +174,32 @@ impl Agent {
                 )));
             }
         };
-        self.check_open_to_agents(&context)?;
-        Ok(limited(context, &parts))
+        let saved = self.check_open_to_agents(&context)?;
+        let mut context = context;
+        let masked = self.mask_context(&mut context, saved.as_ref())?;
+        let mut shared = limited(context, &parts);
+        if !masked.is_empty() && shared.context.result.is_some() {
+            shared.notes.push(format!(
+                "sensitive columns of the result are masked: {}",
+                masked.join(", ")
+            ));
+        }
+        Ok(shared)
     }
 
     /// Refuses a context whose tab is on a connection agents may not use (access off, or not
-    /// saved). The id is the safe key; the name is all there is when the app sent no id.
-    fn check_open_to_agents(&self, context: &UserContext) -> Result<()> {
+    /// saved), and returns the connection it is on. The id is the safe key; the name is all
+    /// there is when the app sent no id.
+    fn check_open_to_agents(&self, context: &UserContext) -> Result<Option<SavedConnection>> {
         let key = context
             .connection_id
             .map(|id| id.to_string())
             .or_else(|| context.connection.clone());
         let Some(key) = key else {
-            return Ok(());
+            return Ok(None);
         };
         match self.find(&key) {
-            Ok(_) => Ok(()),
+            Ok((_, saved)) => Ok(Some(saved)),
             Err(AgentError::Store(e)) => Err(AgentError::Store(e)),
             Err(_) => Err(AgentError::Denied(
                 "the user's active tab is on a connection that is not open to agents, so its \

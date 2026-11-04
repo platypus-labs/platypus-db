@@ -12,6 +12,10 @@ use crate::{Dialect, Lexer, Token, TokenKind};
 /// What a masked value is written as: a string literal, the same for every value.
 pub const MASKED_LITERAL: &str = "'••••••'";
 
+/// What a masked value of a result reads: the same for every value, so that not even its length
+/// shows. NULL stays NULL.
+pub const MASKED_VALUE: &str = "••••••";
+
 /// The default names of sensitive columns, as the app's settings have them.
 pub const DEFAULT_NAMES: &str = "*password*, *passwd*, *secret*, *token*, *api_key*, *email*, *e_mail*, *phone*, *mobile*, *ssn*, *iban*, *card_number*, *cvv*, *tax_code*, *fiscal*, *salary*, *birth*";
 
@@ -352,6 +356,145 @@ fn significant(sql: &str, dialect: Dialect) -> Vec<Sig<'_>> {
     out
 }
 
+/// An item of the outermost select list of a statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectOutput {
+    /// Its expression names a sensitive column.
+    pub sensitive: bool,
+    /// The name an alias gives it.
+    pub alias: Option<String>,
+    /// `*` or `t.*`: it yields any number of columns.
+    pub star: bool,
+}
+
+/// Past the parenthesis that opens at `sig[open]`.
+fn after_parens(sig: &[Sig<'_>], open: usize) -> usize {
+    let mut depth = 0usize;
+    for (k, s) in sig.iter().enumerate().skip(open) {
+        if s.symbol("(") {
+            depth += 1;
+        } else if s.symbol(")") {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return k + 1;
+            }
+        }
+    }
+    sig.len()
+}
+
+/// The first token of the select list that starts at `sig[i]`, past `DISTINCT [ON (…)]`, `ALL`
+/// and `TOP n`.
+fn select_list_start(sig: &[Sig<'_>], mut i: usize) -> usize {
+    if sig.get(i).is_some_and(|s| s.is("distinct") || s.is("all")) {
+        i += 1;
+        if sig.get(i).is_some_and(|s| s.is("on")) && sig.get(i + 1).is_some_and(|s| s.symbol("(")) {
+            i = after_parens(sig, i + 1);
+        }
+    }
+    if sig.get(i).is_some_and(|s| s.is("top")) {
+        i += 1;
+        i = if sig.get(i).is_some_and(|s| s.symbol("(")) {
+            after_parens(sig, i)
+        } else {
+            i + 1
+        };
+    }
+    i
+}
+
+/// What the select list item `item` yields.
+fn select_output(item: &[Sig<'_>], sensitive: &dyn Fn(&str) -> bool) -> SelectOutput {
+    // A name that a `.` or a `(` follows is a table or a function, not a column.
+    let touches = item.iter().enumerate().any(|(k, s)| {
+        !item
+            .get(k + 1)
+            .is_some_and(|next| next.symbol(".") || next.symbol("("))
+            && s.name().is_some_and(|name| sensitive(&name))
+    });
+    let last = item.last();
+    let before = item.len().checked_sub(2).map(|k| &item[k]);
+    let star = last.is_some_and(|s| s.symbol("*")) && before.is_none_or(|s| s.symbol("."));
+    let named = before.is_some_and(|s| s.is("as") || s.symbol(")") || s.name().is_some());
+    SelectOutput {
+        sensitive: touches,
+        alias: last.filter(|_| named).and_then(Sig::name),
+        star,
+    }
+}
+
+/// Whether `sql` has more than one `SELECT`.
+#[must_use]
+pub fn has_subquery(sql: &str, dialect: Dialect) -> bool {
+    significant(sql, dialect)
+        .iter()
+        .filter(|s| s.is("select"))
+        .nth(1)
+        .is_some()
+}
+
+/// The items of the `RETURNING` list of `sql`, else of the select list of its outermost `SELECT`,
+/// in order; none when it has neither. A `WITH` before the `SELECT` is passed over, and only the
+/// first branch of a `UNION` is read. Whether a name is sensitive is `sensitive`'s to say.
+#[must_use]
+pub fn select_outputs(
+    sql: &str,
+    dialect: Dialect,
+    sensitive: &dyn Fn(&str) -> bool,
+) -> Vec<SelectOutput> {
+    const ENDS: [&str; 11] = [
+        "from",
+        "into",
+        "where",
+        "union",
+        "intersect",
+        "except",
+        "minus",
+        "group",
+        "order",
+        "having",
+        "limit",
+    ];
+    let sig = significant(sql, dialect);
+    let mut depth = 0usize;
+    let (mut select, mut returning) = (None, None);
+    for (i, s) in sig.iter().enumerate() {
+        if s.symbol("(") {
+            depth += 1;
+        } else if s.symbol(")") {
+            depth = depth.saturating_sub(1);
+        } else if depth == 0 && s.is("returning") {
+            returning = Some(i + 1);
+        } else if depth == 0 && select.is_none() && s.is("select") {
+            select = Some(i + 1);
+        }
+    }
+    let start = match (returning, select) {
+        (Some(list), _) => list,
+        (None, Some(list)) => select_list_start(&sig, list),
+        (None, None) => return Vec::new(),
+    };
+    let (mut outputs, mut item, mut depth, mut k) = (Vec::new(), start, 0usize, start);
+    while k < sig.len() {
+        let s = &sig[k];
+        if s.symbol("(") {
+            depth += 1;
+        } else if s.symbol(")") {
+            depth = depth.saturating_sub(1);
+        } else if depth == 0 && (s.symbol(";") || ENDS.iter().any(|w| s.is(w))) {
+            break;
+        } else if depth == 0 && s.symbol(",") {
+            outputs.push(select_output(&sig[item..k], sensitive));
+            item = k + 1;
+        }
+        k += 1;
+    }
+    if item < k {
+        outputs.push(select_output(&sig[item..k], sensitive));
+    }
+    outputs
+}
+
 /// `sql` with the values tied to a column for which `sensitive` holds written as
 /// [`MASKED_LITERAL`].
 #[must_use]
@@ -442,6 +585,65 @@ const MASK: &str = "••••••";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn outputs(sql: &str) -> Vec<SelectOutput> {
+        select_outputs(sql, Dialect::Postgres, &|c| {
+            c.eq_ignore_ascii_case("email") || c.eq_ignore_ascii_case("phone")
+        })
+    }
+
+    fn touching(sql: &str) -> Vec<bool> {
+        outputs(sql).iter().map(|o| o.sensitive).collect()
+    }
+
+    #[test]
+    fn select_outputs_tell_the_items_that_read_a_sensitive_column() {
+        assert_eq!(
+            touching("SELECT id, email, lower(u.phone) p, 1 FROM users u WHERE email = 'x'"),
+            [false, true, true, false]
+        );
+        assert_eq!(
+            touching("SELECT DISTINCT ON (id) id, email AS e FROM t"),
+            [false, true]
+        );
+        assert_eq!(touching("SELECT TOP 3 email FROM t"), [true]);
+        assert_eq!(touching("SELECT TOP (3) id FROM t"), [false]);
+        assert_eq!(
+            touching("WITH c AS (SELECT email FROM t) SELECT id, (SELECT email FROM c) FROM c"),
+            [false, true]
+        );
+        assert_eq!(
+            touching("SELECT a, b FROM t UNION SELECT email, 1 FROM u"),
+            [false, false]
+        );
+        // A table or a function of that name is not the column.
+        assert_eq!(
+            touching("SELECT email.id, phone(x) FROM email"),
+            [false, false]
+        );
+        assert_eq!(touching("SELECT 'email' FROM t"), [false]);
+        assert_eq!(
+            touching("UPDATE t SET a = 1 RETURNING id, upper(email)"),
+            [false, true]
+        );
+        assert_eq!(
+            touching("INSERT INTO t SELECT email FROM u RETURNING id"),
+            [false]
+        );
+        assert!(has_subquery("SELECT (SELECT 1) FROM t", Dialect::Postgres));
+        assert!(!has_subquery("SELECT 'select' FROM t", Dialect::Postgres));
+        assert_eq!(outputs("UPDATE t SET email = 'x'"), []);
+        assert_eq!(outputs("db.users.find({})"), []);
+    }
+
+    #[test]
+    fn select_outputs_name_aliases_and_stars() {
+        let items = outputs("SELECT *, t.*, email AS e, phone p, count(*), lower(email) l FROM t;");
+        let aliases: Vec<_> = items.iter().map(|o| o.alias.as_deref()).collect();
+        assert_eq!(aliases, [None, None, Some("e"), Some("p"), None, Some("l")]);
+        let stars: Vec<_> = items.iter().map(|o| o.star).collect();
+        assert_eq!(stars, [true, true, false, false, false, false]);
+    }
 
     fn mask(sql: &str) -> String {
         let rules = NameRules::new(DEFAULT_NAMES);
