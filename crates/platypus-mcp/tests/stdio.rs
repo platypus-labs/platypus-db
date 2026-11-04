@@ -1952,6 +1952,6 @@ fn an_unreadable_catalog_does_not_break_describe_table() {
         "list_objects",
         &json!({ "connection": "App db", "schema": "main" }),
     );
-    assert_eq!(objects["objects"][0]["name"], "t");
-    assert!(objects["catalog_unavailable"].is_string(), "{objects}");
+    // A plain list stays a list, as clients read it.
+    assert_eq!(objects[0]["name"], "t", "{objects}");
 }

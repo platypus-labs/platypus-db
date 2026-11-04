@@ -87,16 +87,17 @@ impl CatalogView {
             unavailable: entries.is_err() || marks.is_err(),
             ..Self::default()
         };
-        // An entry keyed with the database's name gives way to one keyed as the app does.
+        // An entry keyed with the database's name gives way to one keyed as the app does: the
+        // empty key comes last, and the last one stays.
         let mut entries = entries.unwrap_or_default();
         entries.retain(|e| own_database(&e.key.database, database));
-        entries.sort_by_key(|e| std::cmp::Reverse(e.key.database.is_empty()));
+        entries.sort_by_key(|e| e.key.database.is_empty());
         for entry in entries {
             view.add_entry(entry);
         }
         let mut marks = marks.unwrap_or_default();
         marks.retain(|m| own_database(&m.key.database, database));
-        marks.sort_by_key(|m| std::cmp::Reverse(m.key.database.is_empty()));
+        marks.sort_by_key(|m| m.key.database.is_empty());
         for mark in marks {
             view.add_mark(mark);
         }
@@ -104,7 +105,8 @@ impl CatalogView {
     }
 
     fn add_entry(&mut self, entry: CatalogEntry) {
-        self.known_tags.extend(entry.tags.iter().cloned());
+        self.known_tags
+            .extend(entry.tags.iter().map(|t| t.to_lowercase()));
         let key = entry.key;
         let note = Note {
             text: entry.note,
@@ -172,8 +174,8 @@ impl CatalogView {
     }
 
     /// Adds the notes and tags to the objects of `page`, what `list_objects` returns (the
-    /// list, or the object holding it). When the catalog cannot be read, the list is wrapped
-    /// in `{objects, catalog_unavailable}` so that the result can say so.
+    /// list, or the object holding it). When the catalog cannot be read, the object holding a
+    /// page says so; a plain list stays a list, as clients read it.
     pub(crate) fn list(&self, schema: &str, page: Value, redactor: &Redactor) -> Value {
         let mut page = page;
         let mut notes = Notes::new(redactor);
@@ -200,7 +202,7 @@ impl CatalogView {
                 o.insert("catalog_unavailable".to_owned(), json!(UNAVAILABLE));
                 Value::Object(o)
             }
-            list => json!({ "objects": list, "catalog_unavailable": UNAVAILABLE }),
+            list => list,
         }
     }
 
@@ -234,7 +236,12 @@ impl CatalogView {
         let needle = query.text.to_lowercase();
         let has = |s: Option<&String>| s.is_some_and(|s| s.to_lowercase().contains(&needle));
         if !query.tags.is_empty() {
-            let tagged = found.is_some_and(|f| query.tags.iter().all(|t| f.own.tags.contains(t)));
+            let tagged = found.is_some_and(|f| {
+                query
+                    .tags
+                    .iter()
+                    .all(|t| f.own.tags.iter().any(|own| own.to_lowercase() == *t))
+            });
             let text = needle.is_empty()
                 || object.name.to_lowercase().contains(&needle)
                 || has(comment.as_ref())
@@ -490,14 +497,41 @@ mod tests {
         v.describe("main", "users", &mut details, &Redactor::default());
         assert!(details["catalog_unavailable"].is_string());
         let list = v.list("main", json!([{ "name": "a" }]), &Redactor::default());
-        assert_eq!(list["objects"][0]["name"], "a");
-        assert!(list["catalog_unavailable"].is_string());
+        assert_eq!(list[0]["name"], "a", "a plain list stays a list");
         let paged = v.list(
             "main",
             json!({ "objects": [], "total": 0 }),
             &Redactor::default(),
         );
         assert!(paged["catalog_unavailable"].is_string() && paged["total"] == 0);
+    }
+
+    #[test]
+    fn the_key_the_app_uses_wins_over_the_one_with_the_database_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut catalog = CatalogStore::open(&dir.path().join("catalog.db")).unwrap();
+        let id = Uuid::new_v4();
+        let at = |database: &str| platypus_store::CatalogKey {
+            database: database.to_owned(),
+            schema: "main".to_owned(),
+            object: "users".to_owned(),
+            column: String::new(),
+        };
+        catalog.save(id, &at(""), "current", &[]).unwrap();
+        catalog.save(id, &at("shop"), "old", &[]).unwrap();
+        let view = CatalogView::read(&catalog, id, "shop");
+        assert_eq!(view.of("main", "users").unwrap().own.text, "current");
+    }
+
+    #[test]
+    fn a_tag_with_capitals_is_found() {
+        let mut crm = entry("users", "", "", &["CRM"]);
+        crm.key.schema = "main".to_owned();
+        let v = view(vec![crm], &[]);
+        let query = v.query("#crm");
+        assert_eq!(query.tags, ["crm"]);
+        let found = v.matches("main", &object("users", None), &query, &Redactor::default());
+        assert_eq!(found.len(), 1, "{found:?}");
     }
 
     #[test]

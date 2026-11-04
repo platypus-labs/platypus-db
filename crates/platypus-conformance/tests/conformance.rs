@@ -5885,7 +5885,7 @@ database = '{}'
             "max_estimated_rows = 1000000000
 max_plan_cost = 1000000000",
         );
-        let text = agent_read(dir.path(), cross)
+        let text = agent_read(dir.path(), format!("SELECT * FROM {s}.orders"))
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", b.name))
             .text();

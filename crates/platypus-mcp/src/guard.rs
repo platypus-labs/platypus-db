@@ -261,12 +261,12 @@ fn compact(explain: &Explain) -> String {
         .map_or(text.clone(), |(steps, _)| steps.to_owned())
 }
 
-/// Whether the cost guard looks at `statement`: a read in SQL.
-fn guarded_read(saved: &SavedConnection, statement: &str) -> bool {
+/// Whether statements on `driver` have a plan the cost guard can read.
+const fn has_plans(driver: DriverKind) -> bool {
     !matches!(
-        saved.driver,
+        driver,
         DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
-    ) && !access::changes(statement, saved.driver)
+    )
 }
 
 impl Agent {
@@ -282,9 +282,12 @@ impl Agent {
     ) -> Result<Option<String>> {
         let rules = saved.agent_limits;
         if (rules.max_estimated_rows.is_none() && rules.max_plan_cost.is_none())
-            || !guarded_read(saved, statement)
+            || access::changes(statement, saved.driver)
         {
             return Ok(None);
+        }
+        if !has_plans(saved.driver) {
+            return Ok(Some(UNCHECKED.to_owned()));
         }
         let lease = self.lease(store, saved).await?;
         if !lease.conn().capabilities().explain {

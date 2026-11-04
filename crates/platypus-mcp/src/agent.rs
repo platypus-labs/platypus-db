@@ -797,10 +797,16 @@ impl Agent {
         let query = view.query(text);
         let redactor = lease.session().redactor.clone();
         let found = timed(search_all(lease.conn(), text, &view, &query, &redactor)).await;
-        let mut all = lease.settle(found)?;
+        let (mut all, catalog_read) = lease.settle(found)?;
         let truncated = all.len() > SEARCH_RESULTS;
         all.truncate(SEARCH_RESULTS);
-        Ok(json!({ "matches": all, "truncated": truncated }))
+        let mut answer = json!({ "matches": all, "truncated": truncated });
+        if !catalog_read {
+            answer["catalog_incomplete"] = json!(
+                "comments, notes and tags were not searched: listing the objects took too long"
+            );
+        }
+        Ok(answer)
     }
 
     /// Runs one statement within the connection's agent access and the limits, and
@@ -1014,9 +1020,15 @@ impl Agent {
                 "schema and table are both needed".to_owned(),
             ));
         }
-        let max_rows = args.max_rows.unwrap_or(SAMPLE_ROWS);
-        let limits = Limits::new(Some(max_rows), args.max_bytes, args.timeout_seconds)?;
         let (_, saved) = self.find(&args.connection)?;
+        // A default above the connection's limit is lowered without a word: nobody asked for it.
+        let max_rows = args.max_rows.unwrap_or_else(|| {
+            saved
+                .agent_limits
+                .max_rows
+                .map_or(SAMPLE_ROWS, |max| max.min(SAMPLE_ROWS))
+        });
+        let limits = Limits::new(Some(max_rows), args.max_bytes, args.timeout_seconds)?;
         let rows = u64::try_from(limits.max_rows).unwrap_or(u64::MAX);
         let query = QueryArgs {
             connection: saved.id.to_string(),
@@ -1266,22 +1278,33 @@ async fn read_er(
 }
 
 /// The matches of the catalog's tags, notes and comments, and (unless the text is a `#tag`
-/// query) those of the database's own search.
+/// query) those of the database's own search. Listing every schema must not cost the database's
+/// own matches: it has [`CATALOG_SEARCH`], and `false` says it ran out.
 async fn search_all(
     conn: &dyn Connection,
     text: &str,
     view: &crate::catalog_view::CatalogView,
     query: &crate::catalog_view::SearchQuery,
     redactor: &Redactor,
-) -> Result<Vec<Value>, Error> {
+) -> Result<(Vec<Value>, bool), Error> {
     let mut found = if query.tags.is_empty() {
         search(conn, text).await?
     } else {
         Vec::new()
     };
-    found.extend(crate::catalog_view::search(conn, view, query, redactor).await?);
-    Ok(found)
+    let catalog = crate::catalog_view::search(conn, view, query, redactor);
+    let catalog_read = match tokio::time::timeout(CATALOG_SEARCH, catalog).await {
+        Ok(matches) => {
+            found.extend(matches?);
+            true
+        }
+        Err(_) => false,
+    };
+    Ok((found, catalog_read))
 }
+
+/// How long `search_objects` looks through the catalog after the database's own search.
+const CATALOG_SEARCH: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The catalog search of the database, else a search of the object names.
 async fn search(conn: &dyn Connection, text: &str) -> Result<Vec<Value>, Error> {

@@ -23,17 +23,19 @@ export function parseLimit(text: string): number | undefined | null {
 
 /** Number fields for the limits of a connection: empty means no limit beyond the fixed cap.
  *  A valid value is saved when the field loses focus or Enter is pressed. */
-export function AgentLimitFields({ limits, onChange }: { limits: AgentLimits; onChange: (next: AgentLimits) => void }) {
+export function AgentLimitFields({
+  limits,
+  onChange,
+}: {
+  limits: AgentLimits;
+  onChange: (key: keyof AgentLimits, value: number | undefined) => void;
+}) {
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(FIELDS.map((f) => [f.key, limits[f.key]?.toString() ?? ""])),
   );
   const commit = (key: keyof AgentLimits) => {
     const value = parseLimit(draft[key] ?? "");
-    if (value === null || value === limits[key]) return;
-    const next = { ...limits };
-    if (value === undefined) delete next[key];
-    else next[key] = value;
-    onChange(next);
+    if (value !== null && value !== limits[key]) onChange(key, value);
   };
   return (
     <fieldset className="agent-limits" data-field="agent_limits">

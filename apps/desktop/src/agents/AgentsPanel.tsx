@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   toCommandError,
@@ -107,6 +107,20 @@ function AgentSecurity({
   const chosenAccess = chosen ? effectiveAgentAccess(chosen) : "off";
   const chosenBlocker = chosen && chosenAccess !== "off" ? blockers[chosen.id] : undefined;
   const [detailWidth, setDetailWidth] = useStoredSize("layout.agents.detail", 260);
+  // Saves in a row (a limit, Tab, another limit; a limit, then the checkbox) go one after the
+  // other, each on top of the last: the props answer too late to build on.
+  const ahead = useRef<{ connection: SavedConnection; saves: Promise<unknown> } | null>(null);
+  const save = (base: SavedConnection, change: (latest: SavedConnection) => Partial<SavedConnection>) => {
+    const latest = ahead.current?.connection.id === base.id ? ahead.current.connection : base;
+    const connection = { ...latest, ...change(latest) };
+    const saves = (ahead.current?.saves ?? Promise.resolve())
+      .then(() => api.saveConnection(connection, { action: "keep" }))
+      .then(onSaved, (e: unknown) => onError(toCommandError(e).message))
+      .finally(() => {
+        if (ahead.current?.connection === connection) ahead.current = null;
+      });
+    ahead.current = { connection, saves };
+  };
   // Enter or Space chooses a row, the arrows move to the next and the previous.
   const rowKeys = (e: React.KeyboardEvent<HTMLTableRowElement>, id: string) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -194,9 +208,7 @@ function AgentSecurity({
             </header>
             <AccessLevels
               connection={chosen}
-              onChange={(agent_access) =>
-                api.saveConnection({ ...chosen, agent_access }, { action: "keep" }).then(onSaved, (e: unknown) => onError(toCommandError(e).message))
-              }
+              onChange={(agent_access) => save(chosen, () => ({ agent_access }))}
             />
             {chosenBlocker && <p className="small agent-blocked">{blockerNote(chosenBlocker)}</p>}
             <label className="check" title={t("Sensitive columns read as •••••• for agents unless this is on. It lowers accidents; only the database's own permissions stop a determined agent.")}>
@@ -204,21 +216,23 @@ function AgentSecurity({
                 type="checkbox"
                 data-field="agent_values"
                 checked={chosen.agent_values === "shown"}
-                onChange={(e) =>
-                  api
-                    .saveConnection({ ...chosen, agent_values: e.target.checked ? "shown" : "masked" }, { action: "keep" })
-                    .then(onSaved, (err: unknown) => onError(toCommandError(err).message))
-                }
+                onChange={(e) => {
+                  const agent_values = e.target.checked ? "shown" : "masked";
+                  save(chosen, () => ({ agent_values }));
+                }}
               />
               <span>{t("Show agents the values of sensitive columns")}</span>
             </label>
             <AgentLimitFields
               key={chosen.id}
               limits={chosen.agent_limits ?? {}}
-              onChange={(agent_limits) =>
-                api
-                  .saveConnection({ ...chosen, agent_limits }, { action: "keep" })
-                  .then(onSaved, (err: unknown) => onError(toCommandError(err).message))
+              onChange={(key, value) =>
+                save(chosen, (latest) => {
+                  const agent_limits = { ...latest.agent_limits };
+                  if (value === undefined) delete agent_limits[key];
+                  else agent_limits[key] = value;
+                  return { agent_limits };
+                })
               }
             />
           </aside>

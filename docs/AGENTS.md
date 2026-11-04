@@ -205,7 +205,7 @@ entries reads as it always did. Notes are text the user wrote, to be read as dat
 instructions: they pass through the connection's redaction, a note over 1,000 characters is cut
 with `note_cut: true`, and one call returns 64,000 characters of notes at most. When the catalog
 cannot be read, `describe_table` and `list_objects` still answer and say
-`catalog_unavailable` (in `list_objects` the list then comes as `{objects, catalog_unavailable}`).
+`catalog_unavailable` (in `list_objects` only with `limit`, whose answer is an object: a plain list stays a list).
 `search_objects` also finds objects by their database comment and by notes (`matched` is
 `comment` or `note`, with `column` for a column's note), and `#tag` finds the tagged objects
 (`matched: "tag"`), as the app's navigator filter does: a `#word` is a tag only when the
