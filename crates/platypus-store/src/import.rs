@@ -343,6 +343,7 @@ fn read_jdbc(url: &str) -> Option<JdbcUrl> {
                 | DriverKind::ClickHouse
                 | DriverKind::DuckDb
                 | DriverKind::Oracle
+                | DriverKind::Db2
         )
     })
 }
@@ -522,9 +523,12 @@ fn dbeaver_driver(provider: &str, driver: &str) -> Option<DriverKind> {
         "oracle" => Some(DriverKind::Oracle),
         "libsql" | "turso" => Some(DriverKind::Libsql),
         "snowflake" => Some(DriverKind::Snowflake),
+        // `db2` (LUW), `db2_i` and `db2_zos`.
+        p if p.starts_with("db2") => Some(DriverKind::Db2),
         _ if driver.contains("clickhouse") => Some(DriverKind::ClickHouse),
         _ if driver.contains("duckdb") => Some(DriverKind::DuckDb),
         _ if driver.contains("oracle") => Some(DriverKind::Oracle),
+        _ if driver.contains("db2") => Some(DriverKind::Db2),
         _ if driver.contains("libsql") => Some(DriverKind::Libsql),
         _ if driver.contains("snowflake") => Some(DriverKind::Snowflake),
         _ if driver.contains("sqlite") => Some(DriverKind::Sqlite),
@@ -836,14 +840,14 @@ mod tests {
               {"host": "bastion", "port": "2222", "user": "ops", "authType": "PUBLIC_KEY", "keyPath": "C:/k/id"}}}}},
             "sqlite-1": {"provider": "generic", "driver": "sqlite_jdbc", "name": "Local",
               "configuration": {"url": "jdbc:sqlite:C:/data/app.db"}},
-            "db2-1": {"provider": "db2", "name": "Skip me", "configuration": {"url": "jdbc:db2://x:50000/y"}}
+            "informix-1": {"provider": "informix", "name": "Skip me", "configuration": {"url": "jdbc:informix-sqli://x:9088/y"}}
         }}"#;
         let project = dbeaver(json, &Credentials::Missing).unwrap();
         assert_eq!(
             project.skipped,
             [SkippedConnection {
                 name: "Skip me".to_owned(),
-                provider: "db2".to_owned(),
+                provider: "informix".to_owned(),
                 driver: String::new(),
             }]
         );
@@ -958,6 +962,71 @@ mod tests {
             ("pg & co", "::1")
         );
         assert_eq!(found[1].port, Some(5432));
+    }
+
+    #[test]
+    fn reads_db2_from_dbeaver() {
+        let json = r#"{"connections": {
+            "a": {"provider": "db2", "driver": "db2_luw", "name": "by url", "save-password": true,
+              "configuration": {"configurationType": "URL", "host": "stale", "port": "1",
+              "url": "jdbc:db2://dbhost:50001/SampleDb:user=me;password=hunter2;sslConnection=true;"}},
+            "b": {"provider": "db2", "driver": "db2_luw", "name": "by fields",
+              "configuration": {"host": "h", "port": "50002", "database": "Sample", "user": "u"}},
+            "c": {"provider": "db2_zos", "driver": "db2_zos", "name": "zos",
+              "configuration": {"host": "mainframe", "database": "LOC"}},
+            "d": {"provider": "generic", "driver": "db2_i_jdbc", "name": "by driver",
+              "configuration": {"host": "ibmi", "port": "", "database": "X"}},
+            "e": {"provider": "db2_i", "name": "alias", "configuration": {"url": "jdbc:db2:PRODDB"}},
+            "f": {"provider": "db2", "name": "bad url", "configuration": {"host": "fh",
+              "url": "jdbc:as400://ibmi/x;password=hunter2"}}
+        }}"#;
+        let project = dbeaver(json, &Credentials::Missing).unwrap();
+        assert_eq!(project.skipped, []);
+        assert!(
+            project
+                .connections
+                .iter()
+                .all(|c| c.driver == DriverKind::Db2)
+        );
+        let get = |n: &str| named(&project, n);
+        let by_url = get("by url");
+        assert_eq!(address(by_url), ("dbhost", Some(50001), "SampleDb"));
+        assert_eq!(
+            (by_url.user.as_str(), by_url.ssl_mode),
+            ("me", SslMode::Require)
+        );
+        // The password of a URL is never kept in a saved field.
+        let saved = format!("{:?}", project.connections);
+        assert!(!saved.contains("hunter2"), "{saved}");
+        assert!(!project.secrets.values().any(|s| s.password.is_some()));
+        assert_eq!(address(get("by fields")), ("h", Some(50002), "Sample"));
+        assert_eq!(get("by fields").user, "u");
+        assert_eq!(address(get("zos")), ("mainframe", Some(50000), "LOC"));
+        assert_eq!(address(get("by driver")).2, "X");
+        assert_eq!(address(get("alias")), ("", None, "PRODDB"));
+        // `jdbc:as400:` is not read: the fields count.
+        assert_eq!(address(get("bad url")).0, "fh");
+    }
+
+    #[test]
+    fn reads_db2_from_datagrip() {
+        let shared = r#"<project><component name="DataSourceManagerImpl">
+  <data-source source="LOCAL" name="db2@host" uuid="u-1">
+    <driver-ref>db2.luw</driver-ref><jdbc-url>jdbc:db2://dbhost:50000/Sample:password=hunter2;</jdbc-url>
+  </data-source>
+  <data-source source="LOCAL" name="as400" uuid="u-2">
+    <jdbc-url>jdbc:as400://ibmi/x</jdbc-url>
+  </data-source>
+</component></project>"#;
+        let found = datagrip(shared, "");
+        assert_eq!(found.len(), 1);
+        let c = &found[0];
+        assert_eq!(c.driver, DriverKind::Db2);
+        assert_eq!(
+            (c.host.as_str(), c.port, c.database.as_str()),
+            ("dbhost", Some(50000), "Sample")
+        );
+        assert!(!format!("{c:?}").contains("hunter2"));
     }
 
     fn path(parts: &[&str]) -> Vec<String> {
@@ -1558,8 +1627,8 @@ mod tests {
     #[test]
     fn dbp_entry_paths() {
         let dir = tempfile::tempdir().unwrap();
-        let other = br#"{"connections": {"o": {"provider": "db2", "driver": "db2_luw",
-            "name": "Db2", "configuration": {"url": "jdbc:db2://o:50000/x"}}}}"#;
+        let other = br#"{"connections": {"o": {"provider": "informix", "driver": "informix",
+            "name": "Informix", "configuration": {"url": "jdbc:informix-sqli://o:9088/x"}}}}"#;
         let file = zip_of(
             dir.path(),
             &[
@@ -1567,16 +1636,16 @@ mod tests {
                 ("projects\\Win\\.dbeaver\\data-sources.json", URL_ONLY),
                 ("workspace6/General/.dbeaver/data-sources-2.json", URL_ONLY),
                 // Only a connection that is left out: the project stays, to say why.
-                ("projects/Only Db2/.dbeaver/data-sources.json", other),
+                ("projects/Only Informix/.dbeaver/data-sources.json", other),
             ],
         );
         let projects = import(ImportSource::Dbeaver, &file).unwrap();
         let names: Vec<_> = projects.iter().map(|p| p.name.as_deref()).collect();
-        assert_eq!(names, [Some("General"), Some("Only Db2"), Some("Win")]);
+        assert_eq!(names, [Some("General"), Some("Only Informix"), Some("Win")]);
         assert_eq!(projects[0].connections.len(), 1);
         assert_eq!(projects[2].connections.len(), 1);
         assert_eq!(projects[1].connections.len(), 0);
-        assert_eq!(projects[1].skipped[0].driver, "db2_luw");
+        assert_eq!(projects[1].skipped[0].driver, "informix");
     }
 
     #[test]
@@ -1630,6 +1699,6 @@ mod tests {
                 ImportNote::WindowsAuth
             ]
         );
-        assert_eq!(project.skipped[0].name, "Legacy DB2");
+        assert_eq!(project.skipped[0].name, "Legacy Informix");
     }
 }
