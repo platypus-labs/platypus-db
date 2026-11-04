@@ -230,6 +230,7 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "list_objects",
         "describe_table",
         "get_ddl",
+        "get_er_diagram",
         "search_objects",
         "run_query",
         "sample_rows",
@@ -716,6 +717,150 @@ fn the_values_show_only_as_the_user_approved_in_the_app() {
     );
     assert!(!error && rows.contains("ann@example.com"), "{rows}");
     assert!(!rows.contains("masked"), "{rows}");
+}
+
+/// `get_er_diagram` draws the tables of a schema, or those near some tables, as Mermaid.
+#[test]
+fn draws_er_diagrams_from_the_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE customer (id INTEGER PRIMARY KEY, name TEXT);
+         CREATE TABLE \"sales order\" (id INTEGER PRIMARY KEY, customer_id INTEGER,
+             CONSTRAINT fk_customer FOREIGN KEY (customer_id) REFERENCES customer (id));
+         CREATE TABLE item (id INTEGER PRIMARY KEY, order_id INTEGER, product_id INTEGER,
+             FOREIGN KEY (order_id) REFERENCES \"sales order\" (id),
+             FOREIGN KEY (product_id) REFERENCES product (id));
+         CREATE TABLE product (id INTEGER PRIMARY KEY, label TEXT);
+         CREATE TABLE tag (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES tag (id));
+         CREATE VIEW names AS SELECT name FROM customer;",
+    );
+    let mut client = initialized(dir.path());
+    let mut draw = |args: Value| client.call("get_er_diagram", &args);
+
+    let (all, error) = draw(json!({ "connection": "App db", "schema": "main" }));
+    assert!(
+        !error
+            && all.starts_with(
+                "erDiagram
+"
+            ),
+        "{all}"
+    );
+    // Tables with primary keys, names with spaces quoted, the view left out.
+    assert!(all.contains("\"customer\" {"), "{all}");
+    assert!(all.contains("\"sales order\" {"), "{all}");
+    assert!(all.contains("INTEGER id PK"), "{all}");
+    assert!(!all.contains("names"), "{all}");
+    assert!(
+        all.contains("\"sales order\" }o--|| \"customer\" : "),
+        "{all}"
+    );
+    assert!(all.contains("\"item\" }o--|| \"sales order\""), "{all}");
+    assert!(all.contains("\"tag\" }o--|| \"tag\""), "{all}");
+    assert!(!all.contains("cut:"), "{all}");
+
+    // One hop by default, in both directions: the customer, and the items that point at it.
+    let (near, error) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["sales order"]
+    }));
+    assert!(!error, "{near}");
+    assert!(
+        near.contains("\"customer\" {") && near.contains("\"item\" {"),
+        "{near}"
+    );
+    assert!(
+        !near.contains("\"product\"") && !near.contains("\"tag\""),
+        "{near}"
+    );
+    // The key from item to product is left out: product is not drawn.
+    assert!(!near.contains("}o--|| \"product\""), "{near}");
+
+    let (alone, _) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["sales order"], "depth": 0
+    }));
+    assert!(
+        !alone.contains("\"customer\" {") && !alone.contains("}o--||"),
+        "{alone}"
+    );
+    assert!(alone.contains("no foreign keys"), "{alone}");
+    let (deep, _) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["customer"], "depth": 3
+    }));
+    assert!(
+        deep.contains("\"product\" {") && !deep.contains("\"tag\" {"),
+        "{deep}"
+    );
+
+    // Only real tables, in a real schema, on a connection open to agents.
+    let (missing, error) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["customer", "nope"]
+    }));
+    assert!(
+        error && missing.contains("no table `main.nope`"),
+        "{missing}"
+    );
+    let (view, error) = draw(json!({
+        "connection": "App db", "schema": "main", "tables": ["names"]
+    }));
+    assert!(
+        error && view.contains("`main.names` is not a table"),
+        "{view}"
+    );
+    let (schema, error) = draw(json!({ "connection": "App db", "schema": "nope" }));
+    // SQLite fails on its own; other databases list nothing, which is reported as missing.
+    assert!(error && schema.contains("nope"), "{schema}");
+    let (off, error) = draw(json!({ "connection": "Hidden", "schema": "main" }));
+    assert!(error && off.contains("available to agents"), "{off}");
+    let (nowhere, error) = draw(json!({ "connection": "Nowhere", "schema": "main" }));
+    assert!(error, "{nowhere}");
+
+    // A database without tables or keys still answers.
+    sqlite(&dir.path().join("scratch.db"), "DROP TABLE t;");
+    let (empty, error) = draw(json!({ "connection": "Scratch", "schema": "main" }));
+    assert!(!error && empty.contains("no tables"), "{empty}");
+}
+
+/// A schema too big for the byte limit is cut at whole tables, with a note.
+#[test]
+fn a_big_er_diagram_is_cut_with_a_note() {
+    use std::fmt::Write as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut columns = String::new();
+    for i in 0..30 {
+        let _ = write!(columns, ", column_number_{i} INTEGER");
+    }
+    let mut big = String::new();
+    for i in 0..80 {
+        let _ = write!(
+            big,
+            "CREATE TABLE big_table_{i:02} (id INTEGER PRIMARY KEY{columns});"
+        );
+    }
+    sqlite(&dir.path().join("scratch.db"), &big);
+    let mut client = initialized(dir.path());
+    let (cut, error) = client.call(
+        "get_er_diagram",
+        &json!({ "connection": "Scratch", "schema": "main" }),
+    );
+    assert!(!error && cut.len() < 33_000, "{}", cut.len());
+    assert!(
+        cut.contains("%% cut: ") && cut.contains("of 81 tables"),
+        "{cut}"
+    );
+    assert!(cut.contains("Pass `tables`"), "{cut}");
+    assert_eq!(cut.matches('{').count(), cut.matches('}').count());
+    let (some, error) = client.call(
+        "get_er_diagram",
+        &json!({ "connection": "Scratch", "schema": "main", "tables": ["big_table_07"] }),
+    );
+    assert!(
+        !error && !some.contains("cut:") && some.contains("big_table_07"),
+        "{some}"
+    );
 }
 
 #[test]

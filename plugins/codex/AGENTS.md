@@ -11,7 +11,8 @@ hosts and users never reach you.
 2. `list_schemas`, then `list_objects` for a schema (500 objects a page; follow
    `next_offset`), or `search_objects` to find a table or column by name.
 3. `describe_table` before writing a query on a table: columns, types, keys, indexes and the
-   foreign keys to join on. `get_ddl` gives the CREATE statement of any object.
+   foreign keys to join on. `get_ddl` gives the CREATE statement of any object, and `get_er_diagram` a Mermaid ER
+   diagram of a schema (or of some tables and those linked to them by foreign keys).
 4. `sample_rows` shows the first rows of a table, to see what the values look like.
 
 Clients that read MCP resources can also read `platypus://<connection>`,

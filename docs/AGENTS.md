@@ -105,7 +105,7 @@ agents and the CLI only once you approved that exact text in the app (which asks
 connect): until then they are left out, and the server's log (stderr) says so.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
-`search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql`,
+`get_er_diagram`, `search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql`,
 `list_open_sessions`, `list_scripts`, `read_script` and `search_history`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
@@ -113,6 +113,16 @@ longer than 1,000 characters were left out. In the text table SQL `NULL` reads `
 text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
 a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
 client's `notifications/cancelled` cancels the running statement.
+
+`get_er_diagram` (`connection`, `schema`, optional `tables` and `depth`) returns a Mermaid
+`erDiagram` as text, built from the catalog, so it works with the app closed: the tables of the
+schema with their columns and primary keys, and the foreign keys between them. Without `tables`
+it draws the whole schema (the first 300 tables of a larger one); with `tables` it draws those
+and the tables linked to them by foreign keys, `depth` hops away in either direction (default
+1, at most 3; 0 draws only the named tables). A diagram over 32 KB is cut at whole tables, with
+a `%%` comment saying how many were drawn and suggesting `tables`. A table that does not exist,
+a name that is a view, and a schema that does not exist are errors; MongoDB, Redis and
+Elasticsearch have no tables to draw and answer with an error.
 
 The user's saved scripts and history are readable too, never writable: `list_scripts` lists
 the scripts of a project (by its name; without one, those of All connections) with the

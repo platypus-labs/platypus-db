@@ -28,7 +28,7 @@ use tokio_util::sync::CancellationToken;
 /// What agents read first: how to use the tools.
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
 in the PlatypusDB app. Start with list_connections, then explore with list_schemas, \
-list_objects, describe_table, get_ddl and search_objects, look at a table's first rows with \
+list_objects, describe_table, get_ddl, get_er_diagram and search_objects, look at a table's first rows with \
 sample_rows, query with run_query and read a statement's plan with explain: one statement per \
 call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
 hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
@@ -87,6 +87,19 @@ struct DdlArgs {
     /// The kind from `list_objects` (`table`, `view`, `function`, ...); looked up when
     /// left out.
     kind: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct ErDiagramArgs {
+    /// The connection's name, as `list_connections` shows it.
+    connection: String,
+    /// The schema (a database in MySQL, `main` in SQLite and DuckDB).
+    schema: String,
+    /// Tables to draw, as `list_objects` shows them; left out, the whole schema.
+    tables: Option<Vec<String>>,
+    /// With `tables`: how many foreign-key hops from them to follow, in both directions
+    /// (default 1, at most 3).
+    depth: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -338,6 +351,30 @@ impl PlatypusServer {
                 &args.schema,
                 &args.name,
                 args.kind.as_deref(),
+            )
+            .await;
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Returns a Mermaid erDiagram of a schema's tables (columns, primary keys) \
+        and the foreign keys between them, as text. Without `tables` the whole schema; with \
+        `tables`, those and the tables within `depth` foreign-key hops of them (default 1, \
+        at most 3). A diagram over 32768 bytes is cut with a note: pass `tables` to choose."
+    )]
+    async fn get_er_diagram(
+        &self,
+        Parameters(args): Parameters<ErDiagramArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("get_er_diagram", &peer, &args);
+        let result = self
+            .agent
+            .er_diagram(
+                &args.connection,
+                &args.schema,
+                args.tables.as_deref().unwrap_or_default(),
+                args.depth,
             )
             .await;
         self.answer(call, result).await

@@ -14,6 +14,7 @@ pub mod access;
 mod agent;
 mod connect;
 mod context;
+mod er;
 mod error;
 mod ident;
 mod library;

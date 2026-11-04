@@ -5533,6 +5533,94 @@ async fn agents_ask_before_a_query_that_writes() {
     }
 }
 
+/// `get_er_diagram` draws the demo tables and the key between them on the databases with
+/// foreign keys that agents reach: the view is left out, `tables` narrows by key hops.
+#[tokio::test]
+async fn agents_draw_er_diagrams() {
+    use platypus_mcp::{Agent, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+            }
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4
+
+[[connections]]
+id = \"00000000-0000-4000-8000-000000000001\"
+                     name = \"Db\"
+driver = \"sqlite\"
+database = '{}'
+",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        let draw = |tables: &[&str], depth| {
+            let tables: Vec<String> = tables.iter().map(|t| (*t).to_owned()).collect();
+            let agent = &agent;
+            let schema = b.schema.clone();
+            async move { agent.er_diagram("Db", &schema, &tables, depth).await }
+        };
+
+        let all = draw(&[], None)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert!(
+            all.starts_with(
+                "erDiagram
+"
+            ),
+            "{}: {all}",
+            b.name
+        );
+        assert!(all.contains("\"customers\" {"), "{}: {all}", b.name);
+        assert!(all.contains("\"orders\" {"), "{}: {all}", b.name);
+        assert!(all.contains(" PK"), "{}: {all}", b.name);
+        assert!(
+            all.contains("\"orders\" }o--|| \"customers\""),
+            "{}: {all}",
+            b.name
+        );
+        assert!(!all.contains("customer_totals"), "{}: {all}", b.name);
+
+        // The key is followed from the referenced side too, one hop by default.
+        let near = draw(&["customers"], None).await.unwrap();
+        assert!(
+            near.contains("\"orders\" }o--|| \"customers\""),
+            "{}: {near}",
+            b.name
+        );
+        let alone = draw(&["customers"], Some(0)).await.unwrap();
+        assert!(!alone.contains("\"orders\""), "{}: {alone}", b.name);
+        let missing = draw(&["customers", "no_such_table"], None)
+            .await
+            .unwrap_err();
+        assert!(
+            missing.to_string().contains("no_such_table"),
+            "{}: {missing}",
+            b.name
+        );
+        let view = draw(&["customer_totals"], None).await.unwrap_err();
+        assert!(
+            view.to_string().contains("not a table"),
+            "{}: {view}",
+            b.name
+        );
+        let schema = agent.er_diagram("Db", "no_such_schema", &[], None).await;
+        assert!(schema.is_err(), "{}: {schema:?}", b.name);
+    }
+}
+
 /// The first cell of what `sql` returns through `agent` (`None` for a statement without rows).
 async fn first_cell(agent: &platypus_mcp::Agent, name: &str, sql: &str) -> Option<String> {
     use platypus_mcp::QueryArgs;
