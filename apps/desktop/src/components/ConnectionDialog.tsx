@@ -32,6 +32,7 @@ import { hasSessionTimeZone, withoutUnusableInit } from "../connectionEdit";
 import { toggled } from "../sets";
 import { basename } from "../workspace";
 import { DriverIcon, DriverPicker, driverName } from "./DriverPicker";
+import { offerDriver } from "../drivers/DriverPopup";
 import { Icon } from "../ui/Icon";
 import { NetworkFields, sshSecretIds, sshSecretsOf } from "./NetworkFields";
 import { NetworkProfileDialog, newNetworkProfile } from "./NetworkProfileDialog";
@@ -624,6 +625,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           setConn((c) => ({ ...c, ...preset, options: { ...c.options, ...preset.options } }));
           setTile(label);
           setPicking(false);
+          void offerDriver(driver);
         }}
         onClose={onClose}
       />

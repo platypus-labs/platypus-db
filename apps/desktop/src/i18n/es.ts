@@ -960,7 +960,7 @@ const es: Record<string, string> = {
   "License: {license} · from the dbc driver registry (Columnar)": "Licencia: {license} · del registro de drivers dbc (Columnar)",
   "checked with SHA-256": "verificado con SHA-256",
   "Looking up the driver…": "Buscando el driver…",
-  "Later: Settings › Drivers": "Más tarde: Ajustes › Drivers",
+  "You can also do it later": "También puedes hacerlo más tarde",
   "Try again": "Reintentar",
   "Download and connect": "Descargar y conectar",
   "Snowflake, BigQuery, Databricks and Trino connect through ADBC drivers, downloaded the first time a connection needs one.": "Snowflake, BigQuery, Databricks y Trino se conectan con drivers ADBC, que se descargan la primera vez que una conexión los necesita.",
