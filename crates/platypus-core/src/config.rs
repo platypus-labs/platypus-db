@@ -805,11 +805,9 @@ fn holds_second_url(input: &str) -> bool {
     if input.starts_with("sqlite:") || input.starts_with("duckdb:") {
         return false;
     }
-    input.split_once("://").is_some_and(|(_, rest)| {
-        rest.split('?')
-            .next()
-            .is_some_and(|before_query| before_query.contains("://"))
-    })
+    input
+        .split_once("://")
+        .is_some_and(|(_, rest)| rest.split('?').next().unwrap_or_default().contains("://"))
 }
 
 /// The URL with only the first host of a `host1:port1,host2:port2` list, and the others.
