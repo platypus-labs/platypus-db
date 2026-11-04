@@ -6,6 +6,14 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Security**: a connection URL pasted or typed over the one the URL field already shows no
+  longer leaves its password in clear in `connections.toml`. A paste takes the field's place, and
+  two URLs together are refused. Saving also refuses a name, database or user that holds a URL
+  with its password. A connection saved this way before keeps the URL in its Database field:
+  remove it there, and change that password if the file was shared.
+
 ## [0.4.1] - 2026-11-04
 
 ### Added

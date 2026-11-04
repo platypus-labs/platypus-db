@@ -503,6 +503,11 @@ impl ConnectionConfig {
     /// know. `hint` is the database the URL is pasted for: it decides what `http://` and
     /// `https://` (libSQL or ClickHouse) are.
     fn read_url(input: &str, hint: Option<DriverKind>) -> Result<UrlRead> {
+        if holds_second_url(input) {
+            return Err(Error::Config(
+                "the text holds two URLs: replace the old URL with the new one".to_owned(),
+            ));
+        }
         let mongo = match input.strip_prefix("mongodb+srv://") {
             Some(rest) => Some(Self::from_mongo_url(rest, true)?),
             None => input
@@ -791,6 +796,18 @@ impl UrlRead {
             other_hosts: Vec::new(),
         }
     }
+}
+
+/// Whether a URL was written into another one (`postgres://h:5432/postgres://u:secret@db/x`):
+/// the second would be read as the database, and its password saved in clear. A value in the
+/// query may be a URL, and a local database's path may be one (DuckDB opens `s3://…`).
+fn holds_second_url(input: &str) -> bool {
+    if input.starts_with("sqlite:") || input.starts_with("duckdb:") {
+        return false;
+    }
+    input
+        .split_once("://")
+        .is_some_and(|(_, rest)| rest.split('?').next().unwrap_or_default().contains("://"))
 }
 
 /// The URL with only the first host of a `host1:port1,host2:port2` list, and the others.
@@ -1278,6 +1295,25 @@ mod tests {
         assert!(ConnectionConfig::from_url("oracle://x/y").is_err());
         assert!(ConnectionConfig::from_url("postgres://x/y?foo=1").is_err());
         assert!(ConnectionConfig::from_url("postgres://x/y?sslmode=nope").is_err());
+    }
+
+    #[test]
+    fn a_url_written_into_another_is_refused_without_repeating_it() {
+        for bad in [
+            "postgres://localhost:5432/postgres://u:hunter2@db:5433/app?sslmode=disable",
+            "mysql://h/mysql://u:hunter2@db/app",
+            "mongodb://h:27017/mongodb://u:hunter2@db/app",
+        ] {
+            let err = ConnectionConfig::from_url(bad).unwrap_err().to_string();
+            assert!(err.contains("two URLs"), "{err}");
+            assert!(!err.contains("hunter2"), "{err}");
+        }
+        // A URL in the query, an encoded one in the path and a local file's path are not.
+        let cert = "postgres://h/app?sslrootcert=file:///ca.pem";
+        assert!(ConnectionConfig::from_url(cert).is_ok());
+        let encoded = ConnectionConfig::from_url("postgres://h/a%3A%2F%2Fb").unwrap();
+        assert_eq!(encoded.database, "a://b");
+        assert!(!holds_second_url("duckdb://s3://bucket/file.parquet"));
     }
 
     #[test]

@@ -562,6 +562,18 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     );
   }
 
+  /** A URL pasted in the URL field takes the place of the one printed there, wherever the
+   *  caret is: added to it, the new one would be read as the database, password included.
+   *  After a `=` it is the value of a parameter (`sslrootcert=file:///…`). */
+  function pasteUrl(e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData("text").trim();
+    const input = e.currentTarget;
+    const before = input.value.slice(0, input.selectionStart ?? 0);
+    if (!looksLikeConnection(text) || before.endsWith("=")) return;
+    e.preventDefault();
+    editUrl(text);
+  }
+
   const otherDriverError = (driver: DriverKind) => t("This URL is for {driver}: go back to choose it.", { driver: driverName(driver) });
 
   function chooseConnectBy(mode: ConnectBy) {
@@ -799,6 +811,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       aria-labelledby="conn-url-label"
                       value={urlDraft ?? printedUrl}
                       onChange={(e) => editUrl(e.target.value)}
+                      onPaste={pasteUrl}
                       onBlur={() => {
                         // A URL that does not read, or not yet, stays as typed with its error.
                         if (urlError === null && !urlReading.current) setUrlDraft(null);
