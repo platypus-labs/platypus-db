@@ -12,6 +12,7 @@ import { DriverIcon } from "../components/DriverPicker";
 import { workbench } from "../workbench";
 import { AGENT_ACCESS, agentAccessLabel, effectiveAgentAccess, isCapped } from "./access";
 import { AgentActivity } from "./AgentActivity";
+import { AgentLimitFields } from "./AgentLimitFields";
 import { AgentBridge } from "./AgentBridge";
 import { AgentClients } from "./AgentClients";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
@@ -211,6 +212,15 @@ function AgentSecurity({
               />
               <span>{t("Show agents the values of sensitive columns")}</span>
             </label>
+            <AgentLimitFields
+              key={chosen.id}
+              limits={chosen.agent_limits ?? {}}
+              onChange={(agent_limits) =>
+                api
+                  .saveConnection({ ...chosen, agent_limits }, { action: "keep" })
+                  .then(onSaved, (err: unknown) => onError(toCommandError(err).message))
+              }
+            />
           </aside>
         )}
       </div>

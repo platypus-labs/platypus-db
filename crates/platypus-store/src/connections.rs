@@ -93,6 +93,10 @@ pub struct SavedConnection {
     /// What the app does not do with the connection's data, whatever the page offers.
     #[serde(default, skip_serializing_if = "Restrictions::is_none")]
     pub restrictions: Restrictions,
+    /// How much agents may read, how fast and at what estimated cost; only ever tighter than
+    /// the fixed caps. Part of the sealed agent policy.
+    #[serde(default, skip_serializing_if = "AgentLimits::is_empty")]
+    pub agent_limits: AgentLimits,
     /// What a driver needs beyond the common fields, e.g. Snowflake's `warehouse`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub options: BTreeMap<String, String>,
@@ -166,6 +170,62 @@ impl AgentValues {
     #[allow(clippy::trivially_copy_pass_by_ref)]
     fn is_masked(&self) -> bool {
         *self == Self::Masked
+    }
+}
+
+/// What a connection holds agents to, beyond the fixed caps (10,000 rows, 1 MB, 300 s), which
+/// no setting can raise. Unset means the caps apply, so an unset limit is the loosest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AgentLimits {
+    /// Rows of a result at most.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_rows: Option<u64>,
+    /// Bytes of a rendered result or plan at most.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_bytes: Option<u64>,
+    /// Seconds a statement may run at most.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u64>,
+    /// Statements, samples and plans per minute and server process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calls_per_minute: Option<u64>,
+    /// A read whose plan expects more rows than this is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_estimated_rows: Option<u64>,
+    /// A read whose plan costs more than this (in the database's own units) is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_plan_cost: Option<u64>,
+}
+
+impl AgentLimits {
+    /// No limit set.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The stricter of the two, limit by limit; an unset limit is the loosest.
+    #[must_use]
+    pub fn stricter(&self, other: &Self) -> Self {
+        let min = |a: Option<u64>, b: Option<u64>| match (a, b) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        Self {
+            max_rows: min(self.max_rows, other.max_rows),
+            max_bytes: min(self.max_bytes, other.max_bytes),
+            timeout_seconds: min(self.timeout_seconds, other.timeout_seconds),
+            calls_per_minute: min(self.calls_per_minute, other.calls_per_minute),
+            max_estimated_rows: min(self.max_estimated_rows, other.max_estimated_rows),
+            max_plan_cost: min(self.max_plan_cost, other.max_plan_cost),
+        }
+    }
+
+    /// Whether `self` lets agents do more than `approved` in some limit: one `approved` sets
+    /// that `self` raises or leaves unset.
+    #[must_use]
+    pub fn loosens(&self, approved: &Self) -> bool {
+        self.stricter(approved) != *self
     }
 }
 
@@ -522,6 +582,7 @@ impl SavedConnection {
             connection_type: None,
             agent_access: AgentAccess::default(),
             agent_values: AgentValues::default(),
+            agent_limits: AgentLimits::default(),
             text_json: TextJson::Format,
             connect_by: ConnectBy::Host,
             ssh: None,
@@ -1438,6 +1499,35 @@ mod tests {
         assert!(!text.contains("folder"), "{text}");
         // Older files leave agents to read only.
         assert!(text.contains("agent_access = \"read_only\""), "{text}");
+    }
+
+    #[test]
+    fn agent_limits_are_written_only_when_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connections.toml");
+        let mut s = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap();
+        let mut c = SavedConnection::new("Db", DriverKind::Sqlite);
+        let id = c.id;
+        s.save(c.clone(), PasswordUpdate::Keep).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("agent_limits"), "{text}");
+
+        c.agent_limits = AgentLimits {
+            max_rows: Some(50),
+            calls_per_minute: Some(10),
+            ..AgentLimits::default()
+        };
+        s.save(c, PasswordUpdate::Keep).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("max_rows = 50"), "{text}");
+        assert!(!text.contains("max_bytes"), "{text}");
+        let s = ConnectionStore::open(&path, Arc::new(MemorySecrets::default())).unwrap();
+        let limits = s.get(id).unwrap().agent_limits;
+        assert_eq!(
+            (limits.max_rows, limits.calls_per_minute),
+            (Some(50), Some(10))
+        );
+        assert_eq!(limits.timeout_seconds, None);
     }
 
     #[test]

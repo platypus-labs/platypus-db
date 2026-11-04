@@ -19,7 +19,8 @@ use std::sync::Arc;
 
 use platypus_core::Secret;
 use platypus_store::{
-    AgentAccess, AgentValues, KeyringSecrets, SavedConnection, SecretStore, SettingsStore,
+    AgentAccess, AgentLimits, AgentValues, KeyringSecrets, SavedConnection, SecretStore,
+    SettingsStore,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -48,6 +49,10 @@ pub struct AgentPolicy {
     /// them. Not in the files of older versions.
     #[serde(default)]
     pub values_shown: BTreeSet<Uuid>,
+    /// The limits of the connections that have any; the others have none beyond the fixed
+    /// caps. Not in the files of older versions.
+    #[serde(default)]
+    pub limits: BTreeMap<Uuid, AgentLimits>,
 }
 
 impl Default for AgentPolicy {
@@ -58,6 +63,7 @@ impl Default for AgentPolicy {
             confirm_writes: true,
             unfiltered_allowed: false,
             values_shown: BTreeSet::new(),
+            limits: BTreeMap::new(),
         }
     }
 }
@@ -79,6 +85,8 @@ pub enum Loosening {
     Unfiltered,
     /// A connection shows agents the values of its sensitive columns.
     ValuesShown { id: Uuid, name: String },
+    /// A connection's limits were raised or removed.
+    AgentLimits { id: Uuid, name: String },
 }
 
 impl AgentPolicy {
@@ -97,6 +105,11 @@ impl AgentPolicy {
                 .iter()
                 .filter(|c| c.agent_values == AgentValues::Shown)
                 .map(|c| c.id)
+                .collect(),
+            limits: connections
+                .iter()
+                .filter(|c| !c.agent_limits.is_empty())
+                .map(|c| (c.id, c.agent_limits))
                 .collect(),
         }
     }
@@ -121,6 +134,12 @@ impl AgentPolicy {
         }
     }
 
+    /// The limits of connection `id`: none beyond the fixed caps unless it is listed.
+    #[must_use]
+    pub fn limits(&self, id: Uuid) -> AgentLimits {
+        self.limits.get(&id).copied().unwrap_or_default()
+    }
+
     /// This policy, never looser than `approved`: the stricter of the two, item by item.
     #[must_use]
     pub fn within(&self, approved: &Self) -> Self {
@@ -136,6 +155,13 @@ impl AgentPolicy {
                 .values_shown
                 .intersection(&approved.values_shown)
                 .copied()
+                .collect(),
+            limits: self
+                .limits
+                .keys()
+                .chain(approved.limits.keys())
+                .map(|id| (*id, self.limits(*id).stricter(&approved.limits(*id))))
+                .filter(|(_, limits)| !limits.is_empty())
                 .collect(),
         }
     }
@@ -169,6 +195,19 @@ impl AgentPolicy {
             self.values_shown
                 .difference(&approved.values_shown)
                 .map(|id| Loosening::ValuesShown {
+                    id: *id,
+                    name: connections
+                        .iter()
+                        .find(|c| c.id == *id)
+                        .map(|c| c.name.clone())
+                        .unwrap_or_default(),
+                }),
+        );
+        found.extend(
+            self.connections
+                .keys()
+                .filter(|id| self.limits(**id).loosens(&approved.limits(**id)))
+                .map(|id| Loosening::AgentLimits {
                     id: *id,
                     name: connections
                         .iter()
@@ -345,6 +384,128 @@ mod values_tests {
         let old = r#"{"connections":{},"confirm_writes":true,"unfiltered_allowed":false}"#;
         let policy: AgentPolicy = serde_json::from_str(old).unwrap();
         assert!(policy.values_shown.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod limits_tests {
+    use super::*;
+
+    fn limited(rows: Option<u64>, calls: Option<u64>) -> SavedConnection {
+        let mut c = SavedConnection::new("c", platypus_core::DriverKind::Sqlite);
+        c.agent_limits = AgentLimits {
+            max_rows: rows,
+            calls_per_minute: calls,
+            ..AgentLimits::default()
+        };
+        c
+    }
+
+    /// `c` as the same connection with other limits.
+    fn edited(c: &SavedConnection, rows: Option<u64>, calls: Option<u64>) -> SavedConnection {
+        let mut e = limited(rows, calls);
+        e.id = c.id;
+        e
+    }
+
+    #[test]
+    fn the_stricter_limit_wins_and_a_missing_one_is_the_loosest() {
+        let a = AgentLimits {
+            max_rows: Some(50),
+            max_bytes: Some(2000),
+            ..AgentLimits::default()
+        };
+        let b = AgentLimits {
+            max_rows: Some(80),
+            timeout_seconds: Some(5),
+            ..AgentLimits::default()
+        };
+        let both = a.stricter(&b);
+        assert_eq!(both.max_rows, Some(50));
+        assert_eq!(both.max_bytes, Some(2000));
+        assert_eq!(both.timeout_seconds, Some(5));
+        assert_eq!(both.calls_per_minute, None);
+        assert_eq!(a.stricter(&AgentLimits::default()), a);
+        assert!(!a.loosens(&a) && !a.loosens(&AgentLimits::default()));
+        assert!(AgentLimits::default().loosens(&a));
+        assert!(
+            b.loosens(&a),
+            "a limit the approved one lacks is not enough"
+        );
+    }
+
+    #[test]
+    fn raising_or_removing_a_limit_waits_for_the_user() {
+        let approved_c = limited(Some(50), Some(10));
+        let approved = AgentPolicy::current(std::slice::from_ref(&approved_c), None);
+        let check = |rows, calls| {
+            let connections = [edited(&approved_c, rows, calls)];
+            let current = AgentPolicy::current(&connections, None);
+            (
+                current.loosenings(&approved, &connections),
+                current.within(&approved).limits(approved_c.id),
+            )
+        };
+        // Raised: the approved limit holds, and the user is asked.
+        let (found, honored) = check(Some(500), Some(10));
+        assert_eq!(
+            found,
+            [Loosening::AgentLimits {
+                id: approved_c.id,
+                name: "c".to_owned(),
+            }]
+        );
+        assert_eq!(honored, approved_c.agent_limits);
+        // Removed in one field.
+        let (found, honored) = check(Some(50), None);
+        assert_eq!(found.len(), 1);
+        assert_eq!(honored.calls_per_minute, Some(10));
+        // Tightened: applies at once, nothing to ask.
+        let (found, honored) = check(Some(20), Some(10));
+        assert_eq!(found, []);
+        assert_eq!(honored.max_rows, Some(20));
+    }
+
+    #[test]
+    fn seals_decide_which_limits_agents_get() {
+        let c = limited(Some(500), None);
+        let connections = std::slice::from_ref(&c);
+        let current = AgentPolicy::current(connections, None);
+        // No seal, or a broken one that approves no limit: a limit in the file only tightens.
+        for seal in [Sealed::Nothing, Sealed::Broken] {
+            assert_eq!(seal.honored(&current).limits(c.id).max_rows, Some(500));
+            assert_eq!(seal.loosenings(&current, connections), []);
+        }
+        // A sealed policy with a lower limit holds against the raised file.
+        let mut approved = AgentPolicy::default();
+        approved.limits.insert(
+            c.id,
+            AgentLimits {
+                max_rows: Some(50),
+                ..AgentLimits::default()
+            },
+        );
+        let sealed = Sealed::Approved(approved);
+        assert_eq!(sealed.honored(&current).limits(c.id).max_rows, Some(50));
+        assert_eq!(sealed.loosenings(&current, connections).len(), 1);
+        // And against the file with the limit removed.
+        let none_c = edited(&c, None, None);
+        let none = AgentPolicy::current(std::slice::from_ref(&none_c), None);
+        assert_eq!(sealed.honored(&none).limits(c.id).max_rows, Some(50));
+        assert_eq!(
+            sealed
+                .loosenings(&none, std::slice::from_ref(&none_c))
+                .len(),
+            1
+        );
+        assert_eq!(Sealed::Broken.loosenings(&none, connections), []);
+    }
+
+    #[test]
+    fn a_policy_file_of_an_older_version_has_no_limits() {
+        let old = r#"{"connections":{},"confirm_writes":true,"unfiltered_allowed":false}"#;
+        let policy: AgentPolicy = serde_json::from_str(old).unwrap();
+        assert!(policy.limits.is_empty());
     }
 }
 

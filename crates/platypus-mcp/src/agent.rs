@@ -26,6 +26,7 @@ use crate::access::{self, UnfilteredRule};
 use crate::connect;
 use crate::er;
 use crate::error::{AgentError, Result};
+use crate::guard::{self, Asked, CallWindows};
 use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
@@ -254,7 +255,7 @@ type Slot = Arc<tokio::sync::Mutex<Option<Session>>>;
 
 /// The connection of one call, held for the call: calls on the same connection wait for
 /// each other.
-struct Lease {
+pub(crate) struct Lease {
     slot: OwnedMutexGuard<Option<Session>>,
 }
 
@@ -266,7 +267,7 @@ impl Lease {
             .unwrap_or_else(|| unreachable!("a lease always holds a session"))
     }
 
-    fn conn(&self) -> &dyn Connection {
+    pub(crate) fn conn(&self) -> &dyn Connection {
         &*self.session().conn
     }
 
@@ -288,7 +289,11 @@ impl Lease {
 
     /// The result of a request made within [`query::guarded`]: after a timeout or a
     /// cancellation the connection is closed, the request may still be running on it.
-    fn finish<T>(self, result: Result<T, RunError>, timeout: std::time::Duration) -> Result<T> {
+    pub(crate) fn finish<T>(
+        self,
+        result: Result<T, RunError>,
+        timeout: std::time::Duration,
+    ) -> Result<T> {
         match result {
             Ok(value) => Ok(value),
             Err(RunError::Database(e)) => Err(self.error(&e)),
@@ -352,6 +357,8 @@ pub struct Agent {
     session: String,
     /// The policy the user approved in the app, which edits of the files cannot loosen.
     seal: Seal,
+    /// The calls of the last minute on each connection, for `calls_per_minute`.
+    windows: CallWindows,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only
@@ -400,6 +407,7 @@ impl Agent {
             allowed: Mutex::default(),
             session: Uuid::new_v4().to_string(),
             seal,
+            windows: CallWindows::default(),
         }
     }
 
@@ -430,6 +438,7 @@ impl Agent {
                 let mut c = c.clone();
                 c.agent_access = policy.access(c.id);
                 c.agent_values = policy.values(c.id);
+                c.agent_limits = policy.limits(c.id);
                 c
             })
             .collect();
@@ -620,7 +629,11 @@ impl Agent {
 
     /// The open connection of `saved`, reopened when its settings changed, the server
     /// dropped it or a transaction was left open.
-    async fn lease(&self, store: &ConnectionStore, saved: &SavedConnection) -> Result<Lease> {
+    pub(crate) async fn lease(
+        &self,
+        store: &ConnectionStore,
+        saved: &SavedConnection,
+    ) -> Result<Lease> {
         let mut slot = self.slot(saved.id).lock_owned().await;
         let fingerprint = fingerprint(&store.effective(saved));
         let reusable = slot.as_ref().is_some_and(|s| {
@@ -794,8 +807,14 @@ impl Agent {
         (origin, session): (&str, &str),
         stop: impl Future<Output = ()>,
     ) -> Result<QueryResult> {
-        let limits = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
+        let asked = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
+        let requested = Asked {
+            max_rows: args.max_rows,
+            max_bytes: args.max_bytes,
+            timeout_seconds: args.timeout_seconds,
+        };
+        let (limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
         let access = saved.effective_agent_access();
         let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();
@@ -816,6 +835,7 @@ impl Agent {
         let mut waited = Duration::ZERO;
         let mut stop = std::pin::pin!(stop);
         let result = async {
+            self.windows.count(&saved)?;
             let statement = checked?;
             let asked = Instant::now();
             // The client's cancellation withdraws the question too.
@@ -824,6 +844,12 @@ impl Agent {
                 () = stop.as_mut() => return Err(AgentError::Cancelled),
             }
             waited = asked.elapsed();
+            if let Some(note) = self
+                .cost_guard((&store, &saved), statement, &limits, stop.as_mut())
+                .await?
+            {
+                notes.push(note);
+            }
             if access == AgentAccess::ReadOnly {
                 return self
                     .execute(&store, &saved, statement, Some(saved.driver), &limits, stop)
@@ -861,6 +887,7 @@ impl Agent {
                 outcome,
                 elapsed: start.elapsed(),
                 limits,
+                notes,
             })
             .map_err(|e| self.mask_statement_error(&saved, e));
         self.record(
@@ -912,6 +939,8 @@ impl Agent {
         let limits = Limits::new(None, args.max_bytes, args.timeout_seconds)?;
         let analyze = args.analyze.unwrap_or(false);
         let (store, saved) = self.find(&args.connection)?;
+        self.windows.count(&saved)?;
+        let (limits, _) = guard::clamp(limits, &Asked::default(), &saved.agent_limits);
         if matches!(
             saved.driver,
             DriverKind::Mongo

@@ -1700,6 +1700,26 @@ button.primary.danger:hover:not(:disabled) {
   gap: var(--space-8);
 }
 
+.agent-limits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin: 0;
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.agent-limit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.agent-limit input[aria-invalid="true"] {
+  border-color: var(--danger, #d64545);
+}
+
 .agent-levels {
   display: flex;
   flex-direction: column;

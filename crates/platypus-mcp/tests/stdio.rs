@@ -719,6 +719,115 @@ fn the_values_show_only_as_the_user_approved_in_the_app() {
     assert!(!rows.contains("masked"), "{rows}");
 }
 
+/// The limits of a connection lower what agents ask for, and say so.
+#[test]
+fn a_connection_lowers_rows_and_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(
+        dir.path(),
+        "
+[connections.agent_limits]
+max_rows = 1
+",
+    );
+    let mut client = initialized(dir.path());
+    let (asked, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT id FROM users ORDER BY id", "max_rows": 500, "format": "json" }),
+    );
+    assert!(!error, "{asked}");
+    let doc: Value = serde_json::from_str(&asked).unwrap();
+    assert_eq!(doc["row_count"], 1, "{doc}");
+    assert_eq!(doc["truncated_by"], "max_rows", "{doc}");
+    assert!(
+        doc["notes"][0]
+            .as_str()
+            .unwrap()
+            .contains("max_rows was lowered to 1"),
+        "{doc}"
+    );
+    // The default is lowered too, with no note: the agent asked for nothing.
+    let (default, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT id FROM users ORDER BY id" }),
+    );
+    assert!(!error && default.contains("(1 row"), "{default}");
+    assert!(!default.contains("lowered"), "{default}");
+    // Asking for no more than the limit says nothing.
+    let (fits, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "Users", "schema": "main", "table": "users", "max_rows": 1 }),
+    );
+    assert!(!error && !fits.contains("lowered"), "{fits}");
+}
+
+#[test]
+fn calls_per_minute_are_counted_per_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(
+        dir.path(),
+        "
+[connections.agent_limits]
+calls_per_minute = 2
+",
+    );
+    let mut client = initialized(dir.path());
+    let select = json!({ "connection": "Users", "sql": "SELECT 1" });
+    let (first, error) = client.call("run_query", &select);
+    assert!(!error, "{first}");
+    let (second, error) = client.call(
+        "sample_rows",
+        &json!({ "connection": "Users", "schema": "main", "table": "users" }),
+    );
+    assert!(!error, "{second}");
+    for (tool, args) in [
+        ("run_query", select),
+        (
+            "explain",
+            json!({ "connection": "Users", "sql": "SELECT 1" }),
+        ),
+    ] {
+        let (refused, error) = client.call(tool, &args);
+        assert!(
+            error && refused.contains("2 calls a minute") && refused.contains("try again in"),
+            "{tool}: {refused}"
+        );
+    }
+    // Metadata calls are not counted.
+    let (schemas, error) = client.call("list_schemas", &json!({ "connection": "Users" }));
+    assert!(!error, "{schemas}");
+}
+
+/// SQLite gives no estimate: the cost guard lets the read run and says it could not look.
+#[test]
+fn the_cost_guard_goes_ahead_without_an_estimate() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(
+        dir.path(),
+        "
+[connections.agent_limits]
+max_estimated_rows = 1
+max_plan_cost = 1
+",
+    );
+    let mut client = initialized(dir.path());
+    let (rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT id FROM users ORDER BY id" }),
+    );
+    assert!(!error && rows.contains("(2 rows"), "{rows}");
+    assert!(rows.contains("could not be checked"), "{rows}");
+    // Without a threshold nothing is checked, so nothing is said.
+    let plain = tempfile::tempdir().unwrap();
+    users_profile(plain.path(), "");
+    let mut client = initialized(plain.path());
+    let (rows, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Users", "sql": "SELECT id FROM users" }),
+    );
+    assert!(!error && !rows.contains("checked"), "{rows}");
+}
+
 /// `get_er_diagram` draws the tables of a schema, or those near some tables, as Mermaid.
 #[test]
 fn draws_er_diagrams_from_the_catalog() {

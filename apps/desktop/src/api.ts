@@ -85,6 +85,8 @@ export interface SavedConnection {
   agent_access?: AgentAccess;
   /** What agents read of the values of sensitive columns; left out, masked. */
   agent_values?: "masked" | "shown";
+  /** What a connection holds agents to, beyond the fixed caps; a limit left out is not set. */
+  agent_limits?: AgentLimits;
   /** JSON in a text column: indented in the value panel (the default), or as written. */
   text_json?: "format" | "plain";
   /** How the form enters the address, as it was left: the host fields or one URL. */
@@ -1108,7 +1110,18 @@ export type AgentPolicyChange =
   | { kind: "access"; id: string; name: string; from: AgentAccess; to: AgentAccess }
   | { kind: "confirm_writes" }
   | { kind: "unfiltered" }
-  | { kind: "values_shown"; id: string; name: string };
+  | { kind: "values_shown"; id: string; name: string }
+  | { kind: "agent_limits"; id: string; name: string };
+
+/** The limits of a connection for agents; each can only tighten the fixed caps. */
+export interface AgentLimits {
+  max_rows?: number;
+  max_bytes?: number;
+  timeout_seconds?: number;
+  calls_per_minute?: number;
+  max_estimated_rows?: number;
+  max_plan_cost?: number;
+}
 
 export interface OpenedShared {
   workspace: Workspace;
