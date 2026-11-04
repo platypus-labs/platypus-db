@@ -1181,31 +1181,24 @@ async fn read_er(
         });
     }
     let mut details = HashMap::new();
-    let mut order: Vec<String> = Vec::new();
-    let total = if requested.is_empty() {
-        order = names.iter().take(er::MAX_TABLES).cloned().collect();
-        names.len()
+    let (order, total) = if requested.is_empty() {
+        let first = names.iter().take(er::MAX_TABLES).cloned().collect();
+        (first, names.len())
     } else {
-        let mut seen = HashSet::new();
-        for t in requested {
-            if seen.insert(t.clone()) {
-                order.push(t.clone());
-            }
-        }
-        let mut frontier = order.clone();
+        let mut walk = er::Walk::new(requested);
         for _ in 0..depth {
-            load_details(conn, schema, &frontier, &mut details).await?;
-            let edges = frontier
+            load_details(conn, schema, walk.frontier(), &mut details).await?;
+            let edges = walk
+                .frontier()
                 .iter()
                 .filter_map(|t| details.get(t).map(|d| (t, d)))
                 .map(|(t, d)| (t.clone(), er::neighbors(schema, d, &known)))
                 .collect();
-            frontier = er::advance(&frontier, &mut seen, &mut order, &edges);
-            if frontier.is_empty() {
+            if !walk.advance(&edges) {
                 break;
             }
         }
-        order.len()
+        (walk.order().to_vec(), walk.order().len())
     };
     load_details(conn, schema, &order, &mut details).await?;
     Ok(ErRead::Found {

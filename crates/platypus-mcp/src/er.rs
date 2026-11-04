@@ -41,46 +41,70 @@ pub fn neighbors(schema: &str, details: &TableDetails, tables: &HashSet<&str>) -
         .collect()
 }
 
-/// One hop outward: the tables `edges` links `frontier` to that are not in `seen` yet. They
-/// are added to `order` and `seen` and returned, in the order found.
-pub fn advance(
-    frontier: &[String],
-    seen: &mut HashSet<String>,
-    order: &mut Vec<String>,
-    edges: &HashMap<String, Vec<String>>,
-) -> Vec<String> {
-    let mut next = Vec::new();
-    for table in frontier {
-        for n in edges.get(table).into_iter().flatten() {
-            if seen.insert(n.clone()) {
-                order.push(n.clone());
-                next.push(n.clone());
-            }
-        }
-    }
-    next
+/// A walk over foreign keys: the requested tables first, then hop by hop the tables linked to
+/// the last hop that were not reached yet.
+pub struct Walk {
+    seen: HashSet<String>,
+    order: Vec<String>,
+    frontier: Vec<String>,
 }
 
-/// `start` and the tables within `depth` foreign-key hops of it (either direction), the
-/// requested ones first and then hop by hop.
+impl Walk {
+    /// Starts at `start`, without duplicates.
+    pub fn new(start: &[String]) -> Self {
+        let mut seen = HashSet::new();
+        let order: Vec<String> = start
+            .iter()
+            .filter(|s| seen.insert((*s).clone()))
+            .cloned()
+            .collect();
+        Self {
+            seen,
+            frontier: order.clone(),
+            order,
+        }
+    }
+
+    /// The tables reached by the last hop (the start before any hop).
+    pub fn frontier(&self) -> &[String] {
+        &self.frontier
+    }
+
+    /// Every table reached so far, in the order found.
+    pub fn order(&self) -> &[String] {
+        &self.order
+    }
+
+    /// One hop outward through `edges`; false when it reached nothing new.
+    pub fn advance(&mut self, edges: &HashMap<String, Vec<String>>) -> bool {
+        let mut next = Vec::new();
+        for table in &self.frontier {
+            for n in edges.get(table).into_iter().flatten() {
+                if self.seen.insert(n.clone()) {
+                    self.order.push(n.clone());
+                    next.push(n.clone());
+                }
+            }
+        }
+        self.frontier = next;
+        !self.frontier.is_empty()
+    }
+}
+
+/// `start` and the tables within `depth` foreign-key hops of it, for tests with all the edges known.
 #[cfg(test)]
 fn within_hops(
     start: &[String],
     depth: usize,
     edges: &HashMap<String, Vec<String>>,
 ) -> Vec<String> {
-    let mut order: Vec<String> = Vec::new();
-    let mut seen = HashSet::new();
-    for s in start {
-        if seen.insert(s.clone()) {
-            order.push(s.clone());
+    let mut walk = Walk::new(start);
+    for _ in 0..depth {
+        if !walk.advance(edges) {
+            break;
         }
     }
-    let mut frontier = order.clone();
-    for _ in 0..depth {
-        frontier = advance(&frontier, &mut seen, &mut order, edges);
-    }
-    order
+    walk.order
 }
 
 /// The doc model of `chosen` (in that order): their columns and the foreign keys between
