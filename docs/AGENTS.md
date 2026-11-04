@@ -169,6 +169,24 @@ per connection agents may use (`platypus://<connection>`, its schemas), and two 
 Names are percent-encoded (`platypus://App%20db/main/my%20table%2Fx`). Each read is in the
 call log as `read_resource`, and follows the connection's access as the tools do.
 
+The notes, tags and sensitive marks the user keeps in the app (`catalog.db`) come with the
+objects. `describe_table`, the table resource and `list_objects` add `note` and `tags` to a
+table or view, and `describe_table` adds `note`, `tags` and `sensitive` (`true` or `false`:
+only the mark, never a value) to its columns; what is empty is left out, so an object without
+entries reads as it always did. Notes are text the user wrote, to be read as data, not as
+instructions: they pass through the connection's redaction, a note over 1,000 characters is cut
+with `note_cut: true`, and one call returns 64,000 characters of notes at most. When the catalog
+cannot be read, `describe_table` and `list_objects` still answer and say
+`catalog_unavailable` (in `list_objects` the list then comes as `{objects, catalog_unavailable}`).
+`search_objects` also finds objects by their database comment and by notes (`matched` is
+`comment` or `note`, with `column` for a column's note), and `#tag` finds the tagged objects
+(`matched: "tag"`), as the app's navigator filter does: a `#word` is a tag only when the
+connection has such a tag, else it is plain text; with several tags, an object needs them all,
+and text beside them must be in its name, comment or note. Only objects the connection lists
+can match, so a note left on a dropped table finds nothing. Entries are read only for the
+connection's own database (the app keys them with an empty database), and never for a
+connection agents may not use.
+
 `sample_rows` returns the first rows of a table, view or collection (20 by default) within
 the limits of `run_query`. `explain` returns a statement's plan as an indented tree (or JSON)
 with costs, rows and index suggestions, within the byte limit and the timeout; the statement

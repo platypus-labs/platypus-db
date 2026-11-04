@@ -211,6 +211,9 @@ to the package manager.
   name or type (emails, phones, passwords…), and the *Sensitive* column of the object tab marks
   a column sensitive or not over the rules, kept with the notes. Masking hides them, the data
   viewer's headers say which they are, and an export can keep, mask or leave them out.
+- **Agents read the notes too**: `describe_table`, `list_objects` and the table resource add your
+  notes and tags (and, on columns, whether you marked them sensitive, never their values), and
+  `search_objects` finds objects by comment, note or `#tag`. See [AGENTS.md](AGENTS.md).
 - **Used by**, in a table's tab: for each column, the views, routines and triggers of its schema
   and the saved scripts of the project that name it, with the line, and the columns named
   nowhere. A text counts when it names the table and the column (a column of the same name of
