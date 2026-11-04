@@ -52,6 +52,7 @@ export function VendorPopup({ driver, beforeConnecting, onDone }: Props) {
   const [progress, setProgress] = useState<{ done: number; total: number | null }>({ done: 0, total: null });
   const [error, setError] = useState<string | null>(null);
   const name = DRIVER_NAMES[driver];
+  const focus = usePopupFocus();
 
   useEffect(() => {
     api.vendorDriverStatus(driver).then(setStatus, (e: unknown) => setError(toCommandError(e).message));
@@ -79,6 +80,8 @@ export function VendorPopup({ driver, beforeConnecting, onDone }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div
+        ref={focus}
+        tabIndex={-1}
         className="modal driver-popup"
         data-vendor={driver}
         onKeyDown={(e) => e.key === "Escape" && close()}

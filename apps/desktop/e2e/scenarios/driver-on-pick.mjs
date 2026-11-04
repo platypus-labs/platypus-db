@@ -4,14 +4,13 @@
 // form open, usable and saveable, and Test connection offers the driver again. PostgreSQL has
 // nothing to download: no popup. Nothing is downloaded.
 import assert from "node:assert/strict";
-import { button, dialog, driverPopup, fill, formField, openPicker, picker, saveForm, seedSqlite, treeRow } from "../conn-helpers.mjs";
+import { button, dialog, driverPopup, driverTile, fill, formField, openPicker, picker, saveForm, seedSqlite, treeRow } from "../conn-helpers.mjs";
 
 export function setup({ dir }) {
   seedSqlite(dir);
 }
 
-const pick = (page, label) =>
-  page.eval(`[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
+const pick = (page, label) => page.eval(`${driverTile(label)}.click()`);
 const popupText = `(${driverPopup}?.textContent ?? '')`;
 
 export default async function (page) {
@@ -30,12 +29,16 @@ export default async function (page) {
   assert.ok(!(await page.eval(popupText)).includes("Settings"));
   assert.equal(await page.eval(`document.querySelectorAll('.driver-popup').length`), 1);
 
-  // Cancel: the form is there and works.
-  await page.eval(`${button(driverPopup, "Cancel")}.click()`);
+  // The popup has the keyboard: Escape closes it, not the form, which gets the focus back.
+  assert.equal(await page.eval(`${driverPopup}.contains(document.activeElement)`), true);
+  await page.key("Escape", "Escape", 27);
   await page.waitFor(`${driverPopup} === null`);
-  assert.notEqual(await page.eval(dialog), null);
+  assert.equal(await page.eval(`${dialog} !== null`), true);
+  assert.equal(await page.eval(`document.activeElement === ${formField("Name")}`), true);
+  // The form is there and works.
   await page.eval(fill(formField("Name"), "Trino later"));
   await page.eval(fill(formField("Host"), "127.0.0.1"));
+  await page.eval(fill(formField("User"), "platypus"));
   assert.equal(await page.eval(`${formField("Name")}.value`), "Trino later");
 
   // Test connection finds the driver missing and offers it again, now with "connect".

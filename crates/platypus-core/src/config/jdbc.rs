@@ -311,7 +311,10 @@ impl JdbcUrl {
         }
         database.trim().clone_into(&mut jdbc.config.database);
         jdbc.common_properties();
-        if jdbc.property(&["sslconnection"]).as_deref() == Some("true") {
+        if jdbc
+            .property(&["sslconnection"])
+            .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+        {
             jdbc.config.ssl_mode = SslMode::Require;
         }
         jdbc
@@ -657,6 +660,10 @@ mod tests {
         assert_eq!(
             parse("jdbc:db2://h/D:sslConnection=false;").config.ssl_mode,
             SslMode::Prefer
+        );
+        assert_eq!(
+            parse("jdbc:db2://h/D:sslConnection=TRUE;").config.ssl_mode,
+            SslMode::Require
         );
         let alias = parse("jdbc:db2:PRODDB");
         assert_eq!(at(&alias), (Db2, "", None, "PRODDB"));

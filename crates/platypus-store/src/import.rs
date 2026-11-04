@@ -514,7 +514,16 @@ fn apply_saved(c: &mut SavedConnection, saved: &Saved) -> ImportedSecrets {
 /// JDBC URL this import reads.
 fn dbeaver_driver(provider: &str, driver: &str) -> Option<DriverKind> {
     let driver = driver.to_ascii_lowercase();
-    match provider.to_ascii_lowercase().as_str() {
+    let provider = provider.to_ascii_lowercase();
+    // Db2 for i takes another port and client, and its `jdbc:as400:` names no database.
+    if provider.starts_with("db2_i")
+        || ["db2_i", "iseries", "as400"]
+            .iter()
+            .any(|d| driver.contains(d))
+    {
+        return None;
+    }
+    match provider.as_str() {
         "postgresql" => Some(DriverKind::Postgres),
         "mysql" | "mariadb" => Some(DriverKind::MySql),
         "sqlserver" | "mssql" => Some(DriverKind::SqlServer),
@@ -523,7 +532,7 @@ fn dbeaver_driver(provider: &str, driver: &str) -> Option<DriverKind> {
         "oracle" => Some(DriverKind::Oracle),
         "libsql" | "turso" => Some(DriverKind::Libsql),
         "snowflake" => Some(DriverKind::Snowflake),
-        // `db2` (LUW), `db2_i` and `db2_zos`.
+        // `db2` (LUW) and `db2_zos`.
         p if p.starts_with("db2") => Some(DriverKind::Db2),
         _ if driver.contains("clickhouse") => Some(DriverKind::ClickHouse),
         _ if driver.contains("duckdb") => Some(DriverKind::DuckDb),
@@ -974,14 +983,20 @@ mod tests {
               "configuration": {"host": "h", "port": "50002", "database": "Sample", "user": "u"}},
             "c": {"provider": "db2_zos", "driver": "db2_zos", "name": "zos",
               "configuration": {"host": "mainframe", "database": "LOC"}},
-            "d": {"provider": "generic", "driver": "db2_i_jdbc", "name": "by driver",
-              "configuration": {"host": "ibmi", "port": "", "database": "X"}},
-            "e": {"provider": "db2_i", "name": "alias", "configuration": {"url": "jdbc:db2:PRODDB"}},
+            "d": {"provider": "generic", "driver": "db2_jdbc", "name": "by driver",
+              "configuration": {"host": "dh", "port": "", "database": "X"}},
+            "e": {"provider": "db2", "name": "alias", "configuration": {"url": "jdbc:db2:PRODDB"}},
             "f": {"provider": "db2", "name": "bad url", "configuration": {"host": "fh",
-              "url": "jdbc:as400://ibmi/x;password=hunter2"}}
+              "url": "jdbc:as400://ibmi/x;password=hunter2"}},
+            "g": {"provider": "db2_i", "driver": "db2_iseries", "name": "ibm i",
+              "configuration": {"host": "ibmi", "url": "jdbc:as400://ibmi/x"}},
+            "h": {"provider": "generic", "driver": "as400_jdbc", "name": "as400",
+              "configuration": {"host": "ibmi"}}
         }}"#;
         let project = dbeaver(json, &Credentials::Missing).unwrap();
-        assert_eq!(project.skipped, []);
+        // Db2 for i is said to be left out, not imported as a connection that cannot open.
+        let skipped: Vec<_> = project.skipped.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(skipped, ["as400", "ibm i"]);
         assert!(
             project
                 .connections

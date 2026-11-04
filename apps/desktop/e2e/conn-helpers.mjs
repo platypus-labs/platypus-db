@@ -47,7 +47,7 @@ export async function openPicker(page) {
 /** The popup that offers to download a driver. */
 export const driverPopup = `document.querySelector('.driver-popup')`;
 /** The tiles whose database needs a driver the profile may not have: choosing one opens the popup. */
-const TILES_WITH_DRIVER = ["Oracle", "Db2", "DuckDB", "Snowflake", "BigQuery", "Databricks", "Trino"];
+const TILES_WITH_DRIVER = ["Oracle", "IBM Db2", "DuckDB", "Snowflake", "BigQuery", "Databricks", "Trino"];
 
 /** Waits for the driver popup a tile may open over the form (it appears once the app has
  *  looked for the driver) and closes it with Cancel, so the scenario goes on with the form.
@@ -63,10 +63,14 @@ export async function dismissDriverPopup(page, label) {
   await page.waitFor(`${driverPopup} === null`);
 }
 
+/** The picker's tile `label`. */
+export const driverTile = (label) =>
+  `[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)})`;
+
 /** Opens the form of a new connection for the picker's tile `label`. */
 export async function newConnection(page, label) {
   await openPicker(page);
-  const tile = `[...document.querySelectorAll('.driver-tile')].find(b => b.textContent === ${JSON.stringify(label)})`;
+  const tile = driverTile(label);
   // The picker fills in while the drivers are read: wait for the tile.
   await page.waitFor(`${tile} !== undefined`, 15_000);
   await page.eval(`${tile}.click()`);

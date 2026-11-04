@@ -1,6 +1,7 @@
 import { createElement, useEffect, useState } from "react";
 import { api, type DriverKind, type DriverStatus, DOWNLOADED_DRIVERS, VENDOR_DRIVERS, toCommandError } from "../api";
 import { driverToDownload } from "./missingDriver";
+import { usePopupFocus } from "./popupFocus";
 import { DRIVER_NAMES } from "./names";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
@@ -21,6 +22,7 @@ function DriverPopup({ driver, beforeConnecting, onDone }: Props) {
   const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const name = DRIVER_NAMES[driver];
+  const focus = usePopupFocus();
 
   useEffect(() => {
     api.driverStatus(driver).then(setStatus, (e: unknown) => setError(toCommandError(e).message));
@@ -44,7 +46,7 @@ function DriverPopup({ driver, beforeConnecting, onDone }: Props) {
   const dismiss = () => !progress && onDone(false);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && dismiss()}>
-      <div className="modal driver-popup" onKeyDown={(e) => e.key === "Escape" && dismiss()}>
+      <div ref={focus} tabIndex={-1} className="modal driver-popup" onKeyDown={(e) => e.key === "Escape" && dismiss()}>
         {progress ? (
           <>
             <h2>{t("Downloading the {name} driver…", { name })}</h2>

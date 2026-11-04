@@ -2139,6 +2139,11 @@ button.primary.danger:hover:not(:disabled) {
   width: min(460px, calc(100vw - 32px));
 }
 
+/* It takes the focus to hold the keyboard, not to show it. */
+.driver-popup:focus {
+  outline: none;
+}
+
 .driver-popup progress {
   width: 100%;
 }

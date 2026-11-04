@@ -279,6 +279,8 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   >(null);
 
   useEffect(() => {
+    // Opened for a database already chosen: no picker to offer its driver.
+    if (!existing && driverChosen) void offerDriver(initial.driver);
     api.listNetworkProfiles().then(setProfiles, (e) => setResult({ ok: false, message: toCommandError(e).message }));
     // Not knowing, the placeholder says nothing is saved: the field then asks for it.
     if (existing && initial.save_password) api.connectionHasPassword(initial.id).then(setPasswordSaved, () => setPasswordSaved(false));
