@@ -27,10 +27,14 @@ To do something step by step, see the [user guide](guide/README.md).
 | IBM Db2 | IBM's ODBC driver, installed on first use (Windows) | Registering the driver asks for administrator rights (UAC) |
 | Any ODBC driver or DSN (Windows) | the system's ODBC driver manager | A DSN, or a driver and its connection string |
 
-The versions in the table are the oldest the conformance suite runs on; an older server still
-connects, with a message that some features may not work. Errors name the server they come from,
-e.g. `Unknown column 'x' in 'field list' (MySQL 5.7.44)`, since the reason often depends on
-the version.
+The versions in the table are the oldest the app is checked against. The conformance suite runs
+on that version for PostgreSQL, MySQL, MariaDB, SQL Server and MongoDB; for Redis 6 (Redis Stack
+7.4), Cassandra 4 (Cassandra 5) and ScyllaDB 5.4 (ScyllaDB 2025.1) it runs on a newer one, and
+Elasticsearch and OpenSearch are tested on 8.15 and 2.17. An older server still connects, with a
+message that some features may not work; Cassandra older than 4.0, ScyllaDB older than 5.4,
+Elasticsearch older than 7.10 and OpenSearch older than 1.0 are refused. Errors name the server
+they come from, e.g. `Unknown column 'x' in 'field list' (MySQL 5.7.44)`, since the reason often
+depends on the version. [The database pages](guide/databases/README.md) say more for each one.
 
 The ADBC drivers come from the [dbc driver registry](https://docs.columnar.tech/dbc/) (Columnar):
 the first connection that needs one asks to download it, checks its SHA-256 and keeps it with
@@ -475,7 +479,8 @@ box resize by their edge or corner; the list keeps its width.
   estimated rows and each step's details, as indented text or as a table.
 - **Explain analyze** runs the statement for actual rows and times, then rolls back what it
   changed (tables that ignore transactions, like MySQL's MyISAM, keep the changes).
-  PostgreSQL, MySQL 8.0.16+ and MariaDB analyze; SQLite gives its query plan only.
+  PostgreSQL, CockroachDB, MySQL 8.0.18+, MariaDB and DuckDB analyze; SQLite, libSQL, Oracle and
+  ClickHouse give the plan only, and SQL Server its estimated plan.
 - A **heatmap** tints each step by its share of the time it spends itself, and a badge marks
   row estimates 10 times off or more.
 - A table read in full (10,000 rows or more) to keep the rows matching a condition gets a
