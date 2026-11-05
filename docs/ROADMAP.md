@@ -782,7 +782,7 @@ connessioni, tabelle e query recenti, riapertura del tab chiuso, pagina Impostaz
 sezioni, scorciatoie personalizzabili, barra degli strumenti configurabile).
 Fatta anche la **nuova grafica**: temi Platypus Dark e Light, font Inter e JetBrains Mono
 inclusi, icone Lucide, navigator, tab, toolbar e dialog ridisegnati
-([spec](superpowers/specs/2026-10-24-grafica-e-progetti-design.md), parte A). Fatti anche i
+(spec 2026-10-24-grafica-e-progetti-design, parte A). Fatti anche i
 **progetti come spazi di lavoro** (parte B): barra dei progetti a sinistra, connessioni in
 più progetti, tab, cronologia, palette e titolo della finestra per progetto, `Ctrl+1`…
 per cambiare progetto, `connections.toml` versione 2. Poi la grafica **Cornice**: la cornice
