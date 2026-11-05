@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
@@ -32,13 +32,24 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
   const [trail, setTrail] = useState<Place[]>([{ page, anchor }]);
   const here = trail[trail.length - 1]!;
   const { pages, images } = guide();
-  const keys = sortedKeys(Object.keys(pages).filter((key) => !key.endsWith(".md")));
+  const index = useMemo(
+    () =>
+      sortedKeys(Object.keys(pages).filter((key) => !key.endsWith(".md"))).map((key) => ({ key, title: titleOf(pages[key]!, key) })),
+    [pages],
+  );
   const reader = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (reader.current) scrollTo(reader.current, here.anchor);
   }, [here]);
-  // Escape and the arrow keys work at once, whatever had the focus before.
-  useEffect(() => reader.current?.focus(), []);
+  // Escape and the arrow keys work at once; closing gives the focus back, so that the form or the
+  // Settings under the guide still answer to the keyboard.
+  useEffect(() => {
+    const before = document.activeElement;
+    reader.current?.focus();
+    return () => {
+      if (before instanceof HTMLElement) before.focus();
+    };
+  }, []);
 
   const go = (place: Place) => setTrail((all) => [...all, place]);
   const follow = (target: LinkTarget) => {
@@ -68,10 +79,10 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
         </div>
         <div className="guide-body">
           <nav className="guide-index" aria-label={t("Contents")}>
-            {keys.length === 0 ? (
+            {index.length === 0 ? (
               <p className="muted small">{t("The guide is not included in this build.")}</p>
             ) : (
-              keys.map((key) => (
+              index.map(({ key, title }) => (
                 <button
                   key={key}
                   type="button"
@@ -80,7 +91,7 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
                   data-page={key}
                   onClick={() => go({ page: key, anchor: null })}
                 >
-                  {titleOf(pages[key]!, key)}
+                  {title}
                 </button>
               ))
             )}

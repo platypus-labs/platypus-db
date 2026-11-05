@@ -10,4 +10,5 @@ test("the pictures of the pages, once each and in order", () => {
   ];
   assert.deepEqual(picturesIn(pages), ["hero.gif", "palette.png"]);
   assert.deepEqual(picturesIn(["<p>nothing</p>"]), []);
+  assert.deepEqual(picturesIn([`<img src="img/screenshots/guide/welcome.png">`, `background: url(../img/screenshots/hero.gif);`]), ["guide/welcome.png", "hero.gif"]);
 });

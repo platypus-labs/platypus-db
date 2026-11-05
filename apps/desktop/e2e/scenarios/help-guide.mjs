@@ -232,7 +232,7 @@ export default async function (page) {
 
   // The "?" of the connection form lands on the connect page; Escape closes the guide only.
   await editConnection(page, NAME);
-  await page.eval(`document.querySelector('.connection-dialog .help-link').click()`);
+  await page.eval(`(() => { const help = document.querySelector('.connection-dialog .help-link'); help.focus(); help.click(); })()`);
   await page.waitFor(`${dialog} !== null`);
   assert.equal(await page.eval(pageOf), "connect");
   assert.equal(await page.eval(`${reader}.querySelector('h1').textContent`), "Connect to a database");
@@ -240,7 +240,9 @@ export default async function (page) {
   assert.ok(onTop, "the guide is above the form");
   await closeGuide(page);
   assert.ok(await page.eval(`document.querySelector(".connection-dialog") !== null`), "the form stays open");
-  await page.eval(`document.querySelector('.connection-dialog').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  // The focus went back to the form, which answers to a second Escape.
+  assert.ok(await page.eval(`document.activeElement?.classList.contains('help-link')`), "the focus is back on the \"?\"");
+  await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.connection-dialog') === null`);
 
   // Settings: the "?" of Agents and Safety, none elsewhere.
