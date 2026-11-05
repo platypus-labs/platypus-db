@@ -1743,6 +1743,7 @@ const zh: Record<string, string> = {
   "and {n} more": "另有 {n} 项",
   "{n} proposed row could not be applied. {list}": "{n} 个提议的行无法应用。{list}",
   "{n} proposed rows could not be applied. {list}": "{n} 个提议的行无法应用。{list}",
+  "Applying the changes proposed by {agent}…": "正在应用 {agent} 提议的更改…",
   "Server activity…": "服务器活动…",
   "Manual": "手动",
   "Every 2 s": "每 2 秒",

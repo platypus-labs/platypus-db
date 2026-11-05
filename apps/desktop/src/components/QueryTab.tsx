@@ -147,6 +147,8 @@ export interface QueryTabModel extends TabBase {
    *  once as pending changes; cleared then. Not persisted: a tab opened again does not
    *  apply them twice. */
   proposed?: ProposedEdits | null;
+  /** The agent that made `proposed`: named while the grid applies it. */
+  proposedBy?: string;
   /** Data viewer: its own query, the one it opened with or the last rewrite of it by the header
    *  sort or a quick filter. Its rows are the table's rows; another query typed in the tab is
    *  not the viewer's. */
@@ -1653,7 +1655,7 @@ export function QueryTab({
         else reload();
       },
       onDirtyChange: setUnsaved,
-      proposed: viewer && tab.proposed ? { edits: tab.proposed, done: () => onChange({ proposed: null }) } : undefined,
+      proposed: viewer && tab.proposed ? { edits: tab.proposed, agent: tab.proposedBy ?? "", done: () => onChange({ proposed: null }) } : undefined,
     };
   }
 

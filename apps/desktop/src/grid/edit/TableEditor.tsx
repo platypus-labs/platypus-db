@@ -59,7 +59,7 @@ export interface TableEditTarget {
   /** Rows an agent proposed: applied to the result as pending changes once, when its rows
    *  and the table's keys are loaded; `done` runs then, so that a result loaded again does
    *  not apply them twice. */
-  proposed?: { edits: ProposedEdits; done: () => void };
+  proposed?: { edits: ProposedEdits; agent: string; done: () => void };
 }
 
 /** The data editor as grid actions see it, in `source.edit`. */
@@ -841,6 +841,11 @@ export function useTableEditor({ target, jobId, columns, cache, version, rowCoun
       )}
       {extra && <span className="divider" />}
       {extra}
+      {proposal && !error && (
+        <span className="small edit-waiting" role="status">
+          {t("Applying the changes proposed by {agent}…", { agent: proposal.agent })}
+        </span>
+      )}
       {notice && (
         <span className="small edit-error edit-notice" title={notice} role="status">
           {notice}

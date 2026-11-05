@@ -43,6 +43,12 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Fixed
 
+- **Agents**: the first page of a long `run_query` result no longer waits for the whole read-ahead
+  for `next_page`: the cursor keeps rows for at most 250 ms after the page is full, 10,000 rows or
+  4 MB, and its last page says the rest was not kept and to narrow the query.
+- **Agents**: while a change proposed by an agent waits to apply, its data viewer tab says
+  "Applying the changes proposed by <agent>…" until the rows show as pending edits or the reason
+  they could not be applied.
 - Snowflake, BigQuery, Databricks, Trino and other ADBC connections no longer offer to edit rows in
   the grid: a save needs a transaction, which they do not have. Agents can no longer propose rows
   to edit on them, or on ClickHouse.

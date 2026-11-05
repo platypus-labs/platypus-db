@@ -44,6 +44,7 @@ async function openEdits(p: AgentProposal, edits: string, connection: SavedConne
       table: view.table,
       tableRef: { schema: view.edits.schema, name: view.edits.table, kind: "table" },
       proposed: view.edits,
+      proposedBy: p.agent,
     });
   } catch (e) {
     refused(toCommandError(e).message);

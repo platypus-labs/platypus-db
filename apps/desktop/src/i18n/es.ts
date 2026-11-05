@@ -1743,6 +1743,7 @@ const es: Record<string, string> = {
   "and {n} more": "y {n} más",
   "{n} proposed row could not be applied. {list}": "{n} fila propuesta no se pudo aplicar. {list}",
   "{n} proposed rows could not be applied. {list}": "{n} filas propuestas no se pudieron aplicar. {list}",
+  "Applying the changes proposed by {agent}…": "Aplicando los cambios propuestos por {agent}…",
   "Server activity…": "Actividad del servidor…",
   "Manual": "Manual",
   "Every 2 s": "Cada 2 s",

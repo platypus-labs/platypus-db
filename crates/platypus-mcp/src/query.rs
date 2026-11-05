@@ -1,7 +1,7 @@
 //! Running an agent's statement: inside the database's read-only transaction when the
 //! connection is read-only for agents, within a row limit, a byte limit and a timeout.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use arrow_array::{Array, RecordBatch};
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
@@ -137,7 +137,10 @@ pub struct Rest {
 /// The most rows read past a page for a cursor.
 pub const REST_ROWS: usize = 10_000;
 /// The most bytes (the values' text) read past a page for a cursor.
-pub const REST_BYTES: usize = 8 * 1024 * 1024;
+pub const REST_BYTES: usize = 4 * 1024 * 1024;
+/// The longest the read past a page goes on once the page is full: an answer never waits
+/// longer than this for rows it does not show.
+pub const REST_TIME: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
@@ -308,7 +311,17 @@ async fn read(mut stream: RecordBatchStream, limits: &Limits) -> Result<Table, E
     // rows can fit.
     let (mut bytes, mut rest_bytes) = (0usize, 0usize);
     let options = FormatOptions::default();
-    while let Some(batch) = stream.next().await {
+    // Set when the page is full: the read past it ends then, whatever the source has left.
+    let mut deadline: Option<Instant> = None;
+    loop {
+        let next = match deadline {
+            None => stream.next().await,
+            Some(at) => match tokio::time::timeout_at(at.into(), stream.next()).await {
+                Ok(next) => next,
+                Err(_) => return Ok(table),
+            },
+        };
+        let Some(batch) = next else { break };
         let batch = batch?;
         let reader = BatchReader::new(&batch, &options)?;
         for row in 0..batch.num_rows() {
@@ -316,6 +329,9 @@ async fn read(mut stream: RecordBatchStream, limits: &Limits) -> Result<Table, E
                 table.cut = Some(Cut::MaxRows);
             }
             if table.cut.is_some() && !limits.keep_rest {
+                return Ok(table);
+            }
+            if deadline.is_some_and(|at| Instant::now() >= at) {
                 return Ok(table);
             }
             let cells = reader.row(row, &mut table.values_cut);
@@ -328,6 +344,7 @@ async fn read(mut stream: RecordBatchStream, limits: &Limits) -> Result<Table, E
                 }
                 table.cut = Some(Cut::MaxBytes);
             }
+            deadline.get_or_insert_with(|| Instant::now() + REST_TIME);
             // Past the page: kept for a cursor, up to the buffer's cap.
             let rest = table.rest.get_or_insert_with(Rest::default);
             if rest.rows.len() >= REST_ROWS || rest_bytes + size > REST_BYTES {
@@ -429,5 +446,111 @@ mod tests {
         assert!(cut);
         assert_eq!(short.chars().count(), MAX_VALUE_CHARS + 1);
         assert!(short.ends_with('…'));
+    }
+
+    /// A source that sends `batches` batches of `per_batch` rows of `width` characters, each
+    /// batch `delay` after the one before.
+    fn slow_source(
+        batches: usize,
+        per_batch: usize,
+        width: usize,
+        delay: Duration,
+    ) -> RecordBatchStream {
+        use arrow_array::{Int64Array, StringArray};
+        use arrow_schema::{Field, Schema};
+        use std::sync::Arc;
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("n", DataType::Int64, false),
+            Field::new("s", DataType::Utf8, false),
+        ]));
+        let batch_schema = Arc::clone(&schema);
+        let text = "x".repeat(width);
+        let inner = futures::stream::unfold(0usize, move |sent| {
+            let (schema, text) = (Arc::clone(&batch_schema), text.clone());
+            async move {
+                if sent == batches {
+                    return None;
+                }
+                if sent > 0 {
+                    tokio::time::sleep(delay).await;
+                }
+                let first = i64::try_from(sent * per_batch).unwrap();
+                let last = first + i64::try_from(per_batch).unwrap();
+                let numbers = Int64Array::from_iter_values(first..last);
+                let strings = StringArray::from_iter_values((0..per_batch).map(|_| text.as_str()));
+                let batch =
+                    RecordBatch::try_new(schema, vec![Arc::new(numbers), Arc::new(strings)])
+                        .map_err(Error::from);
+                Some((batch, sent + 1))
+            }
+        });
+        RecordBatchStream::new(schema, futures::StreamExt::boxed(inner))
+    }
+
+    fn keeping(max_rows: usize) -> Limits {
+        Limits {
+            max_rows,
+            max_bytes: Limits::MAX_BYTES,
+            keep_rest: true,
+            ..Limits::default()
+        }
+    }
+
+    /// What the read past the page of `source` kept, and how long the read took.
+    async fn read_ahead(source: RecordBatchStream, page: usize) -> (Rest, Duration) {
+        let start = Instant::now();
+        let table = read(source, &keeping(page)).await.unwrap();
+        let elapsed = start.elapsed();
+        assert_eq!(table.rows.len(), page);
+        (table.rest.expect("the page was cut"), elapsed)
+    }
+
+    #[tokio::test]
+    async fn the_read_ahead_stops_at_the_row_cap() {
+        let (rest, _) = read_ahead(slow_source(30, 1000, 4, Duration::ZERO), 100).await;
+        assert_eq!(rest.rows.len(), REST_ROWS);
+        assert!(!rest.complete);
+    }
+
+    #[tokio::test]
+    async fn the_read_ahead_stops_at_the_byte_cap() {
+        // About 1 KB a row: the byte cap comes long before the row cap.
+        let (rest, _) = read_ahead(slow_source(30, 1000, 1000, Duration::ZERO), 100).await;
+        assert!(!rest.complete);
+        let kept: usize = rest.rows.iter().flatten().map(|c| c.text().len() + 1).sum();
+        assert!(kept <= REST_BYTES, "{kept}");
+        assert!(kept > REST_BYTES - 2048, "{kept}");
+        assert!(rest.rows.len() < REST_ROWS);
+    }
+
+    #[tokio::test]
+    async fn the_read_ahead_stops_a_quarter_second_after_the_page_is_full() {
+        // The first batch is at once, the next ones 100 ms apart, 1000 rows each: 10,000 rows
+        // would take a second.
+        let (rest, took) =
+            read_ahead(slow_source(100, 1000, 4, Duration::from_millis(100)), 100).await;
+        assert!(!rest.complete);
+        assert!(
+            rest.rows.len() >= 900 && rest.rows.len() < REST_ROWS,
+            "{}",
+            rest.rows.len()
+        );
+        assert!(took >= REST_TIME && took < REST_TIME * 2, "{took:?}");
+    }
+
+    #[tokio::test]
+    async fn a_stalled_source_does_not_hold_the_answer_back() {
+        // The second batch would come in ten seconds.
+        let (rest, took) = read_ahead(slow_source(3, 1000, 4, Duration::from_secs(10)), 100).await;
+        assert!(!rest.complete);
+        assert_eq!(rest.rows.len(), 900);
+        assert!(took < REST_TIME * 2, "{took:?}");
+    }
+
+    #[tokio::test]
+    async fn a_result_that_ends_inside_the_budget_is_complete() {
+        let (rest, _) = read_ahead(slow_source(2, 1000, 4, Duration::ZERO), 100).await;
+        assert!(rest.complete);
+        assert_eq!(rest.rows.len(), 1900);
     }
 }
