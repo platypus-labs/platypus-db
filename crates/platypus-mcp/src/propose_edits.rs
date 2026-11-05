@@ -160,7 +160,7 @@ impl Agent {
             .await?;
         // What the app will check again when it opens the proposal, and the statement it
         // will write from it.
-        proposed::viewer_select(Dialect::from(saved.driver), &edits, &details)
+        proposed::viewer(Dialect::from(saved.driver), &edits, &details)
             .map_err(AgentError::Invalid)?;
         let title = proposal_title(args.title.as_deref());
         let origin = crate::agent::origin_name(origin);

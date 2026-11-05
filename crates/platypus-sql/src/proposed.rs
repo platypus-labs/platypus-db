@@ -267,19 +267,25 @@ pub fn value_kind(data_type: &str) -> ValueKind {
     }
 }
 
-/// The statement that reads the rows the updates and deletes name (`SELECT * FROM t WHERE
-/// (k = v AND …) OR …`), written from the catalog: every name quoted by `dialect`, every
-/// value a literal of its column's type. `None` when there is only inserts to show: the
-/// normal viewer statement (`SELECT * FROM t`) is enough.
+/// What the data viewer opens a proposal with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Viewer {
+    /// The viewer's statement: `SELECT * FROM t WHERE (k = v AND …) OR …` for the rows the
+    /// updates and deletes name, the whole table (`SELECT * FROM t`) when there are only
+    /// inserts.
+    pub sql: String,
+    /// The table, qualified and quoted.
+    pub table: String,
+}
+
+/// The viewer's statement for `edits`, written from the catalog alone: every name is quoted
+/// by `dialect`, every value is a literal of its column's type, and nothing of the proposal
+/// is spliced in as SQL.
 ///
 /// # Errors
 /// When `edits` do not [`validate`] against `details`, or a key value is not one its column
 /// takes (letters in a number column).
-pub fn viewer_select(
-    dialect: Dialect,
-    edits: &Edits,
-    details: &TableDetails,
-) -> Result<Option<String>, String> {
+pub fn viewer(dialect: Dialect, edits: &Edits, details: &TableDetails) -> Result<Viewer, String> {
     validate(edits, details)?;
     let keys: Vec<&Row> = edits
         .updates
@@ -287,9 +293,26 @@ pub fn viewer_select(
         .map(|u| &u.key)
         .chain(&edits.deletes)
         .collect();
-    if keys.is_empty() {
-        return Ok(None);
+    let table = dialect.qualified(Some(&edits.schema), &edits.table);
+    // A column `SELECT *` leaves out that rows are edited by (CockroachDB's `rowid`).
+    let list = details.columns.iter().find(|c| c.hidden).map_or_else(
+        || "*".to_owned(),
+        |c| format!("*, {}", dialect.quote_ident(&c.name)),
+    );
+    let mut sql = format!("SELECT {list}\nFROM {table}");
+    if !keys.is_empty() {
+        let _ = write!(sql, "\nWHERE {}", key_condition(dialect, &keys, details)?);
     }
+    Ok(Viewer { sql, table })
+}
+
+/// The condition matching the rows `keys` name: `(k = v AND …) OR …`, the names quoted by
+/// `dialect` and every value a literal of its column's type.
+fn key_condition(
+    dialect: Dialect,
+    keys: &[&Row],
+    details: &TableDetails,
+) -> Result<String, String> {
     let mut condition = String::new();
     for (n, key) in keys.iter().enumerate() {
         if n > 0 {
@@ -317,15 +340,7 @@ pub fn viewer_select(
         }
         condition.push(')');
     }
-    let table = dialect.qualified(Some(&edits.schema), &edits.table);
-    let hidden = details.columns.iter().find(|c| c.hidden);
-    let list = hidden.map_or_else(
-        || "*".to_owned(),
-        |c| format!("*, {}", dialect.quote_ident(&c.name)),
-    );
-    Ok(Some(format!(
-        "SELECT {list}\nFROM {table}\nWHERE {condition}"
-    )))
+    Ok(condition)
 }
 
 #[cfg(test)]
@@ -456,23 +471,24 @@ mod tests {
         let details = table();
         let mut e = edits();
         e.inserts.push(row(&[("name", Some("new"))]));
-        assert_eq!(viewer_select(Dialect::Sqlite, &e, &details), Ok(None));
+        assert_eq!(
+            viewer(Dialect::Sqlite, &e, &details).unwrap().sql,
+            "SELECT *\nFROM main.t"
+        );
         e.updates.push(Update {
             key: row(&[("id", Some("7"))]),
             set: row(&[("name", Some("x"))]),
         });
         e.deletes
             .push(row(&[("email", Some("o'brien; DROP TABLE t; --"))]));
-        let sql = viewer_select(Dialect::Sqlite, &e, &details)
-            .unwrap()
-            .unwrap();
+        let sql = viewer(Dialect::Sqlite, &e, &details).unwrap().sql;
         assert_eq!(
             sql,
             "SELECT *\nFROM main.t\nWHERE (id = 7) OR (email = 'o''brien; DROP TABLE t; --')"
         );
         // A number column takes a number only.
         e.updates[0].key = row(&[("id", Some("1 OR 1=1"))]);
-        assert!(viewer_select(Dialect::Sqlite, &e, &details).is_err());
+        assert!(viewer(Dialect::Sqlite, &e, &details).is_err());
         // Hostile names stay inside their quotes.
         let mut odd = TableDetails {
             columns: vec![column("a\"; DROP TABLE x; --", "text", true)],
@@ -485,7 +501,7 @@ mod tests {
             ..Edits::default()
         };
         e.deletes.push(row(&[("a\"; DROP TABLE x; --", Some("v"))]));
-        let sql = viewer_select(Dialect::Postgres, &e, &odd).unwrap().unwrap();
+        let sql = viewer(Dialect::Postgres, &e, &odd).unwrap().sql;
         assert_eq!(
             sql,
             "SELECT *\nFROM \"s\"\"x\".\"t\"\"; DROP\"\nWHERE (\"a\"\"; DROP TABLE x; --\" = 'v')"
@@ -505,13 +521,11 @@ mod tests {
         details.columns[2].hidden = true;
         let mut e = edits();
         e.deletes.push(row(&[("b", Some("x")), ("a", Some("1"))]));
-        let sql = viewer_select(Dialect::MySql, &e, &details)
-            .unwrap()
-            .unwrap();
+        let sql = viewer(Dialect::MySql, &e, &details).unwrap().sql;
         assert!(sql.starts_with("SELECT *, rowid\nFROM"), "{sql}");
         assert!(sql.ends_with("WHERE (b = 'x' AND a = 1)"), "{sql}");
         e.deletes[0] = row(&[("a", Some("1"))]);
-        assert!(viewer_select(Dialect::MySql, &e, &details).is_err());
+        assert!(viewer(Dialect::MySql, &e, &details).is_err());
     }
 
     #[test]

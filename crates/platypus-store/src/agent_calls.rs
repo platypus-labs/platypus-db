@@ -739,11 +739,14 @@ mod tests {
         assert_eq!(taken.len(), 1);
         assert_eq!(taken[0].sql, "SELECT 1");
         assert_eq!(taken[0].edits, None);
-        assert!(s.propose_edits("codex", "c1", None, "{}").unwrap().is_some());
-        let version: i64 = s
-            .db
-            .pragma_query_value(None, "user_version", |r| r.get(0))
-            .unwrap();
+        assert!(
+            s.propose_edits("codex", "c1", None, "{}")
+                .unwrap()
+                .is_some()
+        );
+        let version: i64 =
+            s.db.pragma_query_value(None, "user_version", |r| r.get(0))
+                .unwrap();
         assert_eq!(version, 3);
     }
 

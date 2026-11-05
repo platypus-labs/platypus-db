@@ -26,6 +26,8 @@ import { needsProductionConfirm } from "../../guards/guards";
 import { History } from "./history";
 import { PreviewDialog } from "./PreviewDialog";
 import * as edits from "./state";
+import { applyProposal, neededColumns, type ProposalColumn, type ProposedEdits } from "./proposed";
+import { skippedNotice } from "./proposedNotice";
 import { VirtualKeyDialog } from "./VirtualKeyDialog";
 import { type ColumnRule, columnRule, loadsFromFile } from "./massEdit";
 import type { MassEditKind } from "./MassEditDialog";
@@ -53,6 +55,10 @@ export interface TableEditTarget {
   /** Called after saving, to reload the data; `undo` puts the rows back. */
   onSaved: (undo: string) => void;
   onDirtyChange: (dirty: boolean) => void;
+  /** Rows an agent proposed: applied to the result as pending changes once, when its rows
+   *  and the table's keys are loaded; `done` runs then, so that a result loaded again does
+   *  not apply them twice. */
+  proposed?: { edits: ProposedEdits; done: () => void };
 }
 
 /** The data editor as grid actions see it, in `source.edit`. */
@@ -113,6 +119,9 @@ interface Options {
   cache: RowCache;
   /** Bumped whenever the cache receives rows. */
   version: number;
+  /** Rows the result holds, and whether the query has returned all of them. */
+  rowCount: number;
+  settled: boolean;
   grid: RefObject<GridApi | null>;
   /** The element holding the grid: bounds the editors and receives the typed keys. */
   box: RefObject<HTMLDivElement | null>;
@@ -191,6 +200,22 @@ function decoration(value: CellInput, background: string): CellDecoration {
   return { background, text, color: value.kind === "default" ? MUTED : undefined };
 }
 
+/** Rows read per request when a proposal's keys are matched against the result. */
+const PROPOSAL_CHUNK = 2000;
+/** Rows of the result a proposal is matched against at most: the viewer reads only the rows
+ *  its updates and deletes name. */
+const PROPOSAL_ROWS = 50_000;
+
+/** The loaded values of result columns `cols` (in that order) of the first rows. */
+async function proposalCells(jobId: number, rowCount: number, cols: number[]): Promise<(string | null)[][]> {
+  const rows: (string | null)[][] = [];
+  const total = Math.min(rowCount, PROPOSAL_ROWS);
+  for (let at = 0; at < total && cols.length > 0; at += PROPOSAL_CHUNK) {
+    rows.push(...(await api.rowValues(jobId, at, Math.min(PROPOSAL_CHUNK, total - at), cols)));
+  }
+  return rows;
+}
+
 const columnsOf = (meta: EditMeta) => meta.columns.flatMap((c, i) => (c ? [i] : []));
 
 /** The columns of the source's table the database fills by itself; none when they cannot be
@@ -210,7 +235,7 @@ async function generatedColumns(target: TableEditTarget, source: EditSource): Pr
 const fixedByDatabase = (generated: Generated | undefined) => generated === "computed" || generated === "identity";
 
 /** Editing of a result of one table: inline editors, new and deleted rows, save. */
-export function useTableEditor({ target, jobId, columns, cache, version, grid, box, extra }: Options): TableEditorHost {
+export function useTableEditor({ target, jobId, columns, cache, version, rowCount, settled, grid, box, extra }: Options): TableEditorHost {
   const [meta, setMeta] = useState<EditMeta | ReadOnly | null>(null);
   const [state, setState] = useState(edits.EMPTY);
   const current = useRef(state);
@@ -218,6 +243,8 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
   const [editing, setEditing] = useState<Editing | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** What the proposed rows that could not be applied were, until dismissed. */
+  const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<string[] | null>(null);
   const [keyDialog, setKeyDialog] = useState(false);
   const [, setLayout] = useState(0);
@@ -343,6 +370,45 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
     setError,
     fail,
   });
+
+  // Rows an agent proposed become pending changes, once: through `apply`, so they undo, show
+  // in the row colors and the SQL preview, save and discard like the user's own.
+  const proposedOnce = useRef(false);
+  const proposal = target?.proposed;
+  useEffect(() => {
+    if (!proposal || proposedOnce.current) return;
+    const finish = (message: string | null) => {
+      proposedOnce.current = true;
+      setNotice(message);
+      proposal.done();
+    };
+    if (readOnly !== null) return finish(t("The proposed changes were not applied: {reason}.", { reason: t(readOnly) }));
+    const { updates, deletes } = proposal.edits;
+    // Matching a key needs the result's rows, all of them.
+    if (!keys || busy || (updates.length + deletes.length > 0 && !settled)) return;
+    proposedOnce.current = true;
+    const known: ProposalColumn[] = columns.map((c, i) => ({
+      name: c.name,
+      rule: rules[i],
+      fixed: keys.columns[i] ? "database" : "not_table",
+    }));
+    const wanted = neededColumns(proposal.edits, known);
+    void proposalCells(jobId, rowCount, wanted).then(
+      (rows) => {
+        const at = new Map(wanted.map((col, i) => [col, i]));
+        const result = applyProposal(current.current, proposal.edits, known, rows.length, (row, col) => {
+          const i = at.get(col);
+          return i === undefined ? undefined : rows[row]?.[i];
+        });
+        if (result.applied > 0) apply(() => result.state);
+        finish(result.skipped.length ? skippedNotice(result.skipped) : null);
+      },
+      (e: unknown) => {
+        fail(e);
+        finish(null);
+      },
+    );
+  }, [proposal, keys, readOnly, busy, settled, rowCount]);
 
   async function editCell(cell: Cell, typed?: string) {
     if (loading) return setError(t("The table's columns are still loading"));
@@ -774,6 +840,14 @@ export function useTableEditor({ target, jobId, columns, cache, version, grid, b
       )}
       {extra && <span className="divider" />}
       {extra}
+      {notice && (
+        <span className="small edit-error edit-notice" title={notice} role="status">
+          {notice}
+          <button className="link" onClick={() => setNotice(null)} title={t("Dismiss")} aria-label={t("Dismiss")}>
+            <Icon name="close" />
+          </button>
+        </span>
+      )}
       {error && (
         <span className="error-text small edit-error" title={error}>
           {error}

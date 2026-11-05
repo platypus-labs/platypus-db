@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
 import type { ContextRequest, ContextVerdict } from "./agents/context";
 import type { Verdict, WriteRequest } from "./agents/writes";
+import type { ProposedEdits } from "./grid/edit/proposed";
 
 export type DriverKind =
   | "postgres"
@@ -1213,8 +1214,21 @@ export interface AgentProposal {
   agent: string;
   connection_id: string;
   title: string | null;
+  /** Empty for a proposal of rows to change (`edits`). */
   sql: string;
+  /** The rows to change, as JSON from the profile's file: not trusted until
+   *  `proposedViewer` checks them against the table. */
+  edits: string | null;
   created_at: number;
+}
+
+/** A proposal of rows, checked against the table, with the statement that shows the rows to
+ *  change; the backend wrote it from the table's catalog. */
+export interface ProposedViewer {
+  sql: string;
+  /** The table, qualified and quoted. */
+  table: string;
+  edits: ProposedEdits;
 }
 
 export interface InstalledClient {
@@ -2393,6 +2407,8 @@ export const api = {
   agentCallsExport: (query: AgentCallQuery) => invoke<string>("agent_calls_export", { query }),
   clearAgentCalls: () => invoke<void>("clear_agent_calls"),
   takeAgentProposals: () => invoke<AgentProposal[]>("take_agent_proposals"),
+  /** Checks the rows an agent proposed against the session's table; rejects with why not. */
+  proposedViewer: (sessionId: number, edits: string) => invoke<ProposedViewer>("proposed_viewer", { sessionId, edits }),
   listConnections: () => invoke<SavedConnection[]>("list_connections"),
   /** Opens a window for a tab (as `persistTab` saves it); the window's label. */
   openTabWindow: (tab: string, title: string) => invoke<string>("open_tab_window", { tab, title }),

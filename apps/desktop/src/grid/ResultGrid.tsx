@@ -135,10 +135,12 @@ interface Props {
   toolbar?: ReactNode;
   /** The statement finished and returned no rows: the grid says so over its empty body. */
   empty?: boolean;
+  /** The query has returned all its rows. */
+  settled: boolean;
 }
 
 /** A result's grid with its features: editing, search, column layout, totals and panels. */
-export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes, toolbar, empty }: Props) {
+export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onHeaderClick, headerHint, source, edit, notes, toolbar, empty, settled }: Props) {
   const notesVersion = useCatalogVersion();
   const noteOf = (col: number) =>
     notes && columns[col]
@@ -146,7 +148,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
       : undefined;
   const grid = useRef<GridApi>(null);
   const box = useRef<HTMLDivElement>(null);
-  const editor = useTableEditor({ target: edit ?? null, jobId, columns, cache, version, grid, box, extra: toolbar });
+  const editor = useTableEditor({ target: edit ?? null, jobId, columns, cache, version, rowCount, settled, grid, box, extra: toolbar });
   const search = useGridSearch(jobId, columns.length, editor.topRows, grid);
   const stats = useSelectionStats(jobId, grid);
   const profile = useColumnProfile(jobId, columns, rowCount);
