@@ -55,7 +55,8 @@ export function setup({ dir }) {
     const db = new DatabaseSync(join(dir, file));
     db.exec(`CREATE TABLE ${table} (${COLUMNS[0]} INTEGER, blob BLOB, as_url TEXT, as_b64 VARCHAR, as_hex TEXT, note TEXT, secret_scan BLOB)`);
     const insert = db.prepare(`INSERT INTO ${table} VALUES (?, ?, ?, ?, ?, ?, ?)`);
-    for (const r of rows) insert.run(...r);
+    // The kept connection has one row less, so that its tab is told from the first by its count.
+    for (const r of table === "docs" ? rows : rows.slice(0, 5)) insert.run(...r);
     db.close();
   }
   writeFileSync(join(dir, "settings.toml"), "[safety]\nmask = true\n");
@@ -122,7 +123,7 @@ async function saveFromMenu(page, row, column, label, path) {
   return readFileSync(path);
 }
 
-const saveItem = (items, prefix) => items.filter((i) => i?.startsWith(prefix));
+const saveItem = (items, prefix) => items.filter((i) => i?.startsWith(prefix) && i !== "Save result…");
 
 export default async function (page, { dir }) {
   // What the grid draws, to read its labels: the canvas has no text to query.
@@ -272,7 +273,8 @@ export default async function (page, { dir }) {
   await page.key("F7", "F7", 118);
 
   // A connection that keeps its data in: no items, and the panel's button is disabled.
-  await openTable(page, KEPT, "kept_docs", "6 rows");
+  await page.eval(`document.getElementById('e2e-table')?.removeAttribute('id')`);
+  await openTable(page, KEPT, "kept_docs", "5 rows");
   await page.eval(`document.querySelectorAll('#e2e-grid').forEach(e => e.removeAttribute('id'))`);
   const kept = await menuOf(page, 0, "blob");
   assert.deepEqual(saveItem(kept, "Save "), [], `${kept}`);
