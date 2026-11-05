@@ -11,9 +11,9 @@ use serde_json::{Value, json};
 use crate::access::{self, UnfilteredRule};
 use crate::agent::{Agent, PLAN_BYTES};
 use crate::error::{AgentError, Result};
-use crate::guard::{Asked, clamp, has_plans};
+use crate::guard::{default_limits, has_plans};
 use crate::plan::PlanResult;
-use crate::query::{self, Limits};
+use crate::query;
 
 /// The arguments of `estimate_change`.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -152,11 +152,7 @@ impl Agent {
                 saved.driver.name()
             )));
         }
-        let (limits, _) = clamp(
-            Limits::new(None, None, None)?,
-            &Asked::default(),
-            &saved.agent_limits,
-        );
+        let limits = default_limits(&saved.agent_limits)?;
         let lease = self.lease(store, saved).await?;
         if !lease.conn().capabilities().explain {
             return Ok(no_estimate(&format!(

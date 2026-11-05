@@ -13,10 +13,10 @@ use platypus_local::table_profile::{ColumnReport, TableProfile, profile_table};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
-use crate::agent::{Agent, sample_sql};
+use crate::agent::{Agent, find_name, sample_sql};
 use crate::compare::objects_of;
 use crate::error::{AgentError, Result};
-use crate::guard::{self, Asked};
+use crate::guard;
 use crate::masking::TableSensitivity;
 use crate::query::{self, Limits, cut_value};
 use crate::redact::Redactor;
@@ -113,16 +113,9 @@ async fn read_sample(
         return Ok(Read::NoSchema);
     };
     // As the catalog writes it: the exact name, else one that differs only in case.
-    let found = objects
-        .iter()
-        .filter(|o| has_rows(o.kind))
-        .find(|o| o.name == table)
-        .or_else(|| {
-            objects
-                .iter()
-                .filter(|o| has_rows(o.kind))
-                .find(|o| o.name.eq_ignore_ascii_case(table))
-        });
+    let found = find_name(objects.iter().filter(|o| has_rows(o.kind)), table, |o| {
+        &o.name
+    });
     let Some(found) = found else {
         return Ok(Read::NoTable);
     };
@@ -267,14 +260,8 @@ impl Agent {
                 .unwrap_or(usize::MAX)
                 .min(MAX_SAMPLE_ROWS),
         };
-        let asked = Limits::new(None, args.max_bytes, args.timeout_seconds)?;
         let (store, saved) = self.find(&args.connection)?;
-        let requested = Asked {
-            max_bytes: args.max_bytes,
-            timeout_seconds: args.timeout_seconds,
-            ..Asked::default()
-        };
-        let (limits, _) = guard::clamp(asked, &requested, &saved.agent_limits);
+        let limits = guard::byte_limits(args.max_bytes, args.timeout_seconds, &saved.agent_limits)?;
         // Its figures show the rows: no more of them than the connection gives agents.
         let rows = saved
             .agent_limits

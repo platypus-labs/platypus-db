@@ -20,9 +20,9 @@ use serde_json::{Value, json};
 
 use crate::agent::Agent;
 use crate::error::{AgentError, Result};
-use crate::guard::{Asked, clamp};
+use crate::guard::default_limits;
 use crate::library::SensitiveNames;
-use crate::query::{self, Limits};
+use crate::query;
 use crate::redact::Redactor;
 
 /// The arguments of `server_activity` and `top_queries`.
@@ -149,11 +149,7 @@ impl Agent {
             return Err(unavailable(&saved, "server sessions and locks"));
         }
         let mut mask = self.statement_mask(&saved, lease.redactor().clone())?;
-        let (limits, _) = clamp(
-            Limits::new(None, None, None)?,
-            &Asked::default(),
-            &saved.agent_limits,
-        );
+        let limits = default_limits(&saved.agent_limits)?;
         let work = sessions_and_locks(lease.conn());
         let read = query::guarded(
             lease.conn(),
@@ -217,11 +213,7 @@ impl Agent {
             return Err(unavailable(&saved, "query statistics"));
         }
         let mut mask = self.statement_mask(&saved, lease.redactor().clone())?;
-        let (limits, _) = clamp(
-            Limits::new(None, None, None)?,
-            &Asked::default(),
-            &saved.agent_limits,
-        );
+        let limits = default_limits(&saved.agent_limits)?;
         let work = lease.conn().top_queries();
         let read = query::guarded(
             lease.conn(),
@@ -260,7 +252,7 @@ impl Agent {
 /// The error of a connection whose database has no such view.
 fn unavailable(saved: &SavedConnection, what: &str) -> AgentError {
     AgentError::Invalid(format!(
-        "`{}` ({}) has no {what} in PlatypusDB: they are available for PostgreSQL, MySQL,          MariaDB and SQL Server",
+        "`{}` ({}) has no {what} in PlatypusDB: they are available for PostgreSQL, MySQL, MariaDB and SQL Server",
         saved.name,
         saved.driver.name()
     ))

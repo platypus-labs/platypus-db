@@ -5,7 +5,7 @@
 use std::pin::Pin;
 use std::time::Duration;
 
-use platypus_core::{Connection, DriverKind, Error, ObjectMeta};
+use platypus_core::{Connection, Error, ObjectMeta};
 use platypus_schema::{SchemaChange, Script, TableDesign};
 use platypus_sql::Dialect;
 use platypus_store::{ConnectionStore, SavedConnection};
@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::agent::Agent;
 use crate::error::{AgentError, Result};
-use crate::guard::{self, Asked};
+use crate::guard::{self, has_plans};
 use crate::query::{self, Limits};
 
 /// The arguments of `compare_schemas`.
@@ -38,14 +38,6 @@ pub struct CompareArgs {
 /// proposal tool.
 const SCRIPT_NOTE: &str = "Nothing ran. The script makes the other schema like the first; it reaches \
 the user only through propose_sql on the other connection, where they review and run it by hand.";
-
-/// Whether the databases of `driver` have tables with columns, keys and indexes to compare.
-const fn has_designs(driver: DriverKind) -> bool {
-    !matches!(
-        driver,
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
-    )
-}
 
 /// The objects of `schema`, or `None` when the connection has no such schema (some databases
 /// answer a schema that does not exist with an error, others with no objects).
@@ -147,7 +139,6 @@ impl Agent {
         args: &CompareArgs,
         stop: impl Future<Output = ()>,
     ) -> Result<String> {
-        let asked = Limits::new(None, args.max_bytes, args.timeout_seconds)?;
         let (store, source) = self.find(&args.connection)?;
         let other = args.other_connection.as_deref().unwrap_or(&args.connection);
         let (other_store, target) = self.find(other)?;
@@ -157,7 +148,8 @@ impl Agent {
             ));
         }
         let dialect = Dialect::from(source.driver);
-        if !has_designs(source.driver) || !has_designs(target.driver) {
+        // The databases with plans are the ones with tables, keys and indexes to compare.
+        if !has_plans(source.driver) || !has_plans(target.driver) {
             return Err(AgentError::Invalid(
                 "compare_schemas works on databases with tables and foreign keys".to_owned(),
             ));
@@ -167,13 +159,10 @@ impl Agent {
                 "Schemas can be compared only between databases of the same kind.".to_owned(),
             ));
         }
-        let requested = Asked {
-            timeout_seconds: args.timeout_seconds,
-            max_bytes: args.max_bytes,
-            ..Asked::default()
-        };
-        let (a_limits, _) = guard::clamp(asked, &requested, &source.agent_limits);
-        let (b_limits, _) = guard::clamp(asked, &requested, &target.agent_limits);
+        let a_limits =
+            guard::byte_limits(args.max_bytes, args.timeout_seconds, &source.agent_limits)?;
+        let b_limits =
+            guard::byte_limits(args.max_bytes, args.timeout_seconds, &target.agent_limits)?;
         self.windows.count(&source)?;
         if target.id != source.id {
             self.windows.count(&target)?;

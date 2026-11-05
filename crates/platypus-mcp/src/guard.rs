@@ -20,6 +20,27 @@ use crate::error::{AgentError, Result};
 use crate::plan::PlanResult;
 use crate::query::{self, Limits, RunError};
 
+/// The default limits lowered to the connection's `rules`: for a tool that takes none.
+pub(crate) fn default_limits(rules: &AgentLimits) -> Result<Limits> {
+    Ok(clamp(Limits::new(None, None, None)?, &Asked::default(), rules).0)
+}
+
+/// The limits for a tool that takes only `max_bytes` and `timeout_seconds`, lowered to the
+/// connection's `rules`.
+pub(crate) fn byte_limits(
+    max_bytes: Option<u64>,
+    timeout_seconds: Option<f64>,
+    rules: &AgentLimits,
+) -> Result<Limits> {
+    let asked = Asked {
+        max_bytes,
+        timeout_seconds,
+        ..Asked::default()
+    };
+    let limits = Limits::new(None, max_bytes, timeout_seconds)?;
+    Ok(clamp(limits, &asked, rules).0)
+}
+
 /// How long calls are counted for `calls_per_minute`.
 const WINDOW: Duration = Duration::from_secs(60);
 

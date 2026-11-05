@@ -380,6 +380,20 @@ fn refused_write(message: &str) -> bool {
     .any(|refusal| message.contains(refusal))
 }
 
+/// The item of `items` named `name` as the catalog writes it: the exact name, else one that
+/// differs only in case.
+pub(crate) fn find_name<'a, T>(
+    items: impl Iterator<Item = &'a T> + Clone,
+    name: &str,
+    name_of: impl Fn(&T) -> &str,
+) -> Option<&'a T> {
+    items.clone().find(|i| name_of(i) == name).or_else(|| {
+        items
+            .into_iter()
+            .find(|i| name_of(i).eq_ignore_ascii_case(name))
+    })
+}
+
 /// Bytes of a plan shown to the user beside a change.
 pub(crate) const PLAN_BYTES: usize = 16 * 1024;
 
@@ -464,13 +478,13 @@ impl Agent {
         self.link.as_ref()
     }
 
-    /// Whether agents' changes wait for the user's yes in the app (Settings › Safety), as
-    /// approved there.
     /// Whether the user allowed the changes on connection `id` for this server's session.
     pub(crate) fn allowed_for_session(&self, id: Uuid) -> bool {
         locked(&self.allowed).contains(&(self.session.clone(), id))
     }
 
+    /// Whether agents' changes wait for the user's yes in the app (Settings › Safety), as
+    /// approved there.
     pub(crate) fn confirms_changes(&self) -> bool {
         self.profile
             .connections()
@@ -570,7 +584,7 @@ impl Agent {
         let Ok(explain) = lease.settle(explained) else {
             return (None, None);
         };
-        let rows = crate::estimate::expected_rows(&explain.root);
+        let rows = estimate::expected_rows(&explain.root);
         let plan = PlanResult {
             explain,
             elapsed: std::time::Duration::ZERO,
@@ -1232,10 +1246,7 @@ async fn read_er(
     // As the catalog writes them: the exact name, else one that differs only in case.
     let mut chosen = Vec::with_capacity(requested.len());
     for name in requested {
-        let found = names
-            .iter()
-            .find(|n| *n == name)
-            .or_else(|| names.iter().find(|n| n.eq_ignore_ascii_case(name)));
+        let found = find_name(names.iter(), name, |n| n.as_str());
         let Some(found) = found else {
             let other = objects.iter().any(|o| o.name.eq_ignore_ascii_case(name));
             return Ok(ErRead::Unknown {
