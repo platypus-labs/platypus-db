@@ -356,8 +356,6 @@ async fn agents_ask_to_see_what_the_user_works_on_through_the_bridge() {
 fn draw(id: &str) -> DiagramRequest {
     DiagramRequest {
         id: id.to_owned(),
-        agent: "claude-code".to_owned(),
-        session: "s1".to_owned(),
         schema: "main".to_owned(),
         tables: vec![DiagramTable {
             name: "<script>alert(1)</script>".to_owned(),

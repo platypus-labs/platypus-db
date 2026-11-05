@@ -426,13 +426,7 @@ impl PlatypusServer {
             }
             Ok(DiagramFormat::Svg) => {
                 self.agent
-                    .er_diagram_svg(
-                        &args.connection,
-                        &args.schema,
-                        tables,
-                        args.depth,
-                        (&call.agent, &self.session),
-                    )
+                    .er_diagram_svg(&args.connection, &args.schema, tables, args.depth)
                     .await
             }
         };

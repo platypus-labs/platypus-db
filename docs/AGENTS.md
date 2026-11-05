@@ -159,8 +159,9 @@ Drivers); agents cannot.
 schema with their columns and primary keys, and the foreign keys between them. Without `tables`
 it draws the whole schema (the first 300 tables of a larger one); with `tables` it draws those
 and the tables linked to them by foreign keys, `depth` hops away in either direction (default
-1, at most 3; 0 draws only the named tables). A diagram over 32 KB is cut at whole tables, with
-a `%%` comment saying how many were drawn and suggesting `tables`.
+1, at most 3; 0 draws only the named tables). A diagram over 32 KB, or over a lower byte limit of
+the connection, is cut at whole tables, with a `%%` comment saying how many were drawn and
+suggesting `tables`.
 
 With `format: "svg"` (the default is `mermaid`) the answer is an SVG image, laid out and drawn
 with the code of the diagram's own SVG export. The MCP server reads the catalog as for Mermaid,
@@ -170,7 +171,8 @@ keys and foreign keys) to the open PlatypusDB, which draws it and answers. Unlik
 dialog: the agent could read the same schema anyway. It needs the app open (and answering within
 20 seconds): otherwise the call is an error that says so and that `format: "mermaid"` works
 without it. All names are escaped in the image, which holds no script or event attribute. An image
-cannot be cut like text, so one over 32 KB is refused with a message that suggests `tables` and a
+cannot be cut like text, so one over 256 KB (about 90 tables of a dozen columns), or over a lower
+byte limit of the connection, is refused with a message that suggests `tables` and a
 smaller `depth` (or Mermaid, which is cut at whole tables); for a schema of more than 300 tables
 a comment after the image says how many were drawn. An unknown `format` is an error naming the
 two. A table that does not exist,

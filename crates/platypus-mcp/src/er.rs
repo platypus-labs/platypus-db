@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 
 use platypus_core::TableDetails;
 use platypus_docs::{DocColumn, DocForeignKey, DocKind, DocObject, DocSchema, mermaid};
+use platypus_store::AgentLimits;
 
 use crate::error::{AgentError, Result};
 use crate::link::{DiagramColumn, DiagramKey, DiagramTable};
@@ -70,6 +71,18 @@ pub fn diagram_tables(schema: &DocSchema) -> Vec<DiagramTable> {
                 .collect(),
         })
         .collect()
+}
+
+/// The most bytes of an SVG, far more than of a Mermaid text: a picture's every column is markup
+/// of a few hundred bytes, and it is asked for on purpose. About 90 tables of a dozen columns.
+pub const SVG_BYTES: usize = 256 * 1024;
+
+/// `default`, lowered to the connection's limit on what agents get.
+pub fn byte_limit(default: usize, rules: &AgentLimits) -> usize {
+    rules
+        .max_bytes
+        .and_then(|max| usize::try_from(max).ok())
+        .map_or(default, |max| default.min(max))
 }
 
 /// The SVG the app drew for `shown` tables of `total`, as the tool returns it. A picture cannot
@@ -479,6 +492,17 @@ mod tests {
         assert!(out.contains("\"big\""));
         assert!(out.contains("col0"));
         assert!(!out.contains("col499"));
+    }
+
+    #[test]
+    fn the_connections_limit_only_lowers_the_diagrams_bytes() {
+        let rules = |max_bytes| AgentLimits {
+            max_bytes,
+            ..AgentLimits::default()
+        };
+        assert_eq!(byte_limit(SVG_BYTES, &rules(None)), SVG_BYTES);
+        assert_eq!(byte_limit(SVG_BYTES, &rules(Some(8_000))), 8_000);
+        assert_eq!(byte_limit(1_000, &rules(Some(8_000))), 1_000);
     }
 
     #[test]

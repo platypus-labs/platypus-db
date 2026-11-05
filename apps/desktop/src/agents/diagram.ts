@@ -12,8 +12,6 @@ import type { Shape } from "../erd/geometry";
 /** `platypus_mcp::DiagramRequest`. */
 export interface DiagramRequest {
   id: string;
-  agent: string;
-  session: string;
   schema: string;
   tables: (Omit<Shape, "foreign_keys"> & { foreign_keys: { name: string; columns: string[]; table: string; ref_columns: string[] }[] })[];
 }

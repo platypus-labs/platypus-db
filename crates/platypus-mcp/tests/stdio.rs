@@ -1020,7 +1020,7 @@ fn draws_er_diagrams_as_svg_through_the_open_app() {
 
     let big = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\">{}</svg>",
-        "x".repeat(40_000)
+        "x".repeat(300_000)
     );
     let big: &'static str = Box::leak(
         json!({ "answer": "svg", "svg": big })
@@ -1058,7 +1058,7 @@ fn draws_er_diagrams_as_svg_through_the_open_app() {
     let (not_svg, error) = client.call("get_er_diagram", &svg_args);
     assert!(error && not_svg.contains("not an SVG"), "{not_svg}");
 
-    // The app was sent the model only, and every request was for this agent.
+    // The app was sent the model only.
     let asked: Vec<Value> = app
         .lock()
         .unwrap()
@@ -1067,7 +1067,7 @@ fn draws_er_diagrams_as_svg_through_the_open_app() {
         .map(|(_, body)| serde_json::from_str(body).unwrap())
         .collect();
     assert_eq!(asked.len(), 4, "{asked:?}");
-    assert_eq!(asked[0]["agent"], "test-agent");
+    assert_eq!(asked[0]["agent"], Value::Null);
     assert_eq!(asked[0]["schema"], "main");
     let tables = asked[0]["tables"].as_array().unwrap();
     assert_eq!(tables.len(), 3, "t, customer and the hostile one");

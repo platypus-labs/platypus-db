@@ -2,6 +2,8 @@
 //! which tables it read and whether it changed anything or was refused when it tried. Names
 //! and counts only; a statement or a value never reaches the log through here.
 
+use std::collections::HashSet;
+
 use platypus_core::DriverKind;
 use platypus_sql::{Dialect, Lexer, TokenKind};
 use platypus_store::{CallEffect, CallFacts};
@@ -56,9 +58,11 @@ impl Probe {
 }
 
 /// The rows a tool answer reports: the JSON `row_count`, or the footer line `(N rows, ...`
-/// of the text table; 0 for an answer that has neither (a change's `N rows affected.`).
+/// of the text table; 0 for an answer that has neither (a change's `N rows affected.`). The
+/// cells of a text table are not looked at: they can hold anything.
 pub(crate) fn rows_in(answer: &str) -> u64 {
-    if let Some(at) = answer.find("\"row_count\":") {
+    let json = answer.trim_start().starts_with('{');
+    if let Some(at) = answer.find("\"row_count\":").filter(|_| json) {
         let digits: String = answer[at + 12..]
             .trim_start()
             .chars()
@@ -186,14 +190,13 @@ pub(crate) fn tables_of(sql: &str, dialect: Dialect) -> Vec<String> {
         }
         i += 1;
     }
-    let mut seen: Vec<String> = Vec::new();
-    for name in found {
-        let own = !name.contains('.') && with_names.iter().any(|w| w.eq_ignore_ascii_case(&name));
-        if !own && !seen.contains(&name) {
-            seen.push(name);
-        }
-    }
-    seen
+    // A generated statement can name thousands of tables, and the log waits for this.
+    let mut seen = HashSet::new();
+    found.retain(|name| {
+        let own = !name.contains('.') && with_names.iter().any(|w| w.eq_ignore_ascii_case(name));
+        !own && seen.insert(name.clone())
+    });
+    found
 }
 
 /// Reads the dotted table name at `tokens[from..]` into `found`; returns the index after it
@@ -261,11 +264,16 @@ impl Ended {
     }
 }
 
-/// Whether the driver speaks SQL the lexer can read.
+/// Whether the driver speaks SQL the lexer can read. A plugin's language is its own: the word
+/// after a `FROM` there could be a value, which the log must not hold.
 fn speaks_sql(driver: DriverKind) -> bool {
     !matches!(
         driver,
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
+        DriverKind::Mongo
+            | DriverKind::Redis
+            | DriverKind::Elasticsearch
+            | DriverKind::Cassandra
+            | DriverKind::Plugin
     )
 }
 
@@ -364,6 +372,8 @@ mod tests {
             25
         );
         assert_eq!(rows_in(r#"{"columns":[],"row_count":42,"rows":[]}"#), 42);
+        // A cell of a text table that looks like the JSON answer's field is only a cell.
+        assert_eq!(rows_in("doc\n{\"row_count\":999999}\n\n(1 row, 0.01 s)"), 1);
         assert_eq!(rows_in("2 rows affected."), 0);
     }
 

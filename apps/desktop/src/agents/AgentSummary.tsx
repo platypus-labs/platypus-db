@@ -57,16 +57,14 @@ function Row({ label, f, kind }: { label: string; f: AgentReportAgent; kind: "ag
 }
 
 /** The summary of the calls the Activity filters select, per agent and session, with its
- *  Markdown and HTML export. Loaded when the page opens it; `refresh` changes when the calls
- *  do. */
+ *  Markdown and HTML export. Loaded when the page opens it; `query` is a new object each time
+ *  the page reloads its calls, which reads the figures again. */
 export default function AgentSummary({
   query,
-  refresh,
   onNotice,
   onError,
 }: {
   query: AgentCallQuery;
-  refresh: unknown;
   onNotice: (text: string) => void;
   onError: (text: string) => void;
 }) {
@@ -81,7 +79,7 @@ export default function AgentSummary({
     return () => {
       current = false;
     };
-  }, [query, refresh, onError]);
+  }, [query, onError]);
 
   const exportAs = async (kind: "md" | "html") => {
     if (!report) return;

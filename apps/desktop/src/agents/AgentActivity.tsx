@@ -164,7 +164,7 @@ export function AgentActivity({ onSetup }: { onSetup: () => void }) {
       <details className="agent-summary" data-summary open={summaryOpen} onToggle={(e) => openSummary(e.currentTarget.open)}>
         <summary>{t("Summary per agent and session")}</summary>
         {summaryOpen && Summary && summaryQuery && (
-          <Summary query={summaryQuery} refresh={summaryQuery} onNotice={setNotice} onError={setError} />
+          <Summary query={summaryQuery} onNotice={setNotice} onError={setError} />
         )}
       </details>
       <table className="agents-connections agent-calls">

@@ -34,9 +34,9 @@ export function setup({ dir }) {
        customer_id INTEGER REFERENCES customer (id));
      CREATE TABLE lonely (id INTEGER PRIMARY KEY);`,
   );
-  // 40 tables of 12 columns: a picture of all of them is far over the byte limit.
+  // 150 tables of 12 columns: a picture of all of them is far over the byte limit.
   const columns = Array.from({ length: 12 }, (_, i) => `column_number_${i} INTEGER`).join(", ");
-  open("big.db", Array.from({ length: 40 }, (_, i) => `CREATE TABLE big_${String(i).padStart(2, "0")} (id INTEGER PRIMARY KEY, ${columns});`).join("\n"));
+  open("big.db", Array.from({ length: 150 }, (_, i) => `CREATE TABLE big_${String(i).padStart(2, "0")} (id INTEGER PRIMARY KEY, ${columns});`).join("\n"));
   open("secret.db", "CREATE TABLE classified (id INTEGER PRIMARY KEY);");
   const entry = (id, name, file, access) =>
     `\n[[connections]]\nid = "${id}"\nname = "${name}"\ndriver = "sqlite"\ndatabase = '${join(dir, file)}'\nagent_access = "${access}"\nsave_password = false\n`;

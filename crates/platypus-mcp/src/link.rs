@@ -186,10 +186,6 @@ pub struct DiagramTable {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagramRequest {
     pub id: String,
-    /// The agent, as it names itself.
-    pub agent: String,
-    /// The run of the agent's server.
-    pub session: String,
     pub schema: String,
     pub tables: Vec<DiagramTable>,
 }
@@ -511,8 +507,6 @@ mod tests {
         let mut got = fake_bridge(dir.path(), 200, r#"{"answer":"svg","svg":"<svg/>"}"#).await;
         let request = DiagramRequest {
             id: "1".to_owned(),
-            agent: "claude-code".to_owned(),
-            session: "s".to_owned(),
             schema: "main".to_owned(),
             tables: Vec::new(),
         };
