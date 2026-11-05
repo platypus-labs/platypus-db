@@ -16,6 +16,7 @@ import {
   shareContext,
   summarize,
   verdictFor,
+  viewerTable,
 } from "../src/agents/context.ts";
 import { enqueue, settle } from "../src/agents/writes.ts";
 
@@ -52,6 +53,17 @@ test("only the parts asked for are built", () => {
   assert.equal(some.connection, "Shop", "the agent is told whose tab it is");
 
   assert.equal(buildContext(["selection"], snapshot({ selection: "" })).selection, null, "nothing selected");
+});
+
+test("a data viewer tab names its table, whatever its filter; a free query names none", () => {
+  const ref = { schema: "main", name: "people", kind: "table" };
+  assert.deepEqual(viewerTable(true, ref), { schema: "main", name: "people" });
+  assert.equal(viewerTable(false, ref), undefined, "an editor tab with a free query");
+  assert.equal(viewerTable(true, null), undefined);
+  const viewer = buildContext(["result"], snapshot({ table: viewerTable(true, ref) }));
+  assert.deepEqual(viewer.table, { schema: "main", name: "people" });
+  assert.equal("table" in buildContext(["result"], snapshot()), false);
+  assert.equal("table" in buildContext(["result"], null), false);
 });
 
 test("without a query tab everything is empty", () => {
