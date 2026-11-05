@@ -352,7 +352,7 @@ app opens the table's data viewer with the rows as pending edits (new rows green
 and deleted rows marked), which you save or discard like your own; a row it cannot find or a
 value the column refuses is said so in the viewer and the rest is applied. A table with no
 primary or unique key, a connection saved as read-only or that forbids editing data, and MongoDB,
-Redis, Elasticsearch and Cassandra are refused.
+Redis, Elasticsearch, Cassandra, ClickHouse and the databases reached through ADBC are refused.
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB

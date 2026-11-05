@@ -143,7 +143,7 @@ holds the plan to get past it.
 
 ### Group D — User documentation
 
-**Status: to do.**
+**Status: P2 done, in P3 help in the app and the link check done; to do: the guide's screenshots, the split of `docs/`, the shorter READMEs, the site's pages from `docs/`, translations.**
 
 **What exists:** [README.md](../README.md) and [README.it.md](../README.it.md) (the same ten
 sections: why, install, databases, features, agents, performance, development, contributing,
@@ -164,17 +164,17 @@ documentation English (the README also Italian).
 
 | Feature | Prio | Origin |
 |---|---|---|
-| 🆕 A **user guide by task** in `docs/guide/`: connect (URL, SSH, TLS, keychain), run queries and read results, edit data, import and export, safety (Prod, read-only, confirmations), projects and sharing, agents; steps and a screenshot per page, with links to FEATURES.md, which stays the reference by area and not a path to follow | P2 | U |
-| 🆕 **Getting started** in the repository, as the guide's first page: today it is only in `site/docs.html`; the text moves to `docs/guide/` and the site page comes from it | P2 | U |
-| 🆕 **A page per database**: how to connect, privileges needed, what works and what does not (editing, explain, transactions, administration), drivers downloaded on first use (DuckDB, ADBC), ODBC and Db2 on Windows; from the one-line notes of the FEATURES.md table and `site/databases.html` | P2 | U |
-| 🆕 **Troubleshooting and FAQ**, missing today: connection errors (TLS, SSH, proxy, keychain and master password), a DuckDB or ADBC download that fails, an agent that does not see a connection (access off, master password, password asked every time), the portable copy, where the data folder and the logs are, updates | P2 | U |
+| ✅ A **user guide by task** in `docs/guide/`: connect (URL, SSH, TLS, keychain), run queries and read results, edit data, import and export, safety (Prod, read-only, confirmations), projects and sharing, agents; steps and a screenshot per page, with links to FEATURES.md, which stays the reference by area and not a path to follow | P2 | U |
+| ✅ **Getting started** in the repository, as the guide's first page: today it is only in `site/docs.html`; the text moves to `docs/guide/` and the site page comes from it | P2 | U |
+| ✅ **A page per database**: how to connect, privileges needed, what works and what does not (editing, explain, transactions, administration), drivers downloaded on first use (DuckDB, ADBC), ODBC and Db2 on Windows; from the one-line notes of the FEATURES.md table and `site/databases.html` | P2 | U |
+| ✅ **Troubleshooting and FAQ**, missing today: connection errors (TLS, SSH, proxy, keychain and master password), a DuckDB or ADBC download that fails, an agent that does not see a connection (access off, master password, password asked every time), the portable copy, where the data folder and the logs are, updates | P2 | U |
 | 🆕 The guide's screenshots made by E2E scenarios, as `readme` and `gifs` do for `docs/screenshots/`, so they are redone when the interface changes; a script copies them into `site/img/screenshots/` (by hand today, see `site/README.md`) | P3 | U |
-| 🆕 **Help in the app**: a Help entry in the command palette and the menu (guide, shortcuts, report a bug, what is new from CHANGELOG) and "?" links to the guide page from the connection form, Settings → Agents and Safety | P3 | D |
+| ✅ **Help in the app**: a Help entry in the command palette and the menu (guide, shortcuts, report a bug, what is new from CHANGELOG) and "?" links to the guide page from the connection form, Settings → Agents and Safety | P3 | D |
 | 🆕 User documentation apart from developer documentation: `docs/user/` (guide, features, shortcuts, agents, plugins) and `docs/dev/` (development, extending, releasing, benchmarks, and the internal documents in Italian), with docs/README.md and the links of the READMEs, the site and the code updated | P3 | U |
 | 🆕 A shorter README, in English and Italian: what it is, why, install, a link to the guide; the databases, features and agents sections, already in the guide and FEATURES.md, shrink to a few lines. A check that the two READMEs have the same sections | P3 | U |
 | 🆕 **Site docs pages from `docs/`**: a script in `scripts/` (no new build tool) turns the guide's Markdown into pages in the site's style, instead of `site/docs.html` linking the Markdown on GitHub; publishing the site is in group E | P3 | U |
 | 🆕 **Translations of the guide**. **To decide**: which of the app's languages and which pages (getting started first) | P3 | U |
-| 🆕 Automatic check of relative links between documents and of the site's links (`scripts/`), run by hand | P3 | N |
+| ✅ Automatic check of relative links between documents and of the site's links (`scripts/`), run by hand | P3 | N |
 
 ---
 

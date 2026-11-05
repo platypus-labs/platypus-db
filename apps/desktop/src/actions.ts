@@ -49,6 +49,8 @@ export interface ActionScopes {
   };
   /** A result grid with focus or a context menu. */
   grid: GridActionContext;
+  /** The Help menu of the top bar (help/actions.ts); the command palette lists these too. */
+  help: undefined;
 }
 
 export interface NavigatorObject {

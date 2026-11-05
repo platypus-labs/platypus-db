@@ -1,6 +1,7 @@
 import { Icon } from "../../ui/Icon";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ADBC_DRIVERS,
   api,
   type CellInput,
   type ColumnInfo,
@@ -259,7 +260,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, rowCoun
     ? msg("not a table")
     : target.connection.read_only
       ? msg("the connection is read-only")
-      : target.connection.restrictions?.no_data_editing
+      : target.connection.restrictions?.no_data_editing || ADBC_DRIVERS.includes(target.connection.driver)
         ? msg("the connection changes its rows only by SQL")
         : // Saving checks each change's row count in a transaction: ClickHouse has neither.
           target.connection.driver === "clickhouse"

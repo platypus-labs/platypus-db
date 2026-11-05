@@ -3263,6 +3263,18 @@ const pt: Record<string, string> = {
   "At least {n} characters.": "Pelo menos {n} caracteres.",
   "Enter a number.": "Introduza um número.",
   "This value is not valid.": "Este valor não é válido.",
+  // Help
+  "User guide": "Guia do usuário",
+  "What's new": "Novidades",
+  "Report a bug…": "Relatar um bug…",
+  "The guide is not included in this build.": "O guia não está incluído nesta versão.",
+  "The guide is written in English.": "O guia está escrito em inglês.",
+  "This page is not part of the guide that comes with the app: {path}": "Esta página não faz parte do guia que acompanha o aplicativo: {path}",
+  "What's new in {version}": "Novidades da versão {version}",
+  "There are no notes for version {version} yet. These are the changes not released yet.": "Ainda não há notas para a versão {version}. Estas são as alterações ainda não lançadas.",
+  "The changelog has nothing about this version.": "O registro de alterações não diz nada sobre esta versão.",
+  "Open the guide page about this": "Abrir a página do guia sobre isto",
+  "Help": "Ajuda",
 };
 
 export default pt;

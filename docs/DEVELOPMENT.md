@@ -74,6 +74,9 @@ npm run tauri dev
 # runs the same tests on the `opensearch` service
 cargo test --workspace --exclude platypus-desktop
 
+# The relative links and anchors of the documentation and the site; run it after changing docs/ or site/
+node scripts/check-links.mjs
+
 # CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side
 export PLATYPUS_URL="postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable"
 cargo run -p platypus-cli -- query "select * from demo.type_zoo"

@@ -41,6 +41,7 @@ import { Busy } from "../ui/State";
 import { type ManagerId, MANAGERS, managerById, managerOf } from "../credentialManagers";
 import { SIGN_INS, type SignInId, signInOf, signInsFor, withSignIn } from "../signIn";
 import { suggestedPooler } from "./pooler";
+import { HelpLink } from "../help/HelpLink";
 
 interface Props {
   initial: SavedConnection;
@@ -669,6 +670,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           <div className="dialog-header">
             <DriverIcon driver={conn.driver} label={tile} />
             <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
+            <HelpLink page="connect" />
             {!existing && (
               <div className="steps" aria-hidden="true">
                 <span className="done">
