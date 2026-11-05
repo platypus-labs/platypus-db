@@ -6,6 +6,12 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Grid**: a cell that holds a file offers to save it, in any type of column: binary, or text with a
+  `data:` URL, base64 or hex. A binary cell shows the type and size (`PDF · 2.3 MB`), and a
+  selection saves its files to a folder.
+
 ### Changed
 
 - **Agents**: sensitive columns read `••••••` in `run_query`, `sample_rows` and `get_user_context`,

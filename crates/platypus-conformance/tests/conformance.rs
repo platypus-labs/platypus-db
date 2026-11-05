@@ -4278,7 +4278,7 @@ async fn qa_fixgrid_generated_columns() {
         let conn = &*conn;
         let d = Dialect::from(b.config.driver);
         let t = d.qualified(Some(&b.schema), "qa_fixgrid_gen");
-        let _ = run(conn, &format!("DROP TABLE IF EXISTS {s}.{t}")).await;
+        let _ = run(conn, &format!("DROP TABLE IF EXISTS {t}")).await;
         run(conn, &format!("CREATE TABLE {t} ({columns_sql})"))
             .await
             .unwrap_or_else(|e| panic!("{}: create: {e}", b.name));
