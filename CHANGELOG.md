@@ -54,6 +54,12 @@ All notable changes to PlatypusDB are listed here. The format follows
   two URLs together are refused. Saving also refuses a name, database or user that holds a URL
   with its password. A connection saved this way before keeps the URL in its Database field:
   remove it there, and change that password if the file was shared.
+- **Security**: an agent with file access can no longer lift the masking by editing the rules in
+  `settings.toml` or the sensitive marks in `catalog.db`. Rules and marks are sealed with the rest
+  of the agent policy: one removed or narrowed outside the app waits until you accept it in Settings
+  › Agents › Security, and one added applies at once. A seal that no longer matches masks every
+  value for agents until you answer. This does not stop an agent that can run commands as your
+  user, which can read the database by other routes or the keychain (see `docs/AGENTS.md`).
 
 ## [0.4.1] - 2026-11-04
 

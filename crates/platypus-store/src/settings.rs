@@ -50,6 +50,12 @@ impl SettingsStore {
         Ok(Self { path, values })
     }
 
+    /// Reads the file again, for what changed outside this store.
+    pub fn reload(&mut self) -> Result<()> {
+        self.values = Self::open(self.path.clone())?.values;
+        Ok(())
+    }
+
     /// All values, as nested tables.
     #[must_use]
     pub fn all(&self) -> &toml::Table {
@@ -157,6 +163,29 @@ mod tests {
 
         store.set("editor.font_size", None).unwrap();
         assert_eq!(store.get::<i64>("editor.font_size"), None);
+    }
+
+    #[test]
+    fn reload_takes_what_changed_in_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        let mut store = SettingsStore::open(&path).unwrap();
+        store
+            .set("safety.mask_names", Some(toml::Value::String("a".into())))
+            .unwrap();
+        std::fs::write(&path, "[safety]\nmask_names = \"b\"\n").unwrap();
+        store.reload().unwrap();
+        assert_eq!(
+            store.get::<String>("safety.mask_names").as_deref(),
+            Some("b")
+        );
+        // A file that cannot be read leaves what was held.
+        std::fs::write(&path, "not = toml = at all").unwrap();
+        assert!(store.reload().is_err());
+        assert_eq!(
+            store.get::<String>("safety.mask_names").as_deref(),
+            Some("b")
+        );
     }
 
     #[test]

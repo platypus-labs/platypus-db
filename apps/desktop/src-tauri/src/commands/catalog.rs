@@ -54,7 +54,9 @@ pub fn rename_catalog_key(
     from: CatalogKey,
     to: CatalogKey,
 ) -> CommandResult<()> {
-    state.with_catalog(|c| c.rename(connection_id, &from, &to))
+    state.with_catalog(|c| c.rename(connection_id, &from, &to))?;
+    state.approve_agent_marks(|marks| marks.rename(connection_id, &from, &to));
+    Ok(())
 }
 
 /// The statements that set the comment of `table`, or of its `column`, as the database
@@ -126,7 +128,10 @@ pub fn set_catalog_sensitive(
     key: CatalogKey,
     sensitive: Option<bool>,
 ) -> CommandResult<()> {
-    state.with_catalog(|c| c.set_sensitive(connection_id, &key, sensitive))
+    state.with_catalog(|c| c.set_sensitive(connection_id, &key, sensitive))?;
+    // A mark set here is the user's (see `agent_policy`).
+    state.approve_agent_marks(|marks| marks.set(connection_id, &key, sensitive));
+    Ok(())
 }
 
 /// Where a column of a table is used: an object of its schema, or a saved script.

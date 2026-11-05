@@ -12,10 +12,12 @@
 //! are, and the app seals them as it starts. A seal that no longer matches its file leaves
 //! agents the defaults at most (read-only, changes asked about, `WHERE` required) until the
 //! user accepts the current settings.
+//!
+//! What masks values for agents is sealed too: see [`crate::masking_seal`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use platypus_core::Secret;
 use platypus_store::{
@@ -25,11 +27,13 @@ use platypus_store::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::masking_seal::{MARKS_FILE, MaskedBy, MaskingRules, SealedMarks};
+
 /// The file of the approved policy, in the folder of `settings.toml`.
 pub const POLICY_FILE: &str = "agent-policy.json";
 
 /// The keychain service that holds the seals, apart from the saved passwords.
-const SEAL_SERVICE: &str = "platypusdb-agent-policy";
+pub const SEAL_SERVICE: &str = "platypusdb-agent-policy";
 
 /// The setting that says whether agents' changes wait for the user's yes.
 pub const CONFIRM_WRITES: &str = "agents.confirm_writes";
@@ -53,6 +57,14 @@ pub struct AgentPolicy {
     /// caps. Not in the files of older versions.
     #[serde(default)]
     pub limits: BTreeMap<Uuid, AgentLimits>,
+    /// The rules that tell the sensitive columns. `None` in the files of older versions, until
+    /// the app takes the files as the first seal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub masking: Option<MaskingRules>,
+    /// The SHA-256 of the file of the approved marks ([`MARKS_FILE`]); `None` when there are
+    /// none. The files say nothing here: the marks are compared where they are read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marks: Option<String>,
 }
 
 impl Default for AgentPolicy {
@@ -64,6 +76,8 @@ impl Default for AgentPolicy {
             unfiltered_allowed: false,
             values_shown: BTreeSet::new(),
             limits: BTreeMap::new(),
+            masking: Some(MaskingRules::default()),
+            marks: None,
         }
     }
 }
@@ -87,6 +101,17 @@ pub enum Loosening {
     ValuesShown { id: Uuid, name: String },
     /// A connection's limits were raised or removed.
     AgentLimits { id: Uuid, name: String },
+    /// A masking rule lost these patterns: removed or narrowed.
+    MaskingRules { by: MaskedBy, patterns: Vec<String> },
+    /// Sensitive marks on a connection were removed or lifted: how many, and some of the columns.
+    SensitiveMarks {
+        id: Uuid,
+        name: String,
+        count: usize,
+        columns: Vec<String>,
+    },
+    /// The seal no longer matches: every value reads masked until the user answers.
+    MaskingLost,
 }
 
 impl AgentPolicy {
@@ -111,6 +136,8 @@ impl AgentPolicy {
                 .filter(|c| !c.agent_limits.is_empty())
                 .map(|c| (c.id, c.agent_limits))
                 .collect(),
+            masking: Some(MaskingRules::of(settings)),
+            marks: None,
         }
     }
 
@@ -163,6 +190,12 @@ impl AgentPolicy {
                 .map(|id| (*id, self.limits(*id).stricter(&approved.limits(*id))))
                 .filter(|(_, limits)| !limits.is_empty())
                 .collect(),
+            masking: match (&self.masking, &approved.masking) {
+                (Some(files), Some(sealed)) => Some(files.union(sealed)),
+                (files, None) => files.clone(),
+                (None, sealed) => sealed.clone(),
+            },
+            marks: approved.marks.clone(),
         }
     }
 
@@ -211,6 +244,9 @@ impl AgentPolicy {
                     name: name_of(id),
                 }),
         );
+        if let (Some(files), Some(sealed)) = (&self.masking, &approved.masking) {
+            found.extend(files.removed_from(sealed));
+        }
         found
     }
 }
@@ -238,7 +274,8 @@ impl Sealed {
     }
 
     /// What `current` gives agents beyond what was approved (the defaults, with a broken
-    /// seal); nothing without a seal.
+    /// seal, which always asks: every value masks until the user answers); nothing without a
+    /// seal.
     #[must_use]
     pub fn loosenings(
         &self,
@@ -248,17 +285,27 @@ impl Sealed {
         match self {
             Self::Nothing => Vec::new(),
             Self::Approved(approved) => current.loosenings(approved, connections),
-            Self::Broken => current.loosenings(&AgentPolicy::default(), connections),
+            Self::Broken => {
+                let mut found = vec![Loosening::MaskingLost];
+                found.extend(current.loosenings(&AgentPolicy::default(), connections));
+                found
+            }
         }
     }
 }
+
+/// The marks last read, with their hash.
+type LoadedMarks = (String, Arc<SealedMarks>);
 
 /// The seal of a profile's approved policy: the file, and its hash in a secret store.
 #[derive(Clone)]
 pub struct Seal {
     file: PathBuf,
+    marks_file: PathBuf,
     id: Uuid,
     secrets: Arc<dyn SecretStore>,
+    /// Read again only when the sealed hash changes.
+    loaded: Arc<Mutex<Option<LoadedMarks>>>,
 }
 
 impl std::fmt::Debug for Seal {
@@ -295,8 +342,10 @@ impl Seal {
     pub fn with(config_dir: &Path, secrets: Arc<dyn SecretStore>) -> Self {
         Self {
             file: config_dir.join(POLICY_FILE),
+            marks_file: config_dir.join(MARKS_FILE),
             id: crate::profile::keychain_id(config_dir),
             secrets,
+            loaded: Arc::default(),
         }
     }
 
@@ -325,6 +374,64 @@ impl Seal {
         self.secrets
             .set(self.id, &Secret::new(digest(&bytes)))
             .map_err(|e| e.to_string())
+    }
+
+    /// The marks `policy` seals; `None` when their file no longer matches. A process reads the
+    /// file once for each sealed hash: what it verified needs no second look.
+    #[must_use]
+    pub fn marks(&self, policy: &AgentPolicy) -> Option<Arc<SealedMarks>> {
+        let Some(hash) = &policy.marks else {
+            return Some(Arc::default());
+        };
+        let mut loaded = self.loaded.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((known, marks)) = &*loaded
+            && known == hash
+        {
+            return Some(Arc::clone(marks));
+        }
+        let bytes = std::fs::read(&self.marks_file).ok()?;
+        if digest(&bytes) != *hash {
+            return None;
+        }
+        let marks = Arc::new(SealedMarks::from_bytes(&bytes)?);
+        *loaded = Some((hash.clone(), Arc::clone(&marks)));
+        Some(marks)
+    }
+
+    /// Seals `policy` as the approved one, with `marks`.
+    ///
+    /// # Errors
+    /// When a file cannot be written or the keychain refuses the hash.
+    pub fn write_with_marks(
+        &self,
+        policy: &AgentPolicy,
+        marks: &SealedMarks,
+    ) -> Result<(), String> {
+        let mut policy = policy.clone();
+        if marks.count() == 0 {
+            policy.marks = None;
+            match std::fs::remove_file(&self.marks_file) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    return Err(format!("cannot remove {}: {e}", self.marks_file.display()));
+                }
+                _ => {}
+            }
+        } else {
+            let bytes = marks.to_bytes()?;
+            std::fs::write(&self.marks_file, &bytes)
+                .map_err(|e| format!("cannot write {}: {e}", self.marks_file.display()))?;
+            policy.marks = Some(digest(&bytes));
+        }
+        self.write(&policy)
+    }
+
+    /// The seal as a new process sees it: nothing of its marks read yet.
+    #[cfg(test)]
+    pub(crate) fn without_loaded_marks(&self) -> Self {
+        Self {
+            loaded: Arc::default(),
+            ..self.clone()
+        }
     }
 }
 
@@ -469,7 +576,9 @@ mod limits_tests {
         // No seal, or a broken one that approves no limit: a limit in the file only tightens.
         for seal in [Sealed::Nothing, Sealed::Broken] {
             assert_eq!(seal.honored(&current).limits(c.id).max_rows, Some(500));
-            assert_eq!(seal.loosenings(&current, connections), []);
+            let asked = [Loosening::MaskingLost];
+            let expected: &[Loosening] = if seal == Sealed::Broken { &asked } else { &[] };
+            assert_eq!(seal.loosenings(&current, connections), expected);
         }
         // A sealed policy with a lower limit holds against the raised file.
         let mut approved = AgentPolicy::default();
@@ -493,7 +602,10 @@ mod limits_tests {
                 .len(),
             1
         );
-        assert_eq!(Sealed::Broken.loosenings(&none, connections), []);
+        assert_eq!(
+            Sealed::Broken.loosenings(&none, connections),
+            [Loosening::MaskingLost]
+        );
     }
 
     #[test]
@@ -578,7 +690,8 @@ mod tests {
         let honored = Sealed::Broken.honored(&current);
         assert_eq!(honored.access(a.id), AgentAccess::ReadOnly);
         assert!(honored.confirm_writes);
-        assert_eq!(Sealed::Broken.loosenings(&current, &[a]).len(), 2);
+        // Access and asking, and that every value masks.
+        assert_eq!(Sealed::Broken.loosenings(&current, &[a]).len(), 3);
         // A removed file is no better.
         std::fs::remove_file(dir.path().join(POLICY_FILE)).unwrap();
         assert_eq!(seal.read(), Sealed::Broken);
