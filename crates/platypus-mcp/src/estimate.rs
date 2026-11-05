@@ -34,7 +34,11 @@ pub(crate) fn expected_rows(root: &PlanNode) -> Option<f64> {
 }
 
 /// `sql` as `run_query` checks it on `saved`.
-fn check<'a>(sql: &'a str, saved: &SavedConnection, unfiltered: UnfilteredRule) -> Result<&'a str> {
+pub(crate) fn check<'a>(
+    sql: &'a str,
+    saved: &SavedConnection,
+    unfiltered: UnfilteredRule,
+) -> Result<&'a str> {
     let access = saved.effective_agent_access();
     let name = &saved.name;
     match saved.driver {
@@ -115,7 +119,7 @@ impl Agent {
         }
         let mut answer = self.estimate_plan(&store, &saved, statement).await?;
         let rows = answer["estimated_rows"].as_f64();
-        let asks = self.confirms_changes();
+        let asks = self.confirms_changes() && !self.allowed_for_session(saved.id);
         let app_open = self.link().is_some_and(|link| link.reachable());
         answer["connection"] = json!(saved.name);
         answer["outcome"] = json!("estimated");

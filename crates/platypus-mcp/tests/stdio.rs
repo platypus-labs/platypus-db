@@ -2395,3 +2395,17 @@ calls_per_minute = 1
     );
     assert!(error && refused.contains("1 calls a minute"), "{refused}");
 }
+
+#[test]
+fn a_profile_reads_no_more_rows_than_the_connection_gives_agents() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "\n[connections.agent_limits]\nmax_rows = 1\n");
+    let mut client = initialized(dir.path());
+    let doc = json_of(
+        &mut client,
+        "profile_table",
+        &json!({ "connection": "Users", "schema": "main", "table": "users", "sample_rows": 1000 }),
+    );
+    assert_eq!(doc["rows_profiled"], 1, "{doc}");
+    assert_eq!(doc["sample_complete"], false, "{doc}");
+}

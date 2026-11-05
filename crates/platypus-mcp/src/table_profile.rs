@@ -275,6 +275,11 @@ impl Agent {
             ..Asked::default()
         };
         let (limits, _) = guard::clamp(asked, &requested, &saved.agent_limits);
+        // Its figures show the rows: no more of them than the connection gives agents.
+        let rows = saved
+            .agent_limits
+            .max_rows
+            .map_or(rows, |max| rows.min(usize::try_from(max).unwrap_or(rows)));
         // Before anything is read: marks that cannot be read would let values through.
         let sensitivity = self.table_sensitivity(&saved, &args.schema, &args.table)?;
         self.windows.count(&saved)?;

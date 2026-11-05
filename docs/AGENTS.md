@@ -147,7 +147,8 @@ sensitive column, decided as for results (the user's marks on that table over th
 rules), gives its counts only (`nulls`, `distinct`, `empty`): no minimum, maximum, top value,
 pattern or length. If the marks cannot be read the call fails rather than show values; a
 connection set to show sensitive values shows them here too. Values are cut at 1,000
-characters and have the connection's secrets masked.
+characters and have the connection's secrets masked. The connection's `max_rows` also caps the sample.
+On MongoDB a column is a top-level field: a sensitive field inside a document is not told apart.
 
 `estimate_change` (`connection`, `sql`) is a dry run: it returns, without running anything, what the
 confirmation dialog would show the user for a change. It asks the database for the plan
@@ -169,8 +170,8 @@ sessions blocking it; those that wait or run first, 50 by default, up to 200) an
 `top_queries` the statements that took the server most time (`pg_stat_statements`,
 `performance_schema`, Query Store; 20 by default, up to 100). Nothing is cancelled or ended. The
 statements are other people's, with their values: credentials in them (`CREATE ROLE ... PASSWORD`)
-read `'********'`, as in the history, whatever the connection's setting; the connection's own
-secrets are redacted; the values tied to sensitive columns read `'••••••'` unless the user chose
+never show, whatever the connection's setting; the connection's own
+secrets are redacted; every string in them, and the numbers tied to sensitive columns, read `'••••••'` unless the user chose
 to show values on the connection; a statement is cut at 500 characters, with a note. If the
 sensitive marks cannot be read the call fails. A missing privilege (`pg_read_all_stats`,
 `VIEW SERVER STATE`) or a missing extension (`pg_stat_statements` not installed) is said in the

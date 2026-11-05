@@ -13,6 +13,7 @@
 use platypus_core::{Connection, Error, ServerLock, TOP_QUERIES};
 use platypus_sql::Dialect;
 use platypus_sql::security::mask_secrets;
+use platypus_sql::sensitive::mask_strings;
 use platypus_store::{AgentValues, SavedConnection};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -57,7 +58,9 @@ impl StatementMask {
     fn apply(&mut self, text: &str) -> String {
         let masked = self.redactor.apply(&mask_secrets(text));
         let masked = match &self.names {
-            Some(names) => names.mask(&masked, self.dialect),
+            // Numbers tied to a sensitive column, then every string: the statement is someone
+            // else's, and a value may be sensitive with no column naming it.
+            Some(names) => mask_strings(&names.mask(&masked, self.dialect), self.dialect),
             None => masked,
         };
         if masked.chars().count() <= STATEMENT_CHARS {
@@ -303,14 +306,22 @@ mod tests {
 
     #[test]
     fn a_password_in_a_statement_never_shows() {
-        // Shown lifts the masking of sensitive columns, never that of credentials.
-        for names in [Some(sensitive()), None] {
-            let text = mask(names).apply("CREATE ROLE ada LOGIN PASSWORD 'hunter2'");
-            assert!(
-                text.contains("'********'") && !text.contains("hunter2"),
-                "{text}"
-            );
-        }
+        // Shown lifts the masking of values, never that of credentials.
+        let text = mask(None).apply("CREATE ROLE ada LOGIN PASSWORD 'hunter2'");
+        assert!(
+            text.contains("'********'") && !text.contains("hunter2"),
+            "{text}"
+        );
+        let text = mask(Some(sensitive())).apply("CREATE ROLE ada LOGIN PASSWORD 'hunter2'");
+        assert!(!text.contains("hunter2"), "{text}");
+    }
+
+    #[test]
+    fn a_value_no_column_names_is_masked_unless_shown() {
+        let statement = "INSERT INTO t VALUES (1, 'ann@example.com')";
+        let text = mask(Some(sensitive())).apply(statement);
+        assert!(!text.contains("ann@example.com"), "{text}");
+        assert!(mask(None).apply(statement).contains("ann@example.com"));
     }
 
     #[test]

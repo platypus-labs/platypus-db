@@ -26,6 +26,7 @@ use crate::access::{self, UnfilteredRule};
 use crate::connect;
 use crate::er;
 use crate::error::{AgentError, Result};
+use crate::estimate;
 use crate::guard::{self, Asked, CallWindows};
 use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
 use crate::output::QueryResult;
@@ -465,6 +466,11 @@ impl Agent {
 
     /// Whether agents' changes wait for the user's yes in the app (Settings › Safety), as
     /// approved there.
+    /// Whether the user allowed the changes on connection `id` for this server's session.
+    pub(crate) fn allowed_for_session(&self, id: Uuid) -> bool {
+        locked(&self.allowed).contains(&(self.session.clone(), id))
+    }
+
     pub(crate) fn confirms_changes(&self) -> bool {
         self.profile
             .connections()
@@ -678,7 +684,7 @@ impl Agent {
     ) -> Result<Value> {
         let (store, saved) = self.find(connection)?;
         let lease = self.lease(&store, &saved).await?;
-        let redactor = lease.session().redactor.clone();
+        let redactor = lease.redactor().clone();
         let conn = lease.conn();
         // No objects may also mean no such schema: say so, rather than an empty list.
         let objects = timed(async {
@@ -705,7 +711,7 @@ impl Agent {
     ) -> Result<Value> {
         let (store, saved) = self.find(connection)?;
         let lease = self.lease(&store, &saved).await?;
-        let redactor = lease.session().redactor.clone();
+        let redactor = lease.redactor().clone();
         let conn = lease.conn();
         // A missing table reads as one without columns: say so instead.
         let details = timed(async {
@@ -796,7 +802,7 @@ impl Agent {
         let lease = self.lease(&store, &saved).await?;
         let view = self.catalog_view(saved.id, &saved.database);
         let query = view.query(text);
-        let redactor = lease.session().redactor.clone();
+        let redactor = lease.redactor().clone();
         let found = timed(search_all(lease.conn(), text, &view, &query, &redactor)).await;
         let (mut all, catalog_read) = lease.settle(found)?;
         let truncated = all.len() > SEARCH_RESULTS;
@@ -839,18 +845,7 @@ impl Agent {
         let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();
         let start = Instant::now();
-        let checked = if saved.driver == DriverKind::Mongo {
-            access::check_mongo(&args.sql, access, unfiltered, &saved.name)
-        } else if saved.driver == DriverKind::Redis {
-            access::check_redis(&args.sql, access, unfiltered, &saved.name)
-        } else if saved.driver == DriverKind::Elasticsearch {
-            access::check_search(&args.sql, access, unfiltered, &saved.name)
-        } else if saved.driver == DriverKind::Cassandra {
-            access::check_cql(&args.sql, access, unfiltered, &saved.name)
-        } else {
-            let dialect = Dialect::from(saved.driver);
-            access::check(&args.sql, dialect, access, unfiltered, &saved.name)
-        };
+        let checked = estimate::check(&args.sql, &saved, unfiltered);
         // The time the user took to answer is not the statement's.
         let mut waited = Duration::ZERO;
         let mut stop = std::pin::pin!(stop);
