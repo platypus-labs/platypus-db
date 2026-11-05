@@ -38,6 +38,12 @@ impl NameRules {
         Self { patterns }
     }
 
+    /// Whether there is no pattern: nothing matches.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.patterns.is_empty()
+    }
+
     /// Whether `name` is one of the patterns, as a whole.
     #[must_use]
     pub fn matches(&self, name: &str) -> bool {

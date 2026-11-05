@@ -159,6 +159,11 @@ impl SensitiveNames {
         Self { rules, marked }
     }
 
+    /// Whether no name can be sensitive: no rule and no mark.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.marked.is_empty() && self.rules.is_empty()
+    }
+
     pub(crate) fn is(&self, name: &str) -> bool {
         self.marked.contains(&name.to_lowercase()) || self.rules.matches(name)
     }

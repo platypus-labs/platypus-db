@@ -3,11 +3,12 @@
 // Security the user can show them on one connection, and only there; the choice is approved by
 // being made in the app, while the same line written in the file by hand gets the agent nothing.
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { noMcp, startMcp } from "../mcp.mjs";
+import { runQuery, treeRow } from "../query.mjs";
 
 const PEOPLE = "00000000-0000-4000-8000-0000000000e1";
 const OTHER = "00000000-0000-4000-8000-0000000000e2";
@@ -42,6 +43,51 @@ async function chooseInSecurity(page, name) {
   await page.waitFor(`${shown} !== null`);
 }
 
+const dialog = `document.querySelector('.agent-context')`;
+
+/** Opens a SQL tab on the connection `name` by a double click on its row. */
+async function openTab(page, name) {
+  await page.waitFor(`${treeRow(name)} !== undefined`);
+  await page.eval(`${treeRow(name)}.id = 'e2e-conn'`);
+  await page.clickSel("#e2e-conn", { clickCount: 2 });
+  await page.waitFor(`[...document.querySelectorAll('.query-tab')].some(t => t.style.display !== 'none' && t.querySelector('.cm-content') != null)`, 15_000);
+  await page.eval(`document.getElementById('e2e-conn')?.removeAttribute('id')`);
+}
+
+/** What the user shares of the open tab, once, as get_user_context returns it. */
+async function sharedContext(page, mcp) {
+  const pending = mcp.call("get_user_context");
+  await page.waitFor(`${dialog} !== null`, 20_000);
+  await page.eval(`${dialog}.querySelector('[data-answer=once]').click()`);
+  const r = await pending;
+  assert.equal(r.error, false, r.text);
+  await page.waitFor(`${dialog} === null`);
+  return r;
+}
+
+/** The user's own tab: a column read under another name is masked in what they share too. */
+async function sharedAlias(page, dir, mcp) {
+  const file = join(dir, "agent-bridge.json");
+  for (let i = 0; i < 100 && !existsSync(file); i++) await page.sleep(100);
+  assert.ok(existsSync(file), "the app wrote agent-bridge.json");
+  await openTab(page, "People");
+  await runQuery(page, "SELECT id, email AS contact FROM people ORDER BY id");
+  const r = await sharedContext(page, mcp);
+  assert.ok(!r.text.includes(EMAIL), r.text);
+  const context = JSON.parse(r.text);
+  assert.deepEqual(context.result.columns, ["id", "contact"]);
+  assert.deepEqual(context.result.rows, [["1", "••••••"], ["2", null]]);
+  assert.ok(context.notes.some((n) => /masked: contact/.test(n)), r.text);
+  // A statement that hides the column behind a subquery is masked whole, not shown.
+  await runQuery(page, "SELECT c FROM (SELECT email AS c FROM people) ORDER BY c");
+  const nested = await sharedContext(page, mcp);
+  assert.ok(!nested.text.includes(EMAIL), nested.text);
+  // One that names no sensitive column is left as it is.
+  await runQuery(page, "SELECT name AS who FROM people ORDER BY id");
+  const plain = JSON.parse((await sharedContext(page, mcp)).text);
+  assert.deepEqual(plain.result.rows, [["Ann"], ["Bob"]]);
+}
+
 /** The JSON result of `sql` on connection `name`. */
 async function read(mcp, name, sql) {
   const r = await mcp.call("run_query", { connection: name, sql, format: "json" });
@@ -69,6 +115,8 @@ export default async function (page, { dir }) {
     const masked = await read(mcp, "People", "SELECT id, name, email FROM people ORDER BY id");
     assert.deepEqual(masked.rows, [[1, "Ann", "••••••"], [2, "Bob", null]]);
     assert.deepEqual(masked.masked_columns, ["email"]);
+
+    await sharedAlias(page, dir, mcp);
 
     // Shown on one connection from the app: only there, and agents read them at once.
     await chooseInSecurity(page, "People");

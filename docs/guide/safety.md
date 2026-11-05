@@ -58,7 +58,10 @@ run **Snapshots before changes…** from the command palette, to get the script 
    `*token*`, `*email*` and others by default; `*` is any characters) and by type. You can also mark a column in its table's tab.
 
 Agents read the sensitive columns masked too, unless you tick **Show agents the values of
-sensitive columns** for that connection in Settings › Agents › **Security**.
+sensitive columns** for that connection in Settings › Agents › **Security**. A sensitive field
+inside a MongoDB document (`user.password`) is masked too. When an agent asks what you are
+working on, a column read under another name (`SELECT email AS contact`) is masked as well; if
+the statement hides it behind a subquery, the whole shared result is masked.
 
 ## Lock the app
 
