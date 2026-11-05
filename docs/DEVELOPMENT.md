@@ -108,13 +108,17 @@ cd apps/desktop
 npm run tauri build -- --no-bundle
 npm run e2e
 
-# the README's screenshots, from the release build: readme-sqlite and readme-duckdb make their
-# own databases, readme-postgres needs the dev PostgreSQL
+# the screenshots of the README and the guide (docs/screenshots/guide), from the release build:
+# readme-sqlite, readme-duckdb and readme-guide make their own databases, readme-postgres needs
+# the dev PostgreSQL
 PLATYPUS_README_SHOTS=../../docs/screenshots npm run e2e -- readme
 
 # the README's GIFs, the same way: gifs-sqlite makes its database, gifs-postgres needs the dev
 # PostgreSQL; PLATYPUS_GIF_FRAMES=1 also writes a few frames of each as PNG, to look at
 PLATYPUS_README_GIFS=../../docs/screenshots npm run e2e -- gifs
+
+# then, from the root, the ones the site shows into site/img/screenshots
+node scripts/copy-site-screenshots.mjs
 ```
 
 ### Test-only environment variables

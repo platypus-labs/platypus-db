@@ -20,7 +20,7 @@
 | [MVP_PLAN.md](MVP_PLAN.md) | The plan and scope of the first release, 0.1.0 (Italian) |
 | [brand/](brand/) | Logos and wordmarks for light and dark backgrounds |
 | [mockups/](mockups/) | The approved mockups of the app and the site from the redesign (open `index.html`) |
-| [screenshots/](screenshots/) | The README's screenshots and GIFs, made by the end-to-end `readme` and `gifs` scenarios |
+| [screenshots/](screenshots/) | The screenshots and GIFs of the README and the guide, made by the end-to-end `readme` and `gifs` scenarios |
 
 At the root of the repository: [README](../README.md) (overview, also [in Italian](../README.it.md)),
 [CONTRIBUTING](../CONTRIBUTING.md), [CHANGELOG](../CHANGELOG.md), [SECURITY](../SECURITY.md),

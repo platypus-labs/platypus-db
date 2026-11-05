@@ -14,7 +14,7 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Help**: the top bar's "?" and the command palette open a user guide that comes with the app and
   reads offline, with a page per database, what is new in this version and a way to report a bug.
   The connection form, Settings › Agents and Settings › Safety link to their page. The guide is
-  also in the repository, in `docs/guide/`.
+  also in the repository, in `docs/guide/`. It loads the first time it is opened, not at each start.
 
 ### Changed
 
