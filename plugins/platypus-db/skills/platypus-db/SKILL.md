@@ -51,7 +51,10 @@ Clients that read MCP resources can also read `platypus://<connection>`,
   unless the user's safety settings allow it.
 - For a change the access does not allow, or one the user should check first, use
   `propose_sql`: it opens the SQL in a new editor tab of the app, for the user to review and
-  run by hand. Never try to get around the access.
+  run by hand. To hand over rows to insert, update or delete in a table, use `propose_edits`
+  (`inserts`, `updates` with a `key` and a `set`, `deletes`, by primary or unique key): they open
+  in the table's data viewer as pending edits that the user saves or discards. It writes
+  nothing, and a table with no key is refused. Never try to get around the access.
 
 ## The user's scripts and history
 

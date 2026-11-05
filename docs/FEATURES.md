@@ -788,6 +788,11 @@ through the MCP server.
   edited to give agents more (agent access, changes run without asking, `UPDATE` or `DELETE`
   without `WHERE`), agents keep what you allowed and the app asks you, when it starts or gets
   focus, to accept or undo the edit; see [AGENTS.md](AGENTS.md).
+- **Edits proposed by agents**: an agent can propose rows to insert, update or delete in a table
+  (`propose_edits`); the table opens in its data viewer with them as pending edits, coloured like
+  your own, and you save or discard them. Nothing is written until you save; rows that no longer
+  exist or values a column refuses are listed in the viewer and the rest is applied. See
+  [AGENTS.md](AGENTS.md).
 - **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
   and the navigator, or a driver for a database reached over HTTP; each asks for its
   permissions at install. See [PLUGINS.md](PLUGINS.md).

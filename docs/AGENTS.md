@@ -23,7 +23,8 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - Agents' queries are in the history with the agent's name, and every tool call is in the
   agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
 - An agent can propose SQL with `propose_sql`: it opens in a new editor tab, for you to
-  review and run.
+  review and run. With `propose_edits` it proposes rows to insert, update or delete in a table: they
+  open in the table's data viewer as pending edits, for you to save or discard.
 - **Changes wait for you**: on read-write connections each change an agent wants to run opens
   a dialog in the app with the statement, the rows the database expects it to change and its
   plan. Refuse it (with a reason the agent reads), allow it once, or allow that agent's changes
@@ -106,7 +107,7 @@ connect): until then they are left out, and the server's log (stderr) says so.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
 `get_er_diagram`, `compare_schemas`, `search_objects`, `run_query`, `sample_rows`,
-`profile_table`, `explain`, `propose_sql`, `list_open_sessions`, `list_scripts`, `read_script`,
+`profile_table`, `explain`, `propose_sql`, `propose_edits`, `list_open_sessions`, `list_scripts`, `read_script`,
 `search_history`, `estimate_change`, `server_activity` and `top_queries`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
@@ -275,6 +276,17 @@ is checked as `run_query` checks it, and runs only with `analyze`, rolled back: 
 connections that needs a read-only transaction that refuses writes (PostgreSQL, MySQL,
 MariaDB, SQLite). `propose_sql` runs nothing: the app opens the SQL in an editor tab, at once
 if it is open, else when it starts (within 24 hours).
+
+`propose_edits` takes `connection`, `schema`, `table`, an optional `title` and, as lists, `inserts`
+(objects of column to value), `updates` (`{key, set}`, `key` naming a row by exactly the
+columns of a primary or unique key) and `deletes` (objects naming rows by such a key). A value
+is a string, number, boolean or null; arrays and objects are refused. At least one change, at
+most 500 rows and 1 MiB in all. It writes nothing, whatever the agent access (read-only included): the
+app opens the table's data viewer with the rows as pending edits (new rows green, changed cells
+and deleted rows marked), which you save or discard like your own; a row it cannot find or a
+value the column refuses is said so in the viewer and the rest is applied. A table with no
+primary or unique key, a connection saved as read-only or that forbids editing data, and MongoDB,
+Redis, Elasticsearch and Cassandra are refused.
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB
