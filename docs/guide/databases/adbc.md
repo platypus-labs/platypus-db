@@ -64,9 +64,8 @@ and columns with ADBC's metadata call.
 - **No manual commit**: every statement commits by itself, and turning autocommit off says that
   manual commit with an ADBC driver is not supported.
 - **No explain**, and no administration tabs.
-- **Data editing in the grid** is not offered or tested for these databases. The grid does not
-  block it, but a save wraps its statements in `BEGIN` and `COMMIT` sent as plain SQL, which not
-  every database accepts; use SQL for changes.
+- **No data editing in the grid**: a save checks each change in a transaction, and these
+  connections have none. Results stay read-only; use SQL for changes.
 - Terminal mode is not available.
 
 ## Agents

@@ -907,6 +907,9 @@ export type DriverInstallEvent = { kind: "progress"; done: number; total: number
 /** The databases whose driver is downloaded when needed (ADBC). */
 export const DOWNLOADED_DRIVERS: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino"];
 
+/** The databases reached through an ADBC driver, where every statement commits by itself. */
+export const ADBC_DRIVERS: readonly DriverKind[] = [...DOWNLOADED_DRIVERS, "adbc"];
+
 /** The databases whose vendor library the app installs: Oracle Instant Client, IBM's ODBC driver, DuckDB. */
 export const VENDOR_DRIVERS: readonly DriverKind[] = ["oracle", "db2", "duckdb"];
 

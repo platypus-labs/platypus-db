@@ -5,7 +5,7 @@
 //! What is kept is data only: names and values, checked against the table's keys. The app
 //! checks them again and writes every statement itself (see [`platypus_sql::proposed`]).
 
-use platypus_core::DriverKind;
+use platypus_core::{Bridge, DriverKind};
 use platypus_sql::Dialect;
 use platypus_sql::proposed::{self, Edits, MAX_BYTES, MAX_ROWS, Row, Update};
 use platypus_store::SavedConnection;
@@ -113,17 +113,27 @@ fn edits_of(args: &ProposeEditsArgs) -> Result<Edits> {
     })
 }
 
+/// Whether the data viewer has no pending edits to open on this database: it has no rows found
+/// by key, or (`ClickHouse`, ADBC) no transaction for a save to check its row counts in.
+fn edited_only_by_statements(driver: DriverKind) -> bool {
+    matches!(
+        driver,
+        DriverKind::Mongo
+            | DriverKind::Redis
+            | DriverKind::Elasticsearch
+            | DriverKind::Cassandra
+            | DriverKind::ClickHouse
+    ) || driver.bridge() == Some(Bridge::Adbc)
+}
+
 /// Why the app cannot edit the rows of this connection from its data viewer, if it cannot.
 fn not_editable(saved: &SavedConnection) -> Option<String> {
     let name = &saved.name;
     match saved.driver {
-        DriverKind::Mongo
-        | DriverKind::Redis
-        | DriverKind::Elasticsearch
-        | DriverKind::Cassandra => Some(format!(
+        driver if edited_only_by_statements(driver) => Some(format!(
             "`{name}` is {}: its rows are not edited by key from the data viewer, so there \
                  is nothing to open the changes in",
-            saved.driver.name()
+            driver.name()
         )),
         _ if saved.restrictions.no_data_editing => Some(format!(
             "`{name}` does not allow editing its data from PlatypusDB (restriction no data editing)"
@@ -203,6 +213,27 @@ mod tests {
 
     fn args(value: &Value) -> ProposeEditsArgs {
         serde_json::from_value(value.clone()).unwrap()
+    }
+
+    #[test]
+    fn databases_without_editing_in_the_viewer_get_no_proposal() {
+        for driver in [
+            DriverKind::Mongo,
+            DriverKind::Redis,
+            DriverKind::Elasticsearch,
+            DriverKind::Cassandra,
+            DriverKind::ClickHouse,
+            DriverKind::Snowflake,
+            DriverKind::BigQuery,
+            DriverKind::Databricks,
+            DriverKind::Trino,
+            DriverKind::Adbc,
+        ] {
+            assert!(edited_only_by_statements(driver), "{driver:?}");
+        }
+        for driver in [DriverKind::Postgres, DriverKind::Sqlite, DriverKind::Odbc] {
+            assert!(!edited_only_by_statements(driver), "{driver:?}");
+        }
     }
 
     #[test]
