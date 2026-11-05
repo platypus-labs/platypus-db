@@ -164,6 +164,13 @@ export default async function (page, { dir }) {
     assert.match(listed, /\*email\*/);
     assert.match(listed, /main\.people\.name/);
     await dismissQuestion(page);
+    // A yes holds for what the question said: for anything else, here a question that listed
+    // less than the files lift, nothing is accepted and the values stay masked.
+    const stale = await page.eval(
+      `window.__TAURI_INTERNALS__.invoke("answer_agent_policy", { accept: true, changes: [] }).then(() => "accepted", (e) => e.kind ?? String(e))`,
+    );
+    assert.equal(stale, "changed");
+    assert.deepEqual((await read(mcp)).rows[0], [1, MASKED, MASKED, MASKED], "nothing was accepted");
     await page.eval(`${changesBox}.querySelector('[data-agent-policy="accept"]').click()`);
     await page.waitFor(`${changesBox} === null`, 15_000);
     await dismissQuestion(page);

@@ -2528,7 +2528,7 @@ export const api = {
   openSharedProject: (folder: string) => invoke<OpenedShared>("open_shared_project", { folder }),
   refreshSharedProjects: () => invoke<SharedNotice[]>("refresh_shared_projects"),
   agentPolicyChanges: (marks: boolean) => invoke<AgentPolicyChange[]>("agent_policy_changes", { marks }),
-  answerAgentPolicy: (accept: boolean) => invoke<void>("answer_agent_policy", { accept }),
+  answerAgentPolicy: (accept: boolean, changes: AgentPolicyChange[]) => invoke<void>("answer_agent_policy", { accept, changes }),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
   deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),

@@ -272,6 +272,11 @@ function AgentPolicyChanges({ onUndone, onError }: { onUndone: () => Promise<voi
   const answer = (accept: boolean) => {
     setAnswering(true);
     answerAgentPolicy(accept, changes, onUndone)
+      .catch((e: unknown) => {
+        onError(toCommandError(e).message);
+        // The files may have changed since this list: what it says must be what is answered.
+        return api.agentPolicyChanges(true).then(setChanges);
+      })
       .catch((e: unknown) => onError(toCommandError(e).message))
       .finally(() => setAnswering(false));
   };

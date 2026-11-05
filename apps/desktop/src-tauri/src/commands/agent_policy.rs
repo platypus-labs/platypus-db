@@ -186,11 +186,21 @@ pub fn agent_policy_changes(
     }))
 }
 
-/// The user's answer to [`agent_policy_changes`]: `accept` seals the files as they are;
-/// otherwise they are put back to what was approved (the defaults, for a broken seal) and
-/// sealed so.
+/// Whether the question the user answered, `asked`, still says what the files give agents: a
+/// yes is for what the user read, and an agent can edit the files while the question is open.
+fn still_what_was_asked(asked: &serde_json::Value, now: &[Loosening]) -> bool {
+    serde_json::to_value(now).is_ok_and(|now| now == *asked)
+}
+
+/// The user's answer to `changes`, the question [`agent_policy_changes`] gave: `accept` seals the
+/// files as they are, when that is still what was asked about; otherwise they are put back to
+/// what was approved (the defaults, for a broken seal) and sealed so.
 #[tauri::command]
-pub fn answer_agent_policy(state: State<'_, AppState>, accept: bool) -> CommandResult<()> {
+pub fn answer_agent_policy(
+    state: State<'_, AppState>,
+    accept: bool,
+    changes: serde_json::Value,
+) -> CommandResult<()> {
     let seal = state
         .agent_seal()
         .ok_or_else(|| CommandError::new("store", "the profile's folder is not known"))?;
@@ -199,6 +209,13 @@ pub fn answer_agent_policy(state: State<'_, AppState>, accept: bool) -> CommandR
     let connections = state.with_store(|s| Ok(s.list().to_vec()))?;
     let file = state.catalog_marks(&connections)?;
     let (policy, marks) = if accept {
+        let now = seal.review(&current, &connections, true, &|| Ok(file.clone()));
+        if !still_what_was_asked(&changes, &now) {
+            return Err(CommandError::new(
+                "changed",
+                "The files changed again after the question, so nothing was accepted: agents keep what you allowed. Look at the changes again.",
+            ));
+        }
         (current, file)
     } else {
         let undo = seal.undo(&current, &file);
@@ -255,4 +272,37 @@ pub fn answer_agent_policy(state: State<'_, AppState>, accept: bool) -> CommandR
     };
     seal.write_with_marks(&policy, &marks)
         .map_err(|e| CommandError::new("store", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn a_yes_holds_only_for_what_the_question_said() {
+        let lifted = Loosening::SensitiveMarks {
+            id: uuid::Uuid::nil(),
+            name: "People".to_owned(),
+            count: 1,
+            columns: vec!["main.people.name".to_owned()],
+        };
+        // The question as the page holds it: what it received, read back from JSON.
+        let asked = serde_json::to_value(vec![lifted.clone()]).unwrap();
+        assert!(still_what_was_asked(&asked, std::slice::from_ref(&lifted)));
+        // An agent lifted more while the question was open: this yes was not for that.
+        let more = Loosening::SensitiveMarks {
+            count: 2,
+            columns: vec![
+                "main.people.email".to_owned(),
+                "main.people.name".to_owned(),
+            ],
+            ..lifted.clone()
+        };
+        assert!(!still_what_was_asked(&asked, &[more]));
+        assert!(!still_what_was_asked(&asked, &[lifted.clone(), lifted]));
+        assert!(!still_what_was_asked(&asked, &[]));
+        assert!(still_what_was_asked(&json!([]), &[]));
+    }
 }

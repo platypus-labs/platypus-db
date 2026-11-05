@@ -71,6 +71,9 @@ read the database by other routes, or the system keychain the seal lives in: to 
 such an agent, run it as another user and give the connection a database user without access to
 those columns.
 
+An answer holds for what the question listed: if the files change again while it is open, **Accept**
+accepts nothing and the list is shown again.
+
 ## Lock the app
 
 With a master password set (see [Connect](connect.md#master-password)), Settings › **Safety** ›

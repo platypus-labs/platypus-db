@@ -59,7 +59,7 @@ export function onAgentPolicyAnswered(listener: () => void): () => void {
 /** Gives the user's answer about `changes`; `reload` brings the files, as accepted or as put
  *  back, into the app. */
 export async function answerAgentPolicy(accept: boolean, changes: AgentPolicyChange[], reload: () => Promise<void>) {
-  await api.answerAgentPolicy(accept);
+  await api.answerAgentPolicy(accept, changes);
   asked = "";
   for (const c of changes) if (c.kind === "sensitive_marks") forgetCatalog(c.id);
   await reload();
