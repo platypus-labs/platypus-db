@@ -192,23 +192,35 @@ export async function refreshShared(): Promise<SharedNotice[]> {
   return notices;
 }
 
+/** How long after the start the sensitive marks are first compared with what was approved. */
+const MARKS_CHECK_DELAY_MS = 5_000;
+
 /** Starts the background work; returns the function that stops it. */
 export function startBackground(): () => void {
   stopped = false;
   void scheduleSync(true);
-  const onFocus = () => {
-    void refreshShared().catch((e: unknown) => console.warn("shared projects", e));
-    // Edits of the profile's files that give agents more wait for the user's yes.
+  // Edits of the profile's files that give agents more wait for the user's yes. Agents do not get
+  // them meanwhile, so the sensitive marks, which can be many, are not compared during the start.
+  let marksDue = false;
+  const checkPolicy = () =>
     void checkAgentPolicy(async () => {
       await loadSettings();
       await reloadWorkspace();
-    });
+    }, marksDue);
+  const marksTimer = setTimeout(() => {
+    marksDue = true;
+    checkPolicy();
+  }, MARKS_CHECK_DELAY_MS);
+  const onFocus = () => {
+    void refreshShared().catch((e: unknown) => console.warn("shared projects", e));
+    checkPolicy();
   };
   onFocus();
   window.addEventListener("focus", onFocus);
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
+    clearTimeout(marksTimer);
     window.removeEventListener("focus", onFocus);
   };
 }

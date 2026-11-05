@@ -14,11 +14,13 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - **Edits outside the app wait for you**: `connections.toml` and `settings.toml` are files a
   coding agent with file tools can write, so the app keeps what you allowed agents (agent
   access, "Ask before agents change data", the Safety setting for `UPDATE` or `DELETE` without
-  `WHERE`) in `agent-policy.json`, sealed by its SHA-256 in the system keychain. Agents get
-  what the files say, never more than what is sealed; an edit that gives them more is asked
-  about when the app starts or its window gets focus (accept it, or undo it), and an edit that
-  gives them less applies at once. Without a keychain there is no seal, and the files are
-  taken as they are.
+  `WHERE`, what shows or masks sensitive values) in `agent-policy.json`, sealed by its SHA-256 in
+  the system keychain. Agents get what the files say, never more than what is sealed; an edit
+  that gives them more is asked about when the app starts or its window gets focus, and listed
+  in Settings → Agents → Security (accept it, or undo it), and an edit that gives them less
+  applies at once. Without a keychain there is no seal, and the files are taken as they are.
+  This keeps an agent from raising its access by editing those files. It is no protection
+  against one that can run commands as you: see "What the seal does not protect against" below.
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
 - Agents' queries are in the history with the agent's name, and every tool call is in the
   agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
@@ -267,6 +269,27 @@ last line in text, and a note in `get_user_context`.
 Settings › Agents › Security can show the values on one connection. It is part of what the user
 approves, like the agent access: written in `connections.toml` by hand it changes nothing
 until the user accepts it in the app.
+
+The rules and the marks are approved too. `settings.toml` and `catalog.db` are files an agent can
+edit, so the rules are sealed in `agent-policy.json` and the marks in `agent-policy-marks.json`,
+whose hash is in the policy. Agents get the union of what is sealed and what the files say: a
+rule or a mark added by hand applies at once, and one removed or narrowed by hand, or a mark
+"not sensitive" added by hand, changes nothing until the user accepts it in Settings › Agents ›
+Security or in the question the app asks. What the user changes in the app is sealed as it is
+saved. The first time this version runs on a profile it takes the files as they are as the first
+seal, once, without asking. When the policy or the marks file no longer matches its seal, what
+was approved cannot be told, since it may be what was removed: every value reads masked until
+the user answers. Undoing then leaves the app's default rules and what the files add. Without a
+keychain there is no seal, and the rules and marks of the files apply as they are.
+
+#### What the seal does not protect against
+
+The seal stops an edit of the profile's files from lifting the masking. It stops nothing else. An
+agent that can run commands as your user can read the database by other routes, with a client of
+its own and the credentials or files it finds, and can read or change the keychain entry, after
+which it can write a seal of its own. Masking through the MCP server also has the limits below.
+For a real boundary, run the agent as another user, and give the connection a database user
+without access to those columns.
 
 ### Limits per connection
 

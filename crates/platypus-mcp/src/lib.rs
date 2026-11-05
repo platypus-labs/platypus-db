@@ -27,6 +27,7 @@ mod ident;
 mod library;
 pub mod link;
 mod masking;
+pub mod masking_seal;
 pub mod output;
 pub mod plan;
 pub mod policy;

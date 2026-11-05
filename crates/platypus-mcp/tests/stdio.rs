@@ -765,6 +765,103 @@ fn the_values_show_only_as_the_user_approved_in_the_app() {
     assert!(!rows.contains("masked"), "{rows}");
 }
 
+/// Takes the seal out of the system keychain when a test ends.
+struct KeychainSeal(uuid::Uuid);
+
+impl Drop for KeychainSeal {
+    fn drop(&mut self) {
+        use platypus_store::SecretStore;
+        let keychain = platypus_store::KeyringSecrets::new(platypus_mcp::policy::SEAL_SERVICE);
+        let _ = keychain.delete(self.0);
+    }
+}
+
+/// An agent that edits the files to lift a rule or a mark reads the values masked all the same
+/// until the user confirms it in the app; what the server reads is the system keychain's seal.
+#[test]
+fn a_rule_or_mark_removed_by_hand_still_masks_until_the_user_confirms_it() {
+    use platypus_mcp::masking_seal::SealedMarks;
+    use platypus_mcp::policy::{AgentPolicy, POLICY_FILE, Seal};
+
+    const MASKED: &str = "••••••";
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    let id = uuid::Uuid::parse_str("00000000-0000-4000-8000-0000000000a1").unwrap();
+    let settings = |names: &str| {
+        std::fs::write(
+            dir.path().join("settings.toml"),
+            format!("[safety]\nmask_names = \"{names}\"\n"),
+        )
+        .unwrap();
+    };
+    settings("*email*");
+    let key = |column: &str| platypus_store::CatalogKey {
+        database: String::new(),
+        schema: "main".to_owned(),
+        object: "users".to_owned(),
+        column: column.to_owned(),
+    };
+    let catalog = || platypus_store::CatalogStore::open(&dir.path().join("catalog.db")).unwrap();
+    catalog()
+        .set_sensitive(id, &key("name"), Some(true))
+        .unwrap();
+
+    // What the app does when the user confirms: the files as they are, sealed.
+    let seal = Seal::of(dir.path());
+    let confirm = || {
+        let profile = platypus_mcp::Profile::at(dir.path());
+        let store = profile.connections().unwrap();
+        let settings = profile.settings();
+        let marks = catalog().sensitive_columns(id).unwrap();
+        seal.write_with_marks(
+            &AgentPolicy::current(store.list(), settings.as_ref()),
+            &SealedMarks::from_catalog([(id, marks)]),
+        )
+    };
+    let _forget = KeychainSeal(platypus_mcp::profile::keychain_id(dir.path()));
+    if let Err(e) = confirm() {
+        println!("skipping: no keychain to seal in ({e})");
+        return;
+    }
+
+    let mut client = initialized(dir.path());
+    let mut first_row = || {
+        let (rows, error) = client.call(
+            "run_query",
+            &json!({
+                "connection": "Users",
+                "sql": "SELECT id, name, email, nick FROM users ORDER BY id",
+                "format": "json",
+            }),
+        );
+        assert!(!error, "{rows}");
+        serde_json::from_str::<Value>(&rows).unwrap()["rows"][0].clone()
+    };
+    assert_eq!(first_row(), json!([1, MASKED, MASKED, "annie"]));
+
+    // The rule and the mark taken out of the files, by hand: nothing changes for agents.
+    settings("");
+    catalog().set_sensitive(id, &key("name"), None).unwrap();
+    catalog()
+        .set_sensitive(id, &key("email"), Some(false))
+        .unwrap();
+    assert_eq!(first_row(), json!([1, MASKED, MASKED, "annie"]));
+    // A rule added by hand applies at once.
+    settings("nick");
+    assert_eq!(first_row(), json!([1, MASKED, MASKED, MASKED]));
+
+    // Confirmed in the app: the values show.
+    confirm().unwrap();
+    assert_eq!(first_row(), json!([1, "Ann", "ann@example.com", MASKED]));
+
+    // A policy file that no longer matches: every value masks, whatever the files say.
+    let policy = dir.path().join(POLICY_FILE);
+    std::fs::write(&policy, std::fs::read_to_string(&policy).unwrap() + " ").unwrap();
+    assert_eq!(first_row(), json!([MASKED, MASKED, MASKED, MASKED]));
+    confirm().unwrap();
+    assert_eq!(first_row(), json!([1, "Ann", "ann@example.com", MASKED]));
+}
+
 /// The limits of a connection lower what agents ask for, and say so.
 #[test]
 fn a_connection_lowers_rows_and_says_so() {

@@ -270,6 +270,7 @@ impl AppState {
         if let Ok(history) = &mut *lock(&self.schema_history) {
             let _ = history.remove_connection(id);
         }
+        self.approve_agent_marks(|marks| marks.forget(id));
     }
 
     fn with_store<T>(

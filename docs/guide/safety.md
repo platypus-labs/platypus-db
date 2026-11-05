@@ -63,6 +63,14 @@ inside a MongoDB document (`user.password`) is masked too. When an agent asks wh
 working on, a column read under another name (`SELECT email AS contact`) is masked as well; if
 the statement hides it behind a subquery, the whole shared result is masked.
 
+A rule or a mark removed outside the app (an agent with file tools editing `settings.toml` or
+`catalog.db`) does not reach agents until you accept it: the app asks, and Settings › Agents ›
+**Security** lists it, with a way to accept or undo it. One added outside the app applies at once.
+This covers edits of those files and nothing more. An agent that can run commands as your user can
+read the database by other routes, or the system keychain the seal lives in: to keep values from
+such an agent, run it as another user and give the connection a database user without access to
+those columns.
+
 ## Lock the app
 
 With a master password set (see [Connect](connect.md#master-password)), Settings › **Safety** ›

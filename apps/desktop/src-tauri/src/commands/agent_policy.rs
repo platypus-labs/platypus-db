@@ -1,9 +1,12 @@
-//! The agent policy the user approved (see `platypus_mcp::policy`): sealed when the app first
-//! sees it, kept up to date with what the user changes in the app, and checked for edits made
-//! outside it that give agents more, which the page asks about.
+//! The agent policy the user approved (see `platypus_mcp::policy`), what masks for agents
+//! included: sealed when the app first sees it, kept up to date with what the user changes in the
+//! app, and checked for edits made outside it that give agents more, which the page asks about.
 
+use platypus_mcp::masking_seal::{MASK_NAMES, MASK_TYPES, SealedMarks};
 use platypus_mcp::policy::{AgentPolicy, CONFIRM_WRITES, Loosening, Seal, Sealed, UNFILTERED};
-use platypus_store::{AgentAccess, AgentLimits, AgentValues, PasswordUpdate, toml};
+use platypus_store::{
+    AgentAccess, AgentLimits, AgentValues, PasswordUpdate, SavedConnection, SettingsStore, toml,
+};
 use tauri::State;
 use uuid::Uuid;
 
@@ -92,44 +95,95 @@ impl AppState {
         }
     }
 
-    /// After the user set `key` in the app's settings to `value`.
-    pub(crate) fn approve_agent_setting(&self, key: &str, value: Option<&toml::Value>) {
+    /// After the user set `key` in the app's settings from `before` to `value`.
+    pub(crate) fn approve_agent_setting(
+        &self,
+        key: &str,
+        before: Option<&str>,
+        value: Option<&toml::Value>,
+    ) {
         if key == CONFIRM_WRITES {
             let on = value.and_then(toml::Value::as_bool).unwrap_or(true);
             self.approve_agent_change(|p| p.confirm_writes = on);
         } else if key == UNFILTERED {
             let off = value.and_then(toml::Value::as_str) == Some("off");
             self.approve_agent_change(|p| p.unfiltered_allowed = off);
+        } else if key == MASK_NAMES || key == MASK_TYPES {
+            let after = value.and_then(toml::Value::as_str);
+            self.approve_agent_change(|p| {
+                if let Some(rules) = &mut p.masking {
+                    rules.apply_edit(key, before, after);
+                }
+            });
+        }
+    }
+
+    /// Records in the seal a change of the sensitive marks the user made in the app; `change`
+    /// edits the approved marks. Nothing happens before the first seal of masking, or with a
+    /// broken seal, which the page asks about first.
+    pub(crate) fn approve_agent_marks(&self, change: impl FnOnce(&mut SealedMarks)) {
+        let Some(seal) = self.agent_seal() else {
+            return;
+        };
+        let Sealed::Approved(approved) = seal.read() else {
+            return;
+        };
+        if approved.masking.is_none() {
+            return;
+        }
+        let Some(before) = seal.marks(&approved) else {
+            return;
+        };
+        let mut marks = (*before).clone();
+        change(&mut marks);
+        if marks != *before
+            && let Err(e) = seal.write_with_marks(&approved, &marks)
+        {
+            eprintln!("agent policy: {e}");
+        }
+    }
+
+    /// The marks of `connections` in the catalog.
+    fn catalog_marks(&self, connections: &[SavedConnection]) -> CommandResult<SealedMarks> {
+        let marks = connections
+            .iter()
+            .map(|c| Ok((c.id, self.with_catalog(|s| s.sensitive_columns(c.id))?)))
+            .collect::<CommandResult<Vec<_>>>()?;
+        Ok(SealedMarks::from_catalog(marks))
+    }
+
+    /// Reads `settings.toml` again: the question is about the file, which may have changed
+    /// outside the app since it was read. A file that cannot be read leaves what the app holds.
+    fn reload_settings(&self) {
+        if let Err(e) = self.with_settings(SettingsStore::reload) {
+            eprintln!("agent policy: {}", e.message());
         }
     }
 }
 
 /// What the files give agents beyond what the user approved: edits made outside the app,
 /// which agents do not get until the user accepts them. The first call seals the files as
-/// they are; a stricter edit is sealed at once, as it needs no question.
+/// they are; a stricter edit is sealed at once, as it needs no question. Without `marks`, as at
+/// the app's start, this reads the sealed policy and compares what the app already holds, and
+/// neither the marks nor the files are read.
 #[tauri::command]
-pub fn agent_policy_changes(state: State<'_, AppState>) -> CommandResult<Vec<Loosening>> {
+pub fn agent_policy_changes(
+    state: State<'_, AppState>,
+    marks: bool,
+) -> CommandResult<Vec<Loosening>> {
     let Some(seal) = state.agent_seal() else {
         return Ok(Vec::new());
     };
+    if marks {
+        state.reload_settings();
+    }
     let current = state.current_agent_policy()?;
     let connections = state.with_store(|s| Ok(s.list().to_vec()))?;
-    let sealed = seal.read();
-    let write = match &sealed {
-        Sealed::Nothing => Some(current.clone()),
-        Sealed::Approved(approved) => {
-            let tightened = current.within(approved);
-            (tightened != *approved).then_some(tightened)
-        }
-        Sealed::Broken => None,
-    };
-    if let Some(policy) = write {
-        // Without a keychain there is nothing to compare with: agents get the files.
-        if let Err(e) = seal.write(&policy) {
-            eprintln!("agent policy: {e}");
-        }
-    }
-    Ok(sealed.loosenings(&current, &connections))
+    Ok(seal.review(&current, &connections, marks, &|| {
+        state
+            .catalog_marks(&connections)
+            .map_err(|e| e.message().to_owned())
+    }))
 }
 
 /// The user's answer to [`agent_policy_changes`]: `accept` seals the files as they are;
@@ -140,11 +194,15 @@ pub fn answer_agent_policy(state: State<'_, AppState>, accept: bool) -> CommandR
     let seal = state
         .agent_seal()
         .ok_or_else(|| CommandError::new("store", "the profile's folder is not known"))?;
+    state.reload_settings();
     let current = state.current_agent_policy()?;
-    let policy = if accept {
-        current
+    let connections = state.with_store(|s| Ok(s.list().to_vec()))?;
+    let file = state.catalog_marks(&connections)?;
+    let (policy, marks) = if accept {
+        (current, file)
     } else {
-        let honored = seal.read().honored(&current);
+        let undo = seal.undo(&current, &file);
+        let honored = undo.policy;
         state.with_store(|s| {
             let back: Vec<_> = s
                 .list()
@@ -175,10 +233,26 @@ pub fn answer_agent_policy(state: State<'_, AppState>, accept: bool) -> CommandR
                 // The default again: asked before running.
                 s.set(UNFILTERED, None)?;
             }
+            if let (Some(rules), Some(files)) = (&honored.masking, &current.masking) {
+                for (key, rule, file) in [
+                    (MASK_NAMES, &rules.names, &files.names),
+                    (MASK_TYPES, &rules.types, &files.types),
+                ] {
+                    if rule != file {
+                        s.set(key, Some(toml::Value::String(rule.clone())))?;
+                    }
+                }
+            }
             Ok(())
         })?;
-        honored
+        state.with_catalog(|c| {
+            for (id, key, mark) in &undo.restore {
+                c.set_sensitive(*id, key, *mark)?;
+            }
+            Ok(())
+        })?;
+        (honored, undo.marks)
     };
-    seal.write(&policy)
+    seal.write_with_marks(&policy, &marks)
         .map_err(|e| CommandError::new("store", e))
 }
