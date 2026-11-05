@@ -36,6 +36,7 @@ const SCOPES: Record<string, string> = {
   "project.add": msg("Project rail: add"),
   script: msg("Saved script"),
   "dashboard.widget": msg("Dashboard widget"),
+  help: msg("Help"),
 };
 
 const scopeLabel = (scope: ActionScope) => t(SCOPES[scope] ?? scope);

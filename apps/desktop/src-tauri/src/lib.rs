@@ -343,6 +343,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::agents::take_agent_proposals,
         commands::agents::proposed_viewer,
         commands::diagnostics::diagnostics_info,
+        commands::external::open_external_url,
         commands::diagnostics::dismiss_crash,
         commands::diagnostics::log_error,
         commands::diagnostics::save_diagnostics,

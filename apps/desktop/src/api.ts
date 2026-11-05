@@ -2402,6 +2402,8 @@ export interface Diff {
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
+  /** Opens an `http`, `https` or `mailto` address in the system browser or mail client. */
+  openExternalUrl: (url: string) => invoke<void>("open_external_url", { url }),
   diagnosticsInfo: () => invoke<DiagnosticsInfo>("diagnostics_info"),
   dismissCrash: () => invoke<void>("dismiss_crash"),
   logError: (message: string) => invoke<void>("log_error", { message }),

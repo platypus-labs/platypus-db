@@ -3263,6 +3263,18 @@ const zh: Record<string, string> = {
   "At least {n} characters.": "至少 {n} 个字符。",
   "Enter a number.": "请输入数字。",
   "This value is not valid.": "此值无效。",
+  // Help
+  "User guide": "用户指南",
+  "What's new": "新功能",
+  "Report a bug…": "报告错误…",
+  "The guide is not included in this build.": "此版本不包含指南。",
+  "The guide is written in English.": "指南为英文。",
+  "This page is not part of the guide that comes with the app: {path}": "此页面不属于应用自带的指南：{path}",
+  "What's new in {version}": "{version} 版新功能",
+  "There are no notes for version {version} yet. These are the changes not released yet.": "版本 {version} 还没有说明。以下是尚未发布的更改。",
+  "The changelog has nothing about this version.": "更新日志中没有关于此版本的内容。",
+  "Open the guide page about this": "打开与此相关的指南页面",
+  "Help": "帮助",
 };
 
 export default zh;

@@ -20,6 +20,7 @@ pub mod diagnostics;
 pub mod drivers;
 pub mod explain;
 pub mod export;
+pub mod external;
 pub mod files;
 pub mod geometry;
 pub mod git;
