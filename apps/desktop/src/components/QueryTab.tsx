@@ -53,7 +53,7 @@ import { AcrossBar } from "../analysis/CrossQueryDialog";
 import type { AcrossOrigin } from "../analysis/acrossModel";
 import { SavedResultBar } from "../analysis/SavedResults";
 import { useResultSql } from "../analysis/ResultSql";
-import { provideContext } from "../agents/context";
+import { provideContext, viewerTable } from "../agents/context";
 import { type TabParts, tabSnapshot } from "../agents/contextTab";
 import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
@@ -147,6 +147,8 @@ export interface QueryTabModel extends TabBase {
    *  once as pending changes; cleared then. Not persisted: a tab opened again does not
    *  apply them twice. */
   proposed?: ProposedEdits | null;
+  /** The agent that made `proposed`: named while the grid applies it. */
+  proposedBy?: string;
   /** Data viewer: its own query, the one it opened with or the last rewrite of it by the header
    *  sort or a quick filter. Its rows are the table's rows; another query typed in the tab is
    *  not the viewer's. */
@@ -370,7 +372,12 @@ export function QueryTab({
   resultsNow.current = { results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database };
   // An agent the user allows reads the editor and the grid as they are when it asks.
   const sharedNow = useRef<Omit<TabParts, "editor">>({ connection, title: null, result: view });
-  sharedNow.current = { connection, title: tab.filePath ? basename(tab.filePath) : (tab.title ?? null), result: view };
+  sharedNow.current = {
+    connection,
+    title: tab.filePath ? basename(tab.filePath) : (tab.title ?? null),
+    result: view,
+    table: viewerTable(!!tab.table, tab.tableRef),
+  };
   useEffect(
     () =>
       provideContext({
@@ -1653,7 +1660,7 @@ export function QueryTab({
         else reload();
       },
       onDirtyChange: setUnsaved,
-      proposed: viewer && tab.proposed ? { edits: tab.proposed, done: () => onChange({ proposed: null }) } : undefined,
+      proposed: viewer && tab.proposed ? { edits: tab.proposed, agent: tab.proposedBy ?? "", done: () => onChange({ proposed: null }) } : undefined,
     };
   }
 

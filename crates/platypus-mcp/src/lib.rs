@@ -27,6 +27,7 @@ mod ident;
 mod library;
 pub mod link;
 mod masking;
+pub mod masking_seal;
 pub mod output;
 pub mod plan;
 pub mod policy;
@@ -64,7 +65,7 @@ pub use library::{
     ReadScriptArgs, SCRIPT_BYTES, ScriptContent, ScriptInfo,
 };
 pub use link::{
-    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextPart, ContextRequest, ContextResult,
+    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextPart, ContextRequest, ContextResult, ContextTable,
     ContextVerdict, DIAGRAM_TIMEOUT, DiagramAnswer, DiagramColumn, DiagramKey, DiagramRequest,
     DiagramTable, HttpLink, OpenSession, UserContext, Verdict, WriteRequest,
 };

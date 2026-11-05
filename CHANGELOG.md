@@ -43,6 +43,22 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Fixed
 
+- **Agents**: the first page of a long `run_query` result no longer waits for the whole read-ahead
+  for `next_page`: the cursor keeps rows for at most 250 ms after the page is full, 10,000 rows or
+  4 MB, and its last page says the rest was not kept and to narrow the query.
+- **Agents**: while a change proposed by an agent waits to apply, its data viewer tab says
+  "Applying the changes proposed by <agent>…" until the rows show as pending edits or the reason
+  they could not be applied.
+- **Security**: `profile_table` on MongoDB no longer shows sensitive fields inside a document. A
+  mark on `user.password`, or a rule that matches the nested name `password`, now keeps those
+  values out of the figures of the parent object or array (top values, minimum, maximum). `run_query`
+  and `sample_rows` mask the same nested fields in a document or array column, at any depth.
+- **Security**: `get_user_context` follows the user's statement to the columns it reads, as
+  `run_query` does. `SELECT password AS p …` on the open tab no longer shares the value under the
+  alias, and a column that only has a sensitive name, from a table with no mark, is no longer
+  masked for nothing when the statement or the viewer's table says which table it is. A subquery
+  that names a sensitive column, or a statement that does not parse and names one, masks the whole
+  shared result.
 - Snowflake, BigQuery, Databricks, Trino and other ADBC connections no longer offer to edit rows in
   the grid: a save needs a transaction, which they do not have. Agents can no longer propose rows
   to edit on them, or on ClickHouse.
@@ -54,6 +70,12 @@ All notable changes to PlatypusDB are listed here. The format follows
   two URLs together are refused. Saving also refuses a name, database or user that holds a URL
   with its password. A connection saved this way before keeps the URL in its Database field:
   remove it there, and change that password if the file was shared.
+- **Security**: an agent with file access can no longer lift the masking by editing the rules in
+  `settings.toml` or the sensitive marks in `catalog.db`. Rules and marks are sealed with the rest
+  of the agent policy: one removed or narrowed outside the app waits until you accept it in Settings
+  › Agents › Security, and one added applies at once. A seal that no longer matches masks every
+  value for agents until you answer. This does not stop an agent that can run commands as your
+  user, which can read the database by other routes or the keychain (see `docs/AGENTS.md`).
 
 ## [0.4.1] - 2026-11-04
 

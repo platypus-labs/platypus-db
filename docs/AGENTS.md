@@ -14,11 +14,13 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - **Edits outside the app wait for you**: `connections.toml` and `settings.toml` are files a
   coding agent with file tools can write, so the app keeps what you allowed agents (agent
   access, "Ask before agents change data", the Safety setting for `UPDATE` or `DELETE` without
-  `WHERE`) in `agent-policy.json`, sealed by its SHA-256 in the system keychain. Agents get
-  what the files say, never more than what is sealed; an edit that gives them more is asked
-  about when the app starts or its window gets focus (accept it, or undo it), and an edit that
-  gives them less applies at once. Without a keychain there is no seal, and the files are
-  taken as they are.
+  `WHERE`, what shows or masks sensitive values) in `agent-policy.json`, sealed by its SHA-256 in
+  the system keychain. Agents get what the files say, never more than what is sealed; an edit
+  that gives them more is asked about when the app starts or its window gets focus, and listed
+  in Settings → Agents → Security (accept it, or undo it), and an edit that gives them less
+  applies at once. Without a keychain there is no seal, and the files are taken as they are.
+  This keeps an agent from raising its access by editing those files. It is no protection
+  against one that can run commands as you: see "What the seal does not protect against" below.
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
 - Agents' queries are in the history with the agent's name, and every tool call is in the
   agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
@@ -124,10 +126,13 @@ A result that `max_rows` or `max_bytes` cut returns a `cursor` (the `cursor` fie
 `More rows` line in text; a connection with its own `max_rows` limit gives none, since that
 limit bounds the result). `next_page` (`cursor`, optional `max_rows`, `max_bytes`, `format`)
 reads the next rows of the same result instead of running the statement again. The first read
-keeps the rows after its page, up to 10,000 more rows or 8 MB, inside the statement's usual
-read-only transaction, which ends as always: the cursor serves its pages from memory and holds
-nothing on the connection, so its pages do not change if the data does. When that cap ended the
-result, the answers say so (narrow the query to read on). A page goes through the same masking
+keeps the rows after its page, up to 10,000 more rows, 4 MB, or 250 ms after the page is full
+(whichever comes first, so the first page never waits longer than that for rows it does not
+show), inside the statement's usual read-only transaction, which ends as always: the cursor
+serves its pages from memory and holds nothing on the connection, so its pages do not change if
+the data does. When one of those caps ended the result, the first page says the cursor keeps only
+part of it, and the last page says the rest was not kept (narrow the query to read on), never an
+empty page that looks like the end. A page goes through the same masking
 (the sensitive columns are decided once, with the first page), the connection's `max_rows` and
 `max_bytes`, and counts as a call for `calls_per_minute`. A cursor belongs to the MCP session and
 the connection it came from; an unknown, expired (5 minutes after its last use), closed (with its
@@ -202,7 +207,9 @@ rules), gives its counts only (`nulls`, `distinct`, `empty`): no minimum, maximu
 pattern or length. If the marks cannot be read the call fails rather than show values; a
 connection set to show sensitive values shows them here too. Values are cut at 1,000
 characters and have the connection's secrets masked. The connection's `max_rows` also caps the sample.
-On MongoDB a column is a top-level field: a sensitive field inside a document is not told apart.
+On MongoDB a column is a top-level field, and a sensitive field inside a document or array (a mark
+on `user.password`, or a rule that matches the nested name `password`) is masked in the figures of
+its parent, at any depth; it has no figures of its own.
 
 `estimate_change` (`connection`, `sql`) is a dry run: it returns, without running anything, what the
 confirmation dialog would show the user for a change. It asks the database for the plan
@@ -250,14 +257,39 @@ The results of `run_query` and `sample_rows`, and the editor, selection and resu
 NULL, as in the grid while it masks. The names and types of Settings › Safety count, and the
 user's marks; where a statement reads one table a mark on its column counts over the rules, a
 "not sensitive" mark included. In `run_query` and `sample_rows` the name is enough to follow a
-column through the select list or a `RETURNING` (`email AS contact`, `upper(email)`). What
-`get_user_context` shares of a result is known by its column names only, so there the alias and
-the type rules do not count. A result says which columns it masked: `masked_columns` in JSON, a
+column through the select list or a `RETURNING` (`email AS contact`, `upper(email)`). The result
+that `get_user_context` shares is told the same way through the editor's text and the selection (which
+of them ran is not known, so a column either one masks is masked); the type rules do not count, as
+the app sends no types. A subquery or a statement that does not parse, when it names a sensitive
+column, masks the whole shared result. Where the statement reads two tables the marks of both
+count, so a column can be masked for nothing. In MongoDB documents and arrays, a sensitive field
+at any depth reads `••••••` in the document. A result says which columns it masked: `masked_columns` in JSON, a
 last line in text, and a note in `get_user_context`.
 
 Settings › Agents › Security can show the values on one connection. It is part of what the user
 approves, like the agent access: written in `connections.toml` by hand it changes nothing
 until the user accepts it in the app.
+
+The rules and the marks are approved too. `settings.toml` and `catalog.db` are files an agent can
+edit, so the rules are sealed in `agent-policy.json` and the marks in `agent-policy-marks.json`,
+whose hash is in the policy. Agents get the union of what is sealed and what the files say: a
+rule or a mark added by hand applies at once, and one removed or narrowed by hand, or a mark
+"not sensitive" added by hand, changes nothing until the user accepts it in Settings › Agents ›
+Security or in the question the app asks. What the user changes in the app is sealed as it is
+saved. The first time this version runs on a profile it takes the files as they are as the first
+seal, once, without asking. When the policy or the marks file no longer matches its seal, what
+was approved cannot be told, since it may be what was removed: every value reads masked until
+the user answers. Undoing then leaves the app's default rules and what the files add. Without a
+keychain there is no seal, and the rules and marks of the files apply as they are.
+
+#### What the seal does not protect against
+
+The seal stops an edit of the profile's files from lifting the masking. It stops nothing else. An
+agent that can run commands as your user can read the database by other routes, with a client of
+its own and the credentials or files it finds, and can read or change the keychain entry, after
+which it can write a seal of its own. Masking through the MCP server also has the limits below.
+For a real boundary, run the agent as another user, and give the connection a database user
+without access to those columns.
 
 ### Limits per connection
 
@@ -288,8 +320,7 @@ check. Changes are not checked here: they already ask the user. The cost unit is
 own, so it is not comparable between PostgreSQL and MySQL.
 
 Masking prevents accidents; it is not a wall. A subquery that renames the column, a second
-branch of a `UNION`, a `WHERE` that tests the value, or a document field below the top level of
-MongoDB still let a value through. For a real boundary, give the connection a database user
+branch of a `UNION`, or a `WHERE` that tests the value still let a value through. For a real boundary, give the connection a database user
 without access to those columns.
 
 The history and the agents' call log never keep a password a statement sets

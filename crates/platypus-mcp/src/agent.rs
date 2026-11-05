@@ -29,9 +29,10 @@ use crate::error::{AgentError, Result};
 use crate::estimate;
 use crate::guard::{self, Asked, CallWindows};
 use crate::link::{AppLink, CLOSED, DiagramAnswer, DiagramRequest, Verdict, WriteRequest};
+use crate::masking_seal::MaskingSeal;
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
-use crate::policy::{AgentPolicy, Seal};
+use crate::policy::{AgentPolicy, Seal, Sealed};
 use crate::profile::Profile;
 use crate::query::{self, Limits, RunError};
 use crate::redact::Redactor;
@@ -384,6 +385,8 @@ pub struct Agent {
     session: String,
     /// The policy the user approved in the app, which edits of the files cannot loosen.
     seal: Seal,
+    /// What the seal held when the current call checked it: masking needs no second check.
+    sealed: Mutex<Option<Arc<Sealed>>>,
     /// The calls of the last minute on each connection, for `calls_per_minute`.
     pub(crate) windows: CallWindows,
     /// The cursors of cut results (see `cursor.rs`).
@@ -450,6 +453,7 @@ impl Agent {
             allowed: Mutex::default(),
             session: Uuid::new_v4().to_string(),
             seal,
+            sealed: Mutex::default(),
             windows: CallWindows::default(),
             cursors: crate::cursor::Cursors::default(),
         }
@@ -467,7 +471,18 @@ impl Agent {
     fn policy(&self, store: &ConnectionStore) -> AgentPolicy {
         let settings = self.profile.settings();
         let current = AgentPolicy::current(store.list(), settings.as_ref());
-        self.seal.read().honored(&current)
+        let sealed = self.seal.read();
+        let policy = sealed.honored(&current);
+        *locked(&self.sealed) = Some(Arc::new(sealed));
+        policy
+    }
+
+    /// What the seal says about masking: as of this call's check of the seal, which every tool
+    /// makes to find its connection, so this only looks up what is loaded.
+    pub(crate) fn masking_seal(&self) -> MaskingSeal {
+        let checked = locked(&self.sealed).clone();
+        let sealed = checked.unwrap_or_else(|| Arc::new(self.seal.read()));
+        self.seal.masking(&sealed)
     }
 
     /// The saved connections, each with the agent access agents get on it ([`Self::policy`]),

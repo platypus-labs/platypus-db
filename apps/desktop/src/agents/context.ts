@@ -38,6 +38,20 @@ export interface UserContext {
   editor: string | null;
   selection: string | null;
   result: ContextResult | null;
+  /** The table of a data viewer tab; left out for a tab with a free query. */
+  table?: ContextTable;
+}
+
+/** The table a data viewer tab shows (`platypus_mcp::ContextTable`). */
+export interface ContextTable {
+  schema: string;
+  name: string;
+}
+
+/** The table a tab tells the server it reads: its data viewer's table, even once the user
+ *  changed the filter or the `WHERE`; none for an editor tab with a free query. */
+export function viewerTable(viewer: boolean, ref: { schema: string; name: string } | null | undefined): ContextTable | undefined {
+  return viewer && ref ? { schema: ref.schema, name: ref.name } : undefined;
 }
 
 /** The user's answer (`platypus_mcp::ContextVerdict`). */
@@ -58,6 +72,8 @@ export interface TabSnapshot {
   result: ContextResult | null;
   /** The tab's connection is closed to agents: none of its content may be shared. */
   closedToAgents?: boolean;
+  /** The table of a data viewer tab (see `viewerTable`). */
+  table?: ContextTable;
 }
 
 /** A tab whose work can be shared: the SQL editors register themselves. */
@@ -124,6 +140,7 @@ export function buildContext(parts: readonly ContextPart[], snapshot: TabSnapsho
     editor: snapshot && asked("editor") ? text(snapshot.editor) : null,
     selection: snapshot && asked("selection") && snapshot.selection !== "" ? text(snapshot.selection) : null,
     result: snapshot && asked("result") ? snapshot.result : null,
+    ...(snapshot?.table ? { table: snapshot.table } : {}),
   };
 }
 

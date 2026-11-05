@@ -58,7 +58,21 @@ run **Snapshots before changes…** from the command palette, to get the script 
    `*token*`, `*email*` and others by default; `*` is any characters) and by type. You can also mark a column in its table's tab.
 
 Agents read the sensitive columns masked too, unless you tick **Show agents the values of
-sensitive columns** for that connection in Settings › Agents › **Security**.
+sensitive columns** for that connection in Settings › Agents › **Security**. A sensitive field
+inside a MongoDB document (`user.password`) is masked too. When an agent asks what you are
+working on, a column read under another name (`SELECT email AS contact`) is masked as well; if
+the statement hides it behind a subquery, the whole shared result is masked.
+
+A rule or a mark removed outside the app (an agent with file tools editing `settings.toml` or
+`catalog.db`) does not reach agents until you accept it: the app asks, and Settings › Agents ›
+**Security** lists it, with a way to accept or undo it. One added outside the app applies at once.
+This covers edits of those files and nothing more. An agent that can run commands as your user can
+read the database by other routes, or the system keychain the seal lives in: to keep values from
+such an agent, run it as another user and give the connection a database user without access to
+those columns.
+
+An answer holds for what the question listed: if the files change again while it is open, **Accept**
+accepts nothing and the list is shown again.
 
 ## Lock the app
 

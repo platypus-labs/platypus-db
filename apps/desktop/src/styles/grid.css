@@ -272,6 +272,14 @@
   color: var(--modified-fg);
 }
 
+.edit-waiting {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  opacity: 0.8;
+}
+
 .edit-error {
   overflow: hidden;
   text-overflow: ellipsis;

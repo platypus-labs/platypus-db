@@ -3,6 +3,7 @@
 //! connection agents may not use is not shown, and a script is never written from here.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 
 use platypus_store::{
@@ -14,9 +15,10 @@ use uuid::Uuid;
 
 use crate::agent::{Agent, may_use};
 use crate::error::{AgentError, Result};
+use crate::masking_seal::{MaskingRules, MaskingSeal};
 use crate::redact::Redactor;
 use platypus_sql::Dialect;
-use platypus_sql::sensitive::{DEFAULT_NAMES, NameRules, mask_literals};
+use platypus_sql::sensitive::{NameRules, mask_literals};
 
 /// Bytes of a script `read_script` returns at most.
 pub const SCRIPT_BYTES: usize = 256 * 1024;
@@ -159,6 +161,11 @@ impl SensitiveNames {
         Self { rules, marked }
     }
 
+    /// Whether no name can be sensitive: no rule and no mark.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.marked.is_empty() && self.rules.is_empty()
+    }
+
     pub(crate) fn is(&self, name: &str) -> bool {
         self.marked.contains(&name.to_lowercase()) || self.rules.matches(name)
     }
@@ -184,6 +191,10 @@ pub(crate) struct Sensitivity {
     rules: NameRules,
     types: NameRules,
     catalog: Option<platypus_store::CatalogStore>,
+    /// What the user approved, which edits of the files cannot lift.
+    seal: MaskingSeal,
+    /// The marks [`Self::names`] read, for the next [`Self::marks`] of the call.
+    read: std::cell::RefCell<HashMap<Uuid, Vec<platypus_store::SensitiveColumn>>>,
 }
 
 impl Sensitivity {
@@ -192,24 +203,37 @@ impl Sensitivity {
         &self.types
     }
 
-    /// The user's marks on the columns of `connection`. Marks that cannot be read would let
-    /// values through: the call fails instead.
+    /// The user's marks on the columns of `connection`, never fewer than they approved. Marks
+    /// that cannot be read would let values through: the call fails instead.
     pub(crate) fn marks(&self, connection: Uuid) -> Result<Vec<platypus_store::SensitiveColumn>> {
-        let Some(catalog) = &self.catalog else {
-            return Ok(Vec::new());
+        match self.read.borrow_mut().remove(&connection) {
+            Some(marks) => Ok(marks),
+            None => self.read_marks(connection),
+        }
+    }
+
+    fn read_marks(&self, connection: Uuid) -> Result<Vec<platypus_store::SensitiveColumn>> {
+        let file = match &self.catalog {
+            Some(catalog) => catalog.sensitive_columns(connection).map_err(|e| {
+                AgentError::Store(format!("cannot read the sensitive columns: {e}"))
+            })?,
+            None => Vec::new(),
         };
-        catalog
-            .sensitive_columns(connection)
-            .map_err(|e| AgentError::Store(format!("cannot read the sensitive columns: {e}")))
+        Ok(self.seal.marks(connection, file))
     }
 
     /// The sensitive names of `connections`.
     pub(crate) fn names(&self, connections: &[Uuid]) -> Result<SensitiveNames> {
         let mut marked = std::collections::HashSet::new();
+        let mut read = self.read.borrow_mut();
         for id in connections {
+            let marks = match read.entry(*id) {
+                Entry::Occupied(marks) => marks.into_mut(),
+                Entry::Vacant(slot) => slot.insert(self.read_marks(*id)?),
+            };
             marked.extend(
-                self.marks(*id)?
-                    .into_iter()
+                marks
+                    .iter()
                     .filter(|m| m.sensitive)
                     .map(|m| m.key.column.to_lowercase()),
             );
@@ -222,16 +246,18 @@ impl Sensitivity {
 }
 
 impl Agent {
-    /// The rules of the settings and the catalog of the user's marks.
+    /// The rules of the settings and the catalog of the user's marks, never less than the user
+    /// approved in the app (see [`crate::masking_seal`]).
     pub(crate) fn sensitivity(&self) -> Result<Sensitivity> {
         let settings = self.profile().settings();
-        let rule = |key: &str| settings.as_ref().and_then(|s| s.get::<String>(key));
+        let seal = self.masking_seal();
+        let rules = seal.rules(MaskingRules::of(settings.as_ref()));
         Ok(Sensitivity {
-            rules: NameRules::new(
-                &rule("safety.mask_names").unwrap_or_else(|| DEFAULT_NAMES.to_owned()),
-            ),
-            types: NameRules::new(&rule("safety.mask_types").unwrap_or_default()),
+            rules: NameRules::new(&rules.names),
+            types: NameRules::new(&rules.types),
             catalog: self.profile().catalog()?,
+            seal,
+            read: std::cell::RefCell::default(),
         })
     }
 
@@ -387,7 +413,7 @@ impl Agent {
             HashMap::new();
         let mut items = Vec::new();
         for e in entries {
-            if let std::collections::hash_map::Entry::Vacant(slot) = known.entry(e.connection_id) {
+            if let Entry::Vacant(slot) = known.entry(e.connection_id) {
                 let entry = match store.get(e.connection_id) {
                     Some(saved) => {
                         // Only what needs no secret lookup: a URL's password, and a password

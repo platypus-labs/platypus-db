@@ -4,17 +4,20 @@ import {
   toCommandError,
   type AgentAccess,
   type AgentBlocker,
+  type AgentPolicyChange,
   type SavedConnection,
   type StaleRegistration,
 } from "../api";
 import { isProduction } from "../connections";
 import { DriverIcon } from "../components/DriverPicker";
+import { loadSettings } from "../settings";
 import { workbench } from "../workbench";
 import { AGENT_ACCESS, agentAccessLabel, effectiveAgentAccess, isCapped } from "./access";
 import { AgentActivity } from "./AgentActivity";
 import { AgentLimitFields } from "./AgentLimitFields";
 import { AgentBridge } from "./AgentBridge";
 import { AgentClients } from "./AgentClients";
+import { agentPolicyQuestion, answerAgentPolicy, onAgentPolicyAnswered } from "./policyWatch";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 import { CopyBlock } from "./CopyBlock";
 import { msg, t, tNodes } from "../i18n";
@@ -247,6 +250,51 @@ function AgentSecurity({
   );
 }
 
+/** The edits made outside the app that wait for the user's answer, the question the app asks
+ *  when its window gets focus, kept here until it is answered. */
+function AgentPolicyChanges({ onUndone, onError }: { onUndone: () => Promise<void>; onError: (message: string) => void }) {
+  const [changes, setChanges] = useState<AgentPolicyChange[]>([]);
+  const [answering, setAnswering] = useState(false);
+  useEffect(() => {
+    const load = () => {
+      api.agentPolicyChanges(true).then(setChanges, (e: unknown) => onError(toCommandError(e).message));
+    };
+    load();
+    window.addEventListener("focus", load);
+    const stop = onAgentPolicyAnswered(load);
+    return () => {
+      window.removeEventListener("focus", load);
+      stop();
+    };
+    // `onError` is the panel's state setter: it never changes what it does.
+  }, []);
+  if (changes.length === 0) return null;
+  const answer = (accept: boolean) => {
+    setAnswering(true);
+    answerAgentPolicy(accept, changes, onUndone)
+      .catch((e: unknown) => {
+        onError(toCommandError(e).message);
+        // The files may have changed since this list: what it says must be what is answered.
+        return api.agentPolicyChanges(true).then(setChanges);
+      })
+      .catch((e: unknown) => onError(toCommandError(e).message))
+      .finally(() => setAnswering(false));
+  };
+  return (
+    <div className="notice warn small agent-policy-changes" data-agent-policy-changes>
+      <p>{agentPolicyQuestion(changes)}</p>
+      <div className="actions">
+        <button type="button" className="primary" data-agent-policy="undo" disabled={answering} onClick={() => answer(false)}>
+          {t("Undo the change")}
+        </button>
+        <button type="button" className="danger" data-agent-policy="accept" disabled={answering} onClick={() => answer(true)}>
+          {t("Accept the change")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** The Agents page of the Settings: how to connect agents (Setup), what they did
  *  (Activity) and the access each connection gives them (Security). */
 export function AgentsPanel() {
@@ -307,6 +355,17 @@ export function AgentsPanel() {
         {page === "activity" && <AgentActivity onSetup={() => setPage("setup")} />}
       </div>
       <div className="dialog-page" data-agents-panel="security" hidden={page !== "security"}>
+        {page === "security" && (
+          <AgentPolicyChanges
+            onUndone={async () => {
+              await loadSettings();
+              const all = await api.listConnections();
+              setConnections(all);
+              workbench().setConnections(all);
+            }}
+            onError={setError}
+          />
+        )}
         <AgentSecurity
           connections={connections}
           blockers={blockers}

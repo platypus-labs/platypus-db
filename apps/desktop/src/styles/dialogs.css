@@ -1602,6 +1602,12 @@ button.primary.danger:hover:not(:disabled) {
   align-items: flex-start;
 }
 
+.agent-policy-changes .actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
+}
+
 .agent-cards {
   flex: 1;
   min-width: 0;

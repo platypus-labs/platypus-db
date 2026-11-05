@@ -1138,7 +1138,10 @@ export type AgentPolicyChange =
   | { kind: "confirm_writes" }
   | { kind: "unfiltered" }
   | { kind: "values_shown"; id: string; name: string }
-  | { kind: "agent_limits"; id: string; name: string };
+  | { kind: "agent_limits"; id: string; name: string }
+  | { kind: "masking_rules"; by: "name" | "type"; patterns: string[] }
+  | { kind: "sensitive_marks"; id: string; name: string; count: number; columns: string[] }
+  | { kind: "masking_lost" };
 
 /** The limits of a connection for agents; each can only tighten the fixed caps. */
 export interface AgentLimits {
@@ -2524,8 +2527,8 @@ export const api = {
     invoke<Workspace>("share_project", { projectId, folder, shareUser }),
   openSharedProject: (folder: string) => invoke<OpenedShared>("open_shared_project", { folder }),
   refreshSharedProjects: () => invoke<SharedNotice[]>("refresh_shared_projects"),
-  agentPolicyChanges: () => invoke<AgentPolicyChange[]>("agent_policy_changes"),
-  answerAgentPolicy: (accept: boolean) => invoke<void>("answer_agent_policy", { accept }),
+  agentPolicyChanges: (marks: boolean) => invoke<AgentPolicyChange[]>("agent_policy_changes", { marks }),
+  answerAgentPolicy: (accept: boolean, changes: AgentPolicyChange[]) => invoke<void>("answer_agent_policy", { accept, changes }),
   saveProject: (project: Project) => invoke<Project[]>("save_project", { project }),
   /** Deletes a project; its connections stay. */
   deleteProject: (id: string) => invoke<Project[]>("delete_project", { id }),

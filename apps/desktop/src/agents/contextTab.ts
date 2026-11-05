@@ -6,7 +6,7 @@ import { api, type SavedConnection } from "../api";
 import type { Result } from "../components/ResultPanel";
 import type { SqlEditorHandle } from "../editor/SqlEditor";
 import { effectiveAgentAccess } from "./access";
-import { resultRows, selectionText, RESULT_ROWS, type ContextResult, type TabSnapshot } from "./context";
+import { resultRows, selectionText, RESULT_ROWS, type ContextResult, type ContextTable, type TabSnapshot } from "./context";
 
 /** The first rows of the result on screen; `null` when it has none to show (or they were
  *  released meanwhile). */
@@ -32,9 +32,11 @@ export interface TabParts {
   editor: SqlEditorHandle | null;
   /** The result the grid shows. */
   result: Result | undefined;
+  /** The table of a data viewer tab. */
+  table?: ContextTable;
 }
 
-export async function tabSnapshot({ connection, title, editor, result }: TabParts): Promise<TabSnapshot> {
+export async function tabSnapshot({ connection, title, editor, result, table }: TabParts): Promise<TabSnapshot> {
   const closedToAgents = effectiveAgentAccess(connection) === "off";
   const text = editor?.getText() ?? "";
   const { from, to } = editor?.getSelection() ?? { from: 0, to: 0 };
@@ -47,5 +49,6 @@ export async function tabSnapshot({ connection, title, editor, result }: TabPart
     // Nothing is read for a tab that cannot be shared.
     result: closedToAgents ? null : await shownRows(result),
     closedToAgents,
+    ...(table ? { table } : {}),
   };
 }

@@ -18,6 +18,7 @@ const notice = `(${visibleTab}?.querySelector('.edit-notice')?.textContent ?? ''
 const button = (label) => `${visibleTab}.querySelector('.edit-bar button[aria-label="${label}"]')`;
 const tabTitled = (title) =>
   `[...document.querySelectorAll('[role="tab"]')].some(t => t.textContent.includes(${JSON.stringify(title)}))`;
+const waitingSign = `(${visibleTab}?.querySelector('.edit-waiting')?.textContent ?? '')`;
 const toasts = `[...document.querySelectorAll('.toaster .toast')].map(t => t.textContent).join(' | ')`;
 
 export const skip = () => noMcp();
@@ -69,6 +70,22 @@ async function fileHolds(page, dir, rows) {
   assert.deepEqual(people(dir), rows);
 }
 
+/** Records every text the "applying" sign shows from now on, whatever tab it is on, so a sign that
+ *  comes and goes between two polls is still seen. Cleared first: what an earlier proposal showed
+ *  is not this one's. */
+async function watchSign(page) {
+  await page.eval(`(() => {
+    window.__signs = [];
+    window.__signObserver?.disconnect();
+    window.__signObserver = new MutationObserver(() => {
+      for (const e of document.querySelectorAll('.edit-waiting')) {
+        if (!window.__signs.includes(e.textContent)) window.__signs.push(e.textContent);
+      }
+    });
+    window.__signObserver.observe(document.body, { subtree: true, childList: true, characterData: true });
+  })()`);
+}
+
 /** Proposes through the MCP server and waits for the tab the app opens for it. */
 async function propose(page, mcp, args, title) {
   const r = await mcp.call("propose_edits", { connection: "Edits", schema: "main", table: "people", title, ...args });
@@ -91,13 +108,13 @@ async function opened(page, title) {
 }
 
 /** Writes a proposal into the profile's file as a program other than the app would. */
-function tamper(dir, edits, title) {
+function tamper(dir, edits, title, agent = "intruder") {
   const db = new DatabaseSync(join(dir, "agent-calls.db"));
   try {
     db.exec("PRAGMA busy_timeout = 10000");
     db.prepare(
-      "INSERT INTO proposals (agent, connection_id, title, sql, edits, created_at) VALUES ('intruder', ?, ?, '', ?, ?)",
-    ).run(ID, title, typeof edits === "string" ? edits : JSON.stringify(edits), Date.now());
+      "INSERT INTO proposals (agent, connection_id, title, sql, edits, created_at) VALUES (?, ?, ?, '', ?, ?)",
+    ).run(agent, ID, title, typeof edits === "string" ? edits : JSON.stringify(edits), Date.now());
   } finally {
     db.close();
   }
@@ -118,6 +135,7 @@ async function taken(page, dir) {
 }
 
 async function threeKinds(page, dir, mcp, shots) {
+  await watchSign(page);
   const text = await propose(
     page,
     mcp,
@@ -132,6 +150,11 @@ async function threeKinds(page, dir, mcp, shots) {
   // The three kinds are pending in the grid, the table is as it was.
   await page.waitFor(`${editBar}.includes('3 rows changed (1 modified, 1 new, 1 deleted)')`, 30_000);
   assert.equal(await page.eval(`${notice}`), "", "nothing was left out");
+  // The sign was there while the proposal waited, named its agent, and is gone once applied.
+  const signs = await page.eval(`window.__signs`);
+  assert.equal(signs.length, 1, JSON.stringify(signs));
+  assert.equal(signs[0], "Applying the changes proposed by e2e-agent…");
+  assert.equal(await page.eval(waitingSign), "", "the sign goes with the wait");
   assert.deepEqual(people(dir), ORIGINAL);
   assert.ok(await page.eval(`${visibleTab}.querySelector('.statusbar span') !== null`));
   if (shots) await page.screenshot(join(shots, "propose-edits-pending.png"));
@@ -197,6 +220,8 @@ async function whatCannotBeApplied(page, dir, mcp) {
     "Partly stale",
   );
   await page.waitFor(`${notice}.includes('3 proposed rows could not be applied')`, 30_000);
+  // The result notice takes the sign's place: the two are never shown together.
+  assert.equal(await page.eval(waitingSign), "");
   const said = await page.eval(notice);
   assert.match(said, /no row of the table has that key/);
   assert.match(said, /the value for age does not fit its type/);
@@ -270,9 +295,22 @@ async function tampered(page, dir) {
 
   // One that is valid is applied as pending edits, and still saves nothing by itself: a
   // hostile value is a value to write, and the user sees it in the grid first.
-  tamper(dir, { ...base, updates: [{ key: [["id", "2"]], set: [["name", "x'); DROP TABLE people; --"]] }] }, "Hostile value");
+  // The agent's name is text to the sign, never markup.
+  const hostile = '<img src=x onerror="window.__pwned = 1"><b>Eve</b>';
+  await watchSign(page);
+  tamper(
+    dir,
+    { ...base, updates: [{ key: [["id", "2"]], set: [["name", "x'); DROP TABLE people; --"]] }] },
+    "Hostile value",
+    hostile,
+  );
   await opened(page, "Hostile value");
   await page.waitFor(`${editBar}.includes('1 row changed')`, 30_000);
+  assert.deepEqual(await page.eval(`window.__signs`), [`Applying the changes proposed by ${hostile}…`]);
+  // The bar's SQL line is a CodeMirror, whose empty `img.cm-widgetBuffer` is its own.
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.edit-bar img:not(.cm-widgetBuffer)')?.outerHTML ?? null`), null);
+  assert.equal(await page.eval(`[...${visibleTab}.querySelectorAll('.edit-bar b')].some(b => b.textContent === 'Eve')`), false);
+  assert.equal(await page.eval(`window.__pwned === undefined`), true);
   await page.eval(`${button("Preview SQL")}.click()`);
   await page.waitFor(`document.querySelector('.sql-preview') !== null`);
   assert.equal(

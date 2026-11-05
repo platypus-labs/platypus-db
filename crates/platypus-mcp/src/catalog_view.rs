@@ -14,6 +14,7 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::agent::Agent;
+use crate::masking_seal::MaskingSeal;
 use crate::query::MAX_VALUE_CHARS;
 use crate::redact::Redactor;
 
@@ -64,7 +65,9 @@ impl Agent {
     pub(crate) fn catalog_view(&self, connection: Uuid, database: &str) -> CatalogView {
         match self.profile().catalog() {
             Ok(None) => CatalogView::default(),
-            Ok(Some(catalog)) => CatalogView::read(&catalog, connection, database),
+            Ok(Some(catalog)) => {
+                CatalogView::read(&catalog, connection, database, &self.masking_seal())
+            }
             Err(_) => CatalogView {
                 unavailable: true,
                 ..CatalogView::default()
@@ -80,9 +83,12 @@ fn own_database(key_database: &str, database: &str) -> bool {
 }
 
 impl CatalogView {
-    fn read(catalog: &CatalogStore, connection: Uuid, database: &str) -> Self {
+    fn read(catalog: &CatalogStore, connection: Uuid, database: &str, seal: &MaskingSeal) -> Self {
         let entries = catalog.entries(connection);
-        let marks = catalog.sensitive_columns(connection);
+        // The marks agents get: as what masks their results, not as the file says.
+        let marks = catalog
+            .sensitive_columns(connection)
+            .map(|marks| seal.marks(connection, marks));
         let mut view = Self {
             unavailable: entries.is_err() || marks.is_err(),
             ..Self::default()
@@ -519,7 +525,7 @@ mod tests {
         };
         catalog.save(id, &at(""), "current", &[]).unwrap();
         catalog.save(id, &at("shop"), "old", &[]).unwrap();
-        let view = CatalogView::read(&catalog, id, "shop");
+        let view = CatalogView::read(&catalog, id, "shop", &MaskingSeal::Files);
         assert_eq!(view.of("main", "users").unwrap().own.text, "current");
     }
 

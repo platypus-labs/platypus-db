@@ -14,11 +14,12 @@ use platypus_sql::sensitive::{
 };
 use platypus_sql::source_table;
 use platypus_store::{AgentValues, SavedConnection, SensitiveColumn};
+use serde_json::Value;
 
 use crate::agent::Agent;
 use crate::error::{AgentError, Result};
 use crate::library::SensitiveNames;
-use crate::link::{ContextResult, UserContext};
+use crate::link::{ContextResult, ContextTable, UserContext};
 use crate::query::{Cell, Column, Outcome, Table};
 
 /// Which columns of one statement's result are sensitive.
@@ -65,6 +66,59 @@ impl ResultRules {
     }
 }
 
+impl ResultRules {
+    /// Whether the field `leaf` at `path` (`user.password`: the column, then the fields down to
+    /// it) of a document is sensitive: by a mark on the path, else by the rules on its own name.
+    /// Without one table, a mark on the path or on the name of any table counts.
+    fn path_is_sensitive(&self, path: &str, leaf: &str) -> bool {
+        self.mark(path).unwrap_or_else(|| match self.table {
+            Some(_) => self.names.by_rule(leaf),
+            None => self.names.is(path) || self.names.is(leaf),
+        })
+    }
+
+    /// The document or array written in `text`, the value of the column `column`, with the
+    /// value of each sensitive field at any depth written as [`MASKED_VALUE`] (`null` stays);
+    /// `None` when there is none to mask. The paths masked are added to `found`.
+    fn mask_document(&self, column: &str, text: &str, found: &mut Vec<String>) -> Option<String> {
+        if !text.trim_start().starts_with(['{', '[']) {
+            return None;
+        }
+        let mut value: Value = serde_json::from_str(text).ok()?;
+        let before = found.len();
+        self.mask_fields(&mut value, column, found);
+        (found.len() > before).then(|| value.to_string())
+    }
+
+    fn mask_fields(&self, value: &mut Value, path: &str, found: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, field) in map.iter_mut() {
+                    let at = format!("{path}.{key}");
+                    if !self.path_is_sensitive(&at, key) {
+                        self.mask_fields(field, &at, found);
+                    } else if !field.is_null() {
+                        *field = Value::String(MASKED_VALUE.to_owned());
+                        found.push(at);
+                    }
+                }
+            }
+            // The items of an array share the array's path.
+            Value::Array(items) => items
+                .iter_mut()
+                .for_each(|item| self.mask_fields(item, path, found)),
+            _ => {}
+        }
+    }
+}
+
+/// Whether a column of this `db_type` (MongoDB's name for the type) may hold fields.
+fn holds_fields(db_type: &str) -> bool {
+    ["document", "array", "mixed"]
+        .iter()
+        .any(|t| db_type.eq_ignore_ascii_case(t))
+}
+
 /// Which columns of one known table are sensitive for agents: the marks on it count over the
 /// rules. Without rules (`None`) the connection shows the values.
 pub(crate) struct TableSensitivity(Option<ResultRules>);
@@ -75,6 +129,32 @@ impl TableSensitivity {
         self.0
             .as_ref()
             .is_some_and(|rules| rules.is_sensitive_column(name, db_type))
+    }
+
+    /// The document or array in `text`, the value of the column `column`, with its sensitive
+    /// fields masked; `None` when nothing in it is.
+    pub(crate) fn mask_document(&self, column: &str, text: &str) -> Option<String> {
+        self.0
+            .as_ref()?
+            .mask_document(column, text, &mut Vec::new())
+    }
+
+    /// Rules that match `email` by name and the given `marks`, for tests.
+    #[cfg(test)]
+    pub(crate) fn for_test(marks: Vec<SensitiveColumn>) -> Self {
+        Self(Some(ResultRules {
+            names: SensitiveNames::new(
+                NameRules::new("*email*"),
+                std::collections::HashSet::default(),
+            ),
+            types: NameRules::default(),
+            table: Some(marks),
+        }))
+    }
+
+    /// Whether the column of type `db_type` may hold fields that need masking.
+    pub(crate) fn may_hold_fields(&self, db_type: &str) -> bool {
+        self.0.is_some() && holds_fields(db_type)
     }
 }
 
@@ -126,6 +206,11 @@ const fn reads_sql(driver: DriverKind) -> bool {
     )
 }
 
+/// The dialect of the connection a shared tab belongs to; PostgreSQL's when it has none.
+fn dialect_of(saved: Option<&SavedConnection>) -> Dialect {
+    saved.map_or(Dialect::Postgres, |s| Dialect::from(s.driver))
+}
+
 /// The marks of `marks` on the table `sql` reads, when it reads one.
 fn marks_on_table(
     marks: Vec<SensitiveColumn>,
@@ -164,14 +249,10 @@ fn marks_of_table(
         .collect()
 }
 
-/// `result` with the values of the columns `is_sensitive` says masked; their names.
-fn mask_shared_result(
-    result: &mut ContextResult,
-    is_sensitive: &dyn Fn(&str) -> bool,
-) -> Vec<String> {
-    let masked: Vec<bool> = result.columns.iter().map(|c| is_sensitive(c)).collect();
+/// `result` with the values of the `masked` columns written as [`MASKED_VALUE`]; their names.
+fn mask_shared_result(result: &mut ContextResult, masked: &[bool]) -> Vec<String> {
     for row in &mut result.rows {
-        for (cell, masked) in row.iter_mut().zip(&masked) {
+        for (cell, masked) in row.iter_mut().zip(masked) {
             if *masked && cell.is_some() {
                 *cell = Some(MASKED_VALUE.to_owned());
             }
@@ -180,10 +261,38 @@ fn mask_shared_result(
     result
         .columns
         .iter()
-        .zip(&masked)
+        .zip(masked)
         .filter(|(_, masked)| **masked)
         .map(|(c, _)| c.clone())
         .collect()
+}
+
+/// Masks the fields of the documents in the columns of `table` that hold them (but those masked
+/// whole), and adds the paths masked to its `masked` list.
+fn mask_documents(table: &mut Table, masked: &[bool], rules: &ResultRules) {
+    let holds: Vec<bool> = table
+        .columns
+        .iter()
+        .zip(masked)
+        .map(|(c, masked)| !masked && holds_fields(&c.db_type))
+        .collect();
+    if !holds.contains(&true) {
+        return;
+    }
+    let mut found = Vec::new();
+    let rest = table.rest.iter_mut().flat_map(|r| r.rows.iter_mut());
+    for row in table.rows.iter_mut().chain(rest) {
+        for ((cell, column), holds) in row.iter_mut().zip(&table.columns).zip(&holds) {
+            if let (true, Cell::Text(text)) = (*holds, &*cell)
+                && let Some(masked) = rules.mask_document(&column.name, text, &mut found)
+            {
+                *cell = Cell::Text(masked);
+            }
+        }
+    }
+    found.sort();
+    found.dedup();
+    table.masked.extend(found);
 }
 
 impl Agent {
@@ -241,6 +350,9 @@ impl Agent {
         };
         let masked = sensitive_columns(&table.columns, &items, &rules);
         mask_table(table, &masked);
+        if saved.driver == DriverKind::Mongo {
+            mask_documents(table, &masked, &rules);
+        }
         Ok(outcome)
     }
 
@@ -273,21 +385,166 @@ impl Agent {
         if saved.is_some_and(|s| s.agent_values == AgentValues::Shown) {
             return Ok(Vec::new());
         }
+        let sensitivity = self.sensitivity()?;
         let ids: Vec<_> = saved.iter().map(|s| s.id).collect();
-        let names = self.sensitivity()?.names(&ids)?;
-        let dialect = saved.map_or(Dialect::Postgres, |s| Dialect::from(s.driver));
-        for sql in [&mut context.editor, &mut context.selection]
-            .into_iter()
-            .flatten()
-        {
-            *sql = names.mask(sql, dialect);
+        let names = sensitivity.names(&ids)?;
+        // No rule and no mark: nothing is sensitive.
+        if names.is_empty() && sensitivity.types().is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(context
-            .result
-            .as_mut()
-            .map(|result| mask_shared_result(result, &|c| names.is(c)))
-            .unwrap_or_default())
+        let marks = match saved {
+            Some(s) if context.result.is_some() => sensitivity.marks(s.id)?,
+            _ => Vec::new(),
+        };
+        let rules = ResultRules {
+            names,
+            types: sensitivity.types().clone(),
+            table: None,
+        };
+        Ok(mask_shared(context, rules, marks, saved))
     }
+}
+
+/// What the user shares, with the statements' literals and the result's values masked; the names
+/// of the result's masked columns. The result's columns are told as `run_query` tells them,
+/// through the statements it may have come from (the selection and the editor's text: which ran
+/// is not known, so a column masked by either is) or the table of a viewer tab.
+fn mask_shared(
+    context: &mut UserContext,
+    mut rules: ResultRules,
+    marks: Vec<SensitiveColumn>,
+    saved: Option<&SavedConnection>,
+) -> Vec<String> {
+    let dialect = dialect_of(saved);
+    // The statements as the user wrote them: the result is read through them below.
+    let statements: Vec<String> = [&context.selection, &context.editor]
+        .into_iter()
+        .flatten()
+        .filter(|sql| !sql.trim().is_empty())
+        .cloned()
+        .collect();
+    for sql in [&mut context.editor, &mut context.selection]
+        .into_iter()
+        .flatten()
+    {
+        *sql = rules.names.mask(sql, dialect);
+    }
+    let scopes = shared_scopes(&statements, context.table.as_ref(), marks, saved);
+    let Some(result) = context.result.as_mut() else {
+        return Vec::new();
+    };
+    let columns: Vec<Column> = result
+        .columns
+        .iter()
+        .map(|name| Column {
+            name: name.clone(),
+            db_type: String::new(),
+        })
+        .collect();
+    let mut masked = vec![false; columns.len()];
+    for (statement, table) in scopes {
+        rules.table = table;
+        let items = statement_items(statement.as_deref(), saved, &rules);
+        if cannot_follow(statement.as_deref(), &items, saved, &rules) {
+            masked.fill(true);
+            break;
+        }
+        let by_scope = sensitive_columns(&columns, &items, &rules);
+        masked.iter_mut().zip(by_scope).for_each(|(m, s)| *m |= s);
+    }
+    let mut names = mask_shared_result(result, &masked);
+    if saved.is_some_and(|s| s.driver == DriverKind::Mongo) {
+        // Which collection the documents are of is not known: any mark counts.
+        rules.table = None;
+        names.extend(mask_shared_documents(result, &masked, &rules));
+    }
+    names
+}
+
+/// What a shared result may have come from, each with the marks of the one table it reads (none
+/// when it reads not exactly one): the statements, and the table of a viewer tab. Without any,
+/// a scope that knows nothing.
+fn shared_scopes(
+    statements: &[String],
+    viewer: Option<&ContextTable>,
+    marks: Vec<SensitiveColumn>,
+    saved: Option<&SavedConnection>,
+) -> Vec<(Option<String>, Option<Vec<SensitiveColumn>>)> {
+    let mut scopes: Vec<_> = statements
+        .iter()
+        .map(|sql| {
+            let table = saved.and_then(|s| marks_on_table(marks.clone(), sql, s));
+            (Some(sql.clone()), table)
+        })
+        .collect();
+    if let (Some(viewer), Some(saved)) = (viewer, saved) {
+        let table = marks_of_table(marks, Some(&viewer.schema), &viewer.name, saved);
+        scopes.push((None, Some(table)));
+    }
+    if scopes.is_empty() {
+        scopes.push((None, None));
+    }
+    scopes
+}
+
+/// The select list of `statement` when it is SQL that can be read, else none.
+fn statement_items(
+    statement: Option<&str>,
+    saved: Option<&SavedConnection>,
+    rules: &ResultRules,
+) -> Vec<SelectOutput> {
+    match statement {
+        Some(sql) if saved.is_none_or(|s| reads_sql(s.driver)) => {
+            select_outputs(sql, dialect_of(saved), &|name| {
+                rules.name_is_sensitive(name)
+            })
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Whether the columns of the result of SQL `statement` cannot be traced to the columns they read,
+/// while it names a sensitive one: it has a subquery (which can rename it) or no select list
+/// could be read (it does not parse). The shared result is then masked whole, where `run_query`,
+/// which has the real names of the columns, goes by them.
+fn cannot_follow(
+    statement: Option<&str>,
+    items: &[SelectOutput],
+    saved: Option<&SavedConnection>,
+    rules: &ResultRules,
+) -> bool {
+    let Some(sql) = statement else {
+        return false;
+    };
+    let dialect = dialect_of(saved);
+    if !saved.is_none_or(|s| reads_sql(s.driver))
+        || !(items.is_empty() || has_subquery(sql, dialect))
+    {
+        return false;
+    }
+    sql.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .any(|word| !word.is_empty() && rules.names.is(word))
+}
+
+/// Masks the fields in the cells of the shared `result` that are no masked column; their paths.
+fn mask_shared_documents(
+    result: &mut ContextResult,
+    masked: &[bool],
+    rules: &ResultRules,
+) -> Vec<String> {
+    let mut found = Vec::new();
+    for row in &mut result.rows {
+        for ((cell, column), masked) in row.iter_mut().zip(&result.columns).zip(masked) {
+            if let (false, Some(text)) = (*masked, &*cell)
+                && let Some(text) = rules.mask_document(column, text, &mut found)
+            {
+                *cell = Some(text);
+            }
+        }
+    }
+    found.sort();
+    found.dedup();
+    found
 }
 
 #[cfg(test)]
@@ -417,12 +674,255 @@ mod tests {
             truncated: false,
             total_rows: None,
         };
-        let names = mask_shared_result(&mut result, &|c| c == "email");
+        let names = mask_shared_result(&mut result, &[false, true]);
         assert_eq!(names, ["email"]);
         assert_eq!(
             result.rows[0],
             [Some("1".to_owned()), Some(MASKED_VALUE.to_owned())]
         );
         assert_eq!(result.rows[1], [None, None]);
+    }
+
+    fn saved(driver: DriverKind) -> SavedConnection {
+        SavedConnection::new("t", driver)
+    }
+
+    /// The columns of a shared result `columns` (one row of `secret` in each) that `editor`
+    /// leaves shown, on a SQLite connection, with the user's `marks`.
+    fn shown_in_context(
+        editor: Option<&str>,
+        viewer: Option<(&str, &str)>,
+        columns: &[&str],
+        marks: Vec<SensitiveColumn>,
+    ) -> Vec<bool> {
+        let mut context = UserContext {
+            editor: editor.map(str::to_owned),
+            table: viewer.map(|(schema, name)| ContextTable {
+                schema: schema.to_owned(),
+                name: name.to_owned(),
+            }),
+            result: Some(ContextResult {
+                columns: columns.iter().map(|c| (*c).to_owned()).collect(),
+                rows: vec![vec![Some("secret".to_owned()); columns.len()]],
+                truncated: false,
+                total_rows: None,
+            }),
+            ..UserContext::default()
+        };
+        // The names the user marked sensitive are known to the rules, as in the app.
+        let mut rules = rules(None);
+        rules.names = SensitiveNames::new(
+            NameRules::new("*email*"),
+            marks
+                .iter()
+                .filter(|m| m.sensitive)
+                .map(|m| m.key.column.to_lowercase())
+                .collect(),
+        );
+        mask_shared(&mut context, rules, marks, Some(&saved(DriverKind::Sqlite)));
+        context.result.unwrap().rows[0]
+            .iter()
+            .map(|c| c.as_deref() == Some("secret"))
+            .collect()
+    }
+
+    #[test]
+    fn an_alias_of_a_sensitive_column_is_masked_in_the_context() {
+        let shown = |sql, columns: &[&str]| shown_in_context(Some(sql), None, columns, Vec::new());
+        assert_eq!(
+            shown("SELECT email AS p, id FROM users", &["p", "id"]),
+            [false, true]
+        );
+        // The same statement with a column that is no one's secret.
+        assert_eq!(shown("SELECT name AS p FROM users", &["p"]), [true]);
+        // `SELECT *` leaves the names: they tell.
+        assert_eq!(
+            shown("SELECT * FROM users", &["id", "email"]),
+            [true, false]
+        );
+        assert_eq!(
+            shown("SELECT *, email AS e FROM users", &["id", "e"]),
+            [true, false]
+        );
+        // An expression over a sensitive column.
+        assert_eq!(
+            shown("SELECT lower(email), id FROM users", &["lower", "id"]),
+            [false, true]
+        );
+    }
+
+    #[test]
+    fn a_statement_that_cannot_be_followed_masks_the_whole_result() {
+        let shown = |sql, columns: &[&str]| shown_in_context(Some(sql), None, columns, Vec::new());
+        // A subquery renames the column: nothing says which one it is.
+        assert_eq!(
+            shown(
+                "SELECT n, id FROM (SELECT email AS n, id FROM users) t",
+                &["n", "id"]
+            ),
+            [false, false]
+        );
+        // One that does not parse.
+        assert_eq!(
+            shown("SELEC email AS p, id FRM users", &["p", "id"]),
+            [false, false]
+        );
+        // They name no sensitive column: nothing to hide.
+        assert_eq!(
+            shown("SELECT n FROM (SELECT name AS n FROM users) t", &["n"]),
+            [true]
+        );
+    }
+
+    #[test]
+    fn marks_decide_for_the_table_the_statement_reads() {
+        // `email` is marked not sensitive on `users`: the statement reads it, and shows it.
+        let marks = vec![mark("main", "email", false)];
+        assert_eq!(
+            shown_in_context(
+                Some("SELECT email FROM users"),
+                None,
+                &["email"],
+                marks.clone()
+            ),
+            [true]
+        );
+        // A statement that reads two tables does not say which one a `note` is of: the mark
+        // "sensitive" on either counts (this over-masks the other table's column).
+        let marks = vec![mark("main", "note", true)];
+        assert_eq!(
+            shown_in_context(
+                Some("SELECT a.note, b.note FROM users a JOIN orders b ON a.id = b.id"),
+                None,
+                &["note", "note"],
+                marks.clone()
+            ),
+            [false, false]
+        );
+        // A viewer tab reads the table it shows: its marks count over the rules.
+        let marks = vec![mark("main", "email", false), mark("main", "nick", true)];
+        assert_eq!(
+            shown_in_context(
+                None,
+                Some(("main", "users")),
+                &["email", "nick"],
+                marks.clone()
+            ),
+            [true, false]
+        );
+        // Another table's viewer: the rules alone.
+        assert_eq!(
+            shown_in_context(
+                None,
+                Some(("main", "orders")),
+                &["email", "nick"],
+                marks.clone()
+            ),
+            [false, true]
+        );
+        // A query on another table typed in the viewer of an unmarked one: the viewer's table
+        // does not take the statement's place, so the other table's marks still count.
+        assert_eq!(
+            shown_in_context(
+                Some("SELECT nick, nick AS n FROM users"),
+                Some(("main", "orders")),
+                &["nick", "n"],
+                marks
+            ),
+            [false, false]
+        );
+    }
+
+    #[test]
+    fn nothing_is_known_of_a_tab_without_a_statement_but_the_names() {
+        assert_eq!(
+            shown_in_context(None, None, &["email", "id"], Vec::new()),
+            [false, true]
+        );
+    }
+
+    #[test]
+    fn nested_fields_are_masked_by_path_and_by_name() {
+        let r = rules(Some(vec![mark("main", "user.pin", true)]));
+        let mut found = Vec::new();
+        let doc = r#"{"name":"Ann","email":"a@b.c","pin":"1234","tag":null,"contact":{"email":"x","phones":[{"email":"q","n":1}]}}"#;
+        let masked = r.mask_document("user", doc, &mut found).unwrap();
+        let value: Value = serde_json::from_str(&masked).unwrap();
+        assert_eq!(value["name"], "Ann");
+        assert_eq!(value["email"], MASKED_VALUE);
+        assert_eq!(value["pin"], MASKED_VALUE, "marked by its path");
+        assert_eq!(value["contact"]["email"], MASKED_VALUE);
+        assert_eq!(value["contact"]["phones"][0]["email"], MASKED_VALUE);
+        assert_eq!(value["contact"]["phones"][0]["n"], 1);
+        assert!(!masked.contains("a@b.c") && !masked.contains("1234") && !masked.contains('q'));
+        assert!(found.contains(&"user.pin".to_owned()), "{found:?}");
+        // A mark on another path is not this field's.
+        assert!(
+            r.mask_document("other", r#"{"pin":"1"}"#, &mut Vec::new())
+                .is_none()
+        );
+        // An array of documents, null kept, and text that is no document.
+        let list = r.mask_document("l", r#"[{"email":null},{"email":"z"}]"#, &mut Vec::new());
+        assert_eq!(
+            list.unwrap(),
+            format!(r#"[{{"email":null}},{{"email":"{MASKED_VALUE}"}}]"#)
+        );
+        assert!(r.mask_document("c", "hello", &mut Vec::new()).is_none());
+        assert!(
+            r.mask_document("c", r#"{"a":1}"#, &mut Vec::new())
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_document_column_masks_its_fields_in_results() {
+        let mut table = Table {
+            columns: vec![
+                column("_id", "objectId"),
+                Column {
+                    name: "user".to_owned(),
+                    db_type: "document".to_owned(),
+                },
+            ],
+            rows: vec![vec![
+                Cell::Text("1".to_owned()),
+                Cell::Text(r#"{"name":"Ann","email":"a@b.c"}"#.to_owned()),
+            ]],
+            cut: None,
+            values_cut: false,
+            masked: Vec::new(),
+            rest: None,
+        };
+        mask_documents(&mut table, &[false, false], &rules(None));
+        let Cell::Text(text) = &table.rows[0][1] else {
+            panic!("text");
+        };
+        assert!(text.contains("Ann") && !text.contains("a@b.c"), "{text}");
+        assert_eq!(table.masked, ["user.email"]);
+    }
+
+    #[test]
+    fn a_context_of_documents_masks_nested_fields() {
+        let mut context = UserContext {
+            result: Some(ContextResult {
+                columns: vec!["user".to_owned()],
+                rows: vec![vec![Some(r#"{"email":"a@b.c","n":1}"#.to_owned())]],
+                truncated: false,
+                total_rows: None,
+            }),
+            ..UserContext::default()
+        };
+        let names = mask_shared(
+            &mut context,
+            rules(None),
+            Vec::new(),
+            Some(&saved(DriverKind::Mongo)),
+        );
+        assert_eq!(names, ["user.email"]);
+        let cell = context.result.unwrap().rows[0][0].clone().unwrap();
+        assert!(
+            !cell.contains("a@b.c") && cell.contains("\"n\":1"),
+            "{cell}"
+        );
     }
 }

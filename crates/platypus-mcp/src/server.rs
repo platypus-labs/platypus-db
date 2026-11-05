@@ -530,7 +530,7 @@ impl PlatypusServer {
     #[tool(
         description = "Reads the next rows of a result that run_query cut at max_rows or \
         max_bytes, from the cursor it returned, instead of running the statement again: the \
-        pages come from the rows read with the first one (up to 10000 more rows or 8 MB; \
+        pages come from the rows read with the first one (up to 10000 more rows, 4 MB or 250 ms of reading; \
         the answer says when the result has more than that), so they do not change if the \
         data does. Same format, max_rows (default 100) and max_bytes as run_query, with the \
         connection's limits and calls per minute; sensitive columns stay masked as in the first \
