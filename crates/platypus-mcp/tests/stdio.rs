@@ -1,6 +1,7 @@
 //! Drives the `platypus-mcp` binary over stdio as an MCP client would, against a profile
 //! with SQLite databases.
 
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
@@ -1299,7 +1300,8 @@ fn profile_with_refusals(dir: &Path) {
         .iter()
         .enumerate()
     {
-        toml += &format!(
+        let _ = write!(
+            toml,
             "\n[[connections]]\nid = \"00000000-0000-4000-8000-0000000000c{i}\"\nname = \"{driver}\"\n\
              driver = \"{driver}\"\nhost = \"127.0.0.1\"\nport = 1\n"
         );
@@ -1494,7 +1496,28 @@ fn propose_edits_refuses_what_the_viewer_cannot_open() {
         on("names", json!({ "deletes": [{ "id": 1 }] })),
         "no primary key or unique key",
     );
-    // Values and size.
+    drop(client);
+    assert_eq!(count(&dir.path().join("app.db")), 2);
+}
+
+/// `propose_edits` refuses values that are not scalars, too many rows and connections the
+/// viewer cannot edit, and takes 500 rows.
+#[test]
+fn propose_edits_refuses_values_sizes_and_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    profile_with_refusals(dir.path());
+    let mut client = initialized(dir.path());
+    let mut refuse = |args: Value, what: &str| {
+        let (text, error) = client.call("propose_edits", &args);
+        assert!(error && text.contains(what), "{args}: {text}");
+    };
+    let on = |table: &str, change: Value| {
+        let mut args = json!({ "connection": "App db", "schema": "main", "table": table });
+        args.as_object_mut()
+            .unwrap()
+            .extend(change.as_object().unwrap().clone());
+        args
+    };
     refuse(
         on("t", json!({ "inserts": [{ "name": ["a"] }] })),
         "`name` is an array",
