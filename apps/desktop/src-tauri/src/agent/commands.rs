@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use platypus_mcp::{Agent, ContextVerdict, OpenSession, Profile, Verdict};
+use platypus_mcp::{Agent, ContextVerdict, DiagramAnswer, OpenSession, Profile, Verdict};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::{
@@ -118,6 +118,12 @@ pub fn agent_answer_context(
 #[tauri::command]
 pub fn agent_contexts_waiting(bridge: State<'_, Bridge>) -> Vec<WaitingContext> {
     bridge.link().waiting_contexts()
+}
+
+/// Answers the diagram `id` an agent asked the page to draw; `false` when it no longer waits.
+#[tauri::command]
+pub fn agent_answer_diagram(bridge: State<'_, Bridge>, id: String, answer: DiagramAnswer) -> bool {
+    bridge.link().answer_diagram(&id, answer)
 }
 
 #[tauri::command]

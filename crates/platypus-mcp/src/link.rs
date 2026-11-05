@@ -151,6 +151,59 @@ pub enum ContextVerdict {
     },
 }
 
+/// How long the open app has to draw a diagram: it asks the user nothing, so a longer wait
+/// means the page is not answering.
+pub const DIAGRAM_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// A column of a table to draw.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagramColumn {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub primary_key: bool,
+}
+
+/// A foreign key to draw, to a table of the same diagram.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagramKey {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub table: String,
+    pub ref_columns: Vec<String>,
+}
+
+/// A table to draw: only what the picture shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagramTable {
+    pub name: String,
+    pub columns: Vec<DiagramColumn>,
+    pub foreign_keys: Vec<DiagramKey>,
+}
+
+/// A diagram an agent asks the app to draw as SVG. The model is what the agent could read
+/// from the catalog anyway: the app opens no connection and asks the user nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagramRequest {
+    pub id: String,
+    /// The agent, as it names itself.
+    pub agent: String,
+    /// The run of the agent's server.
+    pub session: String,
+    pub schema: String,
+    pub tables: Vec<DiagramTable>,
+}
+
+/// The app's answer to a [`DiagramRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "answer", rename_all = "snake_case")]
+pub enum DiagramAnswer {
+    /// The picture, as SVG text.
+    Svg { svg: String },
+    /// The app could not draw it.
+    Failed { message: String },
+}
+
 /// What an agent reaches the open app for.
 #[async_trait::async_trait]
 pub trait AppLink: Send + Sync + std::fmt::Debug {
@@ -164,6 +217,12 @@ pub trait AppLink: Send + Sync + std::fmt::Debug {
     /// An app that cannot share it keeps this answer.
     async fn context(&self, _request: ContextRequest) -> Result<ContextVerdict, String> {
         Err("this app cannot share what the user is working on".to_owned())
+    }
+
+    /// The SVG of the diagram in `request`, drawn by the app; an error when it cannot be
+    /// reached. An app that cannot draw keeps this answer.
+    async fn diagram(&self, _request: DiagramRequest) -> Result<DiagramAnswer, String> {
+        Err("this app cannot draw diagrams".to_owned())
     }
 
     /// Tells the app that the agent `agent` is connected, as session `session`.
@@ -310,6 +369,19 @@ impl AppLink for HttpLink {
         serde_json::from_str(&answer).map_err(|e| e.to_string())
     }
 
+    async fn diagram(&self, request: DiagramRequest) -> Result<DiagramAnswer, String> {
+        let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
+        // Nobody is asked: the page answers at once or not at all.
+        let answer = self
+            .call(
+                "/v1/diagram",
+                Some(body),
+                DIAGRAM_TIMEOUT + Duration::from_secs(5),
+            )
+            .await?;
+        serde_json::from_str(&answer).map_err(|e| e.to_string())
+    }
+
     fn reachable(&self) -> bool {
         BridgeFile::read(&self.data_dir).is_some()
     }
@@ -426,6 +498,35 @@ mod tests {
         assert!(sent.starts_with("POST /v1/context HTTP/1.1"), "{sent}");
         assert!(sent.contains("Authorization: Bearer s3cret"), "{sent}");
         assert!(sent.contains(r#""parts":["editor","result"]"#), "{sent}");
+    }
+
+    #[tokio::test]
+    async fn asks_the_open_app_to_draw_a_diagram() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut got = fake_bridge(dir.path(), 200, r#"{"answer":"svg","svg":"<svg/>"}"#).await;
+        let request = DiagramRequest {
+            id: "1".to_owned(),
+            agent: "claude-code".to_owned(),
+            session: "s".to_owned(),
+            schema: "main".to_owned(),
+            tables: Vec::new(),
+        };
+        let answer = HttpLink::new(dir.path()).diagram(request).await.unwrap();
+        assert_eq!(
+            answer,
+            DiagramAnswer::Svg {
+                svg: "<svg/>".to_owned()
+            }
+        );
+        let sent = got.recv().await.unwrap();
+        assert!(sent.starts_with("POST /v1/diagram HTTP/1.1"), "{sent}");
+        assert!(sent.contains("Authorization: Bearer s3cret"), "{sent}");
+        assert_eq!(
+            serde_json::from_str::<DiagramAnswer>(r#"{"answer":"failed","message":"no"}"#).unwrap(),
+            DiagramAnswer::Failed {
+                message: "no".to_owned()
+            }
+        );
     }
 
     #[test]

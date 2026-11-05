@@ -162,7 +162,9 @@ fn fake_app(dir: &Path, verdicts: Vec<&'static str>) -> Received {
             let path = head.split_whitespace().nth(1).unwrap().to_owned();
             let (status, answer) = if head.contains("Authorization: Bearer t0ken") {
                 match path.as_str() {
-                    "/v1/confirm" | "/v1/context" => (200, verdicts.next().unwrap().to_owned()),
+                    "/v1/confirm" | "/v1/context" | "/v1/diagram" => {
+                        (200, verdicts.next().unwrap().to_owned())
+                    }
                     "/v1/sessions" => (
                         200,
                         r#"[{"connection":"Scratch","database":null,"purpose":"main","manual_commit":true,"transaction_open":false}]"#
@@ -973,6 +975,110 @@ fn draws_er_diagrams_from_the_catalog() {
     sqlite(&dir.path().join("scratch.db"), "DROP TABLE t;");
     let (empty, error) = draw(json!({ "connection": "Scratch", "schema": "main" }));
     assert!(!error && empty.contains("no tables"), "{empty}");
+}
+
+/// `get_er_diagram` with `format: "svg"` reads the catalog here and has the open app draw it:
+/// closed it is an error that names `mermaid`, an unknown format is refused before anything
+/// is read, the app gets only names, types and keys, and an image over the limit is refused.
+#[test]
+fn draws_er_diagrams_as_svg_through_the_open_app() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE customer (id INTEGER PRIMARY KEY, name TEXT);
+         CREATE TABLE \"<script>alert(1)</script>\" (id INTEGER PRIMARY KEY, \"a\"\"&b\" TEXT NOT NULL,
+             customer_id INTEGER REFERENCES customer (id));",
+    );
+    let mut client = initialized(dir.path());
+    let svg_args = json!({ "connection": "App db", "schema": "main", "format": "svg" });
+
+    // The app is closed: SVG needs it, Mermaid does not.
+    let (closed, error) = client.call("get_er_diagram", &svg_args);
+    assert!(
+        error
+            && closed.contains("needs it open")
+            && closed.contains("not open")
+            && closed.contains("mermaid"),
+        "{closed}"
+    );
+    let (text, error) = client.call(
+        "get_er_diagram",
+        &json!({ "connection": "App db", "schema": "main", "format": "mermaid" }),
+    );
+    assert!(!error && text.starts_with("erDiagram"), "{text}");
+
+    // An unknown format names the two there are, and the app is never asked.
+    let (unknown, error) = client.call(
+        "get_er_diagram",
+        &json!({ "connection": "App db", "schema": "main", "format": "png" }),
+    );
+    assert!(
+        error && unknown.contains("`mermaid`") && unknown.contains("`svg`"),
+        "{unknown}"
+    );
+
+    let big = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\">{}</svg>",
+        "x".repeat(40_000)
+    );
+    let big: &'static str = Box::leak(
+        json!({ "answer": "svg", "svg": big })
+            .to_string()
+            .into_boxed_str(),
+    );
+    let app = fake_app(
+        dir.path(),
+        vec![
+            r#"{"answer":"svg","svg":"<svg xmlns=\"http://www.w3.org/2000/svg\"><title>drawn</title></svg>"}"#,
+            big,
+            r#"{"answer":"failed","message":"the page is busy"}"#,
+            r#"{"answer":"svg","svg":"<html>"}"#,
+        ],
+    );
+    let (drawn, error) = client.call("get_er_diagram", &svg_args);
+    assert!(
+        !error && drawn.starts_with("<svg") && drawn.contains("drawn"),
+        "{drawn}"
+    );
+    let (refused, error) = client.call("get_er_diagram", &svg_args);
+    assert!(
+        error && refused.contains("cannot be cut") && refused.contains("`tables`"),
+        "{refused}"
+    );
+    assert!(
+        !refused.contains("xxxx"),
+        "an image is never returned in part"
+    );
+    let (failed, error) = client.call("get_er_diagram", &svg_args);
+    assert!(
+        error && failed.contains("the page is busy") && failed.contains("mermaid"),
+        "{failed}"
+    );
+    let (not_svg, error) = client.call("get_er_diagram", &svg_args);
+    assert!(error && not_svg.contains("not an SVG"), "{not_svg}");
+
+    // The app was sent the model only, and every request was for this agent.
+    let asked: Vec<Value> = app
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(path, _)| path == "/v1/diagram")
+        .map(|(_, body)| serde_json::from_str(body).unwrap())
+        .collect();
+    assert_eq!(asked.len(), 4, "{asked:?}");
+    assert_eq!(asked[0]["agent"], "test-agent");
+    assert_eq!(asked[0]["schema"], "main");
+    let tables = asked[0]["tables"].as_array().unwrap();
+    assert_eq!(tables.len(), 3, "t, customer and the hostile one");
+    let hostile = tables
+        .iter()
+        .find(|t| t["name"] == "<script>alert(1)</script>")
+        .unwrap();
+    assert_eq!(hostile["columns"][1]["name"], "a\"&b");
+    assert_eq!(hostile["columns"][1]["nullable"], false);
+    assert_eq!(hostile["foreign_keys"][0]["table"], "customer");
+    assert!(hostile.get("comment").is_none());
 }
 
 /// A schema too big for the byte limit is cut at whole tables, with a note.

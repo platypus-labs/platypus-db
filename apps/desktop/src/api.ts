@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
 import type { ContextRequest, ContextVerdict } from "./agents/context";
+import type { DiagramAnswer } from "./agents/diagram";
 import type { Verdict, WriteRequest } from "./agents/writes";
 import type { ProposedEdits } from "./grid/edit/proposed";
 
@@ -2423,6 +2424,7 @@ export const api = {
   agentWritesWaiting: () => invoke<{ request: WriteRequest; waited_ms: number }[]>("agent_writes_waiting"),
   /** Answers an agent's request to see the user's work; `false` when it no longer waits. */
   answerAgentContext: (id: string, verdict: ContextVerdict) => invoke<boolean>("agent_answer_context", { id, verdict }),
+  answerAgentDiagram: (id: string, answer: DiagramAnswer) => invoke<boolean>("agent_answer_diagram", { id, answer }),
   /** The requests to see the user's work waiting for an answer, the oldest first. */
   agentContextsWaiting: () => invoke<{ request: ContextRequest; waited_ms: number }[]>("agent_contexts_waiting"),
   connectedAgents: () => invoke<ConnectedAgent[]>("connected_agents"),

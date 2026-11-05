@@ -39,7 +39,7 @@ export interface ChartColors {
 /** The series take the theme's accent and syntax colours, in this order. */
 const SERIES = ["--accent", "--syn-string", "--syn-number", "--syn-keyword", "--syn-type", "--obj-view", "--obj-routine", "--warn"];
 
-function readColors(): ChartColors {
+export function readColors(): ChartColors {
   const style = getComputedStyle(document.documentElement);
   const v = (name: string) => style.getPropertyValue(name).trim();
   return { series: SERIES.map(v), text: v("--fg"), muted: v("--fg-muted"), grid: v("--border"), background: v("--bg"), font: v("--font-ui") };

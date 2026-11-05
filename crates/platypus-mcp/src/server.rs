@@ -6,6 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::agent::{MAX_OBJECT_PAGE, locked};
 use crate::cursor::SessionCursors;
+use crate::er::DiagramFormat;
 use crate::link::CLOSED;
 use crate::prompts::{self, PromptError};
 use crate::resource::{self, Target};
@@ -111,6 +112,9 @@ struct ErDiagramArgs {
     /// With `tables`: how many foreign-key hops from them to follow, in both directions
     /// (default 1, at most 3).
     depth: Option<u64>,
+    /// `mermaid` (the default: text, works without the app) or `svg` (an image drawn by the
+    /// open PlatypusDB app, as its diagram export; an error when the app is closed).
+    format: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -379,7 +383,10 @@ impl PlatypusServer {
         description = "Returns a Mermaid erDiagram of a schema's tables (columns, primary keys) \
         and the foreign keys between them, as text. Without `tables` the whole schema; with \
         `tables`, those and the tables within `depth` foreign-key hops of them (default 1, \
-        at most 3). A diagram too long for one answer is cut with a note: pass `tables` to choose."
+        at most 3). A diagram too long for one answer is cut with a note: pass `tables` to choose. \
+        With `format: \"svg\"` the answer is the SVG image PlatypusDB draws for its own export \
+        (it needs the app open, asks the user nothing, and is refused rather than cut when it is \
+        over the byte limit); the default `mermaid` works without the app."
     )]
     async fn get_er_diagram(
         &self,
@@ -387,15 +394,26 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let call = Call::new("get_er_diagram", &peer, &args);
-        let result = self
-            .agent
-            .er_diagram(
-                &args.connection,
-                &args.schema,
-                args.tables.as_deref().unwrap_or_default(),
-                args.depth,
-            )
-            .await;
+        let tables = args.tables.as_deref().unwrap_or_default();
+        let result = match DiagramFormat::parse(args.format.as_deref()) {
+            Err(e) => Err(e),
+            Ok(DiagramFormat::Mermaid) => {
+                self.agent
+                    .er_diagram(&args.connection, &args.schema, tables, args.depth)
+                    .await
+            }
+            Ok(DiagramFormat::Svg) => {
+                self.agent
+                    .er_diagram_svg(
+                        &args.connection,
+                        &args.schema,
+                        tables,
+                        args.depth,
+                        (&call.agent, &self.session),
+                    )
+                    .await
+            }
+        };
         self.answer(call, result).await
     }
 

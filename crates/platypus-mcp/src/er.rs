@@ -7,12 +7,98 @@ use std::fmt::Write as _;
 use platypus_core::TableDetails;
 use platypus_docs::{DocColumn, DocForeignKey, DocKind, DocObject, DocSchema, mermaid};
 
+use crate::error::{AgentError, Result};
+use crate::link::{DiagramColumn, DiagramKey, DiagramTable};
+
 /// Hops followed from the requested tables when `depth` is left out.
 pub const DEFAULT_DEPTH: usize = 1;
 /// The most hops a call may ask for.
 pub const MAX_DEPTH: usize = 3;
 /// Tables read from a schema when no `tables` narrow it: the rest is reported as left out.
 pub const MAX_TABLES: usize = 300;
+
+/// How `get_er_diagram` answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DiagramFormat {
+    /// A Mermaid `erDiagram`, as text, cut at whole tables.
+    #[default]
+    Mermaid,
+    /// An SVG drawn by the open app, as the app's own export; never cut.
+    Svg,
+}
+
+impl DiagramFormat {
+    /// The format named by an argument; the default when it is left out.
+    pub fn parse(named: Option<&str>) -> Result<Self> {
+        match named.map(|n| n.trim().to_ascii_lowercase()).as_deref() {
+            None | Some("mermaid") => Ok(Self::Mermaid),
+            Some("svg") => Ok(Self::Svg),
+            Some(_) => Err(AgentError::Invalid(format!(
+                "unknown format `{}`: use `mermaid` or `svg`",
+                named.unwrap_or_default().trim()
+            ))),
+        }
+    }
+}
+
+/// What the app draws of `schema`: names, types and keys, nothing else.
+pub fn diagram_tables(schema: &DocSchema) -> Vec<DiagramTable> {
+    schema
+        .objects
+        .iter()
+        .map(|o| DiagramTable {
+            name: o.name.clone(),
+            columns: o
+                .columns
+                .iter()
+                .map(|c| DiagramColumn {
+                    name: c.name.clone(),
+                    data_type: c.data_type.clone(),
+                    nullable: c.nullable,
+                    primary_key: c.primary_key,
+                })
+                .collect(),
+            foreign_keys: o
+                .foreign_keys
+                .iter()
+                .map(|f| DiagramKey {
+                    name: f.name.clone(),
+                    columns: f.columns.clone(),
+                    table: f.table.clone(),
+                    ref_columns: f.ref_columns.clone(),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// The SVG the app drew for `shown` tables of `total`, as the tool returns it. A picture cannot
+/// be cut like text, so one over `max_bytes` is refused with the way out; one that does not
+/// draw every table asked for (the schema has more than [`MAX_TABLES`]) says so after the
+/// image, in an XML comment.
+pub fn svg_answer(svg: &str, shown: usize, total: usize, max_bytes: usize) -> Result<String> {
+    if !svg.trim_start().starts_with("<svg") {
+        return Err(AgentError::Store(
+            "PlatypusDB answered with something that is not an SVG".to_owned(),
+        ));
+    }
+    if svg.len() > max_bytes {
+        return Err(AgentError::Invalid(format!(
+            "the SVG of these {shown} tables is {} bytes, over the limit of {max_bytes}: an image \
+             cannot be cut. Pass `tables` (and a smaller `depth`) to draw fewer tables, or \
+             `format: \"mermaid\"`, which is cut at whole tables",
+            svg.len()
+        )));
+    }
+    let mut out = svg.trim_end().to_owned();
+    if shown < total {
+        let _ = write!(
+            out,
+            "\n<!-- cut: {shown} of {total} tables drawn. Pass `tables` (and `depth`) to choose the tables to draw. -->"
+        );
+    }
+    Ok(out)
+}
 
 /// The hops to follow: `requested`, else the default, up to [`MAX_DEPTH`].
 pub fn hops(requested: Option<u64>) -> usize {
@@ -393,6 +479,64 @@ mod tests {
         assert!(out.contains("\"big\""));
         assert!(out.contains("col0"));
         assert!(!out.contains("col499"));
+    }
+
+    #[test]
+    fn the_format_defaults_to_mermaid_and_refuses_unknown_ones() {
+        assert_eq!(DiagramFormat::parse(None).unwrap(), DiagramFormat::Mermaid);
+        assert_eq!(
+            DiagramFormat::parse(Some("Mermaid")).unwrap(),
+            DiagramFormat::Mermaid
+        );
+        assert_eq!(
+            DiagramFormat::parse(Some(" SVG ")).unwrap(),
+            DiagramFormat::Svg
+        );
+        let error = DiagramFormat::parse(Some("png")).unwrap_err();
+        assert!(matches!(error, AgentError::Invalid(_)));
+        let text = error.to_string();
+        assert!(
+            text.contains("`png`") && text.contains("`mermaid`") && text.contains("`svg`"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn the_model_sent_to_the_app_has_names_types_and_keys_only() {
+        let s = schema(vec![table("a", 2, &["b"]), table("b", 1, &[])]);
+        let model = diagram_tables(&s);
+        assert_eq!(model.len(), 2);
+        assert_eq!(model[0].columns[0].name, "col0");
+        assert!(model[0].columns[0].primary_key);
+        assert_eq!(model[0].foreign_keys[0].table, "b");
+        assert_eq!(model[0].foreign_keys[0].ref_columns, ["col0"]);
+        let json = serde_json::to_string(&model).unwrap();
+        assert!(
+            !json.contains("comment") && !json.contains("note"),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn an_svg_is_kept_whole_or_refused_never_cut() {
+        let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>\n";
+        let whole = svg_answer(svg, 2, 2, 1000).unwrap();
+        assert_eq!(whole, svg.trim_end());
+        // Tables left out of the model are said after the image, which stays valid XML.
+        let note = svg_answer(svg, 300, 450, 1000).unwrap();
+        assert!(note.starts_with("<svg") && note.contains("</svg>\n<!-- cut: 300 of 450"));
+        assert!(!note.split("<!--").nth(1).unwrap().contains("--->"));
+        // Over the limit: refused, with the way out, and nothing of the image.
+        let error = svg_answer(svg, 7, 7, 20).unwrap_err();
+        assert!(matches!(error, AgentError::Invalid(_)));
+        let text = error.to_string();
+        assert!(
+            text.contains("7 tables") && text.contains("`tables`") && text.contains("mermaid"),
+            "{text}"
+        );
+        assert!(!text.contains("<rect"), "{text}");
+        // Not an image at all.
+        assert!(svg_answer("<html>", 1, 1, 1000).is_err());
     }
 
     #[test]

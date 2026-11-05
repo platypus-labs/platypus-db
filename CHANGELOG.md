@@ -22,7 +22,8 @@ All notable changes to PlatypusDB are listed here. The format follows
   in the CLI too, as the grid shows them while it masks. Settings › Agents › Security can show them
   on one connection.
 - **Agents**: the `get_er_diagram` tool draws a schema, or the tables near some tables, as a Mermaid
-  `erDiagram`.
+  `erDiagram`, or with `format: "svg"` as the image the diagram's export makes, drawn by the open
+  app (which asks you nothing and shows nothing). An image over the byte limit is refused, not cut.
 - **Agents**: `describe_table`, `list_objects` and the table resource return the user's notes, tags
   and sensitive marks, and `search_objects` also finds objects by comment, note and `#tag`.
 - **Agents**: Settings › Agents › Security limits rows, bytes, time and calls per minute per
