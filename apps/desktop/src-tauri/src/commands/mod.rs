@@ -10,6 +10,7 @@ pub mod agents;
 pub mod analysis;
 pub mod backup;
 pub mod catalog;
+pub mod cell_files;
 pub mod cli;
 pub mod connections;
 pub mod dashboards;

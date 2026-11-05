@@ -113,7 +113,7 @@ pub fn sql_literals(
 }
 
 /// The bytes of `row` in a binary array; `None` when the array is not binary.
-pub(super) fn binary_at(array: &dyn Array, row: usize) -> Option<&[u8]> {
+pub(crate) fn binary_at(array: &dyn Array, row: usize) -> Option<&[u8]> {
     if let Some(a) = array.as_binary_opt::<i32>() {
         Some(a.value(row))
     } else if let Some(a) = array.as_binary_opt::<i64>() {
@@ -164,7 +164,9 @@ pub fn cell_bytes(
     Ok(Response::new(bytes.unwrap_or_default()))
 }
 
-/// Writes a cell's value to `path`: binary values as stored, others as UTF-8 text.
+/// Writes a cell's value to `path`: binary values as stored, others as UTF-8 text. With
+/// `decode`, a text cell that holds a file (a `data:` URL, base64 or hex) is written as that
+/// file's bytes; one that holds none is refused.
 #[tauri::command]
 pub async fn save_cell(
     state: State<'_, AppState>,
@@ -172,10 +174,15 @@ pub async fn save_cell(
     row: usize,
     column: usize,
     path: String,
+    decode: Option<bool>,
 ) -> CommandResult<()> {
     let job = state.job(job_id)?;
     state.exportable(job.session_id)?;
-    let bytes = cell_bytes_of(&job, row, column)?.unwrap_or_default();
+    let bytes = if decode == Some(true) {
+        super::cell_files::decoded_cell(&job, row, column)?
+    } else {
+        cell_bytes_of(&job, row, column)?.unwrap_or_default()
+    };
     tauri::async_runtime::spawn_blocking(move || {
         std::fs::write(&path, bytes).map_err(|e| CommandError::new("io", format!("{path}: {e}")))
     })

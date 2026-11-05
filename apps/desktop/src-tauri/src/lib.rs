@@ -7,6 +7,7 @@ mod copy;
 mod display;
 mod error;
 mod export;
+mod filetype;
 mod formats;
 mod jobs;
 mod profiles;
@@ -463,6 +464,9 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::grid::sql_literals,
         commands::grid::cell_bytes,
         commands::grid::save_cell,
+        commands::cell_files::cell_file,
+        commands::cell_files::column_files,
+        commands::cell_files::save_cell_files,
         commands::grid::file_size,
         commands::grid::read_cell_file,
         commands::grid::search_rows,
