@@ -35,7 +35,7 @@ import "./querylog/actions";
 import "./plugins/actions";
 import "./help/actions";
 import { externalLinks } from "./help/external";
-import { replaceGuide } from "./help/bundled";
+import { replaceGuide } from "./help/replaced";
 import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";

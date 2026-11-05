@@ -7,12 +7,12 @@ import { openExternal } from "./external";
 import { GuideMarkdown } from "./GuideMarkdown";
 import { changelogSection, type LinkTarget, pageSource, sortedKeys, START_PAGE, titleOf } from "./pages";
 
-/** Opens the guide that comes with the app, on `page` (a key such as `connect`) at the heading `anchor`. */
+// Loaded at first use, through `open.ts`: import that one, not this module.
+
 export function openGuide(page: string = START_PAGE, anchor: string | null = null) {
   workbench().openDialog((close) => <GuideDialog page={page} anchor={anchor} onClose={close} />);
 }
 
-/** Opens the changelog section of the running version. */
 export function openWhatsNew() {
   workbench().openDialog((close) => <WhatsNewDialog onClose={close} />);
 }
