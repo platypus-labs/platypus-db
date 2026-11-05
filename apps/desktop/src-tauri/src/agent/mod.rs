@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use platypus_mcp::{
-    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextRequest, ContextVerdict, HELLO_EVERY, OpenSession,
-    Verdict, WriteRequest,
+    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextRequest, ContextVerdict, DIAGRAM_TIMEOUT,
+    DiagramAnswer, DiagramRequest, HELLO_EVERY, OpenSession, Verdict, WriteRequest,
 };
 use serde::Serialize;
 use tokio::sync::oneshot;
@@ -45,6 +45,9 @@ pub const WRITE_SETTLED_EVENT: &str = "agent-write-settled";
 /// The same for the agents' requests to see what the user works on.
 pub const CONTEXT_REQUEST_EVENT: &str = "agent-context-request";
 pub const CONTEXT_SETTLED_EVENT: &str = "agent-context-settled";
+/// An agent asks the page to draw a diagram as SVG; settled when the wait ends.
+pub const DIAGRAM_REQUEST_EVENT: &str = "agent-diagram-request";
+pub const DIAGRAM_SETTLED_EVENT: &str = "agent-diagram-settled";
 pub const AGENTS_EVENT: &str = "agents-connected";
 
 /// What the bridge needs from the app: kept apart so that tests run it without a window.
@@ -123,14 +126,14 @@ impl<R: Clone + Serialize, V> Queue<R, V> {
             .collect()
     }
 
-    /// Tells the page of `request` with `event` and waits for the user's answer; `refused`
-    /// stands for it when nobody answers within [`ANSWER_TIMEOUT`].
+    /// Tells the page of `request` with `event` and waits for the answer; `refused` stands for
+    /// it when nobody answers within `wait`.
     async fn ask(
         &self,
         host: &dyn Host,
         (id, request): (String, R),
         event: &str,
-        refused: V,
+        (wait, refused): (Duration, V),
     ) -> Result<V, String> {
         let (answer, answered) = oneshot::channel();
         let payload = serde_json::to_value(&request).map_err(|e| e.to_string())?;
@@ -148,7 +151,7 @@ impl<R: Clone + Serialize, V> Queue<R, V> {
             id,
         };
         host.notify(event, payload);
-        Ok(match tokio::time::timeout(ANSWER_TIMEOUT, answered).await {
+        Ok(match tokio::time::timeout(wait, answered).await {
             Ok(Ok(verdict)) => verdict,
             _ => refused,
         })
@@ -162,6 +165,9 @@ pub struct Link {
     writes: Queue<WriteRequest, Verdict>,
     /// The looks at the user's work waiting for them.
     contexts: Queue<ContextRequest, ContextVerdict>,
+    /// The diagrams agents ask the page to draw. Nobody is asked: they are not shown to the
+    /// user, and are not in the page's waiting lists.
+    diagrams: Queue<DiagramRequest, DiagramAnswer>,
     /// The agents connected, by session, with when they last said hello.
     agents: Mutex<HashMap<String, (String, Instant)>>,
 }
@@ -178,8 +184,14 @@ impl Link {
             host: Box::new(host),
             writes: Queue::new(WRITE_SETTLED_EVENT),
             contexts: Queue::new(CONTEXT_SETTLED_EVENT),
+            diagrams: Queue::new(DIAGRAM_SETTLED_EVENT),
             agents: Mutex::default(),
         }
+    }
+
+    /// Answers the diagram `id` an agent asked the page to draw; `false` when it no longer waits.
+    pub fn answer_diagram(&self, id: &str, answer: DiagramAnswer) -> bool {
+        self.diagrams.answer(id, answer)
     }
 
     /// Answers the change `id`; `false` when it no longer waits.
@@ -272,7 +284,12 @@ impl AppLink for Link {
             reason: Some(unanswered()),
         };
         self.writes
-            .ask(&*self.host, (id, request), WRITE_REQUEST_EVENT, refused)
+            .ask(
+                &*self.host,
+                (id, request),
+                WRITE_REQUEST_EVENT,
+                (ANSWER_TIMEOUT, refused),
+            )
             .await
     }
 
@@ -282,7 +299,27 @@ impl AppLink for Link {
             reason: Some(unanswered()),
         };
         self.contexts
-            .ask(&*self.host, (id, request), CONTEXT_REQUEST_EVENT, refused)
+            .ask(
+                &*self.host,
+                (id, request),
+                CONTEXT_REQUEST_EVENT,
+                (ANSWER_TIMEOUT, refused),
+            )
+            .await
+    }
+
+    async fn diagram(&self, request: DiagramRequest) -> Result<DiagramAnswer, String> {
+        let id = request.id.clone();
+        let refused = DiagramAnswer::Failed {
+            message: "the page did not draw it in time".to_owned(),
+        };
+        self.diagrams
+            .ask(
+                &*self.host,
+                (id, request),
+                DIAGRAM_REQUEST_EVENT,
+                (DIAGRAM_TIMEOUT, refused),
+            )
             .await
     }
 

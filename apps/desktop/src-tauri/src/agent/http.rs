@@ -1,4 +1,4 @@
-//! The bridge's HTTP server: `/v1/sessions`, `/v1/confirm`, `/v1/context` and `/v1/hello` for the `--mcp`
+//! The bridge's HTTP server: `/v1/sessions`, `/v1/confirm`, `/v1/context`, `/v1/diagram` and `/v1/hello` for the `--mcp`
 //! server and the CLI, `/mcp` for MCP clients over HTTP. Every request gives the token.
 
 use std::convert::Infallible;
@@ -10,7 +10,7 @@ use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::Incoming;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use platypus_mcp::{AppLink, ContextRequest, PlatypusServer, WriteRequest};
+use platypus_mcp::{AppLink, ContextRequest, DiagramRequest, PlatypusServer, WriteRequest};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use serde::Deserialize;
@@ -141,6 +141,13 @@ async fn handle(
         (&Method::POST, "/v1/context") => match body::<ContextRequest>(request).await {
             Ok(asked) => match link.context(asked).await {
                 Ok(verdict) => json(&verdict),
+                Err(e) => text(StatusCode::INTERNAL_SERVER_ERROR, &e),
+            },
+            Err(e) => text(StatusCode::BAD_REQUEST, &e),
+        },
+        (&Method::POST, "/v1/diagram") => match body::<DiagramRequest>(request).await {
+            Ok(asked) => match link.diagram(asked).await {
+                Ok(answer) => json(&answer),
                 Err(e) => text(StatusCode::INTERNAL_SERVER_ERROR, &e),
             },
             Err(e) => text(StatusCode::BAD_REQUEST, &e),

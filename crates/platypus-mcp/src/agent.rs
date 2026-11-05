@@ -28,7 +28,7 @@ use crate::er;
 use crate::error::{AgentError, Result};
 use crate::estimate;
 use crate::guard::{self, Asked, CallWindows};
-use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
+use crate::link::{AppLink, CLOSED, DiagramAnswer, DiagramRequest, Verdict, WriteRequest};
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
 use crate::policy::{AgentPolicy, Seal};
@@ -804,6 +804,55 @@ impl Agent {
         tables: &[String],
         depth: Option<u64>,
     ) -> Result<String> {
+        let (doc, total) = self.er_model(connection, schema, tables, depth).await?;
+        Ok(er::render(&doc, total, Limits::DEFAULT_BYTES))
+    }
+
+    /// The same diagram as SVG, drawn by the open app from the model read here (the app opens
+    /// no connection and asks the user nothing). An image is not cut: one over the byte limit
+    /// is refused. The app closed, or not answering, is an error that names `mermaid`.
+    pub async fn er_diagram_svg(
+        &self,
+        connection: &str,
+        schema: &str,
+        tables: &[String],
+        depth: Option<u64>,
+        (origin, session): (&str, &str),
+    ) -> Result<String> {
+        let (doc, total) = self.er_model(connection, schema, tables, depth).await?;
+        let needs_app = |why: &str| {
+            AgentError::Store(format!(
+                "the SVG diagram is drawn by PlatypusDB and needs it open ({why}): open the app, \
+                 or pass `format: \"mermaid\"`, which works without it"
+            ))
+        };
+        let Some(link) = self.link().filter(|link| link.reachable()) else {
+            return Err(needs_app(CLOSED));
+        };
+        let request = DiagramRequest {
+            id: Uuid::new_v4().to_string(),
+            agent: origin_name(origin),
+            session: session.to_owned(),
+            schema: schema.to_owned(),
+            tables: er::diagram_tables(&doc),
+        };
+        match link.diagram(request).await {
+            Ok(DiagramAnswer::Svg { svg }) => {
+                er::svg_answer(&svg, doc.objects.len(), total, Limits::DEFAULT_BYTES)
+            }
+            Ok(DiagramAnswer::Failed { message }) => Err(needs_app(&message)),
+            Err(e) => Err(needs_app(&e)),
+        }
+    }
+
+    /// The tables of the diagram of `schema` and how many the request names or the schema has.
+    async fn er_model(
+        &self,
+        connection: &str,
+        schema: &str,
+        tables: &[String],
+        depth: Option<u64>,
+    ) -> Result<(DocSchema, usize)> {
         let (store, saved) = self.find(connection)?;
         if matches!(
             saved.driver,
@@ -831,7 +880,7 @@ impl Agent {
             } else {
                 format!("`{connection}` has no table `{schema}.{name}`")
             })),
-            ErRead::Found { doc, total } => Ok(er::render(&doc, total, Limits::DEFAULT_BYTES)),
+            ErRead::Found { doc, total } => Ok((doc, total)),
         }
     }
 

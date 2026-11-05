@@ -64,7 +64,8 @@ pub use library::{
 };
 pub use link::{
     ANSWER_TIMEOUT, AppLink, BridgeFile, ContextPart, ContextRequest, ContextResult,
-    ContextVerdict, HttpLink, OpenSession, UserContext, Verdict, WriteRequest,
+    ContextVerdict, DIAGRAM_TIMEOUT, DiagramAnswer, DiagramColumn, DiagramKey, DiagramRequest,
+    DiagramTable, HttpLink, OpenSession, UserContext, Verdict, WriteRequest,
 };
 pub use output::{Format, QueryResult};
 pub use plan::PlanResult;

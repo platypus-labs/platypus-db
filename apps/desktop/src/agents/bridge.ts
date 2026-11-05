@@ -9,6 +9,7 @@ import { api, type ConnectedAgent } from "../api";
 import { msg } from "../i18n";
 import { defineSetting } from "../settings";
 import { type ContextRequest, type ContextVerdict, type Grants, type TabSnapshot, grant, granted, noGrants, readActive, verdictFor } from "./context";
+import type { DiagramRequest } from "./diagram";
 import { enqueue, settle, type Verdict, type Waiting, type WriteRequest } from "./writes";
 
 /** Read by the `--mcp` server and the CLI (`Agent::confirms_changes`). */
@@ -95,6 +96,15 @@ function receiveContext(request: ContextRequest, since = Date.now()) {
     .catch(wait);
 }
 
+/** A request to draw an ER diagram as SVG: answered at once, with nothing shown. The drawing
+ *  code loads here, at the first request. A failure to load or draw is the agent's answer. */
+function receiveDiagram(request: DiagramRequest) {
+  import("./diagram")
+    .then((m) => m.answerDiagram(request))
+    .catch((e: unknown) => api.answerAgentDiagram(request.id, { answer: "failed", message: String(e) }))
+    .catch(() => {});
+}
+
 /** Follows the bridge's events, from the app's start. */
 export function startAgentBridge() {
   void listen<WriteRequest>("agent-write-request", ({ payload }) =>
@@ -103,6 +113,7 @@ export function startAgentBridge() {
   void listen<string>("agent-write-settled", ({ payload }) => update({ waiting: settle(state.waiting, payload) }));
   void listen<ContextRequest>("agent-context-request", ({ payload }) => receiveContext(payload));
   void listen<string>("agent-context-settled", ({ payload }) => update({ contexts: settle(state.contexts, payload) }));
+  void listen<DiagramRequest>("agent-diagram-request", ({ payload }) => receiveDiagram(payload));
   void listen<ConnectedAgent[]>("agents-connected", ({ payload }) => update({ agents: payload }));
   // What came before the page listened: a reload, or a request at the start.
   api.agentWritesWaiting().then(

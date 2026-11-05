@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use platypus_mcp::{Agent, ContextPart, HttpLink, Profile, UserContext};
+use platypus_mcp::{Agent, ContextPart, DiagramTable, HttpLink, Profile, UserContext};
 
 use super::*;
 
@@ -351,6 +351,77 @@ async fn agents_ask_to_see_what_the_user_works_on_through_the_bridge() {
     );
     assert_eq!(told(CONTEXT_SETTLED_EVENT), 3);
     bridge.stop();
+}
+
+fn draw(id: &str) -> DiagramRequest {
+    DiagramRequest {
+        id: id.to_owned(),
+        agent: "claude-code".to_owned(),
+        session: "s1".to_owned(),
+        schema: "main".to_owned(),
+        tables: vec![DiagramTable {
+            name: "<script>alert(1)</script>".to_owned(),
+            columns: Vec::new(),
+            foreign_keys: Vec::new(),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn agents_ask_the_page_to_draw_a_diagram_without_asking_the_user() {
+    let dir = tempfile::tempdir().unwrap();
+    let (bridge, events) = bridge(dir.path()).await;
+    let told = |name: &str| lock(&events).iter().filter(|(e, _)| e == name).count();
+
+    // The page is told with the model, nothing waits for the user, and its SVG reaches the agent.
+    let link = HttpLink::new(dir.path());
+    let asking = tokio::spawn(async move { link.diagram(draw("d1")).await });
+    let sent = eventually(|| {
+        lock(&events)
+            .iter()
+            .find(|(e, _)| e == DIAGRAM_REQUEST_EVENT)
+            .map(|(_, payload)| payload.clone())
+    })
+    .await
+    .expect("the page was not told");
+    assert_eq!(sent["tables"][0]["name"], "<script>alert(1)</script>");
+    assert_eq!(bridge.link().waiting(), [], "not a change");
+    assert_eq!(
+        bridge.link().waiting_contexts(),
+        [],
+        "not a look at the work"
+    );
+    let svg = DiagramAnswer::Svg {
+        svg: "<svg/>".to_owned(),
+    };
+    assert!(bridge.link().answer_diagram("d1", svg.clone()));
+    assert_eq!(asking.await.unwrap().unwrap(), svg);
+    assert_eq!(told(DIAGRAM_SETTLED_EVENT), 1);
+    assert!(!bridge.link().answer_diagram("d1", svg), "answered already");
+
+    // A page that cannot draw says why.
+    let link = HttpLink::new(dir.path());
+    let asking = tokio::spawn(async move { link.diagram(draw("d2")).await });
+    eventually(|| (told(DIAGRAM_REQUEST_EVENT) == 2).then_some(())).await;
+    let failed = DiagramAnswer::Failed {
+        message: "no layout".to_owned(),
+    };
+    assert!(bridge.link().answer_diagram("d2", failed.clone()));
+    assert_eq!(asking.await.unwrap().unwrap(), failed);
+
+    // An agent that goes away takes its request with it; the app closed is an error.
+    let link = HttpLink::new(dir.path());
+    let asking = tokio::spawn(async move { link.diagram(draw("d3")).await });
+    eventually(|| (told(DIAGRAM_REQUEST_EVENT) == 3).then_some(())).await;
+    asking.abort();
+    assert!(
+        eventually(|| (told(DIAGRAM_SETTLED_EVENT) == 3).then_some(()))
+            .await
+            .is_some(),
+        "the request went with it"
+    );
+    bridge.stop();
+    assert!(HttpLink::new(dir.path()).diagram(draw("d4")).await.is_err());
 }
 
 #[tokio::test]
