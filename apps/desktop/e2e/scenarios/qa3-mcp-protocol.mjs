@@ -20,7 +20,7 @@ import { mcpArgs, mcpExe, noMcp, sqliteToml, startClient, startRaw } from "../qa
 export const skip = noMcp;
 
 const RO = "00000000-0000-4000-8000-000000000301";
-const TOOLS = ["describe_table", "explain", "get_ddl", "get_er_diagram", "get_user_context", "list_connections", "list_objects", "list_open_sessions", "list_schemas", "list_scripts", "propose_sql", "read_script", "run_query", "sample_rows", "search_history", "search_objects"];
+const TOOLS = ["compare_schemas", "describe_table", "explain", "get_ddl", "get_er_diagram", "get_user_context", "list_connections", "list_objects", "list_open_sessions", "list_schemas", "list_scripts", "profile_table", "propose_sql", "read_script", "run_query", "sample_rows", "search_history", "search_objects"];
 
 export function setup({ dir }) {
   const file = join(dir, "qa3.db");

@@ -105,8 +105,8 @@ agents and the CLI only once you approved that exact text in the app (which asks
 connect): until then they are left out, and the server's log (stderr) says so.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
-`get_er_diagram`, `search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql`,
-`list_open_sessions`, `list_scripts`, `read_script` and `search_history`. `run_query` runs one statement and returns 100 rows,
+`get_er_diagram`, `compare_schemas`, `search_objects`, `run_query`, `sample_rows`,
+`profile_table`, `explain`, `propose_sql`, `list_open_sessions`, `list_scripts`, `read_script` and `search_history`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
@@ -123,6 +123,30 @@ and the tables linked to them by foreign keys, `depth` hops away in either direc
 a `%%` comment saying how many were drawn and suggesting `tables`. A table that does not exist,
 a name that is a view, and a schema that does not exist are errors; MongoDB, Redis and
 Elasticsearch have no tables to draw and answer with an error.
+
+`compare_schemas` (`connection`, `schema`, `other_schema`, optional `other_connection`,
+`max_bytes`, `timeout_seconds`) compares two schemas as the app's schema compare does, of one
+connection or of two connections of the same kind of database (otherwise it answers as the app
+does: only databases of the same kind). It returns the differences (tables, columns, indexes,
+foreign keys and constraints added, dropped or changed) and the migration script that makes
+`other_schema` like `schema`, as JSON text. Nothing runs: the script reaches you only through
+`propose_sql`, which the answer says. The answer stays within `max_bytes` (32 KB by default):
+the list of differences is cut first, with a note; a script that does not fit is left out whole
+(`script: null`, `script_complete: false`), never cut, since a part of a migration is dangerous
+to run. Both connections must be open to agents, and each is read within its own agent limits
+(timeout, calls per minute).
+
+`profile_table` (`connection`, `schema`, `table`, optional `sample_rows`, `max_bytes`,
+`timeout_seconds`) describes each column of a table or view from its first `sample_rows` rows
+(10,000 by default, up to 100,000; no order is implied, and the answer says when the table has
+more): NULLs, distinct values, empty texts, minimum and maximum, the most frequent values,
+patterns (emails, dates, numbers stored as text) and the spread of numbers. It reads in the
+database's read-only transaction, within the connection's timeout and calls per minute. A
+sensitive column, decided as for results (the user's marks on that table over the Safety
+rules), gives its counts only (`nulls`, `distinct`, `empty`): no minimum, maximum, top value,
+pattern or length. If the marks cannot be read the call fails rather than show values; a
+connection set to show sensitive values shows them here too. Values are cut at 1,000
+characters and have the connection's secrets masked.
 
 The user's saved scripts and history are readable too, never writable: `list_scripts` lists
 the scripts of a project (by its name; without one, those of All connections) with the
