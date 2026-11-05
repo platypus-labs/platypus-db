@@ -73,7 +73,7 @@ Errors name the proxy, such as `SOCKS5 proxy host:1080: …` or `HTTP proxy host
 ## A driver download fails
 
 DuckDB, Snowflake, BigQuery, Databricks, Trino, other ADBC drivers, Oracle and IBM Db2 download their
-library the first time they are used. The popup says "Downloading the <name> driver…" with a
+library the first time they are used. The popup says "Downloading the `<name>` driver…" with a
 **Cancel**, and a failure shows a message with **Try again**.
 
 - `the download failed (check the internet connection)` or `cannot reach the driver registry`: no
@@ -147,7 +147,7 @@ same package.
 
 ## Updates
 
-- At start the app looks for a newer release and shows "PlatypusDB <version> is available" with
+- At start the app looks for a newer release and shows "PlatypusDB `<version>` is available" with
   **Later** and **Install and restart**.
 - A portable copy only says so: replace its executable. An install from a package manager (Flatpak,
   the AUR) says so and leaves the update to it.

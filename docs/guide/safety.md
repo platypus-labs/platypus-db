@@ -12,14 +12,14 @@ Everything here is also in [FEATURES.md](../FEATURES.md#transactions-and-safety)
 3. Optionally pick a color, so the connection is easy to tell apart.
 
 From then on every change on that connection is listed in a dialog titled
-"Changes on <name> (production)", with the statements, and runs only after you confirm.
+"Changes on `<name>` (production)", with the statements, and runs only after you confirm.
 Settings (`Ctrl+,`) › **Safety** › **Ask before changes on production connections** turns this
 off for the app. Agents are never more than read only on a production connection.
 
 ## Make a connection read-only
 
 1. On the same page, tick **Read-only (warn before modifying data)**.
-2. A statement that may modify data is stopped in the editor with "<name> is read-only and this
+2. A statement that may modify data is stopped in the editor with "`<name>` is read-only and this
    may modify data."; some entry points ask "Run anyway?" instead. Import into tables is not
    offered, and agents stay read only.
 

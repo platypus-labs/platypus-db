@@ -95,7 +95,7 @@ function check(file, { line, target }) {
   const raw = target.trim();
   if (raw === "" || SCHEME.test(raw) || raw.startsWith("//")) return;
   const hash = raw.indexOf("#");
-  const path = decode(hash < 0 ? raw : raw.slice(0, hash).split("?")[0]);
+  const path = decode((hash < 0 ? raw : raw.slice(0, hash)).split("?")[0]);
   const anchor = hash < 0 ? "" : decode(raw.slice(hash + 1));
   let targetFile = file;
   if (path !== "") {

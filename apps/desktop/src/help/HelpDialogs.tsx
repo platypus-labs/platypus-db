@@ -37,6 +37,8 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
   useEffect(() => {
     if (reader.current) scrollTo(reader.current, here.anchor);
   }, [here]);
+  // Escape and the arrow keys work at once, whatever had the focus before.
+  useEffect(() => reader.current?.focus(), []);
 
   const go = (place: Place) => setTrail((all) => [...all, place]);
   const follow = (target: LinkTarget) => {
@@ -84,7 +86,7 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
             )}
             <p className="muted small guide-language">{t("The guide is written in English.")}</p>
           </nav>
-          <div className="guide-reader" ref={reader} tabIndex={0} data-page={here.page} autoFocus>
+          <div className="guide-reader" ref={reader} tabIndex={0} data-page={here.page}>
             {"missing" in shown ? (
               <p className="guide-missing">{t("This page is not part of the guide that comes with the app: {path}", { path: shown.missing })}</p>
             ) : (

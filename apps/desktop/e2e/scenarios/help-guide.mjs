@@ -265,6 +265,7 @@ export default async function (page) {
   await page.eval(`window.__platypus.setGuide(null)`);
   await helpMenu(page, "User guide");
   await page.waitFor(`${dialog} !== null`);
+  assert.ok(await page.eval(`document.activeElement === ${reader}`), "the reader has the focus");
   const real = await page.eval(`[...${dialog}.querySelectorAll('.guide-index button')].map(b => b.dataset.page)`);
   for (const wanted of ["README", "getting-started", "connect", "safety", "agents", "databases/README", "databases/postgresql"]) {
     assert.ok(real.includes(wanted), `${wanted} in the index: ${real}`);

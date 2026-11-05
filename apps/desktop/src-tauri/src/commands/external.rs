@@ -38,14 +38,16 @@ pub fn open_external_url(url: String) -> CommandResult<()> {
         ));
     }
     let (program, args) = opener(&url);
-    Command::new(program)
+    let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map(drop)
-        .map_err(|e| CommandError::new("io", format!("Could not open {url}: {e}")))
+        .map_err(|e| CommandError::new("io", format!("Could not open {url}: {e}")))?;
+    // Waited for elsewhere, or it stays a defunct process on macOS and Linux until the app exits.
+    std::thread::spawn(move || child.wait());
+    Ok(())
 }
 
 #[cfg(test)]
