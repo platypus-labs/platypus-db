@@ -179,6 +179,27 @@ pub const MAX_PROPOSAL_BYTES: usize = 1024 * 1024;
 /// Characters of a proposal's title kept.
 const TITLE_CHARS: usize = 80;
 
+/// A proposal's title as the app shows it: no control characters, cut, none when empty.
+pub(crate) fn proposal_title(title: Option<&str>) -> Option<String> {
+    title
+        .map(|t| {
+            t.trim()
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(TITLE_CHARS)
+                .collect()
+        })
+        .filter(|t: &String| !t.is_empty())
+}
+
+/// The refusal when too many proposals wait for the user; `advice` says what to do instead.
+pub(crate) fn too_many_waiting(advice: &str) -> AgentError {
+    AgentError::Invalid(format!(
+        "{MAX_PENDING_PROPOSALS} proposals of yours (or {MAX_PENDING_ALL} of all agents) \
+         wait for the user to open them in PlatypusDB: no more until they are opened. {advice}"
+    ))
+}
+
 /// Rows `sample_rows` returns by default.
 pub const SAMPLE_ROWS: u64 = 20;
 
@@ -716,6 +737,31 @@ impl Agent {
         Ok(view.list(schema, page, &redactor))
     }
 
+    /// The details of `schema.table` as the database has them, or why there are none.
+    pub(crate) async fn read_table(
+        &self,
+        store: &ConnectionStore,
+        saved: &SavedConnection,
+        schema: &str,
+        table: &str,
+    ) -> Result<TableDetails> {
+        let lease = self.lease(store, saved).await?;
+        let conn = lease.conn();
+        let details = timed(async {
+            let details = conn.table_details(schema, table).await?;
+            let exists = !details.columns.is_empty()
+                || conn.objects(schema).await?.iter().any(|o| o.name == table);
+            Ok::<_, Error>(exists.then_some(details))
+        })
+        .await;
+        lease.settle(details)?.ok_or_else(|| {
+            AgentError::NotFound(format!(
+                "`{}` has no table or view `{schema}.{table}`",
+                saved.name
+            ))
+        })
+    }
+
     /// Columns, keys, foreign keys (both ways), indexes and constraints of a table or view.
     pub async fn describe_table(
         &self,
@@ -1066,17 +1112,7 @@ impl Agent {
             )));
         }
         let (_, saved) = self.find(&args.connection)?;
-        let title: Option<String> = args
-            .title
-            .as_deref()
-            .map(|t| {
-                t.trim()
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .take(TITLE_CHARS)
-                    .collect()
-            })
-            .filter(|t: &String| !t.is_empty());
+        let title = proposal_title(args.title.as_deref());
         let kept = self.with_calls(|store| {
             Ok(store.propose(
                 &origin_name(origin),
@@ -1086,11 +1122,9 @@ impl Agent {
             )?)
         })?;
         if kept.is_none() {
-            return Err(AgentError::Invalid(format!(
-                "{MAX_PENDING_PROPOSALS} proposals of yours (or {MAX_PENDING_ALL} of all agents) \
-                 wait for the user to open them in PlatypusDB: no more until they are opened. \
-                 Put several statements in one proposal instead"
-            )));
+            return Err(too_many_waiting(
+                "Put several statements in one proposal instead",
+            ));
         }
         Ok(format!(
             "Proposed on `{}`: PlatypusDB opens it in a new editor tab, now if the app is open \
@@ -1105,7 +1139,7 @@ impl Agent {
     }
 
     /// Runs `f` on the call log, opened on first use and kept open.
-    fn with_calls<T>(&self, f: impl FnOnce(&AgentCallStore) -> Result<T>) -> Result<T> {
+    pub(crate) fn with_calls<T>(&self, f: impl FnOnce(&AgentCallStore) -> Result<T>) -> Result<T> {
         let mut calls = locked(&self.calls);
         if calls.is_none() {
             *calls = Some(self.profile.agent_calls()?);

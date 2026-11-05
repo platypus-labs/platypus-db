@@ -247,6 +247,7 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "server_activity",
         "top_queries",
         "propose_sql",
+        "propose_edits",
         "list_open_sessions",
         "get_user_context",
         "list_scripts",
@@ -1274,6 +1275,324 @@ fn proposes_sql_for_the_app_to_open() {
         proposals().len(),
         platypus_store::MAX_PENDING_PROPOSALS as usize
     );
+}
+
+/// A profile as [`profile`], with connections that `propose_edits` refuses: read-only, no data
+/// editing, and the kinds of database whose rows the data viewer does not edit by key.
+fn profile_with_refusals(dir: &Path) {
+    profile(dir);
+    let mut toml = std::fs::read_to_string(dir.join("connections.toml")).unwrap();
+    let sqlite_connection = |id: u32, name: &str, extra: &str| {
+        format!(
+            "\n[[connections]]\nid = \"00000000-0000-4000-8000-0000000000b{id}\"\nname = \"{name}\"\n\
+             driver = \"sqlite\"\ndatabase = '{}'\n{extra}\n",
+            dir.join("app.db").display()
+        )
+    };
+    toml += &sqlite_connection(1, "Locked", "read_only = true");
+    toml += &sqlite_connection(
+        2,
+        "NoEditing",
+        "agent_access = \"read_write\"\n[connections.restrictions]\nno_data_editing = true",
+    );
+    for (i, driver) in ["mongo", "redis", "elasticsearch", "cassandra"]
+        .iter()
+        .enumerate()
+    {
+        toml += &format!(
+            "\n[[connections]]\nid = \"00000000-0000-4000-8000-0000000000c{i}\"\nname = \"{driver}\"\n\
+             driver = \"{driver}\"\nhost = \"127.0.0.1\"\nport = 1\n"
+        );
+    }
+    std::fs::write(dir.join("connections.toml"), toml).unwrap();
+}
+
+/// The `(title, edits)` of the proposals in the call log, oldest first.
+fn kept_edits(dir: &Path) -> Vec<(Option<String>, String, Option<String>)> {
+    let log = rusqlite::Connection::open(dir.join("agent-calls.db")).unwrap();
+    log.prepare("SELECT title, sql, edits FROM proposals ORDER BY id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+/// `propose_edits` keeps the rows for the app's data viewer, as data, and writes nothing.
+#[test]
+fn proposes_edits_for_the_data_viewer() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let (done, error) = client.call(
+        "propose_edits",
+        &json!({
+            "connection": "App db", "schema": "main", "table": "t", "title": "Tidy up\n",
+            "inserts": [{ "id": 3, "name": "O'Neil; DROP TABLE t" }, { "name": null }],
+            "updates": [{ "key": { "id": 1 }, "set": { "name": "Ada L." } }],
+            "deletes": [{ "id": "2" }],
+        }),
+    );
+    assert!(!error, "{done}");
+    assert!(
+        done.contains("Nothing changed") && done.contains("data viewer"),
+        "{done}"
+    );
+    assert!(
+        done.contains("2 rows to insert, 1 to update, 1 to delete"),
+        "{done}"
+    );
+    // The database is as it was.
+    assert_eq!(count(&dir.path().join("app.db")), 2);
+    let names: Vec<String> = rusqlite::Connection::open(dir.path().join("app.db"))
+        .unwrap()
+        .prepare("SELECT name FROM t ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(names, ["Ada", "Bob"]);
+
+    // A read_only connection takes proposals, as for propose_sql: nothing runs. The key may
+    // also be a unique column.
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE u (a INTEGER, b TEXT, c TEXT, UNIQUE (a, b));",
+    );
+    let (composite, error) = client.call(
+        "propose_edits",
+        &json!({
+            "connection": "App db", "schema": "main", "table": "u",
+            "updates": [{ "key": { "b": "x", "a": 1.0 }, "set": { "c": true } }],
+        }),
+    );
+    assert!(!error, "{composite}");
+    drop(client);
+
+    let kept = kept_edits(dir.path());
+    assert_eq!(kept.len(), 2);
+    assert_eq!(kept[0].0.as_deref(), Some("Tidy up"));
+    assert_eq!(kept[0].1, "", "the SQL of an edit proposal stays empty");
+    let edits: Value = serde_json::from_str(kept[0].2.as_ref().unwrap()).unwrap();
+    assert_eq!(edits["schema"], "main");
+    assert_eq!(edits["table"], "t");
+    assert_eq!(edits["inserts"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        edits["inserts"][0],
+        json!([["id", "3"], ["name", "O'Neil; DROP TABLE t"]])
+    );
+    assert_eq!(edits["inserts"][1], json!([["name", null]]));
+    assert_eq!(edits["updates"][0]["key"], json!([["id", "1"]]));
+    assert_eq!(edits["deletes"][0], json!([["id", "2"]]));
+    // Numbers are kept as written, a whole float without its fraction.
+    let composite: Value = serde_json::from_str(kept[1].2.as_ref().unwrap()).unwrap();
+    assert_eq!(
+        composite["updates"][0]["key"],
+        json!([["b", "x"], ["a", "1"]])
+    );
+    assert_eq!(composite["updates"][0]["set"], json!([["c", "true"]]));
+}
+
+/// Everything `propose_edits` refuses, with a reason the agent can act on, and nothing kept.
+#[test]
+fn propose_edits_refuses_what_the_viewer_cannot_open() {
+    let dir = tempfile::tempdir().unwrap();
+    profile_with_refusals(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE loose (a TEXT, b TEXT);
+         CREATE TABLE pairs (a INTEGER, b TEXT, c TEXT, PRIMARY KEY (a, b));
+         CREATE VIEW names AS SELECT id, name FROM t;",
+    );
+    let mut client = initialized(dir.path());
+    let mut refuse = |args: Value, what: &str| {
+        let (text, error) = client.call("propose_edits", &args);
+        assert!(error && text.contains(what), "{args}: {text}");
+    };
+    let on = |table: &str, change: Value| {
+        let mut args = json!({ "connection": "App db", "schema": "main", "table": table });
+        args.as_object_mut()
+            .unwrap()
+            .extend(change.as_object().unwrap().clone());
+        args
+    };
+    // Where the table is.
+    refuse(
+        on("nope", json!({ "deletes": [{ "id": 1 }] })),
+        "no table or view `main.nope`",
+    );
+    refuse(
+        json!({ "connection": "Hidden", "schema": "main", "table": "t", "deletes": [{ "id": 1 }] }),
+        "no connection named",
+    );
+    refuse(
+        json!({ "connection": "Nowhere", "schema": "main", "table": "t", "deletes": [{ "id": 1 }] }),
+        "no connection named",
+    );
+    // Columns.
+    refuse(
+        on("t", json!({ "inserts": [{ "nope": 1 }] })),
+        "column `nope`",
+    );
+    refuse(
+        on(
+            "t",
+            json!({ "updates": [{ "key": { "id": 1 }, "set": { "nope": 1 } }] }),
+        ),
+        "column `nope`",
+    );
+    // Keys: exactly the columns of one, none NULL.
+    refuse(
+        on("t", json!({ "deletes": [{ "name": "Ada" }] })),
+        "not exactly the columns of a key",
+    );
+    refuse(
+        on("t", json!({ "deletes": [{ "id": 1, "name": "Ada" }] })),
+        "not exactly the columns of a key",
+    );
+    refuse(
+        on("t", json!({ "deletes": [{}] })),
+        "not exactly the columns of a key",
+    );
+    refuse(
+        on("pairs", json!({ "deletes": [{ "a": 1 }] })),
+        "not exactly the columns of a key",
+    );
+    refuse(
+        on(
+            "t",
+            json!({ "updates": [{ "key": { "id": null }, "set": { "name": "x" } }] }),
+        ),
+        "NULL for the key column `id`",
+    );
+    refuse(
+        on("t", json!({ "deletes": [{ "id": null }] })),
+        "NULL for the key column",
+    );
+    refuse(
+        on(
+            "t",
+            json!({ "updates": [{ "key": { "id": 1 }, "set": {} }] }),
+        ),
+        "nothing to change",
+    );
+    refuse(
+        on("t", json!({ "deletes": [{ "id": "one" }] })),
+        "not a whole number",
+    );
+    refuse(
+        on("t", json!({ "deletes": [{ "id": 1 }, { "id": 1 }] })),
+        "also updated or deleted",
+    );
+    // A table with no key, and a view.
+    refuse(
+        on("loose", json!({ "inserts": [{ "a": "x" }] })),
+        "no primary key or unique key",
+    );
+    refuse(
+        on("names", json!({ "deletes": [{ "id": 1 }] })),
+        "no primary key or unique key",
+    );
+    // Values and size.
+    refuse(
+        on("t", json!({ "inserts": [{ "name": ["a"] }] })),
+        "`name` is an array",
+    );
+    refuse(
+        on(
+            "t",
+            json!({ "updates": [{ "key": { "id": 1 }, "set": { "name": { "a": 1 } } }] }),
+        ),
+        "`name` is an object",
+    );
+    refuse(on("t", json!({})), "no changes");
+    refuse(
+        on("t", json!({ "inserts": [], "updates": [], "deletes": [] })),
+        "no changes",
+    );
+    let many: Vec<Value> = (0..501)
+        .map(|i| json!({ "name": format!("n{i}") }))
+        .collect();
+    refuse(on("t", json!({ "inserts": many })), "at most 500");
+    let big = "x".repeat(600 * 1024);
+    refuse(
+        on(
+            "t",
+            json!({ "inserts": [{ "name": big.clone() }, { "name": big }] }),
+        ),
+        "send fewer",
+    );
+    // Connections the viewer cannot edit.
+    for (name, why) in [
+        ("Locked", "read-only"),
+        ("NoEditing", "does not allow editing"),
+        ("mongo", "MongoDB"),
+        ("redis", "Redis"),
+        ("elasticsearch", "Elasticsearch"),
+        ("cassandra", "Cassandra"),
+    ] {
+        refuse(
+            json!({ "connection": name, "schema": "main", "table": "t", "deletes": [{ "id": 1 }] }),
+            why,
+        );
+    }
+    // The limit of 500 is on all three kinds together, and 500 is fine.
+    let (ok, error) = client.call(
+        "propose_edits",
+        &on(
+            "t",
+            json!({ "inserts": (0..500).map(|i| json!({ "name": format!("n{i}") })).collect::<Vec<_>>() }),
+        ),
+    );
+    assert!(!error, "{ok}");
+    drop(client);
+    assert_eq!(
+        kept_edits(dir.path()).len(),
+        1,
+        "only the last one was kept"
+    );
+    assert_eq!(count(&dir.path().join("app.db")), 2);
+}
+
+/// Edit proposals wait under the same bound as SQL proposals and count in the connection's calls
+/// per minute.
+#[test]
+fn propose_edits_is_bounded_like_propose_sql() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let args = json!({
+        "connection": "App db", "schema": "main", "table": "t", "deletes": [{ "id": 1 }],
+    });
+    for i in 1..=platypus_store::MAX_PENDING_PROPOSALS {
+        let (text, error) = client.call("propose_edits", &args);
+        assert!(!error, "{i}: {text}");
+    }
+    let (text, error) = client.call("propose_edits", &args);
+    assert!(error && text.contains("wait for the user"), "{text}");
+    let (sql, error) = client.call(
+        "propose_sql",
+        &json!({ "connection": "App db", "sql": "SELECT 1" }),
+    );
+    assert!(error && sql.contains("wait for the user"), "{sql}");
+    drop(client);
+
+    // A connection that allows one call a minute takes one proposal.
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let path = dir.path().join("connections.toml");
+    let toml = std::fs::read_to_string(&path).unwrap().replacen(
+        "name = \"App db\"",
+        "name = \"App db\"\nagent_limits = { calls_per_minute = 1 }",
+        1,
+    );
+    std::fs::write(&path, toml).unwrap();
+    let mut client = initialized(dir.path());
+    let (first, error) = client.call("propose_edits", &args);
+    assert!(!error, "{first}");
+    let (second, error) = client.call("propose_edits", &args);
+    assert!(error && second.contains("calls a minute"), "{second}");
 }
 
 /// `notifications/cancelled` cancels the running statement, which frees the connection.

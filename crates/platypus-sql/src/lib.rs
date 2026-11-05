@@ -16,6 +16,7 @@ mod lexer;
 mod lint;
 mod params;
 pub mod pg_literal;
+pub mod proposed;
 mod rewrite;
 pub mod security;
 pub mod sensitive;

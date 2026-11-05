@@ -11,7 +11,7 @@ use crate::{
     Agent, AgentError, CompareArgs, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs,
     ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
 };
-use crate::{EstimateArgs, ServerViewArgs};
+use crate::{EstimateArgs, ProposeEditsArgs, ServerViewArgs};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -33,7 +33,9 @@ list_objects, describe_table, get_ddl, get_er_diagram, compare_schemas and searc
 sample_rows, profile its columns with profile_table (sensitive columns give counts only), query with run_query and read a statement's plan with explain, and ask estimate_change what a change would show the \
 user before it runs (nothing runs); server_activity and top_queries read what the server does: one statement per \
 call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
-hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
+hand (a change the access does not allow, a long script), use propose_sql; to hand the user rows \
+to change in a table, use propose_edits: they open in its data viewer as pending edits to save or \
+discard. Each connection has an \
 agent access set by the user: read_only connections run only statements that change nothing, \
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you. While the \
@@ -700,6 +702,27 @@ impl PlatypusServer {
         let result = tokio::task::spawn_blocking(move || agent.propose_sql(&args, &name))
             .await
             .unwrap_or_else(|e| Err(AgentError::Store(e.to_string())));
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Proposes rows to change in a table: PlatypusDB opens the table's data \
+        viewer with them as pending edits (new rows, changed cells, rows marked for deletion) \
+        that the user reviews, saves or discards (now if the app is open, else when it starts). \
+        Nothing is written here, whatever the connection's agent access. inserts: objects of \
+        column to value. updates: {key, set}, key naming a row by exactly the columns of a \
+        primary or unique key. deletes: objects naming rows by such a key. A value is a string, \
+        number, boolean or null (no arrays or objects); at most 500 rows and 1 MiB in all. The \
+        table needs a primary or unique key; MongoDB, Redis, Elasticsearch and Cassandra, \
+        read-only connections and those that forbid editing data are refused. title names the tab."
+    )]
+    async fn propose_edits(
+        &self,
+        Parameters(args): Parameters<ProposeEditsArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("propose_edits", &peer, &args);
+        let result = self.agent.propose_edits(&args, &call.agent).await;
         self.answer(call, result).await
     }
 }

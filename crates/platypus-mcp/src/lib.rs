@@ -28,6 +28,7 @@ pub mod output;
 pub mod plan;
 pub mod policy;
 pub mod profile;
+mod propose_edits;
 pub mod query;
 mod redact;
 pub mod resource;
@@ -62,6 +63,7 @@ pub use link::{
 pub use output::{Format, QueryResult};
 pub use plan::PlanResult;
 pub use profile::Profile;
+pub use propose_edits::{ProposeEditsArgs, UpdateArg};
 pub use query::Limits;
 pub use server_views::{STATEMENT_CHARS, ServerViewArgs};
 pub use table_profile::ProfileArgs;
