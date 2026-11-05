@@ -3,6 +3,7 @@
 # Features
 
 Everything PlatypusDB does, area by area. The [README](../README.md) has the short version.
+To do something step by step, see the [user guide](guide/README.md).
 
 ## Databases
 
