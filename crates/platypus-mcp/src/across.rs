@@ -7,10 +7,9 @@
 //! has no access to files, the network or extensions and its settings are locked, so
 //! it cannot write to a source nor reach the disk. The database is dropped with the call.
 //!
-//! Values of sensitive columns are masked as they are copied (`••••••`, NULL stays NULL),
-//! unless the source connection shows them: after the join their origin would be lost. All
-//! masked values of a column are equal, so a join on a masked column matches every row with
-//! every other: join on a column that is not sensitive.
+//! Values of sensitive columns are copied as NULL, unless the source connection shows them:
+//! after the join their origin would be lost. Dots, all equal, would make a join on such a column
+//! match every row with every other; NULL matches nothing, and the answer names the columns.
 
 use std::fmt::Write as _;
 use std::sync::Arc;
@@ -23,7 +22,6 @@ use platypus_core::{
 };
 use platypus_driver_duckdb::{DuckDbDriver, memory_database, memory_path};
 use platypus_sql::Dialect;
-use platypus_sql::sensitive::MASKED_VALUE;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -146,7 +144,7 @@ fn select_sql(dialect: Dialect, source: &AcrossSource) -> String {
     )
 }
 
-/// `batch` with the columns `masked` written as text [`MASKED_VALUE`], NULL kept.
+/// `batch` with the columns `masked` all NULL, as text.
 fn mask_batch(batch: &RecordBatch, schema: &SchemaRef, masked: &[bool]) -> Result<RecordBatch> {
     let columns: Vec<ArrayRef> = batch
         .columns()
@@ -154,10 +152,7 @@ fn mask_batch(batch: &RecordBatch, schema: &SchemaRef, masked: &[bool]) -> Resul
         .zip(masked)
         .map(|(column, masked)| {
             if *masked {
-                let values: StringArray = (0..column.len())
-                    .map(|i| (!column.is_null(i)).then_some(MASKED_VALUE))
-                    .collect();
-                Arc::new(values) as ArrayRef
+                Arc::new(StringArray::new_null(column.len())) as ArrayRef
             } else {
                 Arc::clone(column)
             }
@@ -393,8 +388,8 @@ fn copy_notes(copied: &[Copied]) -> Vec<String> {
     }
     if copied.iter().any(|c| !c.masked.is_empty()) {
         let mut note = String::from(
-            "Values of sensitive columns were masked before the join: all of a column read \
-             the same, so a join on one matches every row with every other.",
+            "Values of sensitive columns were copied as NULL before the join, so a join or a \
+             filter on one matches nothing.",
         );
         let _ = write!(note, " Masked: {}.", masked_list(copied));
         notes.push(note);
@@ -595,7 +590,7 @@ mod tests {
         let doc = run(&agent, &args).await.unwrap();
         assert_eq!(
             doc["rows"][0],
-            serde_json::json!([1, "••••••", "••••••", 6]),
+            serde_json::json!([1, null, null, null]),
             "{doc}"
         );
         assert_eq!(
@@ -610,7 +605,15 @@ mod tests {
             "{doc}"
         );
         let notes = doc["notes"].to_string();
-        assert!(notes.contains("masked before the join"), "{notes}");
+        assert!(notes.contains("copied as NULL"), "{notes}");
+
+        // Dots, all equal, would match every row with every other.
+        let args = across(
+            &[("Crm", "customers")],
+            "SELECT count(*) AS n FROM customers a JOIN customers b ON a.email = b.email",
+        );
+        let doc = run(&agent, &args).await.unwrap();
+        assert_eq!(doc["rows"][0][0], 0, "{doc}");
     }
 
     #[tokio::test]
@@ -735,7 +738,7 @@ mod tests {
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
-        assert_eq!(email.value(0), MASKED_VALUE);
+        assert!(email.is_null(0));
         assert!(email.is_null(1));
         assert_eq!(out.column(0).len(), 2);
     }

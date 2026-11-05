@@ -142,10 +142,10 @@ statement is checked as a read-only statement (no `INSERT`, `COPY`, `ATTACH`, `I
 `read_csv` or any function or `FROM 'file'` that reads files or URLs), and the DuckDB session has
 external access off and its settings locked, so it cannot write to a source, the disk or the
 network. A source with more rows than were copied is said so in the answer: a join may then miss
-rows. Rows of sensitive columns are masked as they are copied into DuckDB (`••••••`, NULL left
-NULL) unless that connection shows them, because after a join their origin is lost. A
-consequence: all values of a masked column are equal, so a join on a masked column matches every
-row with every other, and a filter on one tells nothing; join on a column that is not sensitive.
+rows. Sensitive columns are copied into DuckDB as NULL unless that connection shows them, because
+after a join their origin is lost: a join or a filter on one matches nothing (dots, all equal,
+would match every row with every other), and `masked_columns` names them. Join on a column that
+is not sensitive.
 The result keeps to the strictest limits of the sources. If the DuckDB library is not installed
 the answer says the app downloads it (on first use of a DuckDB connection, or in Settings >
 Drivers); agents cannot.

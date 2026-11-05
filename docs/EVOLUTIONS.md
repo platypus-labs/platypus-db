@@ -61,7 +61,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 ### Group A — Agents and MCP
 
-**Status: P1 done (sensitive columns masked in results); `get_er_diagram` as Mermaid, the catalog for agents, the per-connection limits, `compare_schemas`, `profile_table`, `estimate_change`, `server_activity`, `top_queries` and `propose_edits` done; the rest of P3 to do.**
+**Status: P1 and P2 done, `get_er_diagram` as Mermaid included; in P3 the pages of results, MCP prompts, schema change notifications and `query_across_databases` done; to do: the SVG diagram, the agent report and remote MCP.**
 
 **What exists** (roadmap group N, [AGENTS.md](AGENTS.md)): the server (`platypus-db --mcp` on
 stdio, `/mcp` over HTTP through the bridge with the open app) with the tools `list_connections`,

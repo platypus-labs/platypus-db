@@ -5956,7 +5956,7 @@ async fn agents_page_results_and_join_across_databases() {
         );
         assert_eq!(
             joined["rows"],
-            serde_json::json!([["Ada", 2, "••••••"], ["Bob", 1, "••••••"]]),
+            serde_json::json!([["Ada", 2, null], ["Bob", 1, null]]),
             "{}: {joined}",
             b.name
         );
