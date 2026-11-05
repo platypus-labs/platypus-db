@@ -1244,7 +1244,7 @@ export interface AgentReportAgent extends AgentReportFigures {
   sessions: AgentReportSession[];
 }
 
-export type AgentInstallState ="missing" | "installed" | "different" | "unreadable";
+export type AgentInstallState = "missing" | "installed" | "different" | "unreadable";
 
 /** An MCP client PlatypusDB can be installed in. */
 export interface AgentClient {

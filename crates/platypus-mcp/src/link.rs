@@ -290,6 +290,20 @@ impl HttpLink {
     }
 }
 
+impl HttpLink {
+    /// `POST`s `request` as JSON to `path` and reads the answer as `A`.
+    async fn post<Q: Serialize, A: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        request: &Q,
+        timeout: Duration,
+    ) -> Result<A, String> {
+        let body = serde_json::to_string(request).map_err(|e| e.to_string())?;
+        let answer = self.call(path, Some(body), timeout).await?;
+        serde_json::from_str(&answer).map_err(|e| e.to_string())
+    }
+}
+
 /// The body of an HTTP response, or why it failed.
 fn parse_response(text: &str) -> Result<String, String> {
     let (head, body) = text
@@ -344,42 +358,33 @@ impl AppLink for HttpLink {
     }
 
     async fn confirm(&self, request: WriteRequest) -> Result<Verdict, String> {
-        let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         // The user answers in the app: the call waits for them.
-        let answer = self
-            .call(
-                "/v1/confirm",
-                Some(body),
-                ANSWER_TIMEOUT + Duration::from_secs(10),
-            )
-            .await?;
-        serde_json::from_str(&answer).map_err(|e| e.to_string())
+        self.post(
+            "/v1/confirm",
+            &request,
+            ANSWER_TIMEOUT + Duration::from_secs(10),
+        )
+        .await
     }
 
     async fn context(&self, request: ContextRequest) -> Result<ContextVerdict, String> {
-        let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         // As for a change: the user answers in the app.
-        let answer = self
-            .call(
-                "/v1/context",
-                Some(body),
-                ANSWER_TIMEOUT + Duration::from_secs(10),
-            )
-            .await?;
-        serde_json::from_str(&answer).map_err(|e| e.to_string())
+        self.post(
+            "/v1/context",
+            &request,
+            ANSWER_TIMEOUT + Duration::from_secs(10),
+        )
+        .await
     }
 
     async fn diagram(&self, request: DiagramRequest) -> Result<DiagramAnswer, String> {
-        let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         // Nobody is asked: the page answers at once or not at all.
-        let answer = self
-            .call(
-                "/v1/diagram",
-                Some(body),
-                DIAGRAM_TIMEOUT + Duration::from_secs(5),
-            )
-            .await?;
-        serde_json::from_str(&answer).map_err(|e| e.to_string())
+        self.post(
+            "/v1/diagram",
+            &request,
+            DIAGRAM_TIMEOUT + Duration::from_secs(5),
+        )
+        .await
     }
 
     fn reachable(&self) -> bool {
