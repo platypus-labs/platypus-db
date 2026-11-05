@@ -53,7 +53,7 @@ import { AcrossBar } from "../analysis/CrossQueryDialog";
 import type { AcrossOrigin } from "../analysis/acrossModel";
 import { SavedResultBar } from "../analysis/SavedResults";
 import { useResultSql } from "../analysis/ResultSql";
-import { provideContext } from "../agents/context";
+import { provideContext, viewerTable } from "../agents/context";
 import { type TabParts, tabSnapshot } from "../agents/contextTab";
 import { provideResults, resultsWithRows, type ResultSource } from "../analysis/resultHosts";
 import { basename } from "../workspace";
@@ -372,7 +372,12 @@ export function QueryTab({
   resultsNow.current = { results, shown, active, focusSql: resultSql.focus, pivot: resultSql.pivot, database: tab.database };
   // An agent the user allows reads the editor and the grid as they are when it asks.
   const sharedNow = useRef<Omit<TabParts, "editor">>({ connection, title: null, result: view });
-  sharedNow.current = { connection, title: tab.filePath ? basename(tab.filePath) : (tab.title ?? null), result: view };
+  sharedNow.current = {
+    connection,
+    title: tab.filePath ? basename(tab.filePath) : (tab.title ?? null),
+    result: view,
+    table: viewerTable(!!tab.table, tab.tableRef),
+  };
   useEffect(
     () =>
       provideContext({
