@@ -55,6 +55,26 @@ An agent can also propose, without running anything:
 Settings › **Agents** › **Activity** lists every tool call by session, with a filter and **Export
 CSV**. Their queries are in the history under the agent's name.
 
+Above the list, **Summary per agent and session** (folded until you open it) adds up the calls the
+filters select: one row per agent and, under it, one per session, with the period, the calls, the
+tables read, the rows returned, the changes allowed, the changes refused and the errors.
+**Export Markdown** and **Export HTML** save it as a document to share; the HTML is one file with
+no script and nothing loaded from outside.
+
+- A **session** is one start of the MCP server, as the log records it (a client that stays
+  connected for days is one session).
+- A **change** is a statement that changes data or the schema. It is *allowed* when it ran and
+  *refused* when the connection's access, a safety setting or your answer in the app said no. A
+  statement that failed for another reason counts as an error only.
+- **Tables read** is exact for `sample_rows` and `profile_table` and for the sources of
+  `query_across_databases`, and an estimate for a statement: the tables named after `FROM` and
+  `JOIN`. A statement a database other than SQL speaks (MongoDB, Redis, Elasticsearch, Cassandra)
+  names none.
+- Nothing but names and counts is kept: no value, and statements stay masked as they are in the
+  log.
+- Calls made before this version recorded these figures show **–**, never a 0; the other figures
+  count only the calls that have them, and the summary says so.
+
 ## When it does not work
 
 See [Troubleshooting](troubleshooting.md#an-agent-does-not-see-a-connection).

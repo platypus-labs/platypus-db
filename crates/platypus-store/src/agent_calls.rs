@@ -40,6 +40,11 @@ const MIGRATIONS: &[&str] = &[
     );",
     // Rows to change proposed with `propose_edits`, as JSON; `sql` is empty for such a row.
     "ALTER TABLE proposals ADD COLUMN edits TEXT;",
+    // What the report counts. Calls recorded before this stay NULL: the report shows `–` for
+    // them, never a made-up 0.
+    "ALTER TABLE calls ADD COLUMN rows_returned INTEGER;
+     ALTER TABLE calls ADD COLUMN tables_read TEXT; -- JSON array of names
+     ALTER TABLE calls ADD COLUMN effect TEXT;      -- none, allowed or refused",
 ];
 
 /// Proposals older than this are not opened any more: the agent's session is long over.
@@ -95,6 +100,40 @@ pub struct AgentCall {
     pub error: Option<String>,
 }
 
+/// Whether a call changed data, or was refused when it tried to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CallEffect {
+    /// Not a change (or a change that failed for another reason).
+    #[default]
+    None,
+    /// A change that ran.
+    Allowed,
+    /// A change the access or the safety settings refused.
+    Refused,
+}
+
+impl CallEffect {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Allowed => "allowed",
+            Self::Refused => "refused",
+        }
+    }
+}
+
+/// What the report counts about a call: names and numbers only, never a value or a
+/// statement.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CallFacts {
+    /// Rows the call returned to the agent.
+    pub rows: u64,
+    /// Tables whose data the call read, as the tool knows them; for a statement, the tables
+    /// found after `FROM` and `JOIN`, an estimate.
+    pub tables: Vec<String>,
+    pub effect: CallEffect,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewAgentCall {
     pub session: String,
@@ -106,6 +145,7 @@ pub struct NewAgentCall {
     pub duration: Duration,
     pub status: HistoryStatus,
     pub error: Option<String>,
+    pub facts: CallFacts,
 }
 
 /// Which calls a search returns, newest first.
@@ -133,6 +173,54 @@ pub struct AgentSession {
     pub calls: u64,
     pub errors: u64,
 }
+
+/// The figures of a group of calls. A figure is `None` when none of the calls was recorded
+/// with it (a log from before the report): never a made-up 0.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReportFigures {
+    /// Unix epoch milliseconds of the first and the last call.
+    pub first_at: i64,
+    pub last_at: i64,
+    pub calls: u64,
+    /// Calls recorded with the figures below; fewer than `calls` when the log is older.
+    pub measured: u64,
+    /// Different tables (on different connections) read.
+    pub tables_read: Option<u64>,
+    pub rows_returned: Option<u64>,
+    pub changes_allowed: Option<u64>,
+    pub changes_refused: Option<u64>,
+    pub errors: u64,
+}
+
+/// One run of an agent's server in the report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionReport {
+    pub session: String,
+    #[serde(flatten)]
+    pub figures: ReportFigures,
+}
+
+/// One agent in the report, with its newest sessions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AgentReport {
+    pub agent: String,
+    #[serde(flatten)]
+    pub figures: ReportFigures,
+    pub sessions: Vec<SessionReport>,
+}
+
+/// Sessions the report lists, newest first.
+const REPORT_SESSIONS: i64 = 1000;
+
+/// The calls a query selects; shared by the list, the export and the report. `?5` pages
+/// backwards and is `NULL` in the report.
+const CALL_FILTER: &str = r"(?1 IS NULL OR tool LIKE ?1 ESCAPE '\' OR agent LIKE ?1 ESCAPE '\'
+                        OR connection LIKE ?1 ESCAPE '\' OR arguments LIKE ?1 ESCAPE '\'
+                        OR error LIKE ?1 ESCAPE '\')
+                   AND (?2 IS NULL OR session = ?2)
+                   AND (?3 IS NULL OR agent = ?3)
+                   AND (?4 IS NULL OR status = ?4)
+                   AND (?5 IS NULL OR id < ?5)";
 
 /// The agents' calls, in a local SQLite database shared by the server and the app.
 #[derive(Debug)]
@@ -187,6 +275,48 @@ fn masked_arguments(arguments: &str) -> (String, Vec<String>) {
     }
 }
 
+/// Table names kept per call, and characters of each.
+const TABLES_PER_CALL: usize = 50;
+const TABLE_NAME_CHARS: usize = 200;
+
+/// The tables of a call as the JSON array the report reads back with `json_each`: each
+/// name cut, the list capped, without repeats.
+fn tables_json(tables: &[String]) -> String {
+    let mut names: Vec<String> = Vec::new();
+    for name in tables {
+        let name = capped(name, TABLE_NAME_CHARS);
+        if names.len() < TABLES_PER_CALL && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// The values of [`CALL_FILTER`]'s `?1` to `?5` for `query`, then `limit` as `?6` if given.
+fn filter_params(
+    query: &AgentCallQuery,
+    before_id: Option<i64>,
+    limit: Option<i64>,
+) -> rusqlite::ParamsFromIter<Vec<rusqlite::types::Value>> {
+    use rusqlite::types::Value;
+    let text = |s: Option<&str>| s.map_or(Value::Null, |s| Value::Text(s.to_owned()));
+    let pattern = query
+        .text
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(like_pattern);
+    let mut values = vec![
+        text(pattern.as_deref()),
+        text(query.session.as_deref()),
+        text(query.agent.as_deref()),
+        text(query.status.map(HistoryStatus::as_str)),
+        before_id.map_or(Value::Null, Value::Integer),
+    ];
+    values.extend(limit.map(Value::Integer));
+    rusqlite::params_from_iter(values)
+}
+
 impl AgentCallStore {
     pub fn open(path: &Path) -> Result<Self> {
         let db = open_log(path)?;
@@ -212,8 +342,8 @@ impl AgentCallStore {
         self.db
             .execute(
                 "INSERT INTO calls (session, agent, tool, connection, arguments, started_at,
-                                    duration_ms, status, error)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                    duration_ms, status, error, rows_returned, tables_read, effect)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     call.session,
                     call.agent,
@@ -224,46 +354,141 @@ impl AgentCallStore {
                     i64::try_from(call.duration.as_millis()).unwrap_or(i64::MAX),
                     call.status.as_str(),
                     error.as_deref().map(|e| capped(e, ERROR_CHARS)),
+                    i64::try_from(call.facts.rows).unwrap_or(i64::MAX),
+                    tables_json(&call.facts.tables),
+                    call.facts.effect.as_str(),
                 ],
             )
             .map_err(db_error)?;
         Ok(self.db.last_insert_rowid())
     }
 
-    pub fn search(&self, query: &AgentCallQuery) -> Result<Vec<AgentCall>> {
-        let pattern = query
-            .text
-            .as_deref()
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .map(like_pattern);
+    /// The summary of the calls `query` selects (its paging is ignored), per agent and per
+    /// session, aggregated by SQLite: nothing runs until the Activity page asks.
+    pub fn report(&self, query: &AgentCallQuery) -> Result<Vec<AgentReport>> {
+        let mut report: Vec<AgentReport> = self
+            .groups(query, false)?
+            .into_iter()
+            .map(|(agent, _, figures)| AgentReport {
+                agent,
+                figures,
+                sessions: Vec::new(),
+            })
+            .collect();
+        for (agent, session, figures) in self.groups(query, true)? {
+            if let Some(a) = report.iter_mut().find(|a| a.agent == agent) {
+                a.sessions.push(SessionReport { session, figures });
+            }
+        }
+        Ok(report)
+    }
+
+    /// The figures of the calls `query` selects, per agent, or per agent and session (newest
+    /// first, at most [`REPORT_SESSIONS`]): one pass over the calls, and one over the table
+    /// names of those that read any.
+    fn groups(
+        &self,
+        query: &AgentCallQuery,
+        by_session: bool,
+    ) -> Result<Vec<(String, String, ReportFigures)>> {
+        let (shown, group) = if by_session {
+            ("agent, session", "agent, session")
+        } else {
+            ("agent, ''", "agent")
+        };
         let mut stmt = self
             .db
-            .prepare_cached(
+            .prepare_cached(&format!(
+                "SELECT {shown}, min(started_at), max(started_at), count(*), count(effect),
+                        sum(rows_returned), sum(effect = 'allowed'), sum(effect = 'refused'),
+                        sum(status = 'error')
+                 FROM calls
+                 WHERE {CALL_FILTER}
+                 GROUP BY {group}
+                 ORDER BY max(id) DESC
+                 LIMIT {REPORT_SESSIONS}"
+            ))
+            .map_err(db_error)?;
+        let mut groups: Vec<(String, String, ReportFigures)> = stmt
+            .query_map(filter_params(query, None, None), |r| {
+                let count = |i| r.get::<_, i64>(i).map(|n| u64::try_from(n).unwrap_or(0));
+                let measured = count(5)?;
+                // Sums of calls recorded without the figures are NULL: `–`, not 0.
+                let figure = |i| {
+                    Ok::<_, rusqlite::Error>(
+                        (measured > 0)
+                            .then(|| r.get::<_, Option<i64>>(i))
+                            .transpose()?
+                            .map(|n| u64::try_from(n.unwrap_or(0)).unwrap_or(0)),
+                    )
+                };
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    ReportFigures {
+                        first_at: r.get(2)?,
+                        last_at: r.get(3)?,
+                        calls: count(4)?,
+                        measured,
+                        tables_read: None,
+                        rows_returned: figure(6)?,
+                        changes_allowed: figure(7)?,
+                        changes_refused: figure(8)?,
+                        errors: count(9).unwrap_or(0),
+                    },
+                ))
+            })
+            .map_err(db_error)?
+            .collect::<Result<_, _>>()
+            .map_err(db_error)?;
+        let mut stmt = self
+            .db
+            .prepare_cached(&format!(
+                "SELECT {shown}, count(DISTINCT coalesce(connection, '') || char(31) || value)
+                 FROM (SELECT agent, session, connection, tables_read FROM calls
+                       WHERE {CALL_FILTER} AND tables_read IS NOT NULL AND tables_read <> '[]'),
+                      json_each(tables_read)
+                 GROUP BY {group}"
+            ))
+            .map_err(db_error)?;
+        let tables = stmt
+            .query_map(filter_params(query, None, None), |r| {
+                Ok((
+                    (r.get::<_, String>(0)?, r.get::<_, String>(1)?),
+                    r.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(db_error)?
+            .collect::<Result<std::collections::HashMap<_, _>, _>>()
+            .map_err(db_error)?;
+        for (agent, session, figures) in &mut groups {
+            if figures.measured > 0 {
+                let n = tables.get(&(agent.clone(), session.clone())).copied();
+                figures.tables_read = Some(n.map_or(0, |n| u64::try_from(n).unwrap_or(0)));
+            }
+        }
+        Ok(groups)
+    }
+
+    pub fn search(&self, query: &AgentCallQuery) -> Result<Vec<AgentCall>> {
+        let mut stmt = self
+            .db
+            .prepare_cached(&format!(
                 "SELECT id, session, agent, tool, connection, arguments, started_at, duration_ms,
                         status, error
                  FROM calls
-                 WHERE (?1 IS NULL OR tool LIKE ?1 ESCAPE '\\' OR agent LIKE ?1 ESCAPE '\\'
-                        OR connection LIKE ?1 ESCAPE '\\' OR arguments LIKE ?1 ESCAPE '\\'
-                        OR error LIKE ?1 ESCAPE '\\')
-                   AND (?2 IS NULL OR session = ?2)
-                   AND (?3 IS NULL OR agent = ?3)
-                   AND (?4 IS NULL OR status = ?4)
-                   AND (?5 IS NULL OR id < ?5)
+                 WHERE {CALL_FILTER}
                  ORDER BY id DESC
-                 LIMIT ?6",
-            )
+                 LIMIT ?6"
+            ))
             .map_err(db_error)?;
         let rows = stmt
             .query_map(
-                params![
-                    pattern,
-                    query.session,
-                    query.agent,
-                    query.status.map(HistoryStatus::as_str),
+                filter_params(
+                    query,
                     query.before_id,
-                    i64::try_from(query.limit).unwrap_or(i64::MAX),
-                ],
+                    Some(i64::try_from(query.limit).unwrap_or(i64::MAX)),
+                ),
                 |r| {
                     let status: String = r.get(8)?;
                     Ok(AgentCall {
@@ -510,6 +735,7 @@ mod tests {
             duration: Duration::from_millis(12),
             status,
             error: (status == HistoryStatus::Error).then(|| "no such table: t".to_owned()),
+            facts: CallFacts::default(),
         }
     }
 
@@ -747,7 +973,7 @@ mod tests {
         let version: i64 =
             s.db.pragma_query_value(None, "user_version", |r| r.get(0))
                 .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[test]
@@ -787,6 +1013,213 @@ mod tests {
             assert!(s.propose(&agent, "c1", None, "SELECT 1").unwrap().is_some());
         }
         assert_eq!(s.propose("late", "c1", None, "SELECT 1").unwrap(), None);
+    }
+
+    fn with_facts(
+        agent: &str,
+        session: &str,
+        status: HistoryStatus,
+        facts: CallFacts,
+    ) -> NewAgentCall {
+        NewAgentCall {
+            agent: agent.to_owned(),
+            facts,
+            ..call(session, "run_query", status)
+        }
+    }
+
+    fn facts(rows: u64, tables: &[&str], effect: CallEffect) -> CallFacts {
+        CallFacts {
+            rows,
+            tables: tables.iter().map(|t| (*t).to_owned()).collect(),
+            effect,
+        }
+    }
+
+    #[test]
+    fn reports_figures_per_agent_and_session() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        let ok = HistoryStatus::Ok;
+        for c in [
+            with_facts(
+                "claude-code",
+                "s1",
+                ok,
+                facts(5, &["main.a", "main.b"], CallEffect::None),
+            ),
+            with_facts(
+                "claude-code",
+                "s1",
+                ok,
+                facts(3, &["main.a"], CallEffect::None),
+            ),
+            with_facts("claude-code", "s1", ok, facts(0, &[], CallEffect::Allowed)),
+            with_facts(
+                "claude-code",
+                "s2",
+                HistoryStatus::Error,
+                facts(0, &[], CallEffect::Refused),
+            ),
+            with_facts("codex", "s3", ok, facts(7, &["main.c"], CallEffect::None)),
+        ] {
+            s.record(&c).unwrap();
+        }
+        let report = s.report(&AgentCallQuery::default()).unwrap();
+        assert_eq!(report.len(), 2);
+        let claude = report.iter().find(|a| a.agent == "claude-code").unwrap();
+        let f = &claude.figures;
+        assert_eq!(
+            (f.calls, f.measured, f.rows_returned, f.tables_read),
+            (4, 4, Some(8), Some(2))
+        );
+        assert_eq!(
+            (f.changes_allowed, f.changes_refused, f.errors),
+            (Some(1), Some(1), 1)
+        );
+        // Tables count once per agent, and again in each session.
+        let s1 = claude.sessions.iter().find(|x| x.session == "s1").unwrap();
+        assert_eq!(s1.figures.tables_read, Some(2));
+        assert_eq!(s1.figures.rows_returned, Some(8));
+        let s2 = claude.sessions.iter().find(|x| x.session == "s2").unwrap();
+        assert_eq!((s2.figures.tables_read, s2.figures.errors), (Some(0), 1));
+        // Newest session first.
+        assert_eq!(claude.sessions[0].session, "s2");
+
+        // The report follows the list's filters.
+        let errors = s
+            .report(&AgentCallQuery {
+                status: Some(HistoryStatus::Error),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].figures.calls, 1);
+        let one = s
+            .report(&AgentCallQuery {
+                session: Some("s3".to_owned()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(one[0].agent, "codex");
+        assert_eq!(one[0].sessions.len(), 1);
+    }
+
+    #[test]
+    fn same_table_name_on_two_connections_counts_twice() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        for connection in ["A", "B"] {
+            s.record(&NewAgentCall {
+                connection: Some(connection.to_owned()),
+                facts: facts(1, &["main.t"], CallEffect::None),
+                ..call("s", "sample_rows", HistoryStatus::Ok)
+            })
+            .unwrap();
+        }
+        let report = s.report(&AgentCallQuery::default()).unwrap();
+        assert_eq!(report[0].figures.tables_read, Some(2));
+    }
+
+    #[test]
+    fn an_empty_log_has_no_report() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        assert_eq!(s.report(&AgentCallQuery::default()).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn calls_from_before_the_report_show_no_figures() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("agent-calls.db");
+        {
+            let old = Connection::open(&path).unwrap();
+            for m in &MIGRATIONS[..3] {
+                old.execute_batch(m).unwrap();
+            }
+            old.pragma_update(None, "user_version", 3).unwrap();
+            old.execute(
+                "INSERT INTO calls (session, agent, tool, arguments, started_at, duration_ms, status)
+                 VALUES ('old', 'claude-code', 'run_query', '{}', 1000, 1, 'error')",
+                [],
+            )
+            .unwrap();
+        }
+        let s = AgentCallStore::open(&path).unwrap();
+        let report = s.report(&AgentCallQuery::default()).unwrap();
+        let f = &report[0].figures;
+        // Calls and errors are known; the rest was never recorded.
+        assert_eq!((f.calls, f.measured, f.errors), (1, 0, 1));
+        assert_eq!(
+            (
+                f.tables_read,
+                f.rows_returned,
+                f.changes_allowed,
+                f.changes_refused
+            ),
+            (None, None, None, None)
+        );
+        // A new call joins the old ones: the figures cover the calls that have them.
+        s.record(&with_facts(
+            "claude-code",
+            "old",
+            HistoryStatus::Ok,
+            facts(4, &["main.a"], CallEffect::None),
+        ))
+        .unwrap();
+        let f = &s.report(&AgentCallQuery::default()).unwrap()[0].figures;
+        assert_eq!((f.calls, f.measured, f.rows_returned), (2, 1, Some(4)));
+    }
+
+    #[test]
+    fn the_report_of_100000_calls_is_fast() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        s.db.execute_batch("BEGIN").unwrap();
+        {
+            let mut insert =
+                s.db.prepare(
+                    "INSERT INTO calls (session, agent, tool, connection, arguments, started_at,
+                                        duration_ms, status, rows_returned, tables_read, effect)
+                     VALUES (?1, ?2, 'run_query', 'c', '{}', ?3, 1, ?4, 2, ?5, 'none')",
+                )
+                .unwrap();
+            for i in 0..100_000_i64 {
+                insert
+                    .execute(params![
+                        format!("s{}", i / 50),
+                        format!("agent{}", i % 4),
+                        i,
+                        if i % 97 == 0 { "error" } else { "ok" },
+                        format!(r#"["main.t{}","main.t{}"]"#, i % 40, i % 7),
+                    ])
+                    .unwrap();
+            }
+        }
+        s.db.execute_batch("COMMIT").unwrap();
+        let start = std::time::Instant::now();
+        let report = s.report(&AgentCallQuery::default()).unwrap();
+        let took = start.elapsed();
+        eprintln!("report of 100000 calls: {took:?}");
+        assert_eq!(report.len(), 4);
+        assert_eq!(report.iter().map(|a| a.figures.calls).sum::<u64>(), 100_000);
+        assert!(took < Duration::from_secs(5), "{took:?}");
+        let plan: Vec<String> =
+            s.db.prepare(&format!(
+                "EXPLAIN QUERY PLAN SELECT agent, session, count(*) FROM calls
+                 WHERE {CALL_FILTER} GROUP BY agent, session"
+            ))
+            .unwrap()
+            .query_map(
+                rusqlite::params![
+                    None::<String>,
+                    None::<String>,
+                    None::<String>,
+                    None::<String>,
+                    None::<i64>
+                ],
+                |r| r.get::<_, String>(3),
+            )
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        eprintln!("plan: {plan:?}");
     }
 
     #[test]

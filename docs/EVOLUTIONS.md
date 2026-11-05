@@ -61,7 +61,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 ### Group A — Agents and MCP
 
-**Status: P1 and P2 done, `get_er_diagram` as Mermaid included; in P3 the pages of results, MCP prompts, schema change notifications and `query_across_databases` done; to do: the SVG diagram, the agent report and remote MCP.**
+**Status: P1 and P2 done, `get_er_diagram` as Mermaid included; in P3 the pages of results, MCP prompts, schema change notifications, `query_across_databases` and the agent report done; to do: the SVG diagram and remote MCP.**
 
 **What exists** (roadmap group N, [AGENTS.md](AGENTS.md)): the server (`platypus-db --mcp` on
 stdio, `/mcp` over HTTP through the bridge with the open app) with the tools `list_connections`,
@@ -96,7 +96,7 @@ configuration. The rows below add only what is not there.
 | ✅ **MCP prompts** (`prompts/list`): ready tasks that chain the existing tools (explain and improve a query, find the slowest queries, write a migration for a change, document a table), and the user's saved scripts with `:parameters` as prompts with arguments | P3 | U |
 | ✅ **Schema change notifications**: `resources/subscribe` on the schema resources and `notifications/resources/list_changed` when the app sees a change (navigator refresh, schema timeline of group I), so a long agent session does not work on an old schema | P3 | U |
 | ✅ Tool `query_across_databases`: one read-only statement over tables of several connections through the DuckDB join of roadmap group M (`platypus-local`), each source checked against its own agent access | P3 | U |
-| 🆕 **Agent report**: in Settings → Agents → Activity a summary per agent and session (tables read, rows returned, changes allowed and refused, errors), exported as Markdown or HTML next to today's CSV of single calls | P3 | U |
+| ✅ **Agent report**: in Settings → Agents → Activity a summary per agent and session (tables read, rows returned, changes allowed and refused, errors), exported as Markdown or HTML next to today's CSV of single calls | P3 | U |
 | 🆕 **Remote MCP**: the `/mcp` endpoint reachable from other machines, off by default, with TLS and OAuth 2.1 as the MCP specification describes instead of the fixed token, and a consent per client in the app. **To decide** (it exposes saved connections on the network) | P3 | U |
 
 ---

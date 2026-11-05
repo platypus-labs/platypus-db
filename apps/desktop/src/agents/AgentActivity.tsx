@@ -41,6 +41,20 @@ export function AgentActivity({ onSetup }: { onSetup: () => void }) {
   const [open, setOpen] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The summary is a chunk of its own, loaded the first time the user opens it; it asks the
+  // store for its figures only while open.
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [Summary, setSummary] = useState<typeof import("./AgentSummary").default | null>(null);
+  const [summaryQuery, setSummaryQuery] = useState<AgentCallQuery | null>(null);
+  const openSummary = (open: boolean) => {
+    setSummaryOpen(open);
+    if (open && !Summary) {
+      import("./AgentSummary").then(
+        (m) => setSummary(() => m.default),
+        (e: unknown) => setError(String(e)),
+      );
+    }
+  };
 
   const query = useCallback(
     (before_id?: number): AgentCallQuery => ({
@@ -59,6 +73,7 @@ export function AgentActivity({ onSetup }: { onSetup: () => void }) {
     api.agentCalls(query()).then((page) => {
       setError(null);
       setCalls(page);
+      setSummaryQuery(query());
       setMore(page.length === PAGE);
     }, failed);
   }, [query]);
@@ -146,6 +161,12 @@ export function AgentActivity({ onSetup }: { onSetup: () => void }) {
       </div>
       {error && <div className="notice error small">{error}</div>}
       {notice && <div className="notice small" data-notice="exported">{notice}</div>}
+      <details className="agent-summary" data-summary open={summaryOpen} onToggle={(e) => openSummary(e.currentTarget.open)}>
+        <summary>{t("Summary per agent and session")}</summary>
+        {summaryOpen && Summary && summaryQuery && (
+          <Summary query={summaryQuery} refresh={summaryQuery} onNotice={setNotice} onError={setError} />
+        )}
+      </details>
       <table className="agents-connections agent-calls">
         <thead>
           <tr>

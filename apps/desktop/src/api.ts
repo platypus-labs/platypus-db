@@ -1218,7 +1218,32 @@ export interface AgentSession {
   errors: number;
 }
 
-export type AgentInstallState = "missing" | "installed" | "different" | "unreadable";
+/** The figures of a group of calls in the agent report; a figure is null when the calls were
+ *  made before the log recorded it. */
+export interface AgentReportFigures {
+  first_at: number;
+  last_at: number;
+  calls: number;
+  /** Calls recorded with the figures that can be null; fewer than `calls` for an old log. */
+  measured: number;
+  tables_read: number | null;
+  rows_returned: number | null;
+  changes_allowed: number | null;
+  changes_refused: number | null;
+  errors: number;
+}
+
+export interface AgentReportSession extends AgentReportFigures {
+  session: string;
+}
+
+/** One agent in the report, with its newest sessions. */
+export interface AgentReportAgent extends AgentReportFigures {
+  agent: string;
+  sessions: AgentReportSession[];
+}
+
+export type AgentInstallState ="missing" | "installed" | "different" | "unreadable";
 
 /** An MCP client PlatypusDB can be installed in. */
 export interface AgentClient {
@@ -2431,6 +2456,7 @@ export const api = {
   installAgentClient: (id: string) => invoke<InstalledClient>("install_agent_client", { id }),
   agentCalls: (query: AgentCallQuery) => invoke<AgentCall[]>("agent_calls", { query }),
   agentSessions: (limit: number) => invoke<AgentSession[]>("agent_sessions", { limit }),
+  agentReport: (query: AgentCallQuery) => invoke<AgentReportAgent[]>("agent_report", { query }),
   agentCallsExport: (query: AgentCallQuery) => invoke<string>("agent_calls_export", { query }),
   clearAgentCalls: () => invoke<void>("clear_agent_calls"),
   takeAgentProposals: () => invoke<AgentProposal[]>("take_agent_proposals"),

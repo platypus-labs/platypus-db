@@ -336,6 +336,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::agents::stale_agent_registrations,
         commands::agents::agent_calls,
         commands::agents::agent_sessions,
+        commands::agents::agent_report,
         commands::agents::agent_calls_export,
         commands::agents::clear_agent_calls,
         commands::agents::agent_clients,
