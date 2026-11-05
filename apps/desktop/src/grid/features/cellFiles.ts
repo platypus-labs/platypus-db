@@ -25,6 +25,8 @@ interface Prepared {
   /** The result row of `r0`. */
   first: number;
   files: (CellFile | null)[];
+  /** Whether a column's values show masked. */
+  masked: (col: number) => boolean;
 }
 
 let prepared: Prepared | null = null;
@@ -41,7 +43,7 @@ export async function prepareCellFiles(grid: GridApi, jobId: number | null, mask
   const first = grid.dataRow(sel.r0) ?? 0;
   if (last - first + 1 > MAX_ROWS) return;
   const files = await api.columnFiles(jobId, col, first, last - first + 1);
-  prepared = { jobId, col, r0: sel.r0, r1: sel.r1, first, files };
+  prepared = { jobId, col, r0: sel.r0, r1: sel.r1, first, files, masked };
 }
 
 /** What the menu was prepared for, if it is still the selection. */
@@ -102,7 +104,9 @@ registerAction({
     const folder = await pickFolder(t("Choose the folder for the files"));
     if (!folder) return;
     const total = ctx.grid.dataRow(r1)! - first + 1;
-    const nameColumn = keyColumn(ctx.grid.columns(), col);
+    // File names show in the folder: a masked column does not name them.
+    const key = keyColumn(ctx.grid.columns(), col);
+    const nameColumn = key !== null && current(ctx)?.masked(key) ? null : key;
     let written = 0;
     let failed = 0;
     let firstError = "";

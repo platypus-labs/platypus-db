@@ -113,7 +113,7 @@ pub fn cell_file(
 
 /// For each loaded row `offset..offset + limit`, the file its cell in `column` holds.
 #[tauri::command]
-pub fn column_files(
+pub async fn column_files(
     state: State<'_, AppState>,
     job_id: u64,
     column: usize,
@@ -121,11 +121,16 @@ pub fn column_files(
     limit: usize,
 ) -> CommandResult<Vec<Option<CellFile>>> {
     let job = state.job(job_id)?;
-    let mut files = Vec::with_capacity(limit.min(job.loaded_rows()));
-    for array in column_window(&job, offset, limit, column)? {
-        files.extend((0..array.len()).map(|row| file_at(array.as_ref(), row)));
-    }
-    Ok(files)
+    // Thousands of long texts to read: not on the thread that draws the window.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut files = Vec::with_capacity(limit.min(job.loaded_rows()));
+        for array in column_window(&job, offset, limit, column)? {
+            files.extend((0..array.len()).map(|row| file_at(array.as_ref(), row)));
+        }
+        Ok(files)
+    })
+    .await
+    .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
 /// The file bytes of one cell, for [`super::grid::save_cell`] with `decode`.
@@ -246,8 +251,12 @@ fn save_window(
                 .and_then(|bytes| {
                     let (mut f, path) = create_new_in(folder, &stem, file.kind.ext)
                         .map_err(|e| format!("{stem}.{}: {e}", file.kind.ext))?;
-                    f.write_all(&bytes)
-                        .map_err(|e| format!("{}: {e}", path.display()))
+                    f.write_all(&bytes).map_err(|e| {
+                        // A part of a file must not pass for the file.
+                        drop(f);
+                        let _ = std::fs::remove_file(&path);
+                        format!("{}: {e}", path.display())
+                    })
                 });
             match outcome {
                 Ok(()) => saved.written += 1,
