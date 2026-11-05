@@ -4278,7 +4278,7 @@ async fn qa_fixgrid_generated_columns() {
         let conn = &*conn;
         let d = Dialect::from(b.config.driver);
         let t = d.qualified(Some(&b.schema), "qa_fixgrid_gen");
-        let _ = run(conn, &format!("DROP TABLE IF EXISTS {t}")).await;
+        let _ = run(conn, &format!("DROP TABLE IF EXISTS {s}.{t}")).await;
         run(conn, &format!("CREATE TABLE {t} ({columns_sql})"))
             .await
             .unwrap_or_else(|e| panic!("{}: create: {e}", b.name));
@@ -5784,25 +5784,26 @@ async fn agents_propose_edits_for_the_data_viewer() {
         let tables = ["agent_edit_pairs", "agent_edit_mail", "agent_edit_loose"];
         let [pairs, mail, loose] = tables;
         for t in tables {
-            run(conn, &format!("DROP TABLE IF EXISTS {t}"))
+            run(conn, &format!("DROP TABLE IF EXISTS {s}.{t}", s = b.schema))
                 .await
                 .unwrap();
         }
+        let s = &b.schema;
         let evil = "o'brien; DROP TABLE agent_edit_pairs; --";
         for sql in [
             format!(
-                "CREATE TABLE {pairs} (a INT NOT NULL, b VARCHAR(60) NOT NULL, note VARCHAR(50), \
+                "CREATE TABLE {s}.{pairs} (a INT NOT NULL, b VARCHAR(60) NOT NULL, note VARCHAR(50), \
                  PRIMARY KEY (a, b))"
             ),
-            format!("CREATE TABLE {mail} (id INT, email VARCHAR(60) NOT NULL, UNIQUE (email))"),
-            format!("CREATE TABLE {loose} (v VARCHAR(10))"),
+            format!("CREATE TABLE {s}.{mail} (id INT, email VARCHAR(60) NOT NULL, UNIQUE (email))"),
+            format!("CREATE TABLE {s}.{loose} (v VARCHAR(10))"),
             format!(
-                "INSERT INTO {pairs} VALUES (1, 'x', 'one'), (1, 'y', 'two'), (2, 'x', 'three'), \
+                "INSERT INTO {s}.{pairs} VALUES (1, 'x', 'one'), (1, 'y', 'two'), (2, 'x', 'three'), \
                  (2, '{}', 'four')",
                 evil.replace('\'', "''")
             ),
-            format!("INSERT INTO {mail} VALUES (1, 'ann@example.com'), (2, 'bob@example.com')"),
-            format!("INSERT INTO {loose} VALUES ('a')"),
+            format!("INSERT INTO {s}.{mail} VALUES (1, 'ann@example.com'), (2, 'bob@example.com')"),
+            format!("INSERT INTO {s}.{loose} VALUES ('a')"),
         ] {
             run(conn, &sql).await.unwrap();
         }
@@ -5858,7 +5859,7 @@ async fn agents_propose_edits_for_the_data_viewer() {
 
         // Nothing changed, and the table the value tried to drop is there; a proposal naming
         // a table that does not exist is refused, not written into a statement.
-        let all = sorted_rows(&collect(&b, conn, &format!("SELECT a FROM {pairs}")).await);
+        let all = sorted_rows(&collect(&b, conn, &format!("SELECT a FROM {s}.{pairs}")).await);
         assert_eq!(all.len(), 4, "{}", b.name);
         let mut tampered = proposal(0);
         tampered.table = format!("{pairs}\"; DROP TABLE {mail}; --");
@@ -5866,7 +5867,7 @@ async fn agents_propose_edits_for_the_data_viewer() {
         let verdict = nothing.map(|d| proposed::viewer(dialect, &tampered, &d));
         assert!(!matches!(verdict, Ok(Ok(_))), "{}: {verdict:?}", b.name);
         for t in tables {
-            run(conn, &format!("DROP TABLE IF EXISTS {t}"))
+            run(conn, &format!("DROP TABLE IF EXISTS {s}.{t}"))
                 .await
                 .unwrap();
         }
@@ -5902,10 +5903,10 @@ async fn agents_page_results_and_join_across_databases() {
         let agent = Agent::new(Profile::at(dir.path()));
         let json = |text: String| serde_json::from_str::<serde_json::Value>(&text).unwrap();
 
-        // The three orders in pages of two.
+        // Three rows in pages of two.
         let query = QueryArgs {
             connection: "Db".to_owned(),
-            sql: format!("SELECT id FROM {}.orders ORDER BY id", b.schema),
+            sql: "SELECT 1 AS id UNION ALL SELECT 2 UNION ALL SELECT 3 ORDER BY id".to_owned(),
             max_rows: Some(2),
             max_bytes: None,
             timeout_seconds: None,
@@ -5931,6 +5932,24 @@ async fn agents_page_results_and_join_across_databases() {
         assert!(agent.next_page(&page, "s").is_err(), "{}", b.name);
 
         // The join the server could do itself, done in DuckDB over two copies.
+        let conn = b.connect().await;
+        let s = &b.schema;
+        for sql in [
+            format!("DROP TABLE IF EXISTS {s}.agent_across_o"),
+            format!("DROP TABLE IF EXISTS {s}.agent_across_c"),
+            format!(
+                "CREATE TABLE {s}.agent_across_c (id INT PRIMARY KEY, full_name VARCHAR(20), \
+                 email VARCHAR(40))"
+            ),
+            format!("CREATE TABLE {s}.agent_across_o (id INT PRIMARY KEY, customer_id INT)"),
+            format!(
+                "INSERT INTO {s}.agent_across_c VALUES (1, 'Ada', 'ada@example.com'), \
+                 (2, 'Bob', 'bob@example.com')"
+            ),
+            format!("INSERT INTO {s}.agent_across_o VALUES (1, 1), (2, 1), (3, 2)"),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
         let source = |table: &str, name: &str| AcrossSource {
             connection: "Db".to_owned(),
             schema: b.schema.clone(),
@@ -5938,7 +5957,7 @@ async fn agents_page_results_and_join_across_databases() {
             name: Some(name.to_owned()),
         };
         let args = AcrossArgs {
-            sources: vec![source("customers", "c"), source("orders", "o")],
+            sources: vec![source("agent_across_c", "c"), source("agent_across_o", "o")],
             sql: "SELECT c.full_name, count(*) AS n, min(c.email) AS email FROM o \
                   JOIN c ON c.id = o.customer_id GROUP BY c.full_name ORDER BY 1"
                 .to_owned(),
