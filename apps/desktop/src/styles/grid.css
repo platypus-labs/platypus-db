@@ -192,6 +192,14 @@
   min-height: var(--control-md);
 }
 
+.value-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-8);
+  border-bottom: 1px solid var(--border);
+}
+
 .value-name {
   overflow: hidden;
   text-overflow: ellipsis;

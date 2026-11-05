@@ -35,6 +35,13 @@ fn grid_cell(cell: &str) -> String {
     cell
 }
 
+/// `PDF · 2.3 MB` for a binary value that is a known file.
+fn file_label(array: &dyn Array, row: usize) -> Option<String> {
+    let bytes = crate::commands::grid::binary_at(array, row)?;
+    let kind = crate::filetype::detect(&bytes[..bytes.len().min(crate::filetype::PREFIX)])?;
+    Some(crate::filetype::label(kind, bytes.len() as u64))
+}
+
 fn render(field: &Field, array: &ArrayRef, format: &DisplayFormat) -> Result<ArrayRef, ArrowError> {
     let mut builder = StringBuilder::with_capacity(array.len(), array.len() * 16);
     if format.own_timestamps(array.data_type()) {
@@ -52,9 +59,21 @@ fn render(field: &Field, array: &ArrayRef, format: &DisplayFormat) -> Result<Arr
     let formatter = platypus_core::special::column_formatter(field, array.as_ref(), &options)?;
     let numeric = array.data_type().is_numeric();
     let mut cell = String::new();
+    let binary = matches!(
+        array.data_type(),
+        DataType::Binary
+            | DataType::LargeBinary
+            | DataType::BinaryView
+            | DataType::FixedSizeBinary(_)
+    );
     for i in 0..array.len() {
         if array.is_null(i) {
             builder.append_null();
+            continue;
+        }
+        // A file shows as its type and size; the hex stays what copy, edit and export read.
+        if binary && let Some(file) = file_label(array.as_ref(), i) {
+            builder.append_value(file);
             continue;
         }
         cell.clear();
