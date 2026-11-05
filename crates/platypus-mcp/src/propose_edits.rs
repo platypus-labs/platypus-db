@@ -52,6 +52,14 @@ fn scalar(what: &str, column: &str, value: &Value) -> Result<Option<String>> {
         Value::String(s) => Ok(Some(s.clone())),
         Value::Bool(b) => Ok(Some(b.to_string())),
         Value::Number(n) => {
+            // JSON numbers arrive as floats: past 15 digits the value may already be another.
+            let digits = n.to_string().chars().filter(char::is_ascii_digit).count();
+            if n.is_f64() && digits > 15 {
+                return Err(AgentError::Invalid(format!(
+                    "{what}: the value of `{column}` has too many digits to arrive exact as a \
+                     JSON number: send it as a string"
+                )));
+            }
             // A whole number written with a fraction (`5.0`) is written whole.
             Ok(Some(match n.as_f64() {
                 Some(f) if n.is_f64() && f.fract() == 0.0 && f.abs() < 1e15 => {

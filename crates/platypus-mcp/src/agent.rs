@@ -916,7 +916,8 @@ impl Agent {
         let asked = requested.limits()?;
         let (store, saved) = self.find(&args.connection)?;
         let (mut limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
-        limits.keep_rest = keep_rest;
+        // A connection's `max_rows` bounds what agents get of a result, not only of a page.
+        limits.keep_rest = keep_rest && saved.agent_limits.max_rows.is_none();
         let access = saved.effective_agent_access();
         let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();

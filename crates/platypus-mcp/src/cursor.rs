@@ -18,6 +18,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use platypus_store::{AgentValues, SavedConnection};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -54,6 +55,8 @@ struct Held {
     id: String,
     session: String,
     connection: Uuid,
+    /// Read while the connection showed sensitive values: its rows go when it stops.
+    in_clear: bool,
     columns: Vec<Column>,
     rows: VecDeque<Vec<Cell>>,
     /// The cursor holds the end of the result; else the buffer's cap ended it.
@@ -233,8 +236,8 @@ impl Agent {
         let result = self
             .run_query_with(args, (origin, session), true, stop)
             .await?;
-        let connection = self.find(&args.connection)?.1.id;
-        Ok(self.paged(result, session, connection, format))
+        let (_, saved) = self.find(&args.connection)?;
+        Ok(self.paged(result, session, &saved, format))
     }
 
     /// The first page of `result` as text, and the cursor for the rows after it.
@@ -242,7 +245,7 @@ impl Agent {
         &self,
         mut result: QueryResult,
         session: &str,
-        connection: Uuid,
+        saved: &SavedConnection,
         format: Format,
     ) -> String {
         let rest = match &mut result.outcome {
@@ -264,7 +267,8 @@ impl Agent {
             self.cursors.store(Held {
                 id,
                 session: session.to_owned(),
-                connection,
+                connection: saved.id,
+                in_clear: saved.agent_values == AgentValues::Shown,
                 columns: table.columns,
                 rows: later,
                 complete: rest.complete,
@@ -298,6 +302,9 @@ impl Agent {
             .cursors
             .take(&args.cursor, session)
             .ok_or_else(unknown)?;
+        if held.in_clear && saved.agent_values != AgentValues::Shown {
+            return Err(unknown());
+        }
         let page: Vec<_> = held
             .rows
             .drain(..limits.max_rows.min(held.rows.len()))
@@ -344,6 +351,7 @@ mod tests {
             id: id.to_owned(),
             session: session.to_owned(),
             connection: Uuid::nil(),
+            in_clear: false,
             columns: vec![Column {
                 name: "n".to_owned(),
                 db_type: "int".to_owned(),

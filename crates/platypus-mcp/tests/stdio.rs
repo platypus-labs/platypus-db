@@ -3276,3 +3276,32 @@ fn cross_database_queries_check_their_sources_before_anything_runs() {
         assert!(error && text.contains(message), "{args}: {text}");
     }
 }
+
+#[test]
+fn a_connection_limited_in_rows_gives_no_more_through_pages() {
+    let dir = tempfile::tempdir().unwrap();
+    big_profile(
+        dir.path(),
+        30,
+        "\n[connections.agent_limits]\nmax_rows = 5\n",
+    );
+    let mut client = initialized(dir.path());
+    let (text, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id FROM big", "format": "json" }),
+    );
+    assert!(!error, "{text}");
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(doc["row_count"], 5, "{doc}");
+    assert_eq!(doc["cursor"], Value::Null, "{doc}");
+}
+
+#[test]
+fn a_number_too_long_for_json_must_be_a_string() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    let mut client = initialized(dir.path());
+    let raw = r#"{"connection":"Users","schema":"main","table":"users","inserts":[{"name":12345678901234567.89}]}"#;
+    let (text, error) = client.call("propose_edits", &serde_json::from_str(raw).unwrap());
+    assert!(error && text.contains("as a string"), "{text}");
+}
