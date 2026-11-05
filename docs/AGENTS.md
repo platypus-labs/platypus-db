@@ -23,7 +23,8 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - Agents' queries are in the history with the agent's name, and every tool call is in the
   agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
 - An agent can propose SQL with `propose_sql`: it opens in a new editor tab, for you to
-  review and run.
+  review and run. With `propose_edits` it proposes rows to insert, update or delete in a table: they
+  open in the table's data viewer as pending edits, for you to save or discard.
 - **Changes wait for you**: on read-write connections each change an agent wants to run opens
   a dialog in the app with the statement, the rows the database expects it to change and its
   plan. Refuse it (with a reason the agent reads), allow it once, or allow that agent's changes
@@ -106,14 +107,49 @@ connect): until then they are left out, and the server's log (stderr) says so.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
 `get_er_diagram`, `compare_schemas`, `search_objects`, `run_query`, `sample_rows`,
-`profile_table`, `explain`, `propose_sql`, `list_open_sessions`, `list_scripts`, `read_script`,
-`search_history`, `estimate_change`, `server_activity` and `top_queries`. `run_query` runs one statement and returns 100 rows,
+`profile_table`, `explain`, `propose_sql`, `propose_edits`, `list_open_sessions`, `list_scripts`, `read_script`,
+`search_history`, `estimate_change`, `server_activity`, `top_queries`, `next_page` and
+`query_across_databases`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
 text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
 a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
 client's `notifications/cancelled` cancels the running statement.
+
+A result that `max_rows` or `max_bytes` cut returns a `cursor` (the `cursor` field in JSON, a
+`More rows` line in text; a connection with its own `max_rows` limit gives none, since that
+limit bounds the result). `next_page` (`cursor`, optional `max_rows`, `max_bytes`, `format`)
+reads the next rows of the same result instead of running the statement again. The first read
+keeps the rows after its page, up to 10,000 more rows or 8 MB, inside the statement's usual
+read-only transaction, which ends as always: the cursor serves its pages from memory and holds
+nothing on the connection, so its pages do not change if the data does. When that cap ended the
+result, the answers say so (narrow the query to read on). A page goes through the same masking
+(the sensitive columns are decided once, with the first page), the connection's `max_rows` and
+`max_bytes`, and counts as a call for `calls_per_minute`. A cursor belongs to the MCP session and
+the connection it came from; an unknown, expired (5 minutes after its last use), closed (with its
+session; a session keeps 8 and all together 64 MB, the oldest go first), guessed or another
+session's cursor is refused, and so is one whose connection agents may no longer use. A result
+cut by a timeout or an error has no cursor.
+
+`query_across_databases` (`sources`, `sql`, optional `source_rows`, `max_rows`, `max_bytes`,
+`timeout_seconds`, `format`) runs one DuckDB statement over tables of several connections, the join
+of the app's "Query across databases". Each source is `connection`, `schema`, `table` and an
+optional `name` (how the statement calls it; default the table's name): up to 8, each from a
+connection open to agents (access off reads as an unknown connection), read within that
+connection's own limits (`source_rows` up to 100,000 rows, 32 MB, its timeout, its calls per
+minute and cost guard) and copied into an in-memory DuckDB that exists for the call. The
+statement is checked as a read-only statement (no `INSERT`, `COPY`, `ATTACH`, `INSTALL`, no
+`read_csv` or any function or `FROM 'file'` that reads files or URLs), and the DuckDB session has
+external access off and its settings locked, so it cannot write to a source, the disk or the
+network. A source with more rows than were copied is said so in the answer: a join may then miss
+rows. Sensitive columns are copied into DuckDB as NULL unless that connection shows them, because
+after a join their origin is lost: a join or a filter on one matches nothing (dots, all equal,
+would match every row with every other), and `masked_columns` names them. Join on a column that
+is not sensitive.
+The result keeps to the strictest limits of the sources. If the DuckDB library is not installed
+the answer says the app downloads it (on first use of a DuckDB connection, or in Settings >
+Drivers); agents cannot.
 
 `get_er_diagram` (`connection`, `schema`, optional `tables` and `depth`) returns a Mermaid
 `erDiagram` as text, built from the catalog, so it works with the app closed: the tables of the
@@ -250,6 +286,37 @@ per connection agents may use (`platypus://<connection>`, its schemas), and two 
 Names are percent-encoded (`platypus://App%20db/main/my%20table%2Fx`). Each read is in the
 call log as `read_resource`, and follows the connection's access as the tools do.
 
+### Prompts
+
+`prompts/list` has four ready tasks that chain the tools: `explain-query` (`connection`, `sql`:
+read the plan, check the tables, propose a better statement), `slowest-queries` (`connection`:
+`top_queries`, then `explain` on the worst), `write-migration` (`connection`, `change`: the
+statements and how to undo them, checked with `estimate_change`, handed over with
+`propose_sql`) and `document-table` (`connection`, `schema`, `table`). Each argument is
+required; the prompt asks the agent to run nothing that changes data.
+
+The scripts of All connections that contain `:name` or `${name}` parameters are prompts too
+(`script-<path>`, e.g. `script-reports-monthly-sql`; two paths that give the same name get
+`-2`, `-3`, in path order), with one required argument per parameter. At most 100 scripts are
+offered. Scripts follow `list_scripts` and `read_script`: those of a connection with agent
+access off are not listed, and the text has the values of sensitive columns masked. The prompt
+says the script is the user's data, quoted as saved, and not instructions.
+
+### Schema change notifications
+
+A client may call `resources/subscribe` on a connection, schema or table resource and gets
+`notifications/resources/updated` for it, followed by `notifications/resources/list_changed`,
+when the app saw the connection's schema change. That is when the user **refreshes** the
+connection, a database or a schema in the navigator, or when a schema snapshot is stored that
+differs from the previous one (schema timeline, scheduled snapshots included). The app writes a
+counter per connection in `schema-changes.json` in its data folder; a server with subscribers
+reads that file every 5 seconds, so it works with `platypus-db --mcp` in its own process
+whether the app is open or closed. With no subscriber nothing runs: the check stops at the last
+`resources/unsubscribe` and when the server ends. A connection with agent access off cannot be
+subscribed to and never notifies, even if its access is turned off after subscribing. A change
+made outside the app (another tool, a migration run by hand) is seen only at the next refresh
+in the app. After a notification, read the resource again.
+
 The notes, tags and sensitive marks the user keeps in the app (`catalog.db`) come with the
 objects. `describe_table`, the table resource and `list_objects` add `note` and `tags` to a
 table or view, and `describe_table` adds `note`, `tags` and `sensitive` (`true` or `false`:
@@ -275,6 +342,17 @@ is checked as `run_query` checks it, and runs only with `analyze`, rolled back: 
 connections that needs a read-only transaction that refuses writes (PostgreSQL, MySQL,
 MariaDB, SQLite). `propose_sql` runs nothing: the app opens the SQL in an editor tab, at once
 if it is open, else when it starts (within 24 hours).
+
+`propose_edits` takes `connection`, `schema`, `table`, an optional `title` and, as lists, `inserts`
+(objects of column to value), `updates` (`{key, set}`, `key` naming a row by exactly the
+columns of a primary or unique key) and `deletes` (objects naming rows by such a key). A value
+is a string, number, boolean or null; arrays and objects are refused. At least one change, at
+most 500 rows and 1 MiB in all. It writes nothing, whatever the agent access (read-only included): the
+app opens the table's data viewer with the rows as pending edits (new rows green, changed cells
+and deleted rows marked), which you save or discard like your own; a row it cannot find or a
+value the column refuses is said so in the viewer and the rest is applied. A table with no
+primary or unique key, a connection saved as read-only or that forbids editing data, and MongoDB,
+Redis, Elasticsearch and Cassandra are refused.
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB

@@ -6252,6 +6252,7 @@ name = "platypus-sql"
 version = "0.4.1"
 dependencies = [
  "platypus-core",
+ "serde",
 ]
 
 [[package]]

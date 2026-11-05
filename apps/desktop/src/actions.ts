@@ -66,6 +66,9 @@ export interface Action<S extends ActionScope = ActionScope> {
   id: string;
   scope: S;
   title: string;
+  /** Fills the `{name}` placeholders of the title for what the action applies to now
+   *  (`Save {type}…`). */
+  titleParams?: (arg: ActionScopes[S]) => Record<string, string | number>;
   /** `Mod+Shift+T`: `Mod` is Ctrl, or Cmd on macOS. Several for alternatives. */
   shortcut?: string | string[];
   /** Menu section; sections are separated by a line, in order of first appearance. */

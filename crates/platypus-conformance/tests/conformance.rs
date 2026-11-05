@@ -5672,6 +5672,317 @@ database = '{}'
     }
 }
 
+/// The connection `Db` of the agent tools on the servers the data viewer edits by key and the
+/// conformance suite reaches as agents do: PostgreSQL, MySQL and SQLite.
+fn save_edit_connection(dir: &std::path::Path, b: &Backend) -> bool {
+    match b.config.driver {
+        DriverKind::Postgres if b.name != "cockroach" => save_agent_connection(dir, b, "postgres"),
+        DriverKind::MySql => save_agent_connection(dir, b, "mysql"),
+        DriverKind::Sqlite => std::fs::write(
+            dir.join("connections.toml"),
+            format!(
+                "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                 name = \"Db\"\ndriver = \"sqlite\"\ndatabase = '{}'\n",
+                b.config.database
+            ),
+        )
+        .unwrap(),
+        _ => return false,
+    }
+    true
+}
+
+/// `agent.propose_edits` on `Db` in `schema`, the schema filled in as the backend has it.
+async fn propose_edits_in(
+    agent: &platypus_mcp::Agent,
+    schema: &str,
+    mut value: serde_json::Value,
+) -> Result<String, platypus_mcp::AgentError> {
+    value["schema"] = serde_json::json!(schema);
+    let args: platypus_mcp::ProposeEditsArgs = serde_json::from_value(value).unwrap();
+    agent.propose_edits(&args, "conformance").await
+}
+
+/// The rows of `batches` as text, sorted.
+fn sorted_rows(batches: &[RecordBatch]) -> Vec<Vec<Option<String>>> {
+    let mut rows = Vec::new();
+    for batch in batches {
+        for r in 0..batch.num_rows() {
+            rows.push(
+                (0..batch.num_columns())
+                    .map(|c| cell(batch, c, r))
+                    .collect(),
+            );
+        }
+    }
+    rows.sort();
+    rows
+}
+
+/// What `propose_edits` refuses on a table with a composite key, and what it takes: unique
+/// keys alone, never a table with neither.
+async fn check_edit_refusals(b: &Backend, agent: &platypus_mcp::Agent, tables: [&str; 3]) {
+    use serde_json::json;
+    let [pairs, mail, loose] = tables;
+    // Half a key, a column that is not one, NULL in a key, a word in a number column.
+    for bad in [
+        json!({ "deletes": [{ "a": 1 }] }),
+        json!({ "deletes": [{ "a": 1, "b": "x", "note": "one" }] }),
+        json!({ "deletes": [{ "a": 1, "nope": "x" }] }),
+        json!({ "deletes": [{ "a": 1, "b": null }] }),
+        json!({ "deletes": [{ "a": "one", "b": "x" }] }),
+    ] {
+        let mut value = json!({ "connection": "Db", "table": pairs });
+        value
+            .as_object_mut()
+            .unwrap()
+            .extend(bad.as_object().unwrap().clone());
+        let refused = propose_edits_in(agent, &b.schema, value).await;
+        assert!(refused.is_err(), "{}: {refused:?}", b.name);
+    }
+    let by_mail = propose_edits_in(
+        agent,
+        &b.schema,
+        json!({
+            "connection": "Db", "table": mail,
+            "updates": [{ "key": { "email": "ann@example.com" }, "set": { "id": 10 } }],
+        }),
+    )
+    .await;
+    assert!(by_mail.is_ok(), "{}: {by_mail:?}", b.name);
+    let keyless = propose_edits_in(
+        agent,
+        &b.schema,
+        json!({ "connection": "Db", "table": loose, "inserts": [{ "v": "x" }] }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        keyless.to_string().contains("no primary key or unique key"),
+        "{}: {keyless}",
+        b.name
+    );
+}
+
+/// `propose_edits` checks the keys on real servers (a composite primary key, a unique key
+/// on its own, a table with neither), and the statement the data viewer is opened with
+/// reads exactly the rows the proposal names, with quotes and SQL in the values.
+#[tokio::test]
+async fn agents_propose_edits_for_the_data_viewer() {
+    use platypus_mcp::{Agent, Profile};
+    use platypus_sql::{Dialect, proposed};
+    use serde_json::json;
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        if !save_edit_connection(dir.path(), &b) {
+            continue;
+        }
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let tables = ["agent_edit_pairs", "agent_edit_mail", "agent_edit_loose"];
+        let [pairs, mail, loose] = tables;
+        for t in tables {
+            run(conn, &format!("DROP TABLE IF EXISTS {s}.{t}", s = b.schema))
+                .await
+                .unwrap();
+        }
+        let s = &b.schema;
+        let evil = "o'brien; DROP TABLE agent_edit_pairs; --";
+        for sql in [
+            format!(
+                "CREATE TABLE {s}.{pairs} (a INT NOT NULL, b VARCHAR(60) NOT NULL, note VARCHAR(50), \
+                 PRIMARY KEY (a, b))"
+            ),
+            format!("CREATE TABLE {s}.{mail} (id INT, email VARCHAR(60) NOT NULL, UNIQUE (email))"),
+            format!("CREATE TABLE {s}.{loose} (v VARCHAR(10))"),
+            format!(
+                "INSERT INTO {s}.{pairs} VALUES (1, 'x', 'one'), (1, 'y', 'two'), (2, 'x', 'three'), \
+                 (2, '{}', 'four')",
+                evil.replace('\'', "''")
+            ),
+            format!("INSERT INTO {s}.{mail} VALUES (1, 'ann@example.com'), (2, 'bob@example.com')"),
+            format!("INSERT INTO {s}.{loose} VALUES ('a')"),
+        ] {
+            run(conn, &sql).await.unwrap();
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+
+        // A composite key given in another order, a quote and SQL in a value.
+        let done = propose_edits_in(
+            &agent,
+            &b.schema,
+            json!({
+                "connection": "Db", "table": pairs, "title": "pairs",
+                "inserts": [{ "a": 3, "b": "z", "note": "new" }],
+                "updates": [{ "key": { "b": evil, "a": 2 }, "set": { "note": "O'Neil" } }],
+                "deletes": [{ "a": 1, "b": "x" }],
+            }),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert!(done.contains("Nothing changed"), "{}: {done}", b.name);
+        check_edit_refusals(&b, &agent, tables).await;
+
+        // What reached the store opens the viewer on the rows it names, and only those.
+        let waiting = Profile::at(dir.path())
+            .agent_calls()
+            .unwrap()
+            .take_proposals()
+            .unwrap();
+        assert_eq!(waiting.len(), 2, "{}", b.name);
+        let dialect = Dialect::of_server(b.config.driver, &conn.server_info().product);
+        let proposal = |i: usize| -> proposed::Edits {
+            serde_json::from_str(waiting[i].edits.as_deref().unwrap()).unwrap()
+        };
+        let details = conn.table_details(&b.schema, pairs).await.unwrap();
+        let viewer = proposed::viewer(dialect, &proposal(0), &details)
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let read = sorted_rows(&collect(&b, conn, &viewer.sql).await);
+        let seen: Vec<_> = read
+            .iter()
+            .map(|r| (r[0].as_deref(), r[1].as_deref()))
+            .collect();
+        assert_eq!(
+            seen,
+            [(Some("1"), Some("x")), (Some("2"), Some(evil))],
+            "{}: {}",
+            b.name,
+            viewer.sql
+        );
+        let details = conn.table_details(&b.schema, mail).await.unwrap();
+        let viewer = proposed::viewer(dialect, &proposal(1), &details).unwrap();
+        let read = sorted_rows(&collect(&b, conn, &viewer.sql).await);
+        assert_eq!(read.len(), 1, "{}: {}", b.name, viewer.sql);
+        assert_eq!(read[0][1].as_deref(), Some("ann@example.com"), "{}", b.name);
+
+        // Nothing changed, and the table the value tried to drop is there; a proposal naming
+        // a table that does not exist is refused, not written into a statement.
+        let all = sorted_rows(&collect(&b, conn, &format!("SELECT a FROM {s}.{pairs}")).await);
+        assert_eq!(all.len(), 4, "{}", b.name);
+        let mut tampered = proposal(0);
+        tampered.table = format!("{pairs}\"; DROP TABLE {mail}; --");
+        let nothing = conn.table_details(&b.schema, &tampered.table).await;
+        let verdict = nothing.map(|d| proposed::viewer(dialect, &tampered, &d));
+        assert!(!matches!(verdict, Ok(Ok(_))), "{}: {verdict:?}", b.name);
+        for t in tables {
+            run(conn, &format!("DROP TABLE IF EXISTS {s}.{t}"))
+                .await
+                .unwrap();
+        }
+    }
+}
+
+/// A cut result is read on with a cursor, and `query_across_databases` joins two tables of
+/// the server through DuckDB, with the sensitive column masked before the join.
+#[tokio::test]
+async fn agents_page_results_and_join_across_databases() {
+    use platypus_mcp::{AcrossArgs, AcrossSource, Agent, Format, PageArgs, Profile, QueryArgs};
+
+    platypus_driver_duckdb::testing::load();
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+            }
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                     name = \"Db\"\ndriver = \"sqlite\"\ndatabase = '{}'\n",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        let json = |text: String| serde_json::from_str::<serde_json::Value>(&text).unwrap();
+
+        // Three rows in pages of two.
+        let query = QueryArgs {
+            connection: "Db".to_owned(),
+            sql: "SELECT 1 AS id UNION ALL SELECT 2 UNION ALL SELECT 3 ORDER BY id".to_owned(),
+            max_rows: Some(2),
+            max_bytes: None,
+            timeout_seconds: None,
+            format: Some(Format::Json),
+        };
+        let first = json(
+            agent
+                .run_query_page(&query, ("test", "s"), std::future::pending())
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name)),
+        );
+        assert_eq!(first["row_count"], 2, "{}: {first}", b.name);
+        let cursor = first["cursor"].as_str().unwrap().to_owned();
+        let page = PageArgs {
+            cursor: cursor.clone(),
+            max_rows: Some(2),
+            max_bytes: None,
+            format: Some(Format::Json),
+        };
+        let last = json(agent.next_page(&page, "s").unwrap());
+        assert_eq!(last["row_count"], 1, "{}: {last}", b.name);
+        assert!(last.get("cursor").is_none(), "{}: {last}", b.name);
+        assert!(agent.next_page(&page, "s").is_err(), "{}", b.name);
+
+        // The join the server could do itself, done in DuckDB over two copies.
+        let conn = b.connect().await;
+        let s = &b.schema;
+        for sql in [
+            format!("DROP TABLE IF EXISTS {s}.agent_across_o"),
+            format!("DROP TABLE IF EXISTS {s}.agent_across_c"),
+            format!(
+                "CREATE TABLE {s}.agent_across_c (id INT PRIMARY KEY, full_name VARCHAR(20), \
+                 email VARCHAR(40))"
+            ),
+            format!("CREATE TABLE {s}.agent_across_o (id INT PRIMARY KEY, customer_id INT)"),
+            format!(
+                "INSERT INTO {s}.agent_across_c VALUES (1, 'Ada', 'ada@example.com'), \
+                 (2, 'Bob', 'bob@example.com')"
+            ),
+            format!("INSERT INTO {s}.agent_across_o VALUES (1, 1), (2, 1), (3, 2)"),
+        ] {
+            run(&*conn, &sql).await.unwrap();
+        }
+        let source = |table: &str, name: &str| AcrossSource {
+            connection: "Db".to_owned(),
+            schema: b.schema.clone(),
+            table: table.to_owned(),
+            name: Some(name.to_owned()),
+        };
+        let args = AcrossArgs {
+            sources: vec![source("agent_across_c", "c"), source("agent_across_o", "o")],
+            sql: "SELECT c.full_name, count(*) AS n, min(c.email) AS email FROM o \
+                  JOIN c ON c.id = o.customer_id GROUP BY c.full_name ORDER BY 1"
+                .to_owned(),
+            source_rows: None,
+            max_rows: None,
+            max_bytes: None,
+            timeout_seconds: None,
+            format: Some(Format::Json),
+        };
+        let joined = json(
+            agent
+                .query_across_until(&args, std::future::pending())
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name)),
+        );
+        assert_eq!(
+            joined["rows"],
+            serde_json::json!([["Ada", 2, null], ["Bob", 1, null]]),
+            "{}: {joined}",
+            b.name
+        );
+        assert!(!joined.to_string().contains("example.com"), "{}", b.name);
+    }
+}
+
 /// Saves `b` as the connection `Db` for the agent tools that read the server, on the three
 /// servers with admin views; `None` for any other backend.
 fn save_server_connection(dir: &std::path::Path, b: &Backend) -> Option<&'static str> {

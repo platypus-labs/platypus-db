@@ -68,7 +68,7 @@ pub(crate) async fn take(
         serde_json::to_string(&designs).map_err(|e| CommandError::new("invalid", e.to_string()))?;
     let tables = u32::try_from(designs.len()).unwrap_or(u32::MAX);
     let driver = driver_name(driver);
-    state.with_schema_history(|h| {
+    let outcome = state.with_schema_history(|h| {
         h.take(&NewSnapshot {
             connection: at.connection,
             database: at.database.filter(|d| !d.is_empty()),
@@ -79,7 +79,27 @@ pub(crate) async fn take(
             tables,
             designs: &json,
         })
-    })
+    })?;
+    if matches!(outcome, SnapshotOutcome::Taken(_)) {
+        note_change(at.connection);
+    }
+    Ok(outcome)
+}
+
+/// Tells the MCP servers subscribed to the schema of `connection` that it changed (see
+/// `platypus_mcp::watch`). Best effort: a profile folder that cannot be written is not an
+/// error of what the user did.
+fn note_change(connection: Uuid) {
+    if let Ok(profile) = platypus_mcp::Profile::from_env() {
+        let _ = platypus_mcp::watch::note_change(profile.data_dir(), connection);
+    }
+}
+
+/// The navigator refreshed the schema of `connection_id`: agents that subscribed to it are
+/// told.
+#[tauri::command]
+pub fn note_schema_change(connection_id: Uuid) {
+    note_change(connection_id);
 }
 
 /// Takes a snapshot of `schema` through the session, as the user asked.

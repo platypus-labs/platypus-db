@@ -38,6 +38,8 @@ const MIGRATIONS: &[&str] = &[
         created_at    INTEGER NOT NULL, -- unix epoch milliseconds
         opened        INTEGER NOT NULL DEFAULT 0
     );",
+    // Rows to change proposed with `propose_edits`, as JSON; `sql` is empty for such a row.
+    "ALTER TABLE proposals ADD COLUMN edits TEXT;",
 ];
 
 /// Proposals older than this are not opened any more: the agent's session is long over.
@@ -47,14 +49,19 @@ pub const MAX_PENDING_PROPOSALS: u32 = 20;
 /// Proposals of all agents that may wait for the app to open them.
 pub const MAX_PENDING_ALL: u32 = 100;
 
-/// SQL an agent proposed, for the user to review and run in the editor.
+/// SQL or rows to change an agent proposed, for the user to review in the editor or the data
+/// viewer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AgentProposal {
     pub id: i64,
     pub agent: String,
     pub connection_id: String,
     pub title: Option<String>,
+    /// Empty for a proposal of rows (`edits`).
     pub sql: String,
+    /// The rows to change, as JSON (`platypus_sql::proposed::Edits`): the file is open to any
+    /// program, so the app checks them again before it uses them.
+    pub edits: Option<String>,
     /// Unix epoch milliseconds.
     pub created_at: i64,
 }
@@ -315,12 +322,35 @@ impl AgentCallStore {
         title: Option<&str>,
         sql: &str,
     ) -> Result<Option<i64>> {
+        self.keep(agent, connection_id, title, sql, None)
+    }
+
+    /// Keeps rows `agent` proposes to change (`edits`, JSON), under the same limits as
+    /// [`propose`](Self::propose).
+    pub fn propose_edits(
+        &self,
+        agent: &str,
+        connection_id: &str,
+        title: Option<&str>,
+        edits: &str,
+    ) -> Result<Option<i64>> {
+        self.keep(agent, connection_id, title, "", Some(edits))
+    }
+
+    fn keep(
+        &self,
+        agent: &str,
+        connection_id: &str,
+        title: Option<&str>,
+        sql: &str,
+        edits: Option<&str>,
+    ) -> Result<Option<i64>> {
         let now = SystemTime::now();
         let added = self
             .db
             .execute(
-                "INSERT INTO proposals (agent, connection_id, title, sql, created_at)
-                 SELECT ?1, ?2, ?3, ?4, ?5
+                "INSERT INTO proposals (agent, connection_id, title, sql, edits, created_at)
+                 SELECT ?1, ?2, ?3, ?4, ?9, ?5
                  WHERE (SELECT count(*) FROM proposals
                         WHERE agent = ?1 AND opened = 0 AND created_at >= ?6) < ?7
                    AND (SELECT count(*) FROM proposals
@@ -334,6 +364,7 @@ impl AgentCallStore {
                     millis(now - PROPOSAL_LIFETIME),
                     MAX_PENDING_PROPOSALS,
                     MAX_PENDING_ALL,
+                    edits,
                 ],
             )
             .map_err(db_error)?;
@@ -350,7 +381,7 @@ impl AgentCallStore {
                 .prepare_cached(
                     "DELETE FROM proposals
                      WHERE opened = 0 AND created_at >= ?1
-                     RETURNING id, agent, connection_id, title, sql, created_at",
+                     RETURNING id, agent, connection_id, title, sql, edits, created_at",
                 )
                 .map_err(db_error)?;
             let rows = stmt
@@ -361,7 +392,8 @@ impl AgentCallStore {
                         connection_id: r.get(2)?,
                         title: r.get(3)?,
                         sql: r.get(4)?,
-                        created_at: r.get(5)?,
+                        edits: r.get(5)?,
+                        created_at: r.get(6)?,
                     })
                 })
                 .map_err(db_error)?;
@@ -657,6 +689,65 @@ mod tests {
             s.db.query_row("SELECT count(*) FROM proposals", [], |r| r.get(0))
                 .unwrap();
         assert_eq!(left, 0, "opened and expired proposals are removed");
+    }
+
+    #[test]
+    fn edit_proposals_share_the_limits_and_are_handed_out_once() {
+        let s = AgentCallStore::open_in_memory().unwrap();
+        let json = r#"{"schema":"main","table":"t"}"#;
+        assert!(
+            s.propose_edits("codex", "c1", Some("Fix"), json)
+                .unwrap()
+                .is_some()
+        );
+        s.propose("codex", "c1", None, "SELECT 1").unwrap();
+        let taken = s.take_proposals().unwrap();
+        assert_eq!(taken.len(), 2);
+        assert_eq!(taken[0].sql, "");
+        assert_eq!(taken[0].edits.as_deref(), Some(json));
+        assert_eq!(taken[1].edits, None);
+        assert_eq!(s.take_proposals().unwrap(), Vec::new());
+        // The pending limit counts both kinds.
+        for i in 0..MAX_PENDING_PROPOSALS {
+            let kept = if i % 2 == 0 {
+                s.propose_edits("flood", "c1", None, "{}")
+            } else {
+                s.propose("flood", "c1", None, "SELECT 1")
+            };
+            assert!(kept.unwrap().is_some());
+        }
+        assert_eq!(s.propose_edits("flood", "c1", None, "{}").unwrap(), None);
+    }
+
+    #[test]
+    fn a_file_from_before_edit_proposals_still_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("agent-calls.db");
+        {
+            let old = Connection::open(&path).unwrap();
+            old.execute_batch(MIGRATIONS[0]).unwrap();
+            old.execute_batch(MIGRATIONS[1]).unwrap();
+            old.pragma_update(None, "user_version", 2).unwrap();
+            old.execute(
+                "INSERT INTO proposals (agent, connection_id, sql, created_at) VALUES ('codex', 'c1', 'SELECT 1', ?1)",
+                [millis(SystemTime::now())],
+            )
+            .unwrap();
+        }
+        let s = AgentCallStore::open(&path).unwrap();
+        let taken = s.take_proposals().unwrap();
+        assert_eq!(taken.len(), 1);
+        assert_eq!(taken[0].sql, "SELECT 1");
+        assert_eq!(taken[0].edits, None);
+        assert!(
+            s.propose_edits("codex", "c1", None, "{}")
+                .unwrap()
+                .is_some()
+        );
+        let version: i64 =
+            s.db.pragma_query_value(None, "user_version", |r| r.get(0))
+                .unwrap();
+        assert_eq!(version, 3);
     }
 
     #[test]

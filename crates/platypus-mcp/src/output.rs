@@ -31,14 +31,24 @@ pub struct QueryResult {
     /// What the connection's agent limits did to the call: a request lowered, a check that
     /// could not be made.
     pub notes: Vec<String>,
+    /// The cursor that reads the rows after these (see `cursor.rs`).
+    pub cursor: Option<String>,
 }
 
 impl QueryResult {
     #[must_use]
     pub fn render(&self, format: Format) -> String {
+        self.render_counted(format).0
+    }
+
+    /// [`render`](Self::render), and how many rows it shows.
+    pub(crate) fn render_counted(&self, format: Format) -> (String, usize) {
         match format {
-            Format::Text => self.text(),
-            Format::Json => self.json().to_string(),
+            Format::Text => self.text_counted(),
+            Format::Json => {
+                let (doc, shown) = self.json_counted();
+                (doc.to_string(), shown)
+            }
         }
     }
 
@@ -60,13 +70,17 @@ impl QueryResult {
     /// the whole of it within the byte limit.
     #[must_use]
     pub fn text(&self) -> String {
+        self.text_counted().0
+    }
+
+    fn text_counted(&self) -> (String, usize) {
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
                 let mut out = format!("{rows} {} affected.", rows_word(*rows == 1));
                 for note in &self.notes {
                     let _ = write!(out, "\n{note}");
                 }
-                return out;
+                return (out, 0);
             }
             Outcome::Rows(table) => table,
         };
@@ -111,9 +125,12 @@ impl QueryResult {
             for note in &self.notes {
                 let _ = write!(out, "\n{note}");
             }
+            if let Some(cursor) = &self.cursor {
+                let _ = write!(out, "\nMore rows: call next_page with cursor \"{cursor}\".");
+            }
             out
         };
-        fit(cells.len(), self.limits.max_bytes, render, String::len)
+        fit_counted(cells.len(), self.limits.max_bytes, render, String::len)
     }
 
     /// The JSON document: `columns`, `rows`, `row_count`, `truncated`, `truncated_by`,
@@ -121,13 +138,17 @@ impl QueryResult {
     /// and `elapsed_ms`. Within the byte limit as serialized.
     #[must_use]
     pub fn json(&self) -> Value {
+        self.json_counted().0
+    }
+
+    fn json_counted(&self) -> (Value, usize) {
         let table = match &self.outcome {
             Outcome::Affected(rows) => {
                 let mut doc = json!({ "affected_rows": rows, "elapsed_ms": self.elapsed_ms() });
                 if !self.notes.is_empty() {
                     doc["notes"] = json!(self.notes);
                 }
-                return doc;
+                return (doc, 0);
             }
             Outcome::Rows(table) => table,
         };
@@ -161,9 +182,12 @@ impl QueryResult {
             if !self.notes.is_empty() {
                 doc["notes"] = json!(self.notes);
             }
+            if let Some(cursor) = &self.cursor {
+                doc["cursor"] = json!(cursor);
+            }
             doc
         };
-        fit(rows.len(), self.limits.max_bytes, render, |doc| {
+        fit_counted(rows.len(), self.limits.max_bytes, render, |doc| {
             doc.to_string().len()
         })
     }
@@ -178,9 +202,19 @@ pub(crate) fn fit<T>(
     render: impl Fn(usize) -> T,
     size: impl Fn(&T) -> usize,
 ) -> T {
+    fit_counted(total, max, render, size).0
+}
+
+/// [`fit`], and how many rows the rendering has.
+pub(crate) fn fit_counted<T>(
+    total: usize,
+    max: usize,
+    render: impl Fn(usize) -> T,
+    size: impl Fn(&T) -> usize,
+) -> (T, usize) {
     let all = render(total);
     if size(&all) <= max {
-        return all;
+        return (all, total);
     }
     let (mut fits, mut too_many) = (0, total);
     while too_many - fits > 1 {
@@ -191,7 +225,7 @@ pub(crate) fn fit<T>(
             too_many = middle;
         }
     }
-    render(fits)
+    (render(fits), fits)
 }
 
 /// Integers JavaScript (and every parser that reads numbers as doubles) keeps exactly.
@@ -330,10 +364,12 @@ mod tests {
                 cut,
                 values_cut: false,
                 masked: Vec::new(),
+                rest: None,
             }),
             elapsed: Duration::from_millis(7),
             limits,
             notes: Vec::new(),
+            cursor: None,
         }
     }
 
@@ -351,6 +387,7 @@ mod tests {
             elapsed: Duration::ZERO,
             limits,
             notes: Vec::new(),
+            cursor: None,
         };
         assert_eq!(affected.text(), "1 row affected.");
     }
@@ -410,6 +447,7 @@ mod tests {
             elapsed: Duration::ZERO,
             limits: Limits::default(),
             notes: Vec::new(),
+            cursor: None,
         };
         assert_eq!(
             affected.json(),

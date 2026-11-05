@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { api, type ColumnInfo, toCommandError } from "../api";
+import { api, type CellFile, type ColumnInfo, toCommandError } from "../api";
+import { defaultFileName, imageType } from "../grid/fileType";
 import { formatCount, t, plural } from "../i18n";
 import { MASK, useMask } from "../guards/mask";
 import { JSON_TYPE, formatJson, isJsonDocument } from "../jsonText";
@@ -19,6 +20,8 @@ export interface ValueTarget {
   isNull: boolean;
   /** JSON in a text column is shown as written, not indented (the connection's choice). */
   plainTextJson?: boolean;
+  /** The connection keeps its data in: no file is saved from here. */
+  noExport?: boolean;
 }
 
 const jsonColumn = (column: ColumnInfo) => JSON_TYPE.test(column.db_type);
@@ -32,21 +35,6 @@ const HEX_LIMIT = 64 * 1024;
 const TEXT_PAGE = 256 * 1024;
 /** Longer values are not parsed as JSON or XML to be indented. */
 const FORMAT_LIMIT = 1024 * 1024;
-
-const IMAGE_TYPES: [string, number[]][] = [
-  ["image/png", [0x89, 0x50, 0x4e, 0x47]],
-  ["image/jpeg", [0xff, 0xd8, 0xff]],
-  ["image/gif", [0x47, 0x49, 0x46, 0x38]],
-  ["image/webp", [0x52, 0x49, 0x46, 0x46]],
-  ["image/bmp", [0x42, 0x4d]],
-];
-
-function imageType(bytes: Uint8Array): string | null {
-  for (const [type, magic] of IMAGE_TYPES) {
-    if (magic.every((b, i) => bytes[i] === b)) return type;
-  }
-  return null;
-}
 
 function hexDump(bytes: Uint8Array): string {
   const lines: string[] = [];
@@ -112,19 +100,28 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
   const [mode, setMode] = useState<Mode | null>(null);
   /** Characters of text shown, a multiple of `TEXT_PAGE`. */
   const [limit, setLimit] = useState(TEXT_PAGE);
+  /** The file the cell holds, if it holds one. */
+  const [file, setFile] = useState<CellFile | null>(null);
   const binary = target?.column.binary ?? false;
   const mask = useMask();
+  const masked = !!target && !!mask?.(target.column);
 
   useEffect(() => {
     setBytes(null);
     setError(null);
     setMode(null);
     setLimit(TEXT_PAGE);
+    setFile(null);
     if (!target) return;
     let live = true;
     api.cellBytes(target.jobId, target.row, target.col).then(
       (b) => live && setBytes(b),
       (e) => live && setError(toCommandError(e).message),
+    );
+    // Told from the cell's bytes in any column: the panel offers to save a file.
+    api.cellFile(target.jobId, target.row, target.col).then(
+      (f) => live && setFile(f),
+      () => undefined,
     );
     return () => {
       live = false;
@@ -155,10 +152,10 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
 
   async function saveValue() {
     if (!target) return;
-    const path = await save({ defaultPath: `${target.column.name}.${image?.split("/")[1] ?? (binary ? "bin" : "txt")}` });
+    const path = await save({ defaultPath: defaultFileName(target.column.name, file, binary) });
     if (!path) return;
     try {
-      await api.saveCell(target.jobId, target.row, target.col, path);
+      await api.saveCell(target.jobId, target.row, target.col, path, file?.coded ?? false);
     } catch (e) {
       setError(toCommandError(e).message);
     }
@@ -221,13 +218,26 @@ export function ValuePanel({ target, onClose }: { target: ValueTarget | null; on
             <Icon name="copy" />
           </button>
         )}
-        <button className="icon" title={t("Save to file…")} aria-label={t("Save to file…")} onClick={() => void saveValue()} disabled={!bytes}>
+        <button className="icon" title={t("Save to file…")} aria-label={t("Save to file…")} onClick={() => void saveValue()} disabled={!bytes || masked}>
           <Icon name="download" />
         </button>
         <button className="icon" title={t("Close (F7)")} aria-label={t("Close (F7)")} onClick={onClose}>
           <Icon name="close" />
         </button>
       </div>
+      {file && target && !masked && (
+        <div className="value-file">
+          <button
+            className="primary"
+            disabled={target.noExport}
+            title={target.noExport ? t("This connection keeps its data in: nothing is saved to files.") : undefined}
+            onClick={() => void saveValue()}
+          >
+            <Icon name="download" size={12} /> {t("Save {type}…", { type: file.name })}
+          </button>
+          <span className="muted small">{plural(file.size, "{n} byte", "{n} bytes")}</span>
+        </div>
+      )}
       {body}
       {bytes && <div className="muted small value-size">{plural(bytes.length, "{n} byte", "{n} bytes")}</div>}
     </aside>

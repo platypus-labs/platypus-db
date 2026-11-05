@@ -7,6 +7,7 @@ mod copy;
 mod display;
 mod error;
 mod export;
+mod filetype;
 mod formats;
 mod jobs;
 mod profiles;
@@ -340,6 +341,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::agents::agent_clients,
         commands::agents::install_agent_client,
         commands::agents::take_agent_proposals,
+        commands::agents::proposed_viewer,
         commands::diagnostics::diagnostics_info,
         commands::diagnostics::dismiss_crash,
         commands::diagnostics::log_error,
@@ -463,6 +465,9 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::grid::sql_literals,
         commands::grid::cell_bytes,
         commands::grid::save_cell,
+        commands::cell_files::cell_file,
+        commands::cell_files::column_files,
+        commands::cell_files::save_cell_files,
         commands::grid::file_size,
         commands::grid::read_cell_file,
         commands::grid::search_rows,
@@ -614,6 +619,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema::flyway_file_name,
         commands::schema::migration_status,
         commands::schema_history::take_schema_snapshot,
+        commands::schema_history::note_schema_change,
         commands::schema_history::list_schema_snapshots,
         commands::schema_history::delete_schema_snapshot,
         commands::schema_history::diff_schema_snapshots,

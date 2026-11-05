@@ -25,15 +25,23 @@ hosts and users never reach you.
 5. `estimate_change` shows, without running anything, what the confirmation dialog would show the user for a change (rows expected, plan, the Safety checks that ask or refuse): use it to correct a statement before `run_query`. `server_activity` and `top_queries` show the server's sessions, running statements and locks, and its costliest statements (PostgreSQL, MySQL, MariaDB, SQL Server); their statements are masked.
 
 Clients that read MCP resources can also read `platypus://<connection>`,
-`platypus://<connection>/<schema>` and `platypus://<connection>/<schema>/<table>`.
+`platypus://<connection>/<schema>` and `platypus://<connection>/<schema>/<table>`, and can
+subscribe to them: after a notification the schema changed in the app, so read it again.
+Prompts (`prompts/list`) offer ready tasks and the user's saved scripts with parameters.
 
 ## Query
 
 - `run_query` runs **one** statement in the connection's own SQL dialect. It returns 100 rows,
   32 KB and waits 30 s by default; raise `max_rows`, `max_bytes` or `timeout_seconds` only
   when the user needs more, and prefer `COUNT(*)`, `GROUP BY` and `LIMIT` to reading many rows.
+- A result cut by `max_rows` or `max_bytes` returns a `cursor`: `next_page` reads the next rows of the
+  same result instead of running the query again (the result is buffered on the first read, not
+  re-run, so the pages do not change if the data does).
 - The answer says when rows or long values were left out: tell the user, do not present a
   partial result as complete.
+- `query_across_databases` joins tables of several connections (each `sources` entry is a
+  connection, schema and table) in a read-only DuckDB statement over copies of up to `source_rows`
+  rows each; sensitive columns are masked before the copy, so never join on one.
 - `explain` shows a statement's plan without running it; `analyze=true` runs it and rolls
   back what it changes. Use it before suggesting an index or rewriting a slow query.
 
@@ -46,7 +54,10 @@ Clients that read MCP resources can also read `platypus://<connection>`,
   unless the user's safety settings allow it.
 - For a change the access does not allow, or one the user should check first, use
   `propose_sql`: it opens the SQL in a new editor tab of the app, for the user to review and
-  run by hand. Never try to get around the access.
+  run by hand. To hand over rows to insert, update or delete in a table, use `propose_edits`
+  (`inserts`, `updates` with a `key` and a `set`, `deletes`, by primary or unique key): they open
+  in the table's data viewer as pending edits that the user saves or discards. It writes
+  nothing, and a table with no key is refused. Never try to get around the access.
 
 ## The user's scripts and history
 

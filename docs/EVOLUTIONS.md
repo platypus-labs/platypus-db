@@ -61,7 +61,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 ### Group A — Agents and MCP
 
-**Status: P1 done (sensitive columns masked in results); `get_er_diagram` as Mermaid, the catalog for agents, the per-connection limits, `compare_schemas`, `profile_table`, `estimate_change`, `server_activity` and `top_queries` done; the rest of P2 and P3 to do.**
+**Status: P1 and P2 done, `get_er_diagram` as Mermaid included; in P3 the pages of results, MCP prompts, schema change notifications and `query_across_databases` done; to do: the SVG diagram, the agent report and remote MCP.**
 
 **What exists** (roadmap group N, [AGENTS.md](AGENTS.md)): the server (`platypus-db --mcp` on
 stdio, `/mcp` over HTTP through the bridge with the open app) with the tools `list_connections`,
@@ -91,11 +91,11 @@ configuration. The rows below add only what is not there.
 | ✅ **Dry run of a change**: tool `estimate_change` returns, without running anything, what the confirmation dialog would show the user (rows the database expects to change, plan, the Safety checks that would ask), so the agent corrects a statement before asking | P2 | U |
 | ✅ **Per-agent limits and cost guard**: per connection in Settings → Agents → Security, the maximum rows, bytes and timeout an agent may ask for (today fixed caps: 10,000 rows, 1 MB, 300 s), calls per minute, and a threshold on estimated rows or plan cost above which a read is refused with the plan in the error | P2 | U |
 | ✅ Read-only server tools `server_activity` (sessions, running queries, locks) and `top_queries` (`pg_stat_statements`, `performance_schema`, Query Store), from the views of roadmap group J; no kill or cancel | P2 | U |
-| 🆕 **Edits proposed by agents**: tool `propose_edits` (rows to insert, update or delete in a table, by key) opens them in the app's data viewer as pending edits, shown as a diff in the grid, which the user saves or discards; like `propose_sql`, it changes nothing by itself | P2 | U |
-| 🆕 **Large results in pages**: `run_query` returns a `cursor` to read the next pages of the same result (kept a few minutes, closed with the session) instead of running the query again with a larger `max_rows` | P3 | U |
-| 🆕 **MCP prompts** (`prompts/list`): ready tasks that chain the existing tools (explain and improve a query, find the slowest queries, write a migration for a change, document a table), and the user's saved scripts with `:parameters` as prompts with arguments | P3 | U |
-| 🆕 **Schema change notifications**: `resources/subscribe` on the schema resources and `notifications/resources/list_changed` when the app sees a change (navigator refresh, schema timeline of group I), so a long agent session does not work on an old schema | P3 | U |
-| 🆕 Tool `query_across_databases`: one read-only statement over tables of several connections through the DuckDB join of roadmap group M (`platypus-local`), each source checked against its own agent access | P3 | U |
+| ✅ **Edits proposed by agents**: tool `propose_edits` (rows to insert, update or delete in a table, by key) opens them in the app's data viewer as pending edits, shown as a diff in the grid, which the user saves or discards; like `propose_sql`, it changes nothing by itself | P2 | U |
+| ✅ **Large results in pages**: `run_query` returns a `cursor` to read the next pages of the same result (kept a few minutes, closed with the session) instead of running the query again with a larger `max_rows` | P3 | U |
+| ✅ **MCP prompts** (`prompts/list`): ready tasks that chain the existing tools (explain and improve a query, find the slowest queries, write a migration for a change, document a table), and the user's saved scripts with `:parameters` as prompts with arguments | P3 | U |
+| ✅ **Schema change notifications**: `resources/subscribe` on the schema resources and `notifications/resources/list_changed` when the app sees a change (navigator refresh, schema timeline of group I), so a long agent session does not work on an old schema | P3 | U |
+| ✅ Tool `query_across_databases`: one read-only statement over tables of several connections through the DuckDB join of roadmap group M (`platypus-local`), each source checked against its own agent access | P3 | U |
 | 🆕 **Agent report**: in Settings → Agents → Activity a summary per agent and session (tables read, rows returned, changes allowed and refused, errors), exported as Markdown or HTML next to today's CSV of single calls | P3 | U |
 | 🆕 **Remote MCP**: the `/mcp` endpoint reachable from other machines, off by default, with TLS and OAuth 2.1 as the MCP specification describes instead of the fixed token, and a consent per client in the app. **To decide** (it exposes saved connections on the network) | P3 | U |
 

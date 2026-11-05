@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 platypus-core.workspace = true
+serde.workspace = true
 
 
 [lints]

@@ -5,8 +5,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use platypus_core::DriverKind;
 use platypus_mcp::AgentBlocker;
 use platypus_mcp::profile::AGENT_CALLS_FILE;
+use platypus_sql::proposed::{self, Edits};
 use platypus_store::{
     AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
     agent_calls_csv, toml,
@@ -372,6 +374,63 @@ pub async fn agent_calls_export(
 #[tauri::command]
 pub async fn take_agent_proposals(app: AppHandle) -> CommandResult<Vec<AgentProposal>> {
     with_agent_calls(app, AgentCallStore::take_proposals).await
+}
+
+/// A proposal of rows to change, checked and ready for the data viewer.
+#[derive(Debug, Serialize)]
+pub struct ProposedViewer {
+    /// The viewer's statement, written here from the table's catalog (see
+    /// [`platypus_sql::proposed::viewer`]); no text of the proposal is part of it as SQL.
+    sql: String,
+    /// The table, qualified and quoted, as the viewer names it.
+    table: String,
+    edits: Edits,
+}
+
+/// Parses and checks the rows an agent proposed (`edits`, JSON from the call log, which any
+/// program can write) against the real table of the session, and writes the statement that
+/// shows the rows to change. Nothing runs and nothing is saved here.
+#[tauri::command]
+pub async fn proposed_viewer(
+    state: State<'_, AppState>,
+    session_id: u64,
+    edits: String,
+) -> CommandResult<ProposedViewer> {
+    let invalid = |m: String| CommandError::new("invalid_value", m);
+    if edits.len() > proposed::MAX_BYTES {
+        return Err(invalid("the proposal is too big".to_owned()));
+    }
+    let edits: Edits = serde_json::from_str(&edits).map_err(|e| {
+        invalid(format!(
+            "the proposal is not a list of rows to change ({e})"
+        ))
+    })?;
+    if edits.rows() > proposed::MAX_ROWS {
+        return Err(invalid(format!(
+            "the proposal has {} rows, more than the {} allowed",
+            edits.rows(),
+            proposed::MAX_ROWS
+        )));
+    }
+    let driver = state.session(session_id)?.config.driver;
+    if matches!(
+        driver,
+        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
+    ) {
+        return Err(invalid(format!(
+            "rows of {} are not edited by key from the data viewer",
+            driver.name()
+        )));
+    }
+    let dialect = state.dialect(session_id)?;
+    let conn = state.live(session_id).await?;
+    let details = conn.table_details(&edits.schema, &edits.table).await?;
+    let viewer = proposed::viewer(dialect, &edits, &details).map_err(invalid)?;
+    Ok(ProposedViewer {
+        sql: viewer.sql,
+        table: viewer.table,
+        edits,
+    })
 }
 
 /// Empties the call log.

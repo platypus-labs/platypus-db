@@ -56,6 +56,13 @@ pub(crate) struct Asked {
     pub timeout_seconds: Option<f64>,
 }
 
+impl Asked {
+    /// The defaults with what was asked, each up to its cap.
+    pub(crate) fn limits(&self) -> Result<Limits> {
+        Limits::new(self.max_rows, self.max_bytes, self.timeout_seconds)
+    }
+}
+
 /// `limits` (the defaults with what was `asked`, up to the fixed caps) lowered to the
 /// connection's `rules`, and a note for each one the agent asked more than it was given.
 /// A default above a connection's limit is lowered without a note.

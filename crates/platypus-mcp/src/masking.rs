@@ -101,7 +101,8 @@ fn sensitive_columns(columns: &[Column], items: &[SelectOutput], rules: &ResultR
 
 /// The values of the `masked` columns of `table` written as [`MASKED_VALUE`].
 fn mask_table(table: &mut Table, masked: &[bool]) {
-    for row in &mut table.rows {
+    let rest = table.rest.iter_mut().flat_map(|r| r.rows.iter_mut());
+    for row in table.rows.iter_mut().chain(rest) {
         for (cell, masked) in row.iter_mut().zip(masked) {
             if *masked && *cell != Cell::Null {
                 *cell = Cell::Text(MASKED_VALUE.to_owned());
@@ -395,6 +396,7 @@ mod tests {
             cut: None,
             values_cut: false,
             masked: Vec::new(),
+            rest: None,
         };
         mask_table(&mut table, &[false, true]);
         assert_eq!(table.rows[0][1], Cell::Text(MASKED_VALUE.to_owned()));

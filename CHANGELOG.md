@@ -6,6 +6,12 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Grid**: a cell that holds a file offers to save it, in any type of column: binary, or text with a
+  `data:` URL, base64 or hex. A binary cell shows the type and size (`PDF · 2.3 MB`), and a
+  selection saves its files to a folder.
+
 ### Changed
 
 - **Agents**: sensitive columns read `••••••` in `run_query`, `sample_rows` and `get_user_context`,
@@ -22,6 +28,7 @@ All notable changes to PlatypusDB are listed here. The format follows
   `profile_table` (per column figures from a sample, counts only for sensitive columns),
   `estimate_change` (what a change would show the user, without running it), `server_activity` and
   `top_queries` (read-only, with the values in other sessions' statements masked).
+- **Agents**: `propose_edits` opens rows to add, change or delete in the data viewer as pending edits, which the user saves or discards. `next_page` reads long results in pages, `query_across_databases` joins tables of several connections with sensitive columns copied as NULL, and MCP prompts and schema change notifications are offered.
 - Choosing a database for a new connection offers its driver at once, when it needs one that is
   not installed; Settings is not needed. Cancelling leaves the form as it is.
 

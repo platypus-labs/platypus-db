@@ -179,6 +179,27 @@ pub const MAX_PROPOSAL_BYTES: usize = 1024 * 1024;
 /// Characters of a proposal's title kept.
 const TITLE_CHARS: usize = 80;
 
+/// A proposal's title as the app shows it: no control characters, cut, none when empty.
+pub(crate) fn proposal_title(title: Option<&str>) -> Option<String> {
+    title
+        .map(|t| {
+            t.trim()
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(TITLE_CHARS)
+                .collect()
+        })
+        .filter(|t: &String| !t.is_empty())
+}
+
+/// The refusal when too many proposals wait for the user; `advice` says what to do instead.
+pub(crate) fn too_many_waiting(advice: &str) -> AgentError {
+    AgentError::Invalid(format!(
+        "{MAX_PENDING_PROPOSALS} proposals of yours (or {MAX_PENDING_ALL} of all agents) \
+         wait for the user to open them in PlatypusDB: no more until they are opened. {advice}"
+    ))
+}
+
 /// Rows `sample_rows` returns by default.
 pub const SAMPLE_ROWS: u64 = 20;
 
@@ -365,6 +386,8 @@ pub struct Agent {
     seal: Seal,
     /// The calls of the last minute on each connection, for `calls_per_minute`.
     pub(crate) windows: CallWindows,
+    /// The cursors of cut results (see `cursor.rs`).
+    pub(crate) cursors: crate::cursor::Cursors,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only
@@ -428,6 +451,7 @@ impl Agent {
             session: Uuid::new_v4().to_string(),
             seal,
             windows: CallWindows::default(),
+            cursors: crate::cursor::Cursors::default(),
         }
     }
 
@@ -716,6 +740,31 @@ impl Agent {
         Ok(view.list(schema, page, &redactor))
     }
 
+    /// The details of `schema.table` as the database has them, or why there are none.
+    pub(crate) async fn read_table(
+        &self,
+        store: &ConnectionStore,
+        saved: &SavedConnection,
+        schema: &str,
+        table: &str,
+    ) -> Result<TableDetails> {
+        let lease = self.lease(store, saved).await?;
+        let conn = lease.conn();
+        let details = timed(async {
+            let details = conn.table_details(schema, table).await?;
+            let exists = !details.columns.is_empty()
+                || conn.objects(schema).await?.iter().any(|o| o.name == table);
+            Ok::<_, Error>(exists.then_some(details))
+        })
+        .await;
+        lease.settle(details)?.ok_or_else(|| {
+            AgentError::NotFound(format!(
+                "`{}` has no table or view `{schema}.{table}`",
+                saved.name
+            ))
+        })
+    }
+
     /// Columns, keys, foreign keys (both ways), indexes and constraints of a table or view.
     pub async fn describe_table(
         &self,
@@ -844,17 +893,31 @@ impl Agent {
     pub async fn run_query_until(
         &self,
         args: &QueryArgs,
-        (origin, session): (&str, &str),
+        who: (&str, &str),
         stop: impl Future<Output = ()>,
     ) -> Result<QueryResult> {
-        let asked = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
-        let (store, saved) = self.find(&args.connection)?;
+        self.run_query_with(args, who, false, stop).await
+    }
+
+    /// [`run_query_until`](Self::run_query_until); with `keep_rest` a cut result also holds
+    /// the rows after its page, for a cursor (see `cursor.rs`).
+    pub(crate) async fn run_query_with(
+        &self,
+        args: &QueryArgs,
+        (origin, session): (&str, &str),
+        keep_rest: bool,
+        stop: impl Future<Output = ()>,
+    ) -> Result<QueryResult> {
         let requested = Asked {
             max_rows: args.max_rows,
             max_bytes: args.max_bytes,
             timeout_seconds: args.timeout_seconds,
         };
-        let (limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
+        let asked = requested.limits()?;
+        let (store, saved) = self.find(&args.connection)?;
+        let (mut limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
+        // A connection's `max_rows` bounds what agents get of a result, not only of a page.
+        limits.keep_rest = keep_rest && saved.agent_limits.max_rows.is_none();
         let access = saved.effective_agent_access();
         let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();
@@ -917,6 +980,7 @@ impl Agent {
                 elapsed: start.elapsed(),
                 limits,
                 notes,
+                cursor: None,
             })
             .map_err(|e| self.mask_statement_error(&saved, e));
         self.record(
@@ -1066,17 +1130,7 @@ impl Agent {
             )));
         }
         let (_, saved) = self.find(&args.connection)?;
-        let title: Option<String> = args
-            .title
-            .as_deref()
-            .map(|t| {
-                t.trim()
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .take(TITLE_CHARS)
-                    .collect()
-            })
-            .filter(|t: &String| !t.is_empty());
+        let title = proposal_title(args.title.as_deref());
         let kept = self.with_calls(|store| {
             Ok(store.propose(
                 &origin_name(origin),
@@ -1086,11 +1140,9 @@ impl Agent {
             )?)
         })?;
         if kept.is_none() {
-            return Err(AgentError::Invalid(format!(
-                "{MAX_PENDING_PROPOSALS} proposals of yours (or {MAX_PENDING_ALL} of all agents) \
-                 wait for the user to open them in PlatypusDB: no more until they are opened. \
-                 Put several statements in one proposal instead"
-            )));
+            return Err(too_many_waiting(
+                "Put several statements in one proposal instead",
+            ));
         }
         Ok(format!(
             "Proposed on `{}`: PlatypusDB opens it in a new editor tab, now if the app is open \
@@ -1105,7 +1157,7 @@ impl Agent {
     }
 
     /// Runs `f` on the call log, opened on first use and kept open.
-    fn with_calls<T>(&self, f: impl FnOnce(&AgentCallStore) -> Result<T>) -> Result<T> {
+    pub(crate) fn with_calls<T>(&self, f: impl FnOnce(&AgentCallStore) -> Result<T>) -> Result<T> {
         let mut calls = locked(&self.calls);
         if calls.is_none() {
             *calls = Some(self.profile.agent_calls()?);
@@ -1628,6 +1680,7 @@ mod tests {
     #[tokio::test]
     async fn duckdb_files_are_free_between_calls() {
         platypus_driver_duckdb::testing::load();
+        let _serial = crate::across::DUCKDB_TESTS.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("data.duckdb");
         duckdb::Connection::open(&path)

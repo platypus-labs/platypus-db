@@ -5,20 +5,25 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::agent::{MAX_OBJECT_PAGE, locked};
+use crate::cursor::SessionCursors;
 use crate::link::CLOSED;
+use crate::prompts::{self, PromptError};
 use crate::resource::{self, Target};
+use crate::watch::Subscriptions;
+use crate::{AcrossArgs, EstimateArgs, ProposeEditsArgs, ServerViewArgs};
 use crate::{
     Agent, AgentError, CompareArgs, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs,
-    ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
+    PageArgs, ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
 };
-use crate::{EstimateArgs, ServerViewArgs};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, ContentBlock, Implementation, ListResourceTemplatesResult, ListResourcesResult,
-    PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult,
-    Resource, ResourceContents, ResourceTemplate, ServerCapabilities, ServerConfig,
+    CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResponse, GetPromptResult,
+    Implementation, ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult,
+    PaginatedRequestParams, PromptMessage, ReadResourceRequestParams, ReadResourceResponse,
+    ReadResourceResult, Resource, ResourceContents, ResourceTemplate, Role, ServerCapabilities,
+    ServerConfig, SubscribeRequestParams, UnsubscribeRequestParams,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, tool, tool_handler, tool_router};
@@ -30,10 +35,12 @@ use tokio_util::sync::CancellationToken;
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
 in the PlatypusDB app. Start with list_connections, then explore with list_schemas, \
 list_objects, describe_table, get_ddl, get_er_diagram, compare_schemas and search_objects, look at a table's first rows with \
-sample_rows, profile its columns with profile_table (sensitive columns give counts only), query with run_query and read a statement's plan with explain, and ask estimate_change what a change would show the \
+sample_rows, profile its columns with profile_table (sensitive columns give counts only), query with run_query (next_page reads the rest of a cut result; query_across_databases joins tables of several connections) and read a statement's plan with explain, and ask estimate_change what a change would show the \
 user before it runs (nothing runs); server_activity and top_queries read what the server does: one statement per \
 call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
-hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
+hand (a change the access does not allow, a long script), use propose_sql; to hand the user rows \
+to change in a table, use propose_edits: they open in its data viewer as pending edits to save or \
+discard. Each connection has an \
 agent access set by the user: read_only connections run only statements that change nothing, \
 inside a read-only transaction; read_write connections also accept changes, which commit at \
 once. Production connections are always read-only. Passwords never reach you. While the \
@@ -121,6 +128,10 @@ pub struct PlatypusServer {
     session: String,
     /// When the open app was last told this server is connected.
     greeted: Arc<Mutex<Option<Instant>>>,
+    /// The resources the client subscribed to; nothing runs while there are none.
+    subscriptions: Arc<Subscriptions>,
+    /// Closes the cursors of this session when its last clone goes.
+    _cursors: Arc<SessionCursors>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -183,10 +194,13 @@ impl Call {
 #[tool_router]
 impl PlatypusServer {
     pub fn new(agent: Arc<Agent>) -> Self {
+        let session = uuid::Uuid::new_v4().to_string();
         Self {
+            _cursors: Arc::new(SessionCursors::new(Arc::clone(&agent), session.clone())),
             agent,
-            session: uuid::Uuid::new_v4().to_string(),
+            session,
             greeted: Arc::default(),
+            subscriptions: Arc::default(),
             tool_router: Self::tool_router(),
         }
     }
@@ -456,7 +470,7 @@ impl PlatypusServer {
         timeout_seconds raise them up to 10000 rows, 1048576 bytes and 300 s. On read_only \
         connections only statements that change nothing run, in a read-only transaction; on \
         read_write connections changes commit at once, and UPDATE or DELETE without WHERE is \
-        refused unless the user's safety settings allow it. Use the database's own SQL dialect."
+        refused unless the user's safety settings allow it. Use the database's own SQL dialect. A result cut by max_rows or max_bytes returns a `cursor` (the `cursor` field in JSON) for next_page to read the rest."
     )]
     async fn run_query(
         &self,
@@ -465,17 +479,60 @@ impl PlatypusServer {
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
         let call = Call::new("run_query", &peer, &args);
-        let format = args.format.unwrap_or_default();
         let result = self
             .agent
             // `notifications/cancelled` for this request cancels the statement.
-            .run_query_until(
+            .run_query_page(
                 &args,
                 (&call.agent, &self.session),
                 cancelled.cancelled_owned(),
             )
-            .await
-            .map(|r| r.render(format));
+            .await;
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Reads the next rows of a result that run_query cut at max_rows or \
+        max_bytes, from the cursor it returned, instead of running the statement again: the \
+        pages come from the rows read with the first one (up to 10000 more rows or 8 MB; \
+        the answer says when the result has more than that), so they do not change if the \
+        data does. Same format, max_rows (default 100) and max_bytes as run_query, with the \
+        connection's limits and calls per minute; sensitive columns stay masked as in the first \
+        page. A cursor is kept 5 minutes after its last use and belongs to this session; an \
+        unknown, expired or another session's cursor is refused."
+    )]
+    async fn next_page(
+        &self,
+        Parameters(args): Parameters<PageArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("next_page", &peer, &args);
+        let result = self.agent.next_page(&args, &self.session);
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Runs one read-only DuckDB statement over tables of several connections: \
+        each source (connection, schema, table, optional name) is copied, up to source_rows rows \
+        (default 10000, up to 100000) and within that connection's limits, into a DuckDB of \
+        this call, where the statement joins them by name. Every connection must be open to \
+        agents; the statement runs only on the copies, cannot write to a source and reads no \
+        file nor URL. Values of sensitive columns are masked before they are copied (unless the \
+        user shows them for that connection): all values of such a column are equal, so do not \
+        join on one. A source copied in part is said so. Use DuckDB's SQL. Same result format \
+        and limits as run_query."
+    )]
+    async fn query_across_databases(
+        &self,
+        Parameters(args): Parameters<AcrossArgs>,
+        peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("query_across_databases", &peer, &args);
+        let result = self
+            .agent
+            .query_across_until(&args, cancelled.cancelled_owned())
+            .await;
         self.answer(call, result).await
     }
 
@@ -702,6 +759,27 @@ impl PlatypusServer {
             .unwrap_or_else(|e| Err(AgentError::Store(e.to_string())));
         self.answer(call, result).await
     }
+
+    #[tool(
+        description = "Proposes rows to change in a table: PlatypusDB opens the table's data \
+        viewer with them as pending edits (new rows, changed cells, rows marked for deletion) \
+        that the user reviews, saves or discards (now if the app is open, else when it starts). \
+        Nothing is written here, whatever the connection's agent access. inserts: objects of \
+        column to value. updates: {key, set}, key naming a row by exactly the columns of a \
+        primary or unique key. deletes: objects naming rows by such a key. A value is a string, \
+        number, boolean or null (no arrays or objects); at most 500 rows and 1 MiB in all. The \
+        table needs a primary or unique key; MongoDB, Redis, Elasticsearch and Cassandra, \
+        read-only connections and those that forbid editing data are refused. title names the tab."
+    )]
+    async fn propose_edits(
+        &self,
+        Parameters(args): Parameters<ProposeEditsArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("propose_edits", &peer, &args);
+        let result = self.agent.propose_edits(&args, &call.agent).await;
+        self.answer(call, result).await
+    }
 }
 
 /// The client's name as it introduced itself; [`origin_name`] trims and caps it, and calls
@@ -745,6 +823,9 @@ impl ServerHandler for PlatypusServer {
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
+                .enable_resources_subscribe()
+                .enable_resources_list_changed()
+                .enable_prompts()
                 .build(),
         )
         .with_server_info(Implementation::new("platypus-mcp", platypus_core::VERSION))
@@ -835,5 +916,74 @@ impl ServerHandler for PlatypusServer {
             ))),
             Err(e) => Err(ErrorData::invalid_params(e.to_string(), None)),
         }
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        let prompts = prompts::list(&self.agent)
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        Ok(ListPromptsResult::with_all_items(prompts))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, ErrorData> {
+        // Arguments are text; a value of another type is given as its JSON.
+        let values = request
+            .arguments
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| (k, v.as_str().map_or_else(|| v.to_string(), str::to_owned)))
+            .collect();
+        match prompts::get(&self.agent, &request.name, &values) {
+            Ok(text) => Ok(GetPromptResponse::Complete(GetPromptResult::new(vec![
+                PromptMessage::new_text(Role::User, text),
+            ]))),
+            Err(e @ PromptError::Failed(_)) => Err(ErrorData::internal_error(e.to_string(), None)),
+            Err(e) => Err(ErrorData::invalid_params(e.to_string(), None)),
+        }
+    }
+
+    async fn subscribe(
+        &self,
+        request: SubscribeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        let Some(
+            Target::Connection(connection)
+            | Target::Schema(connection, _)
+            | Target::Table(connection, _, _),
+        ) = resource::parse(&request.uri)
+        else {
+            return Err(ErrorData::invalid_params(
+                format!(
+                    "unknown resource `{}`: use {}",
+                    request.uri,
+                    resource::FORMS
+                ),
+                None,
+            ));
+        };
+        // A connection with access off is not one agents can use, so it cannot be watched.
+        self.agent
+            .find(&connection)
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+        self.subscriptions
+            .add(&request.uri, &self.agent, &context.peer);
+        Ok(())
+    }
+
+    async fn unsubscribe(
+        &self,
+        request: UnsubscribeRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        self.subscriptions.remove(&request.uri);
+        Ok(())
     }
 }

@@ -223,7 +223,7 @@ export function ContextMenu({ menu, onClose, onError }: Props) {
       >
         <span>
           {checked && <Icon name="commit" size={12} className="menu-check" />}
-          {t(action.title)}
+          {t(action.title, action.titleParams?.(arg))}
         </span>
         {shortcutLabel(action) && <kbd className="shortcut">{shortcutLabel(action)}</kbd>}
         {reason && (

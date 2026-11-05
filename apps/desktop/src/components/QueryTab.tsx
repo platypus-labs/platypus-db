@@ -30,6 +30,7 @@ import { selectionAsScript } from "./selectionRun";
 import type { NotesScope } from "../grid/ResultGrid";
 import type { EditSource, TableRef } from "../grid/edit/meta";
 import type { TableEditTarget } from "../grid/edit/TableEditor";
+import type { ProposedEdits } from "../grid/edit/proposed";
 import { cliName, runningStatement } from "../editor/actions";
 import { OutlinePanel } from "../editor/OutlinePanel";
 import { ParamsDialog } from "../editor/ParamsDialog";
@@ -142,6 +143,10 @@ export interface QueryTabModel extends TabBase {
   tableRef?: TableRef | null;
   /** Data viewer: the header sorts, each with the statement it was written into. */
   sorts?: ViewerSort[];
+  /** Data viewer: rows an agent proposed to change (`propose_edits`), which the grid applies
+   *  once as pending changes; cleared then. Not persisted: a tab opened again does not
+   *  apply them twice. */
+  proposed?: ProposedEdits | null;
   /** Data viewer: its own query, the one it opened with or the last rewrite of it by the header
    *  sort or a quick filter. Its rows are the table's rows; another query typed in the tab is
    *  not the viewer's. */
@@ -1648,6 +1653,7 @@ export function QueryTab({
         else reload();
       },
       onDirtyChange: setUnsaved,
+      proposed: viewer && tab.proposed ? { edits: tab.proposed, done: () => onChange({ proposed: null }) } : undefined,
     };
   }
 

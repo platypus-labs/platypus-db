@@ -234,6 +234,7 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
           notes={notes}
           toolbar={toolbar}
           empty={status.kind === "rows" && status.finished && result.rows === 0}
+          settled={status.kind === "rows" && status.finished && !result.fetching}
         />
       )}
     </>

@@ -1556,10 +1556,12 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       shortcut: "F5",
       group: "refresh",
       order: 50,
-      run: ({ connection, database, schema }) =>
+      run: ({ connection, database, schema }) => {
+        void api.noteSchemaChange(connection.id);
         n().refresh(`${baseKey(connection, database)}/${schema.name}`, () =>
           n().loadObjects(connection, database, schema.name),
-        ),
+        );
+      },
     }),
     registerAction({
       id: "object.open_data",
