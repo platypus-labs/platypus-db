@@ -235,6 +235,9 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "run_query",
         "sample_rows",
         "explain",
+        "estimate_change",
+        "server_activity",
+        "top_queries",
         "propose_sql",
         "list_open_sessions",
         "get_user_context",
@@ -1064,6 +1067,139 @@ fn samples_rows_and_explains_statements() {
         "{small}"
     );
     assert_eq!(count(&dir.path().join("scratch.db")), 2);
+}
+
+/// `estimate_change` answers what the confirmation would show, and runs nothing.
+#[test]
+fn estimates_a_change_without_running_it() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let estimate = |client: &mut Client, connection: &str, sql: &str| -> (Value, bool) {
+        let (text, error) = client.call(
+            "estimate_change",
+            &json!({ "connection": connection, "sql": sql }),
+        );
+        let doc = serde_json::from_str(&text).unwrap_or_else(|_| json!(text));
+        (doc, error)
+    };
+
+    let (update, error) = estimate(
+        &mut client,
+        "Scratch",
+        "UPDATE t SET name = 'Z' WHERE id = 1",
+    );
+    assert!(!error, "{update}");
+    assert_eq!(update["outcome"], "estimated", "{update}");
+    assert_eq!(update["is_change"], true, "{update}");
+    assert_eq!(update["agent_access"], "read_write", "{update}");
+    assert!(
+        update["safety_checks"].as_array().unwrap().is_empty(),
+        "{update}"
+    );
+    // SQLite plans a change: the plan shows, and there is an estimate or the reason for none.
+    assert!(
+        update["plan"].is_string() || update["estimate_note"].is_string(),
+        "{update}"
+    );
+    // The app is closed and changes ask the user: it would be refused.
+    assert_eq!(update["asks_the_user"], true, "{update}");
+    assert_eq!(update["would_run"], false, "{update}");
+    assert!(
+        update["reason"].as_str().unwrap().contains("not open"),
+        "{update}"
+    );
+
+    let (every, error) = estimate(&mut client, "Scratch", "DELETE FROM t");
+    assert!(!error, "{every}");
+    assert_eq!(every["outcome"], "refused", "{every}");
+    assert_eq!(every["would_run"], false, "{every}");
+    assert!(
+        every["reason"].as_str().unwrap().contains("every row"),
+        "{every}"
+    );
+    let (deleted, error) = estimate(&mut client, "Scratch", "DELETE FROM t WHERE id > 0");
+    assert!(!error && deleted["outcome"] == "estimated", "{deleted}");
+
+    let (read, error) = estimate(&mut client, "Scratch", "SELECT * FROM t");
+    assert!(!error, "{read}");
+    assert_eq!(read["outcome"], "not_a_change", "{read}");
+    assert_eq!(read["is_change"], false, "{read}");
+
+    // The access applies: a read-only connection says the change would be refused.
+    let (refused, error) = estimate(&mut client, "App db", "DELETE FROM t WHERE id = 1");
+    assert!(!error, "{refused}");
+    assert_eq!(refused["outcome"], "refused", "{refused}");
+    assert!(
+        refused["reason"]
+            .as_str()
+            .unwrap()
+            .contains("read-only for agents"),
+        "{refused}"
+    );
+    // Access off reads as an unknown connection; several statements are one too many.
+    let (hidden, error) = estimate(&mut client, "Hidden", "DELETE FROM t WHERE id = 1");
+    assert!(
+        error && hidden.as_str().unwrap().contains("no connection named"),
+        "{hidden}"
+    );
+    let (two, error) = estimate(
+        &mut client,
+        "Scratch",
+        "DELETE FROM t WHERE id = 1; DELETE FROM t",
+    );
+    assert!(
+        error && two.as_str().unwrap().contains("one statement at a time"),
+        "{two}"
+    );
+
+    // Nothing ran.
+    for file in ["scratch.db", "app.db", "hidden.db"] {
+        assert_eq!(count(&dir.path().join(file)), 2, "{file}");
+    }
+}
+
+/// With the app open to ask, an estimated change would run.
+#[test]
+fn an_estimate_says_the_change_would_run_when_the_app_can_ask() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let _app = fake_app(dir.path(), Vec::new());
+    let mut client = initialized(dir.path());
+    let (text, error) = client.call(
+        "estimate_change",
+        &json!({ "connection": "Scratch", "sql": "UPDATE t SET name = 'Z' WHERE id = 1" }),
+    );
+    assert!(!error, "{text}");
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(doc["app_open"], true, "{doc}");
+    assert_eq!(doc["would_run"], true, "{doc}");
+    assert_eq!(count(&dir.path().join("scratch.db")), 2);
+}
+
+/// SQLite has no server to ask: the server tools say so, and a hidden connection is unknown.
+#[test]
+fn the_server_tools_say_sqlite_has_none() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    for (tool, what) in [
+        ("server_activity", "no server sessions and locks"),
+        ("top_queries", "no query statistics"),
+    ] {
+        let (text, error) = client.call(tool, &json!({ "connection": "App db" }));
+        assert!(
+            error && text.contains(what) && text.contains("SQLite"),
+            "{tool}: {text}"
+        );
+        let (hidden, error) = client.call(tool, &json!({ "connection": "Hidden" }));
+        assert!(
+            error && hidden.contains("no connection named"),
+            "{tool}: {hidden}"
+        );
+        let (zero, error) = client.call(tool, &json!({ "connection": "App db", "limit": 0 }));
+        assert!(error && zero.contains("limit"), "{tool}: {zero}");
+    }
 }
 
 /// `propose_sql` keeps the SQL for the app to open, whatever the access, and runs nothing.

@@ -11,6 +11,7 @@ use crate::{
     Agent, AgentError, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs, ProposeArgs,
     QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
 };
+use crate::{EstimateArgs, ServerViewArgs};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -29,7 +30,8 @@ use tokio_util::sync::CancellationToken;
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
 in the PlatypusDB app. Start with list_connections, then explore with list_schemas, \
 list_objects, describe_table, get_ddl, get_er_diagram and search_objects, look at a table's first rows with \
-sample_rows, query with run_query and read a statement's plan with explain: one statement per \
+sample_rows, query with run_query and read a statement's plan with explain, and ask estimate_change what a change would show the \
+user before it runs (nothing runs): one statement per \
 call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
 hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
 agent access set by the user: read_only connections run only statements that change nothing, \
@@ -39,7 +41,9 @@ PlatypusDB app is open, list_open_sessions shows what the user has open there, a
 wait for the user to allow them in the app; when they say \"this query\", \"what I selected\" or \
 \"the result I see\", get_user_context asks them to share it. list_scripts and read_script \
 show the scripts the user saved, search_history the statements run before, to learn how the user \
-queries the data. Connections, schemas and tables are also MCP \
+queries the data. server_activity (sessions, running statements, locks) and top_queries (the \
+statements that cost the server most time) show what the server is doing, read-only, with the \
+statements' values masked. Connections, schemas and tables are also MCP \
 resources (platypus://<connection>/<schema>/<table>), for clients that attach them as context.";
 
 const JSON: &str = "application/json";
@@ -476,6 +480,64 @@ impl PlatypusServer {
             .await
             .map(|r| r.render(format));
         self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Dry run of a change: returns, without running anything, what the \
+        confirmation dialog would show the user for one SQL statement: the rows the database \
+        expects to change (estimated_rows) and its plan, the Safety checks that would ask or \
+        refuse (safety_checks), and whether the user is asked in the app (asks_the_user) and \
+        the change would run (would_run). A statement the connection's access refuses answers \
+        outcome=refused with the reason; one that changes nothing answers \
+        outcome=not_a_change. A database without plans answers with no estimate and says so. \
+        Use it to correct a statement before run_query asks the user."
+    )]
+    async fn estimate_change(
+        &self,
+        Parameters(args): Parameters<EstimateArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("estimate_change", &peer, &args);
+        let result = self.agent.estimate_change(&args).await;
+        self.answer(call, json_text(result)).await
+    }
+
+    #[tool(
+        description = "What the database server is doing now: its sessions (user, database, \
+        client, state, the statement running and for how long, what it waits for and the \
+        sessions blocking it) and the locks held or waited for, as in the PlatypusDB admin \
+        tab; sessions that wait or run first, 50 by default (limit, up to 200). The \
+        statements are other people's: credentials and the values of sensitive columns are \
+        masked, and long ones cut at 500 characters. PostgreSQL, MySQL, MariaDB and SQL \
+        Server; read-only: nothing is cancelled or ended. A missing privilege is said so."
+    )]
+    async fn server_activity(
+        &self,
+        Parameters(args): Parameters<ServerViewArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("server_activity", &peer, &args);
+        let result = self.agent.server_activity(&args).await;
+        self.answer(call, json_text(result)).await
+    }
+
+    #[tool(
+        description = "The statements that took the server most time, the costliest first, from \
+        its own statistics (pg_stat_statements, performance_schema, Query Store): the \
+        statement with its values replaced as the server writes them, calls, total, mean and \
+        max seconds, rows, user and database. 20 by default (limit, up to 100). Credentials \
+        and the values of sensitive columns are masked, long statements cut at 500 characters. \
+        PostgreSQL, MySQL, MariaDB and SQL Server; read-only. Says so when the statistics are \
+        not enabled (pg_stat_statements not installed) or the user may not read them."
+    )]
+    async fn top_queries(
+        &self,
+        Parameters(args): Parameters<ServerViewArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("top_queries", &peer, &args);
+        let result = self.agent.top_queries(&args).await;
+        self.answer(call, json_text(result)).await
     }
 
     #[tool(

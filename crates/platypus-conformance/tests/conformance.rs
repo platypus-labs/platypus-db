@@ -5672,6 +5672,213 @@ database = '{}'
     }
 }
 
+/// Saves `b` as the connection `Db` for the agent tools that read the server, on the three
+/// servers with admin views; `None` for any other backend.
+fn save_server_connection(dir: &std::path::Path, b: &Backend) -> Option<&'static str> {
+    let driver = match b.config.driver {
+        DriverKind::Postgres if b.name != "cockroach" => "postgres",
+        DriverKind::MySql => "mysql",
+        DriverKind::SqlServer => "sqlserver",
+        _ => return None,
+    };
+    save_agent_connection(dir, b, driver);
+    if driver == "sqlserver" {
+        // The server was reached with TLS: the saved connection speaks it too.
+        let file = dir.join("connections.toml");
+        let toml = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(
+            &file,
+            toml.replace("ssl_mode = \"disable\"", "ssl_mode = \"require\""),
+        )
+        .unwrap();
+    }
+    Some(driver)
+}
+
+/// `estimate_change` gives the estimate of a change and runs nothing: the rows stay as they
+/// were after a `DELETE` and after an `UPDATE` calling a function that deletes.
+#[tokio::test]
+async fn agents_estimate_changes_without_running_them() {
+    use platypus_mcp::{Agent, EstimateArgs, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(driver) = save_server_connection(dir.path(), &b) else {
+            continue;
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let table = "agent_estimate_probe";
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap();
+        run(conn, &format!("INSERT INTO {table} VALUES (1), (2)"))
+            .await
+            .unwrap();
+        // A function with a side effect, where the test may create one.
+        let function = matches!(driver, "postgres" | "mysql");
+        if function {
+            let drop = if driver == "postgres" {
+                "DROP FUNCTION IF EXISTS agent_purge()"
+            } else {
+                "DROP FUNCTION IF EXISTS agent_purge"
+            };
+            run(conn, drop).await.unwrap();
+            if let Err(e) = run(conn, &purge_function(driver, table)).await {
+                eprintln!("skipping the function on {}: {e}", b.name);
+            }
+        }
+        let left = || async {
+            let rows = collect(&b, conn, &format!("SELECT count(*) FROM {table}")).await;
+            cell(&rows[0], 0, 0)
+        };
+
+        let agent = Agent::new(Profile::at(dir.path()));
+        let estimate = |sql: &str| {
+            let args = EstimateArgs {
+                connection: "Db".to_owned(),
+                sql: sql.to_owned(),
+            };
+            let agent = &agent;
+            async move { agent.estimate_change(&args).await }
+        };
+
+        let delete = estimate(&format!("DELETE FROM {table} WHERE id > 0"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(delete["outcome"], "estimated", "{}: {delete}", b.name);
+        assert!(
+            delete["plan"].is_string() || delete["estimate_note"].is_string(),
+            "{}: {delete}",
+            b.name
+        );
+        if driver == "postgres" {
+            assert!(
+                delete["estimated_rows"].as_f64().is_some_and(|r| r > 0.0),
+                "{delete}"
+            );
+        }
+        assert_eq!(left().await.as_deref(), Some("2"), "{}", b.name);
+
+        // Every row: the Safety setting would refuse it for an agent.
+        let every = estimate(&format!("DELETE FROM {table}")).await.unwrap();
+        assert_eq!(every["outcome"], "refused", "{}: {every}", b.name);
+        assert!(
+            every["reason"].as_str().unwrap().contains("every row"),
+            "{every}"
+        );
+        assert_eq!(left().await.as_deref(), Some("2"), "{}", b.name);
+
+        if function {
+            // The function would delete everything; the planner does not call it.
+            let update = estimate(&format!(
+                "UPDATE {table} SET id = agent_purge() WHERE id > 0"
+            ))
+            .await
+            .unwrap();
+            if update["outcome"] == "estimated" {
+                assert_eq!(left().await.as_deref(), Some("2"), "{}: {update}", b.name);
+            }
+            let read = estimate("SELECT agent_purge()").await.unwrap();
+            assert_eq!(read["is_change"], false, "{}: {read}", b.name);
+            assert_eq!(left().await.as_deref(), Some("2"), "{}", b.name);
+            let drop = if driver == "postgres" {
+                "DROP FUNCTION IF EXISTS agent_purge()"
+            } else {
+                "DROP FUNCTION IF EXISTS agent_purge"
+            };
+            run(conn, drop).await.unwrap();
+        }
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
+/// `server_activity` shows another session running a statement with a value of a sensitive
+/// column masked; `top_queries` answers, or says why it cannot.
+#[tokio::test]
+async fn agents_read_server_activity_masked() {
+    use platypus_mcp::{Agent, Profile, ServerViewArgs};
+
+    const LEAK: &str = "leak-me@example.test";
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(driver) = save_server_connection(dir.path(), &b) else {
+            continue;
+        };
+        let admin = b.connect().await;
+        if !admin.capabilities().server_sessions {
+            continue;
+        }
+        let worker = b.connect().await;
+        let id = own_session(&b, &*worker).await;
+        let customers = format!("{}.customers", b.schema);
+        let sleeping = match driver {
+            "postgres" => format!(
+                "SELECT pg_sleep(30) FROM {customers} WHERE email = '{LEAK}' OR true LIMIT 1"
+            ),
+            "mysql" => {
+                format!("SELECT SLEEP(30) FROM {customers} WHERE email = '{LEAK}' OR 1 = 1 LIMIT 1")
+            }
+            _ => format!(
+                "WAITFOR DELAY '00:00:30'; SELECT id FROM {customers} WHERE email = '{LEAK}'"
+            ),
+        };
+        let task = tokio::spawn(async move {
+            let result = run(&*worker, &sleeping).await;
+            (worker, result)
+        });
+        server_session(&b, &*admin, &id, |s| s.is_running() && s.query.is_some()).await;
+
+        let agent = Agent::new(Profile::at(dir.path()));
+        let args = ServerViewArgs {
+            connection: "Db".to_owned(),
+            limit: Some(200),
+        };
+        let activity = agent
+            .server_activity(&args)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let sessions = activity["sessions"].as_array().unwrap();
+        let theirs = sessions
+            .iter()
+            .find(|s| s["id"] == id.as_str())
+            .unwrap_or_else(|| panic!("{}: session {id} missing in {activity}", b.name));
+        let query = theirs["query"].as_str().unwrap();
+        assert!(!query.contains(LEAK), "{}: {query}", b.name);
+        assert!(query.contains("••••••"), "{}: {query}", b.name);
+        assert!(!activity.to_string().contains(LEAK), "{}", b.name);
+        assert!(activity["locks"].is_array(), "{}: {activity}", b.name);
+
+        match agent.top_queries(&args).await {
+            Ok(top) => {
+                assert!(top["queries"].is_array(), "{}: {top}", b.name);
+                assert!(!top.to_string().contains(LEAK), "{}", b.name);
+            }
+            // The extension, the schema or the privilege is missing: said in words.
+            Err(e) => {
+                let message = e.to_string();
+                assert!(
+                    !message.is_empty() && !message.contains(LEAK),
+                    "{}: {message}",
+                    b.name
+                );
+                eprintln!("{}: top_queries: {message}", b.name);
+            }
+        }
+
+        admin
+            .end_server_session(&id, EndSession::Terminate)
+            .await
+            .unwrap_or_else(|e| panic!("{}: terminate: {e}", b.name));
+        let _ = tokio::time::timeout(Duration::from_secs(20), task).await;
+    }
+}
+
 /// Fills the app's catalog in `dir` as the app keys it, for `agents_read_the_catalog_notes_of_the_app`.
 fn save_catalog_notes(dir: &std::path::Path, schema: &str, database: &str) {
     use platypus_store::{CatalogKey, CatalogStore};

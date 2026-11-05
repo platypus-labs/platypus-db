@@ -262,7 +262,7 @@ fn compact(explain: &Explain) -> String {
 }
 
 /// Whether statements on `driver` have a plan the cost guard can read.
-const fn has_plans(driver: DriverKind) -> bool {
+pub(crate) const fn has_plans(driver: DriverKind) -> bool {
     !matches!(
         driver,
         DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
@@ -317,7 +317,7 @@ impl Agent {
 
     /// `text`, a plan, as agents read it on `saved`: the values compared to sensitive columns
     /// masked.
-    fn mask_plan_text(&self, saved: &SavedConnection, text: &str) -> Result<String> {
+    pub(crate) fn mask_plan_text(&self, saved: &SavedConnection, text: &str) -> Result<String> {
         if saved.agent_values == AgentValues::Shown {
             return Ok(text.to_owned());
         }

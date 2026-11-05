@@ -271,6 +271,11 @@ impl Lease {
         &*self.session().conn
     }
 
+    /// The connection's secrets, to mask from what agents read.
+    pub(crate) fn redactor(&self) -> Redactor {
+        self.session().redactor.clone()
+    }
+
     /// The error with the connection's secrets masked.
     fn error(&self, e: &Error) -> AgentError {
         let mut message = self.session().redactor.apply(&e.to_string());
@@ -358,7 +363,7 @@ pub struct Agent {
     /// The policy the user approved in the app, which edits of the files cannot loosen.
     seal: Seal,
     /// The calls of the last minute on each connection, for `calls_per_minute`.
-    windows: CallWindows,
+    pub(crate) windows: CallWindows,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only
@@ -375,7 +380,7 @@ fn refused_write(message: &str) -> bool {
 }
 
 /// Bytes of a plan shown to the user beside a change.
-const PLAN_BYTES: usize = 16 * 1024;
+pub(crate) const PLAN_BYTES: usize = 16 * 1024;
 
 impl std::fmt::Debug for Agent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -460,7 +465,7 @@ impl Agent {
 
     /// Whether agents' changes wait for the user's yes in the app (Settings › Safety), as
     /// approved there.
-    fn confirms_changes(&self) -> bool {
+    pub(crate) fn confirms_changes(&self) -> bool {
         self.profile
             .connections()
             .map_or(true, |store| self.policy(&store).confirm_writes)
@@ -468,7 +473,7 @@ impl Agent {
 
     /// What the Safety setting for `UPDATE` or `DELETE` without `WHERE` means for agents, as
     /// approved in the app.
-    fn unfiltered_rule(&self, store: &ConnectionStore) -> UnfilteredRule {
+    pub(crate) fn unfiltered_rule(&self, store: &ConnectionStore) -> UnfilteredRule {
         if self.policy(store).unfiltered_allowed {
             UnfilteredRule::Allow
         } else {
@@ -559,11 +564,7 @@ impl Agent {
         let Ok(explain) = lease.settle(explained) else {
             return (None, None);
         };
-        // A change's root (PostgreSQL's ModifyTable) estimates no rows: the rows it reads do.
-        let rows = std::iter::once(&explain.root)
-            .chain(explain.root.children.first())
-            .find_map(|n| n.rows.filter(|r| *r > 0.0))
-            .or(explain.root.rows);
+        let rows = crate::estimate::expected_rows(&explain.root);
         let plan = PlanResult {
             explain,
             elapsed: std::time::Duration::ZERO,

@@ -17,6 +17,7 @@ mod connect;
 mod context;
 mod er;
 mod error;
+mod estimate;
 mod guard;
 mod ident;
 mod library;
@@ -30,6 +31,7 @@ pub mod query;
 mod redact;
 pub mod resource;
 mod server;
+mod server_views;
 #[cfg(feature = "http")]
 pub use server::http_service;
 pub use server::{HELLO_EVERY, PlatypusServer};
@@ -45,6 +47,7 @@ pub use context::{
     CONTEXT_RESULT_BYTES, CONTEXT_ROWS, CONTEXT_TEXT_BYTES, ContextArgs, SharedContext,
 };
 pub use error::{AgentError, Result};
+pub use estimate::EstimateArgs;
 pub use library::{
     HISTORY_PAGE, HistoryArgs, HistoryItem, ListScriptsArgs, MAX_HISTORY_PAGE, OriginArg,
     ReadScriptArgs, SCRIPT_BYTES, ScriptContent, ScriptInfo,
@@ -57,3 +60,4 @@ pub use output::{Format, QueryResult};
 pub use plan::PlanResult;
 pub use profile::Profile;
 pub use query::Limits;
+pub use server_views::{STATEMENT_CHARS, ServerViewArgs};
