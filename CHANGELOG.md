@@ -18,6 +18,10 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Agents**: Settings › Agents › Security limits rows, bytes, time and calls per minute per
   connection, and can refuse a read whose estimated rows or plan cost are too high, with the plan
   in the error. A limit raised by hand in the file waits for the user.
+- **Agents**: new tools: `compare_schemas` (differences and migration script, nothing runs),
+  `profile_table` (per column figures from a sample, counts only for sensitive columns),
+  `estimate_change` (what a change would show the user, without running it), `server_activity` and
+  `top_queries` (read-only, with the values in other sessions' statements masked).
 - Choosing a database for a new connection offers its driver at once, when it needs one that is
   not installed; Settings is not needed. Cancelling leaves the form as it is.
 

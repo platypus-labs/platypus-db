@@ -105,8 +105,9 @@ agents and the CLI only once you approved that exact text in the app (which asks
 connect): until then they are left out, and the server's log (stderr) says so.
 
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
-`get_er_diagram`, `search_objects`, `run_query`, `sample_rows`, `explain`, `propose_sql`,
-`list_open_sessions`, `list_scripts`, `read_script` and `search_history`. `run_query` runs one statement and returns 100 rows,
+`get_er_diagram`, `compare_schemas`, `search_objects`, `run_query`, `sample_rows`,
+`profile_table`, `explain`, `propose_sql`, `list_open_sessions`, `list_scripts`, `read_script`,
+`search_history`, `estimate_change`, `server_activity` and `top_queries`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
@@ -123,6 +124,58 @@ and the tables linked to them by foreign keys, `depth` hops away in either direc
 a `%%` comment saying how many were drawn and suggesting `tables`. A table that does not exist,
 a name that is a view, and a schema that does not exist are errors; MongoDB, Redis and
 Elasticsearch have no tables to draw and answer with an error.
+
+`compare_schemas` (`connection`, `schema`, `other_schema`, optional `other_connection`,
+`max_bytes`, `timeout_seconds`) compares two schemas as the app's schema compare does, of one
+connection or of two connections of the same kind of database (otherwise it answers as the app
+does: only databases of the same kind). It returns the differences (tables, columns, indexes,
+foreign keys and constraints added, dropped or changed) and the migration script that makes
+`other_schema` like `schema`, as JSON text. Nothing runs: the script reaches you only through
+`propose_sql`, which the answer says. The answer stays within `max_bytes` (32 KB by default):
+the list of differences is cut first, with a note; a script that does not fit is left out whole
+(`script: null`, `script_complete: false`), never cut, since a part of a migration is dangerous
+to run. Both connections must be open to agents, and each is read within its own agent limits
+(timeout, calls per minute).
+
+`profile_table` (`connection`, `schema`, `table`, optional `sample_rows`, `max_bytes`,
+`timeout_seconds`) describes each column of a table or view from its first `sample_rows` rows
+(10,000 by default, up to 100,000; no order is implied, and the answer says when the table has
+more): NULLs, distinct values, empty texts, minimum and maximum, the most frequent values,
+patterns (emails, dates, numbers stored as text) and the spread of numbers. It reads in the
+database's read-only transaction, within the connection's timeout and calls per minute. A
+sensitive column, decided as for results (the user's marks on that table over the Safety
+rules), gives its counts only (`nulls`, `distinct`, `empty`): no minimum, maximum, top value,
+pattern or length. If the marks cannot be read the call fails rather than show values; a
+connection set to show sensitive values shows them here too. Values are cut at 1,000
+characters and have the connection's secrets masked. The connection's `max_rows` also caps the sample.
+On MongoDB a column is a top-level field: a sensitive field inside a document is not told apart.
+
+`estimate_change` (`connection`, `sql`) is a dry run: it returns, without running anything, what the
+confirmation dialog would show the user for a change. It asks the database for the plan
+(`EXPLAIN` without `ANALYZE`, so not even a function the statement calls runs) and answers
+`outcome`: `estimated` with `estimated_rows`, the `plan` (the values compared to sensitive columns
+masked), the `safety_checks` that apply (an `UPDATE` or `DELETE` without `WHERE` names its table and
+rows), `asks_the_user` (Settings ask before agents' changes), `app_open` and `would_run`; `refused`
+with the reason, when the connection's access, or the Safety setting on a change of every row,
+would refuse the statement (a read-only connection, a production one); or `not_a_change` for a
+statement that changes nothing. A database without query plans (MongoDB, Redis, Elasticsearch,
+Cassandra) or a plan the database does not give answers with `estimate_note` instead of an error.
+It counts as a call for `calls_per_minute`.
+
+`server_activity` and `top_queries` (`connection`, optional `limit`) read what the server does,
+with the views of the app's admin tab, on PostgreSQL, MySQL, MariaDB and SQL Server; other
+databases answer with an error saying they have none. `server_activity` returns the sessions
+(user, database, client, state, the statement and how long it has run, what it waits for, the
+sessions blocking it; those that wait or run first, 50 by default, up to 200) and the locks;
+`top_queries` the statements that took the server most time (`pg_stat_statements`,
+`performance_schema`, Query Store; 20 by default, up to 100). Nothing is cancelled or ended. The
+statements are other people's, with their values: credentials in them (`CREATE ROLE ... PASSWORD`)
+never show, whatever the connection's setting; the connection's own
+secrets are redacted; every string in them, and the numbers tied to sensitive columns, read `'••••••'` unless the user chose
+to show values on the connection; a statement is cut at 500 characters, with a note. If the
+sensitive marks cannot be read the call fails. A missing privilege (`pg_read_all_stats`,
+`VIEW SERVER STATE`) or a missing extension (`pg_stat_statements` not installed) is said in the
+answer.
 
 The user's saved scripts and history are readable too, never writable: `list_scripts` lists
 the scripts of a project (by its name; without one, those of All connections) with the

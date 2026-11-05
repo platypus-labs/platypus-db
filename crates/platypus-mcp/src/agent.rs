@@ -26,6 +26,7 @@ use crate::access::{self, UnfilteredRule};
 use crate::connect;
 use crate::er;
 use crate::error::{AgentError, Result};
+use crate::estimate;
 use crate::guard::{self, Asked, CallWindows};
 use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
 use crate::output::QueryResult;
@@ -182,7 +183,7 @@ const TITLE_CHARS: usize = 80;
 pub const SAMPLE_ROWS: u64 = 20;
 
 /// The statement reading the first `rows` rows of `schema.table` on `driver`.
-fn sample_sql(driver: DriverKind, schema: &str, table: &str, rows: u64) -> String {
+pub(crate) fn sample_sql(driver: DriverKind, schema: &str, table: &str, rows: u64) -> String {
     if driver == DriverKind::Mongo {
         let collection = platypus_driver_mongo::generate::collection_ref(Some(schema), table);
         return format!("{collection}.find({{}}).limit({rows})");
@@ -269,6 +270,11 @@ impl Lease {
 
     pub(crate) fn conn(&self) -> &dyn Connection {
         &*self.session().conn
+    }
+
+    /// The connection's secrets, masked wherever they appear.
+    pub(crate) fn redactor(&self) -> &Redactor {
+        &self.session().redactor
     }
 
     /// The error with the connection's secrets masked.
@@ -358,7 +364,7 @@ pub struct Agent {
     /// The policy the user approved in the app, which edits of the files cannot loosen.
     seal: Seal,
     /// The calls of the last minute on each connection, for `calls_per_minute`.
-    windows: CallWindows,
+    pub(crate) windows: CallWindows,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only
@@ -374,8 +380,22 @@ fn refused_write(message: &str) -> bool {
     .any(|refusal| message.contains(refusal))
 }
 
+/// The item of `items` named `name` as the catalog writes it: the exact name, else one that
+/// differs only in case.
+pub(crate) fn find_name<'a, T>(
+    items: impl Iterator<Item = &'a T> + Clone,
+    name: &str,
+    name_of: impl Fn(&T) -> &str,
+) -> Option<&'a T> {
+    items.clone().find(|i| name_of(i) == name).or_else(|| {
+        items
+            .into_iter()
+            .find(|i| name_of(i).eq_ignore_ascii_case(name))
+    })
+}
+
 /// Bytes of a plan shown to the user beside a change.
-const PLAN_BYTES: usize = 16 * 1024;
+pub(crate) const PLAN_BYTES: usize = 16 * 1024;
 
 impl std::fmt::Debug for Agent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -458,9 +478,14 @@ impl Agent {
         self.link.as_ref()
     }
 
+    /// Whether the user allowed the changes on connection `id` for this server's session.
+    pub(crate) fn allowed_for_session(&self, id: Uuid) -> bool {
+        locked(&self.allowed).contains(&(self.session.clone(), id))
+    }
+
     /// Whether agents' changes wait for the user's yes in the app (Settings › Safety), as
     /// approved there.
-    fn confirms_changes(&self) -> bool {
+    pub(crate) fn confirms_changes(&self) -> bool {
         self.profile
             .connections()
             .map_or(true, |store| self.policy(&store).confirm_writes)
@@ -468,7 +493,7 @@ impl Agent {
 
     /// What the Safety setting for `UPDATE` or `DELETE` without `WHERE` means for agents, as
     /// approved in the app.
-    fn unfiltered_rule(&self, store: &ConnectionStore) -> UnfilteredRule {
+    pub(crate) fn unfiltered_rule(&self, store: &ConnectionStore) -> UnfilteredRule {
         if self.policy(store).unfiltered_allowed {
             UnfilteredRule::Allow
         } else {
@@ -559,11 +584,7 @@ impl Agent {
         let Ok(explain) = lease.settle(explained) else {
             return (None, None);
         };
-        // A change's root (PostgreSQL's ModifyTable) estimates no rows: the rows it reads do.
-        let rows = std::iter::once(&explain.root)
-            .chain(explain.root.children.first())
-            .find_map(|n| n.rows.filter(|r| *r > 0.0))
-            .or(explain.root.rows);
+        let rows = estimate::expected_rows(&explain.root);
         let plan = PlanResult {
             explain,
             elapsed: std::time::Duration::ZERO,
@@ -677,7 +698,7 @@ impl Agent {
     ) -> Result<Value> {
         let (store, saved) = self.find(connection)?;
         let lease = self.lease(&store, &saved).await?;
-        let redactor = lease.session().redactor.clone();
+        let redactor = lease.redactor().clone();
         let conn = lease.conn();
         // No objects may also mean no such schema: say so, rather than an empty list.
         let objects = timed(async {
@@ -704,7 +725,7 @@ impl Agent {
     ) -> Result<Value> {
         let (store, saved) = self.find(connection)?;
         let lease = self.lease(&store, &saved).await?;
-        let redactor = lease.session().redactor.clone();
+        let redactor = lease.redactor().clone();
         let conn = lease.conn();
         // A missing table reads as one without columns: say so instead.
         let details = timed(async {
@@ -795,7 +816,7 @@ impl Agent {
         let lease = self.lease(&store, &saved).await?;
         let view = self.catalog_view(saved.id, &saved.database);
         let query = view.query(text);
-        let redactor = lease.session().redactor.clone();
+        let redactor = lease.redactor().clone();
         let found = timed(search_all(lease.conn(), text, &view, &query, &redactor)).await;
         let (mut all, catalog_read) = lease.settle(found)?;
         let truncated = all.len() > SEARCH_RESULTS;
@@ -838,18 +859,7 @@ impl Agent {
         let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();
         let start = Instant::now();
-        let checked = if saved.driver == DriverKind::Mongo {
-            access::check_mongo(&args.sql, access, unfiltered, &saved.name)
-        } else if saved.driver == DriverKind::Redis {
-            access::check_redis(&args.sql, access, unfiltered, &saved.name)
-        } else if saved.driver == DriverKind::Elasticsearch {
-            access::check_search(&args.sql, access, unfiltered, &saved.name)
-        } else if saved.driver == DriverKind::Cassandra {
-            access::check_cql(&args.sql, access, unfiltered, &saved.name)
-        } else {
-            let dialect = Dialect::from(saved.driver);
-            access::check(&args.sql, dialect, access, unfiltered, &saved.name)
-        };
+        let checked = estimate::check(&args.sql, &saved, unfiltered);
         // The time the user took to answer is not the statement's.
         let mut waited = Duration::ZERO;
         let mut stop = std::pin::pin!(stop);
@@ -1236,10 +1246,7 @@ async fn read_er(
     // As the catalog writes them: the exact name, else one that differs only in case.
     let mut chosen = Vec::with_capacity(requested.len());
     for name in requested {
-        let found = names
-            .iter()
-            .find(|n| *n == name)
-            .or_else(|| names.iter().find(|n| n.eq_ignore_ascii_case(name)));
+        let found = find_name(names.iter(), name, |n| n.as_str());
         let Some(found) = found else {
             let other = objects.iter().any(|o| o.name.eq_ignore_ascii_case(name));
             return Ok(ErRead::Unknown {

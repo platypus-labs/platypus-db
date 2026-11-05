@@ -495,6 +495,22 @@ pub fn select_outputs(
     outputs
 }
 
+/// `sql` with every string literal written as [`MASKED_LITERAL`]: for a statement of someone
+/// else's, where a value may be sensitive with no column naming it (`INSERT INTO t VALUES ('…')`,
+/// `f('…')`).
+#[must_use]
+pub fn mask_strings(sql: &str, dialect: Dialect) -> String {
+    let mut out = String::with_capacity(sql.len());
+    let mut at = 0;
+    for token in Lexer::new(sql, dialect).filter(|t| t.kind == TokenKind::String) {
+        out.push_str(&sql[at..token.start]);
+        out.push_str(MASKED_LITERAL);
+        at = token.end;
+    }
+    out.push_str(&sql[at..]);
+    out
+}
+
 /// `sql` with the values tied to a column for which `sensitive` holds written as
 /// [`MASKED_LITERAL`].
 #[must_use]
@@ -634,6 +650,23 @@ mod tests {
         assert!(!has_subquery("SELECT 'select' FROM t", Dialect::Postgres));
         assert_eq!(outputs("UPDATE t SET email = 'x'"), []);
         assert_eq!(outputs("db.users.find({})"), []);
+    }
+
+    #[test]
+    fn every_string_is_masked_wherever_it_is() {
+        assert_eq!(
+            mask_strings(
+                "INSERT INTO t VALUES (1, 'a@b.c', f('it''s')) -- 'kept'",
+                Dialect::Postgres
+            ),
+            "INSERT INTO t VALUES (1, '••••••', f('••••••')) -- 'kept'"
+        );
+        assert_eq!(mask_strings("SELECT 1", Dialect::Postgres), "SELECT 1");
+        // Cut by the server inside a value: what is left of it goes too.
+        assert_eq!(
+            mask_strings("SELECT 'a@b", Dialect::Postgres),
+            "SELECT '••••••'"
+        );
     }
 
     #[test]

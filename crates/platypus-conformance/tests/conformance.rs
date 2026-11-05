@@ -5672,6 +5672,213 @@ database = '{}'
     }
 }
 
+/// Saves `b` as the connection `Db` for the agent tools that read the server, on the three
+/// servers with admin views; `None` for any other backend.
+fn save_server_connection(dir: &std::path::Path, b: &Backend) -> Option<&'static str> {
+    let driver = match b.config.driver {
+        DriverKind::Postgres if b.name != "cockroach" => "postgres",
+        DriverKind::MySql => "mysql",
+        DriverKind::SqlServer => "sqlserver",
+        _ => return None,
+    };
+    save_agent_connection(dir, b, driver);
+    if driver == "sqlserver" {
+        // The server was reached with TLS: the saved connection speaks it too.
+        let file = dir.join("connections.toml");
+        let toml = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(
+            &file,
+            toml.replace("ssl_mode = \"disable\"", "ssl_mode = \"require\""),
+        )
+        .unwrap();
+    }
+    Some(driver)
+}
+
+/// `estimate_change` gives the estimate of a change and runs nothing: the rows stay as they
+/// were after a `DELETE` and after an `UPDATE` calling a function that deletes.
+#[tokio::test]
+async fn agents_estimate_changes_without_running_them() {
+    use platypus_mcp::{Agent, EstimateArgs, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(driver) = save_server_connection(dir.path(), &b) else {
+            continue;
+        };
+        let conn = b.connect().await;
+        let conn = &*conn;
+        let table = "agent_estimate_probe";
+        run(conn, &format!("DROP TABLE IF EXISTS {table}"))
+            .await
+            .unwrap();
+        run(conn, &format!("CREATE TABLE {table} (id INT)"))
+            .await
+            .unwrap();
+        run(conn, &format!("INSERT INTO {table} VALUES (1), (2)"))
+            .await
+            .unwrap();
+        // A function with a side effect, where the test may create one.
+        let function = matches!(driver, "postgres" | "mysql");
+        if function {
+            let drop = if driver == "postgres" {
+                "DROP FUNCTION IF EXISTS agent_purge()"
+            } else {
+                "DROP FUNCTION IF EXISTS agent_purge"
+            };
+            run(conn, drop).await.unwrap();
+            if let Err(e) = run(conn, &purge_function(driver, table)).await {
+                eprintln!("skipping the function on {}: {e}", b.name);
+            }
+        }
+        let left = || async {
+            let rows = collect(&b, conn, &format!("SELECT count(*) FROM {table}")).await;
+            cell(&rows[0], 0, 0)
+        };
+
+        let agent = Agent::new(Profile::at(dir.path()));
+        let estimate = |sql: &str| {
+            let args = EstimateArgs {
+                connection: "Db".to_owned(),
+                sql: sql.to_owned(),
+            };
+            let agent = &agent;
+            async move { agent.estimate_change(&args).await }
+        };
+
+        let delete = estimate(&format!("DELETE FROM {table} WHERE id > 0"))
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        assert_eq!(delete["outcome"], "estimated", "{}: {delete}", b.name);
+        assert!(
+            delete["plan"].is_string() || delete["estimate_note"].is_string(),
+            "{}: {delete}",
+            b.name
+        );
+        if driver == "postgres" {
+            assert!(
+                delete["estimated_rows"].as_f64().is_some_and(|r| r > 0.0),
+                "{delete}"
+            );
+        }
+        assert_eq!(left().await.as_deref(), Some("2"), "{}", b.name);
+
+        // Every row: the Safety setting would refuse it for an agent.
+        let every = estimate(&format!("DELETE FROM {table}")).await.unwrap();
+        assert_eq!(every["outcome"], "refused", "{}: {every}", b.name);
+        assert!(
+            every["reason"].as_str().unwrap().contains("every row"),
+            "{every}"
+        );
+        assert_eq!(left().await.as_deref(), Some("2"), "{}", b.name);
+
+        if function {
+            // The function would delete everything; the planner does not call it.
+            let update = estimate(&format!(
+                "UPDATE {table} SET id = agent_purge() WHERE id > 0"
+            ))
+            .await
+            .unwrap();
+            if update["outcome"] == "estimated" {
+                assert_eq!(left().await.as_deref(), Some("2"), "{}: {update}", b.name);
+            }
+            let read = estimate("SELECT agent_purge()").await.unwrap();
+            assert_eq!(read["is_change"], false, "{}: {read}", b.name);
+            assert_eq!(left().await.as_deref(), Some("2"), "{}", b.name);
+            let drop = if driver == "postgres" {
+                "DROP FUNCTION IF EXISTS agent_purge()"
+            } else {
+                "DROP FUNCTION IF EXISTS agent_purge"
+            };
+            run(conn, drop).await.unwrap();
+        }
+        run(conn, &format!("DROP TABLE {table}")).await.unwrap();
+    }
+}
+
+/// `server_activity` shows another session running a statement with a value of a sensitive
+/// column masked; `top_queries` answers, or says why it cannot.
+#[tokio::test]
+async fn agents_read_server_activity_masked() {
+    use platypus_mcp::{Agent, Profile, ServerViewArgs};
+
+    const LEAK: &str = "leak-me@example.test";
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(driver) = save_server_connection(dir.path(), &b) else {
+            continue;
+        };
+        let admin = b.connect().await;
+        if !admin.capabilities().server_sessions {
+            continue;
+        }
+        let worker = b.connect().await;
+        let id = own_session(&b, &*worker).await;
+        let customers = format!("{}.customers", b.schema);
+        let sleeping = match driver {
+            "postgres" => format!(
+                "SELECT pg_sleep(30) FROM {customers} WHERE email = '{LEAK}' OR true LIMIT 1"
+            ),
+            "mysql" => {
+                format!("SELECT SLEEP(30) FROM {customers} WHERE email = '{LEAK}' OR 1 = 1 LIMIT 1")
+            }
+            _ => format!(
+                "WAITFOR DELAY '00:00:30'; SELECT id FROM {customers} WHERE email = '{LEAK}'"
+            ),
+        };
+        let task = tokio::spawn(async move {
+            let result = run(&*worker, &sleeping).await;
+            (worker, result)
+        });
+        server_session(&b, &*admin, &id, |s| s.is_running() && s.query.is_some()).await;
+
+        let agent = Agent::new(Profile::at(dir.path()));
+        let args = ServerViewArgs {
+            connection: "Db".to_owned(),
+            limit: Some(200),
+        };
+        let activity = agent
+            .server_activity(&args)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", b.name));
+        let sessions = activity["sessions"].as_array().unwrap();
+        let theirs = sessions
+            .iter()
+            .find(|s| s["id"] == id.as_str())
+            .unwrap_or_else(|| panic!("{}: session {id} missing in {activity}", b.name));
+        let query = theirs["query"].as_str().unwrap();
+        assert!(!query.contains(LEAK), "{}: {query}", b.name);
+        assert!(query.contains("••••••"), "{}: {query}", b.name);
+        assert!(!activity.to_string().contains(LEAK), "{}", b.name);
+        assert!(activity["locks"].is_array(), "{}: {activity}", b.name);
+
+        match agent.top_queries(&args).await {
+            Ok(top) => {
+                assert!(top["queries"].is_array(), "{}: {top}", b.name);
+                assert!(!top.to_string().contains(LEAK), "{}", b.name);
+            }
+            // The extension, the schema or the privilege is missing: said in words.
+            Err(e) => {
+                let message = e.to_string();
+                assert!(
+                    !message.is_empty() && !message.contains(LEAK),
+                    "{}: {message}",
+                    b.name
+                );
+                eprintln!("{}: top_queries: {message}", b.name);
+            }
+        }
+
+        admin
+            .end_server_session(&id, EndSession::Terminate)
+            .await
+            .unwrap_or_else(|e| panic!("{}: terminate: {e}", b.name));
+        let _ = tokio::time::timeout(Duration::from_secs(20), task).await;
+    }
+}
+
 /// Fills the app's catalog in `dir` as the app keys it, for `agents_read_the_catalog_notes_of_the_app`.
 fn save_catalog_notes(dir: &std::path::Path, schema: &str, database: &str) {
     use platypus_store::{CatalogKey, CatalogStore};
@@ -8844,4 +9051,186 @@ async fn clickhouse_import_keeps_rows_and_imports_without_create() {
     ] {
         run(&*conn, &sql).await.unwrap();
     }
+}
+/// Saves the connections of `agents_compare_and_profile`: the backend as `Db`, and for SQLite a
+/// copy of its file with one more table as `Other` (the other databases compare two schemas of
+/// the same connection). False where agents do not reach the backend.
+async fn save_compare_connections(dir: &std::path::Path, b: &Backend) -> bool {
+    match b.config.driver {
+        DriverKind::Postgres if b.name != "cockroach" => save_agent_connection(dir, b, "postgres"),
+        DriverKind::MySql => save_agent_connection(dir, b, "mysql"),
+        DriverKind::Sqlite => {
+            let copy = dir.join("other.db");
+            std::fs::copy(&b.config.database, &copy).unwrap();
+            let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+            config.database = copy.to_string_lossy().into_owned();
+            let conn = SqliteDriver.connect(&config).await.unwrap();
+            for sql in [
+                "CREATE TABLE extra (id INTEGER PRIMARY KEY)",
+                "CREATE TABLE people (id INTEGER PRIMARY KEY, email TEXT, full_name TEXT)",
+                "INSERT INTO people VALUES (1, 'ada@example.com', 'Ada'), (2, 'bob@example.com', 'Bob')",
+            ] {
+                run(&*conn, sql).await.unwrap();
+            }
+            drop(conn);
+            let connection = |id: u32, name: &str, file: &str| {
+                format!(
+                    "[[connections]]\nid = \"00000000-0000-4000-8000-00000000000{id}\"\n\
+                     name = \"{name}\"\ndriver = \"sqlite\"\ndatabase = '{file}'\n\n"
+                )
+            };
+            std::fs::write(
+                dir.join("connections.toml"),
+                format!(
+                    "version = 4\n\n{}{}",
+                    connection(1, "Db", &b.config.database),
+                    connection(2, "Other", &copy.to_string_lossy())
+                ),
+            )
+            .unwrap();
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// `compare_schemas` and `profile_table` read the catalog and the rows through the drivers:
+/// the differences and script between two schemas (of one connection, or two on SQLite), and
+/// the profile of a table with its sensitive column giving counts only.
+#[tokio::test]
+async fn agents_compare_and_profile() {
+    use platypus_mcp::{Agent, CompareArgs, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for mut b in backends().await {
+        if b.config.driver == DriverKind::MySql {
+            // Creating databases takes more than the test user may do.
+            "root".clone_into(&mut b.config.user);
+            b.config.password = Some(platypus_core::Secret::new("platypus"));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        if !save_compare_connections(dir.path(), &b).await {
+            continue;
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        let sqlite = b.config.driver == DriverKind::Sqlite;
+        let args = if sqlite {
+            CompareArgs {
+                connection: "Other".to_owned(),
+                schema: b.schema.clone(),
+                other_connection: Some("Db".to_owned()),
+                other_schema: b.schema.clone(),
+                max_bytes: None,
+                timeout_seconds: None,
+            }
+        } else {
+            let conn = b.connect().await;
+            qa3_compare_seed(
+                &*conn,
+                b.config.driver,
+                "agent_cmp_a",
+                "CREATE TABLE S.customers (id INT PRIMARY KEY, email VARCHAR(100));\n\
+                 CREATE TABLE S.extra (id INT PRIMARY KEY);\n\
+                 CREATE TABLE S.people (id INT PRIMARY KEY, email VARCHAR(100), full_name VARCHAR(100));\n\
+                 INSERT INTO S.people VALUES (1, 'ada@example.com', 'Ada'), (2, 'bob@example.com', 'Bob')",
+            )
+            .await;
+            qa3_compare_seed(
+                &*conn,
+                b.config.driver,
+                "agent_cmp_b",
+                "CREATE TABLE S.customers (id INT PRIMARY KEY)",
+            )
+            .await;
+            CompareArgs {
+                connection: "Db".to_owned(),
+                schema: "agent_cmp_a".to_owned(),
+                other_connection: None,
+                other_schema: "agent_cmp_b".to_owned(),
+                max_bytes: None,
+                timeout_seconds: None,
+            }
+        };
+        check_compare(&agent, b.name, args).await;
+        // The table with rows: in the seeded schema, or in the copy of the SQLite file.
+        let (holder, schema) = if sqlite {
+            ("Other", b.schema.as_str())
+        } else {
+            ("Db", "agent_cmp_a")
+        };
+        check_profile(&agent, b.name, (holder, schema)).await;
+    }
+}
+
+/// The differences and the script of `args` reach the agent whole, and an unknown schema is
+/// refused.
+async fn check_compare(agent: &platypus_mcp::Agent, name: &str, args: platypus_mcp::CompareArgs) {
+    let text = agent
+        .compare_schemas_until(&args, std::future::pending())
+        .await
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+    let out: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(out["identical"], false, "{name}: {text}");
+    assert_eq!(out["script_complete"], true, "{name}: {text}");
+    let script = out["script"].as_str().unwrap();
+    assert!(
+        script.contains("CREATE TABLE") && script.contains("extra"),
+        "{name}: {text}"
+    );
+    assert!(
+        out["differences"]
+            .to_string()
+            .contains("\"table\":\"extra\""),
+        "{name}: {text}"
+    );
+    assert!(text.contains("propose_sql"), "{name}: {text}");
+    let missing = platypus_mcp::CompareArgs {
+        other_schema: "no_such_schema".to_owned(),
+        ..args
+    };
+    let refused = agent
+        .compare_schemas_until(&missing, std::future::pending())
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("no_such_schema"),
+        "{name}: {refused}"
+    );
+}
+
+/// The profile of `people` in `(connection, schema)`: `email` gives counts only, a sample says
+/// so, and an unknown table is refused.
+async fn check_profile(agent: &platypus_mcp::Agent, name: &str, (holder, schema): (&str, &str)) {
+    let profile = |table: &str, sample_rows| {
+        let args = platypus_mcp::ProfileArgs {
+            connection: holder.to_owned(),
+            schema: schema.to_owned(),
+            table: table.to_owned(),
+            sample_rows,
+            max_bytes: None,
+            timeout_seconds: None,
+        };
+        async move {
+            agent
+                .profile_table_until(&args, std::future::pending())
+                .await
+        }
+    };
+    let text = profile("people", None)
+        .await
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+    let out: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let columns = out["columns"].as_array().unwrap();
+    // `email` is sensitive by the default rule: counts, and no value of any kind.
+    let email = columns.iter().find(|c| c["name"] == "email").unwrap();
+    assert_eq!(email["sensitive"], true, "{name}: {text}");
+    assert_eq!(email["distinct"], 2, "{name}: {text}");
+    assert!(!text.contains('@'), "{name}: {text}");
+    assert!(!text.contains("example"), "{name}: {text}");
+    assert!(text.contains("Ada"), "{name}: {text}");
+    assert_eq!(out["sample_complete"], true, "{name}: {text}");
+    let sample = profile("people", Some(1)).await.unwrap();
+    assert!(sample.contains("\"rows_profiled\":1"), "{name}: {sample}");
+    let unknown = profile("no_such_table", None).await.unwrap_err();
+    assert!(unknown.to_string().contains("no_such_table"), "{name}");
 }

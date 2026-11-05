@@ -52,12 +52,29 @@ impl ResultRules {
     }
 
     fn is_sensitive(&self, column: &Column) -> bool {
-        if let Some(mark) = self.mark(&column.name) {
+        self.is_sensitive_column(&column.name, &column.db_type)
+    }
+
+    fn is_sensitive_column(&self, name: &str, db_type: &str) -> bool {
+        if let Some(mark) = self.mark(name) {
             return mark;
         }
         // The type without its size: `varchar(20)` is `varchar`.
-        let db_type = column.db_type.split('(').next().unwrap_or_default().trim();
-        self.name_is_sensitive(&column.name) || self.types.matches(db_type)
+        let db_type = db_type.split('(').next().unwrap_or_default().trim();
+        self.name_is_sensitive(name) || self.types.matches(db_type)
+    }
+}
+
+/// Which columns of one known table are sensitive for agents: the marks on it count over the
+/// rules. Without rules (`None`) the connection shows the values.
+pub(crate) struct TableSensitivity(Option<ResultRules>);
+
+impl TableSensitivity {
+    /// Whether the column `name` of type `db_type` must show no value.
+    pub(crate) fn is_sensitive(&self, name: &str, db_type: &str) -> bool {
+        self.0
+            .as_ref()
+            .is_some_and(|rules| rules.is_sensitive_column(name, db_type))
     }
 }
 
@@ -120,20 +137,30 @@ fn marks_on_table(
         return None;
     }
     let source = source_table(sql, dialect)?;
+    Some(marks_of_table(
+        marks,
+        source.schema.as_deref(),
+        &source.name,
+        saved,
+    ))
+}
+
+/// The marks of `marks` on the table `name` (of `schema`, when known) of `saved`.
+fn marks_of_table(
+    marks: Vec<SensitiveColumn>,
+    schema: Option<&str>,
+    name: &str,
+    saved: &SavedConnection,
+) -> Vec<SensitiveColumn> {
     let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
-    Some(
-        marks
-            .into_iter()
-            .filter(|m| {
-                same(&m.key.object, &source.name)
-                    && source
-                        .schema
-                        .as_deref()
-                        .is_none_or(|s| same(&m.key.schema, s))
-                    && (m.key.database.is_empty() || same(&m.key.database, &saved.database))
-            })
-            .collect(),
-    )
+    marks
+        .into_iter()
+        .filter(|m| {
+            same(&m.key.object, name)
+                && schema.is_none_or(|s| same(&m.key.schema, s))
+                && (m.key.database.is_empty() || same(&m.key.database, &saved.database))
+        })
+        .collect()
 }
 
 /// `result` with the values of the columns `is_sensitive` says masked; their names.
@@ -159,6 +186,31 @@ fn mask_shared_result(
 }
 
 impl Agent {
+    /// Which columns of `schema.table` on `saved` are sensitive, with the marks on that table
+    /// counting over the rules. Marks that cannot be read would let values through: the call
+    /// fails instead.
+    pub(crate) fn table_sensitivity(
+        &self,
+        saved: &SavedConnection,
+        schema: &str,
+        table: &str,
+    ) -> Result<TableSensitivity> {
+        if saved.agent_values == AgentValues::Shown {
+            return Ok(TableSensitivity(None));
+        }
+        let sensitivity = self.sensitivity()?;
+        Ok(TableSensitivity(Some(ResultRules {
+            names: sensitivity.names(&[saved.id])?,
+            types: sensitivity.types().clone(),
+            table: Some(marks_of_table(
+                sensitivity.marks(saved.id)?,
+                Some(schema),
+                table,
+                saved,
+            )),
+        })))
+    }
+
     /// `outcome` of `sql` on `saved` as agents read it. Marks that cannot be read would let
     /// values through: the call fails instead.
     pub(crate) fn mask_outcome(
