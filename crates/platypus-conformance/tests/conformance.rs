@@ -8845,3 +8845,180 @@ async fn clickhouse_import_keeps_rows_and_imports_without_create() {
         run(&*conn, &sql).await.unwrap();
     }
 }
+/// Saves the connections of `agents_compare_and_profile`: the backend as `Db`, and for SQLite a
+/// copy of its file with one more table as `Other` (the other databases compare two schemas of
+/// the same connection). False where agents do not reach the backend.
+async fn save_compare_connections(dir: &std::path::Path, b: &Backend) -> bool {
+    match b.config.driver {
+        DriverKind::Postgres if b.name != "cockroach" => save_agent_connection(dir, b, "postgres"),
+        DriverKind::MySql => save_agent_connection(dir, b, "mysql"),
+        DriverKind::Sqlite => {
+            let copy = dir.join("other.db");
+            std::fs::copy(&b.config.database, &copy).unwrap();
+            let mut config = ConnectionConfig::new(DriverKind::Sqlite);
+            config.database = copy.to_string_lossy().into_owned();
+            let conn = SqliteDriver.connect(&config).await.unwrap();
+            for sql in [
+                "CREATE TABLE extra (id INTEGER PRIMARY KEY)",
+                "CREATE TABLE people (id INTEGER PRIMARY KEY, email TEXT, full_name TEXT)",
+                "INSERT INTO people VALUES (1, 'ada@example.com', 'Ada'), (2, 'bob@example.com', 'Bob')",
+            ] {
+                run(&*conn, sql).await.unwrap();
+            }
+            drop(conn);
+            let connection = |id: u32, name: &str, file: &str| {
+                format!(
+                    "[[connections]]\nid = \"00000000-0000-4000-8000-00000000000{id}\"\n\
+                     name = \"{name}\"\ndriver = \"sqlite\"\ndatabase = '{file}'\n\n"
+                )
+            };
+            std::fs::write(
+                dir.join("connections.toml"),
+                format!(
+                    "version = 4\n\n{}{}",
+                    connection(1, "Db", &b.config.database),
+                    connection(2, "Other", &copy.to_string_lossy())
+                ),
+            )
+            .unwrap();
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// `compare_schemas` and `profile_table` read the catalog and the rows through the drivers:
+/// the differences and script between two schemas (of one connection, or two on SQLite), and
+/// the profile of a table with its sensitive column giving counts only.
+#[tokio::test]
+async fn agents_compare_and_profile() {
+    use platypus_mcp::{Agent, CompareArgs, Profile};
+
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        if !save_compare_connections(dir.path(), &b).await {
+            continue;
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        let sqlite = b.config.driver == DriverKind::Sqlite;
+        let args = if sqlite {
+            CompareArgs {
+                connection: "Other".to_owned(),
+                schema: b.schema.clone(),
+                other_connection: Some("Db".to_owned()),
+                other_schema: b.schema.clone(),
+                max_bytes: None,
+                timeout_seconds: None,
+            }
+        } else {
+            let conn = b.connect().await;
+            qa3_compare_seed(
+                &*conn,
+                b.config.driver,
+                "agent_cmp_a",
+                "CREATE TABLE S.customers (id INT PRIMARY KEY, email VARCHAR(100));\n\
+                 CREATE TABLE S.extra (id INT PRIMARY KEY);\n\
+                 CREATE TABLE S.people (id INT PRIMARY KEY, email VARCHAR(100), full_name VARCHAR(100));\n\
+                 INSERT INTO S.people VALUES (1, 'ada@example.com', 'Ada'), (2, 'bob@example.com', 'Bob')",
+            )
+            .await;
+            qa3_compare_seed(
+                &*conn,
+                b.config.driver,
+                "agent_cmp_b",
+                "CREATE TABLE S.customers (id INT PRIMARY KEY)",
+            )
+            .await;
+            CompareArgs {
+                connection: "Db".to_owned(),
+                schema: "agent_cmp_a".to_owned(),
+                other_connection: None,
+                other_schema: "agent_cmp_b".to_owned(),
+                max_bytes: None,
+                timeout_seconds: None,
+            }
+        };
+        check_compare(&agent, b.name, args).await;
+        // The table with rows: in the seeded schema, or in the copy of the SQLite file.
+        let (holder, schema) = if sqlite {
+            ("Other", b.schema.as_str())
+        } else {
+            ("Db", "agent_cmp_a")
+        };
+        check_profile(&agent, b.name, (holder, schema)).await;
+    }
+}
+
+/// The differences and the script of `args` reach the agent whole, and an unknown schema is
+/// refused.
+async fn check_compare(agent: &platypus_mcp::Agent, name: &str, args: platypus_mcp::CompareArgs) {
+    let text = agent
+        .compare_schemas_until(&args, std::future::pending())
+        .await
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+    let out: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(out["identical"], false, "{name}: {text}");
+    assert_eq!(out["script_complete"], true, "{name}: {text}");
+    let script = out["script"].as_str().unwrap();
+    assert!(
+        script.contains("CREATE TABLE") && script.contains("extra"),
+        "{name}: {text}"
+    );
+    assert!(
+        out["differences"]
+            .to_string()
+            .contains("\"table\":\"extra\""),
+        "{name}: {text}"
+    );
+    assert!(text.contains("propose_sql"), "{name}: {text}");
+    let missing = platypus_mcp::CompareArgs {
+        other_schema: "no_such_schema".to_owned(),
+        ..args
+    };
+    let refused = agent
+        .compare_schemas_until(&missing, std::future::pending())
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("no_such_schema"),
+        "{name}: {refused}"
+    );
+}
+
+/// The profile of `people` in `(connection, schema)`: `email` gives counts only, a sample says
+/// so, and an unknown table is refused.
+async fn check_profile(agent: &platypus_mcp::Agent, name: &str, (holder, schema): (&str, &str)) {
+    let profile = |table: &str, sample_rows| {
+        let args = platypus_mcp::ProfileArgs {
+            connection: holder.to_owned(),
+            schema: schema.to_owned(),
+            table: table.to_owned(),
+            sample_rows,
+            max_bytes: None,
+            timeout_seconds: None,
+        };
+        async move {
+            agent
+                .profile_table_until(&args, std::future::pending())
+                .await
+        }
+    };
+    let text = profile("people", None)
+        .await
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+    let out: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let columns = out["columns"].as_array().unwrap();
+    // `email` is sensitive by the default rule: counts, and no value of any kind.
+    let email = columns.iter().find(|c| c["name"] == "email").unwrap();
+    assert_eq!(email["sensitive"], true, "{name}: {text}");
+    assert_eq!(email["distinct"], 2, "{name}: {text}");
+    assert!(!text.contains('@'), "{name}: {text}");
+    assert!(!text.contains("example"), "{name}: {text}");
+    assert!(text.contains("Ada"), "{name}: {text}");
+    assert_eq!(out["sample_complete"], true, "{name}: {text}");
+    let sample = profile("people", Some(1)).await.unwrap();
+    assert!(sample.contains("\"rows_profiled\":1"), "{name}: {sample}");
+    let unknown = profile("no_such_table", None).await.unwrap_err();
+    assert!(unknown.to_string().contains("no_such_table"), "{name}");
+}

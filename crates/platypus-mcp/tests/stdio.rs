@@ -231,6 +231,8 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "describe_table",
         "get_ddl",
         "get_er_diagram",
+        "compare_schemas",
+        "profile_table",
         "search_objects",
         "run_query",
         "sample_rows",
@@ -1954,4 +1956,306 @@ fn an_unreadable_catalog_does_not_break_describe_table() {
     );
     // A plain list stays a list, as clients read it.
     assert_eq!(objects[0]["name"], "t", "{objects}");
+}
+/// `compare_schemas` lists the differences and the script between two schemas, and runs nothing.
+#[test]
+fn compares_schemas_and_runs_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    sqlite(
+        &dir.path().join("app.db"),
+        "CREATE TABLE extra (id INTEGER PRIMARY KEY, label TEXT);
+         ALTER TABLE t ADD COLUMN note TEXT;",
+    );
+    let mut client = initialized(dir.path());
+    let both = json!({
+        "connection": "App db", "schema": "main",
+        "other_connection": "Scratch", "other_schema": "main",
+    });
+    let out = json_of(&mut client, "compare_schemas", &both);
+    assert_eq!(out["identical"], false, "{out}");
+    let kinds: Vec<(&str, &str)> = out["differences"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| (d["table"].as_str().unwrap(), d["kind"].as_str().unwrap()))
+        .collect();
+    assert!(kinds.contains(&("extra", "table_added")), "{out}");
+    assert!(kinds.contains(&("t", "column_added")), "{out}");
+    let script = out["script"].as_str().unwrap();
+    assert!(
+        script.contains("CREATE TABLE") && script.contains("extra"),
+        "{out}"
+    );
+    assert_eq!(out["script_complete"], true, "{out}");
+    assert_eq!(out["target"]["connection"], "Scratch", "{out}");
+    assert!(
+        out["note"].as_str().unwrap().contains("propose_sql"),
+        "{out}"
+    );
+    // Nothing ran on the target.
+    let tables: i64 = rusqlite::Connection::open(dir.path().join("scratch.db"))
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name = 'extra'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tables, 0);
+
+    // The other way round, the table is dropped; and equal schemas are identical.
+    let back = json!({
+        "connection": "Scratch", "schema": "main",
+        "other_connection": "App db", "other_schema": "main",
+    });
+    let out = json_of(&mut client, "compare_schemas", &back);
+    assert!(out["script"].as_str().unwrap().contains("DROP"), "{out}");
+    sqlite(
+        &dir.path().join("scratch.db"),
+        "CREATE TABLE extra (id INTEGER PRIMARY KEY, label TEXT);
+         ALTER TABLE t ADD COLUMN note TEXT;",
+    );
+    let same = json_of(&mut client, "compare_schemas", &back);
+    assert_eq!(same["identical"], true, "{same}");
+    assert_eq!(same["differences"], json!([]), "{same}");
+}
+
+#[test]
+fn compare_schemas_refuses_what_it_cannot_compare() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let mut refused = |args: Value| {
+        let (text, error) = client.call("compare_schemas", &args);
+        assert!(error, "{text}");
+        text
+    };
+    // The same schema twice (the other connection defaults to the same one).
+    let text = refused(json!({ "connection": "App db", "schema": "main", "other_schema": "main" }));
+    assert!(text.contains("one schema twice"), "{text}");
+    // An unknown schema, on the default connection and on another.
+    let text = refused(json!({ "connection": "App db", "schema": "nope", "other_schema": "main" }));
+    assert!(text.contains("no schema `nope`"), "{text}");
+    let text = refused(json!({
+        "connection": "App db", "schema": "main",
+        "other_connection": "Scratch", "other_schema": "nope",
+    }));
+    assert!(text.contains("`Scratch` has no schema `nope`"), "{text}");
+    // A connection with access off is as unknown as one that does not exist, on either side.
+    for args in [
+        json!({ "connection": "Hidden", "schema": "main", "other_connection": "App db", "other_schema": "main" }),
+        json!({ "connection": "App db", "schema": "main", "other_connection": "Hidden", "other_schema": "main" }),
+        json!({ "connection": "App db", "schema": "main", "other_connection": "Nobody", "other_schema": "main" }),
+    ] {
+        let text = refused(args);
+        assert!(text.contains("is available to agents"), "{text}");
+        assert!(!text.contains("hidden.db"), "{text}");
+    }
+    // Databases of different kinds answer as the app does.
+    let text = refused(json!({
+        "connection": "App db", "schema": "main",
+        "other_connection": "Remote PG", "other_schema": "public",
+    }));
+    assert!(
+        text.contains("Schemas can be compared only between databases of the same kind."),
+        "{text}"
+    );
+}
+
+/// A migration script too long for `max_bytes` is left out whole, never cut.
+#[test]
+fn a_script_over_the_limit_is_not_returned_in_part() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let columns: Vec<String> = (0..60).map(|i| format!("column_number_{i} TEXT")).collect();
+    sqlite(
+        &dir.path().join("app.db"),
+        &format!(
+            "CREATE TABLE wide (id INTEGER PRIMARY KEY, {});",
+            columns.join(", ")
+        ),
+    );
+    let mut client = initialized(dir.path());
+    let out = json_of(
+        &mut client,
+        "compare_schemas",
+        &json!({
+            "connection": "App db", "schema": "main",
+            "other_connection": "Scratch", "other_schema": "main", "max_bytes": 1500,
+        }),
+    );
+    assert_eq!(out["script"], Value::Null, "{out}");
+    assert_eq!(out["script_complete"], false, "{out}");
+    assert!(
+        out["script_omitted"]
+            .as_str()
+            .unwrap()
+            .contains("NOT included"),
+        "{out}"
+    );
+    assert!(!out.to_string().contains("column_number_30"), "{out}");
+    assert!(out.to_string().len() <= 1500, "{out}");
+}
+
+fn profiled(client: &mut Client, extra: &Value) -> Value {
+    let mut args = json!({ "connection": "Users", "schema": "main", "table": "users" });
+    args.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    json_of(client, "profile_table", &args)
+}
+
+fn column<'a>(profile: &'a Value, name: &str) -> &'a Value {
+    profile["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == name)
+        .unwrap_or_else(|| panic!("no column {name} in {profile}"))
+}
+
+/// `profile_table` describes the columns, and a sensitive one gives counts only.
+#[test]
+fn profiles_a_table_and_hides_the_values_of_sensitive_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    let mut client = initialized(dir.path());
+    let out = profiled(&mut client, &json!({}));
+    assert_eq!(out["rows_profiled"], 2, "{out}");
+    assert_eq!(out["sample_complete"], true, "{out}");
+    let nick = column(&out, "nick");
+    assert_eq!(nick["distinct"], 2, "{out}");
+    assert_eq!(nick["min"], "annie", "{out}");
+    assert!(nick["top"].to_string().contains("annie"), "{out}");
+    // `email` is sensitive by the default rule: its counts, and no value of any kind.
+    let email = column(&out, "email");
+    assert_eq!(email["sensitive"], true, "{out}");
+    assert_eq!(
+        (&email["nulls"], &email["distinct"]),
+        (&json!(1), &json!(1))
+    );
+    for key in ["min", "max", "top", "patterns", "lengths"] {
+        assert!(email.get(key).is_none(), "{key} in {email}");
+    }
+    let text = out.to_string();
+    for leak in ["ann@example.com", "example.com", "@"] {
+        assert!(!text.contains(leak), "{leak} in {text}");
+    }
+    assert!(out["sensitive_note"].is_string(), "{out}");
+}
+
+#[test]
+fn a_mark_lifts_a_rule_and_adds_one_on_the_profile() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    let id = uuid::Uuid::parse_str("00000000-0000-4000-8000-0000000000a1").unwrap();
+    let key = |column: &str| platypus_store::CatalogKey {
+        database: String::new(),
+        schema: "main".to_owned(),
+        object: "users".to_owned(),
+        column: column.to_owned(),
+    };
+    let mut catalog = platypus_store::CatalogStore::open(&dir.path().join("catalog.db")).unwrap();
+    catalog
+        .set_sensitive(id, &key("email"), Some(false))
+        .unwrap();
+    catalog.set_sensitive(id, &key("name"), Some(true)).unwrap();
+    drop(catalog);
+    let mut client = initialized(dir.path());
+    let out = profiled(&mut client, &json!({}));
+    let email = column(&out, "email");
+    assert!(email.get("sensitive").is_none(), "{out}");
+    assert!(email["min"].as_str().unwrap().contains("ann@example.com"));
+    let name = column(&out, "name");
+    assert_eq!(name["sensitive"], true, "{out}");
+    let text = out.to_string();
+    assert!(!text.contains("Ann\"") && !text.contains("Bob"), "{out}");
+}
+
+#[test]
+fn the_profile_shows_values_when_the_user_chose_so() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "agent_values = \"shown\"\n");
+    let mut client = initialized(dir.path());
+    let out = profiled(&mut client, &json!({}));
+    let email = column(&out, "email");
+    assert!(email.get("sensitive").is_none(), "{out}");
+    assert!(
+        email["top"].to_string().contains("ann@example.com"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_profile_fails_when_the_marks_cannot_be_read() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(dir.path(), "");
+    std::fs::write(
+        dir.path().join("catalog.db"),
+        b"this is not a database at all",
+    )
+    .unwrap();
+    let mut client = initialized(dir.path());
+    let (text, error) = client.call(
+        "profile_table",
+        &json!({ "connection": "Users", "schema": "main", "table": "users" }),
+    );
+    assert!(error, "{text}");
+    assert!(
+        !text.contains("annie") && !text.contains("example.com"),
+        "{text}"
+    );
+}
+
+#[test]
+fn profile_table_checks_its_arguments_and_the_access() {
+    let dir = tempfile::tempdir().unwrap();
+    profile(dir.path());
+    let mut client = initialized(dir.path());
+    let mut refused = |args: Value| {
+        let (text, error) = client.call("profile_table", &args);
+        assert!(error, "{text}");
+        text
+    };
+    let text = refused(json!({ "connection": "App db", "schema": "main", "table": "nope" }));
+    assert!(text.contains("no table or view `main.nope`"), "{text}");
+    let text = refused(json!({ "connection": "App db", "schema": "nope", "table": "t" }));
+    assert!(text.contains("no schema `nope`"), "{text}");
+    let text = refused(json!({ "connection": "Hidden", "schema": "main", "table": "t" }));
+    assert!(text.contains("is available to agents"), "{text}");
+    let text = refused(
+        json!({ "connection": "App db", "schema": "main", "table": "t", "sample_rows": 0 }),
+    );
+    assert!(
+        text.contains("sample_rows must be greater than 0"),
+        "{text}"
+    );
+    let text = refused(json!({ "connection": "App db", "schema": "main", "table": " " }));
+    assert!(text.contains("both needed"), "{text}");
+}
+
+#[test]
+fn a_profile_of_a_sample_says_so_and_counts_as_a_call() {
+    let dir = tempfile::tempdir().unwrap();
+    users_profile(
+        dir.path(),
+        "
+[connections.agent_limits]
+calls_per_minute = 1
+",
+    );
+    let mut client = initialized(dir.path());
+    let out = profiled(&mut client, &json!({ "sample_rows": 1 }));
+    assert_eq!(out["rows_profiled"], 1, "{out}");
+    assert_eq!(out["sample_complete"], false, "{out}");
+    assert!(
+        out["sample_note"].as_str().unwrap().contains("more rows"),
+        "{out}"
+    );
+    let (refused, error) = client.call(
+        "profile_table",
+        &json!({ "connection": "Users", "schema": "main", "table": "users" }),
+    );
+    assert!(error && refused.contains("1 calls a minute"), "{refused}");
 }

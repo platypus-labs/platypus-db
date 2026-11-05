@@ -182,7 +182,7 @@ const TITLE_CHARS: usize = 80;
 pub const SAMPLE_ROWS: u64 = 20;
 
 /// The statement reading the first `rows` rows of `schema.table` on `driver`.
-fn sample_sql(driver: DriverKind, schema: &str, table: &str, rows: u64) -> String {
+pub(crate) fn sample_sql(driver: DriverKind, schema: &str, table: &str, rows: u64) -> String {
     if driver == DriverKind::Mongo {
         let collection = platypus_driver_mongo::generate::collection_ref(Some(schema), table);
         return format!("{collection}.find({{}}).limit({rows})");
@@ -269,6 +269,11 @@ impl Lease {
 
     pub(crate) fn conn(&self) -> &dyn Connection {
         &*self.session().conn
+    }
+
+    /// The connection's secrets, masked wherever they appear.
+    pub(crate) fn redactor(&self) -> &Redactor {
+        &self.session().redactor
     }
 
     /// The error with the connection's secrets masked.
@@ -358,7 +363,7 @@ pub struct Agent {
     /// The policy the user approved in the app, which edits of the files cannot loosen.
     seal: Seal,
     /// The calls of the last minute on each connection, for `calls_per_minute`.
-    windows: CallWindows,
+    pub(crate) windows: CallWindows,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only

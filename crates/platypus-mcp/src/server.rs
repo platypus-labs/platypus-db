@@ -8,8 +8,8 @@ use crate::agent::{MAX_OBJECT_PAGE, locked};
 use crate::link::CLOSED;
 use crate::resource::{self, Target};
 use crate::{
-    Agent, AgentError, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs, ProposeArgs,
-    QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
+    Agent, AgentError, CompareArgs, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs,
+    ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
 };
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -28,8 +28,8 @@ use tokio_util::sync::CancellationToken;
 /// What agents read first: how to use the tools.
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
 in the PlatypusDB app. Start with list_connections, then explore with list_schemas, \
-list_objects, describe_table, get_ddl, get_er_diagram and search_objects, look at a table's first rows with \
-sample_rows, query with run_query and read a statement's plan with explain: one statement per \
+list_objects, describe_table, get_ddl, get_er_diagram, compare_schemas and search_objects, look at a table's first rows with \
+sample_rows, profile its columns with profile_table (sensitive columns give counts only), query with run_query and read a statement's plan with explain: one statement per \
 call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
 hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
 agent access set by the user: read_only connections run only statements that change nothing, \
@@ -377,6 +377,50 @@ impl PlatypusServer {
                 args.tables.as_deref().unwrap_or_default(),
                 args.depth,
             )
+            .await;
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Compares two schemas, of one connection or of two connections of the \
+        same kind of database, as the PlatypusDB schema compare does: the differences (tables, \
+        columns, indexes, foreign keys and constraints added, dropped or changed) and the \
+        migration script that makes `other_schema` like `schema`, as text. Nothing runs: the \
+        script reaches the user only through propose_sql. A script too long for max_bytes \
+        (default 32768) is left out whole and the answer says so: it is never cut."
+    )]
+    async fn compare_schemas(
+        &self,
+        Parameters(args): Parameters<CompareArgs>,
+        peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("compare_schemas", &peer, &args);
+        let result = self
+            .agent
+            .compare_schemas_until(&args, cancelled.cancelled_owned())
+            .await;
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Profiles the columns of a table or view from a sample of its rows (the \
+        first sample_rows, default 10000, up to 100000; no order is implied): per column NULLs, \
+        distinct values, empty texts, minimum and maximum, the most frequent values, patterns \
+        (emails, dates, numbers stored as text...) and, for numbers, their spread. Sensitive \
+        columns (as in results) give counts only: no value of any kind. Read-only, within the \
+        connection's limits; max_bytes and timeout_seconds work as in run_query."
+    )]
+    async fn profile_table(
+        &self,
+        Parameters(args): Parameters<ProfileArgs>,
+        peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("profile_table", &peer, &args);
+        let result = self
+            .agent
+            .profile_table_until(&args, cancelled.cancelled_owned())
             .await;
         self.answer(call, result).await
     }

@@ -350,7 +350,7 @@ impl<'a> BatchReader<'a> {
 }
 
 /// `text` up to [`MAX_VALUE_CHARS`] characters, with `…` when it was longer.
-fn cut_value(text: String, cut: &mut bool) -> String {
+pub(crate) fn cut_value(text: String, cut: &mut bool) -> String {
     match text.char_indices().nth(MAX_VALUE_CHARS) {
         Some((end, _)) => {
             *cut = true;

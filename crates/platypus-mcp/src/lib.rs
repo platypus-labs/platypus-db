@@ -13,6 +13,7 @@
 pub mod access;
 mod agent;
 mod catalog_view;
+mod compare;
 mod connect;
 mod context;
 mod er;
@@ -30,6 +31,7 @@ pub mod query;
 mod redact;
 pub mod resource;
 mod server;
+mod table_profile;
 #[cfg(feature = "http")]
 pub use server::http_service;
 pub use server::{HELLO_EVERY, PlatypusServer};
@@ -40,6 +42,7 @@ pub use agent::{
     Agent, ConnectionInfo, ExplainArgs, MAX_PROPOSAL_BYTES, ProposeArgs, QueryArgs, SAMPLE_ROWS,
     SEARCH_RESULTS, SampleArgs, origin_name,
 };
+pub use compare::CompareArgs;
 pub use connect::{AgentBlocker, agent_blocker, connect};
 pub use context::{
     CONTEXT_RESULT_BYTES, CONTEXT_ROWS, CONTEXT_TEXT_BYTES, ContextArgs, SharedContext,
@@ -57,3 +60,4 @@ pub use output::{Format, QueryResult};
 pub use plan::PlanResult;
 pub use profile::Profile;
 pub use query::Limits;
+pub use table_profile::ProfileArgs;
