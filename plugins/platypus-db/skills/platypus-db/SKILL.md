@@ -27,6 +27,7 @@ hosts and users never reach you.
    values, patterns), with counts only for sensitive columns. `compare_schemas` lists the
    differences between two schemas and the migration script, which runs nothing: hand the
    script to the user with `propose_sql`.
+5. `estimate_change` shows, without running anything, what the confirmation dialog would show the user for a change (rows expected, plan, the Safety checks that ask or refuse): use it to correct a statement before `run_query`. `server_activity` and `top_queries` show the server's sessions, running statements and locks, and its costliest statements (PostgreSQL, MySQL, MariaDB, SQL Server); their statements are masked.
 
 Clients that read MCP resources can also read `platypus://<connection>`,
 `platypus://<connection>/<schema>` and `platypus://<connection>/<schema>/<table>`.

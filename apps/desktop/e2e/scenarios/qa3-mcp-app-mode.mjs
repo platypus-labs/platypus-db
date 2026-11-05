@@ -75,7 +75,7 @@ export default async function (_page, { dir }) {
     const init = await server.initialize("qa3-app-mode");
     assert.equal(init.result?.serverInfo?.name, "platypus-mcp", JSON.stringify(init).slice(0, 300));
     const tools = (await server.request("tools/list", {})).result.tools.map((t) => t.name).sort();
-    assert.deepEqual(tools, ["compare_schemas", "describe_table", "explain", "get_ddl", "get_er_diagram", "get_user_context", "list_connections", "list_objects", "list_open_sessions", "list_schemas", "list_scripts", "profile_table", "propose_sql", "read_script", "run_query", "sample_rows", "search_history", "search_objects"]);
+    assert.deepEqual(tools, ["compare_schemas", "describe_table", "estimate_change", "explain", "get_ddl", "get_er_diagram", "get_user_context", "list_connections", "list_objects", "list_open_sessions", "list_schemas", "list_scripts", "profile_table", "propose_sql", "read_script", "run_query", "sample_rows", "search_history", "search_objects", "server_activity", "top_queries"]);
 
     const list = (await server.call("list_connections")).text;
     assert.match(list, /QA3 app lite/);
