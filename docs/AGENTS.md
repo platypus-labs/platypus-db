@@ -205,7 +205,9 @@ rules), gives its counts only (`nulls`, `distinct`, `empty`): no minimum, maximu
 pattern or length. If the marks cannot be read the call fails rather than show values; a
 connection set to show sensitive values shows them here too. Values are cut at 1,000
 characters and have the connection's secrets masked. The connection's `max_rows` also caps the sample.
-On MongoDB a column is a top-level field: a sensitive field inside a document is not told apart.
+On MongoDB a column is a top-level field, and a sensitive field inside a document or array (a mark
+on `user.password`, or a rule that matches the nested name `password`) is masked in the figures of
+its parent, at any depth; it has no figures of its own.
 
 `estimate_change` (`connection`, `sql`) is a dry run: it returns, without running anything, what the
 confirmation dialog would show the user for a change. It asks the database for the plan
@@ -253,9 +255,13 @@ The results of `run_query` and `sample_rows`, and the editor, selection and resu
 NULL, as in the grid while it masks. The names and types of Settings › Safety count, and the
 user's marks; where a statement reads one table a mark on its column counts over the rules, a
 "not sensitive" mark included. In `run_query` and `sample_rows` the name is enough to follow a
-column through the select list or a `RETURNING` (`email AS contact`, `upper(email)`). What
-`get_user_context` shares of a result is known by its column names only, so there the alias and
-the type rules do not count. A result says which columns it masked: `masked_columns` in JSON, a
+column through the select list or a `RETURNING` (`email AS contact`, `upper(email)`). The result
+that `get_user_context` shares is told the same way through the editor's text and the selection (which
+of them ran is not known, so a column either one masks is masked); the type rules do not count, as
+the app sends no types. A subquery or a statement that does not parse, when it names a sensitive
+column, masks the whole shared result. Where the statement reads two tables the marks of both
+count, so a column can be masked for nothing. In MongoDB documents and arrays, a sensitive field
+at any depth reads `••••••` in the document. A result says which columns it masked: `masked_columns` in JSON, a
 last line in text, and a note in `get_user_context`.
 
 Settings › Agents › Security can show the values on one connection. It is part of what the user
@@ -291,8 +297,7 @@ check. Changes are not checked here: they already ask the user. The cost unit is
 own, so it is not comparable between PostgreSQL and MySQL.
 
 Masking prevents accidents; it is not a wall. A subquery that renames the column, a second
-branch of a `UNION`, a `WHERE` that tests the value, or a document field below the top level of
-MongoDB still let a value through. For a real boundary, give the connection a database user
+branch of a `UNION`, or a `WHERE` that tests the value still let a value through. For a real boundary, give the connection a database user
 without access to those columns.
 
 The history and the agents' call log never keep a password a statement sets

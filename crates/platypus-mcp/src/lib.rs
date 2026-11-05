@@ -64,7 +64,7 @@ pub use library::{
     ReadScriptArgs, SCRIPT_BYTES, ScriptContent, ScriptInfo,
 };
 pub use link::{
-    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextPart, ContextRequest, ContextResult,
+    ANSWER_TIMEOUT, AppLink, BridgeFile, ContextPart, ContextRequest, ContextResult, ContextTable,
     ContextVerdict, DIAGRAM_TIMEOUT, DiagramAnswer, DiagramColumn, DiagramKey, DiagramRequest,
     DiagramTable, HttpLink, OpenSession, UserContext, Verdict, WriteRequest,
 };

@@ -4,11 +4,14 @@
 
 use std::sync::Arc;
 
-use arrow_array::RecordBatch;
+use arrow_array::cast::AsArray;
+use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use arrow_cast::display::FormatOptions;
-use arrow_schema::Schema;
+use arrow_schema::{DataType, Schema};
 use futures::StreamExt;
-use platypus_core::{Connection, DriverKind, Error, ExecOptions, ExecResult, ObjectKind};
+use platypus_core::{
+    Connection, DriverKind, Error, ExecOptions, ExecResult, META_DB_TYPE, ObjectKind,
+};
 use platypus_local::table_profile::{ColumnReport, TableProfile, profile_table};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -102,12 +105,52 @@ async fn collect(
     Ok((batches, None))
 }
 
+/// `batches` with the sensitive fields of the documents and arrays in their columns masked, so
+/// that the figures of a parent (top values, minimum, maximum, patterns) show none of them.
+fn mask_fields(batches: Vec<RecordBatch>, sensitivity: &TableSensitivity) -> Vec<RecordBatch> {
+    batches
+        .into_iter()
+        .map(|batch| {
+            let schema = batch.schema();
+            let columns: Vec<ArrayRef> = schema
+                .fields()
+                .iter()
+                .zip(batch.columns())
+                .map(|(field, array)| {
+                    let db_type = field
+                        .metadata()
+                        .get(META_DB_TYPE)
+                        .map_or("", String::as_str);
+                    if *field.data_type() != DataType::Utf8 || !sensitivity.may_hold_fields(db_type)
+                    {
+                        return array.clone();
+                    }
+                    let text: StringArray = array
+                        .as_string::<i32>()
+                        .iter()
+                        .map(|cell| {
+                            cell.map(|t| {
+                                sensitivity
+                                    .mask_document(field.name(), t)
+                                    .unwrap_or_else(|| t.to_owned())
+                            })
+                        })
+                        .collect();
+                    Arc::new(text) as ArrayRef
+                })
+                .collect();
+            RecordBatch::try_new(schema, columns).unwrap_or(batch)
+        })
+        .collect()
+}
+
 /// Profiles the first `rows` rows of `schema.table`, if it is a table or view of the connection.
 async fn read_sample(
     conn: &dyn Connection,
     driver: DriverKind,
     (schema, table): (&str, &str),
     rows: usize,
+    sensitivity: Arc<TableSensitivity>,
 ) -> Result<Read, Error> {
     let Some(objects) = objects_of(conn, schema).await? else {
         return Ok(Read::NoSchema);
@@ -131,6 +174,12 @@ async fn read_sample(
     let columns: Arc<Schema> = stream.schema();
     let (batches, cut) = collect(stream, rows, MEMORY_LIMIT).await?;
     let profile = tokio::task::spawn_blocking(move || {
+        // Documents hold fields of their own, which the column's name does not tell.
+        let batches = if driver == DriverKind::Mongo {
+            mask_fields(batches, &sensitivity)
+        } else {
+            batches
+        };
         profile_table(&columns, &batches, &FormatOptions::default())
             .map_err(|e| Error::Other(e.to_string()))
     })
@@ -268,7 +317,7 @@ impl Agent {
             .max_rows
             .map_or(rows, |max| rows.min(usize::try_from(max).unwrap_or(rows)));
         // Before anything is read: marks that cannot be read would let values through.
-        let sensitivity = self.table_sensitivity(&saved, &args.schema, &args.table)?;
+        let sensitivity = Arc::new(self.table_sensitivity(&saved, &args.schema, &args.table)?);
         self.windows.count(&saved)?;
         let lease = self.lease(&store, &saved).await?;
         let work = read_sample(
@@ -276,6 +325,7 @@ impl Agent {
             saved.driver,
             (&args.schema, &args.table),
             rows,
+            Arc::clone(&sensitivity),
         );
         let read =
             query::guarded(lease.conn(), Some(saved.driver), limits.timeout, stop, work).await;
@@ -351,6 +401,38 @@ mod tests {
         for key in ["min", "max", "top", "patterns", "lengths"] {
             assert!(!json.contains(&format!("\"{key}\"")), "{key} leaked");
         }
+    }
+
+    #[test]
+    fn the_figures_of_a_parent_show_none_of_its_sensitive_fields() {
+        let docs = [
+            r#"{"name":"Ann","email":"ann@example.com","pin":"4242","tags":[{"email":"t@example.com"}]}"#,
+            r#"{"name":"Bob","email":"bob@example.com","pin":"1717"}"#,
+        ];
+        let field = Field::new("user", DataType::Utf8, true).with_metadata(
+            std::collections::HashMap::from([(META_DB_TYPE.to_owned(), "document".to_owned())]),
+        );
+        let schema = Arc::new(Schema::new(vec![field]));
+        let column: ArrayRef = Arc::new(StringArray::from(docs.to_vec()));
+        let batch = RecordBatch::try_new(schema.clone(), vec![column]).unwrap();
+        // `email` by the rule, `pin` by a mark on its dotted path.
+        let marks = vec![platypus_store::SensitiveColumn {
+            key: platypus_store::CatalogKey {
+                database: String::new(),
+                schema: "main".to_owned(),
+                object: "people".to_owned(),
+                column: "user.pin".to_owned(),
+            },
+            sensitive: true,
+        }];
+        let sensitivity = TableSensitivity::for_test(marks);
+        let batches = mask_fields(vec![batch], &sensitivity);
+        let profile = profile_table(&schema, &batches, &FormatOptions::default()).unwrap();
+        let json = column_json(&profile.columns[0], false, &Redactor::default()).to_string();
+        for secret in ["example.com", "4242", "1717"] {
+            assert!(!json.contains(secret), "{secret} leaked: {json}");
+        }
+        assert!(json.contains("Ann"), "{json}");
     }
 
     #[test]

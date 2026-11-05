@@ -124,6 +124,13 @@ pub struct ContextResult {
     pub total_rows: Option<usize>,
 }
 
+/// The table a viewer tab shows, for a tab that has no statement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextTable {
+    pub schema: String,
+    pub name: String,
+}
+
 /// What the user shared. Each part the user did not share, or the tab lacks, is `None`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserContext {
@@ -135,6 +142,9 @@ pub struct UserContext {
     pub editor: Option<String>,
     pub selection: Option<String>,
     pub result: Option<ContextResult>,
+    /// The table of a viewer tab, when the tab shows a table rather than a statement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<ContextTable>,
 }
 
 /// The user's answer to a [`ContextRequest`].

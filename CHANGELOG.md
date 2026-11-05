@@ -49,6 +49,16 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Agents**: while a change proposed by an agent waits to apply, its data viewer tab says
   "Applying the changes proposed by <agent>…" until the rows show as pending edits or the reason
   they could not be applied.
+- **Security**: `profile_table` on MongoDB no longer shows sensitive fields inside a document. A
+  mark on `user.password`, or a rule that matches the nested name `password`, now keeps those
+  values out of the figures of the parent object or array (top values, minimum, maximum). `run_query`
+  and `sample_rows` mask the same nested fields in a document or array column, at any depth.
+- **Security**: `get_user_context` follows the user's statement to the columns it reads, as
+  `run_query` does. `SELECT password AS p …` on the open tab no longer shares the value under the
+  alias, and a column that only has a sensitive name, from a table with no mark, is no longer
+  masked for nothing when the statement or the viewer's table says which table it is. A subquery
+  that names a sensitive column, or a statement that does not parse and names one, masks the whole
+  shared result.
 - Snowflake, BigQuery, Databricks, Trino and other ADBC connections no longer offer to edit rows in
   the grid: a save needs a transaction, which they do not have. Agents can no longer propose rows
   to edit on them, or on ClickHouse.
