@@ -26,9 +26,9 @@ mod vault;
 
 pub use address::{clean_file_path, holds_url_password, name_taken, tidy_address, trim_url_tail};
 pub use agent_calls::{
-    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
-    MAX_PENDING_ALL, MAX_PENDING_PROPOSALS, NewAgentCall, PROPOSAL_LIFETIME, agent_calls_csv,
-    rfc3339,
+    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentReport,
+    AgentSession, CallEffect, CallFacts, MAX_PENDING_ALL, MAX_PENDING_PROPOSALS, NewAgentCall,
+    PROPOSAL_LIFETIME, ReportFigures, SessionReport, agent_calls_csv, rfc3339,
 };
 pub use auth::{
     command_password, external_password, external_password_quiet, pgpass_password, pgpass_path,

@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { tableFromIPC } from "apache-arrow";
 import type { ContextRequest, ContextVerdict } from "./agents/context";
+import type { DiagramAnswer } from "./agents/diagram";
 import type { Verdict, WriteRequest } from "./agents/writes";
 import type { ProposedEdits } from "./grid/edit/proposed";
 
@@ -1218,6 +1219,31 @@ export interface AgentSession {
   errors: number;
 }
 
+/** The figures of a group of calls in the agent report; a figure is null when the calls were
+ *  made before the log recorded it. */
+export interface AgentReportFigures {
+  first_at: number;
+  last_at: number;
+  calls: number;
+  /** Calls recorded with the figures that can be null; fewer than `calls` for an old log. */
+  measured: number;
+  tables_read: number | null;
+  rows_returned: number | null;
+  changes_allowed: number | null;
+  changes_refused: number | null;
+  errors: number;
+}
+
+export interface AgentReportSession extends AgentReportFigures {
+  session: string;
+}
+
+/** One agent in the report, with its newest sessions. */
+export interface AgentReportAgent extends AgentReportFigures {
+  agent: string;
+  sessions: AgentReportSession[];
+}
+
 export type AgentInstallState = "missing" | "installed" | "different" | "unreadable";
 
 /** An MCP client PlatypusDB can be installed in. */
@@ -2423,6 +2449,7 @@ export const api = {
   agentWritesWaiting: () => invoke<{ request: WriteRequest; waited_ms: number }[]>("agent_writes_waiting"),
   /** Answers an agent's request to see the user's work; `false` when it no longer waits. */
   answerAgentContext: (id: string, verdict: ContextVerdict) => invoke<boolean>("agent_answer_context", { id, verdict }),
+  answerAgentDiagram: (id: string, answer: DiagramAnswer) => invoke<boolean>("agent_answer_diagram", { id, answer }),
   /** The requests to see the user's work waiting for an answer, the oldest first. */
   agentContextsWaiting: () => invoke<{ request: ContextRequest; waited_ms: number }[]>("agent_contexts_waiting"),
   connectedAgents: () => invoke<ConnectedAgent[]>("connected_agents"),
@@ -2431,6 +2458,7 @@ export const api = {
   installAgentClient: (id: string) => invoke<InstalledClient>("install_agent_client", { id }),
   agentCalls: (query: AgentCallQuery) => invoke<AgentCall[]>("agent_calls", { query }),
   agentSessions: (limit: number) => invoke<AgentSession[]>("agent_sessions", { limit }),
+  agentReport: (query: AgentCallQuery) => invoke<AgentReportAgent[]>("agent_report", { query }),
   agentCallsExport: (query: AgentCallQuery) => invoke<string>("agent_calls_export", { query }),
   clearAgentCalls: () => invoke<void>("clear_agent_calls"),
   takeAgentProposals: () => invoke<AgentProposal[]>("take_agent_proposals"),

@@ -61,7 +61,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 ### Group A — Agents and MCP
 
-**Status: P1 and P2 done, `get_er_diagram` as Mermaid included; in P3 the pages of results, MCP prompts, schema change notifications and `query_across_databases` done; to do: the SVG diagram, the agent report and remote MCP.**
+**Status: P1 and P2 done, `get_er_diagram` as Mermaid included; in P3 the pages of results, MCP prompts, schema change notifications, `query_across_databases`, the SVG diagram of `get_er_diagram` and the agent report done; to do: remote MCP (to decide).**
 
 **What exists** (roadmap group N, [AGENTS.md](AGENTS.md)): the server (`platypus-db --mcp` on
 stdio, `/mcp` over HTTP through the bridge with the open app) with the tools `list_connections`,
@@ -83,7 +83,7 @@ configuration. The rows below add only what is not there.
 | ✅ MCP tool `get_er_diagram`, Mermaid part: the `erDiagram` of a schema (tables, columns, primary keys, FKs) built from the catalog with `platypus-docs` (`mermaid.rs`), so it works with the app closed; cut at the byte limit with a note | P2 | U |
 | ✅ `get_er_diagram` with a list of tables and FK depth (the tables linked to the chosen ones, up to 3 hops, in both directions), to avoid a huge diagram on large schemas | P3 | U |
 | ✅ Tests for the Mermaid tool: unit tests of the FK hops, stdio on SQLite, and the conformance suite on PostgreSQL, MySQL and SQLite (tables, PKs, FKs, names with spaces) | P2 | U |
-| 🆕 `get_er_diagram` as SVG, like the app's export (`apps/desktop/src/erd/`), requested from the open app as `get_user_context` does (`/v1/context`); a `format` parameter picks between Mermaid and SVG. Needs the app open; with an E2E scenario for the request | P3 | U |
+| ✅ `get_er_diagram` as SVG, like the app's export (`apps/desktop/src/erd/`), requested from the open app as `get_user_context` does (`/v1/context`); a `format` parameter picks between Mermaid and SVG. Needs the app open; with an E2E scenario for the request | P3 | U |
 | ✅ **Sensitive columns masked in results**: masking covers `read_script` and `search_history` only; `run_query`, `sample_rows` and `get_user_context` return as they are the values of the columns marked sensitive in `catalog.db` or matched by the Safety rules. Mask them as the grid does (`••••••`, NULL left NULL), with a per-connection choice in Settings → Agents → Security to show them | P1 | N |
 | ✅ **Catalog for agents**: `describe_table`, `list_objects` and the table resource also return the user's notes, tags and sensitive marks from `catalog.db` (today only the database comment), and `search_objects` also matches comments, notes and `#tag`, so an agent finds "the invoices table" without knowing its name | P2 | N |
 | ✅ Tool `compare_schemas`: the differences between two schemas (same or different connection, as the app's schema compare of roadmap group I) and the migration script as text; the script reaches the user only through `propose_sql`, the tool runs nothing | P2 | U |
@@ -96,7 +96,7 @@ configuration. The rows below add only what is not there.
 | ✅ **MCP prompts** (`prompts/list`): ready tasks that chain the existing tools (explain and improve a query, find the slowest queries, write a migration for a change, document a table), and the user's saved scripts with `:parameters` as prompts with arguments | P3 | U |
 | ✅ **Schema change notifications**: `resources/subscribe` on the schema resources and `notifications/resources/list_changed` when the app sees a change (navigator refresh, schema timeline of group I), so a long agent session does not work on an old schema | P3 | U |
 | ✅ Tool `query_across_databases`: one read-only statement over tables of several connections through the DuckDB join of roadmap group M (`platypus-local`), each source checked against its own agent access | P3 | U |
-| 🆕 **Agent report**: in Settings → Agents → Activity a summary per agent and session (tables read, rows returned, changes allowed and refused, errors), exported as Markdown or HTML next to today's CSV of single calls | P3 | U |
+| ✅ **Agent report**: in Settings → Agents → Activity a summary per agent and session (tables read, rows returned, changes allowed and refused, errors), exported as Markdown or HTML next to today's CSV of single calls | P3 | U |
 | 🆕 **Remote MCP**: the `/mcp` endpoint reachable from other machines, off by default, with TLS and OAuth 2.1 as the MCP specification describes instead of the fixed token, and a consent per client in the app. **To decide** (it exposes saved connections on the network) | P3 | U |
 
 ---

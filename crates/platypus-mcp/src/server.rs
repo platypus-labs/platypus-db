@@ -6,6 +6,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::agent::{MAX_OBJECT_PAGE, locked};
 use crate::cursor::SessionCursors;
+use crate::er::DiagramFormat;
+use crate::facts::{Ended, Probe, rows_in};
 use crate::link::CLOSED;
 use crate::prompts::{self, PromptError};
 use crate::resource::{self, Target};
@@ -15,7 +17,7 @@ use crate::{
     Agent, AgentError, CompareArgs, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs,
     PageArgs, ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
 };
-use platypus_store::{HistoryStatus, NewAgentCall};
+use platypus_store::{CallFacts, HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
@@ -111,6 +113,9 @@ struct ErDiagramArgs {
     /// With `tables`: how many foreign-key hops from them to follow, in both directions
     /// (default 1, at most 3).
     depth: Option<u64>,
+    /// `mermaid` (the default: text, works without the app) or `svg` (an image drawn by the
+    /// open PlatypusDB app, as its diagram export; an error when the app is closed).
+    format: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -168,9 +173,17 @@ struct Call {
     arguments: String,
     started_at: SystemTime,
     start: Instant,
+    /// What the call touched, for the report.
+    probe: Probe,
 }
 
 impl Call {
+    /// Says what the call touched, for the agent report.
+    fn probing(mut self, probe: Probe) -> Self {
+        self.probe = probe;
+        self
+    }
+
     fn new(tool: &'static str, peer: &Peer<RoleServer>, args: &impl Serialize) -> Self {
         let mut arguments = serde_json::to_value(args).unwrap_or_default();
         // Arguments left out serialize as null: the log keeps those given.
@@ -187,6 +200,7 @@ impl Call {
             arguments: arguments.to_string(),
             started_at: SystemTime::now(),
             start: Instant::now(),
+            probe: Probe::Nothing,
         }
     }
 }
@@ -243,7 +257,7 @@ impl PlatypusServer {
 
     /// Records `call` in the agents' call log, with the outcome of `result`.
     /// The write goes to a blocking thread: the app may hold the file for a moment.
-    async fn record<T>(&self, call: Call, result: &Result<T, AgentError>) {
+    async fn record(&self, call: Call, result: &Result<String, AgentError>) {
         // A timeout is the call failing; only the client's own cancellation is not.
         let (status, error) = match result {
             Ok(_) => (HistoryStatus::Ok, None),
@@ -260,10 +274,22 @@ impl PlatypusServer {
             duration: call.start.elapsed(),
             status,
             error,
+            facts: CallFacts::default(),
         };
         self.greet(&entry.agent);
         let agent = Arc::clone(&self.agent);
-        let _ = tokio::task::spawn_blocking(move || agent.record_call(&entry)).await;
+        // The answer can be a megabyte: only its row count goes to the blocking thread.
+        let rows = match (&call.probe, result) {
+            (Probe::Nothing, _) | (_, Err(_)) => 0,
+            (_, Ok(answer)) => rows_in(answer),
+        };
+        let (probe, ended) = (call.probe, Ended::of(result));
+        let _ = tokio::task::spawn_blocking(move || {
+            let mut entry = entry;
+            entry.facts = agent.call_facts(&probe, rows, ended);
+            agent.record_call(&entry);
+        })
+        .await;
     }
 
     /// The answer to `call`, recorded in the agents' call log.
@@ -379,7 +405,10 @@ impl PlatypusServer {
         description = "Returns a Mermaid erDiagram of a schema's tables (columns, primary keys) \
         and the foreign keys between them, as text. Without `tables` the whole schema; with \
         `tables`, those and the tables within `depth` foreign-key hops of them (default 1, \
-        at most 3). A diagram too long for one answer is cut with a note: pass `tables` to choose."
+        at most 3). A diagram too long for one answer is cut with a note: pass `tables` to choose. \
+        With `format: \"svg\"` the answer is the SVG image PlatypusDB draws for its own export \
+        (it needs the app open, asks the user nothing, and is refused rather than cut when it is \
+        over the byte limit); the default `mermaid` works without the app."
     )]
     async fn get_er_diagram(
         &self,
@@ -387,15 +416,20 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let call = Call::new("get_er_diagram", &peer, &args);
-        let result = self
-            .agent
-            .er_diagram(
-                &args.connection,
-                &args.schema,
-                args.tables.as_deref().unwrap_or_default(),
-                args.depth,
-            )
-            .await;
+        let tables = args.tables.as_deref().unwrap_or_default();
+        let result = match DiagramFormat::parse(args.format.as_deref()) {
+            Err(e) => Err(e),
+            Ok(DiagramFormat::Mermaid) => {
+                self.agent
+                    .er_diagram(&args.connection, &args.schema, tables, args.depth)
+                    .await
+            }
+            Ok(DiagramFormat::Svg) => {
+                self.agent
+                    .er_diagram_svg(&args.connection, &args.schema, tables, args.depth)
+                    .await
+            }
+        };
         self.answer(call, result).await
     }
 
@@ -435,7 +469,8 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
-        let call = Call::new("profile_table", &peer, &args);
+        let call = Call::new("profile_table", &peer, &args)
+            .probing(Probe::table(&args.schema, &args.table));
         let result = self
             .agent
             .profile_table_until(&args, cancelled.cancelled_owned())
@@ -478,7 +513,8 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
-        let call = Call::new("run_query", &peer, &args);
+        let call = Call::new("run_query", &peer, &args)
+            .probing(Probe::statement(&args.connection, &args.sql));
         let result = self
             .agent
             // `notifications/cancelled` for this request cancels the statement.
@@ -506,7 +542,7 @@ impl PlatypusServer {
         Parameters(args): Parameters<PageArgs>,
         peer: Peer<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let call = Call::new("next_page", &peer, &args);
+        let call = Call::new("next_page", &peer, &args).probing(Probe::Page);
         let result = self.agent.next_page(&args, &self.session);
         self.answer(call, result).await
     }
@@ -528,7 +564,11 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
-        let call = Call::new("query_across_databases", &peer, &args);
+        let call = Call::new("query_across_databases", &peer, &args).probing(Probe::sources(
+            args.sources
+                .iter()
+                .map(|s| (s.schema.as_str(), s.table.as_str())),
+        ));
         let result = self
             .agent
             .query_across_until(&args, cancelled.cancelled_owned())
@@ -548,7 +588,8 @@ impl PlatypusServer {
         peer: Peer<RoleServer>,
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
-        let call = Call::new("sample_rows", &peer, &args);
+        let call =
+            Call::new("sample_rows", &peer, &args).probing(Probe::table(&args.schema, &args.table));
         let format = args.format.unwrap_or_default();
         let result = self
             .agent

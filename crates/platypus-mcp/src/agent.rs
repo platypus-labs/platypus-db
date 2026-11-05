@@ -14,8 +14,8 @@ use platypus_core::{
 use platypus_docs::DocSchema;
 use platypus_sql::Dialect;
 use platypus_store::{
-    AgentAccess, AgentCallStore, ConnectionStore, HistoryStatus, HistoryStore, MAX_PENDING_ALL,
-    MAX_PENDING_PROPOSALS, NewAgentCall, NewHistoryEntry, SavedConnection,
+    AgentAccess, AgentCallStore, AgentLimits, ConnectionStore, HistoryStatus, HistoryStore,
+    MAX_PENDING_ALL, MAX_PENDING_PROPOSALS, NewAgentCall, NewHistoryEntry, SavedConnection,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -28,7 +28,7 @@ use crate::er;
 use crate::error::{AgentError, Result};
 use crate::estimate;
 use crate::guard::{self, Asked, CallWindows};
-use crate::link::{AppLink, CLOSED, Verdict, WriteRequest};
+use crate::link::{AppLink, CLOSED, DiagramAnswer, DiagramRequest, Verdict, WriteRequest};
 use crate::output::QueryResult;
 use crate::plan::PlanResult;
 use crate::policy::{AgentPolicy, Seal};
@@ -804,6 +804,64 @@ impl Agent {
         tables: &[String],
         depth: Option<u64>,
     ) -> Result<String> {
+        let (doc, total, rules) = self.er_model(connection, schema, tables, depth).await?;
+        Ok(er::render(
+            &doc,
+            total,
+            er::byte_limit(Limits::DEFAULT_BYTES, &rules),
+        ))
+    }
+
+    /// The same diagram as SVG, drawn by the open app from the model read here (the app opens
+    /// no connection and asks the user nothing). An image is not cut: one over the byte limit
+    /// is refused. The app closed, or not answering, is an error that names `mermaid`.
+    pub async fn er_diagram_svg(
+        &self,
+        connection: &str,
+        schema: &str,
+        tables: &[String],
+        depth: Option<u64>,
+    ) -> Result<String> {
+        let needs_app = |why: &str| {
+            AgentError::Store(format!(
+                "the SVG diagram is drawn by PlatypusDB and needs it open ({why}): open the app, \
+                 or pass `format: \"mermaid\"`, which works without it"
+            ))
+        };
+        // Before the catalog: a closed app need not wait for a large schema to be read.
+        let Some(link) = self.link().filter(|link| link.reachable()) else {
+            return Err(needs_app(CLOSED));
+        };
+        let (doc, total, rules) = self.er_model(connection, schema, tables, depth).await?;
+        let request = DiagramRequest {
+            id: Uuid::new_v4().to_string(),
+            schema: schema.to_owned(),
+            tables: er::diagram_tables(&doc),
+        };
+        match link.diagram(request).await {
+            Ok(DiagramAnswer::Svg { svg }) => er::svg_answer(
+                &svg,
+                doc.objects.len(),
+                total,
+                er::byte_limit(er::SVG_BYTES, &rules),
+            ),
+            Ok(DiagramAnswer::Failed { message }) => Err(AgentError::Store(format!(
+                "PlatypusDB could not draw the SVG diagram ({message}): pass \
+                 `format: \"mermaid\"`, which does not need it"
+            ))),
+            Err(e) => Err(needs_app(&e)),
+        }
+    }
+
+    /// The tables of the diagram of `schema`, how many the request names or the schema has, and
+    /// the connection's limits.
+    async fn er_model(
+        &self,
+        connection: &str,
+        schema: &str,
+        tables: &[String],
+        depth: Option<u64>,
+    ) -> Result<(DocSchema, usize, AgentLimits)> {
         let (store, saved) = self.find(connection)?;
         if matches!(
             saved.driver,
@@ -831,7 +889,7 @@ impl Agent {
             } else {
                 format!("`{connection}` has no table `{schema}.{name}`")
             })),
-            ErRead::Found { doc, total } => Ok(er::render(&doc, total, Limits::DEFAULT_BYTES)),
+            ErRead::Found { doc, total } => Ok((doc, total, saved.agent_limits)),
         }
     }
 
