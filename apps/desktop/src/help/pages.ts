@@ -66,7 +66,8 @@ export type LinkTarget =
 
 const SCHEME = /^([a-z][a-z0-9+.-]*):/i;
 
-const decode = (text: string) => {
+/** `text` percent-decoded; as it is when it is not valid. */
+export const decode = (text: string) => {
   try {
     return decodeURIComponent(text);
   } catch {

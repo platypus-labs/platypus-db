@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { slugger } from "../apps/desktop/src/help/pages.ts";
+import { decode, slugger } from "../apps/desktop/src/help/pages.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -36,7 +36,7 @@ function headingText(raw) {
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/<[^>]+>/g, "")
-    .replace(/[`*_~]/g, (c) => (c === "_" ? c : ""))
+    .replace(/[`*~]/g, "")
     .trim();
 }
 
@@ -86,14 +86,6 @@ function htmlLinks(text) {
   for (const m of text.matchAll(/\s(?:href|src)\s*=\s*["']([^"']*)["']/gi)) out.push({ line: text.slice(0, m.index).split("\n").length, target: m[1] });
   return out;
 }
-
-const decode = (s) => {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-};
 
 const problems = [];
 const report = (file, line, target, why) => problems.push(`${file}:${line}: ${target} (${why})`);
