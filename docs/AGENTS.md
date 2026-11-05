@@ -107,13 +107,47 @@ connect): until then they are left out, and the server's log (stderr) says so.
 Tools: `list_connections`, `list_schemas`, `list_objects`, `describe_table`, `get_ddl`,
 `get_er_diagram`, `compare_schemas`, `search_objects`, `run_query`, `sample_rows`,
 `profile_table`, `explain`, `propose_sql`, `list_open_sessions`, `list_scripts`, `read_script`,
-`search_history`, `estimate_change`, `server_activity` and `top_queries`. `run_query` runs one statement and returns 100 rows,
+`search_history`, `estimate_change`, `server_activity`, `top_queries`, `next_page` and
+`query_across_databases`. `run_query` runs one statement and returns 100 rows,
 32 KB and 30 s at most by default (`max_rows` up to 10,000, `max_bytes` up to 1 MB,
 `timeout_seconds` up to 300), as an aligned text table or JSON, saying when rows or values
 longer than 1,000 characters were left out. In the text table SQL `NULL` reads `NULL` and a
 text `NULL` reads `'NULL'`. `list_objects` returns 500 objects at most (`limit` up to 2,000);
 a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offset`). The
 client's `notifications/cancelled` cancels the running statement.
+
+A result that `max_rows` or `max_bytes` cut returns a `cursor` (the `cursor` field in JSON, a
+`More rows` line in text). `next_page` (`cursor`, optional `max_rows`, `max_bytes`, `format`)
+reads the next rows of the same result instead of running the statement again. The first read
+keeps the rows after its page, up to 10,000 more rows or 8 MB, inside the statement's usual
+read-only transaction, which ends as always: the cursor serves its pages from memory and holds
+nothing on the connection, so its pages do not change if the data does. When that cap ended the
+result, the answers say so (narrow the query to read on). A page goes through the same masking
+(the sensitive columns are decided once, with the first page), the connection's `max_rows` and
+`max_bytes`, and counts as a call for `calls_per_minute`. A cursor belongs to the MCP session and
+the connection it came from; an unknown, expired (5 minutes after its last use), closed (with its
+session; a session keeps 8 and all together 64 MB, the oldest go first), guessed or another
+session's cursor is refused, and so is one whose connection agents may no longer use. A result
+cut by a timeout or an error has no cursor.
+
+`query_across_databases` (`sources`, `sql`, optional `source_rows`, `max_rows`, `max_bytes`,
+`timeout_seconds`, `format`) runs one DuckDB statement over tables of several connections, the join
+of the app's "Query across databases". Each source is `connection`, `schema`, `table` and an
+optional `name` (how the statement calls it; default the table's name): up to 8, each from a
+connection open to agents (access off reads as an unknown connection), read within that
+connection's own limits (`source_rows` up to 100,000 rows, 32 MB, its timeout, its calls per
+minute and cost guard) and copied into an in-memory DuckDB that exists for the call. The
+statement is checked as a read-only statement (no `INSERT`, `COPY`, `ATTACH`, `INSTALL`, no
+`read_csv` or any function or `FROM 'file'` that reads files or URLs), and the DuckDB session has
+external access off and its settings locked, so it cannot write to a source, the disk or the
+network. A source with more rows than were copied is said so in the answer: a join may then miss
+rows. Rows of sensitive columns are masked as they are copied into DuckDB (`••••••`, NULL left
+NULL) unless that connection shows them, because after a join their origin is lost. A
+consequence: all values of a masked column are equal, so a join on a masked column matches every
+row with every other, and a filter on one tells nothing; join on a column that is not sensitive.
+The result keeps to the strictest limits of the sources. If the DuckDB library is not installed
+the answer says the app downloads it (on first use of a DuckDB connection, or in Settings >
+Drivers); agents cannot.
 
 `get_er_diagram` (`connection`, `schema`, optional `tables` and `depth`) returns a Mermaid
 `erDiagram` as text, built from the catalog, so it works with the app closed: the tables of the

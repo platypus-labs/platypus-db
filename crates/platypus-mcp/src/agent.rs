@@ -365,6 +365,8 @@ pub struct Agent {
     seal: Seal,
     /// The calls of the last minute on each connection, for `calls_per_minute`.
     pub(crate) windows: CallWindows,
+    /// The cursors of cut results (see `cursor.rs`).
+    pub(crate) cursors: crate::cursor::Cursors,
 }
 
 /// Whether the database refused `message`'s statement for writing in a read-only
@@ -428,6 +430,7 @@ impl Agent {
             session: Uuid::new_v4().to_string(),
             seal,
             windows: CallWindows::default(),
+            cursors: crate::cursor::Cursors::default(),
         }
     }
 
@@ -844,7 +847,19 @@ impl Agent {
     pub async fn run_query_until(
         &self,
         args: &QueryArgs,
+        who: (&str, &str),
+        stop: impl Future<Output = ()>,
+    ) -> Result<QueryResult> {
+        self.run_query_with(args, who, false, stop).await
+    }
+
+    /// [`run_query_until`](Self::run_query_until); with `keep_rest` a cut result also holds
+    /// the rows after its page, for a cursor (see `cursor.rs`).
+    pub(crate) async fn run_query_with(
+        &self,
+        args: &QueryArgs,
         (origin, session): (&str, &str),
+        keep_rest: bool,
         stop: impl Future<Output = ()>,
     ) -> Result<QueryResult> {
         let asked = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
@@ -854,7 +869,8 @@ impl Agent {
             max_bytes: args.max_bytes,
             timeout_seconds: args.timeout_seconds,
         };
-        let (limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
+        let (mut limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
+        limits.keep_rest = keep_rest;
         let access = saved.effective_agent_access();
         let unfiltered = self.unfiltered_rule(&store);
         let started_at = SystemTime::now();
@@ -917,6 +933,7 @@ impl Agent {
                 elapsed: start.elapsed(),
                 limits,
                 notes,
+                cursor: None,
             })
             .map_err(|e| self.mask_statement_error(&saved, e));
         self.record(
@@ -1628,6 +1645,7 @@ mod tests {
     #[tokio::test]
     async fn duckdb_files_are_free_between_calls() {
         platypus_driver_duckdb::testing::load();
+        let _serial = crate::across::DUCKDB_TESTS.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("data.duckdb");
         duckdb::Connection::open(&path)

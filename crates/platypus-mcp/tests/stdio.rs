@@ -1,6 +1,7 @@
 //! Drives the `platypus-mcp` binary over stdio as an MCP client would, against a profile
 //! with SQLite databases.
 
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
@@ -20,8 +21,13 @@ struct Client {
 
 impl Client {
     fn start(dir: &Path) -> Self {
+        Self::start_with(dir, &[])
+    }
+
+    fn start_with(dir: &Path, env: &[(&str, &str)]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_platypus-mcp"))
             .env("PLATYPUS_DATA_DIR", dir)
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -241,6 +247,8 @@ fn lists_tools_and_connections_without_secrets(client: &mut Client) {
         "profile_table",
         "search_objects",
         "run_query",
+        "next_page",
+        "query_across_databases",
         "sample_rows",
         "explain",
         "estimate_change",
@@ -2414,4 +2422,243 @@ fn a_profile_reads_no_more_rows_than_the_connection_gives_agents() {
     );
     assert_eq!(doc["rows_profiled"], 1, "{doc}");
     assert_eq!(doc["sample_complete"], false, "{doc}");
+}
+
+/// A profile with `Big`, a table of `rows` rows (`id`, `tag`, `email`), and `extra` in its
+/// connection.
+fn big_profile(dir: &Path, rows: u32, extra: &str) {
+    let inserts = (1..=rows).fold(String::new(), |mut sql, i| {
+        let _ = write!(
+            sql,
+            "INSERT INTO big VALUES ({i}, 'tag{i}', 'user{i}@example.com');"
+        );
+        sql
+    });
+    sqlite(
+        &dir.join("big.db"),
+        &format!("CREATE TABLE big (id INTEGER PRIMARY KEY, tag TEXT, email TEXT); {inserts}"),
+    );
+    std::fs::write(
+        dir.join("connections.toml"),
+        format!(
+            "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-0000000000b1\"\n\
+             name = \"Big\"\ndriver = \"sqlite\"\ndatabase = '{}'\n{extra}",
+            dir.join("big.db").display()
+        ),
+    )
+    .unwrap();
+}
+
+/// The ids of a JSON page.
+fn ids(doc: &Value) -> Vec<i64> {
+    doc["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r[0].as_i64().unwrap())
+        .collect()
+}
+
+#[test]
+fn a_cut_result_is_read_in_pages_with_a_cursor() {
+    let dir = tempfile::tempdir().unwrap();
+    big_profile(dir.path(), 250, "");
+    let mut client = initialized(dir.path());
+    let first = json_of(
+        &mut client,
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id, tag, email FROM big ORDER BY id",
+                 "max_rows": 100, "format": "json" }),
+    );
+    assert_eq!(first["truncated_by"], "max_rows", "{first}");
+    let mut cursor = first["cursor"].as_str().unwrap().to_owned();
+    assert!(cursor.starts_with("cur_") && cursor.len() > 30, "{cursor}");
+    let mut seen = ids(&first);
+    assert_eq!(seen.len(), 100);
+    // Rows 101..=250 come from the same result, in order, each page with the cursor
+    // until the last one.
+    let mut pages = 0;
+    loop {
+        let page = json_of(
+            &mut client,
+            "next_page",
+            &json!({ "cursor": cursor, "max_rows": 100, "format": "json" }),
+        );
+        pages += 1;
+        seen.extend(ids(&page));
+        // The column is masked on every page, as decided with the first.
+        assert_eq!(page["masked_columns"], json!(["email"]), "{page}");
+        assert!(!page.to_string().contains("@example.com"), "{page}");
+        assert_eq!(page["rows"][0][2], "••••••", "{page}");
+        match page["cursor"].as_str() {
+            Some(next) => next.clone_into(&mut cursor),
+            None => break,
+        }
+    }
+    assert_eq!(pages, 2);
+    assert_eq!(seen, (1..=250).collect::<Vec<i64>>());
+    // The result is over: its cursor is gone.
+    let (gone, error) = client.call("next_page", &json!({ "cursor": cursor }));
+    assert!(error && gone.contains("no such cursor"), "{gone}");
+
+    // The text answer names the cursor, and a page honours max_bytes without losing rows.
+    let (text, error) = client.call(
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id, tag FROM big ORDER BY id", "max_rows": 5 }),
+    );
+    assert!(
+        !error && text.contains("More rows: call next_page with cursor \"cur_"),
+        "{text}"
+    );
+    let mut cursor = Some(text.split('"').nth(1).unwrap().to_owned());
+    let mut seen = Vec::new();
+    while let Some(c) = cursor {
+        let page = json_of(
+            &mut client,
+            "next_page",
+            &json!({ "cursor": c, "max_rows": 1000, "max_bytes": 700, "format": "json" }),
+        );
+        assert!(page.to_string().len() <= 700, "{page}");
+        assert!(!ids(&page).is_empty(), "{page}");
+        seen.extend(ids(&page));
+        cursor = page["cursor"].as_str().map(str::to_owned);
+    }
+    assert_eq!(seen, (6..=250).collect::<Vec<i64>>());
+}
+
+#[test]
+fn a_result_that_fits_has_no_cursor_and_a_foreign_one_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    big_profile(dir.path(), 30, "");
+    let mut client = initialized(dir.path());
+    let whole = json_of(
+        &mut client,
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id FROM big", "format": "json" }),
+    );
+    assert!(whole.get("cursor").is_none(), "{whole}");
+    let cut = json_of(
+        &mut client,
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id FROM big", "max_rows": 10, "format": "json" }),
+    );
+    let cursor = cut["cursor"].as_str().unwrap();
+
+    // Another run of the server is another session: it does not know the cursor.
+    let mut other = initialized(dir.path());
+    let (foreign, error) = other.call("next_page", &json!({ "cursor": cursor }));
+    assert!(error && foreign.contains("no such cursor"), "{foreign}");
+    // Nor a guessed one, whatever its shape.
+    for guess in ["cur_00000000000000000000000000000000", "1", "", "cur_"] {
+        let (text, error) = client.call("next_page", &json!({ "cursor": guess }));
+        assert!(error && text.contains("no such cursor"), "{guess}: {text}");
+    }
+    // The owner still reads it.
+    let page = json_of(
+        &mut client,
+        "next_page",
+        &json!({ "cursor": cursor, "format": "json" }),
+    );
+    assert_eq!(ids(&page), (11..=30).collect::<Vec<i64>>());
+}
+
+#[test]
+fn a_cursor_expires_after_a_few_minutes() {
+    let dir = tempfile::tempdir().unwrap();
+    big_profile(dir.path(), 50, "");
+    let mut client = Client::start_with(dir.path(), &[("PLATYPUS_MCP_CURSOR_KEEP_MS", "400")]);
+    client.request(
+        "initialize",
+        &json!({ "protocolVersion": "2025-06-18", "capabilities": {},
+                 "clientInfo": { "name": "test-agent", "version": "1.0" } }),
+    );
+    client.send(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
+    let cut = json_of(
+        &mut client,
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id FROM big", "max_rows": 10, "format": "json" }),
+    );
+    let cursor = cut["cursor"].as_str().unwrap();
+    std::thread::sleep(Duration::from_millis(900));
+    let (late, error) = client.call("next_page", &json!({ "cursor": cursor }));
+    assert!(error && late.contains("no such cursor"), "{late}");
+}
+
+#[test]
+fn pages_follow_the_limits_of_their_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    big_profile(
+        dir.path(),
+        40,
+        "
+[connections.agent_limits]
+max_rows = 7
+calls_per_minute = 4
+",
+    );
+    let mut client = initialized(dir.path());
+    // Call 1 (of 4): the first page is lowered to the connection's 7 rows.
+    let first = json_of(
+        &mut client,
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id FROM big ORDER BY id", "max_rows": 20, "format": "json" }),
+    );
+    assert_eq!(ids(&first), (1..=7).collect::<Vec<i64>>(), "{first}");
+    let cursor = first["cursor"].as_str().unwrap();
+    // Call 2: a page asking for more than the connection gives is lowered, with a note.
+    let second = json_of(
+        &mut client,
+        "next_page",
+        &json!({ "cursor": cursor, "max_rows": 50, "format": "json" }),
+    );
+    assert_eq!(ids(&second), (8..=14).collect::<Vec<i64>>(), "{second}");
+    assert!(
+        second["notes"]
+            .to_string()
+            .contains("max_rows was lowered to 7"),
+        "{second}"
+    );
+    // Calls 3 and 4 pass, the 5th is over the rate: pages count.
+    for _ in 0..2 {
+        json_of(
+            &mut client,
+            "next_page",
+            &json!({ "cursor": cursor, "format": "json" }),
+        );
+    }
+    let (limited, error) = client.call("next_page", &json!({ "cursor": cursor }));
+    assert!(error && limited.contains("4 calls a minute"), "{limited}");
+}
+
+#[test]
+fn cross_database_queries_check_their_sources_before_anything_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    big_profile(dir.path(), 3, "");
+    let mut client = initialized(dir.path());
+    let tools = client.request("tools/list", &json!({}));
+    let names: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"next_page") && names.contains(&"query_across_databases"));
+    let source = |connection: &str, table: &str| json!({ "connection": connection, "schema": "main", "table": table });
+    for (args, message) in [
+        (
+            json!({ "sources": [], "sql": "SELECT 1" }),
+            "from 1 to 8 sources",
+        ),
+        (
+            json!({ "sources": [source("Nowhere", "big")], "sql": "SELECT 1" }),
+            "no connection named `Nowhere`",
+        ),
+        (
+            json!({ "sources": [source("Big", "big"), source("Big", "big")], "sql": "SELECT 1" }),
+            "two sources are called `big`",
+        ),
+    ] {
+        let (text, error) = client.call("query_across_databases", &args);
+        assert!(error && text.contains(message), "{args}: {text}");
+    }
 }

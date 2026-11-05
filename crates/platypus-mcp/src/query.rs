@@ -24,6 +24,8 @@ pub struct Limits {
     /// Bytes of the rendered result.
     pub max_bytes: usize,
     pub timeout: Duration,
+    /// Read on past the page for a cursor ([`Table::rest`]) instead of dropping the stream.
+    pub keep_rest: bool,
 }
 
 impl Limits {
@@ -57,6 +59,7 @@ impl Limits {
             max_rows: capped(max_rows, Self::DEFAULT_ROWS, Self::MAX_ROWS, "max_rows")?,
             max_bytes: capped(max_bytes, Self::DEFAULT_BYTES, Self::MAX_BYTES, "max_bytes")?,
             timeout,
+            keep_rest: false,
         })
     }
 }
@@ -67,6 +70,7 @@ impl Default for Limits {
             max_rows: Self::DEFAULT_ROWS,
             max_bytes: Self::DEFAULT_BYTES,
             timeout: Self::DEFAULT_TIMEOUT,
+            keep_rest: false,
         }
     }
 }
@@ -118,7 +122,22 @@ pub struct Table {
     pub values_cut: bool,
     /// The columns whose values read masked, being sensitive.
     pub masked: Vec<String>,
+    /// With [`Limits::keep_rest`] and a cut: the rows after the page, read for a cursor.
+    pub rest: Option<Rest>,
 }
+
+/// Rows read past a cut result's page.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Rest {
+    pub rows: Vec<Vec<Cell>>,
+    /// The result ended in `rows`; else the buffer's cap did, and the result has more.
+    pub complete: bool,
+}
+
+/// The most rows read past a page for a cursor.
+pub const REST_ROWS: usize = 10_000;
+/// The most bytes (the values' text) read past a page for a cursor.
+pub const REST_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
@@ -283,27 +302,43 @@ async fn read(mut stream: RecordBatchStream, limits: &Limits) -> Result<Table, E
         cut: None,
         values_cut: false,
         masked: Vec::new(),
+        rest: None,
     };
     // Every rendering takes at least the values' bytes: once they pass the limit, no more
     // rows can fit.
-    let mut bytes = 0usize;
+    let (mut bytes, mut rest_bytes) = (0usize, 0usize);
     let options = FormatOptions::default();
-    'batches: while let Some(batch) = stream.next().await {
+    while let Some(batch) = stream.next().await {
         let batch = batch?;
         let reader = BatchReader::new(&batch, &options)?;
         for row in 0..batch.num_rows() {
-            if table.rows.len() == limits.max_rows {
+            if table.cut.is_none() && table.rows.len() == limits.max_rows {
                 table.cut = Some(Cut::MaxRows);
-                break 'batches;
+            }
+            if table.cut.is_some() && !limits.keep_rest {
+                return Ok(table);
             }
             let cells = reader.row(row, &mut table.values_cut);
-            bytes += cells.iter().map(|c| c.text().len() + 1).sum::<usize>();
-            if bytes > limits.max_bytes {
+            let size = cells.iter().map(|c| c.text().len() + 1).sum::<usize>();
+            if table.cut.is_none() {
+                bytes += size;
+                if bytes <= limits.max_bytes {
+                    table.rows.push(cells);
+                    continue;
+                }
                 table.cut = Some(Cut::MaxBytes);
-                break 'batches;
             }
-            table.rows.push(cells);
+            // Past the page: kept for a cursor, up to the buffer's cap.
+            let rest = table.rest.get_or_insert_with(Rest::default);
+            if rest.rows.len() >= REST_ROWS || rest_bytes + size > REST_BYTES {
+                return Ok(table);
+            }
+            rest_bytes += size;
+            rest.rows.push(cells);
         }
+    }
+    if let Some(rest) = &mut table.rest {
+        rest.complete = true;
     }
     Ok(table)
 }

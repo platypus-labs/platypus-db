@@ -5,13 +5,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::agent::{MAX_OBJECT_PAGE, locked};
+use crate::cursor::SessionCursors;
 use crate::link::CLOSED;
 use crate::resource::{self, Target};
+use crate::{AcrossArgs, EstimateArgs, ServerViewArgs};
 use crate::{
     Agent, AgentError, CompareArgs, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs,
-    ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
+    PageArgs, ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
 };
-use crate::{EstimateArgs, ServerViewArgs};
 use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -30,7 +31,7 @@ use tokio_util::sync::CancellationToken;
 const INSTRUCTIONS: &str = "PlatypusDB gives access to the database connections the user saved \
 in the PlatypusDB app. Start with list_connections, then explore with list_schemas, \
 list_objects, describe_table, get_ddl, get_er_diagram, compare_schemas and search_objects, look at a table's first rows with \
-sample_rows, profile its columns with profile_table (sensitive columns give counts only), query with run_query and read a statement's plan with explain, and ask estimate_change what a change would show the \
+sample_rows, profile its columns with profile_table (sensitive columns give counts only), query with run_query (next_page reads the rest of a cut result; query_across_databases joins tables of several connections) and read a statement's plan with explain, and ask estimate_change what a change would show the \
 user before it runs (nothing runs); server_activity and top_queries read what the server does: one statement per \
 call, with a row limit, a byte limit and a timeout. To hand the user SQL to review and run by \
 hand (a change the access does not allow, a long script), use propose_sql. Each connection has an \
@@ -121,6 +122,8 @@ pub struct PlatypusServer {
     session: String,
     /// When the open app was last told this server is connected.
     greeted: Arc<Mutex<Option<Instant>>>,
+    /// Closes the cursors of this session when its last clone goes.
+    _cursors: Arc<SessionCursors>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -183,9 +186,11 @@ impl Call {
 #[tool_router]
 impl PlatypusServer {
     pub fn new(agent: Arc<Agent>) -> Self {
+        let session = uuid::Uuid::new_v4().to_string();
         Self {
+            _cursors: Arc::new(SessionCursors::new(Arc::clone(&agent), session.clone())),
             agent,
-            session: uuid::Uuid::new_v4().to_string(),
+            session,
             greeted: Arc::default(),
             tool_router: Self::tool_router(),
         }
@@ -456,7 +461,7 @@ impl PlatypusServer {
         timeout_seconds raise them up to 10000 rows, 1048576 bytes and 300 s. On read_only \
         connections only statements that change nothing run, in a read-only transaction; on \
         read_write connections changes commit at once, and UPDATE or DELETE without WHERE is \
-        refused unless the user's safety settings allow it. Use the database's own SQL dialect."
+        refused unless the user's safety settings allow it. Use the database's own SQL dialect. A result cut by max_rows or max_bytes returns a `cursor` (the `cursor` field in JSON) for next_page to read the rest."
     )]
     async fn run_query(
         &self,
@@ -465,17 +470,60 @@ impl PlatypusServer {
         cancelled: CancellationToken,
     ) -> Result<CallToolResult, ErrorData> {
         let call = Call::new("run_query", &peer, &args);
-        let format = args.format.unwrap_or_default();
         let result = self
             .agent
             // `notifications/cancelled` for this request cancels the statement.
-            .run_query_until(
+            .run_query_page(
                 &args,
                 (&call.agent, &self.session),
                 cancelled.cancelled_owned(),
             )
-            .await
-            .map(|r| r.render(format));
+            .await;
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Reads the next rows of a result that run_query cut at max_rows or \
+        max_bytes, from the cursor it returned, instead of running the statement again: the \
+        pages come from the rows read with the first one (up to 10000 more rows or 8 MB; \
+        the answer says when the result has more than that), so they do not change if the \
+        data does. Same format, max_rows (default 100) and max_bytes as run_query, with the \
+        connection's limits and calls per minute; sensitive columns stay masked as in the first \
+        page. A cursor is kept 5 minutes after its last use and belongs to this session; an \
+        unknown, expired or another session's cursor is refused."
+    )]
+    async fn next_page(
+        &self,
+        Parameters(args): Parameters<PageArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("next_page", &peer, &args);
+        let result = self.agent.next_page(&args, &self.session);
+        self.answer(call, result).await
+    }
+
+    #[tool(
+        description = "Runs one read-only DuckDB statement over tables of several connections: \
+        each source (connection, schema, table, optional name) is copied, up to source_rows rows \
+        (default 10000, up to 100000) and within that connection's limits, into a DuckDB of \
+        this call, where the statement joins them by name. Every connection must be open to \
+        agents; the statement runs only on the copies, cannot write to a source and reads no \
+        file nor URL. Values of sensitive columns are masked before they are copied (unless the \
+        user shows them for that connection): all values of such a column are equal, so do not \
+        join on one. A source copied in part is said so. Use DuckDB's SQL. Same result format \
+        and limits as run_query."
+    )]
+    async fn query_across_databases(
+        &self,
+        Parameters(args): Parameters<AcrossArgs>,
+        peer: Peer<RoleServer>,
+        cancelled: CancellationToken,
+    ) -> Result<CallToolResult, ErrorData> {
+        let call = Call::new("query_across_databases", &peer, &args);
+        let result = self
+            .agent
+            .query_across_until(&args, cancelled.cancelled_owned())
+            .await;
         self.answer(call, result).await
     }
 

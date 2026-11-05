@@ -37,8 +37,14 @@ Clients that read MCP resources can also read `platypus://<connection>`,
 - `run_query` runs **one** statement in the connection's own SQL dialect. It returns 100 rows,
   32 KB and waits 30 s by default; raise `max_rows`, `max_bytes` or `timeout_seconds` only
   when the user needs more, and prefer `COUNT(*)`, `GROUP BY` and `LIMIT` to reading many rows.
+- A result cut by `max_rows` or `max_bytes` returns a `cursor`: `next_page` reads the next rows of the
+  same result instead of running the query again (the result is buffered on the first read, not
+  re-run, so the pages do not change if the data does).
 - The answer says when rows or long values were left out: tell the user, do not present a
   partial result as complete.
+- `query_across_databases` joins tables of several connections (each `sources` entry is a
+  connection, schema and table) in a read-only DuckDB statement over copies of up to `source_rows`
+  rows each; sensitive columns are masked before the copy, so never join on one.
 - `explain` shows a statement's plan without running it; `analyze=true` runs it and rolls
   back what it changes. Use it before suggesting an index or rewriting a slow query.
 
