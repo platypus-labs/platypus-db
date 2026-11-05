@@ -127,9 +127,9 @@ export default async function (page) {
   const text = await page.eval(`${reader}.textContent`);
   assert.ok(!text.includes("<") && text.includes("Text with tags inside."), text);
 
-  // The index lists the pages in reading order, with the folder's pages under Databases.
+  // The index lists the pages in reading order (the guide's own, not alphabetical), with the folder's pages under Databases.
   const index = await page.eval(`[...${dialog}.querySelectorAll('.guide-index button')].map(b => b.dataset.page)`);
-  assert.deepEqual(index, ["README", "connect", "agents", "safety", "databases/README", "databases/postgres"]);
+  assert.deepEqual(index, ["README", "connect", "safety", "agents", "databases/README", "databases/postgres"]);
   assert.equal(await page.eval(`${dialog}.querySelector('.guide-index [aria-current=page]').dataset.page`), "README");
 
   // A refused address is plain text; the others are links.
@@ -168,7 +168,7 @@ export default async function (page) {
   await page.eval(`${link("A page that is not there")}.click()`);
   await page.waitFor(`${reader}.querySelector('.guide-missing') !== null`);
   assert.match(await page.eval(`${reader}.textContent`), /docs\/guide\/nothing\.md/);
-  assert.notEqual(await page.eval(`${dialog}`), null);
+  assert.ok(await page.eval(`${dialog} !== null`));
   await page.eval(`${dialog}.querySelector('.guide-index button[data-page=README]').click()`);
   await page.waitFor(`${reader}.querySelector('h1') !== null`);
   await page.eval(`${link("Outside the guide")}.click()`);
@@ -238,7 +238,7 @@ export default async function (page) {
   const onTop = await page.eval(`(() => { const r = ${dialog}.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2).closest('.guide-dialog') !== null; })()`);
   assert.ok(onTop, "the guide is above the form");
   await closeGuide(page);
-  assert.notEqual(await page.eval(`document.querySelector('.connection-dialog')`), null, "the form stays open");
+  assert.ok(await page.eval(`document.querySelector(".connection-dialog") !== null`), "the form stays open");
   await page.eval(`document.querySelector('.connection-dialog').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   await page.waitFor(`document.querySelector('.connection-dialog') === null`);
 
@@ -252,7 +252,7 @@ export default async function (page) {
     await page.waitFor(`${dialog} !== null`);
     assert.equal(await page.eval(pageOf), wanted);
     await closeGuide(page);
-    assert.notEqual(await page.eval(`document.querySelector('.modal.settings')`), null, "Settings stay open");
+    assert.ok(await page.eval(`document.querySelector(".modal.settings") !== null`), "Settings stay open");
   }
   await page.settingsTab("Appearance");
   assert.equal(await page.eval(`document.querySelector('.settings-head .help-link')`), null);
@@ -264,6 +264,6 @@ export default async function (page) {
   await helpMenu(page, "User guide");
   await page.waitFor(`${dialog} !== null`);
   assert.ok((await page.eval(`${dialog}.textContent`)).includes("The guide is not included in this build."));
-  assert.notEqual(await page.eval(`${reader}.querySelector('.guide-missing')`), null);
+  assert.ok(await page.eval(`${reader}.querySelector(".guide-missing") !== null`));
   await closeGuide(page);
 }
