@@ -1,7 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
 import { runAction, shortcutLabel, titleWithKeys, useActions } from "../actions";
-import type { Project, SavedConnection } from "../api";
+import { type Project, type SavedConnection, toCommandError } from "../api";
+import { ContextMenu, type MenuState } from "../components/ContextMenu";
 // The app's own icon, as the taskbar shows it.
 import mark from "../assets/brand/platypus-icon.png";
 import { CONNECTION_TYPES } from "../connections";
@@ -87,6 +88,7 @@ export function TopBar({ project, connection }: Props) {
       <AgentsButton />
       <ActivityButton />
       <ThemeButton />
+      <HelpButton />
       <button type="button" className="icon" title={titleWithKeys(t("Settings"), "app.settings")} aria-label={t("Settings")} onClick={() => workbench().openSettings()}>
         <Icon name="settings" />
       </button>
@@ -188,6 +190,33 @@ function ActivityButton() {
       <Icon name="activity" />
       {unseen > 0 ? <span className="badge">{unseen > 99 ? "99+" : unseen}</span> : running > 0 && <span className="busy" aria-hidden="true" />}
     </button>
+  );
+}
+
+/** The "?" with the Help menu: the guide, the keyboard shortcuts, what is new and where to report a bug. */
+function HelpButton() {
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="icon help-button"
+        title={t("Help")}
+        aria-label={t("Help")}
+        aria-haspopup="menu"
+        aria-expanded={menu !== null}
+        // The menu closes on any press; this one must not reopen it at the click that follows.
+        onMouseDown={(e) => menu && e.stopPropagation()}
+        onClick={(e) => {
+          if (menu) return setMenu(null);
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenu({ x: r.left, y: r.bottom + 4, target: { scope: "help", arg: undefined } });
+        }}
+      >
+        ?
+      </button>
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} onError={(e) => workbench().showError(toCommandError(e).message)} />}
+    </>
   );
 }
 

@@ -9,6 +9,7 @@ import { Icon, type IconName, type IconSet } from "../ui/Icon";
 import { toHex } from "../ui/colorHex";
 import { fold, startsWord } from "../ui/textSearch";
 import { DriversPanel } from "../drivers/DriversPanel";
+import { HelpLink } from "../help/HelpLink";
 import { DiagnosticsPanel } from "../diagnostics/Diagnostics";
 import { PluginsPanel } from "../plugins/PluginsPanel";
 import { MasterPasswordPanel } from "./MasterPassword";
@@ -152,8 +153,12 @@ function moveRadio(e: KeyboardEvent<HTMLElement>, values: string[], select: (val
   e.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-value="${CSS.escape(value)}"]`)?.focus();
 }
 
+/** The guide page (a key of help/pages.ts) that explains each Settings page that has one. */
+const GUIDE_PAGE: Record<string, string> = { Agents: "agents", Safety: "safety" };
+
 function PageHeader({ page }: { page: string }) {
   const head = PAGE_HEAD[page];
+  const guidePage = GUIDE_PAGE[page];
   return (
     <div className="settings-head">
       <span className="settings-head-icon">
@@ -163,6 +168,7 @@ function PageHeader({ page }: { page: string }) {
         <h3>{t(page)}</h3>
         {head && <p>{t(head.about)}</p>}
       </div>
+      {guidePage && <HelpLink page={guidePage} />}
     </div>
   );
 }

@@ -33,6 +33,9 @@ import "./transfer/actions";
 import "./schema/actions";
 import "./querylog/actions";
 import "./plugins/actions";
+import "./help/actions";
+import { externalLinks } from "./help/external";
+import { replaceGuide } from "./help/bundled";
 import { setAnswer } from "./testAnswers";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
@@ -213,6 +216,7 @@ export function App() {
       setPackageManager(i.package_manager);
       // The end-to-end tests drive what has no button yet through these.
       if (i.devtools) {
+        externalLinks.capture = true;
         (window as unknown as { __platypus: object }).__platypus = {
           switchProject: (id: string | null) => shell.current.switchProject(id),
           // What a file dropped on the window does; CDP cannot drop files.
@@ -221,6 +225,9 @@ export function App() {
           openShared: (item: string) => openSharedItem(item),
           // The folder picker and the clipboard.
           answer: setAnswer,
+          // The help pages: the guide shown in place of the bundled one, and the addresses its links would open.
+          setGuide: replaceGuide,
+          openedLinks: externalLinks,
         };
       }
     }, console.error);

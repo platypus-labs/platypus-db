@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { actionsFor, runAction, shortcutLabel } from "../actions";
+import { type Action, actionsFor, runAction, shortcutLabel } from "../actions";
 import { api, type CompletionCatalog, type HistoryEntry, isEmbedded, type SavedConnection, type ScriptList, toCommandError } from "../api";
 import { connectionFor, nameOf, openScript } from "../scripts/scripts";
 import { projectKey } from "../projects/state";
@@ -95,7 +95,7 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
 
   const items = useMemo((): Item[] => {
     const byId = new Map(connections.map((c) => [c.id, c]));
-    const actions = actionsFor("global", undefined).filter((a) => !a.hidden && a.id !== "app.palette");
+    const actions = ([...actionsFor("global", undefined), ...actionsFor("help", undefined)] as Action[]).filter((a) => !a.hidden && a.id !== "app.palette");
     return [
       ...actions.map((a) => {
         const reason = a.disabled?.(undefined);
@@ -103,7 +103,8 @@ export function CommandPalette({ connections, catalogs, onClose }: Props) {
           key: `action:${a.id}`,
           kind: t("Action"),
           kindId: "Action",
-          label: t(a.title),
+          // The Help menu's commands read "Help: User guide", so typing "help" finds them.
+          label: a.scope === "help" ? `${t("Help")}: ${t(a.title)}` : t(a.title),
           detail: reason ? t(reason) : undefined,
           shortcut: shortcutLabel(a),
           disabled: !!reason,

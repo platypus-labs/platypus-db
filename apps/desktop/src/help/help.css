@@ -1,0 +1,221 @@
+/* The guide and the changelog dialogs, and the small "?" that opens the guide page about a form. */
+
+/* The "?" in a dialog's head: a quiet round button on the right. */
+.help-link {
+  flex: none;
+  margin-left: auto;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.help-link:hover {
+  color: var(--fg-strong);
+  background: var(--hover);
+}
+
+.connection-dialog .dialog-header .help-link + .steps {
+  margin-left: var(--space-8);
+}
+
+.help-button {
+  font-weight: 600;
+}
+
+.modal.guide-dialog {
+  width: min(1000px, calc(100vw - 32px));
+  height: min(760px, calc(100vh - 96px));
+  overflow: hidden;
+}
+
+.modal.guide-dialog.whats-new {
+  width: min(680px, calc(100vw - 32px));
+  height: auto;
+  max-height: calc(100vh - 96px);
+}
+
+.guide-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.guide-head h2 {
+  margin: 0 var(--space-8) 0 0;
+}
+
+.guide-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: var(--space-16);
+}
+
+.guide-index {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow: auto;
+  padding-right: var(--space-8);
+  border-right: 1px solid var(--border);
+}
+
+.guide-index button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius);
+}
+
+.guide-index button:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.guide-index button[aria-current="page"] {
+  background: var(--active);
+  color: var(--fg-strong);
+}
+
+.guide-index button.sub {
+  padding-left: var(--space-20);
+}
+
+.guide-language {
+  margin-top: auto;
+  padding-top: var(--space-12);
+}
+
+.guide-reader {
+  min-height: 0;
+  overflow: auto;
+  padding-right: var(--space-8);
+}
+
+.guide-missing {
+  color: var(--fg-muted);
+}
+
+.guide-text {
+  line-height: 1.6;
+}
+
+.guide-text h1,
+.guide-text h2,
+.guide-text h3,
+.guide-text h4 {
+  color: var(--fg-strong);
+  margin: var(--space-16) 0 var(--space-6);
+}
+
+.guide-text > :first-child {
+  margin-top: 0;
+}
+
+.guide-text h1 {
+  font-size: var(--text-2xl);
+}
+
+.guide-text h2 {
+  font-size: var(--text-xl);
+}
+
+.guide-text h3 {
+  font-size: var(--text-lg);
+}
+
+.guide-text p,
+.guide-text ul,
+.guide-text ol,
+.guide-text blockquote,
+.guide-text pre,
+.guide-text .guide-table {
+  margin: var(--space-8) 0;
+}
+
+.guide-text li > p {
+  margin: var(--space-2) 0;
+}
+
+.guide-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.guide-text code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  background: var(--hover);
+}
+
+.guide-text pre {
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--hover);
+  overflow: auto;
+}
+
+.guide-text pre code {
+  padding: 0;
+  background: none;
+}
+
+.guide-text blockquote {
+  padding-left: var(--space-12);
+  border-left: 3px solid var(--border-strong);
+  color: var(--fg-muted);
+}
+
+.guide-text hr {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.guide-text img {
+  display: block;
+  max-width: 100%;
+  margin: var(--space-8) 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.guide-no-image {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.guide-table {
+  overflow-x: auto;
+}
+
+.guide-table table {
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+
+.guide-table th,
+.guide-table td {
+  padding: var(--space-4) var(--space-10);
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.guide-table th {
+  background: var(--hover);
+  text-align: left;
+}

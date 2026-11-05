@@ -3263,6 +3263,18 @@ const fr: Record<string, string> = {
   "At least {n} characters.": "Au moins {n} caractères.",
   "Enter a number.": "Saisissez un nombre.",
   "This value is not valid.": "Cette valeur n’est pas valide.",
+  // Help
+  "User guide": "Guide de l'utilisateur",
+  "What's new": "Nouveautés",
+  "Report a bug…": "Signaler un bug…",
+  "The guide is not included in this build.": "Le guide n'est pas inclus dans cette version.",
+  "The guide is written in English.": "Le guide est rédigé en anglais.",
+  "This page is not part of the guide that comes with the app: {path}": "Cette page ne fait pas partie du guide fourni avec l'application : {path}",
+  "What's new in {version}": "Nouveautés de la version {version}",
+  "There are no notes for version {version} yet. These are the changes not released yet.": "Il n'y a pas encore de notes pour la version {version}. Voici les changements pas encore publiés.",
+  "The changelog has nothing about this version.": "Le journal des modifications ne dit rien sur cette version.",
+  "Open the guide page about this": "Ouvrir la page du guide à ce sujet",
+  "Help": "Aide",
 };
 
 export default fr;
