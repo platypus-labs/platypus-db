@@ -151,7 +151,7 @@ async function threeKinds(page, dir, mcp, shots) {
   await fileHolds(page, dir, [
     { id: 1, name: "Ada", city: "Berlin", age: 36 },
     { id: 2, name: "Bob", city: "Paris", age: 41 },
-    { id: 4, name: "Dee", city: "Oslo", age: 33 },
+    { id: 3, name: "Dee", city: "Oslo", age: 33 },
   ]);
   // The viewer reads the rows again, and the proposal is not applied a second time.
   await page.waitFor(`${editBar}.includes('to edit a cell')`, 15_000);
@@ -163,7 +163,7 @@ async function discardAndUndo(page, dir, mcp) {
   await propose(
     page,
     mcp,
-    { updates: [{ key: { id: 2 }, set: { city: "Madrid" } }], deletes: [{ id: 4 }] },
+    { updates: [{ key: { id: 2 }, set: { city: "Madrid" } }], deletes: [{ id: 3 }] },
     "Discard these",
   );
   await page.waitFor(`${editBar}.includes('2 rows changed (1 modified, 1 deleted)')`, 30_000);
@@ -182,7 +182,7 @@ async function discardAndUndo(page, dir, mcp) {
 }
 
 async function whatCannotBeApplied(page, dir, mcp) {
-  // Id 3 is gone since the first save; id 99 never was; 'abc' is no age.
+  // Id 7 never was, nor id 99; 'abc' is no age.
   await propose(
     page,
     mcp,
@@ -192,7 +192,7 @@ async function whatCannotBeApplied(page, dir, mcp) {
         { key: { id: 1 }, set: { age: "abc" } },
         { key: { id: 99 }, set: { city: "Nowhere" } },
       ],
-      deletes: [{ id: 3 }],
+      deletes: [{ id: 7 }],
     },
     "Partly stale",
   );
