@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { api, type CellInput, type ColumnInfo, isCassandra, isNoSql } from "../api";
+import { api, type CellInput, type ColumnInfo, isCassandra, isNoSql, keepsDataIn } from "../api";
 import { annotation, catalogEntry, catalogKey, useCatalogVersion } from "../catalog/catalog";
 import { CalcPanel } from "../panels/CalcPanel";
 import { CompareRows } from "../panels/CompareRows";
@@ -28,6 +28,7 @@ import "./features/columns";
 import "./features/copy";
 import "./features/filters";
 import { useReferences } from "./features/references";
+import { prepareCellFiles } from "./features/cellFiles";
 import { useGridSearch } from "./features/search";
 import { EmptyState } from "../ui/State";
 import { useSelectionStats } from "./features/stats";
@@ -64,6 +65,9 @@ export interface GridFeatures {
   compareRows(rows: [number, number]): void;
   /** Opens the conditional formatting rules, a new one on `column`. */
   openFormatting(column: string | null): void;
+  /** Runs before the grid's menu opens, so that its items are known when it appears (which
+   *  selected cells hold a file). */
+  prepareMenu(): Promise<void>;
 }
 
 declare module "./DataGrid" {
@@ -221,6 +225,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     toggleMap: () => setMapOpen(!mapOpen),
     compareRows: setCompared,
     openFormatting: formatting.open,
+    prepareMenu: () => prepareCellFiles(grid.current!, jobId, (col) => !!masked[col], !!source && keepsDataIn(source.connection)),
   };
 
   // The side panels' width, the same for all of them and kept for the next start.
@@ -239,6 +244,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
           column,
           isNull: grid.current?.value(focused.row, focused.col) === null,
           plainTextJson: source?.connection.text_json === "plain",
+          noExport: !!source && keepsDataIn(source.connection),
         }
       : null;
   const total = rowCount + editor.topRows;

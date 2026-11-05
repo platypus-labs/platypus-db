@@ -129,6 +129,28 @@ export interface Restrictions {
 }
 
 /** Whether the connection's data stays in it: no exports, dumps or copies elsewhere. */
+/** A file a cell holds. */
+export interface CellFile {
+  /** `PDF` */
+  name: string;
+  /** `pdf`, without the dot. */
+  ext: string;
+  mime: string;
+  /** Bytes of the file (decoded, for a text cell). */
+  size: number;
+  /** A text cell that holds the file coded: saving decodes it. */
+  coded: boolean;
+}
+
+/** What saving a run of files did. */
+export interface SavedFiles {
+  written: number;
+  /** Cells that held no file. */
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
 export const keepsDataIn = (c: SavedConnection) => !!c.restrictions?.no_export;
 
 /** Whether the app's editor and dialogs write no rows to the connection (SQL may). */
@@ -3011,8 +3033,20 @@ export const api = {
   /** A cell's raw bytes (UTF-8 text for non-binary columns); empty for NULL. */
   cellBytes: async (jobId: number, row: number, column: number) =>
     new Uint8Array(await invoke<ArrayBuffer>("cell_bytes", { jobId, row, column })),
-  saveCell: (jobId: number, row: number, column: number, path: string) =>
-    invoke<void>("save_cell", { jobId, row, column, path }),
+  /** Writes a cell to `path`; with `decode`, a text cell holding a file (a `data:` URL,
+   *  base64 or hex) is written as that file's bytes. */
+  saveCell: (jobId: number, row: number, column: number, path: string, decode = false) =>
+    invoke<void>("save_cell", { jobId, row, column, path, decode }),
+  /** The file a cell holds, told from its bytes (a text cell: from what it decodes to);
+   *  `null` for NULL and for anything else. */
+  cellFile: (jobId: number, row: number, column: number) => invoke<CellFile | null>("cell_file", { jobId, row, column }),
+  /** The file each cell of `column` holds in loaded rows `offset..offset + limit`. */
+  columnFiles: (jobId: number, column: number, offset: number, limit: number) =>
+    invoke<(CellFile | null)[]>("column_files", { jobId, column, offset, limit }),
+  /** Writes the files of `column` in rows `offset..offset + limit` into `folder`, named from
+   *  `nameColumn` (the row number without one); never replaces a file. */
+  saveCellFiles: (jobId: number, column: number, offset: number, limit: number, folder: string, nameColumn: number | null) =>
+    invoke<SavedFiles>("save_cell_files", { jobId, column, offset, limit, folder, nameColumn }),
   /** A file's size in bytes. */
   fileSize: (path: string) => invoke<number>("file_size", { path }),
   /** A file's contents for a data editor cell: hex for a binary column, else UTF-8 text

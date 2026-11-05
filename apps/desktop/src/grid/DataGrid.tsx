@@ -22,6 +22,8 @@ import "./actions";
 /** Row height, from the `--grid-row-h` variable (the density setting); see `readTheme`. */
 let ROW_H = 24;
 const HEADER_H = 40;
+/** The longest the grid's menu waits for its source to prepare its items. */
+const MENU_WAIT_MS = 400;
 const PAD = 8;
 const MIN_COL_W = 48;
 const MAX_INITIAL_COL_W = 360;
@@ -1018,6 +1020,14 @@ export function DataGrid({
     }
   }
 
+  /** Opens the menu once the source has prepared its items (a short wait at most), so that
+   *  none appears late or shifts under the mouse. */
+  async function openMenu(x: number, y: number) {
+    const prepare = source?.features?.prepareMenu();
+    if (prepare) await Promise.race([prepare.catch(() => undefined), new Promise((done) => setTimeout(done, MENU_WAIT_MS))]);
+    setMenu({ x, y, target: { scope: "grid", arg: context() } });
+  }
+
   function onContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     const h = hit(e);
@@ -1030,7 +1040,7 @@ export function DataGrid({
       const inside = sel && h.row >= sel.r0 && h.row <= sel.r1 && h.d >= sel.d0 && h.d <= sel.d1;
       if (!inside) setFocus({ row: h.row, col: h.col }, false);
     }
-    setMenu({ x: e.clientX, y: e.clientY, target: { scope: "grid", arg: context() } });
+    void openMenu(e.clientX, e.clientY);
   }
 
   const showError = (e: unknown) => workbench().showError(toCommandError(e).message);
@@ -1063,7 +1073,7 @@ export function DataGrid({
       // The grid's menu from the keyboard, as the navigator's rows have it, at the top left of the data.
       e.preventDefault();
       const box = scrollRef.current!.getBoundingClientRect();
-      setMenu({ x: box.left + 40, y: box.top + HEADER_H + ROW_H, target: { scope: "grid", arg: context() } });
+      void openMenu(box.left + 40, box.top + HEADER_H + ROW_H);
     } else {
       dispatchKey("grid", context(), e.nativeEvent, showError);
     }

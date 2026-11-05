@@ -286,6 +286,17 @@ to the package manager.
 - **Value panel** (`F7`): long text, JSON and XML formatted, hex and images from binary
   columns, save to file. JSON in a text column opens indented too, unless the connection's
   *Format JSON found in text columns* is off.
+- **Files in cells**: a cell is a file when its bytes say so (PDF, PNG, JPEG, GIF, WebP, BMP,
+  TIFF, SVG, ZIP, DOCX, XLSX, PPTX, ODT, ODS, GZIP, 7Z, RAR, TAR, MP3, WAV, OGG, MP4, MOV,
+  MKV, WebM, SQLite), in any column type. A binary cell shows `PDF · 2.3 MB` in place of hex
+  (copy, edit and export still use the bytes). A text cell counts too when it holds a `data:`
+  URL, base64 (also URL-safe or with line breaks) or hex (`\x…` as PostgreSQL prints a bytea,
+  `0x…` or plain) that decodes to a known file; ordinary text, hashes and ids never do. The
+  grid menu offers **Save PDF…** (named from the column), and on several cells of a column
+  **Save N files to a folder…**: one file each, named from the row's `id` column (the row
+  number without one), never overwriting (`-2`, `-3`…), with a count of failures at the end.
+  The value panel has a **Save PDF…** button. Nothing is offered for NULL, for a masked column
+  or on a connection that keeps its data in.
 - Columns hidden, pinned, moved and resized, with the layout kept per table.
 - **Conditional formatting** (grid menu): rules color a cell or the whole row when a column
   is equal to a value, contains it, falls in a range or is NULL, or spread a color scale over
