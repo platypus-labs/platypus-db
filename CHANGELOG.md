@@ -11,6 +11,10 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Grid**: a cell that holds a file offers to save it, in any type of column: binary, or text with a
   `data:` URL, base64 or hex. A binary cell shows the type and size (`PDF · 2.3 MB`), and a
   selection saves its files to a folder.
+- **Agents**: Settings › Agents › Activity has a summary per agent and per session (calls, tables
+  read, rows returned, changes allowed and refused, errors), folded above the call list, that
+  follows its filters and exports as Markdown or HTML next to the CSV. Calls from before this
+  version show –. It loads when opened.
 - **Help**: the top bar's "?" and the command palette open a user guide that comes with the app and
   reads offline, with a page per database, what is new in this version and a way to report a bug.
   The connection form, Settings › Agents and Settings › Safety link to their page. The guide is

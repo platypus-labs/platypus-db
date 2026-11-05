@@ -1956,6 +1956,26 @@ button.primary.danger:hover:not(:disabled) {
   cursor: pointer;
 }
 
+/* The summary is folded by default and scrolls inside: the call list stays within reach. */
+.agent-summary > summary {
+  cursor: pointer;
+}
+
+.agent-report-scroll {
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.agent-report-agent th,
+.agent-report-agent td {
+  font-weight: 600;
+}
+
+.agent-report-session th {
+  padding-left: var(--space-16);
+  font-weight: 400;
+}
+
 .agent-calls .agent-call-failed {
   color: var(--error);
 }

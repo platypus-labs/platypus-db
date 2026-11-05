@@ -22,6 +22,9 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 - Passwords stay in the keychain and no answer shows a host, a user or a secret.
 - Agents' queries are in the history with the agent's name, and every tool call is in the
   agents' call log (Settings → Agents → Activity), by session, with a filter and a CSV export.
+  Above the list, a summary per agent and per session (calls, tables read, rows returned,
+  changes allowed and refused, errors) follows the same filters and exports as Markdown or HTML.
+  See [The agent report](#the-agent-report).
 - An agent can propose SQL with `propose_sql`: it opens in a new editor tab, for you to
   review and run. With `propose_edits` it proposes rows to insert, update or delete in a table: they
   open in the table's data viewer as pending edits, for you to save or discard.
@@ -291,6 +294,32 @@ The history and the agents' call log never keep a password a statement sets
 (`CREATE ROLE … PASSWORD '…'`, `IDENTIFIED BY '…'`, `SET PASSWORD`): it is stored as
 `'********'`, in the statement, in a call's arguments and in the error, whether the app or an
 agent ran it.
+
+## The agent report
+
+The call log (`agent-calls.db`, in the data folder) keeps, for each call recorded since the
+report exists, three figures besides what a row had: `rows_returned` (rows the call gave the
+agent), `tables_read` (a JSON array of table names) and `effect` (`none`, `allowed` or
+`refused`). Older rows have them `NULL` and the report shows `–` for them. No value is kept:
+names and counts only.
+
+- **Session**: the `session` column, one start of the MCP server. There is no gap rule: the log
+  records the session, so a long pause inside one is still one session.
+- **Changes**: `effect` is set from the statement of `run_query` (`access::changes`) and how the
+  call ended: `allowed` when it ran, `refused` when it ended in a refusal (read-only access, a
+  safety setting, the user's no in the app), `none` otherwise.
+- **Tables read**: the arguments of `sample_rows` and `profile_table`, and the sources of
+  `query_across_databases`; for `run_query`, the names after `FROM` and `JOIN` found with the
+  lexer of `platypus-sql` (`platypus-mcp/src/facts.rs`). `platypus-sql` has no parser that
+  lists tables, so this is an **estimate**: a table function, a derived table or a name the
+  statement builds is missed, and `main.t` and `t` count as two names. A call that failed or
+  was refused reads none.
+- **Rows returned**: the count the tool's own answer reports (the footer of the text table, or
+  `row_count`), so a cut result counts the rows shown.
+- **Cost**: the aggregation is three small queries in the store (`AgentCallStore::report`),
+  run only while the Activity page shows the summary. Writing a call costs the three extra
+  columns; there is no new index. Measured on 100,000 calls in a debug build: about 0.5 s
+  (the log keeps 20,000 calls, so about a tenth of that in use).
 
 Clients that read MCP resources find the schema there too: `resources/list` has one resource
 per connection agents may use (`platypus://<connection>`, its schemas), and two templates,

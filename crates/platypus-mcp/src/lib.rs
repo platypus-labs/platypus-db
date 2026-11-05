@@ -21,6 +21,7 @@ mod cursor;
 mod er;
 mod error;
 mod estimate;
+mod facts;
 mod guard;
 mod ident;
 mod library;

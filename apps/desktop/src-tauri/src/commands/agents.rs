@@ -10,8 +10,8 @@ use platypus_mcp::AgentBlocker;
 use platypus_mcp::profile::AGENT_CALLS_FILE;
 use platypus_sql::proposed::{self, Edits};
 use platypus_store::{
-    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentSession,
-    agent_calls_csv, toml,
+    AGENT_CALLS_LIMIT, AgentCall, AgentCallQuery, AgentCallStore, AgentProposal, AgentReport,
+    AgentSession, agent_calls_csv, toml,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -356,6 +356,16 @@ pub async fn agent_calls(
 #[tauri::command]
 pub async fn agent_sessions(app: AppHandle, limit: usize) -> CommandResult<Vec<AgentSession>> {
     with_agent_calls(app, move |s| s.sessions(limit.clamp(1, CALL_PAGE))).await
+}
+
+/// The summary of the calls matching `query`, per agent and per session. Only the Activity
+/// page asks for it, while it shows the summary.
+#[tauri::command]
+pub async fn agent_report(
+    app: AppHandle,
+    query: AgentCallQuery,
+) -> CommandResult<Vec<AgentReport>> {
+    with_agent_calls(app, move |s| s.report(&query)).await
 }
 
 /// Every call matching `query` (its limit ignored), as CSV.

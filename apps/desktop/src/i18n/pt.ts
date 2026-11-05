@@ -3275,6 +3275,21 @@ const pt: Record<string, string> = {
   "The changelog has nothing about this version.": "O registro de alterações não diz nada sobre esta versão.",
   "Open the guide page about this": "Abrir a página do guia sobre isto",
   "Help": "Ajuda",
+  "Summary per agent and session": "Resumo por agente e sessão",
+  "Each start of the MCP server is a session; the summary covers the calls the filters select.": "Cada início do servidor MCP é uma sessão; o resumo abrange as chamadas selecionadas pelos filtros.",
+  "Export Markdown": "Exportar Markdown",
+  "Export HTML": "Exportar HTML",
+  "No calls to summarize.": "Não há chamadas para resumir.",
+  "Agent report": "Relatório dos agentes",
+  "Made {when} · {n} calls": "Criado {when} · {n} chamadas",
+  "Period": "Período",
+  "Tables read": "Tabelas lidas",
+  "Rows returned": "Linhas devolvidas",
+  "Changes allowed": "Alterações permitidas",
+  "Changes refused": "Alterações recusadas",
+  "Errors": "Erros",
+  "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "As chamadas feitas antes de o registo guardar estes números mostram –; os números contam apenas as chamadas registadas com eles.",
+  "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "As tabelas lidas são uma estimativa nas instruções: as tabelas indicadas depois de FROM e JOIN.",
 };
 
 export default pt;

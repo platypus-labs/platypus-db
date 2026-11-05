@@ -801,6 +801,12 @@ through the MCP server.
   tighten the fixed caps (10,000 rows, 1 MB, 300 s); an agent that asks for more gets the
   connection's maximum and the result says so. Raising or removing one by editing the file waits
   for your yes, like the access itself. See [AGENTS.md](AGENTS.md).
+- **Agent report**: Settings › Agents › Activity has a folded **Summary per agent and session**
+  above the call list: one row per agent and per session (each start of the MCP server) with the
+  period, calls, tables read, rows returned, changes allowed, changes refused and errors. It
+  follows the list's filters, and **Export Markdown** / **Export HTML** save it beside **Export
+  CSV** (the HTML is one file, no script, nothing from outside). Calls made before this version
+  show –. Tables read for a statement are an estimate. See [AGENTS.md](AGENTS.md).
 - **Agent settings changed outside the app**: when `connections.toml` or `settings.toml` is
   edited to give agents more (agent access, changes run without asking, `UPDATE` or `DELETE`
   without `WHERE`), agents keep what you allowed and the app asks you, when it starts or gets

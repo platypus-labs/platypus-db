@@ -3275,6 +3275,21 @@ const zh: Record<string, string> = {
   "The changelog has nothing about this version.": "更新日志中没有关于此版本的内容。",
   "Open the guide page about this": "打开与此相关的指南页面",
   "Help": "帮助",
+  "Summary per agent and session": "按代理和会话汇总",
+  "Each start of the MCP server is a session; the summary covers the calls the filters select.": "每次启动 MCP 服务器就是一个会话；汇总涵盖筛选条件选中的调用。",
+  "Export Markdown": "导出 Markdown",
+  "Export HTML": "导出 HTML",
+  "No calls to summarize.": "没有可汇总的调用。",
+  "Agent report": "代理报告",
+  "Made {when} · {n} calls": "生成于 {when} · {n} 次调用",
+  "Period": "时段",
+  "Tables read": "读取的表",
+  "Rows returned": "返回的行",
+  "Changes allowed": "允许的更改",
+  "Changes refused": "拒绝的更改",
+  "Errors": "错误",
+  "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "日志记录这些数字之前发生的调用显示为 –；这些数字只统计带有它们的调用。",
+  "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "对语句而言，读取的表是估计值：即 FROM 和 JOIN 之后列出的表。",
 };
 
 export default zh;
