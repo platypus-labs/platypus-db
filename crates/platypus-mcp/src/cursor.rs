@@ -332,13 +332,13 @@ impl Agent {
             notes,
             cursor: None,
         };
-        let last = cap_note(true);
+        let last = (!held.complete).then(|| cap_note(true));
         let text = render_with_cursor(
             &mut result,
             &mut held.rows,
             &held.id,
             args.format.unwrap_or_default(),
-            (!held.complete).then_some(last.as_str()),
+            last.as_deref(),
         );
         if held.rows.is_empty() {
             return Ok(text);

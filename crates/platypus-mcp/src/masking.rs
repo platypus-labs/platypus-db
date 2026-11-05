@@ -206,6 +206,11 @@ const fn reads_sql(driver: DriverKind) -> bool {
     )
 }
 
+/// The dialect of the connection a shared tab belongs to; PostgreSQL's when it has none.
+fn dialect_of(saved: Option<&SavedConnection>) -> Dialect {
+    saved.map_or(Dialect::Postgres, |s| Dialect::from(s.driver))
+}
+
 /// The marks of `marks` on the table `sql` reads, when it reads one.
 fn marks_on_table(
     marks: Vec<SensitiveColumn>,
@@ -410,7 +415,7 @@ fn mask_shared(
     marks: Vec<SensitiveColumn>,
     saved: Option<&SavedConnection>,
 ) -> Vec<String> {
-    let dialect = saved.map_or(Dialect::Postgres, |s| Dialect::from(s.driver));
+    let dialect = dialect_of(saved);
     // The statements as the user wrote them: the result is read through them below.
     let statements: Vec<String> = [&context.selection, &context.editor]
         .into_iter()
@@ -489,11 +494,11 @@ fn statement_items(
     rules: &ResultRules,
 ) -> Vec<SelectOutput> {
     match statement {
-        Some(sql) if saved.is_none_or(|s| reads_sql(s.driver)) => select_outputs(
-            sql,
-            saved.map_or(Dialect::Postgres, |s| Dialect::from(s.driver)),
-            &|name| rules.name_is_sensitive(name),
-        ),
+        Some(sql) if saved.is_none_or(|s| reads_sql(s.driver)) => {
+            select_outputs(sql, dialect_of(saved), &|name| {
+                rules.name_is_sensitive(name)
+            })
+        }
         _ => Vec::new(),
     }
 }
@@ -511,7 +516,7 @@ fn cannot_follow(
     let Some(sql) = statement else {
         return false;
     };
-    let dialect = saved.map_or(Dialect::Postgres, |s| Dialect::from(s.driver));
+    let dialect = dialect_of(saved);
     if !saved.is_none_or(|s| reads_sql(s.driver))
         || !(items.is_empty() || has_subquery(sql, dialect))
     {
