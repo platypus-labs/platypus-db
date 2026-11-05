@@ -190,8 +190,8 @@ async function settingsPages(page, shot) {
   await page.settingsTab("Diagnostics");
   const field = `document.querySelector('.diagnostics-panel [data-field="log_dir"]')`;
   await page.waitFor(`${field} !== null`);
-  // The folder is under this computer's user name: the picture shows a typical one instead.
-  await page.eval(`${field}.textContent = '%APPDATA%\\\\PlatypusDB\\\\logs'`);
+  // The folder is under this computer's user name: the picture shows the installed app's instead.
+  await page.eval(`${field}.textContent = '%APPDATA%\\\\dev.platypusdb.desktop\\\\logs'`);
   assert.ok(await page.eval(`document.querySelector('[data-action="save-diagnostics"]') !== null`));
   const text = await page.eval(`document.querySelector('.modal.settings').textContent`);
   assert.ok(!/Users[\\/]/i.test(text), "no user folder on the page");
