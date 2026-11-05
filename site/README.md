@@ -39,7 +39,7 @@ already typed; the GIFs of the tour play anyway, since they are what the tour sh
 ## Update
 
 The text follows the README and [docs/FEATURES.md](../docs/FEATURES.md), the source of truth for features. When the screenshots or GIFs in
-`docs/screenshots/` change, copy them into `img/screenshots/` again.
+`docs/screenshots/` change, run `node scripts/copy-site-screenshots.mjs`: it copies the ones the pages show into `img/screenshots/`.
 
 ## Publish on GitHub Pages
 

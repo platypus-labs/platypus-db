@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { openGuide } from "./HelpDialogs";
+import { openGuide } from "./open";
 
 /** A small "?" that opens the guide on `page` (a key such as `connect`), at the heading `anchor`. */
 export function HelpLink({ page, anchor = null }: { page: string; anchor?: string | null }) {

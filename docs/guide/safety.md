@@ -4,6 +4,8 @@
 
 Everything here is also in [FEATURES.md](../FEATURES.md#transactions-and-safety).
 
+![Settings, the Safety page](../screenshots/guide/safety.png)
+
 ## Mark a connection as production
 
 1. Edit the connection, open the **Appearance and safety** page.

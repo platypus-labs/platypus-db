@@ -5,6 +5,8 @@
 Install PlatypusDB, open a connection and learn the few keys that do most of the work. Every
 feature, area by area, is in [FEATURES.md](../FEATURES.md).
 
+![The welcome screen](../screenshots/guide/welcome.png)
+
 ## Install
 
 Download the installer for your system from the

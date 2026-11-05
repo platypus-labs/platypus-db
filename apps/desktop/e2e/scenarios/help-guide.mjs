@@ -274,10 +274,13 @@ export default async function (page) {
   for (const key of real) {
     await page.eval(`${dialog}.querySelector('.guide-index button[data-page="${key}"]').click()`);
     await page.waitFor(`${pageOf} === ${JSON.stringify(key)} && ${reader}.querySelector('h1') !== null`);
+    assert.equal(await page.eval(`${reader}.querySelector('.guide-no-image')?.textContent ?? null`), null, `an image of ${key} is not carried`);
   }
+  // The second picture of the page is below the fold, and pictures load when they come near.
   await page.eval(`${dialog}.querySelector('.guide-index button[data-page="connect"]').click()`);
-  await page.waitFor(`${pageOf} === 'connect'`);
-  await page.waitFor(`${reader}.querySelectorAll('img').length > 0 && [...${reader}.querySelectorAll('img')].every(i => i.complete && i.naturalWidth > 0)`);
+  await page.waitFor(`${pageOf} === 'connect' && ${reader}.querySelectorAll('img').length === 2`);
+  await page.eval(`[...${reader}.querySelectorAll('img')].at(-1).scrollIntoView()`);
+  await page.waitFor(`[...${reader}.querySelectorAll('img')].every(i => i.complete && i.naturalWidth > 0)`);
   await page.eval(`${dialog}.querySelector('.guide-index button[data-page="README"]').click()`);
   await page.waitFor(`${pageOf} === 'README'`);
   await page.eval(`${link("FEATURES.md")}.click()`);

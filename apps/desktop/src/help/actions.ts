@@ -2,7 +2,7 @@ import { registerAction } from "../actions";
 import { setStored } from "../settings";
 import { workbench } from "../workbench";
 import { openExternal } from "./external";
-import { openGuide, openWhatsNew } from "./HelpDialogs";
+import { openGuide, openWhatsNew } from "./open";
 
 /** Where the project takes bug reports (the address the README and CONTRIBUTING give). */
 export const BUG_REPORTS_URL = "https://github.com/PaoloCisly/platypus-db/issues";

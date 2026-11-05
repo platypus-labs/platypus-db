@@ -75,6 +75,16 @@ test("every link of the guide leads to something the app carries", () => {
   }
 });
 
+test("the guide's text stays out of the app's main chunk", () => {
+  const src = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+  const heavy = /from "[^"]*(help\/|\.\/)(bundled|HelpDialogs|GuideMarkdown)"/;
+  const files = readdirSync(src, { recursive: true }).map(String).filter((f) => /\.tsx?$/.test(f));
+  const inHelpChunk = new Set(["bundled.ts", "HelpDialogs.tsx", "GuideMarkdown.tsx"].map((f) => join("help", f)));
+  for (const file of files) {
+    if (!inHelpChunk.has(file)) assert.ok(!heavy.test(readFileSync(join(src, file), "utf8")), `${file} imports the guide statically`);
+  }
+});
+
 test("the page of a path, and a page the guide does not have", () => {
   assert.equal(pageKeyOf("docs/guide/connect.md"), "connect");
   assert.equal(pageKeyOf("docs/guide/databases/"), "databases/README");

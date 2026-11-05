@@ -138,6 +138,8 @@ data folder, both named `dev.platypusdb.desktop`:
 A portable copy keeps everything in its `data` folder, and the environment variable
 `PLATYPUS_DATA_DIR` puts everything in the folder it names.
 
+![Settings, the Diagnostics page](../screenshots/guide/diagnostics.png)
+
 The log is `logs/platypus.log` in the data folder: one line per start, error and crash, rotated at
 1 MB with two older files (`platypus.1.log`, `platypus.2.log`). Settings › **Diagnostics** shows the
 folder (**Copy**) and **Save diagnostic package…**, a zip with the version, the system, the settings
