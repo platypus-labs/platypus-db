@@ -3206,38 +3206,31 @@ fn pages_follow_the_limits_of_their_connection() {
         40,
         "
 [connections.agent_limits]
-max_rows = 7
 calls_per_minute = 4
 ",
     );
     let mut client = initialized(dir.path());
-    // Call 1 (of 4): the first page is lowered to the connection's 7 rows.
+    // Call 1 (of 4).
     let first = json_of(
         &mut client,
         "run_query",
-        &json!({ "connection": "Big", "sql": "SELECT id FROM big ORDER BY id", "max_rows": 20, "format": "json" }),
+        &json!({ "connection": "Big", "sql": "SELECT id FROM big ORDER BY id", "max_rows": 7, "format": "json" }),
     );
     assert_eq!(ids(&first), (1..=7).collect::<Vec<i64>>(), "{first}");
     let cursor = first["cursor"].as_str().unwrap();
-    // Call 2: a page asking for more than the connection gives is lowered, with a note.
+    // Call 2.
     let second = json_of(
         &mut client,
         "next_page",
-        &json!({ "cursor": cursor, "max_rows": 50, "format": "json" }),
+        &json!({ "cursor": cursor, "max_rows": 7, "format": "json" }),
     );
     assert_eq!(ids(&second), (8..=14).collect::<Vec<i64>>(), "{second}");
-    assert!(
-        second["notes"]
-            .to_string()
-            .contains("max_rows was lowered to 7"),
-        "{second}"
-    );
     // Calls 3 and 4 pass, the 5th is over the rate: pages count.
     for _ in 0..2 {
         json_of(
             &mut client,
             "next_page",
-            &json!({ "cursor": cursor, "format": "json" }),
+            &json!({ "cursor": cursor, "max_rows": 7, "format": "json" }),
         );
     }
     let (limited, error) = client.call("next_page", &json!({ "cursor": cursor }));

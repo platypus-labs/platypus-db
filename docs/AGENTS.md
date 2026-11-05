@@ -118,7 +118,8 @@ a larger schema comes in pages (`truncated`, `total`, `next_offset`, then `offse
 client's `notifications/cancelled` cancels the running statement.
 
 A result that `max_rows` or `max_bytes` cut returns a `cursor` (the `cursor` field in JSON, a
-`More rows` line in text). `next_page` (`cursor`, optional `max_rows`, `max_bytes`, `format`)
+`More rows` line in text; a connection with its own `max_rows` limit gives none, since that
+limit bounds the result). `next_page` (`cursor`, optional `max_rows`, `max_bytes`, `format`)
 reads the next rows of the same result instead of running the statement again. The first read
 keeps the rows after its page, up to 10,000 more rows or 8 MB, inside the statement's usual
 read-only transaction, which ends as always: the cursor serves its pages from memory and holds
