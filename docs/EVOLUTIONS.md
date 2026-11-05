@@ -53,7 +53,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 | Group | Lock |
 |---|---|
-| A — Agents and MCP | ✅ done (P1, P2; P3 in part) |
+| A — Agents and MCP | ✅ completed |
 | B — Plugins and mods | free |
 | C — Kerberos and authentication | free |
 | D — User documentation | ✅ done (P2; P3 in part) |
@@ -61,7 +61,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 ### Group A — Agents and MCP
 
-**Status: P1 and P2 done, `get_er_diagram` as Mermaid included; in P3 the pages of results, MCP prompts, schema change notifications, `query_across_databases`, the SVG diagram of `get_er_diagram` and the agent report done; to do: remote MCP (to decide).**
+**Status: completed.** Remote MCP (the `/mcp` endpoint reachable from other machines, with TLS and OAuth 2.1) was dropped on 2026-11-05: it would expose saved connections on the network, and no concrete use asks for it.
 
 **What exists** (roadmap group N, [AGENTS.md](AGENTS.md)): the server (`platypus-db --mcp` on
 stdio, `/mcp` over HTTP through the bridge with the open app) with the tools `list_connections`,
@@ -97,7 +97,6 @@ configuration. The rows below add only what is not there.
 | ✅ **Schema change notifications**: `resources/subscribe` on the schema resources and `notifications/resources/list_changed` when the app sees a change (navigator refresh, schema timeline of group I), so a long agent session does not work on an old schema | P3 | U |
 | ✅ Tool `query_across_databases`: one read-only statement over tables of several connections through the DuckDB join of roadmap group M (`platypus-local`), each source checked against its own agent access | P3 | U |
 | ✅ **Agent report**: in Settings → Agents → Activity a summary per agent and session (tables read, rows returned, changes allowed and refused, errors), exported as Markdown or HTML next to today's CSV of single calls | P3 | U |
-| 🆕 **Remote MCP**: the `/mcp` endpoint reachable from other machines, off by default, with TLS and OAuth 2.1 as the MCP specification describes instead of the fixed token, and a consent per client in the app. **To decide** (it exposes saved connections on the network) | P3 | U |
 
 ---
 
