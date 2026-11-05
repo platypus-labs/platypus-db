@@ -124,10 +124,13 @@ A result that `max_rows` or `max_bytes` cut returns a `cursor` (the `cursor` fie
 `More rows` line in text; a connection with its own `max_rows` limit gives none, since that
 limit bounds the result). `next_page` (`cursor`, optional `max_rows`, `max_bytes`, `format`)
 reads the next rows of the same result instead of running the statement again. The first read
-keeps the rows after its page, up to 10,000 more rows or 8 MB, inside the statement's usual
-read-only transaction, which ends as always: the cursor serves its pages from memory and holds
-nothing on the connection, so its pages do not change if the data does. When that cap ended the
-result, the answers say so (narrow the query to read on). A page goes through the same masking
+keeps the rows after its page, up to 10,000 more rows, 4 MB, or 250 ms after the page is full
+(whichever comes first, so the first page never waits longer than that for rows it does not
+show), inside the statement's usual read-only transaction, which ends as always: the cursor
+serves its pages from memory and holds nothing on the connection, so its pages do not change if
+the data does. When one of those caps ended the result, the first page says the cursor keeps only
+part of it, and the last page says the rest was not kept (narrow the query to read on), never an
+empty page that looks like the end. A page goes through the same masking
 (the sensitive columns are decided once, with the first page), the connection's `max_rows` and
 `max_bytes`, and counts as a call for `calls_per_minute`. A cursor belongs to the MCP session and
 the connection it came from; an unknown, expired (5 minutes after its last use), closed (with its

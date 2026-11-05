@@ -2,10 +2,11 @@
 //! and `next_page` reads the next rows of the same result instead of running the statement
 //! again.
 //!
-//! The first read keeps the rows after the page, up to [`REST_ROWS`] rows and [`REST_BYTES`]
-//! bytes, inside the statement's read-only transaction, which ends as it always does; the
-//! cursor then serves its pages from memory and holds nothing on the connection. When the
-//! cap ended the result the answers say so. The columns to mask are decided once, with the
+//! The first read keeps the rows after the page, up to [`REST_ROWS`] rows, [`REST_BYTES`]
+//! bytes or [`REST_TIME`] after the page is full, whichever comes first, inside the
+//! statement's read-only transaction, which ends as it always does; the cursor then serves
+//! its pages from memory and holds nothing on the connection. When a cap ended the result the
+//! answers say so: the last page tells that the rest was not kept, never an empty page. The columns to mask are decided once, with the
 //! first page: later pages hold the rows as masked then.
 //!
 //! A cursor belongs to the session that made it and to its connection: another session's, a
@@ -26,7 +27,7 @@ use crate::agent::{Agent, QueryArgs, locked};
 use crate::error::{AgentError, Result};
 use crate::guard::{self, Asked};
 use crate::output::{Format, QueryResult};
-use crate::query::{Cell, Column, Cut, Outcome, REST_BYTES, REST_ROWS, Table};
+use crate::query::{Cell, Column, Cut, Outcome, REST_BYTES, REST_ROWS, REST_TIME, Table};
 
 /// How long a cursor is kept after its last use.
 pub const KEEP: Duration = Duration::from_mins(5);
@@ -182,34 +183,42 @@ fn new_id() -> String {
     format!("cur_{}", Uuid::new_v4().simple())
 }
 
-/// What a page says when the buffer's cap ended the result.
+/// What a page says when a cap of the read-ahead ended the result.
 fn cap_note(last: bool) -> String {
-    let rows = REST_ROWS;
+    let (rows, ms) = (REST_ROWS, REST_TIME.as_millis());
     let mb = REST_BYTES / (1024 * 1024);
     if last {
-        format!(
-            "That was the last row the cursor held: the result has more rows than a cursor \
-             keeps ({rows} rows or {mb} MB past the first page). Narrow the query (WHERE, \
-             ORDER BY with a key, LIMIT) to read on."
+        concat!(
+            "That was the last row the cursor kept, not the end of the result: the rest was ",
+            "not kept. Narrow the query (WHERE, ORDER BY with a key, LIMIT) to read on."
         )
+        .to_owned()
     } else {
         format!(
-            "The cursor holds the next rows only up to {rows} rows or {mb} MB past the first \
-             page: the result has more."
+            "The cursor keeps only the rows read ahead past this page (up to {rows} rows, \
+             {mb} MB or {ms} ms of reading): the result has more, which it does not keep."
         )
     }
 }
 
 /// Renders `result` with the cursor `id` while `later` has rows, putting back into `later`
-/// the rows the byte limit left out of the page. Returns the rendering.
+/// the rows the byte limit left out of the page. With `at_end`, that note goes with the page
+/// that takes the last row `later` had. Returns the rendering.
 fn render_with_cursor(
     result: &mut QueryResult,
     later: &mut VecDeque<Vec<Cell>>,
     id: &str,
     format: Format,
+    at_end: Option<&str>,
 ) -> String {
     loop {
         result.cursor = (!later.is_empty()).then(|| id.to_owned());
+        if let Some(note) = at_end {
+            result.notes.retain(|n| n != note);
+            if later.is_empty() {
+                result.notes.push(note.to_owned());
+            }
+        }
         let (text, shown) = result.render_counted(format);
         let Outcome::Rows(table) = &mut result.outcome else {
             return text;
@@ -260,7 +269,7 @@ impl Agent {
         }
         let id = new_id();
         let mut later: VecDeque<_> = rest.rows.into();
-        let text = render_with_cursor(&mut result, &mut later, &id, format);
+        let text = render_with_cursor(&mut result, &mut later, &id, format, None);
         if let Outcome::Rows(table) = result.outcome
             && !later.is_empty()
         {
@@ -323,18 +332,16 @@ impl Agent {
             notes,
             cursor: None,
         };
+        let last = cap_note(true);
         let text = render_with_cursor(
             &mut result,
             &mut held.rows,
             &held.id,
             args.format.unwrap_or_default(),
+            (!held.complete).then_some(last.as_str()),
         );
         if held.rows.is_empty() {
-            return Ok(if held.complete {
-                text
-            } else {
-                format!("{text}\n{}", cap_note(true))
-            });
+            return Ok(text);
         }
         self.cursors.store(held);
         Ok(text)
@@ -439,7 +446,7 @@ mod tests {
             cursor: None,
         };
         let mut later = VecDeque::new();
-        let text = render_with_cursor(&mut result, &mut later, "cur_x", Format::Text);
+        let text = render_with_cursor(&mut result, &mut later, "cur_x", Format::Text, None);
         assert!(text.len() <= 300, "{}: {text}", text.len());
         assert!(text.contains("cursor \"cur_x\""), "{text}");
         let Outcome::Rows(table) = &result.outcome else {

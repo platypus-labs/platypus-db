@@ -3247,6 +3247,46 @@ fn a_cut_result_is_read_in_pages_with_a_cursor() {
 }
 
 #[test]
+fn a_cursor_that_kept_only_part_says_the_rest_was_not_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    // More rows than a cursor keeps past the page, whichever of its caps ends the read.
+    big_profile(dir.path(), 10_300, "");
+    let mut client = initialized(dir.path());
+    let first = json_of(
+        &mut client,
+        "run_query",
+        &json!({ "connection": "Big", "sql": "SELECT id FROM big ORDER BY id",
+                 "max_rows": 100, "format": "json" }),
+    );
+    let said = |doc: &Value| doc["notes"].to_string();
+    assert!(said(&first).contains("does not keep"), "{first}");
+    let mut cursor = first["cursor"].as_str().unwrap().to_owned();
+    let mut seen = ids(&first).len();
+    let last = loop {
+        let page = json_of(
+            &mut client,
+            "next_page",
+            &json!({ "cursor": cursor, "max_rows": 3000, "format": "json" }),
+        );
+        // Never an empty page that looks like the end.
+        assert!(!ids(&page).is_empty(), "{page}");
+        seen += ids(&page).len();
+        match page["cursor"].as_str() {
+            Some(next) => {
+                assert!(!said(&page).contains("not kept"), "{page}");
+                next.clone_into(&mut cursor);
+            }
+            None => break page,
+        }
+    };
+    assert!(
+        said(&last).contains("not kept") && said(&last).contains("Narrow the query"),
+        "{last}"
+    );
+    assert!(seen < 10_300, "{seen}");
+}
+
+#[test]
 fn a_result_that_fits_has_no_cursor_and_a_foreign_one_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     big_profile(dir.path(), 30, "");
