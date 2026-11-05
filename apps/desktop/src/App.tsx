@@ -1157,7 +1157,10 @@ export function App() {
           capabilities={(sessionId) => capabilities.current.get(sessionId)}
           disconnect={disconnectNavigator}
           active={activeConnections}
-          onRefresh={(c, database) => requestCatalog(c, true, database)}
+          onRefresh={(c, database) => {
+            void api.noteSchemaChange(c.id);
+            requestCatalog(c, true, database);
+          }}
           onError={setToast}
         />
         <ScriptsPanel project={project} connections={projectConnections} onError={setToast} />
