@@ -32,7 +32,7 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
   const [trail, setTrail] = useState<Place[]>([{ page, anchor }]);
   const here = trail[trail.length - 1]!;
   const { pages, images } = guide();
-  const keys = sortedKeys(Object.keys(pages));
+  const keys = sortedKeys(Object.keys(pages).filter((key) => !key.endsWith(".md")));
   const reader = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (reader.current) scrollTo(reader.current, here.anchor);

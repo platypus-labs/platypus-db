@@ -5,7 +5,8 @@
 // page, and the "?" of the connection form, Settings > Agents and Settings > Safety open the
 // matching page. "What's new" shows the changelog section of the running version, and "Report a
 // bug" opens the project's issue page. The pages are the scenario's own (the test hook
-// `__platypus.setGuide`), so the scenario does not depend on the text of docs/guide.
+// `__platypus.setGuide`), so the links do not depend on the text of docs/guide; a last part walks
+// the guide that ships.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -258,6 +259,30 @@ export default async function (page) {
   assert.equal(await page.eval(`document.querySelector('.settings-head .help-link')`), null);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.modal.settings') === null`);
+
+  // The guide that really ships: every page of its index opens, its screenshots load, the
+  // reference stays out of the index, and a link to the reference opens it in the dialog.
+  await page.eval(`window.__platypus.setGuide(null)`);
+  await helpMenu(page, "User guide");
+  await page.waitFor(`${dialog} !== null`);
+  const real = await page.eval(`[...${dialog}.querySelectorAll('.guide-index button')].map(b => b.dataset.page)`);
+  for (const wanted of ["README", "getting-started", "connect", "safety", "agents", "databases/README", "databases/postgresql"]) {
+    assert.ok(real.includes(wanted), `${wanted} in the index: ${real}`);
+  }
+  assert.ok(!real.some((key) => key.endsWith(".md")), `the reference is not in the index: ${real}`);
+  for (const key of real) {
+    await page.eval(`${dialog}.querySelector('.guide-index button[data-page="${key}"]').click()`);
+    await page.waitFor(`${pageOf} === ${JSON.stringify(key)} && ${reader}.querySelector('h1') !== null`);
+  }
+  await page.eval(`${dialog}.querySelector('.guide-index button[data-page="getting-started"]').click()`);
+  await page.waitFor(`${pageOf} === 'getting-started'`);
+  await page.waitFor(`${reader}.querySelectorAll('img').length > 0 && [...${reader}.querySelectorAll('img')].every(i => i.complete && i.naturalWidth > 0)`);
+  await page.eval(`${dialog}.querySelector('.guide-index button[data-page="README"]').click()`);
+  await page.waitFor(`${pageOf} === 'README'`);
+  await page.eval(`${link("FEATURES.md")}.click()`);
+  await page.waitFor(`${pageOf} === 'docs/FEATURES.md' && ${reader}.querySelector('h1') !== null`);
+  assert.equal(await page.eval(`${reader}.querySelector('.guide-missing')`), null);
+  await closeGuide(page);
 
   // With no guide in the build (an empty one here), the dialog says so instead of failing.
   await page.eval(`window.__platypus.setGuide({})`);

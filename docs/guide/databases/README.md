@@ -1,4 +1,4 @@
-[← Docs](../../README.md)
+[← Guide](../README.md)
 
 # Databases
 
@@ -45,7 +45,7 @@ A dash is "not available"; "untested" means the app does not block it but nothin
 | Redis | 6379 | `MULTI`/`EXEC` only | yes | – | yes | – |
 | Elasticsearch, OpenSearch | 9200 | – | yes | – | yes | – |
 | Cassandra, ScyllaDB | 9042 | – | yes | – | yes, by full primary key | – |
-| Snowflake, BigQuery, Databricks, Trino | see the page | – | yes | – | untested | – |
+| Snowflake, BigQuery, Databricks, Trino | see the page | – | yes | – | – | – |
 | Db2, other ODBC | 50000 for Db2 | yes | yes | – | untested | – |
 
 "Admin" on CockroachDB and YugabyteDB is off because those servers lack parts of what the tabs call
@@ -110,6 +110,7 @@ Databricks and IBM Db2.
 page: how a read-only session is made (the server refuses writes on PostgreSQL, CockroachDB,
 YugabyteDB, MySQL, MariaDB, SQLite, DuckDB and ClickHouse; everywhere else the statement check
 alone), and what is refused (`explain` on MongoDB, Redis, Elasticsearch and Cassandra;
-`get_er_diagram` on MongoDB, Redis and Elasticsearch; `propose_edits` on MongoDB, Redis,
-Elasticsearch and Cassandra). `server_activity` and `top_queries` work on PostgreSQL, MySQL,
+`get_er_diagram` on MongoDB, Redis and Elasticsearch; `propose_edits` wherever the grid does not
+edit rows by key: MongoDB, Redis, Elasticsearch, Cassandra, ClickHouse and the ADBC databases).
+`server_activity` and `top_queries` work on PostgreSQL, MySQL,
 MariaDB and SQL Server.

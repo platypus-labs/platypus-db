@@ -2,6 +2,7 @@
 
 | Document | What it covers |
 |---|---|
+| [guide/](guide/README.md) | The user guide, by task: getting started, connecting, queries, editing data, import and export, safety, projects, agents, troubleshooting, and [a page per database](guide/databases/README.md). The app carries it, under Help |
 | [FEATURES.md](FEATURES.md) | Every feature, area by area, and the databases with their notes |
 | [AGENTS.md](AGENTS.md) | The MCP server for agents, its tools and limits, the bridge with the open app and the `platypus` CLI |
 | [PLUGINS.md](PLUGINS.md) | WebAssembly plugins: actions and drivers, the sandbox, permissions and how to write one |

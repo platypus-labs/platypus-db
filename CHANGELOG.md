@@ -11,6 +11,10 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Grid**: a cell that holds a file offers to save it, in any type of column: binary, or text with a
   `data:` URL, base64 or hex. A binary cell shows the type and size (`PDF · 2.3 MB`), and a
   selection saves its files to a folder.
+- **Help**: the top bar's "?" and the command palette open a user guide that comes with the app and
+  reads offline, with a page per database, what is new in this version and a way to report a bug.
+  The connection form, Settings › Agents and Settings › Safety link to their page. The guide is
+  also in the repository, in `docs/guide/`.
 
 ### Changed
 
@@ -34,6 +38,9 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Fixed
 
+- Snowflake, BigQuery, Databricks, Trino and other ADBC connections no longer offer to edit rows in
+  the grid: a save needs a transaction, which they do not have. Agents can no longer propose rows
+  to edit on them, or on ClickHouse.
 - IBM Db2 connections are imported from DBeaver and DataGrip, and `jdbc:db2:` URLs are read.
 - On Windows, saving connections or settings no longer fails with "Access denied" when another
   program holds the file for a moment, as antivirus scanners and backup tools do.

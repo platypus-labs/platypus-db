@@ -1,5 +1,3 @@
-[← Documentation](../README.md)
-
 # User guide
 
 Short pages, each a task to follow step by step. [FEATURES.md](../FEATURES.md) stays the

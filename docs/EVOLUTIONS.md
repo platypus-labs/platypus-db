@@ -143,7 +143,7 @@ holds the plan to get past it.
 
 ### Group D — User documentation
 
-**Status: to do.**
+**Status: P2 done, in P3 help in the app and the link check done; to do: the guide's screenshots, the split of `docs/`, the shorter READMEs, the site's pages from `docs/`, translations.**
 
 **What exists:** [README.md](../README.md) and [README.it.md](../README.it.md) (the same ten
 sections: why, install, databases, features, agents, performance, development, contributing,

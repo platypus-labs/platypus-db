@@ -2,7 +2,10 @@
 // missing, the Markdown the pages are written in, and the changelog section of a version
 // (src/help/pages.ts, src/help/markdown.ts).
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { parseInline, parseMarkdown, plainText } from "../src/help/markdown.ts";
 import {
   changelogSection,
@@ -52,6 +55,24 @@ test("a file outside the guide, or one that is not a page, is not a guide page",
   assert.equal(classifyLink("connect", "../../README.md").key, null);
   assert.equal(classifyLink("connect", "../../../../x.md").kind, "none");
   assert.equal(classifyLink("connect", "../screenshots/palette.png").kind, "none");
+});
+
+test("every link of the guide leads to something the app carries", () => {
+  const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const bundled = readFileSync(join(repo, "apps/desktop/src/help/bundled.ts"), "utf8");
+  const guide = join(repo, "docs/guide");
+  const files = readdirSync(guide, { recursive: true }).map((f) => String(f).replaceAll("\\", "/")).filter((f) => f.endsWith(".md"));
+  const keys = new Set(files.map((f) => f.slice(0, -3)));
+  for (const file of files) {
+    const text = readFileSync(join(guide, file), "utf8").replace(/```[\s\S]*?```/g, "");
+    for (const [, href] of text.matchAll(/(?<!!)\[[^\]]*\]\(([^)\s]+)\)/g)) {
+      const target = classifyLink(file.slice(0, -3), href);
+      assert.notEqual(target.kind, "none", `${file}: ${href}`);
+      if (target.kind !== "page") continue;
+      if (target.key) assert.ok(keys.has(target.key), `${file}: ${href}`);
+      else assert.ok(bundled.includes(`"../../../../${target.path}"`), `${file}: ${href} is not bundled`);
+    }
+  }
 });
 
 test("the page of a path, and a page the guide does not have", () => {
