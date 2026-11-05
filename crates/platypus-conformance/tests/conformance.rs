@@ -5872,6 +5872,98 @@ async fn agents_propose_edits_for_the_data_viewer() {
         }
     }
 }
+
+/// A cut result is read on with a cursor, and `query_across_databases` joins two tables of
+/// the server through DuckDB, with the sensitive column masked before the join.
+#[tokio::test]
+async fn agents_page_results_and_join_across_databases() {
+    use platypus_mcp::{AcrossArgs, AcrossSource, Agent, Format, PageArgs, Profile, QueryArgs};
+
+    platypus_driver_duckdb::testing::load();
+    let _serial = SERIAL.lock().await;
+    for b in backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        match b.config.driver {
+            DriverKind::Postgres if b.name != "cockroach" => {
+                save_agent_connection(dir.path(), &b, "postgres");
+            }
+            DriverKind::MySql => save_agent_connection(dir.path(), &b, "mysql"),
+            DriverKind::Sqlite => std::fs::write(
+                dir.path().join("connections.toml"),
+                format!(
+                    "version = 4\n\n[[connections]]\nid = \"00000000-0000-4000-8000-000000000001\"\n\
+                     name = \"Db\"\ndriver = \"sqlite\"\ndatabase = '{}'\n",
+                    b.config.database
+                ),
+            )
+            .unwrap(),
+            _ => continue,
+        }
+        let agent = Agent::new(Profile::at(dir.path()));
+        let json = |text: String| serde_json::from_str::<serde_json::Value>(&text).unwrap();
+
+        // The three orders in pages of two.
+        let query = QueryArgs {
+            connection: "Db".to_owned(),
+            sql: format!("SELECT id FROM {}.orders ORDER BY id", b.schema),
+            max_rows: Some(2),
+            max_bytes: None,
+            timeout_seconds: None,
+            format: Some(Format::Json),
+        };
+        let first = json(
+            agent
+                .run_query_page(&query, ("test", "s"), std::future::pending())
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name)),
+        );
+        assert_eq!(first["row_count"], 2, "{}: {first}", b.name);
+        let cursor = first["cursor"].as_str().unwrap().to_owned();
+        let page = PageArgs {
+            cursor: cursor.clone(),
+            max_rows: Some(2),
+            max_bytes: None,
+            format: Some(Format::Json),
+        };
+        let last = json(agent.next_page(&page, "s").unwrap());
+        assert_eq!(last["row_count"], 1, "{}: {last}", b.name);
+        assert!(last.get("cursor").is_none(), "{}: {last}", b.name);
+        assert!(agent.next_page(&page, "s").is_err(), "{}", b.name);
+
+        // The join the server could do itself, done in DuckDB over two copies.
+        let source = |table: &str, name: &str| AcrossSource {
+            connection: "Db".to_owned(),
+            schema: b.schema.clone(),
+            table: table.to_owned(),
+            name: Some(name.to_owned()),
+        };
+        let args = AcrossArgs {
+            sources: vec![source("customers", "c"), source("orders", "o")],
+            sql: "SELECT c.full_name, count(*) AS n, min(c.email) AS email FROM o \
+                  JOIN c ON c.id = o.customer_id GROUP BY c.full_name ORDER BY 1"
+                .to_owned(),
+            source_rows: None,
+            max_rows: None,
+            max_bytes: None,
+            timeout_seconds: None,
+            format: Some(Format::Json),
+        };
+        let joined = json(
+            agent
+                .query_across_until(&args, std::future::pending())
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", b.name)),
+        );
+        assert_eq!(
+            joined["rows"],
+            serde_json::json!([["Ada", 2, "••••••"], ["Bob", 1, "••••••"]]),
+            "{}: {joined}",
+            b.name
+        );
+        assert!(!joined.to_string().contains("example.com"), "{}", b.name);
+    }
+}
+
 /// Saves `b` as the connection `Db` for the agent tools that read the server, on the three
 /// servers with admin views; `None` for any other backend.
 fn save_server_connection(dir: &std::path::Path, b: &Backend) -> Option<&'static str> {

@@ -260,7 +260,7 @@ pub async fn config_of(
 /// What a session opened for agents runs first. DuckDB reads and writes local files and
 /// loads extensions from SQL (`read_text`, `glob`, `COPY`, `INSTALL`): agents get none of it
 /// but the data file the connection reads, and cannot turn it back on.
-fn agent_session_setup(config: &ConnectionConfig) -> Vec<String> {
+pub(crate) fn agent_session_setup(config: &ConnectionConfig) -> Vec<String> {
     if config.driver != DriverKind::DuckDb {
         return Vec::new();
     }
@@ -519,6 +519,7 @@ mod tests {
     #[tokio::test]
     async fn duckdb_sessions_of_agents_reach_no_files() {
         platypus_driver_duckdb::testing::load();
+        let _serial = crate::across::DUCKDB_TESTS.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let secret = dir.path().join("secret.txt");
         std::fs::write(&secret, "s3cret").unwrap();

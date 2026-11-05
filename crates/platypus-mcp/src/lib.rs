@@ -11,11 +11,13 @@
 //! in the keychain, and no tool or error shows a secret.
 
 pub mod access;
+mod across;
 mod agent;
 mod catalog_view;
 mod compare;
 mod connect;
 mod context;
+mod cursor;
 mod er;
 mod error;
 mod estimate;
@@ -43,6 +45,7 @@ pub use server::{HELLO_EVERY, PlatypusServer};
 pub mod stdio;
 
 pub use access::AgentAccess;
+pub use across::{AcrossArgs, AcrossSource};
 pub use agent::{
     Agent, ConnectionInfo, ExplainArgs, MAX_PROPOSAL_BYTES, ProposeArgs, QueryArgs, SAMPLE_ROWS,
     SEARCH_RESULTS, SampleArgs, origin_name,
@@ -52,6 +55,7 @@ pub use connect::{AgentBlocker, agent_blocker, connect};
 pub use context::{
     CONTEXT_RESULT_BYTES, CONTEXT_ROWS, CONTEXT_TEXT_BYTES, ContextArgs, SharedContext,
 };
+pub use cursor::PageArgs;
 pub use error::{AgentError, Result};
 pub use estimate::EstimateArgs;
 pub use library::{
