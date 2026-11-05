@@ -9102,7 +9102,12 @@ async fn agents_compare_and_profile() {
     use platypus_mcp::{Agent, CompareArgs, Profile};
 
     let _serial = SERIAL.lock().await;
-    for b in backends().await {
+    for mut b in backends().await {
+        if b.config.driver == DriverKind::MySql {
+            // Creating databases takes more than the test user may do.
+            "root".clone_into(&mut b.config.user);
+            b.config.password = Some(platypus_core::Secret::new("platypus"));
+        }
         let dir = tempfile::tempdir().unwrap();
         if !save_compare_connections(dir.path(), &b).await {
             continue;
