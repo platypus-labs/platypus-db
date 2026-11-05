@@ -807,8 +807,24 @@ mod tests {
         );
         // Another table's viewer: the rules alone.
         assert_eq!(
-            shown_in_context(None, Some(("main", "orders")), &["email", "nick"], marks),
+            shown_in_context(
+                None,
+                Some(("main", "orders")),
+                &["email", "nick"],
+                marks.clone()
+            ),
             [false, true]
+        );
+        // A query on another table typed in the viewer of an unmarked one: the viewer's table
+        // does not take the statement's place, so the other table's marks still count.
+        assert_eq!(
+            shown_in_context(
+                Some("SELECT nick, nick AS n FROM users"),
+                Some(("main", "orders")),
+                &["nick", "n"],
+                marks
+            ),
+            [false, false]
         );
     }
 
