@@ -274,8 +274,8 @@ export default async function (page) {
     await page.eval(`${dialog}.querySelector('.guide-index button[data-page="${key}"]').click()`);
     await page.waitFor(`${pageOf} === ${JSON.stringify(key)} && ${reader}.querySelector('h1') !== null`);
   }
-  await page.eval(`${dialog}.querySelector('.guide-index button[data-page="getting-started"]').click()`);
-  await page.waitFor(`${pageOf} === 'getting-started'`);
+  await page.eval(`${dialog}.querySelector('.guide-index button[data-page="connect"]').click()`);
+  await page.waitFor(`${pageOf} === 'connect'`);
   await page.waitFor(`${reader}.querySelectorAll('img').length > 0 && [...${reader}.querySelectorAll('img')].every(i => i.complete && i.naturalWidth > 0)`);
   await page.eval(`${dialog}.querySelector('.guide-index button[data-page="README"]').click()`);
   await page.waitFor(`${pageOf} === 'README'`);
