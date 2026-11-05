@@ -307,7 +307,9 @@ async function tampered(page, dir) {
   await opened(page, "Hostile value");
   await page.waitFor(`${editBar}.includes('1 row changed')`, 30_000);
   assert.deepEqual(await page.eval(`window.__signs`), [`Applying the changes proposed by ${hostile}…`]);
-  assert.equal(await page.eval(`${visibleTab}.querySelector('.edit-bar img, .edit-bar b') === null`), true);
+  // The bar's SQL line is a CodeMirror, whose empty `img.cm-widgetBuffer` is its own.
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.edit-bar img:not(.cm-widgetBuffer)')?.outerHTML ?? null`), null);
+  assert.equal(await page.eval(`[...${visibleTab}.querySelectorAll('.edit-bar b')].some(b => b.textContent === 'Eve')`), false);
   assert.equal(await page.eval(`window.__pwned === undefined`), true);
   await page.eval(`${button("Preview SQL")}.click()`);
   await page.waitFor(`document.querySelector('.sql-preview') !== null`);

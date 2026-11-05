@@ -293,12 +293,13 @@ mod tests {
         assert!(still_what_was_asked(&asked, std::slice::from_ref(&lifted)));
         // An agent lifted more while the question was open: this yes was not for that.
         let more = Loosening::SensitiveMarks {
+            id: uuid::Uuid::nil(),
+            name: "People".to_owned(),
             count: 2,
             columns: vec![
                 "main.people.email".to_owned(),
                 "main.people.name".to_owned(),
             ],
-            ..lifted.clone()
         };
         assert!(!still_what_was_asked(&asked, &[more]));
         assert!(!still_what_was_asked(&asked, &[lifted.clone(), lifted]));

@@ -193,7 +193,7 @@ export default async function (page, { dir }) {
     assert.deepEqual((await read(mcp)).rows[0], [MASKED, MASKED, MASKED, MASKED]);
     await focus(page);
     await page.waitFor(`${changesBox} !== null`, 15_000);
-    assert.match(await page.eval(`${changesBox}.textContent`), /seal/);
+    assert.ok((await pending(page)).some((c) => c.kind === "masking_lost"), "the question says the seal no longer matches");
     await dismissQuestion(page);
     await page.eval(`${changesBox}.querySelector('[data-agent-policy="accept"]').click()`);
     await page.waitFor(`${changesBox} === null`, 15_000);
