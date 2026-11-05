@@ -2975,6 +2975,8 @@ export const api = {
   /** Takes a snapshot of the schema's structure; nothing is stored if it is the same as the latest. */
   takeSchemaSnapshot: (sessionId: number, connectionId: string, database: string | null, schema: string, label: string | null) =>
     invoke<SnapshotTaken>("take_schema_snapshot", { sessionId, connectionId, database, schema, label }),
+  /** Tells the agents subscribed to the connection's schema that it was refreshed. Best effort. */
+  noteSchemaChange: (connectionId: string) => invoke<void>("note_schema_change", { connectionId }).catch(() => undefined),
   /** The snapshots of a schema, newest first. */
   listSchemaSnapshots: (connectionId: string, database: string | null, schema: string) =>
     invoke<SchemaSnapshot[]>("list_schema_snapshots", { connectionId, database, schema }),

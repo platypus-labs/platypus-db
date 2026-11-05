@@ -615,6 +615,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::schema::flyway_file_name,
         commands::schema::migration_status,
         commands::schema_history::take_schema_snapshot,
+        commands::schema_history::note_schema_change,
         commands::schema_history::list_schema_snapshots,
         commands::schema_history::delete_schema_snapshot,
         commands::schema_history::diff_schema_snapshots,

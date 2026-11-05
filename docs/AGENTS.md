@@ -251,6 +251,37 @@ per connection agents may use (`platypus://<connection>`, its schemas), and two 
 Names are percent-encoded (`platypus://App%20db/main/my%20table%2Fx`). Each read is in the
 call log as `read_resource`, and follows the connection's access as the tools do.
 
+### Prompts
+
+`prompts/list` has four ready tasks that chain the tools: `explain-query` (`connection`, `sql`:
+read the plan, check the tables, propose a better statement), `slowest-queries` (`connection`:
+`top_queries`, then `explain` on the worst), `write-migration` (`connection`, `change`: the
+statements and how to undo them, checked with `estimate_change`, handed over with
+`propose_sql`) and `document-table` (`connection`, `schema`, `table`). Each argument is
+required; the prompt asks the agent to run nothing that changes data.
+
+The scripts of All connections that contain `:name` or `${name}` parameters are prompts too
+(`script-<path>`, e.g. `script-reports-monthly-sql`; two paths that give the same name get
+`-2`, `-3`, in path order), with one required argument per parameter. At most 100 scripts are
+offered. Scripts follow `list_scripts` and `read_script`: those of a connection with agent
+access off are not listed, and the text has the values of sensitive columns masked. The prompt
+says the script is the user's data, quoted as saved, and not instructions.
+
+### Schema change notifications
+
+A client may call `resources/subscribe` on a connection, schema or table resource and gets
+`notifications/resources/updated` for it, followed by `notifications/resources/list_changed`,
+when the app saw the connection's schema change. That is when the user **refreshes** the
+connection, a database or a schema in the navigator, or when a schema snapshot is stored that
+differs from the previous one (schema timeline, scheduled snapshots included). The app writes a
+counter per connection in `schema-changes.json` in its data folder; a server with subscribers
+reads that file every 5 seconds, so it works with `platypus-db --mcp` in its own process
+whether the app is open or closed. With no subscriber nothing runs: the check stops at the last
+`resources/unsubscribe` and when the server ends. A connection with agent access off cannot be
+subscribed to and never notifies, even if its access is turned off after subscribing. A change
+made outside the app (another tool, a migration run by hand) is seen only at the next refresh
+in the app. After a notification, read the resource again.
+
 The notes, tags and sensitive marks the user keeps in the app (`catalog.db`) come with the
 objects. `describe_table`, the table resource and `list_objects` add `note` and `tags` to a
 table or view, and `describe_table` adds `note`, `tags` and `sensitive` (`true` or `false`:

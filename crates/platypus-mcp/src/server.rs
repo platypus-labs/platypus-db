@@ -6,7 +6,9 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::agent::{MAX_OBJECT_PAGE, locked};
 use crate::link::CLOSED;
+use crate::prompts::{self, PromptError};
 use crate::resource::{self, Target};
+use crate::watch::Subscriptions;
 use crate::{
     Agent, AgentError, CompareArgs, ContextArgs, ExplainArgs, HistoryArgs, ListScriptsArgs,
     ProfileArgs, ProposeArgs, QueryArgs, ReadScriptArgs, SampleArgs, origin_name,
@@ -16,9 +18,11 @@ use platypus_store::{HistoryStatus, NewAgentCall};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, ContentBlock, Implementation, ListResourceTemplatesResult, ListResourcesResult,
-    PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult,
-    Resource, ResourceContents, ResourceTemplate, ServerCapabilities, ServerConfig,
+    CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResponse, GetPromptResult,
+    Implementation, ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult,
+    PaginatedRequestParams, PromptMessage, ReadResourceRequestParams, ReadResourceResponse,
+    ReadResourceResult, Resource, ResourceContents, ResourceTemplate, Role, ServerCapabilities,
+    ServerConfig, SubscribeRequestParams, UnsubscribeRequestParams,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, tool, tool_handler, tool_router};
@@ -123,6 +127,8 @@ pub struct PlatypusServer {
     session: String,
     /// When the open app was last told this server is connected.
     greeted: Arc<Mutex<Option<Instant>>>,
+    /// The resources the client subscribed to; nothing runs while there are none.
+    subscriptions: Arc<Subscriptions>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -189,6 +195,7 @@ impl PlatypusServer {
             agent,
             session: uuid::Uuid::new_v4().to_string(),
             greeted: Arc::default(),
+            subscriptions: Arc::default(),
             tool_router: Self::tool_router(),
         }
     }
@@ -768,6 +775,9 @@ impl ServerHandler for PlatypusServer {
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
+                .enable_resources_subscribe()
+                .enable_resources_list_changed()
+                .enable_prompts()
                 .build(),
         )
         .with_server_info(Implementation::new("platypus-mcp", platypus_core::VERSION))
@@ -858,5 +868,74 @@ impl ServerHandler for PlatypusServer {
             ))),
             Err(e) => Err(ErrorData::invalid_params(e.to_string(), None)),
         }
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        let prompts = prompts::list(&self.agent)
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        Ok(ListPromptsResult::with_all_items(prompts))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, ErrorData> {
+        // Arguments are text; a value of another type is given as its JSON.
+        let values = request
+            .arguments
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| (k, v.as_str().map_or_else(|| v.to_string(), str::to_owned)))
+            .collect();
+        match prompts::get(&self.agent, &request.name, &values) {
+            Ok(text) => Ok(GetPromptResponse::Complete(GetPromptResult::new(vec![
+                PromptMessage::new_text(Role::User, text),
+            ]))),
+            Err(e @ PromptError::Failed(_)) => Err(ErrorData::internal_error(e.to_string(), None)),
+            Err(e) => Err(ErrorData::invalid_params(e.to_string(), None)),
+        }
+    }
+
+    async fn subscribe(
+        &self,
+        request: SubscribeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        let Some(
+            Target::Connection(connection)
+            | Target::Schema(connection, _)
+            | Target::Table(connection, _, _),
+        ) = resource::parse(&request.uri)
+        else {
+            return Err(ErrorData::invalid_params(
+                format!(
+                    "unknown resource `{}`: use {}",
+                    request.uri,
+                    resource::FORMS
+                ),
+                None,
+            ));
+        };
+        // A connection with access off is not one agents can use, so it cannot be watched.
+        self.agent
+            .find(&connection)
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+        self.subscriptions
+            .add(&request.uri, &self.agent, &context.peer);
+        Ok(())
+    }
+
+    async fn unsubscribe(
+        &self,
+        request: UnsubscribeRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        self.subscriptions.remove(&request.uri);
+        Ok(())
     }
 }

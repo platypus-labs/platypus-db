@@ -29,12 +29,14 @@ pub mod plan;
 pub mod policy;
 pub mod profile;
 mod propose_edits;
+mod prompts;
 pub mod query;
 mod redact;
 pub mod resource;
 mod server;
 mod server_views;
 mod table_profile;
+pub mod watch;
 #[cfg(feature = "http")]
 pub use server::http_service;
 pub use server::{HELLO_EVERY, PlatypusServer};

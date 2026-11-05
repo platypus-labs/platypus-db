@@ -25,7 +25,9 @@ hosts and users never reach you.
 5. `estimate_change` shows, without running anything, what the confirmation dialog would show the user for a change (rows expected, plan, the Safety checks that ask or refuse): use it to correct a statement before `run_query`. `server_activity` and `top_queries` show the server's sessions, running statements and locks, and its costliest statements (PostgreSQL, MySQL, MariaDB, SQL Server); their statements are masked.
 
 Clients that read MCP resources can also read `platypus://<connection>`,
-`platypus://<connection>/<schema>` and `platypus://<connection>/<schema>/<table>`.
+`platypus://<connection>/<schema>` and `platypus://<connection>/<schema>/<table>`, and can
+subscribe to them: after a notification the schema changed in the app, so read it again.
+Prompts (`prompts/list`) offer ready tasks and the user's saved scripts with parameters.
 
 ## Query
 
