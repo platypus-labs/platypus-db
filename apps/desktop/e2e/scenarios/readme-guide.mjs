@@ -107,11 +107,13 @@ async function fileCell(page, shot) {
   await page.eval(`(() => {
     window.__drawn = new Set();
     const original = CanvasRenderingContext2D.prototype.fillText;
+    window.__fillText = original;
     CanvasRenderingContext2D.prototype.fillText = function (text, ...rest) { window.__drawn.add(String(text)); return original.call(this, text, ...rest); };
   })()`);
   await openTable(page, "documents");
   await page.waitFor(`[...window.__drawn].some(t => /^PDF · 2\\.3 MB$/.test(t))`, 15_000);
   const drawn = await page.eval(`[...window.__drawn]`);
+  await page.eval(`CanvasRenderingContext2D.prototype.fillText = window.__fillText`);
   assert.ok(drawn.some((t) => /^PNG · 51(\.\d)? KB$/.test(t)), `a PNG label in ${drawn.filter((t) => t.includes("·"))}`);
   // The file cell of the first row, right-clicked towards the right of its column so that the
   // menu leaves the column in view.
@@ -195,6 +197,8 @@ export default async function (page, { dir }) {
   mkdirSync(out, { recursive: true });
   const shot = (name) => page.screenshot(join(out, `${name}.png`));
   await prepare(page);
+  // The version and the build's commit and time would change every picture over the welcome page at each run.
+  await page.eval(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.welcome-cta + p { visibility: hidden }' }))`);
 
   await welcome(page, shot);
   await connectNetwork(page, shot);

@@ -45,6 +45,9 @@ export default async function (page, { shots }) {
     const sql = await page.eval(`${visibleTab}.querySelector('.cm-content').textContent`);
     assert.match(sql, /"?default"?\."?qa_dbs_t"?/, `the query names the schema: ${sql}`);
     assert.equal(await copyAll(page), "from default");
+    // A save checks each change in a transaction, and ADBC has none: the grid does not edit.
+    const bar = await page.eval(`${visibleTab}.querySelector('.edit-bar')?.textContent ?? ''`);
+    assert.ok(bar.includes("Read-only: the connection changes its rows only by SQL"), bar);
   } finally {
     sh("trino", "DROP TABLE IF EXISTS memory.default.qa_dbs_t; DROP SCHEMA IF EXISTS memory.qa_dbs CASCADE;");
   }
