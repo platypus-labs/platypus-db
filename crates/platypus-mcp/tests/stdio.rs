@@ -146,11 +146,17 @@ fn fake_app(dir: &Path, verdicts: Vec<&'static str>) -> Received {
             got.lock()
                 .unwrap()
                 .push((path, String::from_utf8(body).unwrap()));
-            let _ = write!(
-                socket,
-                "HTTP/1.1 {status} X\r\nContent-Length: {}\r\n\r\n{answer}",
-                answer.len()
+            let _ = socket.write_all(
+                format!(
+                    "HTTP/1.1 {status} X\r\nContent-Length: {}\r\n\r\n{answer}",
+                    answer.len()
+                )
+                .as_bytes(),
             );
+            // Closed in order: on Windows an abrupt close can lose the answer in the client's
+            // buffer with a reset.
+            let _ = socket.shutdown(std::net::Shutdown::Write);
+            let _ = reader.read_to_end(&mut Vec::new());
         }
     });
     received
