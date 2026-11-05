@@ -25,7 +25,7 @@ use crate::agent::{Agent, QueryArgs, locked};
 use crate::error::{AgentError, Result};
 use crate::guard::{self, Asked};
 use crate::output::{Format, QueryResult};
-use crate::query::{Cell, Column, Cut, Limits, Outcome, REST_BYTES, REST_ROWS, Table};
+use crate::query::{Cell, Column, Cut, Outcome, REST_BYTES, REST_ROWS, Table};
 
 /// How long a cursor is kept after its last use.
 pub const KEEP: Duration = Duration::from_mins(5);
@@ -288,13 +288,12 @@ impl Agent {
             .find(&connection.to_string())
             .inspect_err(|_| self.cursors.forget(&args.cursor))?;
         self.windows.count(&saved)?;
-        let asked = Limits::new(args.max_rows, args.max_bytes, None)?;
         let requested = Asked {
             max_rows: args.max_rows,
             max_bytes: args.max_bytes,
             timeout_seconds: None,
         };
-        let (limits, notes) = guard::clamp(asked, &requested, &saved.agent_limits);
+        let (limits, notes) = guard::clamp(requested.limits()?, &requested, &saved.agent_limits);
         let mut held = self
             .cursors
             .take(&args.cursor, session)
@@ -338,6 +337,7 @@ impl Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::query::Limits;
 
     fn held(id: &str, session: &str, rows: usize) -> Held {
         Held {

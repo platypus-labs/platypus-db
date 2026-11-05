@@ -22,6 +22,7 @@ use platypus_core::{
 };
 use platypus_driver_duckdb::{DuckDbDriver, memory_database, memory_path};
 use platypus_sql::Dialect;
+use platypus_store::AgentLimits;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -219,9 +220,9 @@ impl Agent {
         &self,
         source: &AcrossSource,
         name: &str,
-        (asked, requested): (Limits, &Asked),
+        requested: &Asked,
         stop: &mut std::pin::Pin<&mut impl Future<Output = ()>>,
-    ) -> Result<(Copied, Limits)> {
+    ) -> Result<(Copied, AgentLimits)> {
         let (store, saved) = self.find(&source.connection)?;
         if matches!(
             saved.driver,
@@ -233,7 +234,7 @@ impl Agent {
             )));
         }
         self.windows.count(&saved)?;
-        let (limits, _) = guard::clamp(asked, requested, &saved.agent_limits);
+        let (limits, _) = guard::clamp(requested.limits()?, requested, &saved.agent_limits);
         let dialect = Dialect::from(saved.driver);
         let sql = select_sql(dialect, source);
         access::check(
@@ -298,7 +299,7 @@ impl Agent {
                 rows,
                 masked: masked_names,
             },
-            limits,
+            saved.agent_limits,
         ))
     }
 
@@ -312,7 +313,6 @@ impl Agent {
         let start = std::time::Instant::now();
         let names = names_of(&args.sources)?;
         let rows = args.source_rows.unwrap_or(SOURCE_ROWS).min(MAX_SOURCE_ROWS);
-        let asked = Limits::new(Some(rows), None, args.timeout_seconds)?;
         let requested = Asked {
             max_rows: Some(rows),
             max_bytes: None,
@@ -322,28 +322,22 @@ impl Agent {
         let mut copied = Vec::new();
         let mut rules = Vec::new();
         for (source, name) in args.sources.iter().zip(&names) {
-            let (one, limits) = self
-                .read_source(source, name, (asked, &requested), &mut stop)
+            let (one, source_rules) = self
+                .read_source(source, name, &requested, &mut stop)
                 .await?;
             copied.push(one);
-            rules.push(limits);
+            rules.push(source_rules);
         }
         // The result keeps to the strictest of the sources' rules.
-        let result_asked = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
         let result_requested = Asked {
             max_rows: args.max_rows,
             max_bytes: args.max_bytes,
             timeout_seconds: args.timeout_seconds,
         };
-        let mut limits = result_asked;
+        let mut limits = result_requested.limits()?;
         let mut notes = Vec::new();
-        for (_, saved) in args
-            .sources
-            .iter()
-            .map(|s| self.find(&s.connection))
-            .collect::<Result<Vec<_>>>()?
-        {
-            let (tightest, more) = guard::clamp(limits, &result_requested, &saved.agent_limits);
+        for source_rules in &rules {
+            let (tightest, more) = guard::clamp(limits, &result_requested, source_rules);
             limits = tightest;
             for note in more {
                 if !notes.contains(&note) {

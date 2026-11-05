@@ -908,13 +908,13 @@ impl Agent {
         keep_rest: bool,
         stop: impl Future<Output = ()>,
     ) -> Result<QueryResult> {
-        let asked = Limits::new(args.max_rows, args.max_bytes, args.timeout_seconds)?;
-        let (store, saved) = self.find(&args.connection)?;
         let requested = Asked {
             max_rows: args.max_rows,
             max_bytes: args.max_bytes,
             timeout_seconds: args.timeout_seconds,
         };
+        let asked = requested.limits()?;
+        let (store, saved) = self.find(&args.connection)?;
         let (mut limits, mut notes) = guard::clamp(asked, &requested, &saved.agent_limits);
         limits.keep_rest = keep_rest;
         let access = saved.effective_agent_access();
