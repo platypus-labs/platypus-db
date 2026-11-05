@@ -11,7 +11,8 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { revealItem } from "../menu-sub.mjs";
-import { NAME, openProject, openTable, prepare, setup as shopSetup, skip, treeRow, visibleTab } from "./readme-sqlite.mjs";
+import { fill, formField } from "../conn-helpers.mjs";
+import { NAME, grid, openProject, openTable, prepare, setup as shopSetup, skip, treeRow } from "./readme-sqlite.mjs";
 
 export { skip };
 
@@ -55,15 +56,6 @@ const toasts = `[...document.querySelectorAll('.toaster .toast')].map(t => t.tex
 const dialog = `document.querySelector('.modal.import-data')`;
 const settings = `document.querySelector('.modal.settings')`;
 
-/** Sets a React-controlled field and tells React, as typing would. */
-const fill = (element, value) => `(() => {
-  const el = ${element};
-  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set.call(el, ${JSON.stringify(value)});
-  el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
-})()`;
-const labeled = (scope, label) =>
-  `[...document.querySelectorAll(${JSON.stringify(`${scope} label.field`)})].find(l => l.querySelector('span')?.textContent === ${JSON.stringify(label)}).querySelector('input, select, textarea')`;
-
 /** Nothing on screen may be an error: no toast and no notice that reports one. */
 async function assertNoError(page) {
   const found = await page.eval(
@@ -72,11 +64,16 @@ async function assertNoError(page) {
   assert.deepEqual(found, [], `errors on screen: ${found}`);
 }
 
-async function welcome(page, shot) {
-  await page.waitFor(`document.querySelector('.welcome')?.textContent.includes('Try the sample database')`, 15_000);
+/** Takes the focus off any field, checks that nothing on screen is an error, and lets it settle. */
+async function settle(page) {
   await page.eval(`document.activeElement?.blur()`);
   await assertNoError(page);
   await page.sleep(300);
+}
+
+async function welcome(page, shot) {
+  await page.waitFor(`document.querySelector('.welcome')?.textContent.includes('Try the sample database')`, 15_000);
+  await settle(page);
   await shot("welcome");
 }
 
@@ -94,14 +91,12 @@ async function connectNetwork(page, shot) {
   assert.equal(await page.eval(`document.querySelector('.modal .ssh-section input') === null`), true, "the tunnel starts off");
   await page.eval(`${tunnel}.querySelector('input').click()`);
   await page.waitFor(`document.querySelector('.modal .ssh-section input[placeholder="bastion.example.com"]') !== null`);
-  await page.eval(fill(labeled(".modal", "SSH host"), "bastion.example.com"));
-  await page.eval(fill(labeled(".modal", "SSH user"), "deploy"));
+  await page.eval(fill(formField(".modal", "SSH host"), "bastion.example.com"));
+  await page.eval(fill(formField(".modal", "SSH user"), "deploy"));
   await page.waitFor(
-    `${labeled(".modal", "SSH host")}.value === 'bastion.example.com' && ${labeled(".modal", "SSH user")}.value === 'deploy'`,
+    `${formField(".modal", "SSH host")}.value === 'bastion.example.com' && ${formField(".modal", "SSH user")}.value === 'deploy'`,
   );
-  await page.eval(`document.activeElement?.blur()`);
-  await assertNoError(page);
-  await page.sleep(300);
+  await settle(page);
   await shot("connect-network");
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.modal') === null`);
@@ -120,7 +115,6 @@ async function fileCell(page, shot) {
   assert.ok(drawn.some((t) => /^PNG · 51(\.\d)? KB$/.test(t)), `a PNG label in ${drawn.filter((t) => t.includes("·"))}`);
   // The file cell of the first row, right-clicked towards the right of its column so that the
   // menu leaves the column in view.
-  const grid = `${visibleTab}.querySelector('.grid-scroll')`;
   await page.eval(`${grid}.id = 'e2e-grid'`);
   const r = await page.rect("#e2e-grid");
   await page.eval(`document.getElementById('e2e-grid').removeAttribute('id')`);
@@ -158,9 +152,7 @@ async function importPreview(page, dir, shot) {
   assert.equal(await page.eval(`${dialog}.querySelectorAll('.import-mapping select').length`), 3, "every column of products has a mapping");
   // The file's folder is a temporary one of this computer: the picture shows another.
   await page.eval(`${dialog}.querySelector('input').value = ${JSON.stringify(["C:", "Shop", CSV].join("\\"))}`);
-  await page.eval(`document.activeElement?.blur()`);
-  await assertNoError(page);
-  await page.sleep(300);
+  await settle(page);
   await shot("import-preview");
   await page.eval(`${dialog}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   await page.waitFor(`${dialog} === null`);
@@ -171,9 +163,7 @@ async function settingsPages(page, shot) {
   await page.waitFor(`${settings} !== null`);
 
   await page.settingsTab("Safety");
-  await page.eval(`document.activeElement?.blur()`);
-  await assertNoError(page);
-  await page.sleep(300);
+  await settle(page);
   await shot("safety");
 
   await page.settingsTab("Agents");
@@ -182,9 +172,7 @@ async function settingsPages(page, shot) {
   const row = `document.querySelector('.agents-connections tr[data-connection=${JSON.stringify(NAME)}]')`;
   await page.waitFor(`${row} !== null && ${row}.closest('[hidden]') === null`);
   assert.equal(await page.eval(`${row}.querySelector('td:last-child').textContent`), "Read only");
-  await page.eval(`document.activeElement?.blur()`);
-  await assertNoError(page);
-  await page.sleep(300);
+  await settle(page);
   await shot("agents-security");
 
   await page.settingsTab("Diagnostics");
@@ -195,9 +183,7 @@ async function settingsPages(page, shot) {
   assert.ok(await page.eval(`document.querySelector('[data-action="save-diagnostics"]') !== null`));
   const text = await page.eval(`document.querySelector('.modal.settings').textContent`);
   assert.ok(!/Users[\\/]/i.test(text), "no user folder on the page");
-  await page.eval(`document.activeElement?.blur()`);
-  await assertNoError(page);
-  await page.sleep(300);
+  await settle(page);
   await shot("diagnostics");
 
   await page.eval(`[...document.querySelectorAll('.modal.settings button')].find(b => b.textContent === 'Done').click()`);
