@@ -91,10 +91,10 @@ async function connectNetwork(page, shot) {
   assert.equal(await page.eval(`document.querySelector('.modal .ssh-section input') === null`), true, "the tunnel starts off");
   await page.eval(`${tunnel}.querySelector('input').click()`);
   await page.waitFor(`document.querySelector('.modal .ssh-section input[placeholder="bastion.example.com"]') !== null`);
-  await page.eval(fill(formField(".modal", "SSH host"), "bastion.example.com"));
-  await page.eval(fill(formField(".modal", "SSH user"), "deploy"));
+  await page.eval(fill(formField("SSH host", ".modal"), "bastion.example.com"));
+  await page.eval(fill(formField("SSH user", ".modal"), "deploy"));
   await page.waitFor(
-    `${formField(".modal", "SSH host")}.value === 'bastion.example.com' && ${formField(".modal", "SSH user")}.value === 'deploy'`,
+    `${formField("SSH host", ".modal")}.value === 'bastion.example.com' && ${formField("SSH user", ".modal")}.value === 'deploy'`,
   );
   await settle(page);
   await shot("connect-network");
