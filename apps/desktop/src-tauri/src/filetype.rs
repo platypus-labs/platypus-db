@@ -1,6 +1,6 @@
 //! Tells a file from the bytes of a cell, by magic numbers, and finds the file a text cell
 //! holds as a `data:` URL, base64 or hex. A value is never called a file from its column's type:
-//! only from what its bytes say. Mirrors `src/grid/fileType.ts`, which the value panel uses.
+//! only from what its bytes say. The frontend (`src/grid/fileType.ts`) only draws images.
 
 use serde::Serialize;
 
