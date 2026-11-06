@@ -824,11 +824,12 @@ through the MCP server.
   [AGENTS.md](AGENTS.md).
 - **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
   and the navigator, a driver for a database reached over HTTP, hooks that see statements with
-  sensitive values masked and may stop a statement or a save, a settings page of their own,
+  their values masked and may stop a statement or a save, a settings page of their own,
   with secrets in the system's keychain, tabs and side panels with pages of their own, and computed
   columns, cell renderers and cell commands in the result grid; each asks for its permissions at
   install. A page runs in an isolated frame, with no access to the app and no network of its own, and
-  talks to the app through a short list of requests; a grid extension reads masked cells as dots. A
+  talks to the app through a short list of requests; a grid extension reads sensitive cells as dots,
+  whether or not the screen masks them. A
   plugin can also be only a theme, with colours and fonts and no code, which joins the theme picker. See
   [PLUGINS.md](PLUGINS.md).
 - **Plugin catalog** (Settings › Plugin catalog): plugins from an index you choose, installed,

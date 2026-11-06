@@ -23,7 +23,7 @@ ui/            what the pages of its tabs and panels load, if it has any
 ```
 
 ```toml
-id = "sql-tools"                # lowercase letters, digits, - _ . ; stable
+id = "sql-tools"                # lowercase letters, digits, - _ . ; stable; a folder name, see below
 name = "SQL tools"
 version = "1.0.0"
 author = "Jane Doe"             # optional
@@ -42,11 +42,26 @@ permissions, in plain words; installing approves them. A module whose descriptio
 `kinds`, or that does not load, is refused, and so is a manifest with a field, a permission or a
 kind the app does not know, by name. Packages are kept in `<data>/plugins/<id>/<version>/`; a new
 version replaces the old one after the same review, which lists apart what it asks that the
-installed version was not approved for. `<data>/plugins/plugins.json` records which plugins are
-on, the approved permissions and the description. A plugin turned off offers no action and no
-driver and runs no hook. Removing it deletes its folder and its secrets in the keychain; a plugin
-with other settings asks whether to keep their values for a later install, and otherwise they go
-too. Packages can also come from a [catalog](#catalog).
+installed version was not approved for, and it stays turned on or off as the old one was.
+`<data>/plugins/plugins.json` records which plugins are on, the approved permissions and the
+description. A plugin turned off offers no action and no driver and runs no hook. Removing it deletes
+its folder and its secrets in the keychain; a plugin with other settings asks whether to keep their
+values for a later install, and otherwise they go too. If something of it cannot be cleared, the rest
+is, it leaves the list all the same, and the error says what is left. Packages can also come from a
+[catalog](#catalog).
+
+The `id` and the `version` are folder names, and mean the same on every system: besides the characters
+above, a name that ends in a dot, a device name of Windows in any case and with any extension (`CON`,
+`PRN`, `AUX`, `NUL`, `COM0`-`COM9`, `LPT0`-`LPT9`, so `nul.txt` too), and `plugins.json` or
+`settings.toml` are refused. The manifest in a plugin's folder must say the id and version
+`plugins.json` has for it, or it does not run with what was approved. A plugin whose files are gone
+or are not its own stays listed, marked as such, runs nothing, and can be removed.
+
+If `plugins.json` cannot be read, no plugin runs and nothing overwrites the file: installing and
+removing are refused. Statements still run, as a broken file must not stop your work, so a hook that
+guards them is not guarding them: the first statement says so, Settings › Plugins says so with the
+reason, and the log has it. Put the file right, or delete it to start with no plugins, and hooks count
+again from the next statement.
 
 ### What ABI 2 declares
 
@@ -196,7 +211,7 @@ Each check refuses with its own reason, and leaves nothing behind.
 
 | Check | Refused when |
 |---|---|
-| Address | The index or the package is not HTTPS. `http://` works only on this computer (`localhost`, `127.0.0.1`, `::1`), for tests, and an index on the network cannot point to this computer at all. A redirect goes through the same check, and an address with a user name or password is refused. |
+| Address | The index or the package is not HTTPS. `http://` works only on this computer, for tests. An index reaches nothing nearer than itself: one on the network cannot point to this computer (`localhost` and what is under it, with or without a final dot, `127.0.0.0/8`, `0.0.0.0/8`, `::1`, `::`) or to a private network (`10/8`, `172.16/12`, `192.168/16`, link-local such as `169.254.169.254`, `100.64/10`, `fc00::/7`, `fe80::/10`, multicast), in any way of writing them, IPv6 forms that carry an IPv4 address included. A name counts by what it resolves to at each request, so a name or DNS rebinding that leads there is refused too; an index you set by its own address on your network may use that network. A redirect goes through the same check, and an address with a user name or password is refused. |
 | Size | The index is over 2 MB or the package over 64 MB. |
 | Hash | The SHA-256 of the download is not the entry's. |
 | Signature | It has no signature, or it is not by a trusted key, or it does not match the package. |
@@ -209,6 +224,16 @@ why, and installs only through **Install as unsigned** in a separate warning; th
 is not signed. An older version installs only after you confirm it over the newer one. The hash, the
 paths and the identity are always checked. Then the module is loaded for the review, and installing
 takes the hash of what you reviewed, as a manual install does.
+
+An index on your own network has to be set by its address (`https://10.0.0.5/index.json`): by a name,
+it counts as on the network, whatever that name resolves to today. Behind a system proxy, it is the
+proxy that resolves names, so this check only sees the address as it is written.
+
+**A plugin's signer is pinned.** Any key you trust can sign any id, so an id alone does not say that
+a package comes from the same publisher. When the signer of an installed plugin changes, from one key
+to another, or to or from none (which is what a manual install and an unsigned one have), the review
+says so plainly, and installing clears the plugin's secrets and what its pages keep. Its other settings
+stay. Between two packages with no signature there is nothing to compare, so nothing is cleared.
 
 The download waits in `<data>/plugins/.downloads` until you answer, and goes whatever the answer.
 
@@ -376,10 +401,14 @@ call starts a new instance of the module and keeps nothing.
 }
 ```
 
-`statement.text` is a copy, with the passwords the query log hides and the literals of sensitive
-columns masked, by the rules and marks that mask them for agents (Settings › Safety › Masking).
-It is at most 64 KB (`truncated` says when it is cut), and `null` on MongoDB, Redis and
-Elasticsearch, whose literals cannot be told. A hook never gets a password, a value of a result or
+`statement.text` is a copy with **every value masked**: each string and each number reads `'••••••'`.
+A name cannot tell where a value goes (`INSERT INTO users VALUES ('a@b.c', 's3cret')` names no column),
+and a number can be a card or a salary as a string can be an email, so a guard reads what a statement
+does, its keywords, tables and columns, and none of what it carries: it can refuse `DELETE` without
+`WHERE` or anything naming a table, and cannot go by a value or a `LIMIT`. Parameters (`$1`) stay, as
+they hold nothing, and so do comments, which are the text the user wrote about the statement. The text
+is at most 64 KB (`truncated` says when it is cut), and `null` on MongoDB, Redis, Elasticsearch and the
+drivers of plugins, whose literals cannot be told. A hook never gets a password, a value of a result or
 the text of an error, which may quote one, and a save gets only how many rows change, as its
 statements quote their values.
 
@@ -395,10 +424,18 @@ crashes, runs out of fuel or time, or answers something else does not stop the a
 statement runs, and the user is told once per plugin until it is changed or turned off and on. So
 a hook is a help against mistakes, not a wall. The database's own permissions are the wall.
 
-Hooks run for what the user runs in the app: the SQL editor, notebooks, scripts, the dialogs that
-run a statement, and saves of edited rows; `EXPLAIN ANALYZE` and a database's own client go through
-`before_query` only. Not for agents, which have their own policy (see [AGENTS.md](AGENTS.md)), and not for `.sql` files run from
-the file dialog, the table designer, exports or scheduled jobs.
+Hooks run for the SQL editor, notebooks, scripts, the dialogs that run a statement, saves of edited
+rows, `EXPLAIN ANALYZE`, a database's own client (as one statement, the whole script, ending as the
+client's exit says) and scheduled scripts. A scheduled script asks before each of its statements: one
+that is blocked fails the run with the hook's message, what ran before it stands, and the rest does not
+run.
+
+**Hooks do not cover everything, and must not be taken for a wall.** They do not run for:
+
+- agents through MCP, which have their own policy (see [AGENTS.md](AGENTS.md));
+- `.sql` files run from the file dialog and the table designer;
+- exports, imports, transfers and copies, by hand or scheduled, and profiles;
+- scheduled backups and schema snapshots.
 
 A user with no hook pays one atomic read per statement, with nothing to wait for and nothing
 allocated: the table of hooks comes from the list of plugins the page reads at start anyway, and
@@ -523,9 +560,11 @@ without it. `platypus_grid` takes batches, in a new instance each, and keeps not
 - A **command** is in the cell's menu, under Plugins. It runs on the focused cell, and its answer does
   what an action's does; `copy` needs `permissions.clipboard`.
 
-**A plugin reads a cell as the grid shows it.** While masking is on (Settings › Safety), a sensitive cell
-comes as `••••••` with `"masked": true`; NULL stays `null`. It has no network here, whatever its `http`
-says: a value read to draw a cell has nowhere to go.
+**A plugin never reads a sensitive cell.** A column the rules or your marks call sensitive (Settings ›
+Safety) comes as `••••••` with `"masked": true`, whether or not masking is on for the screen, and the
+grid goes on showing you the real value until it is; NULL stays `null`. A renderer has nothing to draw
+there, so it is not asked about that column. A module has no network here, whatever its `http` says, and
+what it writes to its log stays masked too.
 
 A batch has 300 million units of fuel, a tenth of an action's, 64 MB of memory, 4 MB per message and 2 s
 of wall time; at most 1000 rows or values, each cut at 16 KB (a renderer leaves longer ones alone). A

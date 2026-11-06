@@ -14,9 +14,12 @@ All notable changes to PlatypusDB are listed here. The format follows
   know is refused by name, and an update lists what it asks anew.
 - **Plugins**: event hooks, before and after a statement, on connect and before saving edited rows.
   A "before" hook can block with a message, after the Safety checks, which it cannot lift, and cannot
-  change the statement. It sees the statement with passwords and sensitive literals masked, and
-  never a value of a result. A hook that crashes or hangs does not stop anything: the action goes
-  ahead and the user is told once. Without hooks a statement pays one atomic read.
+  change the statement. It sees the statement with passwords and every string and number masked,
+  and never a value of a result; on drivers of plugins it gets no text. Hooks also run for scheduled
+  scripts, statement by statement, and `after_query` hears of a database's own client and of `EXPLAIN
+  ANALYZE`; agents, exports and the rest they do not cover are listed in `docs/PLUGINS.md`. A hook
+  that crashes or hangs does not stop anything: the action goes ahead and the user is told once, as
+  they are when `plugins.json` cannot be read. Without hooks a statement pays one atomic read.
 - **Plugins**: a settings page per plugin from its manifest (text, number, boolean, choice, secret),
   saved in the data folder, secrets in the system's keychain and never in a file, read by the module
   through a host function limited to its own values.
@@ -40,9 +43,20 @@ All notable changes to PlatypusDB are listed here. The format follows
   and nothing is contacted until you set one, and it is read only when you open the page or ask. A
   package passes HTTPS, size, SHA-256, a minisign signature by a key you trust, zip paths, identity
   and downgrade checks, then the review of a manual install. A package with no valid signature or
-  an older version installs only from its own question.
+  an older version installs only from its own question. An index on the network reaches neither this
+  computer nor a private network, however the address is written and whatever a name resolves to. A
+  plugin's signer is pinned: another signer is said in the review, and installing clears its secrets
+  and what its pages keep.
 - **Plugins**: removing a plugin asks whether to keep its settings, and always clears its secrets from
-  the keychain.
+  the keychain; what cannot be cleared is said, and the rest still is. A plugin whose files are gone
+  stays listed, and can be removed.
+- **Plugins**: an `id` or `version` that is not the same folder on every system (a trailing dot, a device
+  name of Windows, a file of the plugins' folder) is refused, and a plugin's files must be the ones its
+  entry in the list names. An update keeps a plugin turned off, a same-version reinstall that fails
+  leaves the old files, and a setting that changes kind leaves nothing behind.
+- **Plugins**: a grid extension reads sensitive cells as dots whether or not the screen masks them. A
+  plugin turned off or removed stops in every window at once. A `.zip`'s hidden files are skipped, as a
+  folder's are, and an updated theme loads its new fonts at once.
 
 ### Changed
 
