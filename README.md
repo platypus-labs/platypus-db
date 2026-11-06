@@ -57,27 +57,15 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 Connections, settings, history and scripts then live in `data`, and the folder can move to
 another machine or a USB stick ([more](docs/FEATURES.md#portable-copy)).
 
+The [user guide](docs/guide/README.md) goes on from here, task by task: [getting
+started](docs/guide/getting-started.md), connecting, queries, safety, troubleshooting.
+
 ## Databases
 
-| Database | How it connects | Notes |
-|---|---|---|
-| PostgreSQL 12+ | native protocol | Several databases per connection, partitions, PostGIS, arrays and composite types |
-| MySQL 5.7+, MariaDB 10.6+ | native protocol | `EXPLAIN ANALYZE` needs MySQL 8.0.18 |
-| SQL Server 2017+, Azure SQL | TDS | Windows (SSPI) and Microsoft Entra ID sign-in |
-| Oracle | Oracle Instant Client, downloaded on first use | PL/SQL blocks, real cancel |
-| ClickHouse | HTTP, Arrow results | No data editing in the grid |
-| SQLite, DuckDB | embedded | DuckDB also opens CSV, JSON, Parquet and Excel files as databases |
-| libSQL / Turso | Hrana over HTTP | |
-| MongoDB 5+ | official driver | mongosh syntax; no transactions, explain or data editing |
-| Redis 6+ | `redis` crate (RESP3, rustls) | Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON |
-| Elasticsearch 8, OpenSearch 2 | HTTP API (`reqwest`, rustls) | Requests as Kibana's console writes them, and SQL; indices as tables, edited in the grid |
-| Apache Cassandra 4+, ScyllaDB 5.4+ | `scylla` crate (rustls) | CQL; keyspaces, tables, views, types and functions in the navigator; edited in the grid by primary key |
-| CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | PostgreSQL driver | Profiles with their defaults |
-| Snowflake, BigQuery, Databricks, Trino, any ADBC driver | ADBC, downloaded on first use | Queries, results, navigator and completion; no data editing or explain yet |
-| IBM Db2, any ODBC driver or DSN | ODBC (Windows) | |
-
-The versions are the oldest the conformance suite runs on. More on each database in
-[docs/FEATURES.md](docs/FEATURES.md#databases).
+PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB,
+Redis, Elasticsearch, Cassandra, Snowflake, BigQuery, Databricks, Trino, IBM Db2, ODBC and the
+databases that speak the PostgreSQL protocol. How each one connects, its oldest supported
+version and what works on it are in the [databases guide](docs/guide/databases/README.md).
 
 ## Features
 
@@ -89,46 +77,18 @@ The versions are the oldest the conformance suite runs on. More on each database
 | **Design tables** | **Find anything** |
 | ![Designing a table](docs/screenshots/table-editor.png) | ![The command palette](docs/screenshots/palette.png) |
 
-- **Connections**: SSH tunnels, proxies, Kubernetes and AWS port forwards, cloud sign-in
-  (AWS, Google Cloud, Entra ID), passwords from the keychain or a password manager,
-  `${env:NAME}` variables, import from DBeaver, DataGrip and pgAdmin.
-- **SQL editor**: completion of tables, columns and aliases in scope and of JOINs from the
-  foreign keys, a formatter, parameters, snippets, a linter, Vim mode, a split editor, saved
-  scripts and runs on several connections at once.
-- **Data viewer and editor**: a canvas grid that reads rows a page at a time; sort and filter
-  from the header, a value panel for JSON, XML and images; edit cells in place, preview the SQL
-  and save all or nothing.
-- **Analysis**: charts, column statistics, SQL on a result's rows, comparison with the
-  previous run, and **notebooks** of SQL and Markdown cells that export to HTML.
-- **Schema tools**: a table editor that shows its `ALTER TABLE` first, ER diagrams, a schema
-  check, schema comparison with the migration script, a visual query builder, notes and tags,
-  and documentation as Markdown or HTML.
-- **Performance**: query plans as a tree, a graph or a table, with a heatmap, index
-  suggestions and plan comparison; a query manager with the time of every statement.
-- **Server activity**: sessions, locks, the costliest statements, table and index health,
-  maintenance, backups and scheduled tasks.
-- **Import, export and transfer**: CSV, JSON, Parquet, Excel and more, copies of tables and
-  whole schemas between any two databases, fake data.
-- **Workspace**: projects, pinned and grouped tabs, tabs in their own window, a quick-query
-  window from the tray, themes, and seven languages (English, Italian, Spanish, German, French,
-  Portuguese and Chinese).
-
-Every feature, area by area: **[docs/FEATURES.md](docs/FEATURES.md)**. Keyboard shortcuts:
-[docs/SHORTCUTS.md](docs/SHORTCUTS.md).
+Connections over SSH, proxies and cloud sign-in; a SQL editor with completion; a data viewer and
+editor; charts and notebooks; table design, ER diagrams and schema comparison; query plans;
+server activity; import, export and transfer; projects and seven languages. Every feature, area
+by area: **[docs/FEATURES.md](docs/FEATURES.md)**. Task by task: the
+[user guide](docs/guide/README.md). Keyboard shortcuts: [docs/SHORTCUTS.md](docs/SHORTCUTS.md).
 
 ## Agents (MCP) and the CLI
 
-Claude Code, Codex, Cursor and other MCP clients use your saved connections through
-PlatypusDB's MCP server. Each connection gives agents no access, read only (the default) or
-read and write; passwords never leave the keychain, and a change an agent wants to run opens a
-dialog in the app first. Settings → Agents → Setup registers the server in your agents with one
-click.
-
-```bash
-claude mcp add -s user platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
-```
-
-Tools, limits, the HTTP bridge and the `platypus` CLI: [docs/AGENTS.md](docs/AGENTS.md).
+Claude Code, Codex, Cursor and other MCP clients can use your saved connections, with the access
+you give each one: none, read only (the default) or read and write. A change an agent wants to
+run opens a dialog in the app first. Setup, tools, limits and the `platypus` CLI:
+[docs/AGENTS.md](docs/AGENTS.md).
 
 ## Performance
 

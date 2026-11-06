@@ -64,27 +64,15 @@ L'interfaccia è disponibile anche in italiano: Settings › Appearance › Lang
 Connessioni, impostazioni, cronologia e script stanno allora in `data`, e la cartella si può
 spostare su un altro computer o su una chiavetta USB ([dettagli](docs/FEATURES.md#portable-copy)).
 
+La [guida utente](docs/guide/README.md) (in inglese) continua da qui, un compito alla volta:
+[primi passi](docs/guide/getting-started.md), connessioni, query, sicurezza, problemi comuni.
+
 ## Database
 
-| Database | Come si collega | Note |
-|---|---|---|
-| PostgreSQL 12+ | protocollo nativo | Più database per connessione, partizioni, PostGIS, array e tipi composti |
-| MySQL 5.7+, MariaDB 10.6+ | protocollo nativo | `EXPLAIN ANALYZE` richiede MySQL 8.0.18 |
-| SQL Server 2017+, Azure SQL | TDS | Accesso con Windows (SSPI) e Microsoft Entra ID |
-| Oracle | Oracle Instant Client, scaricato al primo uso | Blocchi PL/SQL, annullamento vero |
-| ClickHouse | HTTP, risultati Arrow | Niente modifica dei dati nella griglia |
-| SQLite, DuckDB | integrati | DuckDB apre anche file CSV, JSON, Parquet ed Excel come database |
-| libSQL / Turso | Hrana su HTTP | |
-| MongoDB 5+ | driver ufficiale | Sintassi di mongosh; niente transazioni, explain o modifica dei dati |
-| Redis 6+ | crate `redis` (RESP3, rustls) | Comandi nell'editor; tipi di chiave come tabelle, modificabili in griglia; JSON con RedisJSON |
-| Elasticsearch 8, OpenSearch 2 | API HTTP (`reqwest`, rustls) | Richieste come le scrive la console di Kibana, e SQL; indici come tabelle, modificabili in griglia |
-| Apache Cassandra 4+, ScyllaDB 5.4+ | crate `scylla` (rustls) | CQL; keyspace, tabelle, viste, tipi e funzioni nel navigator; modificabili in griglia per chiave primaria |
-| CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB | driver PostgreSQL | Profili con i loro valori predefiniti |
-| Snowflake, BigQuery, Databricks, Trino, qualsiasi driver ADBC | ADBC, scaricato al primo uso | Query, risultati, navigator e completamento; ancora niente modifica dei dati o explain |
-| IBM Db2, qualsiasi driver ODBC o DSN | ODBC (Windows) | |
-
-Le versioni sono le più vecchie su cui gira la suite di conformance. Altri dettagli su ogni
-database in [docs/FEATURES.md](docs/FEATURES.md#databases) (in inglese).
+PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB,
+Redis, Elasticsearch, Cassandra, Snowflake, BigQuery, Databricks, Trino, IBM Db2, ODBC e i
+database che parlano il protocollo PostgreSQL. Come si collega ciascuno, la versione più
+vecchia supportata e cosa funziona si trovano nella [guida ai database](docs/guide/databases/README.md) (in inglese).
 
 ## Funzionalità
 
@@ -96,46 +84,20 @@ database in [docs/FEATURES.md](docs/FEATURES.md#databases) (in inglese).
 | **Progettare tabelle** | **Trovare tutto** |
 | ![Progettazione di una tabella](docs/screenshots/table-editor.png) | ![La palette dei comandi](docs/screenshots/palette.png) |
 
-- **Connessioni**: tunnel SSH, proxy, port forward di Kubernetes e AWS, accesso cloud (AWS,
-  Google Cloud, Entra ID), password dal portachiavi del sistema o da un password manager,
-  variabili `${env:NOME}`, importazione da DBeaver, DataGrip e pgAdmin.
-- **Editor SQL**: completamento di tabelle, colonne e alias visibili e dei JOIN dalle chiavi
-  esterne, formattatore, parametri, snippet, linter, modalità Vim, editor diviso, script
-  salvati ed esecuzione su più connessioni insieme.
-- **Visualizzatore ed editor dei dati**: una griglia su canvas che legge le righe una pagina
-  alla volta; ordinamento e filtri dall'intestazione, pannello del valore per JSON, XML e
-  immagini; modifica delle celle sul posto, anteprima dell'SQL e salvataggio tutto o niente.
-- **Analisi**: grafici, statistiche delle colonne, SQL sulle righe di un risultato, confronto
-  con l'esecuzione precedente e **notebook** di celle SQL e Markdown esportabili in HTML.
-- **Strumenti di schema**: un editor di tabelle che mostra prima il suo `ALTER TABLE`,
-  diagrammi ER, controllo dello schema, confronto tra schemi con lo script di migrazione,
-  query builder visuale, note e tag, documentazione in Markdown o HTML.
-- **Prestazioni**: piani di esecuzione come albero, grafo o tabella, con heatmap, indici
-  suggeriti e confronto tra piani; un query manager con il tempo di ogni istruzione.
-- **Attività del server**: sessioni, lock, le istruzioni più costose, stato di tabelle e
-  indici, manutenzione, backup e attività pianificate.
-- **Importazione, esportazione e trasferimento**: CSV, JSON, Parquet, Excel e altri formati,
-  copia di tabelle e di interi schemi tra due database qualsiasi, dati finti.
-- **Spazio di lavoro**: progetti, schede fissate e raggruppate, schede in una finestra a
-  parte, una finestra di query rapida dall'area di notifica, temi e sette lingue (inglese,
-  italiano, spagnolo, tedesco, francese, portoghese e cinese).
-
-Tutte le funzionalità, area per area: **[docs/FEATURES.md](docs/FEATURES.md)** (in inglese).
-Scorciatoie da tastiera: [docs/SHORTCUTS.md](docs/SHORTCUTS.md).
+Connessioni via SSH, proxy e accesso cloud; un editor SQL con completamento; un visualizzatore
+e un editor dei dati; grafici e notebook; progettazione di tabelle, diagrammi ER e confronto
+tra schemi; piani di esecuzione; attività del server; importazione, esportazione e
+trasferimento; progetti e sette lingue. Tutte le funzionalità, area per area:
+**[docs/FEATURES.md](docs/FEATURES.md)** (in inglese). Passo per passo: la
+[guida utente](docs/guide/README.md) (in inglese). Scorciatoie da tastiera:
+[docs/SHORTCUTS.md](docs/SHORTCUTS.md).
 
 ## Agenti (MCP) e CLI
 
-Claude Code, Codex, Cursor e gli altri client MCP usano le tue connessioni salvate tramite il
-server MCP di PlatypusDB. Ogni connessione dà agli agenti nessun accesso, sola lettura
-(il predefinito) oppure lettura e scrittura; le password non lasciano mai il portachiavi, e una
-modifica che un agente vuole eseguire apre prima una finestra di conferma nell'app.
-Settings → Agents → Setup registra il server nei tuoi agenti con un clic.
-
-```bash
-claude mcp add -s user platypus -- "C:\Program Files\PlatypusDB\platypus-db.exe" --mcp
-```
-
-Strumenti, limiti, il bridge HTTP e la CLI `platypus`: [docs/AGENTS.md](docs/AGENTS.md)
+Claude Code, Codex, Cursor e gli altri client MCP possono usare le tue connessioni salvate, con
+l'accesso che dai a ognuno: nessuno, sola lettura (il predefinito) oppure lettura e scrittura.
+Una modifica che un agente vuole eseguire apre prima una finestra di conferma nell'app.
+Configurazione, strumenti, limiti e la CLI `platypus`: [docs/AGENTS.md](docs/AGENTS.md)
 (in inglese).
 
 ## Prestazioni
