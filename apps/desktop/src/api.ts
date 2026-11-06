@@ -3240,6 +3240,20 @@ export const api = {
   /** Saves a value of a plugin's settings page; `null` goes back to the default. */
   pluginSetSetting: (id: string, key: string, value: string | number | boolean | null) =>
     invoke<void>("plugin_set_setting", { id, key, value }),
+  /** Where a document of a plugin is, for its frame; refused without the `tabs` permission. */
+  pluginFrameUrl: (plugin: string, document: string) => invoke<string>("plugin_frame_url", { plugin, document }),
+  /** What a plugin's frame asks, checked again by the backend. */
+  pluginFrameRequest: (plugin: string, request: { name: string; params: unknown }) =>
+    invoke<unknown>("plugin_frame_request", { plugin, request }),
+  /** The values of a plugin's computed column for a batch of rows, as the grid shows them. */
+  pluginGridColumn: (plugin: string, extension: string, columns: PluginGridColumn[], rows: (string | null)[][]) =>
+    invoke<PluginGridValue[]>("plugin_grid_column", { plugin, extension, columns, rows }),
+  /** How a plugin's renderer draws a batch of a column's values, as the grid shows them. */
+  pluginGridRender: (plugin: string, extension: string, column: PluginGridColumn, values: string[]) =>
+    invoke<PluginGridRendered[]>("plugin_grid_render", { plugin, extension, column, values }),
+  /** Runs a plugin's command on a cell, as the grid shows it. */
+  pluginGridAction: (plugin: string, extension: string, column: PluginGridColumn, value: string | null) =>
+    invoke<PluginOutcome>("plugin_grid_action", { plugin, extension, column, value }),
 };
 
 // Group O: WebAssembly plugins (`platypus-plugins`)
@@ -3254,6 +3268,26 @@ export interface PluginPermissions {
   /** Adds to the result grid. */
   grid: boolean;
 }
+
+/** A result column as a plugin's grid extension sees it; a masked one's values come as dots. */
+export interface PluginGridColumn {
+  name: string;
+  type: string;
+  masked: boolean;
+}
+
+export type PluginGridValue = { text: string | null } | { error: string };
+
+/** How to draw a cell: all a renderer can say. */
+export interface PluginGridCell {
+  text?: string;
+  color?: string;
+  background?: string;
+  hint?: string;
+  strike?: boolean;
+}
+
+export type PluginGridRendered = { cell: PluginGridCell | null } | { error: string };
 
 export type PluginHookEvent = "before_query" | "after_query" | "on_connect" | "before_save";
 

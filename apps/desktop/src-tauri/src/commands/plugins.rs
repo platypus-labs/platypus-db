@@ -15,8 +15,9 @@ use std::time::Duration;
 use platypus_core::DriverKind;
 use platypus_mcp::masking_seal::{MaskingRules, MaskingSeal};
 use platypus_plugins::{
-    ActionOutcome, HOOKS, HookConnection, HookContext, HookEvent, HookFailure, HookReport,
-    HookStatement, Inspected, Installed, PluginError, Plugins, QueryStatus, SettingState,
+    ActionOutcome, FRAME_SCHEME, FrameFile, FrameRequest, GridColumn, GridRendered, GridValue,
+    HOOKS, HookConnection, HookContext, HookEvent, HookFailure, HookReport, HookStatement,
+    Inspected, Installed, PluginError, Plugins, QueryStatus, SettingState, frame_csp, frame_target,
 };
 use platypus_sql::Dialect;
 use platypus_sql::security::mask_secrets;
@@ -128,6 +129,123 @@ pub async fn plugin_run_action(
         .run_action(&plugin, &action, context)
         .await
         .map_err(failed)
+}
+
+/// The root of the plugins' documents: wry serves a custom scheme this way on these systems.
+fn frame_base() -> String {
+    if cfg!(any(windows, target_os = "android")) {
+        format!("http://{FRAME_SCHEME}.localhost")
+    } else {
+        format!("{FRAME_SCHEME}://localhost")
+    }
+}
+
+/// Where a document of a plugin is, for its frame; refused without the `tabs` permission, or for
+/// a document its manifest does not name.
+#[tauri::command]
+pub fn plugin_frame_url(plugin: String, document: String) -> CommandResult<String> {
+    let path = plugins()?.frame_path(&plugin, &document).map_err(failed)?;
+    Ok(format!("{}{path}", frame_base()))
+}
+
+/// What a plugin's frame asks, checked again here: the page may have been fooled, and this is
+/// where a request becomes real. `request` is `{name, params}`.
+#[tauri::command]
+pub async fn plugin_frame_request(plugin: String, request: Value) -> CommandResult<Value> {
+    let request = FrameRequest::parse(request).map_err(failed)?;
+    plugins()?
+        .frame_request(&plugin, request)
+        .await
+        .map_err(failed)
+}
+
+/// The values of a plugin's computed column for a batch of rows, as the grid shows them.
+#[tauri::command]
+pub async fn plugin_grid_column(
+    plugin: String,
+    extension: String,
+    columns: Vec<GridColumn>,
+    rows: Vec<Vec<Option<String>>>,
+) -> CommandResult<Vec<GridValue>> {
+    plugins()?
+        .grid_column(&plugin, &extension, columns, rows)
+        .await
+        .map_err(failed)
+}
+
+/// How a plugin's renderer draws a batch of a column's values, as the grid shows them.
+#[tauri::command]
+pub async fn plugin_grid_render(
+    plugin: String,
+    extension: String,
+    column: GridColumn,
+    values: Vec<String>,
+) -> CommandResult<Vec<GridRendered>> {
+    plugins()?
+        .grid_render(&plugin, &extension, column, values)
+        .await
+        .map_err(failed)
+}
+
+/// Runs a plugin's command on a cell, as the grid shows it; the page applies the outcome.
+#[tauri::command]
+pub async fn plugin_grid_action(
+    plugin: String,
+    extension: String,
+    column: GridColumn,
+    value: Option<String>,
+) -> CommandResult<ActionOutcome> {
+    plugins()?
+        .grid_action(&plugin, &extension, column, value)
+        .await
+        .map_err(failed)
+}
+
+/// Answers the scheme of the plugins' documents, on a thread of its own. Only `GET` of a plugin's
+/// own file; each answer carries the policy that sandboxes it, an error too.
+pub fn frame_protocol(
+    request: &tauri::http::Request<Vec<u8>>,
+    responder: tauri::UriSchemeResponder,
+) {
+    let path = request.uri().path().to_owned();
+    let get = request.method() == tauri::http::Method::GET;
+    tauri::async_runtime::spawn_blocking(move || {
+        responder.respond(frame_response(get, &path));
+    });
+}
+
+fn frame_response(get: bool, path: &str) -> tauri::http::Response<Vec<u8>> {
+    let target = frame_target(path);
+    let file = match (get, target, plugins()) {
+        (true, Some((id, file)), Ok(plugins)) => plugins.frame_file(id, file),
+        _ => Err(PluginError::Denied("not a file of a plugin".to_owned())),
+    };
+    let csp = frame_csp(&frame_base(), target.map_or("none", |(id, _)| id));
+    let builder = tauri::http::Response::builder()
+        .header("Content-Security-Policy", csp)
+        .header("X-Content-Type-Options", "nosniff")
+        .header("X-DNS-Prefetch-Control", "off")
+        .header("Referrer-Policy", "no-referrer")
+        .header("Cache-Control", "no-store");
+    let response = match file {
+        Ok(FrameFile { bytes, mime }) => builder.header("Content-Type", mime).body(bytes),
+        Err(e) => {
+            let status = if matches!(e, PluginError::Denied(_)) {
+                403
+            } else {
+                404
+            };
+            builder
+                .status(status)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .body(e.to_string().into_bytes())
+        }
+    };
+    response.unwrap_or_else(|_| {
+        let mut empty = tauri::http::Response::new(Vec::new());
+        *empty.status_mut() = tauri::http::StatusCode::INTERNAL_SERVER_ERROR;
+        empty
+    })
 }
 
 /// What the rules of agents say is sensitive on a connection.

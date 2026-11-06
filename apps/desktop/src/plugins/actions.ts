@@ -16,14 +16,14 @@ import { copyText } from "../ui/copy";
 export const MAX_GRID_ROWS = 1000;
 
 /** Where an outcome goes besides the clipboard and messages. */
-interface Target {
+export interface Target {
   /** Puts the text in the editor. */
   replace?: (text: string) => void;
   /** Opens a new SQL tab with the text. */
   newTab?: (text: string) => void;
 }
 
-async function apply(outcome: PluginOutcome, target: Target) {
+export async function applyOutcome(outcome: PluginOutcome, target: Target) {
   switch (outcome.kind) {
     case "replace":
       if (!target.replace) throw failure(t("This plugin action can only change the text of an editor."));
@@ -123,7 +123,7 @@ function objectContext(arg: NavigatorObject) {
 async function run(plugin: InstalledPlugin, action: PluginActionInfo, build: () => Promise<{ context: unknown; target: Target }>) {
   const { context, target } = await build();
   const outcome = await api.pluginRunAction(plugin.manifest.id, action.id, context);
-  await apply(outcome, target);
+  await applyOutcome(outcome, target);
 }
 
 /** Adds the action to the registry; returns what removes it. */
