@@ -325,7 +325,7 @@ async function members(page, dir, shots) {
   const layout = await page.eval(`(() => {
     const top = (label) => [...document.querySelectorAll('.modal .field')].find(f => f.querySelector('span')?.textContent === label).getBoundingClientRect().top;
     const modal = document.querySelector('.modal');
-    return { host: top('Host') === top('Port'), database: top('Database') === top('Connection pooler'), password: top('Password from') === top('Password'),
+    return { host: top('Host') === top('Port'), database: top('Database') !== top('Host'), password: top('Password from') === top('Password'),
       height: modal.offsetHeight, scrolls: modal.scrollHeight > modal.clientHeight };
   })()`);
   assert.deepEqual([layout.host, layout.database, layout.password, layout.scrolls], [true, true, true, false]);

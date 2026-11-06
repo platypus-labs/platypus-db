@@ -86,6 +86,13 @@ function codePoint(char: string): string {
   return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
+/** Whether `shown` is `statement` with only its spaces and line breaks changed. The dialog
+ *  decides on what it shows, so a formatter that changed anything else must not be believed. */
+export function sameStatement(statement: string, shown: string): boolean {
+  const bare = (text: string) => text.replace(/\s+/g, "");
+  return bare(statement) === bare(shown);
+}
+
 /** `statement` as the dialog shows it: padding cannot push its end out of sight, so runs of
  *  blank lines and of spaces become markers that say how many there are, and no format
  *  character can reorder or hide its text: each becomes a marker with its code point.

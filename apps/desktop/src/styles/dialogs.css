@@ -2785,6 +2785,49 @@ label.multi-run-row:hover {
   user-select: none;
 }
 
+/* Laid out, a statement is tall: the box takes the room the window has, so that one of a usual
+   size can be allowed without scrolling. */
+.agent-write [data-field="statement"] {
+  max-height: min(50vh, 480px);
+}
+
+/* The editor's colors, for a statement that is only read (agents/statementColors.tsx). */
+.statement-code .tok-keyword {
+  color: var(--syn-keyword);
+  font-weight: 600;
+}
+
+.statement-code .tok-string,
+.statement-code .tok-string2 {
+  color: var(--syn-string);
+}
+
+.statement-code .tok-number,
+.statement-code .tok-bool,
+.statement-code .tok-atom,
+.statement-code .tok-literal {
+  color: var(--syn-number);
+}
+
+.statement-code .tok-comment {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+
+.statement-code .tok-typeName {
+  color: var(--syn-type);
+}
+
+.statement-code .tok-operator,
+.statement-code .tok-punctuation {
+  color: var(--fg-muted);
+}
+
+.agent-write-layout {
+  margin-top: calc(-1 * var(--space-4));
+  text-align: right;
+}
+
 .agent-write-plan summary {
   cursor: pointer;
   font-size: var(--text-sm);

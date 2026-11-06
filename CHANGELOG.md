@@ -6,6 +6,13 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Agents**: the dialog that asks about an agent's change shows the statement in the editor's colors and,
+  on SQL databases, laid out with its indentation, whatever single line the agent sent. Only spaces and
+  line breaks can differ from what runs: anything else shows the statement as sent, which is also a click
+  away.
+
 ### Added
 
 - **MongoDB**: `bulkWrite`, with `insertOne`, `updateOne`, `updateMany`, `replaceOne`, `deleteOne` and

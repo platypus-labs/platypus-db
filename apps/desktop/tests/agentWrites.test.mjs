@@ -1,7 +1,7 @@
 // Unit tests of the queue of agents' changes waiting for the user (src/agents/writes.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ANSWER_MS, denial, enqueue, estimatedRows, settle, statementParts, timeLeft } from "../src/agents/writes.ts";
+import { ANSWER_MS, denial, enqueue, estimatedRows, sameStatement, settle, statementParts, timeLeft } from "../src/agents/writes.ts";
 
 const request = (id) => ({
   id,
@@ -85,4 +85,17 @@ test("format characters cannot reorder or hide what the dialog shows", () => {
   ]);
   // Inside a long run of padding they are counted with it.
   assert.deepEqual(statementParts(`a${"​".repeat(20)}b`), [{ text: "a" }, { gap: "spaces", count: 20 }, { text: "b" }]);
+});
+test("a formatted statement is believed only when just its spaces and line breaks changed", () => {
+  const sent = "UPDATE t SET a = 1 WHERE id = 2";
+  assert.ok(sameStatement(sent, "UPDATE t\nSET\n  a = 1\nWHERE\n  id = 2"));
+  assert.ok(sameStatement(sent, sent));
+  // Anything else is what the dialog must not show in its place.
+  assert.ok(!sameStatement(sent, "UPDATE t SET a = 1"), "a lost WHERE");
+  assert.ok(!sameStatement(sent, "UPDATE t SET a = 1 WHERE id = 2 OR 1 = 1"), "something added");
+  assert.ok(!sameStatement(sent, "update t set a = 1 where id = 2"), "another case");
+  assert.ok(!sameStatement("SELECT 'x'", "SELECT 'y'"), "another value");
+  assert.ok(!sameStatement("DELETE FROM t WHERE id = 1 -- c", "DELETE FROM t WHERE id = 1"), "a comment dropped");
+  assert.ok(!sameStatement(sent, `${sent}\u202e`), "a character that reorders the text");
+  assert.ok(!sameStatement(`a\u200bb`, "ab"), "a character that hides");
 });

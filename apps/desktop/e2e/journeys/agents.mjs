@@ -152,7 +152,7 @@ export async function run(page, ctx, mode) {
     const dialogOf = `document.querySelector('.agent-write')`;
     const field = (name) => `(${dialogOf}?.querySelector('[data-field=${JSON.stringify(name)}]')?.textContent ?? '')`;
     let pending = run(update("y", 1));
-    await page.waitFor(`${dialogOf} !== null && ${field("statement")} === ${JSON.stringify(update("y", 1))}`, 30_000);
+    await page.waitFor(`${dialogOf} !== null && ${field("statement")}.replace(/\\s+/g, " ").trim() === ${JSON.stringify(update("y", 1))}`, 30_000);
     await u.italian("the agent's question", ["s_jrn_agent", "s-jrn-agent", NAME]);
     assert.match(await page.eval(`${dialogOf}.querySelector('h2').textContent`), /s-jrn-agent/);
     await u.type(`${dialogOf}.querySelector('[data-field=reason]')`, "not now");
@@ -162,7 +162,7 @@ export async function run(page, ctx, mode) {
     assert.equal(psql("SELECT v FROM s_jrn_agent WHERE id = 1"), "a", "the refused write changed nothing");
     await page.waitFor(`${dialogOf} === null`);
     pending = run(update("y", 1));
-    await page.waitFor(`${dialogOf} !== null && ${field("statement")} === ${JSON.stringify(update("y", 1))}`, 30_000);
+    await page.waitFor(`${dialogOf} !== null && ${field("statement")}.replace(/\\s+/g, " ").trim() === ${JSON.stringify(update("y", 1))}`, 30_000);
     await u.tap(`${dialogOf}.querySelector('[data-answer="once"]')`);
     const written = await pending;
     assert.equal(written.error, false, written.text);

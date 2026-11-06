@@ -1,13 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { toCommandError } from "../api";
+import { api, type DriverKind, toCommandError } from "../api";
+import { formatIndent } from "../editor/actions";
 import { plural, t } from "../i18n";
+import { getSetting } from "../settings";
+import { workbench } from "../workbench";
 import { answerWrite, useWaitingWrites } from "./bridge";
-import { denial, estimatedRows, statementParts, timeLeft, type StatementPart, type Verdict } from "./writes";
+import { colored } from "./statementColors";
+import { denial, estimatedRows, sameStatement, statementParts, timeLeft, type StatementPart, type Verdict } from "./writes";
 
-/** A piece of the statement: its text, or a marker in place of padding or of an invisible
- *  character, which no one could take for SQL. */
-function part(piece: StatementPart, i: number) {
-  if ("text" in piece) return <span key={i}>{piece.text}</span>;
+/** A piece of the statement: its text in the editor's colors, or a marker in place of padding
+ *  or of an invisible character, which no one could take for SQL. */
+function part(piece: StatementPart, i: number, driver: DriverKind | null) {
+  if ("text" in piece) return <span key={i}>{colored(piece.text, driver)}</span>;
   if ("invisible" in piece) {
     return (
       <span key={i} className="statement-gap" data-gap="invisible">
@@ -24,10 +28,11 @@ function part(piece: StatementPart, i: number) {
   );
 }
 
-/** Asks the user about the oldest change an agent wants to run: its statement (padding
- *  collapsed, and allowed only once read to its end when taller than its box), the rows
- *  the database expects it to change and its plan. Refusing (Escape too) can say why: the
- *  agent reads it. Nothing answered in five minutes is refused by the bridge. */
+/** Asks the user about the oldest change an agent wants to run: its statement (laid out and
+ *  colored as in the editor, with what was sent a click away; padding collapsed, and allowed
+ *  only once read to its end when taller than its box), the rows the database expects it to
+ *  change and its plan. Refusing (Escape too) can say why: the agent reads it. Nothing
+ *  answered in five minutes is refused by the bridge. */
 export function AgentWriteDialog() {
   const waiting = useWaitingWrites();
   const first = waiting[0];
@@ -48,7 +53,31 @@ export function AgentWriteDialog() {
     setError(null);
     setBusy(false);
   }, [id]);
-  // A statement taller than its box can be allowed once it was read to its end.
+  // The statement laid out by the editor's formatter. Keywords stay as they came, so that only
+  // spaces and line breaks can differ from what runs, which `sameStatement` holds it to.
+  const connection = first?.request.connection;
+  const statement = first?.request.statement;
+  // Asked only with a request: the dialog also renders before the workbench is there.
+  const driver = first ? (workbench().connections().find((c) => c.name === connection)?.driver ?? null) : null;
+  const [laidOut, setLaidOut] = useState<string | null>(null);
+  const [asSent, setAsSent] = useState(false);
+  useEffect(() => {
+    setLaidOut(null);
+    setAsSent(false);
+    if (statement === undefined || !driver) return;
+    let stale = false;
+    api.formatSql(statement, driver, { keyword_case: "preserve", indent: getSetting(formatIndent) }).then(
+      (text) => {
+        if (!stale && text !== statement && sameStatement(statement, text)) setLaidOut(text);
+      },
+      () => {},
+    );
+    return () => {
+      stale = true;
+    };
+  }, [id]);
+  const shown = !asSent && laidOut !== null ? laidOut : (statement ?? "");
+  // A statement taller than its box can be allowed once it was read to its end, as it shows.
   const box = useRef<HTMLPreElement>(null);
   const [seenEnd, setSeenEnd] = useState(true);
   const readTo = () => {
@@ -57,8 +86,9 @@ export function AgentWriteDialog() {
   };
   useLayoutEffect(() => {
     const el = box.current;
+    if (el) el.scrollTop = 0;
     setSeenEnd(!el || el.scrollHeight <= el.clientHeight + 1);
-  }, [id]);
+  }, [id, shown]);
   if (!first) return null;
   const { request, since } = first;
   const rows = estimatedRows(request.estimated_rows);
@@ -80,9 +110,16 @@ export function AgentWriteDialog() {
         onKeyDown={(e) => e.key === "Escape" && deny()}
       >
         <h2 id="agent-write-title">{t("{agent} wants to change data on {name}", { agent: request.agent, name: request.connection })}</h2>
-        <pre className="sql-preview" data-field="statement" ref={box} onScroll={readTo}>
-          {statementParts(request.statement).map(part)}
+        <pre className="sql-preview statement-code" data-field="statement" ref={box} onScroll={readTo}>
+          {statementParts(shown).map((piece, i) => part(piece, i, driver))}
         </pre>
+        {laidOut !== null && (
+          <div className="agent-write-layout">
+            <button type="button" className="link small" onClick={() => setAsSent((was) => !was)} data-field="layout">
+              {asSent ? t("Show it formatted") : t("Show it as the agent sent it")}
+            </button>
+          </div>
+        )}
         {!seenEnd && (
           <div className="notice small warn" data-field="more">
             {t("The statement goes on below: scroll it to the end before allowing it.")}

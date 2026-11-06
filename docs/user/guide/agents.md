@@ -39,7 +39,9 @@ project starts with **Off** on your computer.
 ## Changes wait for you
 
 On a **Read and write** connection, each change an agent wants to run opens a dialog in the app
-with the statement, the rows the database expects it to change and its plan. Click **Refuse** (the
+with the statement, in the editor's colors and laid out on SQL databases (**Show it as the agent
+sent it** shows the text that runs, to the letter), the rows the database expects it to change and
+its plan. Click **Refuse** (the
 agent reads your reason), **Allow once**, or **Allow for this session**. After five minutes
 without an answer it is refused, and with the app closed the changes are refused.
 Settings › **Safety** › **Ask before agents change data** turns the questions off.

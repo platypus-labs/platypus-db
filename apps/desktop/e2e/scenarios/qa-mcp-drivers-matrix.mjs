@@ -199,7 +199,7 @@ export function setup({ dir }) {
 /** Runs `sql` through the agent and waits for the app's question about it. */
 async function asked(page, mcp, connection, sql) {
   const result = mcp.call("run_query", { connection, sql });
-  await page.waitFor(`${dialog} !== null && ${field("statement")} === ${JSON.stringify(sql)}`, 30_000);
+  await page.waitFor(`${dialog} !== null && ${field("statement")}.replace(/\\s+/g, " ").trim() === ${JSON.stringify(sql)}`, 30_000);
   return [result];
 }
 
