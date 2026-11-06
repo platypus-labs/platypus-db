@@ -128,7 +128,8 @@ Set once, when the repository becomes public (GitHub › the repository's About 
 
 - **Description**: "Fast, lightweight SQL client for PostgreSQL, MySQL, SQL Server, SQLite,
   DuckDB and more, with an MCP server for AI agents. Rust + Tauri."
-- **Website**: the site, once it is online.
+- **Website**: the site, once it is online. It is published by `.github/workflows/pages.yml`,
+  started by hand; the steps and the open question of the domain are in `site/README.md`.
 - **Topics**: `sql-client`, `database`, `database-client`, `database-gui`, `postgresql`,
   `mysql`, `sqlite`, `sql-server`, `duckdb`, `rust`, `tauri`, `mcp`, `mcp-server`,
   `desktop-app`, `dbeaver-alternative`.
