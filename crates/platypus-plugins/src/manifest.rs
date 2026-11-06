@@ -285,7 +285,7 @@ impl Manifest {
 }
 
 /// Safe as a single path component: no separators, no `..`, nothing hidden.
-fn is_plain_name(name: &str) -> bool {
+pub(crate) fn is_plain_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
         && !name.starts_with('.')
@@ -413,7 +413,7 @@ mod tests {
         [theme]
         name = "Sea"
         dark = { bg = "\#0b1d26" }
-        fonts = { mono = "Fira Code" }
+        fonts = { mono = "fonts/FiraCode.woff2" }
 
         [[settings]]
         key = "endpoint"

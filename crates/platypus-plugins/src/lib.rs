@@ -10,9 +10,11 @@
 //!
 //! [`package`] installs, lists, enables and removes plugins under `<data>/plugins`,
 //! [`action`] runs their commands, [`driver`] opens their connections, [`hooks`] calls them on
-//! events and [`settings`] keeps the values of their pages.
+//! events, [`settings`] keeps the values of their pages, [`theme`] checks what a theme holds and
+//! [`catalog`] downloads and checks packages listed by an index.
 
 pub mod action;
+pub mod catalog;
 pub mod driver;
 pub mod extensions;
 pub mod hooks;
@@ -23,10 +25,12 @@ pub mod runtime;
 pub mod settings;
 #[cfg(test)]
 mod testing;
+pub mod theme;
 
 use std::sync::OnceLock;
 
 pub use action::{ActionInfo, ActionOutcome, ActionScope};
+pub use catalog::{CatalogRequest, CatalogView, IndexEntry, Prepared, SignatureState, TrustedKey};
 pub use driver::{DriverInfo, PLUGIN_OPTION, PluginDriver};
 pub use extensions::{HookEvent, SettingField, SettingKind};
 pub use hooks::{
@@ -66,6 +70,15 @@ pub enum PluginError {
     /// Something the plugin asked for and was not granted.
     #[error("not allowed: {0}")]
     Denied(String),
+    /// The catalog refused an index or a download, and says why.
+    #[error("{0}")]
+    Catalog(String),
+    /// A package with no valid signature: only the user's own confirmation lets it through.
+    #[error("{0}")]
+    Unsigned(String),
+    /// A version older than the installed one: only the user's own request lets it through.
+    #[error("version {offered} is older than the installed {installed}")]
+    Downgrade { installed: String, offered: String },
     #[error("{path}: {source}")]
     Io {
         path: String,
@@ -89,6 +102,9 @@ impl From<PluginError> for platypus_core::Error {
             PluginError::NotInstalled(_)
             | PluginError::Disabled(_)
             | PluginError::Invalid(_)
+            | PluginError::Catalog(_)
+            | PluginError::Unsigned(_)
+            | PluginError::Downgrade { .. }
             | PluginError::Denied(_) => Self::Config(e.to_string()),
             _ => Self::Other(e.to_string()),
         }

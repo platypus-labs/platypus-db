@@ -273,6 +273,221 @@ async fn a_theme_installs_without_a_module() {
     assert!(e.contains(MODULE_FILE), "{e}");
 }
 
+fn themed(fonts: &str) -> String {
+    format!(
+        "id = \"sea\"\nname = \"Sea\"\nversion = \"1.0.0\"\napi = 2\nkinds = [\"theme\"]\n[theme]\nname = \"Sea\"\ndark = {{ bg = \"#0b1d26\" }}\n{fonts}"
+    )
+}
+
+const FONT: &[u8] = b"wOF2 a font for the tests";
+
+fn zipped(files: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, bytes) in files {
+        zip.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(bytes).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_theme_brings_its_fonts_from_the_package() {
+    let data = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(data.path());
+    let root = tempfile::tempdir().unwrap();
+    let manifest = themed("fonts = { mono = \"fonts/Sea.woff2\" }\n");
+    let zip_path = root.path().join("sea.zip");
+    std::fs::write(
+        &zip_path,
+        zipped(&[
+            ("sea/plugin.toml", manifest.as_bytes()),
+            ("sea/fonts/Sea.woff2", FONT),
+        ]),
+    )
+    .unwrap();
+    let inspected = plugins.inspect(&zip_path).await.unwrap();
+
+    // Another font is another package: the review does not hold.
+    let other = root.path().join("other.zip");
+    std::fs::write(
+        &other,
+        zipped(&[
+            ("sea/plugin.toml", manifest.as_bytes()),
+            ("sea/fonts/Sea.woff2", b"wOF2 another font"),
+        ]),
+    )
+    .unwrap();
+    assert_ne!(plugins.inspect(&other).await.unwrap().hash, inspected.hash);
+
+    plugins.install(&zip_path, &inspected.hash).await.unwrap();
+    assert!(
+        data.path()
+            .join("plugins/sea/1.0.0/fonts/Sea.woff2")
+            .exists()
+    );
+    assert_eq!(plugins.theme_font("sea", "mono").unwrap(), FONT);
+    let e = plugins.theme_font("sea", "ui").unwrap_err().to_string();
+    assert!(e.contains("no font"), "{e}");
+
+    // Off, nothing reads it.
+    plugins.set_enabled("sea", false).unwrap();
+    assert!(matches!(
+        plugins.theme_font("sea", "mono"),
+        Err(PluginError::Disabled(_))
+    ));
+
+    // A folder too.
+    let dir = root.path().join("folder");
+    std::fs::create_dir_all(dir.join("fonts")).unwrap();
+    std::fs::write(dir.join(MANIFEST_FILE), &manifest).unwrap();
+    std::fs::write(dir.join("fonts/Sea.woff2"), FONT).unwrap();
+    let inspected = plugins.inspect(&dir).await.unwrap();
+    plugins.install(&dir, &inspected.hash).await.unwrap();
+    assert_eq!(plugins.theme_font("sea", "mono").unwrap(), FONT);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_theme_is_refused_with_what_it_cannot_hold() {
+    let data = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(data.path());
+    let root = tempfile::tempdir().unwrap();
+    let inspect = async |name: &str, manifest: &str, files: &[(&str, &[u8])]| {
+        let path = root.path().join(name);
+        let mut all = vec![("plugin.toml", manifest.as_bytes())];
+        all.extend_from_slice(files);
+        std::fs::write(&path, zipped(&all)).unwrap();
+        plugins.inspect(&path).await
+    };
+    let with_font = themed("fonts = { mono = \"a.woff2\" }\n");
+    let big = vec![b'w'; usize::try_from(theme::MAX_FONT).unwrap() + 1];
+    let mut oversize = b"wOF2".to_vec();
+    oversize.extend_from_slice(&big);
+    for (name, manifest, files, why) in [
+        (
+            "escape.zip",
+            themed("").replace("#0b1d26", "#fff; background: url(x)"),
+            vec![],
+            "not a colour",
+        ),
+        (
+            "url.zip",
+            themed("").replace("#0b1d26", "url(https://example.com/x)"),
+            vec![],
+            "not a colour",
+        ),
+        (
+            "token.zip",
+            themed("").replace("bg =", "glow ="),
+            vec![],
+            "unknown colour dark.glow",
+        ),
+        (
+            "family.zip",
+            themed("fonts = { mono = \"Fira Code\" }\n"),
+            vec![],
+            "not a",
+        ),
+        ("missing.zip", with_font.clone(), vec![], "no a.woff2"),
+        (
+            "html.zip",
+            with_font.clone(),
+            vec![("a.woff2", b"<html>".as_slice())],
+            "not a font",
+        ),
+        (
+            "large.zip",
+            with_font.clone(),
+            vec![("a.woff2", oversize.as_slice())],
+            "larger than",
+        ),
+    ] {
+        let e = inspect(name, &manifest, &files).await.unwrap_err();
+        assert!(e.to_string().contains(why), "{name}: {e}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_manual_install_refuses_paths_that_climb_out_too() {
+    let data = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(data.path());
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("up.zip");
+    std::fs::write(
+        &path,
+        zipped(&[
+            ("plugin.toml", themed("").as_bytes()),
+            ("../../evil.txt", b"x"),
+        ]),
+    )
+    .unwrap();
+    let e = plugins.inspect(&path).await.unwrap_err().to_string();
+    assert!(e.contains("climbs out"), "{e}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_leaves_no_files_and_keeps_settings_only_when_asked() {
+    let data = tempfile::tempdir().unwrap();
+    let secrets = Arc::new(platypus_store::MemorySecrets::default());
+    let plugins = Plugins::new(data.path()).with_secrets(secrets);
+    let root = tempfile::tempdir().unwrap();
+    let source = package(
+        root.path(),
+        "cfg",
+        &abi2_actions("1", URL_AND_TOKEN),
+        DESCRIBE_ACTIONS,
+        COPY,
+    );
+    let set_up = async || {
+        install(&plugins, &source).await.unwrap();
+        plugins
+            .set_setting("cfg", "url", &json!("https://x"))
+            .unwrap();
+        plugins
+            .set_setting("cfg", "token", &json!("s3cret"))
+            .unwrap();
+    };
+    let home = data.path().join("plugins/cfg");
+    let file = data.path().join("plugins/settings.toml");
+
+    // Kept when chosen: the values, for a later install; never the secret.
+    set_up().await;
+    plugins.remove_keeping_settings("cfg").unwrap();
+    assert!(!home.exists());
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("https://x")
+    );
+    install(&plugins, &source).await.unwrap();
+    let states = plugins.settings_of("cfg").unwrap();
+    assert_eq!(states[0].value, Some(json!("https://x")));
+    assert!(!states[1].set, "the secret left the keychain");
+
+    // Otherwise everything goes, down to the file with the last plugin's values.
+    plugins
+        .set_setting("cfg", "token", &json!("s3cret"))
+        .unwrap();
+    plugins.remove("cfg").unwrap();
+    assert!(!home.exists());
+    assert!(!file.exists());
+    install(&plugins, &source).await.unwrap();
+    assert!(plugins.settings_of("cfg").unwrap().iter().all(|s| !s.set));
+
+    // The values of another plugin stay.
+    plugins
+        .set_setting("cfg", "url", &json!("https://x"))
+        .unwrap();
+    std::fs::write(
+        &file,
+        "version = 1\n[other]\nkey = 1\n[cfg]\nurl = \"https://x\"\n",
+    )
+    .unwrap();
+    plugins.remove("cfg").unwrap();
+    let left = std::fs::read_to_string(&file).unwrap();
+    assert!(left.contains("other") && !left.contains("cfg"), "{left}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn an_update_says_what_it_asks_anew() {
     let data = tempfile::tempdir().unwrap();

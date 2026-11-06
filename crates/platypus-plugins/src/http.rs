@@ -60,20 +60,8 @@ impl Http {
         })?;
         let allowed = Arc::new(grants.http.clone());
         let follow = Arc::clone(&allowed);
-        let mut config = ConnectionConfig::new(DriverKind::Plugin);
-        config.ssl_mode = SslMode::VerifyFull;
-        let tls = platypus_tls::client_config(&config)
-            .map_err(|e| PluginError::Invalid(e.to_string()))?
-            .ok_or_else(|| PluginError::Invalid("no TLS configuration".to_owned()))?;
-        let mut builder = reqwest::Client::builder()
-            .user_agent(concat!(
-                "platypus-db/",
-                env!("CARGO_PKG_VERSION"),
-                " plugin"
-            ))
-            .connect_timeout(limits.http_timeout)
-            .tls_backend_preconfigured(tls)
-            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+        let mut builder = client_builder(limits.http_timeout)?.redirect(
+            reqwest::redirect::Policy::custom(move |attempt| {
                 if attempt.previous().len() >= MAX_REDIRECTS {
                     attempt.error("too many redirects")
                 } else if attempt
@@ -86,7 +74,8 @@ impl Http {
                     // The guest gets the redirect itself, and may not follow it either.
                     attempt.stop()
                 }
-            }));
+            }),
+        );
         if let Some(proxy) = grants.proxy.as_deref().filter(|p| !p.trim().is_empty()) {
             if !proxy.trim().to_ascii_lowercase().starts_with("http://") {
                 return Err(PluginError::Invalid(
@@ -169,8 +158,27 @@ impl Http {
     }
 }
 
+/// A client with the app's user agent, verified TLS and the system's proxy.
+pub(crate) fn client_builder(
+    connect_timeout: Duration,
+) -> Result<reqwest::ClientBuilder, PluginError> {
+    let mut config = ConnectionConfig::new(DriverKind::Plugin);
+    config.ssl_mode = SslMode::VerifyFull;
+    let tls = platypus_tls::client_config(&config)
+        .map_err(|e| PluginError::Invalid(e.to_string()))?
+        .ok_or_else(|| PluginError::Invalid("no TLS configuration".to_owned()))?;
+    Ok(reqwest::Client::builder()
+        .user_agent(concat!(
+            "platypus-db/",
+            env!("CARGO_PKG_VERSION"),
+            " plugin"
+        ))
+        .connect_timeout(connect_timeout)
+        .tls_backend_preconfigured(tls))
+}
+
 /// The error with its causes: reqwest's own message is only "error sending request".
-fn describe(e: &reqwest::Error) -> String {
+pub(crate) fn describe(e: &reqwest::Error) -> String {
     let mut message = e.to_string();
     let mut source = std::error::Error::source(e);
     while let Some(cause) = source {
