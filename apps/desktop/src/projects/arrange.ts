@@ -25,8 +25,8 @@ export type Arrange =
   | { kind: "connection"; id: string; folder: string | null; before: string | null }
   /** Into `parent` (`null`: the root), just before the folder `before`, or last. */
   | { kind: "folder"; id: string; parent: string | null; before: string | null }
-  /** A new folder holding `target` and then `dragged`, where `target` was. */
-  | { kind: "group"; target: string; dragged: string };
+  /** A new folder holding `target`, `dragged` and then `more`, where `target` was. */
+  | { kind: "group"; target: string; dragged: string; more?: string[] };
 
 /** The layout of All connections: the saved list, in its order. */
 export const listLayout = (connections: { id: string }[]): Layout => ({ connections: connections.map((c) => c.id) });
@@ -97,6 +97,33 @@ export function dropChange(layout: Layout, dragged: DragItem, target: DragItem |
   const same = parentOf(layout, dragged.id) === parent;
   const before = beside(foldersIn(layout, parent), dragged.id, target.id, zone, same);
   return before === undefined ? null : { kind: "folder", id: dragged.id, parent, before };
+}
+
+/** The changes a drop of `dragged` makes, in the order to apply them: several connections stay
+ *  in the order given, whatever their folders were. None when nothing moves, or when they are
+ *  dropped on one of themselves. */
+export function dropChanges(layout: Layout, dragged: DragItem[], target: DragItem | null, zone: DropZone): Arrange[] {
+  const [first] = dragged;
+  if (!first) return [];
+  if (dragged.length === 1) {
+    const change = dropChange(layout, first, target, zone);
+    return change ? [change] : [];
+  }
+  const ids = dragged.map((d) => d.id);
+  if (target?.kind === "connection" && ids.includes(target.id)) return [];
+  const move = (folder: string | null, before: string | null): Arrange[] => ids.map((id) => ({ kind: "connection", id, folder, before }));
+  if (target === null) {
+    const root = connectionsIn(layout, null);
+    const inPlace = root.slice(-ids.length).join() === ids.join();
+    return inPlace ? [] : move(null, null);
+  }
+  if (target.kind === "folder") {
+    return ids.filter((id) => folderOf(layout, id) !== target.id).map((id) => ({ kind: "connection", id, folder: target.id, before: null }));
+  }
+  if (zone === "into") return [{ kind: "group", target: target.id, dragged: first.id, more: ids.slice(1) }];
+  const folder = folderOf(layout, target.id);
+  const others = connectionsIn(layout, folder).filter((c) => !ids.includes(c));
+  return move(folder, zone === "before" ? target.id : nextOf(others, target.id));
 }
 
 /** A connection moved into `folder` before `before`; `null` when it is there already (in

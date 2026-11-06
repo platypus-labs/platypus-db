@@ -1168,6 +1168,11 @@ mod tests {
     }
 
     #[test]
+    fn dbeaver_names_db2_in_capitals_too() {
+        assert_eq!(dbeaver_driver("DB2", "DB2"), Some(DriverKind::Db2));
+    }
+
+    #[test]
     fn a_db2_alias_has_no_host_and_says_so() {
         let dir = tempfile::tempdir().unwrap();
         let json = dir.path().join("data-sources.json");

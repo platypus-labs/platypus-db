@@ -70,6 +70,14 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Fixed
 
+- **Connections**: selected connections can be dragged into a folder and deleted together; before, only
+  the one under the pointer moved, and there was no way to delete several.
+- **Connections**: folders of connections stay as you left them, open or closed, after a restart.
+- **Connections**: Test connection on an edited connection says why it needs the password. A saved
+  password still goes only to the server it was saved for: on another server the form now asks for it,
+  instead of failing with "password missing" beside a field that says it is saved. Another database of
+  the same PostgreSQL or MySQL server, or another way of signing in to the same SSH server, no longer
+  counts as another server.
 - **Grid**: a selection of more than 20,000 rows shows **Save files to a folder…** greyed out, saying why,
   instead of losing the item. A text cell that holds a file shows in the menu and the value panel only,
   as the guide now says.

@@ -94,7 +94,7 @@
 <h2 id="passwords">Passwords</h2>
 <p>In <strong>General</strong>, the password comes from one of:</p>
 <ul>
-<li><strong>Saved in the keychain</strong>: the system keychain.</li>
+<li><strong>Saved in the keychain</strong>: the system keychain. <strong>Test connection</strong> sends it only to the server it was saved for: if you change the host, the port or the SSH servers on the way, it asks you to type the password for that test. Another database of the same PostgreSQL or MySQL server is not another server.</li>
 <li><strong>Ask every time</strong>: typed at each connection. Agents cannot open such a connection.</li>
 <li><strong>.pgpass file</strong> (PostgreSQL only; the connection&#39;s host, port, database and user pick the line, as libpq does).</li>
 <li><strong>Shell command</strong>: a command that prints the password.</li>

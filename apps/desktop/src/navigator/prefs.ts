@@ -26,6 +26,8 @@ interface Prefs {
   bookmarks: Bookmark[];
   /** By connection id. */
   filters: Record<string, NavigatorFilter>;
+  /** The folders of connections left closed; a folder starts open. */
+  closedFolders: string[];
 }
 
 const KEY = "platypus.navigator";
@@ -38,9 +40,10 @@ function read(): Prefs {
     return {
       bookmarks: Array.isArray(saved.bookmarks) ? saved.bookmarks : [],
       filters: saved.filters && typeof saved.filters === "object" ? saved.filters : {},
+      closedFolders: Array.isArray(saved.closedFolders) ? saved.closedFolders : [],
     };
   } catch {
-    return { bookmarks: [], filters: {} };
+    return { bookmarks: [], filters: {}, closedFolders: [] };
   }
 }
 
@@ -70,6 +73,13 @@ const same = (a: Bookmark, b: Bookmark) =>
   a.name === b.name &&
   a.kind === b.kind &&
   a.parent === b.parent;
+
+/** Remembers whether a folder of connections is closed, for the next start too. */
+export function setFolderClosed(id: string, closed: boolean) {
+  if (prefs.closedFolders.includes(id) === closed) return;
+  const others = prefs.closedFolders.filter((f) => f !== id);
+  write({ ...prefs, closedFolders: closed ? [...others, id] : others });
+}
 
 export const isBookmarked = (b: Bookmark) => prefs.bookmarks.some((x) => same(x, b));
 
