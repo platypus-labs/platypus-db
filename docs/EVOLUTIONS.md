@@ -54,8 +54,8 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 | Group | Lock |
 |---|---|
 | A — Agents and MCP | ✅ completed |
-| B — Plugins and mods | free |
-| C — Kerberos and authentication | free |
+| B — Plugins and mods | 🔒 Delfa · evo-b-plugins · 2026-11-06 |
+| C — Kerberos and authentication | 🔒 Delfa · evo-c-kerberos · 2026-11-06 |
 | D — User documentation | ✅ done (P2; P3 in part) |
 | E — Publishing and distribution | free |
 
