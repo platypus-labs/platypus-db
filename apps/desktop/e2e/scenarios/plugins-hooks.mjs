@@ -247,8 +247,8 @@ async function blocksStatements(page, db) {
   assert.ok(seen.includes("email"), seen);
   assert.ok(seen.includes("items"), seen);
 
-  // Never a password.
-  const secret = await refused(page, "CREATE USER bob WITH PASSWORD 'hunter2' /* show_hook_view */");
+  // Never a password. The comment inside the statement: one after it is not part of what runs.
+  const secret = await refused(page, "CREATE USER bob /* show_hook_view */ WITH PASSWORD 'hunter2'");
   assert.ok(secret.includes(BLOCKED), secret);
   assert.ok(!secret.includes("hunter2"), secret);
 
@@ -292,13 +292,13 @@ async function brokenHooksDoNotBlock(page) {
   await page.eval(`document.querySelectorAll('.toast').forEach(t => t.click())`);
   await page.waitFor(`document.querySelectorAll('.toast').length === 0`);
   // A crash: the statement runs, and the user is told.
-  assert.equal(await runs(page, "SELECT 1 AS one /* hook_crash */"), "1 row");
+  assert.equal(await runs(page, "SELECT /* hook_crash */ 1 AS one"), "1 row");
   await page.waitFor(`/hook of the plugin “Query guard” failed and the action went ahead/.test(${toasts})`, 15_000);
   await page.eval(`document.querySelectorAll('.toast').forEach(t => t.click())`);
   await page.waitFor(`document.querySelectorAll('.toast').length === 0`);
   // An endless loop: the statement runs too, after the hook's fuel or time ended, and the user
   // is not told again.
-  assert.equal(await runs(page, "SELECT 2 AS two /* hook_endless */"), "1 row");
+  assert.equal(await runs(page, "SELECT /* hook_endless */ 2 AS two"), "1 row");
   assert.equal(await page.eval(toasts), "");
   // And the plugin goes on working: each call has a new instance.
   const error = await refused(page, "SELECT * FROM forbidden_table");

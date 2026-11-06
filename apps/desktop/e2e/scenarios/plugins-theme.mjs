@@ -42,6 +42,9 @@ function writePackage(dir, id, theme, files = {}) {
   }
 }
 
+// It makes no connection: the app is ready without any.
+export const ready = `document.querySelector('.shell') !== null`;
+
 export function setup({ dir }) {
   cpSync(join(REPO, "examples/plugins/theme-sea"), join(dir, "packages", "theme-sea"), { recursive: true });
   writePackage(dir, "escape", `name = "Escape"\ndark = { bg = "#000000; background: url(https://example.com/x.png)" }`);

@@ -7,8 +7,8 @@
 //
 // Values of another plugin and the host function's refusals are tested in Rust (`platypus-plugins`).
 import assert from "node:assert/strict";
-import { cpSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { closeSync, cpSync, existsSync, fstatSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
@@ -111,11 +111,41 @@ async function saveField(page, key, value) {
   await page.eval(`document.querySelector('${input}').blur()`);
 }
 
-/** Every file under `folder`, as text. */
+const LOCKED = new Set(["EBUSY", "EPERM"]);
+
+/** What can be read of a file, by pieces: an open database has regions locked against reading, and
+ *  the rest of it counts all the same. `whole` says whether anything was left out. */
+function readAround(path) {
+  let fd;
+  try {
+    fd = openSync(path, "r");
+  } catch (e) {
+    if (LOCKED.has(e.code)) return { text: "", whole: false };
+    throw e;
+  }
+  try {
+    const piece = Buffer.alloc(64 * 1024);
+    let text = "";
+    let whole = true;
+    for (let at = 0, size = fstatSync(fd).size; at < size; at += piece.length) {
+      try {
+        text += piece.toString("latin1", 0, readSync(fd, piece, 0, piece.length, at));
+      } catch (e) {
+        if (!LOCKED.has(e.code)) throw e;
+        whole = false;
+      }
+    }
+    return { text, whole };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Every file under `folder`: its path, what can be read of it and whether that is all of it. */
 function filesUnder(folder) {
   return readdirSync(folder).flatMap((name) => {
     const path = join(folder, name);
-    return statSync(path).isDirectory() ? filesUnder(path) : [[path, readFileSync(path, "latin1")]];
+    return statSync(path).isDirectory() ? filesUnder(path) : [{ path, ...readAround(path) }];
   });
 }
 
@@ -164,9 +194,14 @@ async function savesEachType(page, dir) {
   assert.equal(await page.eval(`document.querySelector('${rowSelector("token")} input').value`), "", "the page does not keep it");
   assert.equal(await page.eval(`document.querySelector('${rowSelector("token")} input').placeholder`), "Saved in the keychain");
   // In no file of the data folder.
-  for (const [path, text] of filesUnder(dir)) {
+  const files = filesUnder(dir);
+  for (const { path, text } of files) {
     assert.ok(!text.includes(SECRET), `${path} holds the secret`);
   }
+  // What could not be read in full is the web view's own lock files and databases, and it is told.
+  const partial = files.filter((f) => !f.whole).map((f) => relative(dir, f.path));
+  console.log(`read in part, locked by the app: ${partial.join(", ") || "none"}`);
+  for (const path of partial) assert.equal(path.split(sep)[0], "webview", `${path}: a file of the app's own could not be read`);
 }
 
 async function moduleReadsThem(page) {

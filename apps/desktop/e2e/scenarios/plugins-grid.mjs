@@ -34,7 +34,9 @@ export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "grid.db"));
   db.exec(`
     CREATE TABLE items (email TEXT, name TEXT, state STATUS);
-    INSERT INTO items VALUES ('a@b.c', 'apple', 'ok'), ('m@n.o', 'boom', 'failed'), ('x@y.z', NULL, 'markup'), (NULL, 'kiwi', 'other');
+    INSERT INTO items VALUES ('a@b.c', 'apple', 'ok'), ('m@n.o', 'grape', 'failed'), ('x@y.z', NULL, 'markup'), (NULL, 'kiwi', 'other');
+    CREATE TABLE counted (name TEXT);
+    INSERT INTO counted VALUES ('boom'), ('pear');
     CREATE TABLE broken (name TEXT);
     INSERT INTO broken VALUES ('crash'), ('fine');
     CREATE TABLE endless (name TEXT);
@@ -125,9 +127,9 @@ async function closeShownTab(page) {
 /** Double-clicks `table` in the navigator, already unfolded, and waits for its `rows`: an exact
  *  status, or just that it says rows, for a result still loading. */
 async function openAgain(page, table, rows = null) {
-  await page.eval(`${treeRow(table)}.id = 'e2e-table'`);
+  // `openTable` leaves the id on the row it opened.
+  await page.eval(`document.getElementById('e2e-table')?.removeAttribute('id'); ${treeRow(table)}.id = 'e2e-table'`);
   await page.clickSel("#e2e-table", { clickCount: 2 });
-  await page.eval(`document.getElementById('e2e-table').removeAttribute('id')`);
   const status = `(${visibleTab}?.querySelector('.statusbar span')?.textContent ?? '')`;
   await page.waitFor(rows ? `${status} === ${JSON.stringify(rows)}` : `/\\d.*rows/.test(${status})`, 15_000);
 }
@@ -140,8 +142,6 @@ async function computedAndRendered(page) {
   // `email` reads as six dots to it, with masking off: 6 + 5, 6 alone, and 4 with its NULL.
   await page.waitFor(`${drew("11")} && ${drew("6")} && ${drew("4")}`, 15_000);
   assert.equal(await page.eval(drew("a@b.c")), true, "the grid itself draws the real value");
-  // A row's error is that row's.
-  await page.waitFor(drew("⚠ this row cannot be counted"));
   // The type of the column it does not read does not count: `state` is not text.
   // The renderer: its colour and its hint, its text in place of the value, others as they are.
   await page.waitFor(`${drew("FAILED")} && ${drew("fine")}`, 15_000);
@@ -151,7 +151,8 @@ async function computedAndRendered(page) {
   // Markup is the error of its cell, and goes nowhere near the DOM.
   await page.waitFor(`[...window.__drawn.keys()].some(k => k.startsWith('⚠ not a cell'))`);
   assert.equal(await page.eval(drew("markup")), true);
-  assert.equal(await page.eval(`document.querySelector('.result-grid img, .grid img') === null`), true);
+  // (CodeMirror's own spacers in the editor above it are images with no source.)
+  assert.equal(await page.eval(`${visibleTab}.querySelector('img:not(.cm-widgetBuffer)')?.outerHTML ?? null`), null);
 }
 
 /** The context menu of the first column's first row. */
@@ -187,12 +188,22 @@ async function maskedForThePlugin(page) {
 }
 
 async function failuresStayInTheColumn(page) {
+  // A row's error is that row's. The module looks at the first value, so not in `items`, whose first
+  // column reads as dots to it: the row beside it counts.
+  await forget(page);
+  await openAgain(page, "counted", "2 rows");
+  // (Cut to its column's width.)
+  await page.waitFor(`[...window.__drawn.keys()].some(k => k.startsWith('⚠ this row')) && ${drew("4")}`, 15_000);
+  assert.equal(await page.eval(drew("boom")), true);
+  await closeShownTab(page);
+
   // A crash: the batch fails, the column says so in its cells, the grid goes on.
   await forget(page);
   await openAgain(page, "broken", "2 rows");
-  await page.waitFor(`[...window.__drawn.keys()].some(k => k.startsWith('⚠') && k.includes('stopped with an error'))`, 15_000);
+  await page.waitFor(`[...window.__drawn.keys()].some(k => k.startsWith('⚠ the plug'))`, 15_000);
   await page.waitFor(`${drew("crash")} && ${drew("fine")}`);
-  await page.waitFor(`(${toasts}).includes('“Total length” of the plugin “Grid demo” failed')`, 15_000);
+  // In full where the cell has to cut it.
+  await page.waitFor(`/“Total length” of the plugin “Grid demo” failed: the plugin stopped with an error/.test(${toasts})`, 15_000);
   await closeShownTab(page);
 
   // An endless loop: the fuel stops it, within the time of a batch, and the app never waits.

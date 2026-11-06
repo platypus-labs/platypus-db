@@ -61,6 +61,9 @@ function publish(plugins) {
   files.set("/index.json", JSON.stringify({ format: 1, plugins }));
 }
 
+// It makes no connection: the app is ready without any.
+export const ready = `document.querySelector('.shell') !== null`;
+
 export function setup({ dir }) {
   writeFileSync(join(dir, "settings.toml"), `version = 1\n\n[drivers]\nauto_update = false\n`);
   return new Promise((done) => {
