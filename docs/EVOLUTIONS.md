@@ -55,7 +55,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 |---|---|
 | A — Agents and MCP | ✅ completed |
 | B — Plugins and mods | 🔒 Delfa · evo-b-plugins · 2026-11-06 |
-| C — Kerberos and authentication | 🔒 Delfa · evo-c-kerberos · 2026-11-06 |
+| C — Kerberos and authentication | ✅ completed |
 | D — User documentation | ✅ done (P2; P3 in part) |
 | E — Publishing and distribution | free |
 
@@ -125,8 +125,7 @@ like `http` and `clipboard`; the changes do not break ABI 1 (`api = 2`, backward
 
 ### Group C — Kerberos and authentication
 
-**Status: done for PostgreSQL (the Windows and Linux builds; a real ticket has logged in from
-Linux, not yet through SSPI); the MySQL row stays `⛔ blocked`.** The Kerberos row of roadmap group
+**Status: completed.** A real ticket logs in on Linux, tested against a KDC in Docker. Windows' SSPI against a real KDC is untested (no domain here), macOS builds without it, and the MySQL row stays `⛔ blocked`.
 F says what is left.
 
 **Area:** `vendor/tokio-postgres`, `crates/platypus-driver-pg` (and `platypus-core` for `Auth`), `docker/compose.yml` (test KDC), `crates/platypus-driver-mysql` for the blocked row
