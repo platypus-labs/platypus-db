@@ -2168,6 +2168,8 @@ const zh: Record<string, string> = {
   "This change, and the next ones of this agent on {name} until it stops": "此次更改以及该代理在 {name} 上的后续更改，直到它停止",
   "Allow for this session": "本次会话内允许",
   "Allow once": "允许一次",
+  "Show it formatted": "显示格式化后的内容",
+  "Show it as the agent sent it": "显示智能体发送的原文",
   "{n} blank line": "{n} 个空行",
   "{n} blank lines": "{n} 个空行",
   "{n} space": "{n} 个空格",

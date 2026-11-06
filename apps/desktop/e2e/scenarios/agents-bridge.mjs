@@ -23,6 +23,8 @@ const RW = "00000000-0000-4000-8000-000000000042";
 
 const dialog = `document.querySelector('.agent-write')`;
 const field = (name) => `(${dialog}?.querySelector('[data-field=${JSON.stringify(name)}]')?.textContent ?? '')`;
+/** The statement as the dialog shows it, however it is laid out. */
+const statement = `${field("statement")}.replace(/\\s+/g, ' ').trim()`;
 const answer = (verdict) => `${dialog}.querySelector('[data-answer=${JSON.stringify(verdict)}]').click()`;
 const pill = `(document.querySelector('.topbar-agents')?.textContent ?? '')`;
 const bridgeField = (name) => `document.querySelector('.agent-bridge [data-field=${JSON.stringify(name)}]')`;
@@ -80,7 +82,7 @@ const post = (bridge, path, body, token = bridge.token) =>
  *  answer in a pair: a promise returned as is would make the caller wait for the answer too. */
 async function asked(page, mcp, sql) {
   const result = mcp.call("run_query", { connection: "Scratch", sql });
-  await page.waitFor(`${dialog} !== null && ${field("statement")} === ${JSON.stringify(sql)}`, 20_000);
+  await page.waitFor(`${dialog} !== null && ${statement} === ${JSON.stringify(sql)}`, 20_000);
   return [result];
 }
 
@@ -99,8 +101,22 @@ async function closeSettings(page) {
 
 async function questions(page, dir, mcp) {
   // Refused: the agent reads the reason; nothing changed.
-  let [result] = await asked(page, mcp, "UPDATE orders SET status = 'closed' WHERE id <= 5");
+  const sent = "UPDATE orders SET status = 'closed' WHERE id <= 5";
+  let [result] = await asked(page, mcp, sent);
   assert.match(await page.eval(field("rows")), /row|estimate/);
+  // Laid out and colored as in the editor; what was sent is a click away, to the letter.
+  const layout = `${dialog}.querySelector('[data-field=layout]')`;
+  await page.waitFor(`${layout} !== null`, 5_000);
+  assert.ok((await page.eval(field("statement"))).includes("\n"), "on several lines");
+  const colors = `${dialog}.querySelector('[data-field=statement]')`;
+  assert.equal(await page.eval(`getComputedStyle(${colors}.querySelector('.tok-keyword')).fontWeight`), "600");
+  assert.ok(await page.eval(`${colors}.querySelector('.tok-string')?.textContent === "'closed'"`), "the string has its color");
+  const keyword = await page.eval(`getComputedStyle(${colors}.querySelector('.tok-keyword')).color`);
+  assert.notEqual(keyword, await page.eval(`getComputedStyle(${colors}).color`));
+  await page.eval(`${layout}.click()`);
+  await page.waitFor(`${field("statement")} === ${JSON.stringify(sent)}`);
+  await page.eval(`${layout}.click()`);
+  await page.waitFor(`${field("statement")}.includes("\\n")`);
   assert.match(await page.eval(`${dialog}.querySelector('h2').textContent`), /e2e-bridge wants to change data on Scratch/);
   await setField(page, ".agent-write [data-field=reason]", "not before the release");
   await page.eval(answer("deny"));
@@ -138,7 +154,7 @@ async function agentGoesAway(page) {
   const other = await startMcp(page.dir, "e2e-leaver");
   try {
     void other.call("run_query", { connection: "Scratch", sql: "DELETE FROM orders WHERE id = 1" }).catch(() => {});
-    await page.waitFor(`${dialog} !== null && ${field("statement")} === 'DELETE FROM orders WHERE id = 1'`, 20_000);
+    await page.waitFor(`${dialog} !== null && ${statement} === 'DELETE FROM orders WHERE id = 1'`, 20_000);
   } finally {
     other.close();
   }

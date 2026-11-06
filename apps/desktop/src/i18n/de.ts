@@ -2168,6 +2168,8 @@ const de: Record<string, string> = {
   "This change, and the next ones of this agent on {name} until it stops": "Diese Änderung und die nächsten dieses Agenten in {name}, bis er beendet wird",
   "Allow for this session": "Für diese Sitzung erlauben",
   "Allow once": "Einmal erlauben",
+  "Show it formatted": "Formatiert anzeigen",
+  "Show it as the agent sent it": "So anzeigen, wie der Agent es gesendet hat",
   "{n} blank line": "{n} Leerzeile",
   "{n} blank lines": "{n} Leerzeilen",
   "{n} space": "{n} Leerzeichen",
