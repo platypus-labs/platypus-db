@@ -235,6 +235,7 @@ pub struct Config {
     pub(crate) target_session_attrs: TargetSessionAttrs,
     pub(crate) channel_binding: ChannelBinding,
     pub(crate) load_balance_hosts: LoadBalanceHosts,
+    pub(crate) gss_target: Option<String>,
 }
 
 impl Default for Config {
@@ -269,7 +270,21 @@ impl Config {
             target_session_attrs: TargetSessionAttrs::Any,
             channel_binding: ChannelBinding::Prefer,
             load_balance_hosts: LoadBalanceHosts::Disable,
+            gss_target: None,
         }
+    }
+
+    /// PlatypusDB: logs in with Kerberos, with a ticket for the service principal `target`
+    /// (`service/host`), and in no other way: the password is not sent. Needs the `kerberos`
+    /// feature.
+    pub fn gss_target(&mut self, target: impl Into<String>) -> &mut Config {
+        self.gss_target = Some(target.into());
+        self
+    }
+
+    /// Gets the service principal set with the `gss_target` method.
+    pub fn get_gss_target(&self) -> Option<&str> {
+        self.gss_target.as_deref()
     }
 
     /// Sets the user to authenticate with.
@@ -797,6 +812,7 @@ impl fmt::Debug for Config {
             .field("target_session_attrs", &self.target_session_attrs)
             .field("channel_binding", &self.channel_binding)
             .field("load_balance_hosts", &self.load_balance_hosts)
+            .field("gss_target", &self.gss_target)
             .finish()
     }
 }

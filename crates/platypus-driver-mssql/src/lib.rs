@@ -102,6 +102,12 @@ fn authentication(config: &ConnectionConfig) -> Result<AuthMethod> {
         Auth::Password | Auth::AwsIam | Auth::GcpIam => {
             AuthMethod::sql_server(&config.user, password)
         }
+        Auth::Kerberos => {
+            return Err(Error::Config(
+                "Kerberos signs in to PostgreSQL only: on SQL Server, use Windows sign-in"
+                    .to_owned(),
+            ));
+        }
     })
 }
 

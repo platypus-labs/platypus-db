@@ -77,6 +77,12 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-deep-link = "2"
 
+# Kerberos for PostgreSQL ships on Windows (SSPI, part of the system) and Linux (GSSAPI: it links
+# libgssapi_krb5, which WebKitGTK's libsoup already links, so the app starts wherever it started
+# before; building needs libkrb5-dev and libclang-dev). Not on macOS: no Mac has built it yet.
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+platypus-driver-pg = { workspace = true, features = ["kerberos"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

@@ -38,6 +38,31 @@ mode that uses TLS.
 **Signing in** is by password, or by a token that a cloud's command-line tool makes at each
 connection: AWS IAM (`aws`), Google Cloud IAM (`gcloud`) and Microsoft Entra ID (`az`) are in the
 connection's *Authentication* choice. The tool must be installed and signed in on your machine.
+Or by **Kerberos**, below.
+
+**Kerberos (GSSAPI).** Choose *Kerberos ticket (GSSAPI)* under *Password from*. The password field
+goes away: no password is asked, saved or sent. If the server asks for one, or lets you in without
+asking for Kerberos, the connection is refused and says so.
+
+- **The service name** is `postgres` unless you fill it in (the server's `krb_srvname`). The ticket
+  asked for is `service/host`, in your default realm: the host must be the name in the service's
+  principal, not an IP address or an alias, since the app does not look it up. Through an SSH tunnel
+  or a port forward it is still the server's name.
+- **The user** is the PostgreSQL role, which the server maps from your principal (`include_realm` and
+  `pg_ident.conf`). Left empty, the app uses your system user name.
+- **The ticket** on Linux comes from `kinit`, in the cache that `KRB5CCNAME` names (or the default
+  one), or from a keytab: with `KRB5_CLIENT_KTNAME` set, Kerberos gets the ticket by itself. Those
+  variables must be set where the app starts. On Windows it is the ticket of your Windows session.
+- **Without a ticket** the test says what to run: `kinit`, the two variables and `klist`, followed by
+  Kerberos' own text. The same goes for an expired ticket, an unknown service and an unreachable KDC.
+- **`psql`, `pg_dump` and `pg_restore`** sign in the same way (`PGKRBSRVNAME`, `PGREQUIREAUTH=gss`,
+  and no `PGPASSWORD`). Their copy of libpq must have been built with GSSAPI.
+- **Which builds have it.** The Windows (SSPI) and Linux (GSSAPI, MIT Kerberos) packages. The macOS
+  ones do not: no Mac has built it yet, and the form says so. The Cargo feature `kerberos` of
+  `platypus-driver-pg` turns it on; without it nothing about Kerberos is linked or runs.
+- **GSS encryption** (`hostgssenc`, `gssencmode`) is not used: use TLS for encryption, with `hostssl`
+  or `host` lines. A `krbsrvname` in a pasted URL is left out, like any other parameter the app does
+  not know.
 
 **Poolers.** Behind PgBouncer, Supavisor or Neon's pooler in transaction mode, choose *Transaction
 mode* in the form (or add `pgbouncer=true` to the URL). Statements then run unnamed, because the
@@ -112,5 +137,12 @@ The conformance suite runs on PostgreSQL 12, 14, 16 and 17, TimescaleDB 2.30 on 
 CockroachDB 26.2 and YugabyteDB 2025.2, plus PgBouncer in transaction mode, a client certificate
 over mutual TLS, and the debugger on a server with `pldebugger`. Supabase, Neon and AlloyDB are
 not tested: they are the PostgreSQL driver with defaults.
+
+Kerberos is tested with a real ticket from a real KDC (MIT Kerberos, in the `kerberos` profile of
+`docker/compose.yml`) on PostgreSQL 17, from a Linux client with GSSAPI: a ticket from `kinit`, a
+keytab, TLS, `psql`, no ticket, an expired ticket and a wrong service name. **The login through
+Windows' SSPI has not been tried with a real ticket:** a Windows machine outside a domain cannot
+reach the test KDC without changing system settings (`ksetup`). On Windows only what happens without
+a ticket is tested. A server's `sspi` line (PostgreSQL on Windows) has not been tried either.
 
 See also: [Connecting](../connect.md), [Troubleshooting](../troubleshooting.md).

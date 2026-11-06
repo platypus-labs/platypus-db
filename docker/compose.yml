@@ -558,6 +558,106 @@ services:
       timeout: 3s
       retries: 60
 
+  # A Kerberos realm, PLATYPUS.TEST (docker/kerberos), and a PostgreSQL that takes it, on 46434:
+  # `docker compose -f docker/compose.yml --profile kerberos up -d --build --wait kdc postgres-gss`.
+  # The user `alice` has only a `gss` line in pg_hba.conf; `platypus` / `platypus` has a password.
+  # The server is reached by the name in its principal, on the compose network: the client below.
+  kdc:
+    build:
+      context: ./kerberos
+      dockerfile: kdc.Dockerfile
+    image: platypus-db/kdc:bookworm
+    profiles: [kerberos]
+    hostname: kdc.platypus.test
+    networks:
+      default:
+        aliases: [kdc.platypus.test]
+    entrypoint: ["sh", "/kerberos/kdc.sh"]
+    volumes:
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - ./kerberos/kdc.conf:/etc/krb5kdc/kdc.conf:ro
+      - ./kerberos:/kerberos:ro
+      - kerberos-keytabs:/keytabs
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /keytabs/.ready && pidof krb5kdc"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  postgres-gss:
+    image: postgres:17
+    profiles: [kerberos]
+    hostname: postgres-gss.platypus.test
+    networks:
+      default:
+        aliases: [postgres-gss.platypus.test]
+    depends_on:
+      kdc:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        mkdir -p /gss && cp /keytabs/postgres.keytab /kerberos/pg_hba.conf /gss/
+        && chown postgres:postgres /gss/* && chmod 600 /gss/postgres.keytab
+        && exec docker-entrypoint.sh postgres -c hba_file=/gss/pg_hba.conf
+        -c krb_server_keyfile=/gss/postgres.keytab -c ssl=on
+        -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+        -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+    environment:
+      POSTGRES_USER: platypus
+      POSTGRES_PASSWORD: platypus
+      POSTGRES_DB: platypus
+    ports:
+      - "46434:5432"
+    volumes:
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - ./kerberos:/kerberos:ro
+      - ./kerberos/roles.sql:/docker-entrypoint-initdb.d/roles.sql:ro
+      - kerberos-keytabs:/keytabs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platypus -d platypus"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  # Runs the login with a real ticket from Linux (GSSAPI, MIT Kerberos), on the compose network:
+  # `docker compose -f docker/compose.yml --profile kerberos run --rm --build kerberos-client`.
+  kerberos-client:
+    build:
+      context: ./kerberos
+      dockerfile: client.Dockerfile
+    image: platypus-db/kerberos-client:bookworm
+    profiles: [kerberos-client]
+    depends_on:
+      postgres-gss:
+        condition: service_healthy
+    working_dir: /src
+    environment:
+      CARGO_TARGET_DIR: /target
+      PLATYPUS_KERBEROS_HOST: postgres-gss.platypus.test
+      PLATYPUS_KERBEROS_KEYTAB: /keytabs/alice.keytab
+    volumes:
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - kerberos-keytabs:/keytabs:ro
+      - ..:/src:ro
+      - kerberos-target:/target
+      - kerberos-cargo:/usr/local/cargo/registry
+    command:
+      - cargo
+      - test
+      - --locked
+      - -j
+      - "2"
+      - -p
+      - platypus-conformance
+      - --features
+      - kerberos
+      - --test
+      - kerberos
+      - --
+      - --nocapture
+
   # MySQL where the `platypus` user needs a client certificate (REQUIRE X509) over TLS, on 46307.
   mysql-mtls:
     image: mysql:8.4
@@ -582,3 +682,9 @@ services:
       interval: 2s
       timeout: 3s
       retries: 90
+
+volumes:
+  # The keytabs the KDC makes, and what the Linux client of the Kerberos test keeps between runs.
+  kerberos-keytabs:
+  kerberos-target:
+  kerberos-cargo:

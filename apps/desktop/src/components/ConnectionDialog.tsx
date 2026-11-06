@@ -308,6 +308,24 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const signIn = signInOf(conn);
   const profile = profiles.find((p) => p.id === conn.network_profile) ?? null;
   const server = !isEmbedded(conn.driver);
+  // Asked once the choice is made: most connections never need to know.
+  const [kerberosBuilt, setKerberosBuilt] = useState(true);
+  useEffect(() => {
+    if (signIn?.id !== "kerberos") return;
+    let current = true;
+    api.kerberosAvailable().then(
+      (built) => current && setKerberosBuilt(built),
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [signIn?.id]);
+  const kerberosNote = !kerberosBuilt
+    ? t("This build of PlatypusDB has no Kerberos: it must be built with the kerberos feature.")
+    : WINDOWS
+      ? t("Signs in with the Kerberos ticket of the Windows user running PlatypusDB, through SSPI. No password is sent.")
+      : t("Signs in with your Kerberos ticket: run kinit first, or set KRB5CCNAME or KRB5_CLIENT_KTNAME. No password is sent.");
   const file = FILES[conn.driver === "duckdb" ? "duckdb" : "sqlite"];
   /** A libSQL server has no database or user to choose: the token picks the database. */
   const libsql = conn.driver === "libsql";
@@ -1025,17 +1043,25 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       ))}
                       {signInsFor(conn.driver, signIn?.id).map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.id === "windows" ? t("Windows sign-in (SSPI, Kerberos)") : t("{service} token", { service: s.name })}
+                          {s.id === "windows"
+                            ? t("Windows sign-in (SSPI, Kerberos)")
+                            : s.id === "kerberos"
+                              ? t("Kerberos ticket (GSSAPI)")
+                              : t("{service} token", { service: s.name })}
                         </option>
                       ))}
                     </select>
                   </label>
                   {signIn ? (
-                    signIn.id === "aws_iam" && (
+                    signIn.id === "aws_iam" ? (
                       <>
                         <OptionField conn={conn} setOption={setOption} name="aws_region" label={t("AWS region")} placeholder={t("The profile's")} />
                         <OptionField conn={conn} setOption={setOption} name="aws_profile" label={t("AWS profile")} placeholder="default" />
                       </>
+                    ) : (
+                      signIn.id === "kerberos" && (
+                        <OptionField conn={conn} setOption={setOption} name="krb_service" label={t("Kerberos service name")} placeholder="postgres" />
+                      )
                     )
                   ) : manager ? (
                     <label className="field">
@@ -1081,9 +1107,11 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       ? tNodes("Runs {command} at each connection: its CLI must be installed and signed in. Tokens last minutes and are never saved.", {
                           command: <code>{signIn.command(conn)}</code>,
                         })
-                      : WINDOWS
-                        ? t("Signs in as the Windows user running PlatypusDB, through SSPI (Kerberos or NTLM).")
-                        : t("Only PlatypusDB on Windows can sign in this way.")}
+                      : signIn.id === "kerberos"
+                        ? kerberosNote
+                        : WINDOWS
+                          ? t("Signs in as the Windows user running PlatypusDB, through SSPI (Kerberos or NTLM).")
+                          : t("Only PlatypusDB on Windows can sign in this way.")}
                     {conn.driver === "mysql" && signIn.command && ` ${t("The token goes in clear text: use TLS.")}`}
                   </p>
                 )}
