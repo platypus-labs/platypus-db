@@ -269,6 +269,10 @@ fn analyze_mongo(src: &str, map: &Utf16Map, cursor: usize) -> SqlAnalysis {
                                     op: CollectionOp::Delete { .. },
                                     ..
                                 } => "deleteMany",
+                                Command::Collection {
+                                    op: CollectionOp::BulkWrite { .. },
+                                    ..
+                                } => "bulkWrite",
                                 _ => "updateMany",
                             };
                             Some(UnfilteredTable {

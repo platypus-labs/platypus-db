@@ -41,12 +41,25 @@ statements you write need the roles they need.
 
 ## What works
 
-- Statements in mongosh syntax: `find` with `sort`, `limit`, `skip` and `projection`, `findOne`,
-  `aggregate`, `countDocuments`, `estimatedDocumentCount`, `distinct`, `insertOne`/`insertMany`,
-  `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `createIndex`, `dropIndex`,
-  `getIndexes`, `createCollection`, `createView`, `drop`, `renameCollection`, `db.runCommand`,
-  `db.adminCommand`, `show dbs`, `show collections` and `use`, with the shell's values
-  (`ObjectId(...)`, `ISODate(...)`, `NumberLong(...)`, `/regex/i`) and Extended JSON.
+- Statements in mongosh syntax, with the shell's values (`ObjectId(...)`, `ISODate(...)`,
+  `NumberLong(...)`, `/regex/i`) and Extended JSON:
+  - **Reading**: `find` with `sort`, `limit`, `skip`, `projection`, `collation`, `hint`, `min`, `max`,
+    `maxTimeMS`, `readConcern` and the like, `findOne`, `aggregate`, `countDocuments`,
+    `estimatedDocumentCount`, `distinct`.
+  - **Writing**: `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`,
+    `deleteOne`/`deleteMany`, `bulkWrite`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete` and
+    `findAndModify`, with their options (`arrayFilters`, `collation`, `hint`, `let`, `upsert`,
+    `ordered`, `writeConcern`). An option PlatypusDB does not know is refused by name, never dropped.
+  - **Indexes and collections**: `createIndex`, `createIndexes`, `dropIndex`, `dropIndexes`, `hideIndex`,
+    `unhideIndex`, `getIndexes`, `createCollection`, `createView`, `drop`, `renameCollection`,
+    `convertToCapped`, `stats`, `validate`, `latencyStats`, `dataSize`, `storageSize`, `totalIndexSize`,
+    `totalSize`, `isCapped`, `exists`.
+  - **Plans**: `.explain()` after a statement or `db.c.explain().find(…)` before it, with a verbosity,
+    and the **Explain** of the editor. A plan never applies a write.
+  - **The server**: `db.runCommand`, `db.adminCommand`, `db.aggregate`, `db.serverStatus`, `db.currentOp`,
+    `db.killOp`, the profiler, users and roles (`db.createUser` and the like), `rs.status`, `rs.conf`,
+    `sh.status`, `show dbs`, `show collections`, `show users`, `show roles`, `show profile`, `show logs`
+    and `use`.
 - Results are a grid of the top-level fields, with the focused document as a tree beside it
   (`F7`). The navigator lists databases, collections, fields sampled from the documents, and
   indexes; the editor completes collections, methods and fields.
@@ -59,7 +72,13 @@ statements you write need the roles they need.
 
 - **No data editing in the grid**: results stay read-only. Change documents with `updateOne`,
   `insertOne` and the like.
-- **No transactions** (no manual commit), **no explain**, and no query plans.
+- **No transactions** (no manual commit).
+- **No JavaScript**: the editor runs statements, so `forEach`, `map`, `next`, `mapReduce`, the older
+  bulk builders (use `bulkWrite`) and variables are refused, saying so. `watch` is refused too: a change
+  stream would take over the connection. A `.comment()` on a read is left out: the app's own finds the
+  operation to cancel it.
+- `bulkWrite` is not atomic, as in mongosh: what ran before a failure stays, and the error says how far
+  it got. Neighbouring inserts travel together, every other write on its own trip.
 - No SQL: no table editor, ER diagram, schema comparison, query builder, SQL import, snapshots
   before changes, or terminal mode (`mongosh` takes the password only on its command line).
 

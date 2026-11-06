@@ -7,6 +7,7 @@
 mod config;
 pub mod docs;
 mod error;
+mod explain;
 pub mod generate;
 pub mod literal;
 mod meta;
@@ -24,12 +25,17 @@ use std::time::Duration;
 use futures::TryStreamExt;
 use futures::stream::{self, BoxStream, StreamExt};
 use mongodb::bson::{Bson, Document, doc};
-use mongodb::options::AggregateOptions;
+use mongodb::options::{
+    AggregateOptions, CountOptions, DeleteOptions, DistinctOptions, FindOneAndDeleteOptions,
+    FindOneAndReplaceOptions, FindOneAndUpdateOptions, FindOptions, InsertManyOptions,
+    ReplaceOptions, UpdateModifications, UpdateOptions,
+};
 use mongodb::{Client, Cursor, Database};
 use platypus_core::{
     CancelHandle, Canceller, Capabilities, CatalogColumn, Connection, ConnectionConfig, Driver,
-    DriverKind, Error, ExecOptions, ExecResult, ObjectMeta, ObjectRef, Property, RecordBatchStream,
-    ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails, TransactionState, unsupported,
+    DriverKind, Error, ExecOptions, ExecResult, Explain, ExplainFormat, ObjectMeta, ObjectRef,
+    Property, RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
+    TransactionState, unsupported,
 };
 use tokio::sync::watch;
 
@@ -152,6 +158,9 @@ impl MongoConnection {
                 let names = self.track(self.db(None).list_collection_names().await)?;
                 names_result(names)
             }
+            Command::DatabaseName { db } => {
+                names_result(vec![self.db(db.as_deref()).name().to_owned()])
+            }
             Command::Use(name) => {
                 *self.database.lock().unwrap_or_else(PoisonError::into_inner) = name;
                 Ok(ExecResult::Affected { rows: 0 })
@@ -217,7 +226,9 @@ impl MongoConnection {
         match op {
             CollectionOp::Find(find) => {
                 let survey = Survey::of_find(&coll, &find);
-                let cursor = self.track(self.find(&coll, find, batch).await)?;
+                let mut find = find;
+                let find_options = parsed::<FindOptions>(std::mem::take(&mut find.options))?;
+                let cursor = self.track(self.find(&coll, find, find_options, batch).await)?;
                 self.stream(cursor, options, Some(survey)).await
             }
             CollectionOp::Aggregate {
@@ -236,8 +247,12 @@ impl MongoConnection {
                 filter,
                 skip,
                 limit,
+                options: count_options,
             } => {
-                let mut count = coll.count_documents(filter).comment(comment);
+                let mut count = coll
+                    .count_documents(filter)
+                    .with_options(parsed::<CountOptions>(count_options)?)
+                    .comment(comment);
                 if let Some(skip) = skip {
                     count = count.skip(skip);
                 }
@@ -249,14 +264,24 @@ impl MongoConnection {
             CollectionOp::EstimatedDocumentCount => {
                 count_result(self.track(coll.estimated_document_count().comment(comment).await)?)
             }
-            CollectionOp::Distinct { field, filter } => {
-                let values = self.track(coll.distinct(&field, filter).comment(comment).await)?;
+            CollectionOp::Distinct {
+                field,
+                filter,
+                options: distinct_options,
+            } => {
+                let values = self.track(
+                    coll.distinct(&field, filter)
+                        .with_options(parsed::<DistinctOptions>(distinct_options)?)
+                        .comment(comment)
+                        .await,
+                )?;
                 let schema = docs::value_schema(&field, &values);
                 let rows: Vec<Document> = values.into_iter().map(|v| doc! { &field: v }).collect();
                 batch_result(schema, &rows)
             }
             op @ (CollectionOp::InsertOne(_)
             | CollectionOp::InsertMany(_)
+            | CollectionOp::InsertWith { .. }
             | CollectionOp::Update { .. }
             | CollectionOp::Replace { .. }
             | CollectionOp::Delete { .. }
@@ -264,6 +289,24 @@ impl MongoConnection {
             | CollectionOp::CreateIndex { .. }
             | CollectionOp::DropIndex(_)
             | CollectionOp::Rename { .. }) => self.write_op(&coll, op).await.map(affected_rows),
+            CollectionOp::BulkWrite {
+                ops,
+                ordered,
+                options: common,
+            } => self
+                .bulk_write(&coll, ops, ordered, &common)
+                .await
+                .map(affected_rows),
+            op @ (CollectionOp::FindOneAndUpdate { .. }
+            | CollectionOp::FindOneAndReplace { .. }
+            | CollectionOp::FindOneAndDelete { .. }
+            | CollectionOp::Admin { .. }
+            | CollectionOp::Stat(_)
+            | CollectionOp::Exists
+            | CollectionOp::Name { .. }
+            | CollectionOp::Explain { .. }) => {
+                self.one_document_op(&coll, op, batch, options).await
+            }
             CollectionOp::GetIndexes => {
                 let cursor = self.track(
                     database
@@ -273,6 +316,148 @@ impl MongoConnection {
                 )?;
                 self.stream(cursor, options, None).await
             }
+        }
+    }
+
+    /// What answers with a document or a name, not with rows to page through or a count.
+    async fn one_document_op(
+        &self,
+        coll: &mongodb::Collection<Document>,
+        op: CollectionOp,
+        batch: u32,
+        options: &ExecOptions,
+    ) -> Result<ExecResult> {
+        let found = match op {
+            CollectionOp::FindOneAndUpdate {
+                filter,
+                update,
+                options,
+            } => self.track(
+                coll.find_one_and_update(filter, modifications(update)?)
+                    .with_options(parsed::<FindOneAndUpdateOptions>(options)?)
+                    .await,
+            )?,
+            CollectionOp::FindOneAndReplace {
+                filter,
+                replacement,
+                options,
+            } => self.track(
+                coll.find_one_and_replace(filter, replacement)
+                    .with_options(parsed::<FindOneAndReplaceOptions>(options)?)
+                    .await,
+            )?,
+            CollectionOp::FindOneAndDelete { filter, options } => self.track(
+                coll.find_one_and_delete(filter)
+                    .with_options(parsed::<FindOneAndDeleteOptions>(options)?)
+                    .await,
+            )?,
+            CollectionOp::Admin { verb, rest, .. } => {
+                let mut command = doc! { verb: coll.name() };
+                command.extend(rest);
+                Some(self.run_on(coll, command).await?)
+            }
+            CollectionOp::Stat(name) => {
+                let stats = self.run_on(coll, doc! { "collStats": coll.name() }).await?;
+                Some(stat_of(&name, &stats))
+            }
+            CollectionOp::Explain { inner, verbosity } => {
+                let reply = self.explained(coll, *inner, &verbosity).await?;
+                Some(reply)
+            }
+            CollectionOp::Name { full } => {
+                let name = if full {
+                    coll.namespace().to_string()
+                } else {
+                    coll.name().to_owned()
+                };
+                return names_result(vec![name]);
+            }
+            CollectionOp::Exists => {
+                let command = doc! { "listCollections": 1, "filter": { "name": coll.name() } };
+                let cursor = self.track(
+                    self.client
+                        .database(&coll.namespace().db)
+                        .run_cursor_command(command)
+                        .batch_size(batch)
+                        .await,
+                )?;
+                return self.stream(cursor, options, None).await;
+            }
+            _ => unreachable!("not an operation of one document"),
+        };
+        docs_result(found.into_iter().collect(), &[])
+    }
+
+    async fn run_on(
+        &self,
+        coll: &mongodb::Collection<Document>,
+        command: Document,
+    ) -> Result<Document> {
+        self.track(
+            self.client
+                .database(&coll.namespace().db)
+                .run_command(command)
+                .await,
+        )
+    }
+
+    /// The server's answer to `explain` for `op`, which it does not apply.
+    async fn explained(
+        &self,
+        coll: &mongodb::Collection<Document>,
+        op: CollectionOp,
+        verbosity: &str,
+    ) -> Result<Document> {
+        let Some(inner) = explain::command_of(coll.name(), op) else {
+            return Err(platypus_core::unsupported("the plan of this statement"));
+        };
+        self.run_on(coll, doc! { "explain": inner, "verbosity": verbosity })
+            .await
+    }
+
+    /// The writes of a `bulkWrite`, as mongosh runs them: not atomically. What ran before a
+    /// failure stays, and the error says how far it got. Unordered, what the server refuses does
+    /// not stop the rest; losing the server does.
+    async fn bulk_write(
+        &self,
+        coll: &mongodb::Collection<Document>,
+        ops: Vec<CollectionOp>,
+        ordered: bool,
+        common: &Document,
+    ) -> Result<u64> {
+        let total = ops.len();
+        let mut changed = 0;
+        let mut at = 1;
+        let mut failures: Vec<(Error, usize)> = Vec::new();
+        for (op, size) in shell::write_batches(ops, ordered) {
+            match self.write_op(coll, with_common(op, common)).await {
+                Ok(n) => changed += n,
+                Err(e) if ordered || !matches!(e, Error::Database(_)) => {
+                    let before = if size == 1 {
+                        "before it"
+                    } else {
+                        "before them, plus the inserts before that document"
+                    };
+                    return Err(with_message(e, |message| {
+                        format!(
+                            "{}: {message} ({changed} documents changed {before}, the rest did not run)",
+                            operations_label(at, size, total)
+                        )
+                    }));
+                }
+                Err(e) => failures.push((e, at)),
+            }
+            at += size;
+        }
+        let failed = failures.len();
+        match failures.into_iter().next() {
+            None => Ok(changed),
+            Some((first, first_at)) => Err(with_message(first, |message| {
+                format!(
+                    "{}: {message} ({failed} of {total} failed, {changed} documents changed)",
+                    operations_label(first_at, 1, total)
+                )
+            })),
         }
     }
 
@@ -287,6 +472,17 @@ impl MongoConnection {
                 self.track(coll.insert_one(document).await)?;
                 Ok(1)
             }
+            CollectionOp::InsertWith { documents, options } => {
+                if documents.is_empty() {
+                    return Ok(0);
+                }
+                let result = self.track(
+                    coll.insert_many(documents)
+                        .with_options(parsed::<InsertManyOptions>(options)?)
+                        .await,
+                )?;
+                Ok(result.inserted_ids.len() as u64)
+            }
             CollectionOp::InsertMany(documents) => {
                 if documents.is_empty() {
                     return Ok(0);
@@ -299,18 +495,24 @@ impl MongoConnection {
                 update,
                 many,
                 upsert,
+                options,
             } => {
-                let update = match update {
-                    Bson::Array(stages) => {
-                        mongodb::options::UpdateModifications::Pipeline(documents(Some(&stages)))
-                    }
-                    Bson::Document(d) => mongodb::options::UpdateModifications::Document(d),
-                    _ => return Err(Error::Other("invalid update".to_owned())),
-                };
+                let update = modifications(update)?;
+                let options = parsed::<UpdateOptions>(options)?;
                 let result = if many {
-                    self.track(coll.update_many(filter, update).upsert(upsert).await)?
+                    self.track(
+                        coll.update_many(filter, update)
+                            .with_options(options)
+                            .upsert(upsert)
+                            .await,
+                    )?
                 } else {
-                    self.track(coll.update_one(filter, update).upsert(upsert).await)?
+                    self.track(
+                        coll.update_one(filter, update)
+                            .with_options(options)
+                            .upsert(upsert)
+                            .await,
+                    )?
                 };
                 Ok(result.matched_count + u64::from(result.upserted_id.is_some()))
             }
@@ -318,22 +520,46 @@ impl MongoConnection {
                 filter,
                 replacement,
                 upsert,
+                options,
             } => {
-                let result =
-                    self.track(coll.replace_one(filter, replacement).upsert(upsert).await)?;
+                let result = self.track(
+                    coll.replace_one(filter, replacement)
+                        .with_options(parsed::<ReplaceOptions>(options)?)
+                        .upsert(upsert)
+                        .await,
+                )?;
                 Ok(result.matched_count + u64::from(result.upserted_id.is_some()))
             }
-            CollectionOp::Delete { filter, many } => {
+            CollectionOp::Delete {
+                filter,
+                many,
+                options,
+            } => {
+                let options = parsed::<DeleteOptions>(options)?;
                 let result = if many {
-                    self.track(coll.delete_many(filter).await)?
+                    self.track(coll.delete_many(filter).with_options(options).await)?
                 } else {
-                    self.track(coll.delete_one(filter).await)?
+                    self.track(coll.delete_one(filter).with_options(options).await)?
                 };
                 Ok(result.deleted_count)
             }
+            op => {
+                self.schema_op(coll, op).await?;
+                Ok(0)
+            }
+        }
+    }
+
+    /// What changes collections and indexes.
+    async fn schema_op(
+        &self,
+        coll: &mongodb::Collection<Document>,
+        op: CollectionOp,
+    ) -> Result<()> {
+        match op {
             CollectionOp::Drop => {
                 self.track(coll.drop().await)?;
-                Ok(0)
+                Ok(())
             }
             CollectionOp::CreateIndex {
                 keys,
@@ -347,7 +573,7 @@ impl MongoConnection {
                         .run_command(doc! { "createIndexes": coll.name(), "indexes": [spec] })
                         .await,
                 )?;
-                Ok(0)
+                Ok(())
             }
             CollectionOp::DropIndex(index) => {
                 self.track(
@@ -356,7 +582,7 @@ impl MongoConnection {
                         .run_command(doc! { "dropIndexes": coll.name(), "index": index })
                         .await,
                 )?;
-                Ok(0)
+                Ok(())
             }
             CollectionOp::Rename { to, drop_target } => {
                 let from = coll.namespace().to_string();
@@ -369,7 +595,7 @@ impl MongoConnection {
                         )
                         .await,
                 )?;
-                Ok(0)
+                Ok(())
             }
             _ => unreachable!("not a write"),
         }
@@ -379,10 +605,13 @@ impl MongoConnection {
         &self,
         coll: &mongodb::Collection<Document>,
         find: Find,
+        options: FindOptions,
         batch: u32,
     ) -> mongodb::error::Result<Cursor<Document>> {
+        // The options first: setting them replaces what the calls below set.
         let mut action = coll
             .find(find.filter)
+            .with_options(options)
             .batch_size(batch)
             .comment(Bson::String(self.comment.clone()));
         if let Some(projection) = find.projection {
@@ -483,6 +712,116 @@ async fn next_batch(
 
 fn affected_rows(rows: u64) -> ExecResult {
     ExecResult::Affected { rows }
+}
+
+/// Options of the driver's, from a document as the server names them.
+fn parsed<T: serde::de::DeserializeOwned>(options: Document) -> Result<T> {
+    mongodb::bson::from_document(options).map_err(|e| Error::Other(format!("invalid options: {e}")))
+}
+
+/// An update document, or an aggregation pipeline.
+fn modifications(update: Bson) -> Result<UpdateModifications> {
+    match update {
+        Bson::Array(stages) => Ok(UpdateModifications::Pipeline(documents(Some(&stages)))),
+        Bson::Document(d) => Ok(UpdateModifications::Document(d)),
+        _ => Err(Error::Other("invalid update".to_owned())),
+    }
+}
+
+/// `op` of a `bulkWrite` with the options the whole of it was given.
+fn with_common(op: CollectionOp, common: &Document) -> CollectionOp {
+    if common.is_empty() {
+        return op;
+    }
+    let extended = |mut options: Document| {
+        options.extend(common.clone());
+        options
+    };
+    match op {
+        CollectionOp::InsertOne(document) => CollectionOp::InsertWith {
+            documents: vec![document],
+            options: common.clone(),
+        },
+        CollectionOp::InsertMany(documents) => CollectionOp::InsertWith {
+            documents,
+            options: common.clone(),
+        },
+        CollectionOp::Update {
+            filter,
+            update,
+            many,
+            upsert,
+            options,
+        } => CollectionOp::Update {
+            filter,
+            update,
+            many,
+            upsert,
+            options: extended(options),
+        },
+        CollectionOp::Replace {
+            filter,
+            replacement,
+            upsert,
+            options,
+        } => CollectionOp::Replace {
+            filter,
+            replacement,
+            upsert,
+            options: extended(options),
+        },
+        CollectionOp::Delete {
+            filter,
+            many,
+            options,
+        } => CollectionOp::Delete {
+            filter,
+            many,
+            options: extended(options),
+        },
+        other => other,
+    }
+}
+
+/// What `dataSize()` and the like read from the collection's statistics, under the shell's name.
+fn stat_of(name: &str, stats: &Document) -> Document {
+    let number = |key: &str| -> i64 {
+        match stats.get(key) {
+            Some(Bson::Int32(n)) => i64::from(*n),
+            Some(Bson::Int64(n)) => *n,
+            #[allow(clippy::cast_possible_truncation)]
+            Some(Bson::Double(n)) => *n as i64,
+            _ => 0,
+        }
+    };
+    match name {
+        "dataSize" => doc! { name: number("size") },
+        "storageSize" => doc! { name: number("storageSize") },
+        "totalIndexSize" => doc! { name: number("totalIndexSize") },
+        "totalSize" => doc! { name: number("storageSize") + number("totalIndexSize") },
+        _ => doc! { name: stats.get_bool("capped").unwrap_or(false) },
+    }
+}
+
+/// Which operations of a `bulkWrite` of `total` a failure is about.
+fn operations_label(at: usize, size: usize, total: usize) -> String {
+    if size == 1 {
+        format!("operation {at} of {total}")
+    } else {
+        format!("operations {at}-{} of {total}", at + size - 1)
+    }
+}
+
+/// `e` with its message rewritten, for an error from the server; any other (a lost connection, a
+/// cancel) says what it says, with nothing about the operations.
+fn with_message(e: Error, message: impl FnOnce(&str) -> String) -> Error {
+    match e {
+        Error::Database(mut db) => {
+            db.message = message(&db.message);
+            Error::Database(db)
+        }
+        other => other,
+    }
 }
 
 fn documents(items: Option<&Vec<Bson>>) -> Vec<Document> {
@@ -706,12 +1045,45 @@ impl Connection for MongoConnection {
         Capabilities {
             transactions: false,
             cancel: true,
-            explain: false,
             object_ddl: true,
+            explain: true,
             multiple_databases: false,
             metadata_search: false,
             ..Capabilities::default()
         }
+    }
+
+    async fn explain(&self, sql: &str, analyze: bool) -> Result<Explain> {
+        let parsed = shell::parse(sql).map_err(|e| parse_error(sql, &e))?;
+        let Command::Collection { db, collection, op } = parsed else {
+            return Err(platypus_core::unsupported("the plan of this statement"));
+        };
+        let (inner, asked) = match op {
+            CollectionOp::Explain { inner, verbosity } => (*inner, Some(verbosity)),
+            other => (other, None),
+        };
+        if !shell::explainable(&inner) {
+            return Err(platypus_core::unsupported("the plan of this statement"));
+        }
+        let verbosity = asked.unwrap_or_else(|| {
+            if analyze {
+                "executionStats"
+            } else {
+                "queryPlanner"
+            }
+            .to_owned()
+        });
+        let coll = self.db(db.as_deref()).collection::<Document>(&collection);
+        let reply = self.explained(&coll, inner, &verbosity).await?;
+        let plan =
+            serde_json::to_string_pretty(&Bson::Document(reply.clone()).into_relaxed_extjson())
+                .map_err(|e| Error::Other(e.to_string()))?;
+        Ok(Explain::new(
+            ExplainFormat::Json,
+            plan,
+            explain::plan_tree(&reply),
+            verbosity != "queryPlanner",
+        ))
     }
 
     async fn object_ddl(&self, object: &ObjectRef<'_>) -> Result<String> {

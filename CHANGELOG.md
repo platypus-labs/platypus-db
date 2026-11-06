@@ -6,6 +6,28 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **MongoDB**: `bulkWrite`, with `insertOne`, `updateOne`, `updateMany`, `replaceOne`, `deleteOne` and
+  `deleteMany`, ordered or not. As in mongosh it is not atomic: what ran before a failure stays, and the
+  error says how far it got. A `deleteMany` or `updateMany` with an empty filter inside it asks, and is
+  refused to agents, as it is alone.
+- **MongoDB**: the rest of mongosh's statements: `findOneAndUpdate`, `findOneAndReplace`,
+  `findOneAndDelete`, `findAndModify`, `createIndexes`, `dropIndexes`, `hideIndex`, `stats`, `validate`, the
+  size methods, `db.serverStatus`, `db.currentOp`, users and roles, the profiler, `rs.status`, `show users`
+  and more, each in the editor's completions.
+- **MongoDB**: query plans: `.explain()`, `db.c.explain().find(…)` and the editor's **Explain**, shown as a
+  tree like every other database's. A plan never applies a write.
+
+### Fixed
+
+- **MongoDB**: options were read and dropped. `arrayFilters`, `collation`, `hint` and `let` on an update or
+  a delete, `ordered` on `insertMany`, and `hint`, `collation` and `maxTimeMS` on a read now reach the
+  server. An update without its `arrayFilters`, or a filter without its `collation`, could change other
+  documents than the ones asked for. An option not known is refused by name.
+- **MongoDB**: `updateOne` with `{ multi: true }` changed every matching document; it is now refused, as
+  `multi` belongs to the old `update()`.
+
 ## [0.5.0] - 2026-11-06
 
 ### Added
