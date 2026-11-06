@@ -130,6 +130,13 @@ pub fn connection_url(state: State<'_, AppState>, connection_id: Uuid) -> Comman
     state.with_store(|s| s.url_of(connection_id))
 }
 
+/// Whether this build can sign in to PostgreSQL with Kerberos.
+#[tauri::command]
+#[must_use]
+pub fn kerberos_available() -> bool {
+    platypus_driver_pg::KERBEROS_AVAILABLE
+}
+
 /// The URL of the connection as the form has it, without a password; `None` for the
 /// drivers that have no URL. Nothing is saved or read from the store.
 #[tauri::command]
@@ -734,7 +741,8 @@ pub(crate) async fn saved_config(
         && !saved.driver.is_embedded()
         && saved.save_password
         && saved.password_command.is_none()
-        && !saved.pgpass;
+        && !saved.pgpass
+        && !saved.signs_in_without_password();
     let mut config = state
         .with_store(|s| Ok(config_of(s, &saved, secret, &SshSecrets::new())))?
         .with_env()?;
