@@ -310,6 +310,26 @@ own read only when used. The page (`PluginSettings.tsx`, a chunk loaded when it 
 field to a `SettingDef` (`settingFields.ts`) and draws it with `SettingRow`, as the app's own
 settings; a secret has a row of its own, since it never comes back to the page.
 
+**Tabs and panels.** `frames.rs` holds what a page may reach, and is where a new request goes: a variant
+of `FrameRequest`, with its check in `Plugins::frame_request`, and its name in `FRAME_REQUESTS`
+(`plugins/frameProtocol.ts`), which says what a message may be before anything acts on it. Keep the
+list small, and never add a request that hands a page a password, a saved connection or a query's rows.
+`PluginFrame.tsx` is the host of a page and the one place messages are read: the frame's flags, the
+checks of source and origin, and what stops a page. The scheme is registered in `lib.rs`, its answers
+are `frame_response`, and `frame-src` in `tauri.conf.json` admits it and nothing else. All plugin tabs
+are one kind, `plugin` (`tabs/plugin.tsx`), since the app restores tabs before it has read the plugins.
+
+**Grid.** `grid.rs` runs batches; `plugins/gridView.ts` is what the grid reads, without the app around
+it. A cell on the path of a frame may do a lookup and note what it misses, and nothing else: calling a
+module there would be a call per cell per frame. Values go through `shownValue`, so that a masked cell
+stays masked.
+
+**What it costs.** All of this loads through `plugins/extensions.ts`, a chunk imported only once a plugin
+has a tab, a panel or a grid extension (`plugins/store.ts`). The app's own screens reach it through
+`plugins/slots.ts`, which holds `null` without one: `App.tsx` then renders nothing more and
+`ResultGrid.tsx` passes its own decoration and rows to the grid. Keep it so: count the JavaScript of a
+start as `dist/assets/index-*.js` plus the chunks `index.html` preloads, not the main file alone.
+
 ### Vendor client libraries: Oracle, ODBC and DuckDB
 
 Oracle, IBM Db2, DuckDB and any ODBC driver need a library that the vendor publishes and the
@@ -711,7 +731,8 @@ keeps its own.
 A decoration can set `background`, `color`, replacement `text`, `strike` and a muted `hint`
 after the value (the data editor's foreign key labels). Features that
 need their own object in grid actions add a field to `GridSource` by augmenting
-`GridSourceExtensions`, as the data editor does with `edit` (`grid/edit/TableEditor.tsx`).
+`GridSourceExtensions`, as the data editor does with `edit` (`grid/edit/TableEditor.tsx`) and
+plugins with `pluginGrid` (`plugins/slots.ts`).
 
 The `GridApi` reads values and the selection, moves the selection, gives cell boxes,
 redraws and gives the keyboard back to the grid. It is also what `grid` actions receive,
