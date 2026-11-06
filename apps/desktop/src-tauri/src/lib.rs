@@ -260,6 +260,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(setup)
         .invoke_handler(handlers())
+        // The documents of plugins' tabs and panels, with a policy of their own.
+        .register_asynchronous_uri_scheme_protocol(
+            platypus_plugins::FRAME_SCHEME,
+            |_, request, responder| commands::plugins::frame_protocol(&request, responder),
+        )
         .build(context())
         .expect("error while running PlatypusDB")
         .run(|app, event| {
@@ -427,6 +432,23 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::plugins::plugin_set_enabled,
         commands::plugins::plugin_remove,
         commands::plugins::plugin_run_action,
+        commands::plugins::plugin_settings,
+        commands::plugins::plugin_frame_url,
+        commands::plugins::plugin_frame_request,
+        commands::plugins::plugin_grid_column,
+        commands::plugins::plugin_grid_render,
+        commands::plugins::plugin_grid_action,
+        commands::plugins::plugin_set_setting,
+        commands::plugins::plugin_theme_font,
+        commands::plugin_catalog::plugin_catalog_fetch,
+        commands::plugin_catalog::plugin_catalog_url,
+        commands::plugin_catalog::plugin_catalog_set_url,
+        commands::plugin_catalog::plugin_catalog_keys,
+        commands::plugin_catalog::plugin_catalog_trust,
+        commands::plugin_catalog::plugin_catalog_untrust,
+        commands::plugin_catalog::plugin_catalog_prepare,
+        commands::plugin_catalog::plugin_catalog_install,
+        commands::plugin_catalog::plugin_catalog_discard,
         commands::analysis::sql::fetch_whole,
         commands::analysis::sql::stop_fetch,
         commands::analysis::sql::open_result_db,

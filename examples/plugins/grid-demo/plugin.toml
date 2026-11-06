@@ -1,0 +1,25 @@
+id = "grid-demo"
+name = "Grid demo"
+version = "1.0.0"
+author = "PlatypusDB"
+description = "A computed column, a cell renderer and a cell command for the result grid."
+api = 2
+kinds = ["grid"]
+
+[permissions]
+grid = true
+
+[[grid.columns]]
+id = "length"
+title = "Total length"
+types = ["text", "varchar"]
+
+[[grid.renderers]]
+id = "status"
+title = "Status colours"
+types = ["status"]
+
+[[grid.actions]]
+id = "shout"
+title = "Shout this value"
+types = ["text", "status"]

@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Outline</title>
+    <style>
+      body {
+        font: 13px sans-serif;
+        margin: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="status">Waiting for the app</p>
+    <script>
+      platypus.on((event, data) => {
+        if (event !== "init") return;
+        document.getElementById("status").textContent = `Panel of ${data.plugin}`;
+        platypus.request("state_get").then((saved) => {
+          platypus.request("notify", { text: `Outline open, notes: ${saved?.text?.length ?? 0} characters` });
+        });
+      });
+    </script>
+  </body>
+</html>

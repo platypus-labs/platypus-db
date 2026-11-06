@@ -113,13 +113,14 @@ like `http` and `clipboard`; the changes do not break ABI 1 (`api = 2`, backward
 
 | Feature | Prio | Origin |
 |---|---|---|
-| 🆕 **Plugin panels and tab kinds**: a plugin declares a tab (`kind`) or a side panel; the content is an HTML document in an isolated iframe that talks to the app by messages, registered through `registerTabKind` | P2 | U |
-| 🆕 **Themes as plugins**: a package with only colour tokens and fonts (`kinds = ["theme"]`), no WASM module, which shows up in the theme picker | P2 | U |
-| 🆕 **Event hooks**: before and after a query, on connect, on saving edits; a "before" hook can block with a message, and goes through the Safety checks (group L) | P2 | U |
-| 🆕 **Grid extensions**: a plugin adds computed columns, cell renderers or cell actions through `GridSourceExtensions` | P3 | U |
-| 🆕 **Plugin settings page**: field schema in the manifest, drawn by the app in Settings and saved in the store, read by the module | P2 | U |
-| 🆕 **Catalog and installer**: a list of plugins from an index (JSON) with download, SHA-256 hash and package signature checks, update and removal | P2 | U |
-| 🆕 Documentation and an example plugin in `examples/plugins` for each new point, with a test of the denied permission | P2 | U |
+| ✅ **Plugin panels and tab kinds**: a plugin declares a tab (`kind`) or a side panel; the content is an HTML document in an isolated iframe that talks to the app by messages, registered through `registerTabKind` | P2 | U |
+| ✅ **Themes as plugins**: a package with only colour tokens and fonts (`kinds = ["theme"]`), no WASM module, which shows up in the theme picker | P2 | U |
+| ✅ **Event hooks**: before and after a query, on connect, on saving edits; a "before" hook can block with a message, and goes through the Safety checks (group L) | P2 | U |
+| ✅ **Grid extensions**: a plugin adds computed columns, cell renderers or cell actions through `GridSourceExtensions` | P3 | U |
+| ✅ **Manifest and permissions of ABI 2** (`api = 2`, ABI 1 keeps working): `kinds` with `theme` and no module, declared `tabs`, `panels`, `hooks`, `grid` and `settings`, the permissions `hooks`, `tabs` and `grid`; what it does not know is refused by name; an update lists what it asks anew | P2 | U |
+| ✅ **Plugin settings page**: field schema in the manifest, drawn by the app in Settings and saved in the store, read by the module | P2 | U |
+| ✅ **Catalog and installer**: a list of plugins from an index (JSON) with download, SHA-256 hash and package signature checks, update and removal | P2 | U |
+| ✅ Documentation and an example plugin in `examples/plugins` for each new point, with a test of the denied permission | P2 | U |
 
 ---
 
@@ -142,7 +143,7 @@ F says what is left.
 
 ### Group D — User documentation
 
-**Status: P2 done, in P3 help in the app, the link check and the guide's screenshots done; to do: the split of `docs/`, the shorter READMEs, the site's pages from `docs/`, translations.**
+**Status: P2 done, in P3 help in the app, the link check and the guide's screenshots done; the shorter READMEs and the site's pages from `docs/` done; to do: the split of `docs/`, translations.**
 
 **What exists:** [README.md](../README.md) and [README.it.md](../README.it.md) (the same ten
 sections: why, install, databases, features, agents, performance, development, contributing,
@@ -153,9 +154,8 @@ documents (DEVELOPMENT, EXTENDING, RELEASING, BENCHMARKS) and the internal ones 
 (ROADMAP, COVERAGE, COLLAUDO, INVENTORY, MVP_PLAN), all side by side in `docs/` with the index
 [docs/README.md](README.md); `docs/screenshots/` made by the E2E `readme` and `gifs` scenarios;
 CONTRIBUTING and CHANGELOG at the root. The site `site/` has home, features, databases,
-compare, download and docs, where `docs.html` holds the only getting started (install, first
-connection, sample database, first keys) and links the Markdown on GitHub. In the app there is
-no help entry nor any link to the documentation; the interface speaks seven languages, the
+compare, download and docs; `docs.html` and `site/docs/` are generated from the guide and the
+reference documents (`scripts/build-site-docs.mjs`). The interface speaks seven languages, the
 documentation English (the README also Italian).
 
 **Area:** `docs/`, `README.md` and `README.it.md`, `site/`, `scripts/`; for in-app help, `apps/desktop/src/shell/` and the action registry
@@ -170,8 +170,8 @@ documentation English (the README also Italian).
 | ✅ The guide's screenshots made by E2E scenarios, as `readme` and `gifs` do for `docs/screenshots/`, so they are redone when the interface changes; a script copies them into `site/img/screenshots/` (by hand today, see `site/README.md`) | P3 | U |
 | ✅ **Help in the app**: a Help entry in the command palette and the menu (guide, shortcuts, report a bug, what is new from CHANGELOG) and "?" links to the guide page from the connection form, Settings → Agents and Safety | P3 | D |
 | 🆕 User documentation apart from developer documentation: `docs/user/` (guide, features, shortcuts, agents, plugins) and `docs/dev/` (development, extending, releasing, benchmarks, and the internal documents in Italian), with docs/README.md and the links of the READMEs, the site and the code updated | P3 | U |
-| 🆕 A shorter README, in English and Italian: what it is, why, install, a link to the guide; the databases, features and agents sections, already in the guide and FEATURES.md, shrink to a few lines. A check that the two READMEs have the same sections | P3 | U |
-| 🆕 **Site docs pages from `docs/`**: a script in `scripts/` (no new build tool) turns the guide's Markdown into pages in the site's style, instead of `site/docs.html` linking the Markdown on GitHub; publishing the site is in group E | P3 | U |
+| ✅ A shorter README, in English and Italian: what it is, why, install, a link to the guide; the databases, features and agents sections, already in the guide and FEATURES.md, shrink to a few lines. A check that the two READMEs have the same sections (`scripts/readme-sections.test.mjs`) | P3 | U |
+| ✅ **Site docs pages from `docs/`**: a script in `scripts/` (no new build tool) turns the guide's Markdown into pages in the site's style, instead of `site/docs.html` linking the Markdown on GitHub; publishing the site is in group E (`scripts/build-site-docs.mjs`, with `--check`; the pages are in `site/docs/`) | P3 | U |
 | 🆕 **Translations of the guide**. **To decide**: which of the app's languages and which pages (getting started first) | P3 | U |
 | ✅ Automatic check of relative links between documents and of the site's links (`scripts/`), run by hand | P3 | N |
 
@@ -189,7 +189,7 @@ Linux verification with a GPU, the DBeaver benchmark, the launch and the reposit
 |---|---|---|
 | 🆕 **Make the repository public.** **To decide (owner).** It unblocks auto-update (today `latest.json` returns 404 because the repository is private: see the blocked row of group P), package managers and unlimited Actions minutes. Before: check that no secret or personal data is in the history, licences are in order, `SECURITY.md` and `CONTRIBUTING.md` are up to date | P1 | U |
 | 🆕 **Submission to package managers**, with the manifests already in `packaging/`: winget, Homebrew, AUR, Flathub; for each the steps in RELEASING.md and a check that SHA-256 and version match the release | P2 | N |
-| 🆕 **GitHub Pages** for the site (`site/`), with a manually triggered workflow; domain to decide | P3 | U |
+| ✅ **GitHub Pages** for the site (`site/`), with a manually triggered workflow; domain to decide (`.github/workflows/pages.yml` is written; it has not been run and Pages is not enabled, since the repository is private; the domain is still to decide, see `site/README.md`) | P3 | U |
 | 🆕 After publishing: the "real auto-update test" row of group P can be done | P1 | U |
 
 ---

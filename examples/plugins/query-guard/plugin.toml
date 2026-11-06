@@ -1,0 +1,11 @@
+id = "query-guard"
+name = "Query guard"
+version = "1.0.0"
+author = "PlatypusDB"
+description = "Blocks statements that name forbidden_table and edits to locked_items, and logs what ran."
+api = 2
+kinds = ["hooks"]
+hooks = ["before_query", "after_query", "on_connect", "before_save"]
+
+[permissions]
+hooks = true

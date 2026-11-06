@@ -203,3 +203,9 @@
     });
   });
 })();
+
+// Docs: the menu starts closed on a narrow screen (it stays open without this script).
+(function () {
+  var menu = document.querySelector(".docs-nav");
+  if (menu && window.matchMedia("(max-width: 900px)").matches) menu.removeAttribute("open");
+})();

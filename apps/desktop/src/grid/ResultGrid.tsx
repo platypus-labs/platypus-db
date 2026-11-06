@@ -9,6 +9,7 @@ import { MapPanel } from "../panels/MapPanel";
 import { MetadataPanel } from "../panels/MetadataPanel";
 import { RecordView } from "../panels/RecordView";
 import { ValuePanel, type ValueTarget } from "../panels/ValuePanel";
+import { useGridPlugins } from "../plugins/slots";
 import { defineSetting, setSetting, useSetting } from "../settings";
 import { MASK, SensitiveScope, useMask, useSensitive } from "../guards/mask";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
@@ -193,12 +194,22 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     return [...own, ...computed.uses.map((cols) => cols.some((c) => own[c]))];
   }, [columns, mask, computed.uses]);
   const topRows = editor.topRows;
+  // What plugins add: nothing to go through without any (see `plugins/slots.ts`).
+  const plugged = useGridPlugins({
+    columns,
+    shown: computed.columns,
+    rows: computed.rows,
+    sensitive,
+    topRows,
+    redraw: () => grid.current?.redraw(),
+  });
+  const pluginDecorate = plugged?.decorate;
   const decorate = useMemo(
     () =>
-      masking(combine(underlay(formatting.decorate, editor.decorate), search.decorate), masked, (row, col) =>
+      masking(combine(underlay(formatting.decorate, underlay(pluginDecorate, editor.decorate)), search.decorate), masked, (row, col) =>
         row < topRows ? "" : cache.get(row - topRows, col),
       ),
-    [formatting.decorate, editor.decorate, search.decorate, masked, cache, topRows],
+    [formatting.decorate, pluginDecorate, editor.decorate, search.decorate, masked, cache, topRows],
   );
 
   const dataRow = focused ? grid.current?.dataRow(focused.row) : null;
@@ -260,7 +271,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
           <div className="result-grid-main" ref={box} onKeyDown={editor.onKeyDown}>
             <DataGrid
               ref={grid}
-              columns={computed.columns}
+              columns={plugged?.columns ?? computed.columns}
               resultColumns={columns.length}
               headerTitle={
                 // Sensitive columns are told apart where their marks are known or masking is on.
@@ -281,11 +292,11 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               onHeaderHover={(hover) => profile.onHeaderHover(hover && hover.col < columns.length ? hover : null)}
               rowCount={rowCount}
               topRows={editor.topRows}
-              cache={computed.rows}
+              cache={plugged?.rows ?? computed.rows}
               version={version}
               sort={sort}
               onHeaderClick={onHeaderClick && ((col) => col < columns.length && onHeaderClick(col))}
-              source={source ? { ...source, edit: editor.edit, features, references: refs.references } : null}
+              source={source ? { ...source, edit: editor.edit, features, references: refs.references, pluginGrid: plugged, sensitive } : null}
               decorate={decorate}
               overlay={
                 <>
@@ -394,7 +405,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
         {formatting.dialog}
         {computed.dialog}
         {columnsOpen && (
-          <ColumnsDialog columns={computed.columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
+          <ColumnsDialog columns={plugged?.columns ?? computed.columns} layout={layout} onChange={changeLayout} onClose={() => setColumnsOpen(false)} />
         )}
       </div>
     </SensitiveScope.Provider>

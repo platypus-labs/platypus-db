@@ -284,7 +284,64 @@ API (`DriverKind::Plugin`, the plugin's id in the `plugin` option). The guest AB
 permissions and the limits are in [PLUGINS.md](PLUGINS.md); the host is
 `crates/platypus-plugins`, the desktop commands `commands/plugins.rs`, the page side
 `apps/desktop/src/plugins/` (the actions join the action registry under a "Plugins" submenu).
-A change to the ABI raises `API_VERSION` and keeps the old version working while plugins use it.
+A change to the ABI raises `API_VERSION` and keeps the old version working while plugins use it:
+`MIN_API_VERSION` is the oldest still spoken, and the linker in `runtime.rs` links the host
+functions of a module's own ABI only.
+
+A new capability for plugins goes in these places:
+
+- its fields in `Manifest` (`manifest.rs`, types in `extensions.rs`), checked by `check_declared`,
+  which also refuses them under `api = 1`;
+- its permission in `Permissions` and `Capability`, and its plain words in `permissionLines`
+  (`PluginsPanel.tsx`). `Plugins::require` is the check before using it: it answers
+  `PluginError::Denied` and nothing of the plugin has run;
+- a test that the denied permission does nothing, in the crate and with an example of
+  `examples/plugins`.
+
+**Hooks.** `hooks::HOOKS` holds which plugins hook which events. A command that runs on the user's
+behalf asks `HOOKS.wanted(event)` first, one atomic load, and only then calls the helpers of
+`commands/plugins.rs`, after its own checks (`state.may_run`): the query path neither waits nor
+allocates without a hook, and a hook can only add a refusal. A new event is a variant of
+`HookEvent` and of `HookContext`: the context's fields are all that a hook can ever be told, so
+keep values of results and passwords out of them. A statement goes in through `masked_statement`.
+
+**Settings.** A plugin's values are `Plugins::settings_of` and `set_setting`, in a store of their
+own read only when used. The page (`PluginSettings.tsx`, a chunk loaded when it opens) maps each
+field to a `SettingDef` (`settingFields.ts`) and draws it with `SettingRow`, as the app's own
+settings; a secret has a row of its own, since it never comes back to the page.
+
+**Tabs and panels.** `frames.rs` holds what a page may reach, and is where a new request goes: a variant
+of `FrameRequest`, with its check in `Plugins::frame_request`, and its name in `FRAME_REQUESTS`
+(`plugins/frameProtocol.ts`), which says what a message may be before anything acts on it. Keep the
+list small, and never add a request that hands a page a password, a saved connection or a query's rows.
+`PluginFrame.tsx` is the host of a page and the one place messages are read: the frame's flags, the
+checks of source and origin, and what stops a page. The scheme is registered in `lib.rs`, its answers
+are `frame_response`, and `frame-src` in `tauri.conf.json` admits it and nothing else. All plugin tabs
+are one kind, `plugin` (`tabs/plugin.tsx`), since the app restores tabs before it has read the plugins.
+
+**Grid.** `grid.rs` runs batches; `plugins/gridView.ts` is what the grid reads, without the app around
+it. A cell on the path of a frame may do a lookup and note what it misses, and nothing else: calling a
+module there would be a call per cell per frame. Values go through `shownValue`, so that a masked cell
+stays masked.
+
+**What it costs.** All of this loads through `plugins/extensions.ts`, a chunk imported only once a plugin
+has a tab, a panel or a grid extension (`plugins/store.ts`). The app's own screens reach it through
+`plugins/slots.ts`, which holds `null` without one: `App.tsx` then renders nothing more and
+`ResultGrid.tsx` passes its own decoration and rows to the grid. Keep it so: count the JavaScript of a
+start as `dist/assets/index-*.js` plus the chunks `index.html` preloads, not the main file alone.
+**Themes.** `theme.rs` holds what a theme may set: `TOKENS`, the grammar of a colour and the font
+formats. A token added to the palette in `apps/desktop/src/theme.ts` goes in `TOKENS` too, and
+`tests/pluginTheme.test.mjs` fails until it does. `themes/color.ts` is the same grammar on the page,
+which registers a plugin's theme with `setPluginThemes`, from the list of plugins it reads anyway; a
+theme reaches the variables like a theme file does, through `style.setProperty`. Fonts are
+`plugins/themeFonts.ts`, a chunk loaded only when the theme in use has some.
+
+**Catalog.** `catalog.rs` reads an index and prepares a package: the checks, in order, then the review
+of a manual install (`Plugins::inspect`), then `Plugins::install` with its hash. A new check goes in
+`catalog_prepare` before `inspect` when it needs nothing of the package's content, with its own test
+in `tests/catalog.rs`. A refusal the user may lift has its own `PluginError` variant, and an error kind
+in `commands/plugins.rs` for the page; everything else is `PluginError::Catalog`. The page
+(`CatalogPanel.tsx`) is a chunk of its own, and the settings live in `commands/plugin_catalog.rs`.
 
 ### Vendor client libraries: Oracle, ODBC and DuckDB
 
@@ -687,7 +744,8 @@ keeps its own.
 A decoration can set `background`, `color`, replacement `text`, `strike` and a muted `hint`
 after the value (the data editor's foreign key labels). Features that
 need their own object in grid actions add a field to `GridSource` by augmenting
-`GridSourceExtensions`, as the data editor does with `edit` (`grid/edit/TableEditor.tsx`).
+`GridSourceExtensions`, as the data editor does with `edit` (`grid/edit/TableEditor.tsx`) and
+plugins with `pluginGrid` (`plugins/slots.ts`).
 
 The `GridApi` reads values and the selection, moves the selection, gives cell boxes,
 redraws and gives the keyboard back to the grid. It is also what `grid` actions receive,

@@ -53,8 +53,35 @@ pub fn build(app: &AppHandle, config: &tauri::utils::config::WindowConfig) -> ta
     {
         window = window.data_directory(dir.join("webview"));
     }
-    window.build()?;
+    let window = window.build()?;
+    #[cfg(windows)]
+    shut_web_messages(&window)?;
+    #[cfg(not(windows))]
+    let _ = window;
     Ok(())
+}
+
+/// Leaves a window one route to the app's commands, Tauri's `fetch` to `http://ipc.localhost`, which
+/// refuses a sandboxed frame by its origin. WebView2 runs Tauri's scripts in every frame, the invoke
+/// key included, so a plugin's page holds the key and `chrome.webview.postMessage`; what stood
+/// between them and a command was WebView2 alone, which keeps a frame's message from the window's
+/// handler. Nothing in the app uses this route: Tauri falls back to it only when its `fetch` fails.
+#[cfg(windows)]
+fn shut_web_messages(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    window.with_webview(|webview| {
+        #[allow(unsafe_code)]
+        // SAFETY: on the main thread, where `with_webview` runs, on the controller it hands over.
+        let shut = unsafe {
+            webview
+                .controller()
+                .CoreWebView2()
+                .and_then(|core| core.Settings())
+                .and_then(|settings| settings.SetIsWebMessageEnabled(false))
+        };
+        if let Err(e) = shut {
+            crate::applog::write("ERROR", &format!("the web message route stays open: {e}"));
+        }
+    })
 }
 
 /// Opens another window of the app, with the system's title bar.

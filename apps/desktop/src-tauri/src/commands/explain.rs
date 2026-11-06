@@ -1,29 +1,41 @@
 //! Query plans for the explain tab: asked of a session, or read from a pasted document.
 
+use std::time::Instant;
+
 use platypus_core::{Explain, plain_plan};
 use platypus_driver_sqlite::meta::is_plan_step;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use super::AppState;
+use super::{AppState, plugins};
 use crate::error::{CommandError, CommandResult};
 
 /// The plan of one statement; with `analyze` it runs, and its changes are rolled back.
 #[tauri::command]
 pub async fn explain(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     session_id: u64,
     sql: String,
     analyze: bool,
 ) -> CommandResult<Explain> {
-    // Analyze runs the statement.
+    // Analyze runs the statement: it goes through the hooks as any other.
+    let mut after = None;
     if analyze {
         state.may_run(session_id, &sql)?;
+        if plugins::query_hooked() {
+            after = plugins::before_query(&app, &state, session_id, &sql).await?;
+        }
     }
     let conn = state.live(session_id).await?;
     // `EXPLAIN SELECT 1;` is a valid request, but not with a semicolon then more text.
     let sql = sql.trim().trim_end_matches(';');
-    Ok(conn.explain(sql, analyze).await?)
+    let started = Instant::now();
+    let plan = conn.explain(sql, analyze).await;
+    if let Some(after) = after {
+        after.fire(plugins::status_of(&plan), started.elapsed(), None);
+    }
+    Ok(plan?)
 }
 
 /// Whose plan a pasted document is.

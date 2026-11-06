@@ -189,6 +189,7 @@ export function WindowApp({ label }: { label: string }) {
 
   provideWorkbench({
     connections: () => connections ?? [],
+    currentConnection: () => tab?.connectionId ?? connections?.[0]?.id ?? null,
     setConnections,
     projects: () => [],
     setProjects: () => {},

@@ -1,0 +1,44 @@
+name: Pages
+
+# Publishes site/ on GitHub Pages. Started by hand only (Actions tab, or `gh workflow run pages.yml`),
+# never on a push. It needs Settings > Pages > Source: GitHub Actions, which is not enabled yet;
+# see "Publish on GitHub Pages" in site/README.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Check and package the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # The generated pages must match the documents, and no link of the docs or the site may be broken.
+      - run: node scripts/build-site-docs.mjs --check
+      - run: node scripts/check-links.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

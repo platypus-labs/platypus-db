@@ -84,6 +84,7 @@ tauri-plugin-deep-link = "2"
 platypus-driver-pg = { workspace = true, features = ["kerberos"] }
 
 [target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",

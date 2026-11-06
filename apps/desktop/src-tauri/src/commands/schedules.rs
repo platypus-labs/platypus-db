@@ -7,9 +7,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use futures::FutureExt as _;
+use futures::future::BoxFuture;
 use platypus_core::{Connection, DriverKind, ExecOptions, ExecResult};
 use platypus_store::{SnapshotHow, SnapshotOutcome};
 use platypus_transfer::dump::{DumpFile, dump};
@@ -22,7 +24,7 @@ use super::backup::{BackupEvent, BackupFormat, BackupRequest, backup};
 use super::connections::{InitChoice, SavedConfig, saved_config};
 use super::profiles::start as start_profile;
 use super::schema_history::{SchemaRef, take};
-use super::{AppState, connect, lock, read_only_error, sql};
+use super::{AppState, connect, lock, plugins, read_only_error, sql};
 use crate::error::{CommandError, CommandResult};
 use crate::export::ExportEvent;
 use crate::profiles::{ProfileTask, Profiles};
@@ -35,6 +37,35 @@ const TICK: Duration = Duration::from_secs(20);
 
 /// The event the list listens to: a task changed, started or ended.
 const CHANGED: &str = "schedules-changed";
+
+/// What asks the hooks of plugins about a statement of a script, before it runs: an error, the
+/// hook's refusal, stops the run. It may answer what to tell them once the statement ends.
+type StatementHooks = dyn Fn(&SavedConfig, &str) -> BoxFuture<'static, Result<Option<plugins::AfterQuery>, String>>
+    + Send
+    + Sync;
+
+/// [`StatementHooks`] of the app. With no hook, one load per statement and nothing else.
+fn app_hooks(
+    app: AppHandle,
+) -> impl Fn(&SavedConfig, &str) -> BoxFuture<'static, Result<Option<plugins::AfterQuery>, String>>
++ Send
++ Sync {
+    move |saved, statement| {
+        if !plugins::query_hooked() {
+            return futures::future::ready(Ok(None)).boxed();
+        }
+        let app = app.clone();
+        let connection = plugins::saved_connection(saved);
+        let driver = saved.config.driver;
+        let statement = statement.to_owned();
+        async move {
+            plugins::before_statement(&app, connection, driver, &statement)
+                .await
+                .map_err(|e| e.message().to_owned())
+        }
+        .boxed()
+    }
+}
 
 /// Starts the loop that runs the tasks at their times, for as long as the app runs.
 pub fn start(app: AppHandle) {
@@ -62,6 +93,7 @@ async fn run(app: AppHandle, schedule: Schedule, attempt: u32, manual: bool) {
         &app.state::<Profiles>(),
         &schedule,
         started,
+        &app_hooks(app.clone()),
     )
     .await;
     let (ok, message, file) = match outcome {
@@ -89,6 +121,7 @@ async fn execute(
     profiles: &Profiles,
     schedule: &Schedule,
     started: chrono::DateTime<Utc>,
+    hooks: &StatementHooks,
 ) -> Result<(String, Option<PathBuf>), String> {
     // A profile opens the connections it names, and checks each.
     if let Task::Profile { profile_id } = &schedule.task {
@@ -105,7 +138,7 @@ async fn execute(
         return Err(format!("{} does not let its data be exported", saved.label));
     }
     match &schedule.task {
-        Task::Script { path } => run_script(state, &saved, &label, path)
+        Task::Script { path } => run_script(state, &saved, &label, path, hooks)
             .await
             .map(|m| (m, None)),
         Task::Export { sql, format } => {
@@ -427,12 +460,13 @@ fn prune(schedule: &Schedule, written: &Path, extension: &str) {
 }
 
 /// Runs the statements of the SQL file at `path` one at a time, stopping at the first that
-/// fails; on a read-only connection, only a file that reads.
+/// fails or that a plugin's hook blocks; on a read-only connection, only a file that reads.
 async fn run_script(
     state: &AppState,
     saved: &SavedConfig,
     label: &str,
     path: &Path,
+    hooks: &StatementHooks,
 ) -> Result<String, String> {
     let script = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if saved.read_only && !sql::only_reads(&script, saved.config.driver) {
@@ -451,7 +485,19 @@ async fn run_script(
         if text.is_empty() {
             continue;
         }
-        match conn.execute(text, &ExecOptions::default()).await {
+        let after = hooks(saved, text)
+            .await
+            .map_err(|e| format!("statement {}: {e}", i + 1))?;
+        let began = Instant::now();
+        let result = conn.execute(text, &ExecOptions::default()).await;
+        let affected = match &result {
+            Ok(ExecResult::Affected { rows }) => Some(*rows),
+            _ => None,
+        };
+        if let Some(after) = after {
+            after.fire(plugins::status_of(&result), began.elapsed(), affected);
+        }
+        match result {
             Ok(ExecResult::Affected { rows }) => changed += rows,
             // The rows of a SELECT are not kept.
             Ok(ExecResult::Rows(_)) => {}
@@ -659,6 +705,84 @@ mod tests {
         (state, id)
     }
 
+    fn no_hooks(
+        _: &SavedConfig,
+        _: &str,
+    ) -> BoxFuture<'static, Result<Option<plugins::AfterQuery>, String>> {
+        futures::future::ready(Ok(None)).boxed()
+    }
+
+    async fn unhooked(
+        state: &AppState,
+        profiles: &Profiles,
+        schedule: &Schedule,
+    ) -> Result<(String, Option<PathBuf>), String> {
+        execute(state, profiles, schedule, Utc::now(), &no_hooks).await
+    }
+
+    /// A hook sees each statement of a script as it comes, before it runs: what came before stands,
+    /// and the run fails with the hook's own words, with the rest of the file left alone.
+    #[tokio::test]
+    async fn a_hook_stops_a_scheduled_script_at_the_statement_it_blocks() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("hooked.db");
+        let (state, connection) = sqlite_state(dir.path(), &db);
+        let profiles = Profiles::open(None);
+        let saved = saved_config(&state, connection, None, None, InitChoice::Skip)
+            .await
+            .unwrap();
+        let conn = connect(&saved.config).await.unwrap();
+        conn.execute(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)",
+            &ExecOptions::default(),
+        )
+        .await
+        .unwrap();
+        let script = dir.path().join("guarded.sql");
+        std::fs::write(
+            &script,
+            "INSERT INTO t (v) VALUES (1);\nDROP TABLE t;\nINSERT INTO t (v) VALUES (2);\n",
+        )
+        .unwrap();
+        let mut s = schedule(Task::Script { path: script }, None);
+        s.connection_id = connection;
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let told = Arc::clone(&seen);
+        let guard = move |saved: &SavedConfig, statement: &str| {
+            told.lock()
+                .unwrap()
+                .push((saved.label.clone(), statement.to_owned()));
+            let refused = statement.starts_with("DROP");
+            futures::future::ready(if refused {
+                Err("The plugin “Guard” blocked this: no drops".to_owned())
+            } else {
+                Ok(None)
+            })
+            .boxed()
+        };
+        let error = execute(&state, &profiles, &s, Utc::now(), &guard)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error,
+            "statement 2: The plugin “Guard” blocked this: no drops"
+        );
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "{seen:?}");
+        assert_eq!(seen[0].0, "Scheduled");
+
+        // The first ran, the table is there, and the last never ran.
+        let ExecResult::Rows(rows) = conn
+            .execute("SELECT v FROM t", &ExecOptions::default())
+            .await
+            .unwrap()
+        else {
+            panic!("rows");
+        };
+        let batches: Vec<_> = futures::TryStreamExt::try_collect(rows).await.unwrap();
+        assert_eq!(batches[0].num_rows(), 1);
+    }
+
     /// The tasks run for real on a SQLite file: a script changes its rows, one that fails
     /// names the statement, and an export writes a CSV file into its folder.
     #[tokio::test]
@@ -687,16 +811,14 @@ mod tests {
         .unwrap();
         let mut s = schedule(Task::Script { path: script }, None);
         s.connection_id = connection;
-        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        let (message, file) = unhooked(&state, &profiles, &s).await.unwrap();
         assert_eq!(message, "2 statements run, 3 rows changed");
         assert_eq!(file, None);
 
         let broken = dir.path().join("broken.sql");
         std::fs::write(&broken, "SELECT 1;\nUPDATE nothing SET v = 1;").unwrap();
         s.task = Task::Script { path: broken };
-        let error = execute(&state, &profiles, &s, Utc::now())
-            .await
-            .unwrap_err();
+        let error = unhooked(&state, &profiles, &s).await.unwrap_err();
         assert!(error.starts_with("statement 2: "), "{error}");
 
         let folder = dir.path().join("out");
@@ -705,7 +827,7 @@ mod tests {
             format: ExportFormat::Csv,
         };
         s.folder = Some(folder.clone());
-        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        let (message, file) = unhooked(&state, &profiles, &s).await.unwrap();
         assert_eq!(message, "2 rows written");
         let file = file.unwrap();
         assert_eq!(file.parent(), Some(folder.as_path()));
@@ -718,7 +840,7 @@ mod tests {
             format: BackupFormat::Custom,
             schema: None,
         };
-        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        let (message, file) = unhooked(&state, &profiles, &s).await.unwrap();
         assert_eq!(message, "1 tables and 2 rows of main written");
         let file = file.unwrap();
         assert_eq!(file.extension().and_then(|e| e.to_str()), Some("sql"));
@@ -781,7 +903,7 @@ mod tests {
             Some(folder.clone()),
         );
         profiles.follow(&mut s, export.id).unwrap();
-        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        let (message, file) = unhooked(&state, &profiles, &s).await.unwrap();
         assert_eq!(message, "3 rows written");
         let file = file.unwrap();
         assert_eq!(file.parent(), Some(folder.as_path()));
@@ -789,7 +911,7 @@ mod tests {
         assert!(!dir.path().join("own.csv").exists(), "the folder wins");
         // Without a folder the profile writes where it says.
         s.folder = None;
-        let (_, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        let (_, file) = unhooked(&state, &profiles, &s).await.unwrap();
         assert_eq!(file, Some(dir.path().join("own.csv")));
 
         // Another profile copies the table into a new one.
@@ -814,7 +936,7 @@ mod tests {
         s.task = Task::Profile {
             profile_id: import.id,
         };
-        let (message, file) = execute(&state, &profiles, &s, Utc::now()).await.unwrap();
+        let (message, file) = unhooked(&state, &profiles, &s).await.unwrap();
         assert_eq!(message, "3 rows moved");
         assert_eq!(file, None);
         let conn = connect(&saved.config).await.unwrap();
@@ -832,9 +954,7 @@ mod tests {
         s.task = Task::Profile {
             profile_id: Uuid::new_v4(),
         };
-        let error = execute(&state, &profiles, &s, Utc::now())
-            .await
-            .unwrap_err();
+        let error = unhooked(&state, &profiles, &s).await.unwrap_err();
         assert!(error.contains("gone"), "{error}");
     }
 
@@ -864,7 +984,7 @@ mod tests {
         );
         s.connection_id = connection;
         assert_eq!(s.problem(), None);
-        let run = || execute(&state, &profiles, &s, Utc::now());
+        let run = || unhooked(&state, &profiles, &s);
         assert_eq!(run().await.unwrap(), ("Snapshot taken".to_owned(), None));
         assert_eq!(run().await.unwrap().0, "No changes since the last snapshot");
         conn.execute("ALTER TABLE t ADD COLUMN v TEXT", &ExecOptions::default())

@@ -319,8 +319,12 @@ fn inserted(sig: &[Sig<'_>]) -> Vec<(usize, String)> {
 /// The tokens of `sql` but whitespace and comments, the pieces of a number joined: its
 /// digits, a sign that cannot be a subtraction, an exponent (`1e-5`) or a hex form (`0x1F`).
 fn significant(sql: &str, dialect: Dialect) -> Vec<Sig<'_>> {
-    let mut out: Vec<Sig<'_>> = Vec::new();
-    for token in Lexer::new(sql, dialect).filter(|t| !t.is_trivia()) {
+    significant_of(Lexer::new(sql, dialect), sql)
+}
+
+fn significant_of<'a>(lexer: Lexer<'a>, sql: &'a str) -> Vec<Sig<'a>> {
+    let mut out: Vec<Sig<'a>> = Vec::new();
+    for token in lexer.filter(|t| !t.is_trivia()) {
         let text = token.text(sql);
         let digit =
             token.kind == TokenKind::Symbol && text.starts_with(|c: char| c.is_ascii_digit());
@@ -517,6 +521,29 @@ pub fn mask_strings(sql: &str, dialect: Dialect) -> String {
     out
 }
 
+/// `sql` with every value written as [`MASKED_LITERAL`], strings and numbers alike (a card number or
+/// a salary is one too), where they run: the body of a MySQL executable comment is code. For
+/// whoever should see what a statement does and none of what it carries; keywords, names of tables
+/// and columns stay, and so do comments and parameters, which have no value (`$1`).
+#[must_use]
+pub fn mask_every_literal(sql: &str, dialect: Dialect) -> String {
+    let sig = significant_of(Lexer::executable(sql, dialect), sql);
+    let mut out = String::with_capacity(sql.len());
+    let mut at = 0;
+    for (i, item) in sig.iter().enumerate() {
+        let parameter = i > 0
+            && sig[i - 1].token.end == item.token.start
+            && ["$", "?", ":", "@"].iter().any(|s| sig[i - 1].symbol(s));
+        if item.is_literal() && !parameter {
+            out.push_str(&sql[at..item.token.start]);
+            out.push_str(MASKED_LITERAL);
+            at = item.token.end;
+        }
+    }
+    out.push_str(&sql[at..]);
+    out
+}
+
 /// `sql` with the values tied to a column for which `sensitive` holds written as
 /// [`MASKED_LITERAL`].
 #[must_use]
@@ -673,6 +700,44 @@ mod tests {
             mask_strings("SELECT 'a@b", Dialect::Postgres),
             "SELECT '••••••'"
         );
+    }
+
+    #[test]
+    fn every_value_is_masked_and_what_the_statement_does_stays() {
+        let m = |sql: &str, dialect| mask_every_literal(sql, dialect);
+        let pg = Dialect::Postgres;
+        let dots = MASKED_LITERAL;
+        assert_eq!(
+            m(
+                "INSERT INTO users VALUES ('a@b.c', 's3cret', 4111111111111111, -5, 1.5e3)",
+                pg
+            ),
+            format!("INSERT INTO users VALUES ({dots}, {dots}, {dots}, {dots}, {dots})")
+        );
+        assert_eq!(
+            m(
+                "DELETE FROM t2 WHERE col1 = 0xFF AND \"a b\" = $$x$$ AND c = E'y'",
+                pg
+            ),
+            format!("DELETE FROM t2 WHERE col1 = {dots} AND \"a b\" = {dots} AND c = {dots}")
+        );
+        assert_eq!(
+            m("SELECT * FROM t WHERE a = $1", pg),
+            "SELECT * FROM t WHERE a = $1"
+        );
+        assert_eq!(
+            m("SELECT a /* note 7 */ FROM t -- 'kept'", pg),
+            "SELECT a /* note 7 */ FROM t -- 'kept'"
+        );
+        // Where the dialect reads them as strings.
+        assert_eq!(
+            m("INSERT INTO t VALUES (\"a@b.c\", `col`)", Dialect::MySql),
+            format!("INSERT INTO t VALUES ({dots}, `col`)")
+        );
+        // An executable comment runs.
+        assert!(!m("SELECT /*! 'a@b.c' */ 1", Dialect::MySql).contains("a@b.c"));
+        // Cut by the server inside a value.
+        assert_eq!(m("SELECT 'a@b", pg), format!("SELECT {dots}"));
     }
 
     #[test]

@@ -2,7 +2,25 @@ use std::process::Command;
 
 fn main() {
     build_id();
-    tauri_build::build();
+    let msvc = std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+    let mut attributes = tauri_build::Attributes::new();
+    if msvc {
+        attributes = attributes
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+        embed_manifest();
+    }
+    tauri_build::try_build(attributes).expect("the Tauri build step failed");
+}
+
+/// The app's manifest, in every executable of the crate. `tauri_build` would put it in the app
+/// only, and a test executable without it does not start once it links the newer functions of the
+/// Common Controls: `STATUS_ENTRYPOINT_NOT_FOUND`, before any test runs.
+fn embed_manifest() {
+    let dir = std::env::var("CARGO_MANIFEST_DIR").expect("set by Cargo");
+    let manifest = std::path::Path::new(&dir).join("windows-app-manifest.xml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
 }
 
 /// `PLATYPUS_BUILD`: the commit the app is built from and its date, with `+` when the working

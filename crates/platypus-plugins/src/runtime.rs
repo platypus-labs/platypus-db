@@ -10,7 +10,9 @@
 //! The guest imports from the `platypus` module only `log(level, ptr, len)`,
 //! `http(ptr, len) -> len` and `take(ptr)`, which copies the answer of the last `http` into
 //! a buffer of that length; nothing else is linked, so a module that imports anything else
-//! (WASI, files, sockets) does not load.
+//! (WASI, files, sockets) does not load. A module of ABI 2 may also import
+//! `setting(ptr, len) -> len`, whose answer `take` copies the same way; under ABI 1 it stays
+//! unknown, as it always was.
 //!
 //! Each call gets [`Limits::fuel`] (about one unit per instruction: an endless loop stops
 //! there), the memory never grows past [`Limits::memory`], and the host functions refuse
@@ -34,6 +36,7 @@ use wasmi::{
 use crate::action::ActionInfo;
 use crate::driver::DriverInfo;
 use crate::http::Http;
+use crate::settings::{self, SettingsAccess};
 use crate::{PluginError, log};
 
 /// The module the host functions are imported from.
@@ -48,6 +51,10 @@ pub const DESCRIBE: &str = "platypus_describe";
 pub const ACTION: &str = "platypus_action";
 /// `(ptr, len) -> i64`: one operation of its driver.
 pub const DRIVER: &str = "platypus_driver";
+/// `(ptr, len) -> i64`: one event for its hooks (ABI 2).
+pub const HOOK: &str = "platypus_hook";
+/// `(ptr, len) -> i64`: one batch for its grid extensions (ABI 2).
+pub const GRID: &str = "platypus_grid";
 
 /// What one call may use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +105,11 @@ pub struct Grants {
     pub http: Vec<String>,
     /// An `http://` proxy for those requests; the system's otherwise.
     pub proxy: Option<String>,
+    /// The ABI its module speaks, which decides the host functions it may import; 0 and 1 are
+    /// the first ABI.
+    pub api: u32,
+    /// Its own settings, for the `setting` function.
+    pub(crate) settings: Option<SettingsAccess>,
 }
 
 /// One interpreter for every plugin, metering fuel.
@@ -122,7 +134,9 @@ struct Host {
     plugin: String,
     /// The client, or why the plugin has no HTTP.
     http: Result<Http, String>,
-    /// The answer of the last `http`, until `take` copies it.
+    /// What the `setting` function may read.
+    settings: Option<SettingsAccess>,
+    /// The answer of the last `http` or `setting`, until `take` copies it.
     pending: Option<Vec<u8>>,
     logged: usize,
     max_log: usize,
@@ -171,6 +185,7 @@ impl Sandbox {
                 .build(),
             plugin: grants.plugin.clone(),
             http,
+            settings: grants.settings.clone(),
             pending: None,
             logged: 0,
             max_log: limits.log_lines,
@@ -181,7 +196,7 @@ impl Sandbox {
         let mut store = Store::new(engine(), host);
         store.limiter(|host| &mut host.limits);
         store.set_fuel(limits.fuel).map_err(invalid)?;
-        let linker = linker()?;
+        let linker = linker(grants.api)?;
         let instance = linker
             .instantiate_and_start(&mut store, module)
             .map_err(|e| match e.as_trap_code() {
@@ -231,30 +246,7 @@ impl Sandbox {
         let request = serde_json::to_vec(input)
             .map_err(|e| PluginError::Invalid(format!("cannot write the request: {e}")))?;
         let answer = self.call_raw(entry, &request)?;
-        let answer: Value = serde_json::from_slice(&answer).map_err(|e| {
-            PluginError::Invalid(format!(
-                "`{entry}` answered something that is not JSON: {e}"
-            ))
-        })?;
-        match answer {
-            Value::Object(mut map) => {
-                if let Some(error) = map.remove("error") {
-                    return Err(PluginError::Guest(match error {
-                        Value::String(s) => s,
-                        other => other.to_string(),
-                    }));
-                }
-                let ok = map.remove("ok").ok_or_else(|| {
-                    PluginError::Invalid(format!("`{entry}` answered neither `ok` nor `error`"))
-                })?;
-                serde_json::from_value(ok).map_err(|e| {
-                    PluginError::Invalid(format!("`{entry}` answered an unexpected value: {e}"))
-                })
-            }
-            _ => Err(PluginError::Invalid(format!(
-                "`{entry}` answered something that is not a JSON object"
-            ))),
-        }
+        read_answer(entry, &answer)
     }
 
     /// Calls `entry` with the bytes of `input` and returns the bytes of its answer.
@@ -358,6 +350,37 @@ impl Sandbox {
     }
 }
 
+/// The `ok` value of an entry point's answer; its `error` as an error of the guest.
+pub(crate) fn read_answer<O: DeserializeOwned>(
+    entry: &str,
+    answer: &[u8],
+) -> Result<O, PluginError> {
+    let answer: Value = serde_json::from_slice(answer).map_err(|e| {
+        PluginError::Invalid(format!(
+            "`{entry}` answered something that is not JSON: {e}"
+        ))
+    })?;
+    match answer {
+        Value::Object(mut map) => {
+            if let Some(error) = map.remove("error") {
+                return Err(PluginError::Guest(match error {
+                    Value::String(s) => s,
+                    other => other.to_string(),
+                }));
+            }
+            let ok = map.remove("ok").ok_or_else(|| {
+                PluginError::Invalid(format!("`{entry}` answered neither `ok` nor `error`"))
+            })?;
+            serde_json::from_value(ok).map_err(|e| {
+                PluginError::Invalid(format!("`{entry}` answered an unexpected value: {e}"))
+            })
+        }
+        _ => Err(PluginError::Invalid(format!(
+            "`{entry}` answered something that is not a JSON object"
+        ))),
+    }
+}
+
 /// `(ptr, len)` packed as the entry points return them.
 fn unpack(packed: i64) -> (i32, i32) {
     let bits = packed.cast_unsigned();
@@ -385,8 +408,8 @@ fn invalid(e: wasmi::Error) -> PluginError {
     PluginError::Invalid(e.to_string())
 }
 
-/// The host functions every module may import.
-fn linker() -> Result<Linker<Host>, PluginError> {
+/// The host functions a module of ABI `api` may import.
+fn linker(api: u32) -> Result<Linker<Host>, PluginError> {
     let mut linker = Linker::new(engine());
     let link = |e: wasmi::errors::LinkerError| PluginError::Invalid(e.to_string());
     linker
@@ -396,6 +419,11 @@ fn linker() -> Result<Linker<Host>, PluginError> {
         .map_err(link)?
         .func_wrap(HOST_MODULE, "take", host_take)
         .map_err(link)?;
+    if api >= 2 {
+        linker
+            .func_wrap(HOST_MODULE, "setting", host_setting)
+            .map_err(link)?;
+    }
     Ok(linker)
 }
 
@@ -476,7 +504,25 @@ fn host_http(mut caller: Caller<'_, Host>, ptr: i32, len: i32) -> Result<i32, wa
     Ok(n)
 }
 
-/// `take(ptr)`: copies the answer of the last `http` to `ptr`, a buffer of its length.
+/// `setting(ptr, len) -> len`: reads `{"key": name}`, one of the plugin's own settings, and
+/// keeps the answer for `take`: `{"ok": value}`, or `{"error": why}` and the call goes on.
+fn host_setting(mut caller: Caller<'_, Host>, ptr: i32, len: i32) -> Result<i32, wasmi::Error> {
+    const REQUEST: usize = 4096;
+    let host = caller.data();
+    if Instant::now() >= host.deadline {
+        caller.data_mut().timed_out = true;
+        return Err(wasmi::Error::new("deadline"));
+    }
+    let request = read_guest(&caller, ptr, len, REQUEST)?;
+    let answer = settings::answer(caller.data().settings.as_ref(), &request);
+    let bytes = serde_json::to_vec(&answer).map_err(|e| wasmi::Error::new(e.to_string()))?;
+    let n = i32::try_from(bytes.len()).map_err(|_| wasmi::Error::new("answer too large"))?;
+    caller.data_mut().pending = Some(bytes);
+    Ok(n)
+}
+
+/// `take(ptr)`: copies the answer of the last `http` or `setting` to `ptr`, a buffer of its
+/// length.
 fn host_take(mut caller: Caller<'_, Host>, ptr: i32) -> Result<(), wasmi::Error> {
     let bytes = caller
         .data_mut()

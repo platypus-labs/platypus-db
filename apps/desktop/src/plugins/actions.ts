@@ -9,6 +9,8 @@ import type { EditorView } from "@codemirror/view";
 import type { EditorHost } from "../editor/SqlEditor";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
+import { MASK } from "../guards/maskRules";
+import { maskRows } from "./maskRows";
 import { installedPlugins, onPluginsChanged, reloadPlugins } from "./store";
 import { copyText } from "../ui/copy";
 
@@ -16,14 +18,14 @@ import { copyText } from "../ui/copy";
 export const MAX_GRID_ROWS = 1000;
 
 /** Where an outcome goes besides the clipboard and messages. */
-interface Target {
+export interface Target {
   /** Puts the text in the editor. */
   replace?: (text: string) => void;
   /** Opens a new SQL tab with the text. */
   newTab?: (text: string) => void;
 }
 
-async function apply(outcome: PluginOutcome, target: Target) {
+export async function applyOutcome(outcome: PluginOutcome, target: Target) {
   switch (outcome.kind) {
     case "replace":
       if (!target.replace) throw failure(t("This plugin action can only change the text of an editor."));
@@ -79,7 +81,7 @@ function editorContext(view: EditorView, driver: string, readOnly: boolean, host
 }
 
 /** The selected rows of a grid, at most `MAX_GRID_ROWS`, with their columns' names and
- *  types; values as "Copy as JSON" gives them. */
+ *  types; values as "Copy as JSON" gives them, and masked in sensitive columns. */
 async function gridContext({ grid, source }: GridActionContext) {
   const sel = grid.selection();
   const jobId = source?.jobId;
@@ -92,7 +94,8 @@ async function gridContext({ grid, source }: GridActionContext) {
   const columns = sel.cols.map((c) => ({ name: all[c]!.name, type: all[c]!.db_type }));
   const text = await api.copyRows(jobId, first, limit, sel.cols, "json");
   const objects = JSON.parse(text) as Record<string, unknown>[];
-  const rows = objects.map((o) => columns.map((c) => o[c.name] ?? null));
+  const hidden = sel.cols.map((c) => !!source?.sensitive?.(all[c]!));
+  const rows = maskRows(objects.map((o) => columns.map((c) => o[c.name] ?? null)), hidden, MASK);
   const context = { columns, rows, truncated: count > limit };
   const connection = source?.connection;
   const target: Target = connection ? { newTab: (sql) => workbench().openTab("query", connection.id, { sql }) } : {};
@@ -123,7 +126,7 @@ function objectContext(arg: NavigatorObject) {
 async function run(plugin: InstalledPlugin, action: PluginActionInfo, build: () => Promise<{ context: unknown; target: Target }>) {
   const { context, target } = await build();
   const outcome = await api.pluginRunAction(plugin.manifest.id, action.id, context);
-  await apply(outcome, target);
+  await applyOutcome(outcome, target);
 }
 
 /** Adds the action to the registry; returns what removes it. */

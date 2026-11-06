@@ -3233,10 +3233,45 @@ export const api = {
    *  no longer the one reviewed (`hash` from `pluginInspect`). */
   pluginInstall: (path: string, hash: string) => invoke<InstalledPlugin>("plugin_install", { path, hash }),
   pluginSetEnabled: (id: string, enabled: boolean) => invoke<void>("plugin_set_enabled", { id, enabled }),
-  pluginRemove: (id: string) => invoke<void>("plugin_remove", { id }),
+  /** Removes a plugin; the values of its settings page stay with `keepSettings`, its secrets never. */
+  pluginRemove: (id: string, keepSettings = false) => invoke<void>("plugin_remove", { id, keepSettings }),
+  /** The bytes of a font of a plugin's theme (`ui`, `mono`). */
+  pluginThemeFont: (id: string, usage: string) => invoke<ArrayBuffer>("plugin_theme_font", { id, usage }),
+  /** The catalog of the index the user set; empty, contacting nothing, without one. */
+  pluginCatalogFetch: () => invoke<CatalogView>("plugin_catalog_fetch"),
+  pluginCatalogUrl: () => invoke<string>("plugin_catalog_url"),
+  pluginCatalogSetUrl: (url: string) => invoke<string>("plugin_catalog_set_url", { url }),
+  pluginCatalogKeys: () => invoke<TrustedPluginKey[]>("plugin_catalog_keys"),
+  pluginCatalogTrust: (name: string, key: string) => invoke<TrustedPluginKey[]>("plugin_catalog_trust", { name, key }),
+  pluginCatalogUntrust: (key: string) => invoke<TrustedPluginKey[]>("plugin_catalog_untrust", { key }),
+  /** Downloads and checks a package for the review; a package with no valid signature is refused
+   *  (kind `plugin_unsigned`) unless the user confirmed `allowUnsigned`. */
+  pluginCatalogPrepare: (entry: CatalogEntry, allowUnsigned: boolean, allowDowngrade: boolean) =>
+    invoke<PreparedPlugin>("plugin_catalog_prepare", { entry, allowUnsigned, allowDowngrade }),
+  pluginCatalogInstall: (ticket: string, hash: string) => invoke<InstalledPlugin>("plugin_catalog_install", { ticket, hash }),
+  pluginCatalogDiscard: (ticket: string) => invoke<void>("plugin_catalog_discard", { ticket }),
   /** Runs a plugin's action on the context of its scope; the page applies the outcome. */
   pluginRunAction: (plugin: string, action: string, context: unknown) =>
     invoke<PluginOutcome>("plugin_run_action", { plugin, action, context }),
+  /** What the fields of a plugin's settings page hold; a secret only says if it is set. */
+  pluginSettings: (id: string) => invoke<PluginSettingState[]>("plugin_settings", { id }),
+  /** Saves a value of a plugin's settings page; `null` goes back to the default. */
+  pluginSetSetting: (id: string, key: string, value: string | number | boolean | null) =>
+    invoke<void>("plugin_set_setting", { id, key, value }),
+  /** Where a document of a plugin is, for its frame; refused without the `tabs` permission. */
+  pluginFrameUrl: (plugin: string, document: string) => invoke<string>("plugin_frame_url", { plugin, document }),
+  /** What a plugin's frame asks, checked again by the backend. */
+  pluginFrameRequest: (plugin: string, request: { name: string; params: unknown }) =>
+    invoke<unknown>("plugin_frame_request", { plugin, request }),
+  /** The values of a plugin's computed column for a batch of rows, as the grid shows them. */
+  pluginGridColumn: (plugin: string, extension: string, columns: PluginGridColumn[], rows: (string | null)[][]) =>
+    invoke<PluginGridValue[]>("plugin_grid_column", { plugin, extension, columns, rows }),
+  /** How a plugin's renderer draws a batch of a column's values, as the grid shows them. */
+  pluginGridRender: (plugin: string, extension: string, column: PluginGridColumn, values: string[]) =>
+    invoke<PluginGridRendered[]>("plugin_grid_render", { plugin, extension, column, values }),
+  /** Runs a plugin's command on a cell, as the grid shows it. */
+  pluginGridAction: (plugin: string, extension: string, column: PluginGridColumn, value: string | null) =>
+    invoke<PluginOutcome>("plugin_grid_action", { plugin, extension, column, value }),
 };
 
 // Group O: WebAssembly plugins (`platypus-plugins`)
@@ -3244,6 +3279,65 @@ export interface PluginPermissions {
   /** Hosts the plugin may send HTTP requests to (`*.example.com` for subdomains). */
   http: string[];
   clipboard: boolean;
+  /** Runs on the app's events. */
+  hooks: boolean;
+  /** Shows its own documents in tabs and side panels. */
+  tabs: boolean;
+  /** Adds to the result grid. */
+  grid: boolean;
+}
+
+/** A result column as a plugin's grid extension sees it; a masked one's values come as dots. */
+export interface PluginGridColumn {
+  name: string;
+  type: string;
+  masked: boolean;
+}
+
+export type PluginGridValue = { text: string | null } | { error: string };
+
+/** How to draw a cell: all a renderer can say. */
+export interface PluginGridCell {
+  text?: string;
+  color?: string;
+  background?: string;
+  hint?: string;
+  strike?: boolean;
+}
+
+export type PluginGridRendered = { cell: PluginGridCell | null } | { error: string };
+
+export type PluginHookEvent = "before_query" | "after_query" | "on_connect" | "before_save";
+
+/** One field of a plugin's settings page, in the plugin's own language. */
+export interface PluginSettingField {
+  key: string;
+  label: string;
+  description?: string;
+  type: "text" | "number" | "boolean" | "choice" | "secret";
+  default?: string | number | boolean;
+  options?: { value: string; label: string }[];
+  min?: number;
+  max?: number;
+}
+
+/** What a field of a settings page holds: `value` is never a secret. */
+export interface PluginSettingState {
+  key: string;
+  value: string | number | boolean | null;
+  set: boolean;
+}
+
+interface PluginDocument {
+  title: string;
+  /** The HTML document, a path inside the package. */
+  entry: string;
+}
+
+interface PluginGridExtension {
+  id: string;
+  title: string;
+  types?: string[];
 }
 
 export interface PluginManifest {
@@ -3253,8 +3347,15 @@ export interface PluginManifest {
   author: string;
   description: string;
   api: number;
-  kinds: ("actions" | "driver")[];
+  kinds: ("actions" | "driver" | "theme" | "hooks" | "tabs" | "panels" | "grid")[];
   permissions: PluginPermissions;
+  // ABI 2: left out when empty.
+  hooks?: PluginHookEvent[];
+  tabs?: (PluginDocument & { kind: string })[];
+  panels?: (PluginDocument & { id: string })[];
+  grid?: { columns?: PluginGridExtension[]; renderers?: PluginGridExtension[]; actions?: PluginGridExtension[] };
+  settings?: PluginSettingField[];
+  theme?: { name: string; light?: Record<string, string>; dark?: Record<string, string>; fonts?: Record<string, string> };
 }
 
 export type PluginActionScope = "editor" | "grid" | "navigator.object";
@@ -3277,6 +3378,47 @@ export interface InstalledPlugin {
   enabled: boolean;
   approved: PluginPermissions;
   description: PluginDescription;
+  /** Its files are missing or not its own: only its name and version are known, and it can only
+   *  be removed. */
+  broken: boolean;
+}
+
+/** One plugin of a catalog's index. */
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  version: string;
+  author?: string;
+  description?: string;
+  url: string;
+  sha256: string;
+  signature?: string;
+}
+
+export interface CatalogItem {
+  entry: CatalogEntry;
+  /** The version installed, if any. */
+  installed: string | null;
+  status: "new" | "update" | "current" | "older";
+}
+
+export interface CatalogView {
+  url: string;
+  items: CatalogItem[];
+  /** The entries of the index that were left out, and why. */
+  problems: { id: string | null; reason: string }[];
+}
+
+export interface TrustedPluginKey {
+  name: string;
+  key: string;
+}
+
+/** A package that passed the catalog's checks and waits for the user's review. */
+export interface PreparedPlugin {
+  ticket: string;
+  inspected: InspectedPlugin;
+  signature: { state: "verified"; key: string } | { state: "unsigned"; reason: string };
 }
 
 export interface InspectedPlugin {
@@ -3284,8 +3426,13 @@ export interface InspectedPlugin {
   description: PluginDescription;
   /** The installed version it replaces. */
   replaces: string | null;
+  /** What it asks beyond what was approved for that version: installing approves it. */
+  added: PluginPermissions;
   /** The package's hash, given back to `pluginInstall` so that what is installed is what was reviewed. */
   hash: string;
+  /** The installed version has another signer (a trusted key's name, `null` for none): installing
+   *  clears the plugin's secrets and what its pages keep. */
+  signer_change: { from: string | null; to: string | null } | null;
 }
 
 /** What the app does with an action's result. */

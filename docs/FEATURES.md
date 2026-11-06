@@ -823,8 +823,21 @@ through the MCP server.
   exist or values a column refuses are listed in the viewer and the rest is applied. See
   [AGENTS.md](AGENTS.md).
 - **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
-  and the navigator, or a driver for a database reached over HTTP; each asks for its
-  permissions at install. See [PLUGINS.md](PLUGINS.md).
+  and the navigator, a driver for a database reached over HTTP, hooks that see statements with
+  their values masked and may stop a statement or a save, a settings page of their own,
+  with secrets in the system's keychain, tabs and side panels with pages of their own, and computed
+  columns, cell renderers and cell commands in the result grid; each asks for its permissions at
+  install. A page runs in an isolated frame, with no access to the app and no network of its own, and
+  talks to the app through a short list of requests; a grid extension reads sensitive cells as dots,
+  whether or not the screen masks them. A
+  plugin can also be only a theme, with colours and fonts and no code, which joins the theme picker. See
+  [PLUGINS.md](PLUGINS.md).
+- **Plugin catalog** (Settings › Plugin catalog): plugins from an index you choose, installed,
+  updated and removed from one page. No address is built in, and nothing is contacted until you set
+  one; the index is read when you open the page or ask. A package is installed only over HTTPS, with
+  the size, hash and identity the index gives, and signed by a key you trust; an unsigned package or
+  an older version needs its own confirmation, and every install shows what it asks first. See
+  [PLUGINS.md](PLUGINS.md#catalog).
 
 ## Settings and themes
 

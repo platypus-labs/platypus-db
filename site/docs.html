@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PlatypusDB · Docs</title>
-  <meta name="description" content="Getting started with PlatypusDB, and an index of its documentation.">
+  <title>PlatypusDB · Getting started</title>
+  <meta name="description" content="Install PlatypusDB, open a connection and learn the few keys that do most of the work. Every feature, area by area, is in FEATURES.md.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0b0d0f">
   <link rel="icon" type="image/png" href="img/icon.png">
@@ -39,29 +39,120 @@
 
   <main class="docs" id="main">
   <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
     <h6>Start</h6>
-    <a href="#getting-started" class="on">Getting started</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/guide/README.md">User guide</a><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a>
-    <h6>Use</h6>
-    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#databases">Databases</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#sql-editor">SQL editor</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#data-editor">Data editor</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#query-plans-and-performance">Query plans</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#import-export-and-transfer">Import and export</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">All features</a>
-    <h6>Safety and agents</h6>
-    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md#transactions-and-safety">Transactions and safety</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a>
-    <h6>Reference</h6>
-    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Keyboard shortcuts</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/PLUGINS.md">Plugins</a>
-    <h6>Project</h6>
-    <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="docs.html" class="on" aria-current="page">Getting started</a>
+<a href="docs/guide/index.html">User guide</a>
+<h6>Guide</h6>
+<a href="docs/guide/connect.html">Connect to a database</a>
+<a href="docs/guide/queries.html">Run queries and read results</a>
+<a href="docs/guide/edit-data.html">Edit data</a>
+<a href="docs/guide/import-export.html">Import and export</a>
+<a href="docs/guide/safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="docs/guide/projects-sharing.html">Projects and sharing</a>
+<a href="docs/guide/agents.html">Use PlatypusDB from an agent</a>
+<a href="docs/guide/troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="docs/guide/databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="docs/features.html">Features</a>
+<a href="docs/shortcuts.html">Keyboard shortcuts</a>
+<a href="docs/agents.html">Agents (MCP) and the CLI</a>
+<a href="docs/plugins.html">Plugins</a>
+<a href="docs/connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
   </nav>
 
   <article>
     <div class="crumbs">Start / Getting started</div>
-    <h1 id="getting-started">Getting started</h1>
-    <p>Install PlatypusDB, open a connection and learn the few keys that do most of the work. The steps are in the user guide, which lives in the repository next to the code:</p>
-    <p><a class="button primary" href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/guide/getting-started.md">Read Getting started</a></p>
-    <p>The guide goes on task by task: <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/guide/connect.md">connect</a>, <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/guide/queries.md">run queries</a>, <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/guide/safety.md">safety</a>, <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/guide/troubleshooting.md">troubleshooting</a> and more, from its <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/guide/README.md">index</a>. Every feature, area by area, is in <a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">FEATURES.md</a>.</p>
+<p><a href="docs/guide/index.html">← User guide</a></p>
+<h1 id="getting-started">Getting started</h1>
+<p>Install PlatypusDB, open a connection and learn the few keys that do most of the work. Every feature, area by area, is in <a href="docs/features.html">FEATURES.md</a>.</p>
+<p><img src="img/screenshots/guide/welcome.png" alt="The welcome screen" loading="lazy"></p>
+<h2 id="install">Install</h2>
+<p>Download the installer for your system from the <a href="https://github.com/PaoloCisly/platypus-db/releases/latest">releases page</a>: <code>.exe</code> or <code>.msi</code> for Windows, <code>.dmg</code> for macOS, <code>.AppImage</code>, <code>.deb</code> or <code>.rpm</code> for Linux. The app updates itself (see <a href="docs/guide/troubleshooting.html#updates">Updates</a>).</p>
+<p><strong>Portable copy</strong>: put the executable in a folder with an empty <code>data</code> folder beside it. Connections, settings, history and scripts then live in <code>data</code>, and the folder can move to another machine or a USB stick.</p>
+<h2 id="first-connection">First connection</h2>
+<ol>
+<li>Open PlatypusDB and click <strong>New connection</strong>, or paste a connection URL (<code>postgres://…</code>, <code>mysql://…</code>, a JDBC URL or an ADO.NET string).</li>
+<li>Choose the database from the grid of logos. If it needs a driver that is not installed yet (Snowflake, BigQuery, Databricks and Trino, DuckDB, Oracle, IBM Db2), the app offers to download it at once; <strong>Cancel</strong> leaves the form as it is.</li>
+<li>Fill in the form and click <strong>Test connection</strong>, then <strong>Save</strong>.</li>
+<li>Double-click the connection to open a SQL editor, or expand it to browse.</li>
+</ol>
+<p>The form is explained in <a href="docs/guide/connect.html">Connect</a>; each database has its own page in <a href="docs/guide/databases/index.html">Databases</a>.</p>
+<p>No database at hand? Click <strong>Try the sample database</strong> on the welcome screen: a SQLite field survey of platypuses, with linked tables, a view and a few saved scripts.</p>
+<h2 id="keys-to-learn-first">Keys to learn first</h2>
+<p>Every action, connection and table is a few letters away in the command palette.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Keys</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>Ctrl+K</code></td><td>Command palette</td></tr>
+<tr><td><code>Ctrl+Enter</code></td><td>Run the statement under the cursor (or the selection)</td></tr>
+<tr><td><code>Alt+X</code></td><td>Run the script</td></tr>
+<tr><td><code>Ctrl+Space</code></td><td>Autocomplete</td></tr>
+<tr><td><code>Ctrl+Shift+F</code></td><td>Format the script (or the selection)</td></tr>
+<tr><td><code>Ctrl+Shift+E</code></td><td>Explain the statement under the cursor</td></tr>
+<tr><td><code>Ctrl+T</code></td><td>New tab</td></tr>
+</tbody>
+</table></div>
+<p>On macOS use <code>Cmd</code> instead of <code>Ctrl</code>. Every shortcut can be changed in Settings › Keyboard shortcuts; the full list is in <a href="docs/shortcuts.html">SHORTCUTS.md</a>.</p>
+<h2 id="next">Next</h2>
+<p><a href="docs/guide/queries.html">Run queries</a>, <a href="docs/guide/edit-data.html">edit data</a>, or read <a href="docs/guide/safety.html">Safety</a> before connecting to production.</p>
+<h2 id="all-pages">All the pages</h2>
+<h3>User guide</h3>
+<ul>
+<li><a href="docs/guide/index.html">User guide</a> — Short pages, each a task to follow step by step. FEATURES.md stays the reference, area by area; these pages link to it for the details.</li>
+<li><a href="docs/guide/connect.html">Connect to a database</a> — Choosing the database for a new connection</li>
+<li><a href="docs/guide/queries.html">Run queries and read results</a> — JOIN completion from the foreign keys</li>
+<li><a href="docs/guide/edit-data.html">Edit data</a> — Pending changes in the data editor</li>
+<li><a href="docs/guide/import-export.html">Import and export</a> — The actions below are in the right-click menu of the navigator, and in the command palette (Ctrl+K). The full list of formats and options is in FEATURES.md.</li>
+<li><a href="docs/guide/safety.html">Work safely: production, read-only, confirmations, masking</a> — Everything here is also in FEATURES.md.</li>
+<li><a href="docs/guide/projects-sharing.html">Projects and sharing</a> — A project is a group of connections, scripts and open tabs, shown in the rail on the left. The details are in FEATURES.md and FEATURES.md.</li>
+<li><a href="docs/guide/agents.html">Use PlatypusDB from an agent</a> — Claude Code, Codex, Cursor and other MCP clients can use your saved connections through PlatypusDB&#39;s MCP server. This page is the short path; every tool,…</li>
+<li><a href="docs/guide/troubleshooting.html">Troubleshooting and FAQ</a> — Start with Test connection in the connection&#39;s form: it reports the failure with the server&#39;s own message, and names the server version where that helps.</li>
+<li><a href="docs/guide/databases/index.html">Databases</a> — One page for each database: how to connect, what the login needs, what works and what does not, and which versions the test suite runs on. Connecting…</li>
+</ul>
+<h3>Databases</h3>
+<ul>
+<li><a href="docs/guide/databases/postgresql.html">PostgreSQL</a> — One driver, built on tokio-postgres, speaks the PostgreSQL protocol. It opens PostgreSQL 12 and later, and the servers and services that speak the same…</li>
+<li><a href="docs/guide/databases/mysql.html">MySQL</a> — One driver (the mysql_async client) opens MySQL 5.7 and later and MariaDB 10.6 and later. Both have a tile in the grid of databases; the driver tells which…</li>
+<li><a href="docs/guide/databases/sqlite.html">SQLite</a> — SQLite runs inside the app (rusqlite with SQLite built in): no server, no host, no user, no password, nothing to download.</li>
+<li><a href="docs/guide/databases/sqlserver.html">SQL Server</a> — The driver speaks TDS itself (a patched tiberius), so there is nothing to install or download. It opens SQL Server 2017 (14.0) and later, and Azure SQL.</li>
+<li><a href="docs/guide/databases/oracle.html">Oracle</a> — The driver uses Oracle&#39;s client library (ODPI-C, through the oracle crate), loaded when you connect. The library is Oracle Instant Client, which the app…</li>
+<li><a href="docs/guide/databases/clickhouse.html">ClickHouse</a> — The driver talks to ClickHouse&#39;s HTTP interface and reads results in the Arrow stream format. It is part of the app; nothing is downloaded. It browses,…</li>
+<li><a href="docs/guide/databases/duckdb.html">DuckDB</a> — DuckDB runs inside the app, like SQLite: no server, host, user or password. Unlike SQLite, the app does not carry DuckDB&#39;s library; it downloads it the…</li>
+<li><a href="docs/guide/databases/libsql.html">libSQL</a> — The driver speaks the Hrana 3 protocol over HTTP(S) to a libSQL server (sqld) or to Turso. The SQL is SQLite&#39;s, so the navigator, the types and the plans…</li>
+<li><a href="docs/guide/databases/mongodb.html">MongoDB</a> — The driver is MongoDB&#39;s official Rust driver (with rustls, so no OpenSSL). It opens MongoDB 5.0 and later. The editor takes mongosh syntax, not SQL. The…</li>
+<li><a href="docs/guide/databases/redis.html">Redis</a> — The driver is built on the redis crate (RESP3 when the server speaks it, with rustls for TLS). It opens Redis 6 and later, and Redis Stack for JSON keys.…</li>
+<li><a href="docs/guide/databases/elasticsearch.html">Elasticsearch</a> — One driver talks to both over their HTTP API (reqwest with rustls). The server says which it is when you connect, and the connection shows it (Connected:…</li>
+<li><a href="docs/guide/databases/cassandra.html">Cassandra</a> — One driver, built on the scylla crate (with rustls), speaks CQL over the native protocol to both. The server says which it is, and the connection shows it.…</li>
+<li><a href="docs/guide/databases/adbc.html">ADBC</a> — These databases are reached through ADBC (Arrow Database Connectivity) drivers, libraries that the app loads when you connect. Snowflake, BigQuery,…</li>
+<li><a href="docs/guide/databases/db2-odbc.html">Db2 and ODBC</a> — Db2, and any database with an ODBC driver or a data source (DSN), are reached through the system&#39;s ODBC driver manager. This works on Windows only for now:…</li>
+</ul>
+<h3>Reference</h3>
+<ul>
+<li><a href="docs/features.html">Features</a> — Everything PlatypusDB does, area by area. The README has the short version. To do something step by step, see the user guide.</li>
+<li><a href="docs/shortcuts.html">Keyboard shortcuts</a> — On macOS use Cmd instead of Ctrl. Every shortcut can be changed in Settings › Keyboard shortcuts.</li>
+<li><a href="docs/agents.html">Agents (MCP) and the CLI</a> — Claude Code, Codex, Cursor and other MCP clients use your saved connections through PlatypusDB&#39;s MCP server: the app itself, started with --mcp, which they…</li>
+<li><a href="docs/plugins.html">Plugins</a> — PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for wasm32-unknown-unknown, AssemblyScript, TinyGo, C, Zig…). A plugin…</li>
+<li><a href="docs/connections-file.html">The connections file (.platypusconn)</a> — What Export connections writes and Import connections › PlatypusDB reads. The code is crates/platypus-sync/src/export.rs.</li>
+</ul>
   </article>
 
   <aside class="toc-r">
     <div class="lbl">On this page</div>
-    <a href="https://github.com/PaoloCisly/platypus-db#readme" style="margin-top:18px">Read the README on GitHub</a>
+    <a href="#install">Install</a>
+    <a href="#first-connection">First connection</a>
+    <a href="#keys-to-learn-first">Keys to learn first</a>
+    <a href="#next">Next</a>
+    <a href="#all-pages">All the pages</a>
   </aside>
 </main>
 
@@ -74,10 +165,11 @@
       <nav aria-labelledby="f-docs">
         <h2 id="f-docs">Docs</h2>
         <ul>
-          <li><a href="https://github.com/PaoloCisly/platypus-db#readme">README</a></li>
-          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/FEATURES.md">Features</a></li>
-          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/SHORTCUTS.md">Shortcuts</a></li>
-          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/AGENTS.md">Agents and the CLI</a></li>
+          <li><a href="docs.html">Getting started</a></li>
+          <li><a href="docs/guide/index.html">User guide</a></li>
+          <li><a href="docs/features.html">Features</a></li>
+          <li><a href="docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="docs/agents.html">Agents and the CLI</a></li>
         </ul>
       </nav>
       <nav aria-labelledby="f-project">

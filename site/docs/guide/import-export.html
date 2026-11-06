@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Import and export</title>
+  <meta name="description" content="The actions below are in the right-click menu of the navigator, and in the command palette (Ctrl+K). The full list of formats and options is in FEATURES.md.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../img/icon.png">
+  <link rel="preload" href="../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../index.html#tour">Tour</a>
+        <a href="../../features.html">Features</a>
+        <a href="../../databases.html">Databases</a>
+        <a href="../../compare.html">Compare</a>
+        <a href="../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../docs.html">Getting started</a>
+<a href="index.html">User guide</a>
+<h6>Guide</h6>
+<a href="connect.html">Connect to a database</a>
+<a href="queries.html">Run queries and read results</a>
+<a href="edit-data.html">Edit data</a>
+<a href="import-export.html" class="on" aria-current="page">Import and export</a>
+<a href="safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="projects-sharing.html">Projects and sharing</a>
+<a href="agents.html">Use PlatypusDB from an agent</a>
+<a href="troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="../features.html">Features</a>
+<a href="../shortcuts.html">Keyboard shortcuts</a>
+<a href="../agents.html">Agents (MCP) and the CLI</a>
+<a href="../plugins.html">Plugins</a>
+<a href="../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Import and export</div>
+<p><a href="index.html">← User guide</a></p>
+<h1 id="import-and-export">Import and export</h1>
+<p>The actions below are in the right-click menu of the navigator, and in the command palette (<code>Ctrl+K</code>). The full list of formats and options is in <a href="../features.html#import-export-and-transfer">FEATURES.md</a>.</p>
+<h2 id="import-a-file-into-a-table">Import a file into a table</h2>
+<p><img src="../../img/screenshots/guide/import-preview.png" alt="The preview of a file to import" loading="lazy"></p>
+<ol>
+<li>Right-click the table in the navigator, then <strong>Data</strong> › <strong>Import data…</strong>.</li>
+<li>Choose the file: CSV, TSV, JSON, NDJSON, Parquet or Excel.</li>
+<li>Check the preview and the mapping of the columns.</li>
+<li>Choose whether to add the rows, replace them, or update those with the same key, and run it.</li>
+</ol>
+<p>For a new table, right-click the schema and choose <strong>Import data into a new table…</strong>: the types are those DuckDB infers from the file. <strong>Paste CSV as a new table…</strong> (same menu) imports the clipboard.</p>
+<p>Import is not offered on a read-only connection, on one that forbids data editing, or on NoSQL databases.</p>
+<h2 id="export-tables-to-a-file">Export tables to a file</h2>
+<ol>
+<li>Right-click one table, or select several, then <strong>Data</strong> › <strong>Export data…</strong>. For every table of a schema, right-click the schema and choose <strong>Export all tables…</strong>.</li>
+<li>Choose the format (CSV, JSON, NDJSON, Parquet, Excel, SQL <code>INSERT</code>, Markdown, HTML or XML) and the file.</li>
+<li>Optionally compress it (gzip or zstd) or upload it to a bucket or a signed URL.</li>
+</ol>
+<p>CSV cells that a spreadsheet would run as a formula get a leading <code>&#39;</code> unless you turn off <strong>Formulas as text, for spreadsheets</strong>. A connection can forbid exports (<strong>Appearance and safety</strong> page); the action is then not offered. See <a href="safety.html">Safety</a>.</p>
+<p>To take a query&#39;s result out, copy it from the grid as CSV, JSON, Markdown, HTML, SQL <code>INSERT</code> or an <code>IN</code> list.</p>
+<h2 id="copy-a-table-or-a-schema-to-another-database">Copy a table or a schema to another database</h2>
+<p>Right-click the tables and choose <strong>Data</strong> › <strong>Copy tables to a database…</strong>, or right-click the schema and choose <strong>Copy schema to a database…</strong>. It works between any pair of databases; the types are mapped.</p>
+<h2 id="run-a-sql-file-or-dump-to-one">Run a SQL file, or dump to one</h2>
+<p>Right-click a connection or a database and choose <strong>Run SQL file…</strong>: it runs a <code>.sql</code> file (or <code>.sql.gz</code>, <code>.sql.zst</code>) of any size statement by statement, with progress and Stop, by default in one transaction that a failure rolls back. <strong>Dump to SQL file…</strong> (on a schema, or on tables under <strong>Data</strong>) writes the DDL of a schema or of chosen objects, and if wanted their rows, to one file.</p>
+<h2 id="save-a-transfer-for-later">Save a transfer for later</h2>
+<p>Every export, import and copy dialog has <strong>Save as profile…</strong>. <strong>Transfer profiles…</strong> (command palette) runs, renames, deletes and schedules them. A bucket&#39;s secret key is never saved in the profile file.</p>
+<h2 id="query-a-data-file-without-importing-it">Query a data file without importing it</h2>
+<p>Drop a CSV, JSON, Parquet or Excel file on the window, or click <strong>Open a data file</strong> on the welcome screen: it opens as a database (each Excel sheet is a table). The first time, the app offers to download DuckDB&#39;s library.</p>
+<h2 id="import-connections">Import connections</h2>
+<p>On the welcome screen, <strong>Import connections</strong> reads DBeaver, DataGrip and pgAdmin (and <code>pg_service.conf</code>); Db2 connections from DBeaver and DataGrip, and <code>jdbc:db2:</code> URLs, are read too. <strong>Export connections</strong> writes a <code>.platypusconn</code> file for another computer: see <a href="projects-sharing.html">Projects and sharing</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#import-a-file-into-a-table">Import a file into a table</a>
+    <a href="#export-tables-to-a-file">Export tables to a file</a>
+    <a href="#copy-a-table-or-a-schema-to-another-database">Copy a table or a schema to another database</a>
+    <a href="#run-a-sql-file-or-dump-to-one">Run a SQL file, or dump to one</a>
+    <a href="#save-a-transfer-for-later">Save a transfer for later</a>
+    <a href="#query-a-data-file-without-importing-it">Query a data file without importing it</a>
+    <a href="#import-connections">Import connections</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../index.html"><img src="../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../docs.html">Getting started</a></li>
+          <li><a href="../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../docs/features.html">Features</a></li>
+          <li><a href="../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../site.js" defer></script>
+</body>
+</html>

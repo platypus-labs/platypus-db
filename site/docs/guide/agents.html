@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Use PlatypusDB from an agent</title>
+  <meta name="description" content="Claude Code, Codex, Cursor and other MCP clients can use your saved connections through PlatypusDB&#39;s MCP server. This page is the short path; every tool,…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../img/icon.png">
+  <link rel="preload" href="../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../index.html#tour">Tour</a>
+        <a href="../../features.html">Features</a>
+        <a href="../../databases.html">Databases</a>
+        <a href="../../compare.html">Compare</a>
+        <a href="../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../docs.html">Getting started</a>
+<a href="index.html">User guide</a>
+<h6>Guide</h6>
+<a href="connect.html">Connect to a database</a>
+<a href="queries.html">Run queries and read results</a>
+<a href="edit-data.html">Edit data</a>
+<a href="import-export.html">Import and export</a>
+<a href="safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="projects-sharing.html">Projects and sharing</a>
+<a href="agents.html" class="on" aria-current="page">Use PlatypusDB from an agent</a>
+<a href="troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="../features.html">Features</a>
+<a href="../shortcuts.html">Keyboard shortcuts</a>
+<a href="../agents.html">Agents (MCP) and the CLI</a>
+<a href="../plugins.html">Plugins</a>
+<a href="../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Use PlatypusDB from an agent</div>
+<p><a href="index.html">← User guide</a></p>
+<h1 id="use-platypusdb-from-an-agent">Use PlatypusDB from an agent</h1>
+<p>Claude Code, Codex, Cursor and other MCP clients can use your saved connections through PlatypusDB&#39;s MCP server. This page is the short path; every tool, limit and setting is in the reference, <a href="../agents.html">AGENTS.md</a>.</p>
+<h2 id="connect-an-agent">Connect an agent</h2>
+<ol>
+<li>Open Settings (<code>Ctrl+,</code>) › <strong>Agents</strong> › <strong>Setup</strong>.</li>
+<li>Find your client in the list (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, Gemini CLI). Click <strong>Install</strong>: the app asks, saves a copy of the client&#39;s file beside it, and writes the server in it. For a client not listed, copy the entry by hand from the same page.</li>
+<li>Restart the client. It starts PlatypusDB itself with <code>--mcp</code>; no window opens, and the app need not be open for reading.</li>
+</ol>
+<h2 id="choose-what-each-connection-allows">Choose what each connection allows</h2>
+<p><img src="../../img/screenshots/guide/agents-security.png" alt="Settings, Agents, the Security page" loading="lazy"></p>
+<ol>
+<li>Settings › <strong>Agents</strong> › <strong>Security</strong> lists your connections. A connection&#39;s own form has the same choice, under <strong>Agents</strong> on its <strong>Appearance and safety</strong> page.</li>
+<li>Choose <strong>Off</strong>, <strong>Read only</strong> (the default) or <strong>Read and write</strong>.</li>
+</ol>
+<p>Production and read-only connections are never more than read only: the panel says &quot;Not available: production and read-only connections stay read only.&quot; A connection that is new from a shared project starts with <strong>Off</strong> on your computer.</p>
+<h2 id="limits-and-masking">Limits and masking</h2>
+<ul>
+<li>In <strong>Security</strong>, <strong>Limits for agents</strong> caps, per connection, the rows, bytes and seconds of a result or statement, the calls per minute, and the estimated rows or plan cost of a read, above which the read is refused with its plan. Empty means no limit beyond the fixed caps.</li>
+<li>Sensitive columns read as <code>••••••</code> for agents, as in the grid while masking. Tick <strong>Show agents the values of sensitive columns</strong> on a connection to show them. See <a href="safety.html">Safety</a>.</li>
+</ul>
+<h2 id="changes-wait-for-you">Changes wait for you</h2>
+<p>On a <strong>Read and write</strong> connection, each change an agent wants to run opens a dialog in the app with the statement, the rows the database expects it to change and its plan. Click <strong>Refuse</strong> (the agent reads your reason), <strong>Allow once</strong>, or <strong>Allow for this session</strong>. After five minutes without an answer it is refused, and with the app closed the changes are refused. Settings › <strong>Safety</strong> › <strong>Ask before agents change data</strong> turns the questions off.</p>
+<p>An agent can also propose, without running anything:</p>
+<ul>
+<li>SQL with <code>propose_sql</code>: it opens in a new editor tab, for you to read and run.</li>
+<li>Rows to insert, update or delete with <code>propose_edits</code>: the table opens in its data viewer with them as pending changes, for you to save or discard (see <a href="edit-data.html">Edit data</a>).</li>
+</ul>
+<h2 id="see-what-agents-did">See what agents did</h2>
+<p>Settings › <strong>Agents</strong> › <strong>Activity</strong> lists every tool call by session, with a filter and <strong>Export CSV</strong>. Their queries are in the history under the agent&#39;s name.</p>
+<p>Above the list, <strong>Summary per agent and session</strong> (folded until you open it) adds up the calls the filters select: one row per agent and, under it, one per session, with the period, the calls, the tables read, the rows returned, the changes allowed, the changes refused and the errors. <strong>Export Markdown</strong> and <strong>Export HTML</strong> save it as a document to share; the HTML is one file with no script and nothing loaded from outside.</p>
+<ul>
+<li>A <strong>session</strong> is one start of the MCP server, as the log records it (a client that stays connected for days is one session).</li>
+<li>A <strong>change</strong> is a statement that changes data or the schema. It is <em>allowed</em> when it ran and <em>refused</em> when the connection&#39;s access, a safety setting or your answer in the app said no. A statement that failed for another reason counts as an error only.</li>
+<li><strong>Tables read</strong> is exact for <code>sample_rows</code> and <code>profile_table</code> and for the sources of <code>query_across_databases</code>, and an estimate for a statement: the tables named after <code>FROM</code> and <code>JOIN</code>. A statement a database other than SQL speaks (MongoDB, Redis, Elasticsearch, Cassandra) names none.</li>
+<li>Nothing but names and counts is kept: no value, and statements stay masked as they are in the log.</li>
+<li>Calls made before this version recorded these figures show <strong>–</strong>, never a 0; the other figures count only the calls that have them, and the summary says so.</li>
+</ul>
+<h2 id="when-it-does-not-work">When it does not work</h2>
+<p>See <a href="troubleshooting.html#an-agent-does-not-see-a-connection">Troubleshooting</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#connect-an-agent">Connect an agent</a>
+    <a href="#choose-what-each-connection-allows">Choose what each connection allows</a>
+    <a href="#limits-and-masking">Limits and masking</a>
+    <a href="#changes-wait-for-you">Changes wait for you</a>
+    <a href="#see-what-agents-did">See what agents did</a>
+    <a href="#when-it-does-not-work">When it does not work</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../index.html"><img src="../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../docs.html">Getting started</a></li>
+          <li><a href="../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../docs/features.html">Features</a></li>
+          <li><a href="../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../site.js" defer></script>
+</body>
+</html>

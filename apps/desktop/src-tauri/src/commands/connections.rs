@@ -8,6 +8,7 @@ use platypus_core::{
     Capabilities, Connection, ConnectionConfig, DriverKind, Error, ParseNote, ParsedConnection,
     Secret, ServerInfo, SslMode,
 };
+use platypus_plugins::{HOOKS, HookEvent};
 use platypus_sql::Dialect;
 use platypus_store::{
     ConnectionStore, ConnectionType, ImportFile, ImportRequest, ImportSource, ImportedProject,
@@ -609,6 +610,7 @@ pub struct SessionInfo {
 /// one-off changes commit once their dialog is confirmed.
 #[tauri::command]
 pub async fn open_session(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     connection_id: Uuid,
     password: Option<String>,
@@ -638,7 +640,7 @@ pub async fn open_session(
     let side = side == Some(true);
     let production = production && !side;
     // `auth`: the UI asks for the password (again), with the server's answer.
-    start_session(&state, connection_id, config, label, (production, side))
+    let info = start_session(&state, connection_id, config, label, (production, side))
         .await
         .map_err(|e| {
             if (typed || none_saved) && login_refused(&e) {
@@ -646,7 +648,12 @@ pub async fn open_session(
             } else {
                 e
             }
-        })
+        })?;
+    // A dialog's own session is no new connection to the user.
+    if !side && HOOKS.wanted(HookEvent::OnConnect) {
+        super::plugins::on_connect(&app, &state, info.session_id);
+    }
+    Ok(info)
 }
 
 /// What to do with the init statements a shared project's file brought, which this machine's

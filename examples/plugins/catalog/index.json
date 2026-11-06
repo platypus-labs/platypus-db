@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "plugins": [
+    {
+      "id": "theme-sea",
+      "name": "Sea theme",
+      "version": "1.0.0",
+      "author": "PlatypusDB",
+      "description": "A theme with no code: colours for the theme picker, light and dark.",
+      "url": "theme-sea-1.0.0.zip",
+      "sha256": "666c3058f2b63e3ed83af406cd8579811744afe38194065503a5c78a867306cc",
+      "signature": "untrusted comment: signature\nRURJiZ5JfPx9C5vM/h0rsTROOipJejO6MKF1f9a6E/sBYQQycIBSmyRhsRg3MW4HQpvSY5NPa3tZYoouGsAE+f2iWlAQ9ESdVgo=\ntrusted comment: timestamp:1 file:package.zip\n8SxfP5Mp1KczZIy/KNKcyFtMzOrqKwq3iO1BL0Zqdeexxu++znxpe3HRsHauuKZVjVq7FSZWMKz4mf4uWIbXCg==\n"
+    }
+  ]
+}

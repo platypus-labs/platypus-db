@@ -29,6 +29,7 @@ pub mod health;
 pub mod history;
 pub mod meta;
 pub mod objects;
+pub mod plugin_catalog;
 pub mod plugins;
 pub mod profiles;
 pub mod projects;

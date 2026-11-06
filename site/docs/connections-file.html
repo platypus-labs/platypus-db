@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · The connections file (.platypusconn)</title>
+  <meta name="description" content="What Export connections writes and Import connections › PlatypusDB reads. The code is crates/platypus-sync/src/export.rs.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../img/icon.png">
+  <link rel="preload" href="../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../index.html" aria-label="PlatypusDB, home">
+        <img src="../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../index.html#tour">Tour</a>
+        <a href="../features.html">Features</a>
+        <a href="../databases.html">Databases</a>
+        <a href="../compare.html">Compare</a>
+        <a href="../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../docs.html">Getting started</a>
+<a href="guide/index.html">User guide</a>
+<h6>Guide</h6>
+<a href="guide/connect.html">Connect to a database</a>
+<a href="guide/queries.html">Run queries and read results</a>
+<a href="guide/edit-data.html">Edit data</a>
+<a href="guide/import-export.html">Import and export</a>
+<a href="guide/safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="guide/projects-sharing.html">Projects and sharing</a>
+<a href="guide/agents.html">Use PlatypusDB from an agent</a>
+<a href="guide/troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="guide/databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="features.html">Features</a>
+<a href="shortcuts.html">Keyboard shortcuts</a>
+<a href="agents.html">Agents (MCP) and the CLI</a>
+<a href="plugins.html">Plugins</a>
+<a href="connections-file.html" class="on" aria-current="page">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / The connections file (.platypusconn)</div>
+<h1 id="the-connections-file-platypusconn">The connections file (<code>.platypusconn</code>)</h1>
+<p>What <em>Export connections</em> writes and <em>Import connections › PlatypusDB</em> reads. The code is <code>crates/platypus-sync/src/export.rs</code>.</p>
+<h2 id="plain-file">Plain file</h2>
+<p>UTF-8 JSON:</p>
+<pre><code class="language-json">{
+  &quot;format&quot;: &quot;platypusdb-connections&quot;,
+  &quot;version&quot;: 1,
+  &quot;projects&quot;: [
+    {
+      &quot;name&quot;: &quot;Team&quot;,
+      &quot;folders&quot;: [[&quot;Servers&quot;], [&quot;Servers&quot;, &quot;Prod&quot;]],
+      &quot;connections&quot;: [{ &quot;id&quot;: &quot;…&quot;, &quot;name&quot;: &quot;Prod&quot;, &quot;driver&quot;: &quot;postgres&quot;, &quot;host&quot;: &quot;db.example.com&quot;, &quot;user&quot;: &quot;alice&quot;, … }],
+      &quot;placement&quot;: { &quot;&lt;connection id&gt;&quot;: [&quot;Servers&quot;, &quot;Prod&quot;] }
+    },
+    { &quot;connections&quot;: [ … ] }
+  ]
+}</code></pre>
+<ul>
+<li>A project without <code>name</code> holds the connections outside any project, or all of them when the export drops projects.</li>
+<li><code>folders</code> lists each folder as its names from the root, parents first; <code>placement</code> gives the folder of the connections that are in one.</li>
+<li>Each connection has the fields of a shared project&#39;s connection (<code>ShareConnection</code> in <code>portable.rs</code>): an allow-list, so a field added later to the saved connection stays out until someone adds it there. Never written: passwords in clear files, password commands, <code>.pgpass</code>, certificate and key paths, keychain ids, secret driver options, the shell commands run before connecting and after disconnecting. A network profile is written into the connection; profiles themselves are not exported.</li>
+<li>A file with a higher <code>version</code> is refused, not guessed at.</li>
+</ul>
+<h2 id="encrypted-file">Encrypted file</h2>
+<p>With a password the JSON above is sealed in the sync container (<code>crypto.rs</code>): the magic <code>PLATYSYN</code>, the container version, the Argon2id settings, a salt and a nonce, then the JSON encrypted with AES-256-GCM; the header is authenticated too. Only an encrypted file may carry, per project, a <code>secrets</code> object:</p>
+<pre><code class="language-json">&quot;secrets&quot;: { &quot;&lt;connection id&gt;&quot;: { &quot;password&quot;: &quot;…&quot;, &quot;ssh&quot;: &quot;…&quot;, &quot;jumps&quot;: [&quot;…&quot;, null] } }</code></pre>
+<p><code>ssh</code> is the password of the connection&#39;s SSH server or the passphrase of its key; <code>jumps</code> gives the same for each jump host behind it, in the order of the <code>jump</code> chain (<code>null</code> for one without). Files written before <code>jumps</code> existed simply lack it. A wrong password, or any changed byte, gives an error and no data.</p>
+<h2 id="reading">Reading</h2>
+<p>The file is untrusted like a shared project&#39;s: each connection gets a new id, its <code>${env:…}</code> references are held until the user edits them, it cannot make the ODBC driver manager load a library, and agents are kept out of it until the user lets them in.</p>
+<p>A connection like a saved one (same database, server, port, database name, user and SSH hops) starts unticked; one reached another way is never taken for it, so a file cannot send saved passwords to another server. Ticked, it replaces the saved one by default: the saved connection keeps its id, so its projects, tabs and history, the passwords the file does not bring, and what only this machine set: certificate and key paths, the password command, options the file leaves out, agent access and its restrictions.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#plain-file">Plain file</a>
+    <a href="#encrypted-file">Encrypted file</a>
+    <a href="#reading">Reading</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../index.html"><img src="../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../docs.html">Getting started</a></li>
+          <li><a href="../docs/guide/index.html">User guide</a></li>
+          <li><a href="../docs/features.html">Features</a></li>
+          <li><a href="../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../site.js" defer></script>
+</body>
+</html>

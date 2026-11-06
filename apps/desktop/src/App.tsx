@@ -37,6 +37,7 @@ import "./help/actions";
 import { externalLinks } from "./help/external";
 import { replaceGuide } from "./help/replaced";
 import { setAnswer } from "./testAnswers";
+import { usePluginPanels } from "./plugins/slots";
 import { type TabKindName, type TabModel, type TabProps, createTab, tabKind } from "./tabs/registry";
 import { dbKey, provideWorkbench, workbench } from "./workbench";
 import { objectIcon, type IconName } from "./ui/Icon";
@@ -978,6 +979,10 @@ export function App() {
 
   provideWorkbench({
     connections: () => shell.current.connections ?? [],
+    currentConnection: () => {
+      const { tabs, activeTab: active, projectConnections } = shell.current;
+      return tabs.find((tab) => tab.key === active)?.connectionId ?? projectConnections[0]?.id ?? null;
+    },
     setConnections,
     projects: () => shell.current.projects,
     setProjects,
@@ -1119,6 +1124,7 @@ export function App() {
 
   const sidebarCollapsed = useSidebarCollapsed();
   const activeConnection = connectionById(visibleTabs.find((t) => t.key === activeTab)?.connectionId ?? "");
+  const PluginPanel = usePluginPanels();
   return (
     // The frame takes the tint of the active tab's connection type.
     <div
@@ -1252,6 +1258,7 @@ export function App() {
               )
             );
           })}
+          {PluginPanel && <PluginPanel connection={activeConnection ?? null} />}
         </div>
         {visibleTabs.length === 0 && (
           <Welcome
@@ -1398,6 +1405,7 @@ function tabIcon(t: TabModel): IconName {
   if (t.kind === "erd" || t.kind === "schema-history") return "schema";
   if (t.kind === "table-profile") return "activity";
   if (t.kind === "dashboard") return "dashboard";
+  if (t.kind === "plugin") return "extension";
   return "tableRef" in t && t.tableRef ? "table" : "sql";
 }
 

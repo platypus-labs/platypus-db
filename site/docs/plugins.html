@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Plugins</title>
+  <meta name="description" content="PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for wasm32-unknown-unknown, AssemblyScript, TinyGo, C, Zig…). A plugin…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../img/icon.png">
+  <link rel="preload" href="../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../index.html" aria-label="PlatypusDB, home">
+        <img src="../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../index.html#tour">Tour</a>
+        <a href="../features.html">Features</a>
+        <a href="../databases.html">Databases</a>
+        <a href="../compare.html">Compare</a>
+        <a href="../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../docs.html">Getting started</a>
+<a href="guide/index.html">User guide</a>
+<h6>Guide</h6>
+<a href="guide/connect.html">Connect to a database</a>
+<a href="guide/queries.html">Run queries and read results</a>
+<a href="guide/edit-data.html">Edit data</a>
+<a href="guide/import-export.html">Import and export</a>
+<a href="guide/safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="guide/projects-sharing.html">Projects and sharing</a>
+<a href="guide/agents.html">Use PlatypusDB from an agent</a>
+<a href="guide/troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="guide/databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="features.html">Features</a>
+<a href="shortcuts.html">Keyboard shortcuts</a>
+<a href="agents.html">Agents (MCP) and the CLI</a>
+<a href="plugins.html" class="on" aria-current="page">Plugins</a>
+<a href="connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Plugins</div>
+<h1 id="plugins">Plugins</h1>
+<p>PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for <code>wasm32-unknown-unknown</code>, AssemblyScript, TinyGo, C, Zig…). A plugin can add <strong>actions</strong> (commands in the editor, the result grid and the navigator), a <strong>driver</strong> for a database that speaks HTTP, <strong>event hooks</strong>, a <strong>settings page</strong>, <strong>tabs and side panels</strong> with pages of their own, <strong>extensions of the result grid</strong> and a <strong>theme</strong>, which is the one kind with no code at all. Plugins run in a sandbox: an interpreter (<code>wasmi</code>) with no access to files, programs, sockets or the clock, only to the JSON messages the app gives them and the host functions their permissions open.</p>
+<p>The host side is the crate <code>platypus-plugins</code>; the examples are in <a href="https://github.com/PaoloCisly/platypus-db/tree/main/examples/plugins"><code>examples/plugins</code></a> with their built modules.</p>
+<h2 id="package">Package</h2>
+<p>A package is a folder, or a <code>.zip</code> with the files at its root or in one folder:</p>
+<pre><code>plugin.toml    the manifest
+plugin.wasm    the module
+ui/            what the pages of its tabs and panels load, if it has any</code></pre>
+<pre><code class="language-toml">id = &quot;sql-tools&quot;                # lowercase letters, digits, - _ . ; stable; a folder name, see below
+name = &quot;SQL tools&quot;
+version = &quot;1.0.0&quot;
+author = &quot;Jane Doe&quot;             # optional
+description = &quot;What it does.&quot;   # optional
+api = 1                         # the ABI version below
+kinds = [&quot;actions&quot;]             # &quot;actions&quot; and/or &quot;driver&quot;; ABI 2 adds more, below
+
+[permissions]                   # optional; nothing is allowed by default
+http = [&quot;api.example.com&quot;, &quot;*.example.org&quot;]   # hosts for the http function
+clipboard = true                # an action may put text on the clipboard</code></pre>
+<p>Settings › Plugins installs a package from a folder or a <code>.zip</code>. Before installing, the app loads the module, asks it what it provides (<code>platypus_describe</code>) and shows that with the permissions, in plain words; installing approves them. A module whose description does not match <code>kinds</code>, or that does not load, is refused, and so is a manifest with a field, a permission or a kind the app does not know, by name. Packages are kept in <code>&lt;data&gt;/plugins/&lt;id&gt;/&lt;version&gt;/</code>; a new version replaces the old one after the same review, which lists apart what it asks that the installed version was not approved for, and it stays turned on or off as the old one was. <code>&lt;data&gt;/plugins/plugins.json</code> records which plugins are on, the approved permissions and the description. A plugin turned off offers no action and no driver and runs no hook. Removing it deletes its folder and its secrets in the keychain; a plugin with other settings asks whether to keep their values for a later install, and otherwise they go too. If something of it cannot be cleared, the rest is, it leaves the list all the same, and the error says what is left. Packages can also come from a <a href="#catalog">catalog</a>.</p>
+<p>The <code>id</code> and the <code>version</code> are folder names, and mean the same on every system: besides the characters above, a name that ends in a dot, a device name of Windows in any case and with any extension (<code>CON</code>, <code>PRN</code>, <code>AUX</code>, <code>NUL</code>, <code>COM0</code>-<code>COM9</code>, <code>LPT0</code>-<code>LPT9</code>, so <code>nul.txt</code> too), and <code>plugins.json</code> or <code>settings.toml</code> are refused. The manifest in a plugin&#39;s folder must say the id and version <code>plugins.json</code> has for it, or it does not run with what was approved. A plugin whose files are gone or are not its own stays listed, marked as such, runs nothing, and can be removed.</p>
+<p>If <code>plugins.json</code> cannot be read, no plugin runs and nothing overwrites the file: installing and removing are refused. Statements still run, as a broken file must not stop your work, so a hook that guards them is not guarding them: the first statement says so, Settings › Plugins says so with the reason, and the log has it. Put the file right, or delete it to start with no plugins, and hooks count again from the next statement.</p>
+<h3 id="what-abi-2-declares">What ABI 2 declares</h3>
+<p><code>api = 2</code> adds to the manifest; a module of ABI 1 loads and behaves as it did, and a manifest of ABI 1 that uses any of this is refused with what needs <code>api = 2</code>.</p>
+<pre><code class="language-toml">api = 2
+kinds = [&quot;actions&quot;, &quot;hooks&quot;, &quot;tabs&quot;, &quot;panels&quot;, &quot;grid&quot;, &quot;theme&quot;]
+hooks = [&quot;before_query&quot;, &quot;after_query&quot;, &quot;on_connect&quot;, &quot;before_save&quot;]
+
+[permissions]
+hooks = true                    # needed by `hooks`
+tabs = true                     # needed by `tabs` and `panels`
+grid = true                     # needed by `grid`
+
+[[tabs]]                        # a tab kind: an HTML document of the package
+kind = &quot;notes&quot;
+title = &quot;Notes&quot;
+entry = &quot;ui/notes.html&quot;
+
+[[panels]]                      # a side panel, the same way
+id = &quot;outline&quot;
+title = &quot;Outline&quot;
+entry = &quot;ui/outline.html&quot;
+
+[[grid.columns]]                # also [[grid.renderers]] and [[grid.actions]]
+id = &quot;length&quot;
+title = &quot;Length&quot;
+types = [&quot;text&quot;]                # optional; all types without it
+
+[theme]                         # colours by the names of a theme file, and fonts of the package
+name = &quot;Sea&quot;
+dark = { bg = &quot;#0b1d26&quot;, accent = &quot;#3fc1c9&quot; }
+fonts = { mono = &quot;fonts/Sea-Mono.woff2&quot; }
+
+[[settings]]                    # the plugin&#39;s settings page, below
+key = &quot;endpoint&quot;
+label = &quot;Endpoint&quot;
+type = &quot;text&quot;</code></pre>
+<p>A kind and what it declares go together, and each needs its permission: declaring <code>hooks</code> without <code>permissions.hooks</code>, or asking for a permission that nothing declared uses, is refused. A package that is only a <code>theme</code> has no module: nothing of it runs, and a <code>plugin.wasm</code> beside its manifest is neither read nor copied. Everything else needs one.</p>
+<p>Tabs and panels are below in <a href="#tabs-and-side-panels">Tabs and side panels</a>, grid extensions in <a href="#grid-extensions">Grid extensions</a>.</p>
+<h3 id="themes">Themes</h3>
+<p>A package with <code>kinds = [&quot;theme&quot;]</code> and no module shows up as a card in Settings › Appearance › Theme. <code>examples/plugins/theme-sea</code> is one, with both variants:</p>
+<pre><code class="language-toml">id = &quot;theme-sea&quot;
+name = &quot;Sea theme&quot;
+version = &quot;1.0.0&quot;
+api = 2
+kinds = [&quot;theme&quot;]
+
+[theme]
+name = &quot;Sea&quot;                    # as the picker shows it
+
+[theme.dark]                    # and/or [theme.light]
+bg = &quot;#0b1d26&quot;
+accent = &quot;#3fc1c9&quot;</code></pre>
+<p>With both variants the theme follows the system&#39;s light or dark mode. A colour it leaves out comes from the Platypus theme of the same lightness, as in a theme file.</p>
+<p><strong>Colours.</strong> A name must be one of the app&#39;s tokens (<code>PALETTE_KEYS</code> in <code>apps/desktop/src/theme.ts</code>, the same names as a theme file), and a value must be <code>#rgb</code>, <code>#rgba</code>, <code>#rrggbb</code>, <code>#rrggbbaa</code>, <code>rgb()</code>, <code>rgba()</code>, <code>hsl()</code> or <code>hsla()</code> with numbers only, or <code>transparent</code>. Anything else refuses the package by name at install: <code>url(...)</code>, <code>expression(...)</code>, <code>var(...)</code>, <code>color-mix(...)</code>, a named colour, a <code>;</code> or a <code>}</code>. The page checks each value again and sets it with <code>style.setProperty</code>; nothing of a theme is written as CSS text.</p>
+<p><strong>Fonts.</strong> <code>fonts</code> maps <code>ui</code> or <code>mono</code> to a path inside the package, of a <code>.woff2</code>, <code>.woff</code>, <code>.ttf</code> or <code>.otf</code> file of at most 4 MB, which must really be a font by its first bytes. A family name or an address is refused: a font comes only from the package. The app gives it a family name of its own.</p>
+<p><strong>Legibility.</strong> The review and the plugin&#39;s row warn when text would be hard to read, with the pairs and their contrast (<code>fg / bg</code>, <code>fg-muted / bg</code>, <code>accent-fg / accent</code>…); it is a warning, not a refusal.</p>
+<p>A theme costs nothing unless it is chosen: its colours are in the list of plugins the page reads anyway, and its fonts are read when it is the theme in use. When its plugin is turned off or removed, or its files are gone, the app uses the default theme, and comes back to it if the plugin returns.</p>
+<h2 id="catalog">Catalog</h2>
+<p>Settings › Plugin catalog lists the plugins of an index and installs, updates or reinstalls them. The address of the index is a setting (<code>plugins.catalog_url</code>). It starts empty and there is no built-in one: until you set it the app contacts nothing. The index is read when the page opens or when you ask, never in the background. Nothing installs without your click, and an install goes through the same review as a manual one, with the permissions in plain words and what an update asks anew.</p>
+<h3 id="building-an-index">Building an index</h3>
+<p>An index is JSON, on any HTTPS server:</p>
+<pre><code class="language-json">{
+  &quot;format&quot;: 1,
+  &quot;plugins&quot;: [
+    {
+      &quot;id&quot;: &quot;theme-sea&quot;,
+      &quot;name&quot;: &quot;Sea theme&quot;,
+      &quot;version&quot;: &quot;1.0.0&quot;,
+      &quot;author&quot;: &quot;PlatypusDB&quot;,
+      &quot;description&quot;: &quot;A theme with no code.&quot;,
+      &quot;url&quot;: &quot;theme-sea-1.0.0.zip&quot;,
+      &quot;sha256&quot;: &quot;&lt;the SHA-256 of the .zip, in hexadecimal&gt;&quot;,
+      &quot;signature&quot;: &quot;&lt;the text of its .minisig file&gt;&quot;
+    }
+  ]
+}</code></pre>
+<p><code>id</code>, <code>name</code>, <code>version</code>, <code>url</code> and <code>sha256</code> are required, one entry per plugin. <code>url</code> may be relative to the index. An entry that cannot be read is listed apart with its reason, and the others stay usable. Fields it does not know are ignored. <a href="https://github.com/PaoloCisly/platypus-db/tree/main/examples/plugins/catalog"><code>examples/plugins/catalog</code></a> has a complete one.</p>
+<h3 id="signing-a-package">Signing a package</h3>
+<p>A package is signed with <a href="https://jedisct1.github.io/minisign/">minisign</a>, by a detached signature over the bytes of the <code>.zip</code>. The signature goes in the entry, so the package itself does not change:</p>
+<pre><code class="language-bash">minisign -G -p publisher.pub -s publisher.key          # once: keep the secret key
+zip -r theme-sea-1.0.0.zip plugin.toml                 # the package, as for a manual install
+minisign -S -s publisher.key -m theme-sea-1.0.0.zip    # writes theme-sea-1.0.0.zip.minisig
+sha256sum theme-sea-1.0.0.zip                          # the entry&#39;s sha256</code></pre>
+<p>Publish the <code>.pub</code> file where your users can check it is yours. They paste it under <strong>Keys you trust</strong>, with a name: the app has no keys of its own, and trusts none until they do. Signatures of the legacy format (<code>minisign -S -l</code>) are refused.</p>
+<h3 id="what-is-checked">What is checked</h3>
+<p>Each check refuses with its own reason, and leaves nothing behind.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Check</th><th>Refused when</th></tr></thead>
+<tbody>
+<tr><td>Address</td><td>The index or the package is not HTTPS. <code>http://</code> works only on this computer, for tests. An index reaches nothing nearer than itself: one on the network cannot point to this computer (<code>localhost</code> and what is under it, with or without a final dot, <code>127.0.0.0/8</code>, <code>0.0.0.0/8</code>, <code>::1</code>, <code>::</code>) or to a private network (<code>10/8</code>, <code>172.16/12</code>, <code>192.168/16</code>, link-local such as <code>169.254.169.254</code>, <code>100.64/10</code>, <code>fc00::/7</code>, <code>fe80::/10</code>, multicast), in any way of writing them, IPv6 forms that carry an IPv4 address included. A name counts by what it resolves to at each request, so a name or DNS rebinding that leads there is refused too; an index you set by its own address on your network may use that network. A redirect goes through the same check, and an address with a user name or password is refused.</td></tr>
+<tr><td>Size</td><td>The index is over 2 MB or the package over 64 MB.</td></tr>
+<tr><td>Hash</td><td>The SHA-256 of the download is not the entry&#39;s.</td></tr>
+<tr><td>Signature</td><td>It has no signature, or it is not by a trusted key, or it does not match the package.</td></tr>
+<tr><td>Paths</td><td>A name in the <code>.zip</code> is absolute or climbs out of it with <code>..</code>. A manual install refuses this too.</td></tr>
+<tr><td>Identity</td><td>The <code>id</code> or <code>version</code> of the manifest is not the entry&#39;s.</td></tr>
+<tr><td>Downgrade</td><td>The version is older than the installed one.</td></tr>
+</tbody>
+</table></div>
+<p>Two of them are yours to lift, each from its own question. A package with no valid signature shows why, and installs only through <strong>Install as unsigned</strong> in a separate warning; the review then says it is not signed. An older version installs only after you confirm it over the newer one. The hash, the paths and the identity are always checked. Then the module is loaded for the review, and installing takes the hash of what you reviewed, as a manual install does.</p>
+<p>An index on your own network has to be set by its address (<code>https://10.0.0.5/index.json</code>): by a name, it counts as on the network, whatever that name resolves to today. Behind a system proxy, it is the proxy that resolves names, so this check only sees the address as it is written.</p>
+<p><strong>A plugin&#39;s signer is pinned.</strong> Any key you trust can sign any id, so an id alone does not say that a package comes from the same publisher. When the signer of an installed plugin changes, from one key to another, or to or from none (which is what a manual install and an unsigned one have), the review says so plainly, and installing clears the plugin&#39;s secrets and what its pages keep. Its other settings stay. Between two packages with no signature there is nothing to compare, so nothing is cleared.</p>
+<p>The download waits in <code>&lt;data&gt;/plugins/.downloads</code> until you answer, and goes whatever the answer.</p>
+<h2 id="abi-versions-1-and-2">ABI, versions 1 and 2</h2>
+<p>Version 2 adds two entry points (<code>platypus_hook</code>, <code>platypus_grid</code>) and a host function (<code>setting</code>) to version 1. The rest is the same, and a module of version 1 cannot import <code>setting</code>: it would not load.</p>
+<p>Messages are UTF-8 JSON in the module&#39;s linear memory. The module exports:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Export</th><th>Signature</th><th></th></tr></thead>
+<tbody>
+<tr><td><code>memory</code></td><td>memory</td><td>its linear memory</td></tr>
+<tr><td><code>platypus_alloc</code></td><td><code>(len: i32) -&gt; i32</code></td><td>a buffer of <code>len</code> bytes; 0 on failure</td></tr>
+<tr><td><code>platypus_dealloc</code></td><td><code>(ptr: i32, len: i32)</code></td><td>frees a buffer from <code>platypus_alloc</code> or an answer</td></tr>
+<tr><td><code>platypus_describe</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>what it provides</td></tr>
+<tr><td><code>platypus_action</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>runs an action (kind <code>actions</code>)</td></tr>
+<tr><td><code>platypus_driver</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>one driver operation (kind <code>driver</code>)</td></tr>
+<tr><td><code>platypus_hook</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>one event (kind <code>hooks</code>, ABI 2)</td></tr>
+<tr><td><code>platypus_grid</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>one batch (kind <code>grid</code>, ABI 2)</td></tr>
+</tbody>
+</table></div>
+<p>A call: the host allocates a buffer with <code>platypus_alloc</code>, writes the request, calls the entry point with its pointer and length (0, 0 for an empty request), and reads the answer at the pointer in the high 32 bits of the result, of the length in the low 32 bits. Then the host frees both the request and the answer with <code>platypus_dealloc</code>: the module must not keep either. Every answer is an object:</p>
+<pre><code class="language-json">{&quot;ok&quot;: &lt;value&gt;}            or            {&quot;error&quot;: &quot;a message for the user&quot;}</code></pre>
+<p>The module may import only these functions, from the module <code>platypus</code>:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Import</th><th>Signature</th><th></th></tr></thead>
+<tbody>
+<tr><td><code>log</code></td><td><code>(level: i32, ptr: i32, len: i32)</code></td><td>a line in the app&#39;s log: 0 error, 1 warning, 2 information</td></tr>
+<tr><td><code>http</code></td><td><code>(ptr: i32, len: i32) -&gt; i32</code></td><td>sends a request; returns the length of the answer</td></tr>
+<tr><td><code>take</code></td><td><code>(ptr: i32)</code></td><td>copies the answer of the last <code>http</code> or <code>setting</code> into a buffer of that length</td></tr>
+<tr><td><code>setting</code></td><td><code>(ptr: i32, len: i32) -&gt; i32</code></td><td>reads one of its own settings; returns the length of the answer (ABI 2)</td></tr>
+</tbody>
+</table></div>
+<p>A module that imports anything else (WASI, for example) does not load: build Rust plugins for <code>wasm32-unknown-unknown</code>, not <code>wasm32-wasip1</code>.</p>
+<p><code>http</code> takes <code>{&quot;method&quot;: &quot;GET&quot;, &quot;url&quot;: &quot;https://…&quot;, &quot;headers&quot;: {…}, &quot;body&quot;: &quot;text&quot;}</code> (only <code>url</code> is required) and answers <code>{&quot;ok&quot;: {&quot;status&quot;: 200, &quot;headers&quot;: {…}, &quot;body&quot;: &quot;text&quot;}}</code> or <code>{&quot;error&quot;: &quot;…&quot;}</code>. It goes only to the hosts of the approved permissions (and, for a driver, the host of its connection); any other host, a scheme other than <code>http</code>/<code>https</code>, or a plugin without the permission gets an error, and the call goes on. Redirects are followed only to allowed hosts. Requests go through the app&#39;s network stack: verified TLS, the system&#39;s proxy (<code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>NO_PROXY</code>, and the system settings on Windows and macOS), or the connection&#39;s <code>http://</code> proxy for a driver. Bodies are text (invalid UTF-8 is replaced).</p>
+<h3 id="limits">Limits</h3>
+<p>Each call has:</p>
+<ul>
+<li><strong>fuel</strong>: about 3 billion units, roughly one per WebAssembly instruction (a few seconds of the interpreter). An endless loop stops there with &quot;the plugin used up its time for this call&quot;;</li>
+<li><strong>memory</strong>: the module&#39;s memory may not grow past 64 MB; a module that asks for more at start does not load, and a growth past it fails (<code>memory.grow</code> returns -1);</li>
+<li><strong>messages</strong>: 16 MB each way, an HTTP answer included;</li>
+<li><strong>time</strong>: 60 s for the call, checked by the host functions; one HTTP request at most 30 s;</li>
+<li><strong>log</strong>: 100 lines, 4 KB each.</li>
+</ul>
+<p>A trap (<code>unreachable</code>, an access outside memory, a failed allocation), running out of fuel or time, or an answer that points outside memory ends the call with an error and never takes the app down. After that the module&#39;s state may be inconsistent: an action starts from a fresh instance anyway, and a driver connection is closed.</p>
+<h3 id="describe">Describe</h3>
+<p><code>platypus_describe</code> gets an empty request and answers:</p>
+<pre><code class="language-json">{&quot;ok&quot;: {
+  &quot;actions&quot;: [
+    {&quot;id&quot;: &quot;uppercase&quot;, &quot;title&quot;: &quot;Uppercase SQL keywords&quot;, &quot;scope&quot;: &quot;editor&quot;, &quot;shortcut&quot;: &quot;Mod+Alt+U&quot;},
+    {&quot;id&quot;: &quot;markdown&quot;, &quot;title&quot;: &quot;Copy rows as Markdown table&quot;, &quot;scope&quot;: &quot;grid&quot;},
+    {&quot;id&quot;: &quot;count&quot;, &quot;title&quot;: &quot;Count rows&quot;, &quot;scope&quot;: &quot;navigator.object&quot;}
+  ],
+  &quot;driver&quot;: {&quot;name&quot;: &quot;Toy HTTP database&quot;, &quot;metadata&quot;: true}
+}}</code></pre>
+<p>Titles are shown as written (plugins are not translated). Shortcuts use the app&#39;s notation (<code>Mod</code> is Ctrl, or Cmd on macOS) and can be changed in Settings › Keyboard shortcuts.</p>
+<h3 id="actions">Actions</h3>
+<p>Actions appear under a <strong>Plugins</strong> submenu of the context menu of their scope, and run with their shortcut where that scope has the focus. Each call to <code>platypus_action</code> starts a new instance of the module, so actions keep nothing between calls. The request is <code>{&quot;action&quot;: id, &quot;scope&quot;: scope, &quot;context&quot;: {…}}</code>, with the context of the scope:</p>
+<ul>
+<li><code>editor</code>: <code>{&quot;text&quot;: &quot;…&quot;, &quot;selection&quot;: {&quot;from&quot;, &quot;to&quot;, &quot;text&quot;} | null, &quot;driver&quot;: &quot;postgres&quot;}</code>;</li>
+<li><code>grid</code>: <code>{&quot;columns&quot;: [{&quot;name&quot;, &quot;type&quot;}], &quot;rows&quot;: [[…], …], &quot;truncated&quot;: false}</code>: the selected rows and columns, values as &quot;Copy as JSON&quot; writes them (numbers and booleans bare, the rest as text, <code>null</code>), a sensitive column&#39;s as <code>••••••</code>, at most 1000 rows (<code>truncated</code> says there were more);</li>
+<li><code>navigator.object</code>: <code>{&quot;connection&quot;: {&quot;name&quot;, &quot;driver&quot;, &quot;host&quot;, &quot;port&quot;, &quot;database&quot;, &quot;user&quot;}, &quot;database&quot;, &quot;schema&quot;, &quot;object&quot;: {&quot;name&quot;, &quot;kind&quot;}, &quot;target&quot;: &quot;\&quot;main\&quot;.\&quot;items\&quot;&quot;}</code>: never a password; <code>target</code> is the quoted, qualified name.</li>
+</ul>
+<p>The answer is one of:</p>
+<pre><code class="language-json">{&quot;kind&quot;: &quot;replace&quot;, &quot;text&quot;: &quot;…&quot;}   the editor&#39;s selection, or its whole text without one
+{&quot;kind&quot;: &quot;new_tab&quot;, &quot;text&quot;: &quot;…&quot;}   a new SQL tab on the same connection
+{&quot;kind&quot;: &quot;copy&quot;, &quot;text&quot;: &quot;…&quot;}      the clipboard: only with the clipboard permission
+{&quot;kind&quot;: &quot;message&quot;, &quot;text&quot;: &quot;…&quot;}   a message
+{&quot;kind&quot;: &quot;none&quot;}</code></pre>
+<h3 id="drivers">Drivers</h3>
+<p>A connection whose driver is a plugin (<code>driver = &quot;plugin&quot;</code>, the plugin&#39;s id in the <code>plugin</code> option) has its own instance of the module for as long as it is open, so the module can keep its session in memory. Calls on one connection run one at a time. <code>platypus_driver</code> receives:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Request</th><th>Answer</th></tr></thead>
+<tbody>
+<tr><td><code>{&quot;op&quot;: &quot;connect&quot;, &quot;config&quot;: {&quot;host&quot;, &quot;port&quot;, &quot;database&quot;, &quot;user&quot;, &quot;ssl_mode&quot;, &quot;options&quot;}, &quot;secrets&quot;: {&quot;password&quot;}}</code></td><td><code>{&quot;product&quot;, &quot;version&quot;}</code> (both optional)</td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;execute&quot;, &quot;sql&quot;: &quot;…&quot;}</code></td><td><code>{&quot;columns&quot;: [{&quot;name&quot;, &quot;type&quot;}], &quot;rows&quot;: [[…]]}</code>, or <code>{&quot;affected&quot;: n}</code></td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;schemas&quot;}</code></td><td><code>[{&quot;name&quot;, &quot;current&quot;}]</code></td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;objects&quot;, &quot;schema&quot;: &quot;…&quot;}</code></td><td><code>[{&quot;name&quot;, &quot;kind&quot;, &quot;comment&quot;}]</code>, <code>kind</code> as the app names them (<code>table</code>, <code>view</code>, …; <code>table</code> by default)</td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;table&quot;, &quot;schema&quot;: &quot;…&quot;, &quot;table&quot;: &quot;…&quot;}</code></td><td><code>{&quot;columns&quot;: [{&quot;name&quot;, &quot;type&quot;, &quot;nullable&quot;, &quot;primary_key&quot;, &quot;comment&quot;}]}</code></td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;close&quot;}</code></td><td>anything; sent when the connection is dropped</td></tr>
+</tbody>
+</table></div>
+<p>The password is only in the <code>connect</code> request, in memory; the <code>options</code> sent leave out the app&#39;s own (<code>plugin</code>, <code>proxy</code>, the connect and disconnect commands). The navigator calls <code>schemas</code>, <code>objects</code> and <code>table</code> only when the description says <code>&quot;metadata&quot;: true</code>; without it the navigator stays empty and the editor still runs statements.</p>
+<p>The host turns rows into Arrow batches. A column takes its declared <code>type</code> when every value fits it (<code>bool</code>/<code>boolean</code>, <code>int</code>/<code>integer</code>/<code>bigint</code>, <code>float</code>/<code>double</code>/<code>real</code>/<code>number</code>/ <code>numeric</code>/<code>decimal</code>, <code>text</code>/<code>string</code>/<code>varchar</code>), otherwise the narrowest type all its values fit (boolean, 64-bit integer, double), otherwise text, where objects and arrays are written as JSON. The declared type is shown as the column&#39;s type.</p>
+<p>A driver reaches its database <strong>only through <code>http</code></strong>: the host of the connection, as the user typed it, is allowed without a permission; other hosts (a login service) must be listed in <code>permissions.http</code>. Raw TCP, UDP and local files are not possible, so databases with an HTTP API only. Plugin drivers have no transactions (autocommit only), no cancel (the call&#39;s fuel and deadline stop it), no SSH tunnel (the tunnel&#39;s local address is not passed to the plugin) and no terminal mode. They use the standard SQL dialect in the editor.</p>
+<h3 id="hooks">Hooks</h3>
+<p>With <code>kinds = [&quot;hooks&quot;]</code>, <code>hooks = [...]</code> and <code>permissions.hooks = true</code>, <code>platypus_hook</code> runs on those events and answers <code>{&quot;action&quot;: &quot;allow&quot;}</code> or <code>{&quot;action&quot;: &quot;block&quot;, &quot;message&quot;: &quot;why&quot;}</code>. Each call starts a new instance of the module and keeps nothing.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Event</th><th>When</th><th>Besides <code>connection</code> it gets</th></tr></thead>
+<tbody>
+<tr><td><code>before_query</code></td><td>a statement passed the app&#39;s checks and is about to run; it may block</td><td><code>statement</code></td></tr>
+<tr><td><code>after_query</code></td><td>that statement ended; the answer does not matter, and nothing waits for it</td><td><code>statement</code>, <code>status</code> (<code>ok</code>, <code>error</code>, <code>cancelled</code>), <code>elapsed_ms</code>, <code>affected</code></td></tr>
+<tr><td><code>on_connect</code></td><td>a connection opened; nothing waits for it</td><td>nothing</td></tr>
+<tr><td><code>before_save</code></td><td>edited rows are about to be saved; it may block</td><td><code>schema</code>, <code>table</code>, <code>updates</code>, <code>inserts</code>, <code>deletes</code></td></tr>
+</tbody>
+</table></div>
+<pre><code class="language-json">{
+  &quot;event&quot;: &quot;before_query&quot;,
+  &quot;connection&quot;: {&quot;name&quot;: &quot;Shop&quot;, &quot;driver&quot;: &quot;postgres&quot;, &quot;database&quot;: &quot;shop&quot;, &quot;production&quot;: false},
+  &quot;statement&quot;: {&quot;text&quot;: &quot;SELECT * FROM users WHERE email = &#39;••••••&#39;&quot;, &quot;truncated&quot;: false}
+}</code></pre>
+<p><code>statement.text</code> is a copy with <strong>every value masked</strong>: each string and each number reads <code>&#39;••••••&#39;</code>. A name cannot tell where a value goes (<code>INSERT INTO users VALUES (&#39;a@b.c&#39;, &#39;s3cret&#39;)</code> names no column), and a number can be a card or a salary as a string can be an email, so a guard reads what a statement does, its keywords, tables and columns, and none of what it carries: it can refuse <code>DELETE</code> without <code>WHERE</code> or anything naming a table, and cannot go by a value or a <code>LIMIT</code>. Parameters (<code>$1</code>) stay, as they hold nothing, and so do comments, which are the text the user wrote about the statement. The text is at most 64 KB (<code>truncated</code> says when it is cut), and <code>null</code> on MongoDB, Redis, Elasticsearch, the drivers of plugins, ODBC and any other ADBC driver, whose literals cannot be told. A hook never gets a password, a value of a result or the text of an error, which may quote one, and a save gets only how many rows change, as its statements quote their values.</p>
+<p>The statement that runs is the app&#39;s: the answer has no field for another one, and an answer with any other field is a broken hook. The hook comes after the Safety checks (the question before a <code>DELETE</code> without <code>WHERE</code> or a change on a production connection, a read-only connection&#39;s refusal), so it cannot lift them, and a statement they refuse never reaches it: a hook can only add a refusal. That refusal is the statement&#39;s error, and names the plugin.</p>
+<p>A hook is bound: 300 million units of fuel, a tenth of an action&#39;s, the same 64 MB of memory, 1 MB per message, 20 log lines, and 2 s of wall time, after which nothing waits for it. <strong>A hook that crashes, runs out of fuel or time, or answers something else does not stop the action</strong>: the statement runs, and the user is told once per plugin until it is changed or turned off and on. So a hook is a help against mistakes, not a wall. The database&#39;s own permissions are the wall.</p>
+<p>Hooks run for the SQL editor, notebooks, scripts, the dialogs that run a statement, saves of edited rows, <code>EXPLAIN ANALYZE</code>, a database&#39;s own client (as one statement, the whole script, ending as the client&#39;s exit says) and scheduled scripts. A scheduled script asks before each of its statements: one that is blocked fails the run with the hook&#39;s message, what ran before it stands, and the rest does not run.</p>
+<p><strong>Hooks do not cover everything, and must not be taken for a wall.</strong> They do not run for:</p>
+<ul>
+<li>agents through MCP, which have their own policy (see <a href="agents.html">AGENTS.md</a>);</li>
+<li><code>.sql</code> files run from the file dialog and the table designer;</li>
+<li>exports, imports, transfers and copies, by hand or scheduled, and profiles;</li>
+<li>scheduled backups and schema snapshots.</li>
+</ul>
+<p>A user with no hook pays one atomic read per statement, with nothing to wait for and nothing allocated: the table of hooks comes from the list of plugins the page reads at start anyway, and no module is read or compiled until its first call.</p>
+<h3 id="settings">Settings</h3>
+<p><code>[[settings]]</code> in the manifest draws a page beside the plugin in Settings › Plugins, in the plugin&#39;s own language, loaded when it opens.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Field</th><th></th></tr></thead>
+<tbody>
+<tr><td><code>key</code></td><td>lowercase letters, digits, <code>-</code> and <code>_</code>; unique</td></tr>
+<tr><td><code>label</code>, <code>description</code></td><td>as shown; only <code>label</code> is required</td></tr>
+<tr><td><code>type</code></td><td><code>text</code>, <code>number</code>, <code>boolean</code>, <code>choice</code> or <code>secret</code></td></tr>
+<tr><td><code>default</code></td><td>until the user sets a value; not for a <code>secret</code></td></tr>
+<tr><td><code>options</code></td><td>for a <code>choice</code>: <code>[{ value = &quot;x&quot;, label = &quot;X&quot; }]</code></td></tr>
+<tr><td><code>min</code>, <code>max</code></td><td>for a <code>number</code></td></tr>
+</tbody>
+</table></div>
+<p>Without a <code>default</code> the control starts empty (no text, the lowest number, off, the first choice) and the module reads <code>null</code>. Values go in <code>&lt;data&gt;/plugins/settings.toml</code>. A <code>secret</code> goes in the system&#39;s keychain, never in a file: without a keychain it cannot be saved, and the page says so. The page never reads a secret back, only whether it is set. The review before installing lists the fields, and those that go to the keychain.</p>
+<p>The module reads them with <code>setting</code>, whose request is <code>{&quot;key&quot;: &quot;endpoint&quot;}</code> and whose answer, through <code>take</code>, is <code>{&quot;ok&quot;: value}</code> (what the user saved, or the default, or <code>null</code>; a secret as its text) or <code>{&quot;error&quot;: &quot;…&quot;}</code>. Only the keys of its own manifest can be named, so another plugin&#39;s values are out of reach; any other key gets an error and the call goes on. Removing a plugin forgets its values, and an update forgets those of the fields it dropped.</p>
+<h3 id="tabs-and-side-panels">Tabs and side panels</h3>
+<p><code>[[tabs]]</code> adds a kind of tab and <code>[[panels]]</code> a side panel, each with its page, an HTML document of the package. The command palette has a command for each with its title, and a connection&#39;s menu in the navigator opens a tab on that connection (a tab belongs to a connection). A panel opens beside the tabs, one at a time, and goes when it is closed. A tab is kept for the next start, as other tabs are; while its plugin is off or gone it says so, and comes back with it.</p>
+<p>What is copied at install: the documents the manifest names, and under <code>ui/</code> the files of the kinds a page can load (<code>html</code>, <code>js</code>, <code>css</code>, <code>json</code>, <code>svg</code>, <code>png</code>, <code>jpg</code>, <code>gif</code>, <code>webp</code>, <code>woff2</code>), at most 256 files, 8 MB each and 32 MB in all. The hash of the review covers them. A name that climbs out of the package or a link is refused. Anything else is left behind. A document the manifest does not name cannot be opened, and neither <code>plugin.toml</code> nor <code>plugin.wasm</code> can be read from a page.</p>
+<p><strong>A page is untrusted, and it is isolated by these, all of them:</strong></p>
+<ul>
+<li>It runs in <code>&lt;iframe sandbox=&quot;allow-scripts&quot;&gt;</code>, never <code>allow-same-origin</code>, so on an opaque origin: no access to the app&#39;s DOM or the app&#39;s storage, and it has no storage of its own. No popups, forms, dialogs, downloads or top navigation.</li>
+<li>It is served from a scheme of its own (<code>platypus-plugin</code>), whose answers carry its policy: <code>sandbox allow-scripts</code> again, whoever opens it, and <code>default-src &#39;none&#39;</code>, with scripts and styles only inline or from the plugin&#39;s own folder, images and fonts also from <code>data:</code>. No <code>fetch</code>, WebSocket, frames, workers, <code>eval</code>, <code>&lt;base&gt;</code> or forms, and WebRTC blocked. The app&#39;s own policy admits this scheme as a frame and nothing else (<code>frame-src</code>), which also stops a page navigating anywhere outside it.</li>
+<li>Messages are the only way out. One counts only if it comes from that frame&#39;s window and from the opaque origin, and nothing of it is read before that.</li>
+<li><p>It has no way to run one of the app&#39;s commands, and that does not rest on what it can see. On Windows WebView2 runs Tauri&#39;s scripts in every frame: <code>__TAURI_INTERNALS__.invoke</code>, <code>window.ipc</code> and <code>chrome.webview.postMessage</code> are there, and a page can take Tauri&#39;s invoke key from them, by replacing what they call. They lead nowhere. The app&#39;s windows turn WebView2&#39;s web messages off, so the message goes nowhere, from any frame; even with them on, WebView2 gives the window&#39;s handler only the main frame&#39;s. The one route left is Tauri&#39;s <code>fetch</code> to <code>http://ipc.localhost</code>: the page&#39;s policy stops it, and behind the policy Tauri refuses a request whose origin is <code>null</code>, which is a sandboxed frame&#39;s. The E2E scenario <code>plugins-panels</code> tries each of these from a hostile page, with the key, on WebView2 156.</p>
+<p>On macOS and Linux (WebKit) nothing of this has been run. By reading Tauri and wry: the scripts stay in the main frame, so a frame has no key; <code>webkit.messageHandlers.ipc</code> is there, and Tauri drops a message without the key; and the policy and the <code>null</code> origin stop <code>fetch</code> the same way.</p></li>
+</ul>
+<p><code>window.platypus</code> is there before the page&#39;s first script, with <code>request(name, params)</code>, a promise, and <code>on(listener)</code>, told <code>listener(&quot;init&quot;, {plugin, language, theme, connection})</code> (a late listener too), and <code>listener(&quot;theme&quot;, theme)</code> when the theme changes. <code>theme</code> is the app&#39;s colours and fonts as CSS variables, <code>connection</code> the name, driver and database of the tab&#39;s connection, or the active tab&#39;s for a panel; never its host, user or password.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Request</th><th>Params</th><th>Needs</th><th>Answer</th></tr></thead>
+<tbody>
+<tr><td><code>setting</code></td><td><code>{key}</code></td><td>its manifest declares it, and not as a <code>secret</code></td><td>the value</td></tr>
+<tr><td><code>notify</code></td><td><code>{text}</code></td><td></td><td>shows a message, one line of plain text with the plugin&#39;s name</td></tr>
+<tr><td><code>clipboard</code></td><td><code>{text}</code></td><td><code>permissions.clipboard</code></td><td>puts the text on the clipboard</td></tr>
+<tr><td><code>open_query</code></td><td><code>{text}</code></td><td></td><td>opens a new SQL tab with this text, <strong>not run</strong></td></tr>
+<tr><td><code>http</code></td><td>as the <code>http</code> host function</td><td>the host in <code>permissions.http</code></td><td><code>{status, headers, body}</code></td></tr>
+<tr><td><code>run_action</code></td><td><code>{action, context}</code></td><td>an action of its own module</td><td>what the action answers (not applied)</td></tr>
+<tr><td><code>state_get</code></td><td><code>{}</code></td><td></td><td>what its pages kept, <code>null</code> before anything</td></tr>
+<tr><td><code>state_set</code></td><td><code>{value}</code></td><td>at most 256 KB, for each plugin</td><td>kept until the plugin is removed</td></tr>
+</tbody>
+</table></div>
+<p>There is nothing else. <strong>A page cannot run SQL, or read saved connections, passwords or a query&#39;s rows</strong>, and no permission opens that: the text of <code>open_query</code> runs only if the user runs it, through the Safety checks of any statement. The network is reached only by the <code>http</code> request, by the app, with the same limits as a module. Each request is checked in the page and again in the backend, for its name, its fields, its permission, its size (1 MB) and its rate (50 a second after a burst of 100, and a message or a new tab once a second). A refusal rejects the promise and the page goes on.</p>
+<p>The app <strong>stops a page</strong>, removes it and says why, with a button to load it again, when it leaves its document, sends more than 500 messages over the rate, sends three messages that are not the app&#39;s, takes more than 20 s to load, or leaves four pings in a row unanswered, 8 s.</p>
+<p><strong>What this cannot protect from.</strong> In WebView2 (Windows) a sandboxed frame on this scheme runs in a process of its own, and the app keeps answering while it loops forever or eats memory, until the pings remove it. In WebKit (macOS, Linux) a frame shares the page&#39;s thread and process, so <strong>a page that loops forever freezes the whole window, and one that exhausts memory can take it down</strong>: there the app has no code running to stop it, and that is not something a same-process frame can be protected from. A message&#39;s size can be known only once it has arrived: one very large message (a 400 MB string costs about a second to copy) is paid for before it is refused. The page can also draw anything inside its own rectangle, a fake dialog included, and has the keyboard while it has the focus. So install a plugin with a page as you would any program you run: the sandbox limits what it reaches, not what it can make you believe.</p>
+<h3 id="grid-extensions">Grid extensions</h3>
+<p><code>[[grid.columns]]</code>, <code>[[grid.renderers]]</code> and <code>[[grid.actions]]</code> add to the result grid, for the columns of the database types in <code>types</code>, ignoring case and sizes (<code>varchar(20)</code> is <code>varchar</code>); all of them without it. <code>platypus_grid</code> takes batches, in a new instance each, and keeps nothing:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Request</th><th>Answer</th></tr></thead>
+<tbody>
+<tr><td><code>{&quot;op&quot;: &quot;column&quot;, &quot;id&quot;, &quot;columns&quot;: [{&quot;name&quot;, &quot;type&quot;, &quot;masked&quot;}], &quot;rows&quot;: [[…], …]}</code></td><td><code>{&quot;values&quot;: […]}</code>, one per row</td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;render&quot;, &quot;id&quot;, &quot;column&quot;: {…}, &quot;values&quot;: [&quot;…&quot;, …]}</code></td><td><code>{&quot;cells&quot;: […]}</code>, one per value</td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;action&quot;, &quot;id&quot;, &quot;column&quot;: {…}, &quot;value&quot;: &quot;…&quot;}</code></td><td>what an action answers</td></tr>
+</tbody>
+</table></div>
+<ul>
+<li>A <strong>computed column</strong> is one more column after the result&#39;s, whose rows hold the values of the columns it applies to (and with no such column in the result, it is not added). A value is text, a number, a boolean, <code>null</code>, or <code>{&quot;error&quot;: &quot;…&quot;}</code>, which shows in that cell. It is not part of the result, so copies, exports, totals and sorting leave it out, as with the grid&#39;s own computed columns.</li>
+<li>A <strong>renderer</strong> draws the cells of a column, one renderer per column, the first to claim it. A cell is <code>null</code> (as usual) or <code>{&quot;text&quot;, &quot;color&quot;, &quot;background&quot;, &quot;hint&quot;, &quot;strike&quot;}</code>, all optional, colours as <code>#rgb</code>, <code>#rrggbb</code> or <code>#rrggbbaa</code>. That is all it can say: the grid draws on a canvas, so a text is drawn as text, and a field that is not on this list, or a colour that is not one, is an error shown in that cell. There is no HTML. An unsaved edit, and search highlights, are drawn over it.</li>
+<li>A <strong>command</strong> is in the cell&#39;s menu, under Plugins. It runs on the focused cell, and its answer does what an action&#39;s does; <code>copy</code> needs <code>permissions.clipboard</code>.</li>
+</ul>
+<p><strong>A plugin never reads a sensitive cell.</strong> A column the rules or your marks call sensitive (Settings › Safety) comes as <code>••••••</code> with <code>&quot;masked&quot;: true</code>, whether or not masking is on for the screen, and the grid goes on showing you the real value until it is; NULL stays <code>null</code>. A renderer has nothing to draw there, so it is not asked about that column. A module has no network here, whatever its <code>http</code> says, and what it writes to its log stays masked too.</p>
+<p>A batch has 300 million units of fuel, a tenth of an action&#39;s, 64 MB of memory, 4 MB per message and 2 s of wall time; at most 1000 rows or values, each cut at 16 KB (a renderer leaves longer ones alone). A batch that crashes, runs out, or answers the wrong number of values costs its extension for that result: a column shows the error in its cells and a renderer goes back to plain values, the user is told once, and the grid goes on.</p>
+<p><strong>The grid never calls a module while drawing.</strong> A cell is one map lookup, by row for a column and by value for a renderer. A miss draws the value as it is, or as loading, and notes it; a timer outside the frame sends what was noted, at most 200 at a time and one batch at a time per extension, the most recent first, and redraws when the answer comes. Without an extension the grid goes through none of this.</p>
+<h2 id="writing-a-plugin-in-rust">Writing a plugin in Rust</h2>
+<p><code>examples/plugins/sdk</code> is a small guest library: <code>export_allocator!()</code> exports <code>platypus_alloc</code> and <code>platypus_dealloc</code>, <code>entry(ptr, len, |request| …)</code> reads a request and writes the answer, <code>http</code>, <code>setting</code> and <code>log</code> wrap the host functions.</p>
+<pre><code class="language-rust">use platypus_plugin_sdk::entry;
+use serde_json::json;
+
+platypus_plugin_sdk::export_allocator!();
+
+#[unsafe(no_mangle)]
+pub extern &quot;C&quot; fn platypus_describe(ptr: i32, len: i32) -&gt; i64 {
+    entry(ptr, len, |_| Ok(json!({ &quot;actions&quot;: [
+        { &quot;id&quot;: &quot;hello&quot;, &quot;title&quot;: &quot;Say hello&quot;, &quot;scope&quot;: &quot;editor&quot; }
+    ] })))
+}
+
+#[unsafe(no_mangle)]
+pub extern &quot;C&quot; fn platypus_action(ptr: i32, len: i32) -&gt; i64 {
+    entry(ptr, len, |_| Ok(json!({ &quot;kind&quot;: &quot;message&quot;, &quot;text&quot;: &quot;Hello!&quot; })))
+}</code></pre>
+<pre><code class="language-bash">rustup target add wasm32-unknown-unknown
+cargo build --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/&lt;name&gt;.wasm plugin.wasm</code></pre>
+<p>The examples build with <code>opt-level = &quot;z&quot;</code>, LTO and <code>panic = &quot;abort&quot;</code>: about 90 KB each.</p>
+<ul>
+<li><code>examples/plugins/sql-tools</code>: an action per scope (uppercase keywords in the editor, copy rows as a Markdown table, count a table&#39;s rows in a new tab).</li>
+<li><code>examples/plugins/toy-http-driver</code>: a driver for a database answering <code>GET /hello</code>, <code>POST /query</code>, <code>GET /tables</code> and <code>GET /tables/&lt;name&gt;</code> with JSON, the password sent as a bearer token. The tests of <code>platypus-plugins</code> (<code>tests/examples.rs</code>) run it against a local server.</li>
+<li><code>examples/plugins/query-guard</code>: hooks that block statements naming a table and edits of another, and log what ran. <code>tests/hooks.rs</code> runs it, and also without its permission.</li>
+<li><code>examples/plugins/settings-demo</code>: a settings page with a field of each type, and actions that read them, and try a key the manifest does not declare.</li>
+<li><code>examples/plugins/panel-demo</code>: a tab and a side panel: pages in <code>ui/</code> that read a setting, keep their state, call the module, show a message and open a query. <code>tests/frames.rs</code> serves them, and also without their permission.</li>
+<li><code>examples/plugins/grid-demo</code>: a computed column, a renderer and a command on a cell, with rows that break a batch on purpose. <code>tests/grid.rs</code> runs it, and also without its permission.</li>
+<li><code>examples/plugins/theme-sea</code>: a theme and nothing else, with no module.</li>
+<li><code>examples/plugins/catalog</code>: an index with one entry, <code>theme-sea</code> as a <code>.zip</code>, its <code>.minisig</code> and the public key that verifies it (<code>trusted.pub</code>; its secret key was thrown away, so sign your own with yours). <code>tests/catalog.rs</code> serves it from a local server and installs it with that key, and is refused with any other.</li>
+</ul>
+<p>After changing an example, build it again and copy its module next to its <code>plugin.toml</code>: the tests use the committed <code>plugin.wasm</code>.</p>
+<p>Other languages export the same functions: <code>memory</code>, an allocator under the names <code>platypus_alloc</code> and <code>platypus_dealloc</code> (for actions a bump allocator is enough, since each runs in a new instance; a driver keeps its instance and needs a real one), and the entry points; and import <code>log</code>, <code>http</code> and <code>take</code> from the module <code>platypus</code> (in AssemblyScript, <code>@external(&quot;platypus&quot;, &quot;http&quot;)</code>).</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#package">Package</a>
+    <a href="#catalog">Catalog</a>
+    <a href="#abi-versions-1-and-2">ABI, versions 1 and 2</a>
+    <a href="#writing-a-plugin-in-rust">Writing a plugin in Rust</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../index.html"><img src="../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../docs.html">Getting started</a></li>
+          <li><a href="../docs/guide/index.html">User guide</a></li>
+          <li><a href="../docs/features.html">Features</a></li>
+          <li><a href="../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../site.js" defer></script>
+</body>
+</html>

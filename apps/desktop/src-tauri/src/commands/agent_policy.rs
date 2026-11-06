@@ -15,7 +15,7 @@ use crate::error::{CommandError, CommandResult};
 
 impl AppState {
     /// The seal of this profile's agent policy: next to the connections and settings.
-    fn agent_seal(&self) -> Option<Seal> {
+    pub(super) fn agent_seal(&self) -> Option<Seal> {
         let dir = self.vault_path.as_ref().ok()?.parent()?;
         Some(Seal::of(dir))
     }

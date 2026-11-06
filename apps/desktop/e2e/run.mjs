@@ -188,6 +188,9 @@ function forgetKeychainEntries(dir) {
       targets.push(`${uuid((value ^ mask).toString(16).padStart(32, "0"))}.platypusdb`);
     }
   }
+  // The secrets of its plugins, which go with a plugin's id and not with the profile
+  // (`secret_id` in `platypus-plugins`): a run that stops half way must not leave them to the next.
+  targets.push(...pluginSecretTargets(dir, uuid));
   // The profile's own name: the SHA-256 of its folder as Rust's `canonicalize` gives it
   // (`\\?\C:\...`), lowercased, its first 16 bytes as a UUID.
   try {
@@ -199,6 +202,23 @@ function forgetKeychainEntries(dir) {
     // No folder, nothing under its name.
   }
   for (const target of targets) spawnSync("cmdkey", [`/delete:${target}`], { stdio: "ignore" });
+}
+
+/** The keychain's names of the secret settings of the plugins installed in `dir`. */
+function pluginSecretTargets(dir, uuid) {
+  const home = join(dir, "plugins");
+  if (!existsSync(home)) return [];
+  return readdirSync(home, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .flatMap((plugin) =>
+      readdirSync(join(home, plugin.name)).flatMap((version) => {
+        const manifest = join(home, plugin.name, version, "plugin.toml");
+        if (!existsSync(manifest)) return [];
+        const fields = readFileSync(manifest, "utf8").split("[[settings]]").slice(1);
+        const keys = fields.filter((f) => /^type\s*=\s*"secret"/m.test(f)).map((f) => f.match(/^key\s*=\s*"([^"]+)"/m)?.[1]);
+        return keys.map((key) => `${uuid(createHash("sha256").update(`${plugin.name} ${key}`).digest("hex"))}.platypusdb-plugins`);
+      }),
+    );
 }
 
 /** Why the app has no DevTools page: its state, output and the WebView2 runtime. */

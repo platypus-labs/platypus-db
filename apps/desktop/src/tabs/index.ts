@@ -13,3 +13,4 @@ import "./notebook";
 import "./dashboard";
 import "./tableProfile";
 import "./debugger";
+import "./plugin";

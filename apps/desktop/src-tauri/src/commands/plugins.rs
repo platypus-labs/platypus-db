@@ -2,17 +2,48 @@
 //! its permissions, installing, turning on and off, removing, and running their actions.
 //! The sandbox and the packages are in `platypus-plugins`; their drivers open through
 //! [`super::connect`].
+//!
+//! The hooks of plugins are called from the commands that run statements, after the app's own
+//! checks. Each command first asks `HOOKS.wanted(..)`, one atomic load: everything else here
+//! runs only when some plugin hooks that event. A hook gets a masked copy of the statement and
+//! answers allow or block; the statement that runs is the command's own.
+//!
+//! Every window reads the plugins again on [`PLUGINS_CHANGED`], so that a tab moved to a window of
+//! its own does not go on running what was turned off in another.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
-use platypus_plugins::{ActionOutcome, Inspected, Installed, PluginError, Plugins};
+use platypus_core::DriverKind;
+use platypus_plugins::{
+    ActionOutcome, FRAME_SCHEME, FrameFile, FrameRequest, GridColumn, GridRendered, GridValue,
+    HOOKS, HookBlock, HookConnection, HookContext, HookEvent, HookFailure, HookReport,
+    HookStatement, Inspected, Installed, PluginError, Plugins, QueryStatus, SettingState,
+    frame_csp, frame_target,
+};
+use platypus_sql::Dialect;
+use platypus_sql::security::mask_secrets;
+use platypus_sql::sensitive::mask_every_literal;
+use platypus_store::{ConnectionType, HistoryStatus};
 use serde_json::Value;
+use tauri::ipc::Response;
+use tauri::{AppHandle, Emitter};
 
+use super::connections::SavedConfig;
+use super::{AppState, Session};
+use crate::applog;
 use crate::error::{CommandError, CommandResult};
+
+/// Tells the page that a hook failed and the action went ahead: a [`HookFailure`].
+const HOOK_FAILED: &str = "plugin-hook-failed";
+/// Tells every window that the plugins changed.
+const PLUGINS_CHANGED: &str = "plugins-changed";
 
 fn error(e: &PluginError) -> CommandError {
     let kind = match e {
         PluginError::Denied(_) => "plugin_denied",
+        PluginError::Unsigned(_) => "plugin_unsigned",
+        PluginError::Downgrade { .. } => "plugin_downgrade",
         PluginError::OutOfFuel | PluginError::Timeout | PluginError::Trap(_) => "plugin_stopped",
         _ => "plugin",
     };
@@ -23,17 +54,32 @@ fn error(e: &PluginError) -> CommandError {
     clippy::needless_pass_by_value,
     reason = "used directly as a `map_err` callback"
 )]
-fn failed(e: PluginError) -> CommandError {
+pub(super) fn failed(e: PluginError) -> CommandError {
     error(&e)
 }
 
-fn plugins() -> CommandResult<Plugins> {
+pub(super) fn plugins() -> CommandResult<Plugins> {
     Plugins::shared().map_err(failed)
 }
 
+/// The installed plugins. The page reads them at each start, so this also fills the table of
+/// hooks: there is nothing else to read for them.
 #[tauri::command]
 pub fn plugins_list() -> CommandResult<Vec<Installed>> {
-    plugins()?.list().map_err(failed)
+    let plugins = plugins()?;
+    let list = plugins.list().map_err(failed)?;
+    HOOKS.load(&plugins, &list);
+    Ok(list)
+}
+
+/// After a change to the plugin `id`: reads them again for the table of hooks, and tells every
+/// window.
+pub(super) fn plugins_changed(app: &AppHandle, plugins: &Plugins, id: &str) -> CommandResult<()> {
+    HOOKS.forgive(id);
+    let list = plugins.list().map_err(failed)?;
+    HOOKS.load(plugins, &list);
+    let _ = app.emit(PLUGINS_CHANGED, ());
+    Ok(())
 }
 
 /// Reads a package (a folder or a `.zip`) for the user to review its permissions.
@@ -45,18 +91,58 @@ pub async fn plugin_inspect(path: PathBuf) -> CommandResult<Inspected> {
 /// Installs a package the user reviewed; its permissions are approved by this call. `hash` is
 /// the one `plugin_inspect` gave: a package changed since the review is refused.
 #[tauri::command]
-pub async fn plugin_install(path: PathBuf, hash: String) -> CommandResult<Installed> {
-    plugins()?.install(&path, &hash).await.map_err(failed)
+pub async fn plugin_install(
+    app: AppHandle,
+    path: PathBuf,
+    hash: String,
+) -> CommandResult<Installed> {
+    let plugins = plugins()?;
+    let installed = plugins.install(&path, &hash).await.map_err(failed)?;
+    plugins_changed(&app, &plugins, &installed.manifest.id)?;
+    Ok(installed)
 }
 
 #[tauri::command]
-pub fn plugin_set_enabled(id: String, enabled: bool) -> CommandResult<()> {
-    plugins()?.set_enabled(&id, enabled).map_err(failed)
+pub fn plugin_set_enabled(app: AppHandle, id: String, enabled: bool) -> CommandResult<()> {
+    let plugins = plugins()?;
+    plugins.set_enabled(&id, enabled).map_err(failed)?;
+    plugins_changed(&app, &plugins, &id)
 }
 
+/// Removes a plugin. Its files go, and its secrets leave the keychain; the values of its settings
+/// page stay only when the user chose `keep_settings`. Removed in part, it is off the list all
+/// the same, and the error says what is left.
 #[tauri::command]
-pub fn plugin_remove(id: String) -> CommandResult<()> {
-    plugins()?.remove(&id).map_err(failed)
+pub fn plugin_remove(app: AppHandle, id: String, keep_settings: bool) -> CommandResult<()> {
+    let plugins = plugins()?;
+    let removed = if keep_settings {
+        plugins.remove_keeping_settings(&id)
+    } else {
+        plugins.remove(&id)
+    };
+    if matches!(removed, Ok(()) | Err(PluginError::PartlyRemoved(_))) {
+        plugins_changed(&app, &plugins, &id)?;
+    }
+    removed.map_err(failed)
+}
+
+/// The bytes of a font of a plugin's theme, read when that theme is the one in use.
+#[tauri::command]
+pub fn plugin_theme_font(id: String, usage: String) -> CommandResult<Response> {
+    let bytes = plugins()?.theme_font(&id, &usage).map_err(failed)?;
+    Ok(Response::new(bytes))
+}
+
+/// What the fields of a plugin's settings page hold; a secret only says if it is set.
+#[tauri::command]
+pub fn plugin_settings(id: String) -> CommandResult<Vec<SettingState>> {
+    plugins()?.settings_of(&id).map_err(failed)
+}
+
+/// Saves a value of a plugin's settings page; `null` goes back to the default.
+#[tauri::command]
+pub fn plugin_set_setting(id: String, key: String, value: Value) -> CommandResult<()> {
+    plugins()?.set_setting(&id, &key, &value).map_err(failed)
 }
 
 /// Runs a plugin's action on what the page gives it (the editor's text, the grid's rows,
@@ -71,4 +157,426 @@ pub async fn plugin_run_action(
         .run_action(&plugin, &action, context)
         .await
         .map_err(failed)
+}
+
+/// The root of the plugins' documents: wry serves a custom scheme this way on these systems.
+fn frame_base() -> String {
+    if cfg!(any(windows, target_os = "android")) {
+        format!("http://{FRAME_SCHEME}.localhost")
+    } else {
+        format!("{FRAME_SCHEME}://localhost")
+    }
+}
+
+/// Where a document of a plugin is, for its frame; refused without the `tabs` permission, or for
+/// a document its manifest does not name.
+#[tauri::command]
+pub fn plugin_frame_url(plugin: String, document: String) -> CommandResult<String> {
+    let path = plugins()?.frame_path(&plugin, &document).map_err(failed)?;
+    Ok(format!("{}{path}", frame_base()))
+}
+
+/// What a plugin's frame asks, checked again here: the page may have been fooled, and this is
+/// where a request becomes real. `request` is `{name, params}`.
+#[tauri::command]
+pub async fn plugin_frame_request(plugin: String, request: Value) -> CommandResult<Value> {
+    let request = FrameRequest::parse(request).map_err(failed)?;
+    plugins()?
+        .frame_request(&plugin, request)
+        .await
+        .map_err(failed)
+}
+
+/// The values of a plugin's computed column for a batch of rows, as the grid shows them.
+#[tauri::command]
+pub async fn plugin_grid_column(
+    plugin: String,
+    extension: String,
+    columns: Vec<GridColumn>,
+    rows: Vec<Vec<Option<String>>>,
+) -> CommandResult<Vec<GridValue>> {
+    plugins()?
+        .grid_column(&plugin, &extension, columns, rows)
+        .await
+        .map_err(failed)
+}
+
+/// How a plugin's renderer draws a batch of a column's values, as the grid shows them.
+#[tauri::command]
+pub async fn plugin_grid_render(
+    plugin: String,
+    extension: String,
+    column: GridColumn,
+    values: Vec<String>,
+) -> CommandResult<Vec<GridRendered>> {
+    plugins()?
+        .grid_render(&plugin, &extension, column, values)
+        .await
+        .map_err(failed)
+}
+
+/// Runs a plugin's command on a cell, as the grid shows it; the page applies the outcome.
+#[tauri::command]
+pub async fn plugin_grid_action(
+    plugin: String,
+    extension: String,
+    column: GridColumn,
+    value: Option<String>,
+) -> CommandResult<ActionOutcome> {
+    plugins()?
+        .grid_action(&plugin, &extension, column, value)
+        .await
+        .map_err(failed)
+}
+
+/// Answers the scheme of the plugins' documents, on a thread of its own. Only `GET` of a plugin's
+/// own file; each answer carries the policy that sandboxes it, an error too.
+pub fn frame_protocol(
+    request: &tauri::http::Request<Vec<u8>>,
+    responder: tauri::UriSchemeResponder,
+) {
+    let path = request.uri().path().to_owned();
+    let get = request.method() == tauri::http::Method::GET;
+    tauri::async_runtime::spawn_blocking(move || {
+        responder.respond(frame_response(get, &path));
+    });
+}
+
+fn frame_response(get: bool, path: &str) -> tauri::http::Response<Vec<u8>> {
+    let target = frame_target(path);
+    let file = match (get, target, plugins()) {
+        (true, Some((id, file)), Ok(plugins)) => plugins.frame_file(id, file),
+        _ => Err(PluginError::Denied("not a file of a plugin".to_owned())),
+    };
+    let csp = frame_csp(&frame_base(), target.map_or("none", |(id, _)| id));
+    let builder = tauri::http::Response::builder()
+        .header("Content-Security-Policy", csp)
+        .header("X-Content-Type-Options", "nosniff")
+        .header("X-DNS-Prefetch-Control", "off")
+        .header("Referrer-Policy", "no-referrer")
+        .header("Cache-Control", "no-store");
+    let response = match file {
+        Ok(FrameFile { bytes, mime }) => builder.header("Content-Type", mime).body(bytes),
+        Err(e) => {
+            let status = if matches!(e, PluginError::Denied(_)) {
+                403
+            } else {
+                404
+            };
+            builder
+                .status(status)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .body(e.to_string().into_bytes())
+        }
+    };
+    response.unwrap_or_else(|_| {
+        let mut empty = tauri::http::Response::new(Vec::new());
+        *empty.status_mut() = tauri::http::StatusCode::INTERNAL_SERVER_ERROR;
+        empty
+    })
+}
+
+/// A statement as a hook may see it: `None`, no text at all, on a driver that does not speak SQL,
+/// whose language is the plugin's own, or that reaches a database we cannot name (ODBC and any
+/// ADBC driver: `"a@b"` is a string on MySQL), where a literal cannot be told. Otherwise every value is
+/// masked, not only those a column's name gives away: `INSERT INTO t VALUES ('a@b.c', 's3cret')`
+/// names none, and a hook may have the network. A guard still reads keywords, tables and columns.
+fn hook_text(sql: &str, driver: DriverKind) -> Option<String> {
+    if matches!(
+        driver,
+        DriverKind::Mongo
+            | DriverKind::Redis
+            | DriverKind::Elasticsearch
+            | DriverKind::Plugin
+            | DriverKind::Odbc
+            | DriverKind::Adbc
+    ) {
+        return None;
+    }
+    Some(mask_every_literal(
+        &mask_secrets(sql),
+        Dialect::from(driver),
+    ))
+}
+
+fn driver_name(driver: DriverKind) -> String {
+    serde_json::to_value(driver)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+fn hook_connection(state: &AppState, session: &Session) -> HookConnection {
+    let production = state
+        .with_store(|s| {
+            Ok(s.get(session.connection_id)
+                .is_some_and(|c| c.connection_type == Some(ConnectionType::Prod)))
+        })
+        .unwrap_or(false);
+    HookConnection {
+        name: session.label.clone(),
+        driver: driver_name(session.config.driver),
+        database: session.config.database.clone(),
+        production,
+    }
+}
+
+/// The connection of a run nobody attends.
+pub(crate) fn saved_connection(saved: &SavedConfig) -> HookConnection {
+    HookConnection {
+        name: saved.label.clone(),
+        driver: driver_name(saved.config.driver),
+        database: saved.config.database.clone(),
+        production: saved.production,
+    }
+}
+
+/// Tells the page of the failures of a report, each once: the action they were for went ahead.
+fn tell_failures(app: &AppHandle, failures: &[HookFailure]) {
+    for failure in failures {
+        let _ = app.emit(HOOK_FAILED, failure);
+    }
+}
+
+/// The error of a hook that blocked, naming its plugin: its message is not the app's.
+fn block_error(block: &HookBlock) -> CommandError {
+    CommandError::new(
+        "plugin_blocked",
+        format!(
+            "The plugin “{}” blocked this: {}",
+            block.plugin, block.message
+        ),
+    )
+}
+
+fn blocked(app: &AppHandle, report: &HookReport) -> CommandResult<()> {
+    tell_failures(app, &report.failures);
+    match &report.blocked {
+        Some(block) => {
+            applog::write(
+                "INFO",
+                &format!("the plugin {} blocked an action", block.plugin),
+            );
+            Err(block_error(block))
+        }
+        None => Ok(()),
+    }
+}
+
+/// Runs the hooks of an event and does not wait for them: for events that cannot block.
+fn fire(app: AppHandle, context: HookContext) {
+    tauri::async_runtime::spawn(async move {
+        if let Ok(plugins) = Plugins::shared() {
+            let report = HOOKS.run(&plugins, &context).await;
+            tell_failures(&app, &report.failures);
+        }
+    });
+}
+
+/// What an `after_query` hook is told once the statement ends.
+pub(crate) struct AfterQuery {
+    app: AppHandle,
+    connection: HookConnection,
+    statement: HookStatement,
+}
+
+impl AfterQuery {
+    pub(crate) fn fire(self, status: QueryStatus, elapsed: Duration, affected: Option<u64>) {
+        let context = HookContext::AfterQuery {
+            connection: self.connection,
+            statement: self.statement,
+            status,
+            elapsed_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+            affected,
+        };
+        fire(self.app, context);
+    }
+}
+
+/// A statement's end as a hook is told it: the history's status, which holds no value.
+pub(crate) const fn query_status(status: HistoryStatus) -> QueryStatus {
+    match status {
+        HistoryStatus::Ok => QueryStatus::Ok,
+        HistoryStatus::Error => QueryStatus::Error,
+        HistoryStatus::Cancelled => QueryStatus::Cancelled,
+    }
+}
+
+/// Whether a statement has any hook to go through: nothing to wait for and nothing allocated
+/// when not, as it stands on the path of every query.
+#[inline]
+pub(crate) fn query_hooked() -> bool {
+    HOOKS.wanted(HookEvent::BeforeQuery) || HOOKS.wanted(HookEvent::AfterQuery)
+}
+
+/// How something that ended the way `result` says is told to a hook.
+pub(crate) fn status_of<T>(result: &Result<T, platypus_core::Error>) -> QueryStatus {
+    match result {
+        Ok(_) => QueryStatus::Ok,
+        Err(platypus_core::Error::Cancelled) => QueryStatus::Cancelled,
+        Err(_) => QueryStatus::Error,
+    }
+}
+
+/// The `before_query` hooks of a statement that passed the app's checks; a hook that blocks is
+/// the command's error. Answers what to tell the `after_query` hooks, when there are any.
+pub(crate) async fn before_query(
+    app: &AppHandle,
+    state: &AppState,
+    session_id: u64,
+    sql: &str,
+) -> CommandResult<Option<AfterQuery>> {
+    let session = state.session(session_id)?;
+    let connection = hook_connection(state, &session);
+    before_statement(app, connection, session.config.driver, sql).await
+}
+
+/// [`before_query`] of a statement that no session runs.
+pub(crate) async fn before_statement(
+    app: &AppHandle,
+    connection: HookConnection,
+    driver: DriverKind,
+    sql: &str,
+) -> CommandResult<Option<AfterQuery>> {
+    // Without a data folder there are no plugins.
+    let Ok(plugins) = Plugins::shared() else {
+        return Ok(None);
+    };
+    let statement = HookStatement::new(hook_text(sql, driver));
+    let context = HookContext::BeforeQuery {
+        connection: connection.clone(),
+        statement: statement.clone(),
+    };
+    blocked(app, &HOOKS.run(&plugins, &context).await)?;
+    Ok(HOOKS.wanted(HookEvent::AfterQuery).then(|| AfterQuery {
+        app: app.clone(),
+        connection,
+        statement,
+    }))
+}
+
+/// The `on_connect` hooks of a session just opened; nothing waits for them.
+pub(crate) fn on_connect(app: &AppHandle, state: &AppState, session_id: u64) {
+    if let Ok(session) = state.session(session_id) {
+        let context = HookContext::OnConnect {
+            connection: hook_connection(state, &session),
+        };
+        fire(app.clone(), context);
+    }
+}
+
+/// How much a save changes, as the hooks of `before_save` are told it.
+pub(crate) struct SaveCounts {
+    pub(crate) updates: usize,
+    pub(crate) inserts: usize,
+    pub(crate) deletes: usize,
+}
+
+/// The `before_save` hooks of edited rows about to be saved; a hook that blocks is the error.
+pub(crate) async fn before_save(
+    app: &AppHandle,
+    state: &AppState,
+    session_id: u64,
+    (schema, table): (&str, &str),
+    counts: SaveCounts,
+) -> CommandResult<()> {
+    let Ok(plugins) = Plugins::shared() else {
+        return Ok(());
+    };
+    let session = state.session(session_id)?;
+    let context = HookContext::BeforeSave {
+        connection: hook_connection(state, &session),
+        schema: (!schema.is_empty()).then(|| schema.to_owned()),
+        table: table.to_owned(),
+        updates: counts.updates,
+        inserts: counts.inserts,
+        deletes: counts.deletes,
+    };
+    blocked(app, &HOOKS.run(&plugins, &context).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DOTS: &str = "'••••••'";
+
+    fn text(sql: &str) -> String {
+        hook_text(sql, DriverKind::Postgres).unwrap()
+    }
+
+    #[test]
+    fn a_hook_reads_what_a_statement_does_and_none_of_what_it_carries() {
+        // Where no name could place the value.
+        let masked = text("INSERT INTO users VALUES ('a@b.c', 's3cret', 4111111111111111)");
+        assert_eq!(
+            masked,
+            format!("INSERT INTO users VALUES ({DOTS}, {DOTS}, {DOTS})")
+        );
+        // Beside a column of no interest too, and the guard still reads the table and the column.
+        assert_eq!(
+            text("SELECT id FROM items WHERE name = 'apple' AND price > 10"),
+            format!("SELECT id FROM items WHERE name = {DOTS} AND price > {DOTS}")
+        );
+        assert_eq!(text("DELETE FROM items"), "DELETE FROM items");
+    }
+
+    #[test]
+    fn a_hook_never_reads_a_password() {
+        for sql in [
+            "CREATE USER bob WITH PASSWORD 'hunter2'",
+            "ALTER USER bob IDENTIFIED BY 'hunter2'",
+        ] {
+            let text = text(sql);
+            assert!(!text.contains("hunter2"), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_driver_whose_literals_cannot_be_told_gives_no_text() {
+        for driver in [
+            DriverKind::Mongo,
+            DriverKind::Redis,
+            DriverKind::Elasticsearch,
+            DriverKind::Plugin,
+            DriverKind::Odbc,
+            DriverKind::Adbc,
+        ] {
+            assert_eq!(hook_text("find 'a@b.c'", driver), None, "{driver:?}");
+        }
+        assert!(hook_text("SELECT 1", DriverKind::Cassandra).is_some());
+        assert!(hook_text("SELECT 1", DriverKind::Sqlite).is_some());
+    }
+
+    #[test]
+    fn a_block_says_who_and_why() {
+        let error = block_error(&HookBlock {
+            plugin: "Guard".to_owned(),
+            message: "not on Fridays".to_owned(),
+        });
+        assert_eq!(
+            error.message(),
+            "The plugin “Guard” blocked this: not on Fridays"
+        );
+    }
+
+    #[test]
+    fn a_statement_ends_as_its_result_says() {
+        let ok: Result<u8, platypus_core::Error> = Ok(1);
+        assert_eq!(status_of(&ok), QueryStatus::Ok);
+        let cancelled: Result<u8, _> = Err(platypus_core::Error::Cancelled);
+        assert_eq!(status_of(&cancelled), QueryStatus::Cancelled);
+        let failed: Result<u8, _> = Err(platypus_core::Error::Closed);
+        assert_eq!(status_of(&failed), QueryStatus::Error);
+    }
+
+    #[test]
+    fn the_end_of_a_statement_says_no_more_than_how_it_went() {
+        assert_eq!(query_status(HistoryStatus::Ok), QueryStatus::Ok);
+        assert_eq!(query_status(HistoryStatus::Error), QueryStatus::Error);
+        assert_eq!(
+            query_status(HistoryStatus::Cancelled),
+            QueryStatus::Cancelled
+        );
+    }
 }

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · SQL Server and Azure SQL</title>
+  <meta name="description" content="The driver speaks TDS itself (a patched tiberius), so there is nothing to install or download. It opens SQL Server 2017 (14.0) and later, and Azure SQL.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../../docs.html">Getting started</a>
+<a href="../index.html">User guide</a>
+<h6>Guide</h6>
+<a href="../connect.html">Connect to a database</a>
+<a href="../queries.html">Run queries and read results</a>
+<a href="../edit-data.html">Edit data</a>
+<a href="../import-export.html">Import and export</a>
+<a href="../safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="../projects-sharing.html">Projects and sharing</a>
+<a href="../agents.html">Use PlatypusDB from an agent</a>
+<a href="../troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="index.html">Databases</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub on" aria-current="page">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 and ODBC</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / SQL Server and Azure SQL</div>
+<p><a href="index.html">← Databases</a></p>
+<h1 id="sql-server-and-azure-sql">SQL Server and Azure SQL</h1>
+<p>The driver speaks TDS itself (a patched <code>tiberius</code>), so there is nothing to install or download. It opens SQL Server 2017 (14.0) and later, and Azure SQL.</p>
+<h2 id="connect">Connect</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>You paste</th><th>Read as</th></tr></thead>
+<tbody>
+<tr><td><code>sqlserver://sa:pass@host:1433/master?encrypt=true&amp;trustServerCertificate=true</code> (or <code>mssql://</code>)</td><td>the URL form; default port 1433</td></tr>
+<tr><td><code>jdbc:sqlserver://host:1433;databaseName=shop;encrypt=true</code></td><td>a JDBC URL (Microsoft&#39;s driver, jTDS or the old <code>jdbc:microsoft:</code>)</td></tr>
+<tr><td><code>Server=tcp:db.example.com,1433;Database=shop;User Id=sa;Password=…;Encrypt=True</code></td><td>an ADO.NET or ODBC connection string</td></tr>
+</tbody>
+</table></div>
+<p>In a URL, <code>database</code> or <code>databaseName</code> names the database, and <code>encrypt</code> and <code>trustServerCertificate</code> are read as the JDBC and ADO.NET strings read them (unless <code>sslmode</code> is also given).</p>
+<p><strong>Named instances</strong> (<code>host\SQLEXPRESS</code>) are not looked up through the SQL Server Browser: give the instance&#39;s port. A pasted string with an instance and no port says so.</p>
+<p><strong>TLS</strong>: <code>disable</code> turns encryption off. <code>prefer</code> (the default) encrypts and does not check the certificate (servers often have a self-signed one), and falls back to plain if the server has no encryption. <code>require</code> encrypts without checking. <code>verify-ca</code> and <code>verify-full</code> both check the chain <strong>and</strong> the host name, because the TLS library always checks the name; point <code>sslrootcert</code> at your CA&#39;s file, or the system&#39;s trusted certificates are used.</p>
+<p><strong>Signing in</strong>:</p>
+<ul>
+<li><em>SQL Server login</em>: user and password.</li>
+<li><em>Windows sign-in</em> (<code>Integrated Security=SSPI</code> in a pasted string): only when PlatypusDB runs on Windows; elsewhere it is an error.</li>
+<li><em>Microsoft Entra ID</em>: a token made by the <code>az</code> tool, which must be installed and signed in. This is how Azure SQL&#39;s Entra sign-in is reached.</li>
+</ul>
+<p><strong>Azure SQL</strong>: the gateway may send the client to the database&#39;s own node; the app follows one such redirection, except through an SSH tunnel, which leads to one address only.</p>
+<h2 id="privileges">Privileges</h2>
+<p>Browsing needs what the login can see. The administration tabs read:</p>
+<ul>
+<li><strong>Sessions and locks</strong>: <code>sys.dm_exec_sessions</code>, <code>dm_exec_requests</code>, <code>dm_exec_connections</code> and <code>dm_tran_locks</code>. To see what other logins do, the login needs <code>VIEW SERVER STATE</code>.</li>
+<li><strong>Costliest statements</strong>: <code>sys.dm_exec_query_stats</code>, the plan cache.</li>
+<li><strong>Tables and indexes</strong>: <code>sys.tables</code>, <code>dm_db_partition_stats</code>, <code>dm_db_index_usage_stats</code> and <code>sys.stats</code>.</li>
+<li><strong>Parameters</strong>: <code>sys.configurations</code>; <em>Open in the editor</em> writes a <code>sp_configure</code> statement.</li>
+<li><strong>Dashboard</strong>: performance counters, <code>sys.databases</code> and <code>sys.master_files</code> sizes, and availability groups where there are any; a figure the login cannot read shows &quot;—&quot;.</li>
+<li><strong>Users and roles</strong>: the server&#39;s logins, roles and grants.</li>
+<li><strong>Maintenance</strong>: <code>UPDATE STATISTICS</code>, <code>ALTER INDEX ALL … REBUILD</code> and <code>DBCC CHECKTABLE</code>.</li>
+</ul>
+<h2 id="what-works">What works</h2>
+<ul>
+<li>Data editing in the grid, by primary key (or a unique key on non-null columns, or a virtual key).</li>
+<li>Manual commit and rollback; cancelling a running statement (a TDS attention) keeps the session, its transaction and its temporary tables.</li>
+<li>Several result sets from one batch, and <code>PRINT</code> messages.</li>
+<li>Several databases per connection: a connection that names its database shows only that one; <em>Show all databases</em> lists the rest.</li>
+<li>Explain shows the <strong>estimated</strong> plan (<code>SHOWPLAN</code>). Explain analyze is refused.</li>
+<li><em>End session</em> is <code>KILL</code>. Cancelling another session&#39;s statement is not possible on SQL Server, so the tab offers only to end the session.</li>
+<li>Imports use SQL Server&#39;s bulk copy (<code>OPENJSON</code> inserts for tables with <code>money</code>, <code>xml</code> or legacy columns).</li>
+<li>Schema tools (table editor, ER diagram, comparison), also for computed and collated columns, rich indexes and temporal tables. XML and spatial indexes are left out of a comparison.</li>
+<li>Terminal mode runs <code>sqlcmd</code>, if it is on the PATH.</li>
+</ul>
+<h2 id="agents">Agents</h2>
+<p>On SQL Server the statement check alone stops writes for read-only agents (no server-side read-only session); an agent&#39;s transaction is rolled back. <code>server_activity</code> and <code>top_queries</code> work. See <a href="../../agents.html">Agents and the CLI</a>.</p>
+<h2 id="known-limits">Known limits</h2>
+<ul>
+<li>Older than 2017: the app connects and warns that some features may not work.</li>
+<li>No Explain analyze and no named-instance lookup.</li>
+</ul>
+<h2 id="tested-on">Tested on</h2>
+<p>The conformance suite runs on SQL Server 2017 and 2022 (containers), and the generic ODBC driver is tried against the same 2022 container. Azure SQL is not tested: its redirection, Entra sign-in and encryption rules are in the code but have not been run against the service.</p>
+<p>See also: <a href="../connect.html">Connecting</a>, <a href="../troubleshooting.html">Troubleshooting</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#connect">Connect</a>
+    <a href="#privileges">Privileges</a>
+    <a href="#what-works">What works</a>
+    <a href="#agents">Agents</a>
+    <a href="#known-limits">Known limits</a>
+    <a href="#tested-on">Tested on</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>
