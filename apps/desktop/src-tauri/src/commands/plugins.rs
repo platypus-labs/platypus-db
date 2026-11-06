@@ -276,14 +276,20 @@ fn frame_response(get: bool, path: &str) -> tauri::http::Response<Vec<u8>> {
     })
 }
 
-/// A statement as a hook may see it: `None`, no text at all, on a driver that does not speak SQL
-/// or whose language is the plugin's own, where a literal cannot be told. Otherwise every value is
+/// A statement as a hook may see it: `None`, no text at all, on a driver that does not speak SQL,
+/// whose language is the plugin's own, or that reaches a database we cannot name (ODBC and any
+/// ADBC driver: `"a@b"` is a string on MySQL), where a literal cannot be told. Otherwise every value is
 /// masked, not only those a column's name gives away: `INSERT INTO t VALUES ('a@b.c', 's3cret')`
 /// names none, and a hook may have the network. A guard still reads keywords, tables and columns.
 fn hook_text(sql: &str, driver: DriverKind) -> Option<String> {
     if matches!(
         driver,
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Plugin
+        DriverKind::Mongo
+            | DriverKind::Redis
+            | DriverKind::Elasticsearch
+            | DriverKind::Plugin
+            | DriverKind::Odbc
+            | DriverKind::Adbc
     ) {
         return None;
     }
@@ -533,6 +539,8 @@ mod tests {
             DriverKind::Redis,
             DriverKind::Elasticsearch,
             DriverKind::Plugin,
+            DriverKind::Odbc,
+            DriverKind::Adbc,
         ] {
             assert_eq!(hook_text("find 'a@b.c'", driver), None, "{driver:?}");
         }

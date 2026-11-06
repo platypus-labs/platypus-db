@@ -332,7 +332,8 @@ module, so actions keep nothing between calls. The request is
 - `editor`: `{"text": "…", "selection": {"from", "to", "text"} | null, "driver": "postgres"}`;
 - `grid`: `{"columns": [{"name", "type"}], "rows": [[…], …], "truncated": false}`: the
   selected rows and columns, values as "Copy as JSON" writes them (numbers and booleans bare,
-  the rest as text, `null`), at most 1000 rows (`truncated` says there were more);
+  the rest as text, `null`), a sensitive column's as `••••••`, at most 1000 rows (`truncated` says
+  there were more);
 - `navigator.object`: `{"connection": {"name", "driver", "host", "port", "database", "user"},
   "database", "schema", "object": {"name", "kind"}, "target": "\"main\".\"items\""}`: never a
   password; `target` is the quoted, qualified name.
@@ -407,8 +408,8 @@ and a number can be a card or a salary as a string can be an email, so a guard r
 does, its keywords, tables and columns, and none of what it carries: it can refuse `DELETE` without
 `WHERE` or anything naming a table, and cannot go by a value or a `LIMIT`. Parameters (`$1`) stay, as
 they hold nothing, and so do comments, which are the text the user wrote about the statement. The text
-is at most 64 KB (`truncated` says when it is cut), and `null` on MongoDB, Redis, Elasticsearch and the
-drivers of plugins, whose literals cannot be told. A hook never gets a password, a value of a result or
+is at most 64 KB (`truncated` says when it is cut), and `null` on MongoDB, Redis, Elasticsearch, the
+drivers of plugins, ODBC and any other ADBC driver, whose literals cannot be told. A hook never gets a password, a value of a result or
 the text of an error, which may quote one, and a save gets only how many rows change, as its
 statements quote their values.
 

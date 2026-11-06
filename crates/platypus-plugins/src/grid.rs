@@ -231,6 +231,19 @@ fn exactly(what: &str, values: Vec<Value>, count: usize) -> Result<Vec<Value>, P
     }
 }
 
+/// `value` within [`MAX_VALUE`] bytes, on a character's boundary: the page's limit counts its own
+/// units, and a page is not what a module's memory should rely on.
+fn capped(mut value: String) -> String {
+    if value.len() > MAX_VALUE {
+        let mut end = MAX_VALUE;
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        value.truncate(end);
+    }
+    value
+}
+
 fn check_batch(what: &str, count: usize) -> Result<(), PluginError> {
     if count > MAX_BATCH {
         return Err(PluginError::Denied(format!(
@@ -264,6 +277,10 @@ impl Plugins {
     ) -> Result<Vec<GridValue>, PluginError> {
         check_batch("rows", rows.len())?;
         let count = rows.len();
+        let rows: Vec<Vec<Option<String>>> = rows
+            .into_iter()
+            .map(|row| row.into_iter().map(|v| v.map(capped)).collect())
+            .collect();
         let installed = self.require(id, Capability::Grid)?;
         find(&installed.manifest.grid.columns, id, extension)?;
         let answer: ColumnAnswer = self
@@ -288,6 +305,7 @@ impl Plugins {
     ) -> Result<Vec<GridRendered>, PluginError> {
         check_batch("values", values.len())?;
         let count = values.len();
+        let values: Vec<String> = values.into_iter().map(capped).collect();
         let installed = self.require(id, Capability::Grid)?;
         find(&installed.manifest.grid.renderers, id, extension)?;
         let answer: RenderAnswer = self
@@ -313,6 +331,7 @@ impl Plugins {
     ) -> Result<ActionOutcome, PluginError> {
         let installed = self.require(id, Capability::Grid)?;
         find(&installed.manifest.grid.actions, id, extension)?;
+        let value = value.map(capped);
         let outcome: ActionOutcome = self
             .grid_call(
                 &installed,
@@ -365,6 +384,17 @@ fn find<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_value_is_cut_to_the_limit_on_a_characters_boundary() {
+        assert_eq!(capped("short".to_owned()), "short");
+        let long = capped("x".repeat(MAX_VALUE + 10));
+        assert_eq!(long.len(), MAX_VALUE);
+        // Three bytes each: the limit falls inside a character.
+        let wide = capped("€".repeat(MAX_VALUE));
+        assert!(wide.len() <= MAX_VALUE && wide.len() > MAX_VALUE - 3);
+        assert!(wide.chars().all(|c| c == '€'));
+    }
 
     #[test]
     fn a_value_is_text_or_its_own_error() {

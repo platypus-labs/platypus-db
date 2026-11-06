@@ -296,7 +296,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
               version={version}
               sort={sort}
               onHeaderClick={onHeaderClick && ((col) => col < columns.length && onHeaderClick(col))}
-              source={source ? { ...source, edit: editor.edit, features, references: refs.references, pluginGrid: plugged } : null}
+              source={source ? { ...source, edit: editor.edit, features, references: refs.references, pluginGrid: plugged, sensitive } : null}
               decorate={decorate}
               overlay={
                 <>

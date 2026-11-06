@@ -32,6 +32,8 @@ export interface GridPluginView {
 declare module "../grid/DataGrid" {
   interface GridSourceExtensions {
     pluginGrid?: GridPluginView | null;
+    /** Whether a column is sensitive, whether or not the screen masks it: what a plugin may read. */
+    sensitive?: (column: ColumnInfo) => boolean;
   }
 }
 
