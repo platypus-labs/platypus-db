@@ -596,7 +596,7 @@ const it: Record<string, string> = {
   "Shell command": "Comando di shell",
   "Command that prints the {secret}": "Comando che stampa {secret}",
   "{secret} (only to test the connection)": "{secret} (solo per provare la connessione)",
-  "Read-only (warn before modifying data)": "Sola lettura (avvisa prima di modificare i dati)",
+  "Read-only (refuses changes to data)": "Sola lettura (rifiuta le modifiche ai dati)",
   "Projects": "Progetti",
   "Network profile": "Profilo di rete",
   "None — this connection's own settings": "Nessuno — le impostazioni di questa connessione",
@@ -3362,6 +3362,11 @@ const it: Record<string, string> = {
   "Some text of this theme may be hard to read: {pairs}": "Parte del testo di questo tema potrebbe essere poco leggibile: {pairs}",
   "Remove and keep its settings": "Rimuovi e conserva le impostazioni",
   "Remove everything": "Rimuovi tutto",
+  "Files are only looked for in a selection of up to 20,000 rows": "I file si cercano solo in una selezione di al massimo 20.000 righe",
+  "Save files to a folder…": "Salva i file in una cartella…",
+  "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "L'alias Db2 {alias} non ha un host: inserisci host, porta e database prima di connetterti.",
+  "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} ha proposto modifiche ai dati, ma non è stato possibile connettersi a {name}: non sono state aperte.",
+  "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} ha proposto modifiche a {table}, ma non è stato possibile connettersi a {name}: non sono state aperte.",
 };
 
 export default it;

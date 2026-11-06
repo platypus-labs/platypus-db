@@ -596,7 +596,7 @@ const fr: Record<string, string> = {
   "Shell command": "Commande shell",
   "Command that prints the {secret}": "Commande qui affiche {secret}",
   "{secret} (only to test the connection)": "{secret} (seulement pour tester la connexion)",
-  "Read-only (warn before modifying data)": "Lecture seule (avertir avant de modifier des données)",
+  "Read-only (refuses changes to data)": "Lecture seule (refuse les modifications de données)",
   "Projects": "Projets",
   "Network profile": "Profil réseau",
   "None — this connection's own settings": "Aucun — les paramètres propres à cette connexion",
@@ -3362,6 +3362,11 @@ const fr: Record<string, string> = {
   "Some text of this theme may be hard to read: {pairs}": "Une partie du texte de ce thème peut être difficile à lire : {pairs}",
   "Remove and keep its settings": "Supprimer et garder ses réglages",
   "Remove everything": "Tout supprimer",
+  "Files are only looked for in a selection of up to 20,000 rows": "Les fichiers ne sont cherchés que dans une sélection de 20 000 lignes au plus",
+  "Save files to a folder…": "Enregistrer les fichiers dans un dossier…",
+  "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "L'alias Db2 {alias} n'a pas d'hôte : renseignez l'hôte, le port et la base avant de vous connecter.",
+  "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} a proposé des modifications de données, mais {name} n'a pas pu être connectée : elles n'ont pas été ouvertes.",
+  "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} a proposé des modifications de {table}, mais {name} n'a pas pu être connectée : elles n'ont pas été ouvertes.",
 };
 
 export default fr;

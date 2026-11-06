@@ -6,6 +6,7 @@ import { changelog, guide } from "./bundled";
 import { openExternal } from "./external";
 import { GuideMarkdown } from "./GuideMarkdown";
 import { changelogSection, type LinkTarget, pageSource, sortedKeys, START_PAGE, titleOf } from "./pages";
+import { advance, arrival, back, type Place } from "./trail";
 
 // Loaded at first use, through `open.ts`: import that one, not this module.
 
@@ -17,19 +18,19 @@ export function openWhatsNew() {
   workbench().openDialog((close) => <WhatsNewDialog onClose={close} />);
 }
 
-interface Place {
-  page: string;
-  anchor: string | null;
-}
-
-/** Scrolls the reader to the heading `anchor`, or to the top when the page has none. */
-function scrollTo(reader: HTMLElement, anchor: string | null) {
-  const heading = anchor ? [...reader.querySelectorAll<HTMLElement>("[data-anchor]")].find((h) => h.dataset.anchor === anchor) : undefined;
+/** Scrolls the reader to where it was left, else to the heading of the place, else to the top. */
+function scrollTo(reader: HTMLElement, place: Place) {
+  const at = arrival(place);
+  if ("top" in at) {
+    reader.scrollTop = at.top;
+    return;
+  }
+  const heading = at.anchor ? [...reader.querySelectorAll<HTMLElement>("[data-anchor]")].find((h) => h.dataset.anchor === at.anchor) : undefined;
   reader.scrollTop = heading ? reader.scrollTop + heading.getBoundingClientRect().top - reader.getBoundingClientRect().top : 0;
 }
 
 function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string | null; onClose: () => void }) {
-  const [trail, setTrail] = useState<Place[]>([{ page, anchor }]);
+  const [trail, setTrail] = useState<Place[]>([{ page, anchor, scroll: null }]);
   const here = trail[trail.length - 1]!;
   const { pages, images } = guide();
   const index = useMemo(
@@ -39,7 +40,7 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
   );
   const reader = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (reader.current) scrollTo(reader.current, here.anchor);
+    if (reader.current) scrollTo(reader.current, here);
   }, [here]);
   // Escape and the arrow keys work at once; closing gives the focus back, so that the form or the
   // Settings under the guide still answer to the keyboard.
@@ -51,7 +52,10 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
     };
   }, []);
 
-  const go = (place: Place) => setTrail((all) => [...all, place]);
+  const go = (place: Omit<Place, "scroll">) => {
+    const scroll = reader.current?.scrollTop ?? 0;
+    setTrail((all) => advance(all, scroll, place));
+  };
   const follow = (target: LinkTarget) => {
     if (target.kind === "external") void openExternal(target.url);
     else if (target.kind === "anchor") go({ page: here.page, anchor: target.anchor });
@@ -69,7 +73,7 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
       >
         <div className="guide-head">
           <h2>{t("User guide")}</h2>
-          <button type="button" disabled={trail.length < 2} onClick={() => setTrail((all) => all.slice(0, -1))}>
+          <button type="button" disabled={trail.length < 2} onClick={() => setTrail(back)}>
             {t("Back")}
           </button>
           <span className="spacer" />

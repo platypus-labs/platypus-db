@@ -596,7 +596,7 @@ const pt: Record<string, string> = {
   "Shell command": "Comando de shell",
   "Command that prints the {secret}": "Comando que imprime {secret}",
   "{secret} (only to test the connection)": "{secret} (só para testar a conexão)",
-  "Read-only (warn before modifying data)": "Somente leitura (avisar antes de alterar dados)",
+  "Read-only (refuses changes to data)": "Somente leitura (recusa alterações nos dados)",
   "Projects": "Projetos",
   "Network profile": "Perfil de rede",
   "None — this connection's own settings": "Nenhum — as configurações próprias desta conexão",
@@ -3362,6 +3362,11 @@ const pt: Record<string, string> = {
   "Some text of this theme may be hard to read: {pairs}": "Parte do texto deste tema pode ser difícil de ler: {pairs}",
   "Remove and keep its settings": "Remover e manter as definições",
   "Remove everything": "Remover tudo",
+  "Files are only looked for in a selection of up to 20,000 rows": "Os arquivos só são procurados numa seleção de até 20.000 linhas",
+  "Save files to a folder…": "Salvar os arquivos em uma pasta…",
+  "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "O alias Db2 {alias} não tem host: informe host, porta e banco de dados antes de conectar.",
+  "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} propôs alterações nos dados, mas não foi possível conectar a {name}, então elas não foram abertas.",
+  "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} propôs alterações em {table}, mas não foi possível conectar a {name}, então elas não foram abertas.",
 };
 
 export default pt;

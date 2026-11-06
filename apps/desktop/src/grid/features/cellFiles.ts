@@ -5,14 +5,12 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { registerAction } from "../../actions";
 import { api, type CellFile, type ColumnInfo, keepsDataIn } from "../../api";
-import { t } from "../../i18n";
+import { msg, t } from "../../i18n";
 import { pickFolder } from "../../projects/shared";
 import { workbench } from "../../workbench";
 import type { GridActionContext, GridApi } from "../DataGrid";
-import { defaultFileName } from "../fileType";
+import { defaultFileName, lookupFiles } from "../fileType";
 
-/** Files of more rows than this are not looked for when the menu opens. */
-const MAX_ROWS = 20_000;
 /** Rows written by each call to the backend, so that progress shows between them. */
 const CHUNK = 25;
 
@@ -24,7 +22,8 @@ interface Prepared {
   r1: number;
   /** The result row of `r0`. */
   first: number;
-  files: (CellFile | null)[];
+  /** `null` when the selection is too long to look for files in. */
+  files: (CellFile | null)[] | null;
   /** Whether a column's values show masked. */
   masked: (col: number) => boolean;
 }
@@ -41,8 +40,8 @@ export async function prepareCellFiles(grid: GridApi, jobId: number | null, mask
   const last = grid.dataRow(sel.r1);
   if (masked(col) || last === null) return;
   const first = grid.dataRow(sel.r0) ?? 0;
-  if (last - first + 1 > MAX_ROWS) return;
-  const files = await api.columnFiles(jobId, col, first, last - first + 1);
+  // Too long a selection is not read: the menu says why it offers no folder.
+  const files = lookupFiles(last - first + 1) ? await api.columnFiles(jobId, col, first, last - first + 1) : null;
   prepared = { jobId, col, r0: sel.r0, r1: sel.r1, first, files, masked };
 }
 
@@ -56,13 +55,19 @@ function current({ grid, source }: GridActionContext): Prepared | null {
 /** The file of the one selected cell. */
 function single(ctx: GridActionContext): CellFile | null {
   const p = current(ctx);
-  return p && p.r0 === p.r1 ? (p.files[0] ?? null) : null;
+  return p && p.r0 === p.r1 ? (p.files?.[0] ?? null) : null;
 }
 
 /** The number of files in a selection of several cells. */
 function many(ctx: GridActionContext): number {
   const p = current(ctx);
-  return p && p.r1 > p.r0 ? p.files.filter(Boolean).length : 0;
+  return p && p.r1 > p.r0 ? (p.files?.filter(Boolean).length ?? 0) : 0;
+}
+
+/** Whether the selection is one column of several rows, too long to look for files in. */
+function tooLong(ctx: GridActionContext): boolean {
+  const p = current(ctx);
+  return p !== null && p.r1 > p.r0 && p.files === null;
 }
 
 /** The result column that names the files: `id`, else the first one ending in `_id`. */
@@ -123,4 +128,16 @@ registerAction({
       workbench().notify(t("Saved {written} files to {folder}", { written, folder }));
     }
   },
+});
+
+// Shown greyed out with the reason, so that a long selection does not just lose the item.
+registerAction({
+  id: "grid.save_files_limit",
+  scope: "grid",
+  title: "Save files to a folder…",
+  group: "copy",
+  order: 18.5,
+  when: (ctx) => tooLong(ctx),
+  disabled: () => msg("Files are only looked for in a selection of up to 20,000 rows"),
+  run: () => {},
 });

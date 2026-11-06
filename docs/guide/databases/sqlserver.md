@@ -3,7 +3,8 @@
 # SQL Server and Azure SQL
 
 The driver speaks TDS itself (a patched `tiberius`), so there is nothing to install or download.
-It opens SQL Server 2017 (14.0) and later, and Azure SQL.
+It is written for SQL Server 2017 (14.0) and later, and for Azure SQL (not tested against the
+service: see the end of this page).
 
 ## Connect
 
@@ -41,7 +42,7 @@ such redirection, except through an SSH tunnel, which leads to one address only.
 
 Browsing needs what the login can see. The administration tabs read:
 
-- **Sessions and locks**: `sys.dm_exec_sessions`, `dm_exec_requests`, `dm_exec_connections` and
+- **Sessions** and **Locks**: `sys.dm_exec_sessions`, `dm_exec_requests`, `dm_exec_connections` and
   `dm_tran_locks`. To see what other logins do, the login needs `VIEW SERVER STATE`.
 - **Costliest statements**: `sys.dm_exec_query_stats`, the plan cache.
 - **Tables and indexes**: `sys.tables`, `dm_db_partition_stats`, `dm_db_index_usage_stats` and

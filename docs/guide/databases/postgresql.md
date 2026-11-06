@@ -70,9 +70,9 @@ next transaction may be on another server session. The form suggests it for host
 `.pooler.supabase.com` and for Neon hosts with `-pooler` in the name. In that mode the
 PL/pgSQL debugger is off, and agents' read-only sessions rely on the statement check alone.
 
-The other servers have buttons of their own, which only set defaults:
+The other servers have tiles of their own, which only set defaults:
 
-| Button | Defaults it sets |
+| Tile | Defaults it sets |
 |---|---|
 | CockroachDB | port 26257 |
 | YugabyteDB | port 5433, user and database `yugabyte` |
@@ -84,9 +84,10 @@ The other servers have buttons of their own, which only set defaults:
 
 Browsing needs only what the server shows the login. The administration tabs read these:
 
-- **Sessions and locks**: `pg_stat_activity` and `pg_locks`. Other users' sessions and statements
-  show for a superuser or a member of `pg_read_all_stats`. *Cancel statement* and *End session*
-  call `pg_cancel_backend` and `pg_terminate_backend`.
+- **Sessions** and **Locks**: `pg_stat_activity` and `pg_locks`. The app lists the client sessions
+  the server returns; how much of other users' sessions and statements the server shows to the
+  login is the server's rule, which the app does not check. *Cancel statement* and *End session*
+  call `pg_cancel_backend` and `pg_terminate_backend`; the server decides whether the login may.
 - **Costliest statements**: the `pg_stat_statements` extension. Without it the tab says how to
   turn it on (add it to `shared_preload_libraries`, restart, `CREATE EXTENSION`).
 - **Tables and indexes**: `pg_stat_user_tables` and `pg_stat_user_indexes`.
@@ -115,8 +116,9 @@ is, and the server tools that rely on PostgreSQL's own views are off: no session
 dashboard, statements, tables and indexes, parameters, users or maintenance tabs, and no
 debugger. CockroachDB has its own plan format (Explain and Explain analyze work) and imports go
 as `INSERT` statements instead of `COPY`. A CockroachDB table without a key is edited by its
-hidden `rowid`. TimescaleDB, Supabase, Neon and AlloyDB are PostgreSQL to the app, with
-everything above.
+hidden `rowid`. TimescaleDB (tested), Supabase, Neon and AlloyDB (not tested against the
+services) are PostgreSQL to the app, with everything above; what a hosted service restricts for
+your role is its own rule.
 
 ## Agents
 

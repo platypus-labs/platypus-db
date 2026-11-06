@@ -24,7 +24,7 @@ dot after a page's name means it holds settings.
 
 - **General**: host, port, user, database and where the password comes from (below).
 - **Appearance and safety**: the environment (Development, Test or Production), a color, the
-  **Read-only (warn before modifying data)** box, the boxes that stop exports and data editing,
+  **Read-only (refuses changes to data)** box, the boxes that stop exports and data editing,
   and the agents' access. See [Safety](safety.md) and [Agents](agents.md).
 - **Network**: SSH tunnel, SSL mode and certificates, proxy, port forward and commands around the
   connection.
@@ -37,17 +37,23 @@ In **General**, the password comes from one of:
 
 - **Saved in the keychain**: the system keychain.
 - **Ask every time**: typed at each connection. Agents cannot open such a connection.
-- **.pgpass file** (PostgreSQL only).
+- **.pgpass file** (PostgreSQL only; the connection's host, port, database and user pick the
+  line, as libpq does).
 - **Shell command**: a command that prints the password.
 
 Any field can read an environment variable written `${env:NAME}`. Password managers
-(1Password, Bitwarden, HashiCorp Vault, AWS Secrets Manager) are listed in the same place when
-the database supports them: give the secret's reference. Their command-line tool must be
-installed and signed in.
+(1Password, Bitwarden, HashiCorp Vault, AWS Secrets Manager) are in the same list for every
+database whose form asks for a password or a token; none is limited to one database. Give the
+secret's reference: the app builds the shell command from it (`op read`, `bw get password`,
+`vault kv get`, `aws secretsmanager get-secret-value`) and runs it at each connection. Their
+command-line tool must be installed and signed in. Nothing here has been run against a real
+1Password, Bitwarden, Vault or AWS account: only the commands the app builds and the shell
+command itself are tested.
 
 Some databases sign in with no password at all, and the same list offers them: a token from a
-cloud's command-line tool, Windows' sign-in for SQL Server, and a **Kerberos ticket** for PostgreSQL
-on Windows and Linux. Run `kinit` first, or set `KRB5CCNAME` or `KRB5_CLIENT_KTNAME`; on Windows the
+cloud's command-line tool (AWS IAM and Google Cloud IAM for PostgreSQL and MySQL, Microsoft Entra
+ID for those two and SQL Server), Windows' sign-in for SQL Server, and a **Kerberos ticket** for
+PostgreSQL on Windows and Linux. Run `kinit` first, or set `KRB5CCNAME` or `KRB5_CLIENT_KTNAME`; on Windows the
 ticket is your session's. The ticket is the only thing that goes to the server, and a test without
 one says what to run. The [PostgreSQL page](databases/postgresql.md) has the details, and what is
 and is not tested: a real ticket has logged in from Linux, not yet through Windows' SSPI.

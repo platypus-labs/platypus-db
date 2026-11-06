@@ -35,6 +35,8 @@ export function noteText(note: ParseNote): string {
       return t("Named instance {instance}: set the port it listens on.", { instance: note.instance });
     case "missing_file":
       return t("The database file {path} was not found: choose it before connecting.", { path: note.path });
+    case "cataloged_alias":
+      return t("Db2 alias {alias} has no host: fill in the host, port and database before connecting.", { alias: note.alias });
     case "ignored":
       return t("Not used here: {keys}.", { keys: note.keys.join(", ") });
     case "other_hosts":

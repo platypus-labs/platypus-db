@@ -36,9 +36,10 @@ Browsing needs what the login can see. The administration tabs read:
 
 - **Sessions**: the process list, from `performance_schema.threads` on MySQL 8 and from
   `information_schema.PROCESSLIST` on MariaDB, MySQL 5.7 or a server with `performance_schema`
-  off. Seeing other users' sessions needs `PROCESS`.
-- **Locks**: `performance_schema.data_lock_waits`, `data_locks` and `metadata_locks` on MySQL 8
-  (and `PROCESS`), `INNODB_LOCK_WAITS` in `information_schema` on MariaDB and older MySQL.
+  off. How much of other users' sessions the server shows is the server's rule, which the app
+  does not check.
+- **Locks**: `performance_schema.data_lock_waits`, `data_locks` and `metadata_locks` on MySQL 8 (seeing other sessions' waits needs
+  `PROCESS`; without it the list has no waits and says so), `INNODB_LOCK_WAITS` in `information_schema` on MariaDB and older MySQL.
 - **Costliest statements**: `performance_schema.events_statements_summary_by_digest`. If
   `performance_schema` is off, the tab says to start the server with it.
 - **Tables and indexes**: `information_schema`, plus `performance_schema` for how much each index

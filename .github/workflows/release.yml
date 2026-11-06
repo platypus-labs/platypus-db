@@ -117,4 +117,6 @@ jobs:
           releaseBody: See the assets below to download and install this version.
           releaseDraft: true
           includeUpdaterJson: true
+          # `windows-x86_64` in latest.json points at the NSIS installer, which the app installs by default.
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}

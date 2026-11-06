@@ -19,3 +19,10 @@ test("the default file name is the column and the type's extension", () => {
   assert.equal(defaultFileName('a/b:c', null, true), "a_b_c.bin");
   assert.equal(defaultFileName("", null, true), "value.bin");
 });
+
+test("a selection of more than 20,000 rows is not read for files", async () => {
+  const { FILE_LOOKUP_ROWS, lookupFiles } = await import("../src/grid/fileType.ts");
+  assert.equal(FILE_LOOKUP_ROWS, 20_000);
+  assert.equal(lookupFiles(20_000), true);
+  assert.equal(lookupFiles(20_001), false);
+});

@@ -111,6 +111,10 @@ pub enum ImportNote {
     /// The database file is not there (a relative path stays as it was written): it must be
     /// chosen before connecting.
     MissingFile { path: String },
+    /// A Db2 connection by alias (`jdbc:db2:ALIAS`): it names an entry of the Db2 client's
+    /// catalog, which PlatypusDB does not read, so it has no host. The host, port and
+    /// database name must be filled in before connecting.
+    CatalogedAlias { alias: String },
 }
 
 impl ImportedProject {
@@ -269,6 +273,7 @@ pub fn import(source: ImportSource, path: &Path) -> Result<Vec<ImportedProject>>
     let base = project_folder(path);
     for project in &mut projects {
         locate_files(project, base);
+        note_aliases(project);
     }
     Ok(projects)
 }
@@ -306,6 +311,19 @@ fn locate_files(project: &mut ImportedProject, base: Option<&Path>) {
             path: c.database.clone(),
         };
         project.notes.entry(c.id).or_default().push(note);
+    }
+}
+
+/// Notes the Db2 connections that have no host: they name an alias of the Db2 client's catalog
+/// (`jdbc:db2:ALIAS`), which cannot be followed here.
+fn note_aliases(project: &mut ImportedProject) {
+    for c in &project.connections {
+        if c.driver == DriverKind::Db2 && c.host.trim().is_empty() && !c.database.is_empty() {
+            let note = ImportNote::CatalogedAlias {
+                alias: c.database.clone(),
+            };
+            project.notes.entry(c.id).or_default().push(note);
+        }
     }
 }
 
@@ -1147,6 +1165,28 @@ mod tests {
                 path: "gone.db".to_owned()
             }]
         );
+    }
+
+    #[test]
+    fn a_db2_alias_has_no_host_and_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let json = dir.path().join("data-sources.json");
+        std::fs::write(
+            &json,
+            r#"{"connections": {
+              "e": {"provider": "db2", "name": "alias", "configuration": {"url": "jdbc:db2:PRODDB"}},
+              "f": {"provider": "db2", "name": "host", "configuration": {"url": "jdbc:db2://dbhost:50000/SAMPLE"}}}}"#,
+        )
+        .unwrap();
+        let project = import(ImportSource::Dbeaver, &json).unwrap().remove(0);
+        let by = |n: &str| project.connections.iter().find(|c| c.name == n).unwrap();
+        assert_eq!(
+            project.notes[&by("alias").id],
+            [ImportNote::CatalogedAlias {
+                alias: "PRODDB".to_owned()
+            }]
+        );
+        assert!(!project.notes.contains_key(&by("host").id));
     }
 
     #[test]

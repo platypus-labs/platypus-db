@@ -105,8 +105,8 @@
 <h2 id="privileges">Privileges</h2>
 <p>Browsing needs what the login can see. The administration tabs read:</p>
 <ul>
-<li><strong>Sessions</strong>: the process list, from <code>performance_schema.threads</code> on MySQL 8 and from <code>information_schema.PROCESSLIST</code> on MariaDB, MySQL 5.7 or a server with <code>performance_schema</code> off. Seeing other users&#39; sessions needs <code>PROCESS</code>.</li>
-<li><strong>Locks</strong>: <code>performance_schema.data_lock_waits</code>, <code>data_locks</code> and <code>metadata_locks</code> on MySQL 8 (and <code>PROCESS</code>), <code>INNODB_LOCK_WAITS</code> in <code>information_schema</code> on MariaDB and older MySQL.</li>
+<li><strong>Sessions</strong>: the process list, from <code>performance_schema.threads</code> on MySQL 8 and from <code>information_schema.PROCESSLIST</code> on MariaDB, MySQL 5.7 or a server with <code>performance_schema</code> off. How much of other users&#39; sessions the server shows is the server&#39;s rule, which the app does not check.</li>
+<li><strong>Locks</strong>: <code>performance_schema.data_lock_waits</code>, <code>data_locks</code> and <code>metadata_locks</code> on MySQL 8 (seeing other sessions&#39; waits needs <code>PROCESS</code>; without it the list has no waits and says so), <code>INNODB_LOCK_WAITS</code> in <code>information_schema</code> on MariaDB and older MySQL.</li>
 <li><strong>Costliest statements</strong>: <code>performance_schema.events_statements_summary_by_digest</code>. If <code>performance_schema</code> is off, the tab says to start the server with it.</li>
 <li><strong>Tables and indexes</strong>: <code>information_schema</code>, plus <code>performance_schema</code> for how much each index is read; without it the index use is unknown.</li>
 <li><strong>Cancel statement</strong> and <strong>End session</strong> run <code>KILL QUERY</code> and <code>KILL CONNECTION</code>.</li>
