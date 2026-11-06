@@ -15,7 +15,7 @@ merged, and the style the code follows. By taking part you agree to the
 
 You need Rust stable (≥ 1.99) with `rustfmt` and `clippy`, Node.js ≥ 24 (see `.nvmrc`), the
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your system, and Docker
-for the dev databases. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) has the project layout, the
+for the dev databases. [docs/dev/DEVELOPMENT.md](docs/dev/DEVELOPMENT.md) has the project layout, the
 commands to run the app and the CLI, the sample database and the dev databases.
 
 ```bash
@@ -25,11 +25,11 @@ npm run tauri dev
 ```
 
 How features plug into the app (actions, tab kinds, settings, driver capabilities) is explained
-in [docs/EXTENDING.md](docs/EXTENDING.md).
+in [docs/dev/EXTENDING.md](docs/dev/EXTENDING.md).
 
 ## Finding something to work on
 
-Planned work is in [docs/ROADMAP.md](docs/ROADMAP.md) (in Italian), split into **groups** that
+Planned work is in [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md) (in Italian), split into **groups** that
 own separate areas of the code, so that several people can work in parallel without conflicts.
 
 **Outside contributors**: open an issue first for anything larger than a small fix, then send
@@ -124,8 +124,8 @@ steps above before merging, even when a change does not touch the UI or the driv
    superfluous work, without changing behavior, in a separate `refactor:` commit.
 2. **Verify** as above.
 3. **Review** the branch and fix what the review finds.
-4. **Document**: the group's "Stato" line in the roadmap, [docs/EXTENDING.md](docs/EXTENDING.md)
-   for a new extension point, [docs/FEATURES.md](docs/FEATURES.md) for user-facing features (and the README in English and
+4. **Document**: the group's "Stato" line in the roadmap, [docs/dev/EXTENDING.md](docs/dev/EXTENDING.md)
+   for a new extension point, [docs/user/FEATURES.md](docs/user/FEATURES.md) for user-facing features (and the README in English and
    Italian when the overview changes), and the
    [changelog](CHANGELOG.md).
 5. **Merge** into `main` (team members, no pull request):

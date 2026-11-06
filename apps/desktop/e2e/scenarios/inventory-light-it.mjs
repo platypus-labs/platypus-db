@@ -1,4 +1,4 @@
-// The visual inventory in the light theme, interface in Italian. Runs with PLATYPUS_INVENTORY set; see docs/INVENTORY.md.
+// The visual inventory in the light theme, interface in Italian. Runs with PLATYPUS_INVENTORY set; see docs/dev/INVENTORY.md.
 import { runInventory, seed } from "../inventory.mjs";
 
 export { skip } from "../inventory.mjs";

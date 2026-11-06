@@ -15,7 +15,7 @@ launching the app to the last change on screen, the connection listed in the nav
 SQLite connection open. The limits are in scripts/bench-thresholds.json: a few times what
 the dev machines measure, so a run fails on a regression, not on a slow runner.
 `other` measures another client (DBeaver, Beekeeper Studio, ...) the same way, for the side by
-side table of docs/BENCHMARKS.md: five starts with a profile of its own in a temporary HOME,
+side table of docs/dev/BENCHMARKS.md: five starts with a profile of its own in a temporary HOME,
 then its memory at rest, without a connection. It prints the numbers and has no limits.
 Python, not Node like the other scripts: it reads the screen and /proc.
 """

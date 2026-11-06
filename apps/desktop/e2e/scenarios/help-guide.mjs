@@ -5,7 +5,7 @@
 // page, and the "?" of the connection form, Settings > Agents and Settings > Safety open the
 // matching page. "What's new" shows the changelog section of the running version, and "Report a
 // bug" opens the project's issue page. The pages are the scenario's own (the test hook
-// `__platypus.setGuide`), so the links do not depend on the text of docs/guide; a last part walks
+// `__platypus.setGuide`), so the links do not depend on the text of docs/user/guide; a last part walks
 // the guide that ships.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -65,7 +65,7 @@ Open the **Network** tab.
 |---|---|
 | Host | the server |
 
-![A screenshot](../screenshots/palette.png)
+![A screenshot](../../screenshots/palette.png)
 
 See [the tunnels](#ssh-tunnels) above, [PostgreSQL](databases/postgres.md#tls) and [the index](README.md).
 `,
@@ -290,7 +290,7 @@ export default async function (page) {
   await page.eval(`${dialog}.querySelector('.guide-index button[data-page="README"]').click()`);
   await page.waitFor(`${pageOf} === 'README'`);
   await page.eval(`${link("FEATURES.md")}.click()`);
-  await page.waitFor(`${pageOf} === 'docs/FEATURES.md' && ${reader}.querySelector('h1') !== null`);
+  await page.waitFor(`${pageOf} === 'docs/user/FEATURES.md' && ${reader}.querySelector('h1') !== null`);
   assert.equal(await page.eval(`${reader}.querySelector('.guide-missing')`), null);
   await closeGuide(page);
 

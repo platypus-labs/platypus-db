@@ -1,4 +1,4 @@
-//! The guest side of the PlatypusDB plugin ABI, versions 1 and 2 (see `docs/PLUGINS.md`), for
+//! The guest side of the PlatypusDB plugin ABI, versions 1 and 2 (see `docs/user/PLUGINS.md`), for
 //! plugins written in Rust and built for `wasm32-unknown-unknown`. A module imports only the
 //! host functions it uses: [`setting`] needs `api = 2`, the rest works under either.
 //!

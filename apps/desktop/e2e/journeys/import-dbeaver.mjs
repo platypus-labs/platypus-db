@@ -1,4 +1,4 @@
-// Complete user journey 2, import from DBeaver (docs/COLLAUDO.md 5.2): a DBeaver project export
+// Complete user journey 2, import from DBeaver (docs/dev/COLLAUDO.md 5.2): a DBeaver project export
 // (folders, a production connection, an SSH one, files) imported from the first-start screen;
 // imported again (no duplicates: every row "already saved", nothing to import); a connection
 // moved to a new folder, one marked production, one read-only; the app restarted (folders,

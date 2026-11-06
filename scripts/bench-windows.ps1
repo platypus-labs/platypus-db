@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Start time and memory at rest of a desktop client on Windows, for the side by side table of
-  docs/BENCHMARKS.md. The Windows counterpart of `scripts/bench.py other`.
+  docs/dev/BENCHMARKS.md. The Windows counterpart of `scripts/bench.py other`.
 
 .EXAMPLE
   .\scripts\bench-windows.ps1 -Name PlatypusDB -Exe target\release\platypus-db.exe -Kind platypus

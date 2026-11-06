@@ -15,5 +15,5 @@
 - [ ] UI changes: `npm --prefix apps/desktop run tauri build -- --no-bundle`, then `npm --prefix apps/desktop run e2e`
 - [ ] Driver changes: `docker compose -f docker/compose.yml up -d --wait`, then `cargo test -p platypus-conformance` (no database skipped)
 - [ ] New logic has tests; driver changes are in the conformance suite
-- [ ] Docs updated: docs/FEATURES.md for user features (README and README.it.md for the overview), docs/EXTENDING.md for extension points, CHANGELOG.md
+- [ ] Docs updated: docs/user/FEATURES.md for user features (README and README.it.md for the overview), docs/dev/EXTENDING.md for extension points, CHANGELOG.md
 - [ ] Commits follow Conventional Commits, in English

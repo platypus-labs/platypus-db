@@ -1,8 +1,8 @@
-[← README](../README.md)
+[← README](../../README.md)
 
 # Features
 
-Everything PlatypusDB does, area by area. The [README](../README.md) has the short version.
+Everything PlatypusDB does, area by area. The [README](../../README.md) has the short version.
 To do something step by step, see the [user guide](guide/README.md).
 
 ## Databases
@@ -68,7 +68,7 @@ to the package manager.
 
 ## Connections
 
-![Choosing the database for a new connection](screenshots/connections.png)
+![Choosing the database for a new connection](../screenshots/connections.png)
 
 - A new connection starts from a grid of database logos, with a search on top (`Enter` takes
   the first match); the `+` of the navigator opens it, and so does a right-click on a connection
@@ -205,7 +205,7 @@ to the package manager.
 
 ## Notes, comments and schema documentation
 
-![The comments, notes and tags of a table and its columns](screenshots/catalog.png)
+![The comments, notes and tags of a table and its columns](../screenshots/catalog.png)
 
 - **Notes and tags** on tables, views and columns, kept on your computer and never written to
   the database: in the object tab, for the object and for each of its columns. The navigator
@@ -234,11 +234,11 @@ to the package manager.
   or a single HTML file (it works offline) with the columns, keys, indexes, comments, notes,
   tags and an ER diagram of each schema of up to 100 tables.
 
-![The exported HTML documentation with its ER diagram](screenshots/schema-docs.png)
+![The exported HTML documentation with its ER diagram](../screenshots/schema-docs.png)
 
 ## SQL editor
 
-![JOIN completion from the foreign keys](screenshots/autocomplete.png)
+![JOIN completion from the foreign keys](../screenshots/autocomplete.png)
 
 - Run the statement under the cursor (`Ctrl+Enter`) or the whole script (`Alt+X`). Statements
   end at a `;`, or, as in DBeaver, at a blank line before a word that starts a new one
@@ -385,11 +385,11 @@ to the package manager.
   UUIDs, dates, numbers stored as text, phone numbers, stray spaces) with the values that do
   not fit, and outliers. Click a value to see its rows.
 
-![A result as a bar chart](screenshots/chart.png)
+![A result as a bar chart](../screenshots/chart.png)
 
 ## Data editor
 
-![Pending changes in the data editor](screenshots/data-editor.png)
+![Pending changes in the data editor](../screenshots/data-editor.png)
 
 - Change cells in place (double-click, `F2` or just type), set NULL or the default, add,
   duplicate and delete rows. Changes stay highlighted until you save.
@@ -415,7 +415,7 @@ to the package manager.
 
 ## Table editor
 
-![Designing a table](screenshots/table-editor.png)
+![Designing a table](../screenshots/table-editor.png)
 
 Right-click a table, *Edit table…* (F4), or a schema, *Create table…*; *Edit table…* is also
 in a table's tab, next to *Open data*, and in the data viewer's bar, next to *Structure*, which
@@ -469,7 +469,7 @@ created again with its rows copied.
 
 ## Visual query builder
 
-![Two tables joined on their foreign key](screenshots/query-builder.png)
+![Two tables joined on their foreign key](../screenshots/query-builder.png)
 
 Drag tables onto a canvas, or add them from the list with Enter or their *+*: they join on
 their foreign keys. The join button between two tables shows its condition and switches
@@ -479,7 +479,7 @@ box resize by their edge or corner; the list keeps its width.
 
 ## Query plans and performance
 
-![Explain analyze with the heatmap and an index suggestion](screenshots/explain.png)
+![Explain analyze with the heatmap and an index suggestion](../screenshots/explain.png)
 
 - `Ctrl+Shift+E` opens the plan of the statement under the cursor as a tree with costs,
   estimated rows and each step's details, as indented text or as a table.
@@ -502,7 +502,7 @@ box resize by their edge or corner; the list keeps its width.
   PostgreSQL's JSON or text (as psql prints it), CockroachDB's, MySQL's tree, MariaDB's JSON,
   SQLite's `QUERY PLAN` and SQL Server's `SHOWPLAN_TEXT`, recognized or chosen.
 
-![The query manager with the trace of a statement](screenshots/query-manager.png)
+![The query manager with the trace of a statement](../screenshots/query-manager.png)
 
 - **Query manager** (`Ctrl+Shift+M`): every statement, metadata request, commit and rollback
   the app sent, with connection, duration, rows and outcome; the last 2,000 are kept in
@@ -727,7 +727,7 @@ through the MCP server.
 
 | | |
 |---|---|
-| ![Command palette](screenshots/palette.png) | ![Platypus Light](screenshots/light-theme.png) |
+| ![Command palette](../screenshots/palette.png) | ![Platypus Light](../screenshots/light-theme.png) |
 
 - **Projects**: a rail of colored squares on the left, one per project (a client, an
   environment, a side job). A project shows only its connections, tabs and recent queries; a
@@ -841,7 +841,7 @@ through the MCP server.
 
 ## Settings and themes
 
-![Settings, one section per tab](screenshots/settings.png)
+![Settings, one section per tab](../screenshots/settings.png)
 
 - **Help**: the *?* in the top bar (and the command palette, typing "help") opens the user guide,
   which comes with the app and works offline, with an index, links between its pages and the

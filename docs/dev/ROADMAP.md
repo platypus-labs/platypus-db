@@ -48,10 +48,10 @@ Questi punti non vanno ripianificati: al massimo si migliorano dentro il gruppo 
 
 **Stato: completata.** Come usare i punti di estensione: [EXTENDING.md](EXTENDING.md).
 
-Alcuni file facevano da collo di bottiglia: [commands.rs](../apps/desktop/src-tauri/src/commands/mod.rs),
-[QueryTab.tsx](../apps/desktop/src/components/QueryTab.tsx),
-[DataGrid.tsx](../apps/desktop/src/grid/DataGrid.tsx),
-[Navigator.tsx](../apps/desktop/src/components/Navigator.tsx) e [App.tsx](../apps/desktop/src/App.tsx).
+Alcuni file facevano da collo di bottiglia: [commands.rs](../../apps/desktop/src-tauri/src/commands/mod.rs),
+[QueryTab.tsx](../../apps/desktop/src/components/QueryTab.tsx),
+[DataGrid.tsx](../../apps/desktop/src/grid/DataGrid.tsx),
+[Navigator.tsx](../../apps/desktop/src/components/Navigator.tsx) e [App.tsx](../../apps/desktop/src/App.tsx).
 Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i gruppi:
 
 | # | Intervento | Perché |
@@ -85,7 +85,7 @@ Se più gruppi ci lavorano insieme, i conflitti sono continui. Prima di aprire i
 ### Correzioni aperte
 
 Problemi trovati lavorando su altro, da correggere prima di prendere un gruppo (vedi
-[CLAUDE.md](../CLAUDE.md)). Chi ne corregge uno toglie la sua riga.
+[CLAUDE.md](../../CLAUDE.md)). Chi ne corregge uno toglie la sua riga.
 
 | Problema | Trovato |
 |---|---|
@@ -97,7 +97,7 @@ Chi lavora su un gruppo lo segna qui e pusha su `main` prima di scrivere codice.
 scaduto. `✅ completato` vuol dire che P1, P2 e P3 sono tutte fatte; `✅ fatto (…)` elenca le
 priorità finite, e il resto del gruppo si può ancora prendere, come un gruppo libero. Non si
 prendono solo i gruppi `✅ completato`, `🔒` e `⏸`. Procedura completa:
-[CLAUDE.md](../CLAUDE.md).
+[CLAUDE.md](../../CLAUDE.md).
 
 **Righe `⏭ serve un Mac`.** Non abbiamo un Mac: le attività segnate così (verifica, firma,
 scenari e distribuzione su macOS) si saltano finché non ce n'è uno. Non si prendono, non contano
@@ -1116,7 +1116,7 @@ tenuti come copie; passphrase nel keychain; all'avvio, ogni N minuti o a mano. *
 condivisi** ("Share project…" / "Open shared project…"): `platypus-project.toml` e `scripts/` in
 una cartella (repo Git o disco condiviso), scritti a ogni modifica e riletti al focus; ognuno
 inserisce le proprie credenziali al primo collegamento. **Plugin WebAssembly**
-(`platypus-plugins` su `wasmi`, ABI in `docs/PLUGINS.md`, esempi in `examples/plugins/`): azioni
+(`platypus-plugins` su `wasmi`, ABI in `docs/user/PLUGINS.md`, esempi in `examples/plugins/`): azioni
 per editor, griglia e oggetti del navigator e driver che parlano HTTP (`DriverKind::Plugin`), con
 permessi approvati all'installazione (host HTTP, appunti), limiti di fuel, memoria e messaggi.
 Limiti: Git va installato a parte, niente clone né cambio di ramo dall'app; la sincronizzazione
@@ -1279,7 +1279,7 @@ rispettate da tutta l'app.
 
 ### Gruppo R — Revisione grafica
 
-**Stato: completato.** Fatti i mockup (`docs/mockups/`), il sito con le GIF del tour rifatte, tutte le pagine dell'app secondo i mockup approvati, l'inventario visivo (`docs/INVENTORY.md`, con gli scenari `inventory-*` che rifanno gli screenshot) e la correzione dei problemi trovati, i token di design unici, griglia/editor/navigator allineati, le icone di una sola famiglia (Lucide, Tabler o Phosphor a scelta), i testi italiani rivisti, le impostazioni con sotto-schede, la disposizione personalizzabile e le animazioni misurate. Restano idee per dopo, fuori dal gruppo: un menu "⋯" per i pulsanti della barra dell'editor che non entrano, e alcune etichette inglesi da riscrivere (elencate in INVENTORY.md). In origine si prendeva solo quando tutti gli altri gruppi erano `✅ completato`: rivede
+**Stato: completato.** Fatti i mockup (`docs/mockups/`), il sito con le GIF del tour rifatte, tutte le pagine dell'app secondo i mockup approvati, l'inventario visivo (`docs/dev/INVENTORY.md`, con gli scenari `inventory-*` che rifanno gli screenshot) e la correzione dei problemi trovati, i token di design unici, griglia/editor/navigator allineati, le icone di una sola famiglia (Lucide, Tabler o Phosphor a scelta), i testi italiani rivisti, le impostazioni con sotto-schede, la disposizione personalizzabile e le animazioni misurate. Restano idee per dopo, fuori dal gruppo: un menu "⋯" per i pulsanti della barra dell'editor che non entrano, e alcune etichette inglesi da riscrivere (elencate in INVENTORY.md). In origine si prendeva solo quando tutti gli altri gruppi erano `✅ completato`: rivede
 l'aspetto dell'app finita, non quello di funzionalità ancora in movimento.
 
 Una passata unica su tutta l'interfaccia perché sembri un prodotto solo, fatto con cura: oggi ogni
@@ -1359,7 +1359,7 @@ bloccati dalla rete del container, e il disco è un'allowance fissa che i databa
 riempiono. Va fatto su macchine vere: Windows, poi un desktop Linux; macOS quando ci sarà un Mac
 (`⏭ serve un Mac`).
 
-**Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/BENCHMARKS.md`; le correzioni
+**Area:** `apps/desktop/e2e/`, `crates/platypus-conformance/`, `docs/dev/BENCHMARKS.md`; le correzioni
 nei file delle aree toccate, in commit piccoli e separati
 **Dipende da:** gruppo R completato
 
@@ -1389,7 +1389,7 @@ non si ridimensionano, menu troppo lunghi, stati vuoti che non dicono dove andar
 
 **Metodo.** Una sezione alla volta, con l'app compilata:
 1. si passa la sezione con la **scheda di controllo** qui sotto e si scrive un rapporto
-   (`docs/UX_REVIEW.md`, un paragrafo per sezione: problemi, gravità, screenshot);
+   (`docs/dev/UX_REVIEW.md`, un paragrafo per sezione: problemi, gravità, screenshot);
 2. le correzioni si fanno in commit piccoli, uno per sezione; ogni correzione che si può provare
    diventa uno scenario E2E (`apps/desktop/e2e/scenarios/ux-*`);
 3. una modifica che cambia molto una schermata passa prima da un mockup approvato dall'utente,
@@ -1423,13 +1423,13 @@ impostazioni; sicurezza (blocco, mascheramento, snapshot); agenti e MCP; sync e 
 condivisi; task pianificati.
 
 **Area:** i componenti di `apps/desktop/src/` (markup, CSS, testi e logica di sola interfaccia),
-`apps/desktop/e2e/`, `docs/UX_REVIEW.md`; niente modifiche a backend, driver o formati dei file
+`apps/desktop/e2e/`, `docs/dev/UX_REVIEW.md`; niente modifiche a backend, driver o formati dei file
 **Dipende da:** gruppo R completato
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ 🆕 **Correzioni già note** (segnalazioni del 1° novembre 2026): <br>• menu contestuale delle tabelle troppo lungo: raggruppare in sottomenu le voci affini (es. tutti i "Genera …") <br>• tasto destro ovunque: disattivare il menu del browser (WebView2) e mostrare quello dell'app <br>• profilo dei dati: l'istogramma non ha titolo, assi né spiegazione; nella colonna di destra le etichette minimo/massimo dei timestamp si sovrappongono e sbordano <br>• costruttore visuale di query: sidebar e riquadri delle tabelle ridimensionabili <br>• diagramma ER: caricamento visibile quando si aggiungono tabelle (e verificare che le carichi tutte), etichetta del selettore delle tabelle da riscrivere, trascinare sul vuoto sposta la visuale <br>• "Copia il nome" e tutte le azioni di copia: toast di conferma <br>• dialog di connessione: titolo della sezione in alto, il pallino accanto a "Rete" spiegato o tolto, voci del menu laterale centrate in verticale <br>• profili di trasferimento: lo stato vuoto dice dove si crea un profilo, con un'azione <br>• palette dei comandi: il campo di ricerca è schiacciato <br>• pagina iniziale non centrata <br>• dashboard: la voce "Impostazioni grafico" mostra caratteri rotti al posto dell'icona | P1 | N |
-| ✅ 🆕 **Scheda di controllo e rapporto** (`docs/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
+| ✅ 🆕 **Scheda di controllo e rapporto** (`docs/dev/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
 | ✅ 🆕 **Correzione dei problemi gravi** trovati dal rapporto (azioni senza riscontro, caricamenti invisibili, testo che sborda, stati vuoti senza azione) | P1 | N |
 | ✅ 🆕 **Riscontro e attesa uniformi**: un solo componente per il toast di conferma e uno per il caricamento, usati da tutte le azioni | P1 | N |
 | ✅ 🆕 Pannelli ridimensionabili ovunque il contenuto varia, con la misura ricordata | P2 | N |
@@ -1445,7 +1445,7 @@ condivisi; task pianificati.
 **Stato: completato.** Esportazione in `.platypusconn` (in chiaro, o cifrato con le password
 salvate, jump host compresi), importazione dal dialog esistente con la richiesta della password
 e la sostituzione delle connessioni già salvate (per tutte le sorgenti, non solo PlatypusDB),
-voci nei menu e nella palette, formato descritto in [CONNECTIONS_FILE.md](CONNECTIONS_FILE.md).
+voci nei menu e nella palette, formato descritto in [CONNECTIONS_FILE.md](../user/CONNECTIONS_FILE.md).
 Il codice è in `crates/platypus-sync/src/export.rs`, non in `platypus-store`: riusa la cifratura
 della sync e il filtro dei progetti condivisi.
 

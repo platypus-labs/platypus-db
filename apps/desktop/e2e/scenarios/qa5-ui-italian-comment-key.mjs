@@ -3,7 +3,7 @@
 // Steps: SQL editor with `select 1`; on an Italian, German, Spanish or French layout `/` is
 // Shift+7, so the shortcut is pressed as Ctrl+Shift+7 and the page receives key "/" with ctrl and
 // shift held. (Control: on a US layout Ctrl+/ comments the line.)
-// Expected: the line is commented, as the Settings list the shortcut as Ctrl+/ (docs/SHORTCUTS.md).
+// Expected: the line is commented, as the Settings list the shortcut as Ctrl+/ (docs/user/SHORTCUTS.md).
 // Actual: nothing happens; the shortcut cannot be used on those layouts, not even by rebinding
 // it to the same key (the Settings record "Ctrl+Shift+/", which the editor does not run either).
 // Code: apps/desktop/src/actions.ts `matches` compares `e.shiftKey` with the shortcut's Shift for

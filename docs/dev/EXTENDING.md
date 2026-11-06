@@ -281,7 +281,7 @@ through the bridge, downloading its driver to `target/conformance-drivers`.
 Users extend the app without rebuilding it through plugins: WebAssembly modules with
 actions for the editor, the grid and the navigator, or a driver for a database with an HTTP
 API (`DriverKind::Plugin`, the plugin's id in the `plugin` option). The guest ABI, the
-permissions and the limits are in [PLUGINS.md](PLUGINS.md); the host is
+permissions and the limits are in [PLUGINS.md](../user/PLUGINS.md); the host is
 `crates/platypus-plugins`, the desktop commands `commands/plugins.rs`, the page side
 `apps/desktop/src/plugins/` (the actions join the action registry under a "Plugins" submenu).
 A change to the ABI raises `API_VERSION` and keeps the old version working while plugins use it:
@@ -469,7 +469,7 @@ development and the stdio tests; and the `platypus` CLI calls the same methods f
   transaction are not undone. A new driver adds its case to those `Dialect` methods; the
   conformance test `agents_read_in_read_only_transactions` checks it.
 - `output.rs` renders a result as an aligned text table or the JSON documented in
-  [AGENTS.md](AGENTS.md); the whole rendering stays within the byte limit, rows
+  [AGENTS.md](../user/AGENTS.md); the whole rendering stays within the byte limit, rows
   dropped from the end until it fits. Change that JSON only by adding fields.
 - `redact.rs` masks the connection's password, SSH secrets, password command and the
   password of any URL in every error an agent reads. Tools never return the host, the user
@@ -481,7 +481,7 @@ development and the stdio tests; and the `platypus` CLI calls the same methods f
   with `agents.confirm_writes` on (the default), a statement `access::changes` sees as a
   change asks `confirm` before it runs, with the plan's estimate, and is refused without a
   link or a yes. A new client of the app (another process) speaks the bridge's routes,
-  documented in [AGENTS.md](AGENTS.md).
+  documented in [AGENTS.md](../user/AGENTS.md).
 
 Every `run_query` is recorded in the query history with `origin`, the MCP client's name
 (`clientInfo.name`, trimmed to 64 characters, `agent` when empty) or `platypus-cli`; `HistoryQuery::origin` filters the app's entries

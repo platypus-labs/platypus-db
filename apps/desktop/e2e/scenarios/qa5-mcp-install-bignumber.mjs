@@ -2,7 +2,7 @@
 //
 // Steps: ~/.cursor/mcp.json holds `"big": 123456789012345678901234567890` (and `"e": 1E5`) next to its
 // servers; Install PlatypusDB there (the dialog promises "A copy of the file as it is now is saved beside
-// it first" and docs/AGENTS.md "keeping the rest of the file as it was").
+// it first" and docs/user/AGENTS.md "keeping the rest of the file as it was").
 // Expected: the other keys are written as read: the 30-digit integer stays 123456789012345678901234567890.
 // Actual: `"big": 1.2345678901234568e+29` (and `1E5` becomes `100000.0`): the file is parsed to f64 and
 // printed again, so a value over u64 silently loses its digits (the backup keeps the original).

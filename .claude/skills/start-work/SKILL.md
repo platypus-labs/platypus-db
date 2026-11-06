@@ -11,7 +11,7 @@ Segui "Prima di iniziare" di CLAUDE.md. In sintesi, in quest'ordine:
    pulito, fermati e chiedi.
 2. graphify: se `uv tool list` mostra una versione aggiornata più di 7 giorni fa (o non lo sai),
    `uv tool upgrade graphifyy`; se la versione cambia, `graphify install --platform windows`.
-3. Leggi "Correzioni aperte" in docs/ROADMAP.md. Se ci sono righe, proponi di correggere quelle
+3. Leggi "Correzioni aperte" in docs/dev/ROADMAP.md. Se ci sono righe, proponi di correggere quelle
    e fermati qui finché l'utente non decide.
 4. Leggi "Lock dei gruppi" e "Ondate consigliate". Per ogni `🔒` controlla la scadenza:
    `git log -1 --format=%cd --date=short origin/<branch>`, scaduto se più vecchio di 3 giorni
@@ -24,7 +24,7 @@ Segui "Prima di iniziare" di CLAUDE.md. In sintesi, in quest'ordine:
 5. Lock: su `main` modifica solo la riga del gruppo in `🔒 Paolo · <branch> · <AAAA-MM-GG>`
    (sempre "Paolo", mai "Claude"; data di oggi; branch `group-<lettera>-<tema>`).
    Attenzione a non introdurre un BOM nel file.
-   `git add docs/ROADMAP.md`, commit `chore(roadmap): lock gruppo <X>` senza righe di co-autore,
+   `git add docs/dev/ROADMAP.md`, commit `chore(roadmap): lock gruppo <X>` senza righe di co-autore,
    `git push origin main`. Se rifiutato: `git pull --rebase`, ricontrolla la riga; se l'ha presa
    qualcun altro, torna al punto 4. Mai `--force`.
 6. Crea il branch da `main` (o dal branch del gruppo da cui dipende, vedi CLAUDE.md) e pushalo

@@ -18,7 +18,7 @@ reference, [AGENTS.md](../AGENTS.md).
 
 ## Choose what each connection allows
 
-![Settings, Agents, the Security page](../screenshots/guide/agents-security.png)
+![Settings, Agents, the Security page](../../screenshots/guide/agents-security.png)
 
 1. Settings › **Agents** › **Security** lists your connections. A connection's own form has the
    same choice, under **Agents** on its **Appearance and safety** page.

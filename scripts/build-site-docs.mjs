@@ -1,5 +1,5 @@
 // Builds the documentation pages of the site (site/docs.html and site/docs/) from the Markdown of
-// the guide (docs/guide/**) and of the reference documents the guide links to. The Markdown is
+// the guide (docs/user/guide/**) and of the reference documents the guide links to. The Markdown is
 // parsed by the parser of the app's help (apps/desktop/src/help/markdown.ts), which drops raw
 // HTML; every text is escaped here and only http, https and mailto links survive. Run it after
 // changing any of those documents, then copy the pictures:
@@ -18,24 +18,26 @@ import { parseMarkdown, plainText } from "../apps/desktop/src/help/markdown.ts";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const siteDir = join(root, "site");
 export const REPO = "https://github.com/PaoloCisly/platypus-db";
+/** Where the guide is in the repository; its pages stay at docs/guide/ on the site. */
+const GUIDE = "docs/user/guide/";
 
 /** Reference documents turned into pages next to the guide: source, page. */
 const EXTRA = [
-  ["docs/FEATURES.md", "docs/features.html"],
-  ["docs/SHORTCUTS.md", "docs/shortcuts.html"],
-  ["docs/AGENTS.md", "docs/agents.html"],
-  ["docs/PLUGINS.md", "docs/plugins.html"],
-  ["docs/CONNECTIONS_FILE.md", "docs/connections-file.html"],
+  ["docs/user/FEATURES.md", "docs/features.html"],
+  ["docs/user/SHORTCUTS.md", "docs/shortcuts.html"],
+  ["docs/user/AGENTS.md", "docs/agents.html"],
+  ["docs/user/PLUGINS.md", "docs/plugins.html"],
+  ["docs/user/CONNECTIONS_FILE.md", "docs/connections-file.html"],
 ];
 /** The order of the guide's task pages in the menu; a page not listed follows, by name. */
 const GUIDE_ORDER = ["connect", "queries", "edit-data", "import-export", "safety", "projects-sharing", "agents", "troubleshooting"];
 /** Documents that stay on GitHub, in the menu's last group. */
 const ON_GITHUB = [
-  ["Benchmarks", "docs/BENCHMARKS.md"],
-  ["Extending", "docs/EXTENDING.md"],
-  ["Development", "docs/DEVELOPMENT.md"],
-  ["Roadmap", "docs/ROADMAP.md"],
-  ["Releasing", "docs/RELEASING.md"],
+  ["Benchmarks", "docs/dev/BENCHMARKS.md"],
+  ["Extending", "docs/dev/EXTENDING.md"],
+  ["Development", "docs/dev/DEVELOPMENT.md"],
+  ["Roadmap", "docs/dev/ROADMAP.md"],
+  ["Releasing", "docs/dev/RELEASING.md"],
   ["README", "README.md"],
 ];
 
@@ -43,15 +45,15 @@ const ON_GITHUB = [
 export function outputOf(src) {
   const extra = EXTRA.find(([s]) => s === src);
   if (extra) return extra[1];
-  if (src === "docs/guide/getting-started.md") return "docs.html";
-  const below = src.slice("docs/guide/".length).replace(/\.md$/, "");
+  if (src === `${GUIDE}getting-started.md`) return "docs.html";
+  const below = src.slice(GUIDE.length).replace(/\.md$/, "");
   return `docs/guide/${below === "README" ? "index" : below.replace(/\/README$/, "/index")}.html`;
 }
 
 /** The documents, as repository paths, in a fixed order. */
 export function sourcesIn(dir = root) {
-  const guide = readdirSync(join(dir, "docs", "guide"), { recursive: true })
-    .map((f) => `docs/guide/${String(f).replaceAll("\\", "/")}`)
+  const guide = readdirSync(join(dir, GUIDE), { recursive: true })
+    .map((f) => `${GUIDE}${String(f).replaceAll("\\", "/")}`)
     .filter((f) => f.endsWith(".md"))
     .sort();
   return [...guide, ...EXTRA.map(([s]) => s)];
@@ -309,10 +311,10 @@ ${body}${extra}
       <nav aria-labelledby="f-project">
         <h2 id="f-project">Project</h2>
         <ul>
-          ${g("BENCHMARKS.md", "Benchmarks")}
-          ${g("ROADMAP.md", "Roadmap")}
-          ${g("EXTENDING.md", "Extending")}
-          ${g("RELEASING.md", "Releasing")}
+          ${g("dev/BENCHMARKS.md", "Benchmarks")}
+          ${g("dev/ROADMAP.md", "Roadmap")}
+          ${g("dev/EXTENDING.md", "Extending")}
+          ${g("dev/RELEASING.md", "Releasing")}
         </ul>
       </nav>
       <nav aria-labelledby="f-get">
@@ -353,7 +355,7 @@ function databaseNames(blocks, pages) {
   const table = blocks.find((b) => b.kind === "table");
   for (const row of table?.rows ?? []) {
     const link = row[0]?.find((n) => n.kind === "link");
-    const src = link && posix.join("docs/guide/databases", link.href);
+    const src = link && posix.join(`${GUIDE}databases`, link.href);
     if (src && pages.has(src)) names.set(src, plainText(link.children));
   }
   return names;
@@ -366,7 +368,7 @@ function databaseNames(blocks, pages) {
 export function buildSite(sources, read) {
   const pages = new Map(sources.map((s) => [s, outputOf(s)]));
   const parsed = new Map(sources.map((s) => [s, parseMarkdown(read(s))]));
-  const dbNames = databaseNames(parsed.get("docs/guide/databases/README.md") ?? [], pages);
+  const dbNames = databaseNames(parsed.get(`${GUIDE}databases/README.md`) ?? [], pages);
   const label = (s) => dbNames.get(s) ?? titleOf(parsed.get(s), s);
   const byLabel = new Map();
   const blurbs = new Map();
@@ -375,9 +377,9 @@ export function buildSite(sources, read) {
     byLabel.set(label(s), pages.get(s));
     blurbs.set(label(s), describe(parsed.get(s)));
   }
-  const guideTasks = sources.filter((s) => /^docs\/guide\/[^/]+\.md$/.test(s) && !/\/(README|getting-started)\.md$/.test(s));
+  const guideTasks = sources.filter((s) => /^docs\/user\/guide\/[^/]+\.md$/.test(s) && !/\/(README|getting-started)\.md$/.test(s));
   const rank = (s) => {
-    const i = GUIDE_ORDER.indexOf(s.slice("docs/guide/".length, -3));
+    const i = GUIDE_ORDER.indexOf(s.slice(GUIDE.length, -3));
     return i < 0 ? GUIDE_ORDER.length : i;
   };
   guideTasks.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
@@ -386,11 +388,11 @@ export function buildSite(sources, read) {
   const entries = {
     byLabel,
     blurbs,
-    start: label("docs/guide/getting-started.md"),
-    guide: label("docs/guide/README.md"),
+    start: label(`${GUIDE}getting-started.md`),
+    guide: label(`${GUIDE}README.md`),
     tasks: guideTasks.map(label),
-    databases: label("docs/guide/databases/README.md"),
-    dbPages: sources.filter((s) => /^docs\/guide\/databases\/(?!README)[^/]+\.md$/.test(s)).sort((a, b) => dbRank(a) - dbRank(b) || a.localeCompare(b)).map(label),
+    databases: label(`${GUIDE}databases/README.md`),
+    dbPages: sources.filter((s) => /^docs\/user\/guide\/databases\/(?!README)[^/]+\.md$/.test(s)).sort((a, b) => dbRank(a) - dbRank(b) || a.localeCompare(b)).map(label),
     reference: EXTRA.map(([s]) => label(s)),
   };
   const files = {};

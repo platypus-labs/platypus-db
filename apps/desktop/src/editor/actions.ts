@@ -165,7 +165,7 @@ command("select_next", msg("Select next occurrence"), "Mod+D", "cursors", 32, se
 command("select_all_matches", msg("Select all occurrences"), "Mod+Shift+L", "cursors", 33, selectSelectionMatches, false, CURSORS);
 // Not Ctrl+Alt+[ outside macOS: that is AltGr+[ there, how Italian, German, Spanish and French
 // keyboards type the bracket (shortcutKeys.ts `altGraphText`). Not Ctrl+Alt+U either: plugins
-// use it (the sql-tools example in docs/PLUGINS.md), and a built-in shortcut comes first.
+// use it (the sql-tools example in docs/user/PLUGINS.md), and a built-in shortcut comes first.
 command("fold_all", msg("Fold all"), isMac ? "Mod+Alt+[" : "Mod+Alt+F", "folding", 40, foldAll, false, FOLDING);
 command("unfold_all", msg("Unfold all"), isMac ? "Mod+Alt+]" : "Mod+Alt+Shift+F", "folding", 41, unfoldAll, false, FOLDING);
 

@@ -1,4 +1,4 @@
-// Journey (docs/COLLAUDO.md 5.5): a developer on two SQLite files. A script saved to a file
+// Journey (docs/dev/COLLAUDO.md 5.5): a developer on two SQLite files. A script saved to a file
 // @includes a second file (relative to the first) and runs from it; the schema check finds a
 // foreign key without an index and one fix is applied; Migration status reads a Flyway
 // folder; the schema is compared with a copy and the sync script is shown for review (not

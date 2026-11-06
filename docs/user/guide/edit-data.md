@@ -2,7 +2,7 @@
 
 # Edit data
 
-![Pending changes in the data editor](../screenshots/data-editor.png)
+![Pending changes in the data editor](../../screenshots/data-editor.png)
 
 ## Change rows in the grid
 

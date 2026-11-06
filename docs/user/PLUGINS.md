@@ -10,7 +10,7 @@ run in a sandbox: an interpreter
 app gives them and the host functions their permissions open.
 
 The host side is the crate `platypus-plugins`; the examples are in
-[`examples/plugins`](../examples/plugins) with their built modules.
+[`examples/plugins`](../../examples/plugins) with their built modules.
 
 ## Package
 
@@ -186,7 +186,7 @@ An index is JSON, on any HTTPS server:
 
 `id`, `name`, `version`, `url` and `sha256` are required, one entry per plugin. `url` may be relative
 to the index. An entry that cannot be read is listed apart with its reason, and the others stay
-usable. Fields it does not know are ignored. [`examples/plugins/catalog`](../examples/plugins/catalog)
+usable. Fields it does not know are ignored. [`examples/plugins/catalog`](../../examples/plugins/catalog)
 has a complete one.
 
 ### Signing a package

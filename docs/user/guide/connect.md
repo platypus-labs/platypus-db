@@ -2,7 +2,7 @@
 
 # Connect to a database
 
-![Choosing the database for a new connection](../screenshots/connections.png)
+![Choosing the database for a new connection](../../screenshots/connections.png)
 
 ## From a URL
 
@@ -79,7 +79,7 @@ key (PEM)** (PostgreSQL and MySQL).
 
 ## SSH tunnel
 
-![An SSH tunnel on the Network page](../screenshots/guide/connect-network.png)
+![An SSH tunnel on the Network page](../../screenshots/guide/connect-network.png)
 
 1. On the **Network** page, tick **Connect through an SSH tunnel**.
 2. Fill in **SSH host**, the port and **SSH user**.

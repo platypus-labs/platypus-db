@@ -62,17 +62,17 @@ L'interfaccia è disponibile anche in italiano: Settings › Appearance › Lang
 
 **Copia portatile**: metti l'eseguibile in una cartella con accanto una cartella `data` vuota.
 Connessioni, impostazioni, cronologia e script stanno allora in `data`, e la cartella si può
-spostare su un altro computer o su una chiavetta USB ([dettagli](docs/FEATURES.md#portable-copy)).
+spostare su un altro computer o su una chiavetta USB ([dettagli](docs/user/FEATURES.md#portable-copy)).
 
-La [guida utente](docs/guide/README.md) (in inglese) continua da qui, un compito alla volta:
-[primi passi](docs/guide/getting-started.md), connessioni, query, sicurezza, problemi comuni.
+La [guida utente](docs/user/guide/README.md) (in inglese) continua da qui, un compito alla volta:
+[primi passi](docs/user/guide/getting-started.md), connessioni, query, sicurezza, problemi comuni.
 
 ## Database
 
 PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB,
 Redis, Elasticsearch, Cassandra, Snowflake, BigQuery, Databricks, Trino, IBM Db2, ODBC e i
 database che parlano il protocollo PostgreSQL. Come si collega ciascuno, la versione più
-vecchia supportata e cosa funziona si trovano nella [guida ai database](docs/guide/databases/README.md) (in inglese).
+vecchia supportata e cosa funziona si trovano nella [guida ai database](docs/user/guide/databases/README.md) (in inglese).
 
 ## Funzionalità
 
@@ -88,16 +88,16 @@ Connessioni via SSH, proxy e accesso cloud; un editor SQL con completamento; un 
 e un editor dei dati; grafici e notebook; progettazione di tabelle, diagrammi ER e confronto
 tra schemi; piani di esecuzione; attività del server; importazione, esportazione e
 trasferimento; progetti e sette lingue. Tutte le funzionalità, area per area:
-**[docs/FEATURES.md](docs/FEATURES.md)** (in inglese). Passo per passo: la
-[guida utente](docs/guide/README.md) (in inglese). Scorciatoie da tastiera:
-[docs/SHORTCUTS.md](docs/SHORTCUTS.md).
+**[docs/user/FEATURES.md](docs/user/FEATURES.md)** (in inglese). Passo per passo: la
+[guida utente](docs/user/guide/README.md) (in inglese). Scorciatoie da tastiera:
+[docs/user/SHORTCUTS.md](docs/user/SHORTCUTS.md).
 
 ## Agenti (MCP) e CLI
 
 Claude Code, Codex, Cursor e gli altri client MCP possono usare le tue connessioni salvate, con
 l'accesso che dai a ognuno: nessuno, sola lettura (il predefinito) oppure lettura e scrittura.
 Una modifica che un agente vuole eseguire apre prima una finestra di conferma nell'app.
-Configurazione, strumenti, limiti e la CLI `platypus`: [docs/AGENTS.md](docs/AGENTS.md)
+Configurazione, strumenti, limiti e la CLI `platypus`: [docs/user/AGENTS.md](docs/user/AGENTS.md)
 (in inglese).
 
 ## Prestazioni
@@ -119,13 +119,13 @@ Configurazione, strumenti, limiti e la CLI `platypus`: [docs/AGENTS.md](docs/AGE
 
 Windows 11, Ryzen 7 9700X. Dimensioni dei download ufficiali per Linux di PlatypusDB 0.2.0,
 DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 e Beekeeper Studio 6.2.0; avvio e memoria a confronto sono ancora da misurare.
-Metodo, test di scala e i primi numeri su Linux in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+Metodo, test di scala e i primi numeri su Linux in [docs/dev/BENCHMARKS.md](docs/dev/BENCHMARKS.md).
 
 ## Sviluppo
 
 Compilazione, test, struttura del progetto e database di sviluppo:
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). I prossimi passi sono in
-[docs/ROADMAP.md](docs/ROADMAP.md); tutti i documenti sono elencati in
+[docs/dev/DEVELOPMENT.md](docs/dev/DEVELOPMENT.md). I prossimi passi sono in
+[docs/dev/ROADMAP.md](docs/dev/ROADMAP.md); tutti i documenti sono elencati in
 [docs/README.md](docs/README.md), e le novità di ogni release in [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuire

@@ -5,7 +5,7 @@ model: sonnet
 ---
 
 You implement one task in the PlatypusDB repository, following the rules in CLAUDE.md and the
-"Regole per tutti i gruppi" of docs/ROADMAP.md.
+"Regole per tutti i gruppi" of docs/dev/ROADMAP.md.
 
 - Before reading source files, run `graphify query "<question>"` (or `graphify explain "X"`) to
   find the files involved; read raw files only for the lines the graph points to.

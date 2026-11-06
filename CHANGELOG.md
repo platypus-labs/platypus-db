@@ -17,7 +17,7 @@ All notable changes to PlatypusDB are listed here. The format follows
   change the statement. It sees the statement with passwords and every string and number masked,
   and never a value of a result; on drivers of plugins it gets no text. Hooks also run for scheduled
   scripts, statement by statement, and `after_query` hears of a database's own client and of `EXPLAIN
-  ANALYZE`; agents, exports and the rest they do not cover are listed in `docs/PLUGINS.md`. A hook
+  ANALYZE`; agents, exports and the rest they do not cover are listed in `docs/user/PLUGINS.md`. A hook
   that crashes or hangs does not stop anything: the action goes ahead and the user is told once, as
   they are when `plugins.json` cannot be read. Without hooks a statement pays one atomic read.
 - **Plugins**: a settings page per plugin from its manifest (text, number, boolean, choice, secret),
@@ -95,7 +95,7 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Help**: the top bar's "?" and the command palette open a user guide that comes with the app and
   reads offline, with a page per database, what is new in this version and a way to report a bug.
   The connection form, Settings › Agents and Settings › Safety link to their page. The guide is
-  also in the repository, in `docs/guide/`. It loads the first time it is opened, not at each start.
+  also in the repository, in `docs/user/guide/`. It loads the first time it is opened, not at each start.
 
 ### Changed
 
@@ -152,7 +152,7 @@ All notable changes to PlatypusDB are listed here. The format follows
   of the agent policy: one removed or narrowed outside the app waits until you accept it in Settings
   › Agents › Security, and one added applies at once. A seal that no longer matches masks every
   value for agents until you answer. This does not stop an agent that can run commands as your
-  user, which can read the database by other routes or the keychain (see `docs/AGENTS.md`).
+  user, which can read the database by other routes or the keychain (see `docs/user/AGENTS.md`).
 
 ## [0.4.1] - 2026-11-04
 

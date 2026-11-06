@@ -1,4 +1,4 @@
-// After typing in the SQL editor one Escape is enough to let Tab leave it (docs/SHORTCUTS.md);
+// After typing in the SQL editor one Escape is enough to let Tab leave it (docs/user/SHORTCUTS.md);
 // with the completion list open, Escape only closes the list and Tab still indents or accepts.
 import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";

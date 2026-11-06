@@ -5,7 +5,7 @@
  */
 
 /** Where the guide lives in the repository; page keys are the paths below it, without `.md`. */
-export const GUIDE_DIR = "docs/guide/";
+export const GUIDE_DIR = "docs/user/guide/";
 
 /** The page the guide opens on, and the one of the databases' own index. */
 export const START_PAGE = "README";
@@ -75,7 +75,7 @@ export const decode = (text: string) => {
   }
 };
 
-/** The page key of a repository path inside the guide (`docs/guide/databases/` is its README), else `null`. */
+/** The page key of a repository path inside the guide (`docs/user/guide/databases/` is its README), else `null`. */
 export function pageKeyOf(path: string): string | null {
   if (!path.startsWith(GUIDE_DIR) && `${path}/` !== GUIDE_DIR) return null;
   const rest = path.slice(GUIDE_DIR.length);
