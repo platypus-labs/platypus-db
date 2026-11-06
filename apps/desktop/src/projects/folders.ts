@@ -5,6 +5,7 @@
  */
 import { registerAction } from "../actions";
 import { api, type ConnectionFolder, type Project, type SavedConnection } from "../api";
+import { setFolderClosed } from "../navigator/prefs";
 import { askName } from "../ui/NameDialog";
 import { workbench } from "../workbench";
 import { type Arrange, type DragItem, listLayout, stepChange } from "./arrange";
@@ -76,11 +77,18 @@ export async function applyArrange(project: Project | null, change: Arrange) {
     await save(api.arrangeConnectionFolder(project.id, change.id, change.parent, change.before));
   } else {
     const grouped = await api.groupConnections(project.id, change.target, change.dragged, t("New folder"));
-    workbench().setProjects(grouped.projects);
-    const updated = grouped.projects.find((p) => p.id === project.id);
+    let projects = grouped.projects;
+    for (const id of change.more ?? []) projects = await api.arrangeConnection(project.id, id, grouped.folder, null);
+    workbench().setProjects(projects);
+    const updated = projects.find((p) => p.id === project.id);
     const made = updated?.folders?.find((f) => f.id === grouped.folder);
     if (updated && made) renameFolder(updated, made);
   }
+}
+
+/** Makes the changes of a drop one after the other; the first that fails stops the rest. */
+export async function applyArranges(project: Project | null, changes: Arrange[]) {
+  for (const change of changes) await applyArrange(project, change);
 }
 
 /** The move of `item` one place up (`-1`) or down among its siblings, in the active project
@@ -173,7 +181,10 @@ registerAction({
   title: "Delete folder",
   group: "danger",
   order: 90,
-  run: ({ project, folder }) => save(api.deleteConnectionFolder(project.id, folder.id)),
+  run: async ({ project, folder }) => {
+    await save(api.deleteConnectionFolder(project.id, folder.id));
+    setFolderClosed(folder.id, false);
+  },
 });
 
 /** "Move to folder" on the connections of the active project, one entry per folder. */

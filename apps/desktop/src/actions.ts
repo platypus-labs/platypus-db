@@ -22,7 +22,11 @@ export interface ActionScopes {
   global: undefined;
   /** The navigator's list of connections, away from any row; `project` is the active one. */
   "navigator.list": { project: Project | null };
-  "navigator.connection": { connection: SavedConnection };
+  "navigator.connection": {
+    connection: SavedConnection;
+    /** Every selected connection, the clicked one included, when several are selected. */
+    selection?: SavedConnection[];
+  };
   /** A database of the server; `database` is `null` for the saved one, `name` is its name. */
   "navigator.database": { connection: SavedConnection; database: string | null; name: string };
   /** `database`: `null` for the connection's saved database, else another one of the server. */

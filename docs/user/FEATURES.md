@@ -114,6 +114,8 @@ to the package manager.
   take it out; `Esc` cancels a drag.
   Connections and folders keep the order you give them: drag one above or below another, or
   press Alt+Up / Alt+Down; a connection dropped onto another makes a new folder of the two.
+  Connections selected with Ctrl+click or Shift+click are dragged, and deleted from the menu,
+  together. Folders stay open or closed as you left them, across restarts.
 - **TLS** with libpq `sslmode` semantics, custom CAs, and client certificates for PostgreSQL and
   MySQL.
 - **SSH tunnels** with a password, a key or the SSH agent, optionally through a jump host;

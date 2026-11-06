@@ -2,7 +2,7 @@
 // (src/projects/arrange.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dropChange, dropZone, listLayout, stepChange } from "../src/projects/arrange.ts";
+import { dropChange, dropChanges, dropZone, listLayout, stepChange } from "../src/projects/arrange.ts";
 
 const conn = (id) => ({ kind: "connection", id });
 const folder = (id) => ({ kind: "folder", id });
@@ -81,4 +81,27 @@ test("All connections: the saved list, without folders", () => {
   const all = listLayout([{ id: "x" }, { id: "y" }, { id: "z" }]);
   assert.deepEqual(stepChange(all, conn("x"), 1), { kind: "connection", id: "x", folder: null, before: "z" });
   assert.deepEqual(dropChange(all, conn("z"), conn("x"), "before"), { kind: "connection", id: "z", folder: null, before: "x" });
+});
+
+test("several connections move together, in the order given", () => {
+  const many = [conn("a"), conn("b")];
+  const move = (id, f, before) => ({ kind: "connection", id, folder: f, before });
+  // Into a folder: those not there yet, whichever folder they came from.
+  assert.deepEqual(dropChanges(layout, many, folder("F"), "into"), [move("a", "F", null), move("b", "F", null)]);
+  assert.deepEqual(dropChanges(layout, [conn("c"), conn("a")], folder("F"), "into"), [move("a", "F", null)]);
+  assert.deepEqual(dropChanges(layout, [conn("c"), conn("d")], folder("F"), "into"), []);
+  // Next to a connection: into its folder, the place taken as if they had already left.
+  assert.deepEqual(dropChanges(layout, many, conn("d"), "before"), [move("a", "F", "d"), move("b", "F", "d")]);
+  assert.deepEqual(dropChanges(layout, many, conn("c"), "after"), [move("a", "F", "d"), move("b", "F", "d")]);
+  assert.deepEqual(dropChanges(layout, many, conn("d"), "after"), [move("a", "F", null), move("b", "F", null)]);
+  // Onto a connection: a folder of all of them.
+  assert.deepEqual(dropChanges(layout, many, conn("c"), "into"), [{ kind: "group", target: "c", dragged: "a", more: ["b"] }]);
+  // Onto one of themselves: nothing.
+  for (const zone of ["before", "into", "after"]) assert.deepEqual(dropChanges(layout, many, conn("b"), zone), []);
+  // Below the last row: last at the root, unless they are already.
+  assert.deepEqual(dropChanges(layout, many, null, "into"), []);
+  assert.deepEqual(dropChanges(layout, [conn("b"), conn("c")], null, "into"), [move("b", null, null), move("c", null, null)]);
+  // One alone behaves as ever, and nothing dragged changes nothing.
+  assert.deepEqual(dropChanges(layout, [conn("a")], folder("F"), "into"), [dropChange(layout, conn("a"), folder("F"), "into")]);
+  assert.deepEqual(dropChanges(layout, [], folder("F"), "into"), []);
 });

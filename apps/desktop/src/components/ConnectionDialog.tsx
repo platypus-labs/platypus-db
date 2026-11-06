@@ -402,12 +402,16 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   /** The password to test an "ask every time" connection with, when none is typed in the
    *  form: asked as opening the connection does; `null` when the question is cancelled. */
   async function testPassword(c: SavedConnection, typed: string): Promise<string | null> {
-    if (typed !== "" || !asksPassword(c)) return typed;
+    return typed !== "" || !asksPassword(c) ? typed : promptPassword(c);
+  }
+
+  function promptPassword(c: SavedConnection, reason?: string): Promise<string | null> {
     return new Promise((resolve) =>
       workbench().openDialog((close) => (
         <PasswordPrompt
           connection={c}
           error={null}
+          reason={reason}
           onDone={(entered) => {
             close();
             resolve(entered);
@@ -467,8 +471,17 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     setBusy(true);
     setTesting(true);
     setResult(null);
+    const attempt = (text: string) => withDriver(() => api.testConnection(ownNetwork(c), passwordInput(text), sshSecrets()));
     try {
-      const server = await withDriver(() => api.testConnection(ownNetwork(c), passwordInput(password), sshSecrets()));
+      const server = await attempt(password).catch(async (e: unknown) => {
+        const error = toCommandError(e);
+        if (error.kind !== "kept_password_withheld" || run !== testRun.current) throw e;
+        // The form points elsewhere now: only what is typed here goes there.
+        const entered = await promptPassword(c, t("The saved password only goes to the server it was saved for. Type it to test this one."));
+        if (!entered) throw e;
+        setPassword(entered);
+        return attempt(entered);
+      });
       if (run === testRun.current) setResult({ ok: true, server });
     } catch (e) {
       if (run === testRun.current) setResult({ ok: false, message: toCommandError(e).message });

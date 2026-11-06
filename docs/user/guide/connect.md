@@ -35,7 +35,10 @@ dot after a page's name means it holds settings.
 
 In **General**, the password comes from one of:
 
-- **Saved in the keychain**: the system keychain.
+- **Saved in the keychain**: the system keychain. **Test connection** sends it only to the server it
+  was saved for: if you change the host, the port or the SSH servers on the way, it asks you to type
+  the password for that test. Another database of the same PostgreSQL or MySQL server is not another
+  server.
 - **Ask every time**: typed at each connection. Agents cannot open such a connection.
 - **.pgpass file** (PostgreSQL only; the connection's host, port, database and user pick the
   line, as libpq does).

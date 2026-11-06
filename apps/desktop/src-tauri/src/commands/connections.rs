@@ -459,10 +459,22 @@ const ADDRESS_OPTIONS: [&str; 12] = [
 ];
 
 /// Whether the form `form` still reaches the server of the saved connection `saved`: the
-/// same driver, host, port, database, tunnel (SSH chain, network profile) and options that
-/// name the server. Only then may the password kept for `saved` go with it; a form pointed
-/// elsewhere is tested with a typed password only.
+/// same driver, host, port, tunnel (the SSH servers it goes through, network profile) and
+/// options that name the server, and the same database where a database can name another
+/// place. Only then may the password kept for `saved` go with it; a form pointed elsewhere is
+/// tested with a typed password only. How the SSH server is signed in to moves nothing: its
+/// own secrets are [`kept_ssh_secrets`].
 fn same_target(form: &SavedConnection, saved: &SavedConnection) -> bool {
+    let route = |c: &SavedConnection| -> Vec<(String, u16)> {
+        c.ssh
+            .iter()
+            .flat_map(SavedSsh::chain)
+            .map(|hop| (hop.host.trim().to_owned(), hop.port))
+            .collect()
+    };
+    // Only a name on these servers; elsewhere it may be a descriptor or a client's alias.
+    let names_only = matches!(form.driver, DriverKind::Postgres | DriverKind::MySql)
+        && !form.host.trim().is_empty();
     let address = |c: &SavedConnection| -> Vec<(String, String)> {
         c.options
             .iter()
@@ -477,8 +489,8 @@ fn same_target(form: &SavedConnection, saved: &SavedConnection) -> bool {
     form.driver == saved.driver
         && form.host.trim() == saved.host.trim()
         && form.port == saved.port
-        && form.database.trim() == saved.database.trim()
-        && form.ssh == saved.ssh
+        && (names_only || form.database.trim() == saved.database.trim())
+        && route(form) == route(saved)
         && form.network_profile == saved.network_profile
         && address(form) == address(saved)
 }
@@ -527,6 +539,7 @@ pub(crate) async fn open_for_test(
 ) -> CommandResult<Box<dyn Connection>> {
     // A connection that was never saved has nothing stored yet.
     let saved = state.with_store(|s| Ok(s.get(connection.id).cloned()))?;
+    let keeps = matches!(password, PasswordInput::Keep);
     let secret = match password {
         PasswordInput::Set(p) => Some(Secret::new(p)),
         PasswordInput::Clear => None,
@@ -541,11 +554,31 @@ pub(crate) async fn open_for_test(
         },
     };
     let ssh = kept_ssh_secrets(connection, saved.as_ref(), ssh);
+    // Asked for by name below, when the server wants the password that was held back. A keychain
+    // that cannot answer (a locked vault) is not this test's failure: the server's answer stands.
+    let withheld = keeps
+        && secret.is_none()
+        && saved.is_some()
+        && state
+            .with_store(|s| s.password(connection.id))
+            .is_ok_and(|kept| kept.is_some());
     let config = state
         .with_store(|s| Ok(config_of(s, connection, secret, &ssh)))?
         .with_env()?;
     check_address(&config)?;
-    Ok(connect(&config).await?)
+    connect(&config)
+        .await
+        .map_err(|e| said_withheld(e.into(), withheld))
+}
+
+/// A refused login, when the kept password stayed home because the form points elsewhere, as
+/// the kind the form asks the password for: the driver can only say it is missing.
+fn said_withheld(e: CommandError, withheld: bool) -> CommandError {
+    if withheld && login_refused(&e) {
+        e.with_kind("kept_password_withheld")
+    } else {
+        e
+    }
 }
 
 /// What a connection needs to be tried at all, said at once rather than by the TLS or the
@@ -856,7 +889,7 @@ mod tests {
     use super::*;
 
     /// The kept password goes only to the server it was kept for: a form pointed at another
-    /// host, port, database, driver, tunnel or URL option is tested without it.
+    /// host, port, driver, tunnel or URL option is tested without it.
     #[test]
     fn the_kept_password_goes_only_to_its_own_server() {
         let mut saved = SavedConnection::new("Shop", DriverKind::Postgres);
@@ -878,11 +911,19 @@ mod tests {
         );
         form.host = " db.internal ".to_owned();
         assert!(same_target(&form, &saved));
+        form.database = "another of the same server".to_owned();
+        assert!(same_target(&form, &saved), "a database is only a name here");
 
-        let changes: [fn(&mut SavedConnection); 7] = [
+        // Elsewhere a database can say where the server is.
+        let mut oracle = saved.clone();
+        oracle.driver = DriverKind::Oracle;
+        let mut descriptor = oracle.clone();
+        descriptor.database = "(DESCRIPTION=(ADDRESS=(HOST=attacker.example)))".to_owned();
+        assert!(!same_target(&descriptor, &oracle));
+
+        let changes: [fn(&mut SavedConnection); 6] = [
             |c| c.host = "attacker.example".to_owned(),
             |c| c.port = Some(6543),
-            |c| c.database = "other".to_owned(),
             |c| c.driver = DriverKind::MySql,
             |c| c.network_profile = Some(Uuid::new_v4()),
             |c| {
@@ -906,6 +947,44 @@ mod tests {
             change(&mut form);
             assert!(!same_target(&form, &saved), "change {i}");
         }
+    }
+
+    /// The tunnel moves the password only when it goes through other servers: another way of
+    /// signing in to the same SSH server still ends at the same database.
+    #[test]
+    fn signing_in_to_the_same_ssh_server_otherwise_keeps_the_password() {
+        let tunnel = |host: &str, user: &str, key: Option<&str>| SavedSsh {
+            host: host.to_owned(),
+            port: 22,
+            user: user.to_owned(),
+            auth: platypus_store::SshAuthKind::Agent,
+            key_path: key.map(PathBuf::from),
+            secret_id: Uuid::nil(),
+            jump: None,
+        };
+        let mut saved = SavedConnection::new("Shop", DriverKind::Postgres);
+        saved.host = "localhost".to_owned();
+        saved.ssh = Some(tunnel("jump.internal", "me", None));
+        let mut form = saved.clone();
+        form.ssh = Some(tunnel("jump.internal", "other", Some("id_rsa")));
+        assert!(same_target(&form, &saved));
+        form.ssh = Some(tunnel("jump.example", "me", None));
+        assert!(!same_target(&form, &saved), "localhost of another server");
+        form.ssh = None;
+        assert!(!same_target(&form, &saved), "this computer's localhost");
+    }
+
+    /// The form asks for the password only when it was held back and the server wanted one.
+    #[test]
+    fn only_a_refused_login_says_the_password_was_withheld() {
+        let refused = || CommandError::new("database", "password missing");
+        assert_eq!(
+            said_withheld(refused(), true).kind(),
+            "kept_password_withheld"
+        );
+        assert_eq!(said_withheld(refused(), false).kind(), "database");
+        let down = CommandError::new("database", "connection refused");
+        assert_eq!(said_withheld(down, true).kind(), "database");
     }
 
     /// A kept SSH password or passphrase goes only to the SSH server it was kept for.

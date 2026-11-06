@@ -562,16 +562,26 @@ export function App() {
     }
   }
 
-  async function deleteConnection(c: SavedConnection) {
-    if (!(await ask(t('Delete the connection "{name}"?', { name: c.name }), { confirm: t("Delete"), danger: true }))) return;
-    try {
-      setConnections(await api.deleteConnection(c.id));
-    } catch (e) {
-      return setToast(toCommandError(e).message);
+  async function deleteConnections(list: SavedConnection[]) {
+    const [only] = list;
+    // A long selection is named in part: the count says how many.
+    const names = list.slice(0, 10).map((c) => c.name).join(", ") + (list.length > 10 ? ", …" : "");
+    const question =
+      list.length === 1 && only
+        ? t('Delete the connection "{name}"?', { name: only.name })
+        : t("Delete these {count} connections: {names}?", { count: list.length, names });
+    if (!(await ask(question, { confirm: t("Delete"), danger: true }))) return;
+    for (const c of list) {
+      try {
+        setConnections(await api.deleteConnection(c.id));
+      } catch (e) {
+        setToast(toCommandError(e).message);
+        break;
+      }
+      for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t, true);
+      disconnectNavigator(c);
+      forgetCatalog(c.id);
     }
-    for (const t of tabs.filter((t) => t.connectionId === c.id)) closeTab(t, true);
-    disconnectNavigator(c);
-    forgetCatalog(c.id);
     try {
       // The store took the connection out of every project.
       setProjects(await api.listProjects());
@@ -1164,7 +1174,7 @@ export function App() {
               memberOf: (projects ?? []).filter((p) => p.connections.includes(c.id)).map((p) => p.id),
             })
           }
-          onDelete={(c) => void deleteConnection(c)}
+          onDelete={(list) => void deleteConnections(list)}
           onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
           session={navigatorSession}
           capabilities={(sessionId) => capabilities.current.get(sessionId)}
@@ -1641,11 +1651,14 @@ function tabMenuActions(s: () => ShellApi) {
 export function PasswordPrompt({
   connection,
   error,
+  reason,
   onDone,
 }: {
   connection: SavedConnection;
   /** Why the previous password did not do: the server's answer. */
   error: string | null;
+  /** Why it is asked, when not for the usual reason. */
+  reason?: string;
   onDone: (password: string | null) => void;
 }) {
   const [password, setPassword] = useState("");
@@ -1666,8 +1679,11 @@ export function PasswordPrompt({
           </span>
           <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
-        {connection.save_password && !asksPassword(connection) && (
-          <p className="muted small">{t("No password is saved for this connection: it will be saved in the keychain.")}</p>
+        {reason ? (
+          <p className="muted small">{reason}</p>
+        ) : (
+          connection.save_password &&
+          !asksPassword(connection) && <p className="muted small">{t("No password is saved for this connection: it will be saved in the keychain.")}</p>
         )}
         {error && (
           <div className="notice error" role="alert">

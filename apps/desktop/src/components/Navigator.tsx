@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { formatBytes } from "../format";
 import {
   api,
@@ -21,7 +21,7 @@ import { ROW_HEIGHT, rowWindow, scrollToRow, stepAt } from "../navigator/rowWind
 import { routineBase } from "../sqlIdent";
 import { textFilter } from "../navigator/filter";
 import { isTypeAheadKey, nextTyped, typeAheadIndex } from "../navigator/typeAhead";
-import { type Bookmark, isBookmarked, nameMatcher, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
+import { type Bookmark, isBookmarked, nameMatcher, setFolderClosed, toggleBookmark, useNavigatorPrefs } from "../navigator/prefs";
 import { onNavigatorRefresh, onRevealConnection } from "../navigatorEvents";
 import { toggleSidebar, toggleSidebarTitle } from "../shell/sidebar";
 import { annotation, catalogEntry, catalogKey, isKnownTag, parseFilter, useCatalogVersion } from "../catalog/catalog";
@@ -37,8 +37,8 @@ import { Icon, type IconName, objectIcon } from "../ui/Icon";
 import { ContextMenu, type MenuState, type MenuTarget } from "./ContextMenu";
 import { DriverIcon } from "./DriverPicker";
 import { testConnections } from "./TestConnectionsDialog";
-import { applyArrange, type FolderNode, folderTree, newFolder } from "../projects/folders";
-import { type Arrange, type DragItem, type DropZone, dropChange, dropZone, listLayout } from "../projects/arrange";
+import { applyArranges, type FolderNode, folderTree, newFolder } from "../projects/folders";
+import { type Arrange, type DragItem, type DropZone, dropChanges, dropZone, listLayout } from "../projects/arrange";
 import { t, msg, plural } from "../i18n";
 import { toast } from "../ui/toast";
 import { focusData, openObjectTab } from "../objects/open";
@@ -105,7 +105,8 @@ interface Props {
   /** Opens the export of connections to a file. */
   onExport: () => void;
   onEdit: (c: SavedConnection) => void;
-  onDelete: (c: SavedConnection) => void;
+  /** Asks, then deletes these connections. */
+  onDelete: (connections: SavedConnection[]) => void;
   /** Opens a new editor tab: optionally with SQL, run at once, or as a data viewer. */
   onOpenTab: (c: SavedConnection, init?: TabInit<"query">) => void;
   /** The navigator session of a connection and database (`null`: the saved one), opened
@@ -190,7 +191,7 @@ interface Row {
 }
 
 /** Where a dragged row drops: a place in the list, or an editor or text field. */
-type NavDrop = { kind: "arrange"; change: Arrange; key: string | null; zone: DropZone } | { kind: "sql"; target: SqlDropTarget };
+type NavDrop = { kind: "arrange"; changes: Arrange[]; key: string | null; zone: DropZone } | { kind: "sql"; target: SqlDropTarget };
 
 /** What a row gives an editor it is dropped in. */
 const sqlOf = (row: Row) => (typeof row.sql === "function" ? row.sql() : row.sql);
@@ -218,6 +219,7 @@ export function Navigator(props: Props) {
   /** Per connection id, bumped when it closes or refreshes: loads started before are stale. */
   const generation = useRef(new Map<string, number>());
   const prefs = useNavigatorPrefs();
+  const closedFolders = useMemo(() => new Set(prefs.closedFolders), [prefs.closedFolders]);
   const simple = useSetting(viewSetting) === "simple";
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -581,15 +583,15 @@ export function Navigator(props: Props) {
 
   function addFolder(p: Project, node: FolderNode, level: number) {
     const fkey = `folder:${node.folder.id}`;
-    // Folders start open; `!` remembers one was closed.
-    const fOpen = !expanded.has(`${fkey}!`) || !!needle;
+    const closed = closedFolders.has(node.folder.id);
+    const fOpen = !closed || !!needle;
     rows.push({
       key: fkey,
       depth: level,
       label: node.folder.name,
       icon: fOpen ? "open" : "folder",
       expanded: fOpen,
-      onToggle: () => setExpanded((s) => toggled(s, `${fkey}!`)),
+      onToggle: () => setFolderClosed(node.folder.id, !closed),
       menu: { scope: "navigator.folder", arg: { project: p, folder: node.folder } },
       item: { kind: "folder", id: node.folder.id },
     });
@@ -601,10 +603,17 @@ export function Navigator(props: Props) {
   /** What the list arranges: the project, or the saved list for All connections. */
   const layout = project ?? listLayout(connections);
 
-  /** Where the connection or folder `item` lands under the pointer at `at`, on `el`, and
-   *  the change it makes there; `null` where it cannot go or would not move. A row that
-   *  takes nothing refuses it; below the last row it goes last at the root. */
-  function arrangeAt(item: DragItem, el: Element | null, at: Point): NavDrop | null {
+  /** What a drag from `row` carries: the connection pressed, with the others selected with it. */
+  function draggedItems(row: Row): DragItem[] {
+    if (!row.item) return [];
+    if (row.item.kind !== "connection" || !selected.has(row.key)) return [row.item];
+    return rows.flatMap((r) => (r.item?.kind === "connection" && selected.has(r.key) ? [r.item] : []));
+  }
+
+  /** Where the connections or the folder `items` land under the pointer at `at`, on `el`, and
+   *  the changes they make there; `null` where they cannot go or would not move. A row that
+   *  takes nothing refuses them; below the last row they go last at the root. */
+  function arrangeAt(items: DragItem[], el: Element | null, at: Point): NavDrop | null {
     const tree = treeRef.current;
     if (!tree || !el || !tree.contains(el)) return null;
     const li = el.closest<HTMLElement>("li.tree-row[data-row]");
@@ -612,15 +621,16 @@ export function Navigator(props: Props) {
       // The list's own space below its last row, not a spacer standing for rows not shown.
       const last = tree.querySelector(`li[data-row="${rows.length - 1}"]`);
       if (el !== tree || !last || at.y < last.getBoundingClientRect().bottom) return null;
-      const change = dropChange(layout, item, null, "into");
-      return change && { kind: "arrange", change, key: null, zone: "into" };
+      const changes = dropChanges(layout, items, null, "into");
+      return changes.length > 0 ? { kind: "arrange", changes, key: null, zone: "into" } : null;
     }
     const row = rows[Number(li.dataset.row)];
-    if (!row?.item) return null;
+    const kind = items[0]?.kind;
+    if (!row?.item || !kind) return null;
     const r = li.getBoundingClientRect();
-    const zone = dropZone(at.y - r.top, r.height, item.kind, row.item.kind, project !== null);
-    const change = dropChange(layout, item, row.item, zone);
-    return change && { kind: "arrange", change, key: row.key, zone };
+    const zone = dropZone(at.y - r.top, r.height, kind, row.item.kind, project !== null);
+    const changes = dropChanges(layout, items, row.item, zone);
+    return changes.length > 0 ? { kind: "arrange", changes, key: row.key, zone } : null;
   }
 
   // A drag reads where it drops, and drops, with the tree and props of the last render.
@@ -629,13 +639,13 @@ export function Navigator(props: Props) {
   navDrag.current = {
     find: (pressed, el, at) => {
       const row = latestRow(pressed);
-      if (row.item && el && treeRef.current?.contains(el)) return arrangeAt(row.item, el, at);
+      if (row.item && el && treeRef.current?.contains(el)) return arrangeAt(draggedItems(row), el, at);
       const target = row.sql ? sqlDropTarget(el) : null;
       return target && { kind: "sql", target };
     },
     drop: (pressed, drop, at, shift) => {
       if (drop.kind === "arrange") {
-        applyArrange(project, drop.change).catch((err: unknown) => onError(toCommandError(err).message));
+        applyArranges(project, drop.changes).catch((err: unknown) => onError(toCommandError(err).message));
         return;
       }
       const sql = sqlOf(latestRow(pressed));
@@ -645,8 +655,9 @@ export function Navigator(props: Props) {
 
   /** Drags `row` (a connection or folder to arrange, or a table or column for an editor). */
   function startDrag(row: Row, e: React.PointerEvent) {
+    const many = draggedItems(row).length;
     drag<NavDrop>(e, {
-      label: sqlOf(row)?.name ?? row.label,
+      label: sqlOf(row)?.name ?? (many > 1 ? plural(many, "{n} connection", "{n} connections") : row.label),
       target: (el, at) => navDrag.current.find(row, el, at),
       show: (drop) => {
         const key = drop?.kind === "arrange" ? drop.key : null;
@@ -1100,6 +1111,10 @@ export function Navigator(props: Props) {
       setSelected(new Set([row.key]));
       return target;
     }
+    if (target?.scope === "navigator.connection") {
+      const selection = rows.flatMap((r) => (selected.has(r.key) && r.menu?.scope === "navigator.connection" ? [r.menu.arg.connection] : []));
+      return selection.length > 1 ? { scope: target.scope, arg: { ...target.arg, selection } } : target;
+    }
     if (target?.scope !== "navigator.object") return target;
     const selection = rows.flatMap((r) =>
       selected.has(r.key) && r.menu?.scope === "navigator.object" ? [r.menu.arg] : [],
@@ -1488,7 +1503,19 @@ function registerNavigatorActions(nav: RefObject<NavigatorApi>) {
       title: "Delete…",
       group: "manage",
       order: 91,
-      run: ({ connection }) => n().props.onDelete(connection),
+      run: ({ connection }) => n().props.onDelete([connection]),
+    }),
+    registerAction({
+      id: "connection.delete_many",
+      scope: "navigator.connection",
+      title: "Delete {count} connections…",
+      titleParams: ({ selection }) => ({ count: selection?.length ?? 0 }),
+      multiple: true,
+      menuOnly: true,
+      group: "manage",
+      order: 91,
+      when: ({ selection }) => !!selection,
+      run: ({ connection, selection }) => n().props.onDelete(selection ?? [connection]),
     }),
     registerAction({
       id: "database.new_script",
