@@ -177,7 +177,7 @@ async fn a_zip_brings_its_pages_and_may_not_climb_out() {
 
     let bad = zipped(folder.path(), &[("ui/../../evil.js", b"x")]);
     let e = plugins.inspect(&bad).await.unwrap_err();
-    assert!(e.to_string().contains("inside the package"), "{e}");
+    assert!(e.to_string().contains("climbs out"), "{e}");
     assert!(!data.path().join("plugins/evil.js").exists());
 }
 

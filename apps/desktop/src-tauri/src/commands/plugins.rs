@@ -24,6 +24,7 @@ use platypus_sql::security::mask_secrets;
 use platypus_sql::sensitive::{NameRules, mask_literals, mask_strings};
 use platypus_store::{ConnectionType, HistoryStatus};
 use serde_json::Value;
+use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
@@ -37,6 +38,8 @@ const HOOK_FAILED: &str = "plugin-hook-failed";
 fn error(e: &PluginError) -> CommandError {
     let kind = match e {
         PluginError::Denied(_) => "plugin_denied",
+        PluginError::Unsigned(_) => "plugin_unsigned",
+        PluginError::Downgrade { .. } => "plugin_downgrade",
         PluginError::OutOfFuel | PluginError::Timeout | PluginError::Trap(_) => "plugin_stopped",
         _ => "plugin",
     };
@@ -47,11 +50,11 @@ fn error(e: &PluginError) -> CommandError {
     clippy::needless_pass_by_value,
     reason = "used directly as a `map_err` callback"
 )]
-fn failed(e: PluginError) -> CommandError {
+pub(super) fn failed(e: PluginError) -> CommandError {
     error(&e)
 }
 
-fn plugins() -> CommandResult<Plugins> {
+pub(super) fn plugins() -> CommandResult<Plugins> {
     Plugins::shared().map_err(failed)
 }
 
@@ -66,7 +69,7 @@ pub fn plugins_list() -> CommandResult<Vec<Installed>> {
 }
 
 /// Reads the plugins again for the table of hooks, after a change to them.
-fn reload_hooks(plugins: &Plugins) -> CommandResult<()> {
+pub(super) fn reload_hooks(plugins: &Plugins) -> CommandResult<()> {
     let list = plugins.list().map_err(failed)?;
     HOOKS.load(plugins, &list);
     Ok(())
@@ -97,12 +100,25 @@ pub fn plugin_set_enabled(id: String, enabled: bool) -> CommandResult<()> {
     reload_hooks(&plugins)
 }
 
+/// Removes a plugin. Its files go, and its secrets leave the keychain; the values of its settings
+/// page stay only when the user chose `keep_settings`.
 #[tauri::command]
-pub fn plugin_remove(id: String) -> CommandResult<()> {
+pub fn plugin_remove(id: String, keep_settings: bool) -> CommandResult<()> {
     let plugins = plugins()?;
-    plugins.remove(&id).map_err(failed)?;
+    if keep_settings {
+        plugins.remove_keeping_settings(&id).map_err(failed)?;
+    } else {
+        plugins.remove(&id).map_err(failed)?;
+    }
     HOOKS.forgive(&id);
     reload_hooks(&plugins)
+}
+
+/// The bytes of a font of a plugin's theme, read when that theme is the one in use.
+#[tauri::command]
+pub fn plugin_theme_font(id: String, usage: String) -> CommandResult<Response> {
+    let bytes = plugins()?.theme_font(&id, &usage).map_err(failed)?;
+    Ok(Response::new(bytes))
 }
 
 /// What the fields of a plugin's settings page hold; a secret only says if it is set.

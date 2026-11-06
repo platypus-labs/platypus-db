@@ -32,6 +32,17 @@ All notable changes to PlatypusDB are listed here. The format follows
   answers text and colours, never HTML. A column that fails shows its error in its cells. A frame never
   calls a module: answers are cached and fetched in batches, away from drawing, and without an extension
   the grid is as it was.
+- **Plugins**: themes as plugins, a package with no code that adds a card to the theme picker. Colours
+  are checked against the app's tokens and must be colours, nothing that could reach a resource or
+  leave its declaration; fonts come only from the package; poor contrast gets a warning. A theme
+  whose plugin is gone falls back to the default, and a theme not chosen costs nothing.
+- **Plugins**: a catalog (Settings › Plugin catalog) from an index you choose: no address is built in
+  and nothing is contacted until you set one, and it is read only when you open the page or ask. A
+  package passes HTTPS, size, SHA-256, a minisign signature by a key you trust, zip paths, identity
+  and downgrade checks, then the review of a manual install. A package with no valid signature or
+  an older version installs only from its own question.
+- **Plugins**: removing a plugin asks whether to keep its settings, and always clears its secrets from
+  the keychain.
 
 ### Changed
 

@@ -1,0 +1,39 @@
+id = "theme-sea"
+name = "Sea theme"
+version = "1.0.0"
+author = "PlatypusDB"
+description = "A theme with no code: colours for the theme picker, light and dark."
+api = 2
+kinds = ["theme"]
+
+[theme]
+name = "Sea"
+
+# Any of the app's colour tokens; the rest come from the Platypus theme of the same lightness.
+[theme.dark]
+bg = "#0b1d26"
+bg-sidebar = "#0f2630"
+bg-input = "#12303c"
+fg = "#d9e8ec"
+fg-muted = "#94adb5"
+border = "#1d3a46"
+accent = "#3fc1c9"
+accent-fg = "#06222a"
+grid-bg = "#0b1d26"
+grid-bg-alt = "#0e232d"
+grid-header = "#0f2630"
+grid-selection = "rgba(63, 193, 201, 0.2)"
+
+[theme.light]
+bg = "#f4fbfc"
+bg-sidebar = "#e6f4f6"
+bg-input = "#ffffff"
+fg = "#123039"
+fg-muted = "#47626b"
+border = "#cfe3e7"
+accent = "#0b6e78"
+accent-fg = "#ffffff"
+grid-bg = "#f4fbfc"
+grid-bg-alt = "#ecf7f9"
+grid-header = "#e6f4f6"
+grid-selection = "rgba(11, 110, 120, 0.16)"

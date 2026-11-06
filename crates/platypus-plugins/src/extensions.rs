@@ -113,7 +113,7 @@ pub struct ThemeDecl {
     /// The colours of its dark variant.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dark: BTreeMap<String, String>,
-    /// Font families by their use (`ui`, `mono`).
+    /// Font files of the package by their use (`ui`, `mono`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fonts: BTreeMap<String, String>,
 }
@@ -290,7 +290,7 @@ pub(crate) fn check_theme(theme: &ThemeDecl) -> Result<(), String> {
     if theme.light.is_empty() && theme.dark.is_empty() {
         return Err("the theme has neither `light` nor `dark` colours".to_owned());
     }
-    Ok(())
+    crate::theme::check(theme)
 }
 
 fn check_count(what: &str, count: usize) -> Result<(), String> {

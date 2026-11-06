@@ -12,6 +12,8 @@ arrow-array.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
 futures.workspace = true
+# Verifies a package's detached signature; the updater of the app uses the same crate.
+minisign-verify = "0.3"
 platypus-core.workspace = true
 platypus-drivers.workspace = true
 platypus-store.workspace = true
@@ -32,6 +34,8 @@ wasmi = { version = "2", default-features = false, features = ["std", "validate"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
+base64 = "0.22"
+blake2 = "0.11"
 platypus-driver-sqlite.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }

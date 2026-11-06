@@ -1,8 +1,8 @@
-//! Installed plugins: `<data>/plugins/<id>/<version>/` holds a package's `plugin.toml` and
-//! `plugin.wasm`, and `<data>/plugins/plugins.json` which are turned on, the permissions the
-//! user approved at install and what each module described.
+//! Installed plugins: `<data>/plugins/<id>/<version>/` holds a package's `plugin.toml`,
+//! `plugin.wasm` and a theme's fonts, and `<data>/plugins/plugins.json` which are turned on, the
+//! permissions the user approved at install and what each module described.
 //!
-//! A package is a folder or a `.zip` with the two files at its root or in a single folder.
+//! A package is a folder or a `.zip` with those files at its root or in a single folder.
 //! Installing reads the module's description, so a module that does not load is refused
 //! before it is copied; the user approves the manifest's permissions by installing it
 //! (the app shows them first, from [`Plugins::inspect`]), and the install takes the hash of
@@ -20,13 +20,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::action::{self, ActionInfo, ActionOutcome};
+use crate::extensions::SettingField;
 use crate::frames::{self, PackageFiles};
 use crate::grid::GridLimits;
 use crate::hooks::HookLimits;
 use crate::manifest::{Capability, Kind, MANIFEST_FILE, MODULE_FILE, Manifest, Permissions};
 use crate::runtime::{self, DESCRIBE, Description, GRID, Grants, HOOK, Limits, Sandbox};
 use crate::settings::{SettingState, SettingsAccess, SettingsFiles};
-use crate::{PluginError, driver};
+use crate::{PluginError, driver, theme};
 
 const STATE_FILE: &str = "plugins.json";
 /// The largest manifest read.
@@ -49,7 +50,7 @@ pub struct Inspected {
     /// What it asks beyond what the user approved for that version; all it asks on a first
     /// install. Installing approves it, so the app shows it before.
     pub added: Permissions,
-    /// A hash of the package's two files, given back to [`Plugins::install`]: what is
+    /// A hash of the package's files, given back to [`Plugins::install`]: what is
     /// installed is exactly what the user reviewed, even if the package changes in between.
     pub hash: String,
 }
@@ -137,6 +138,11 @@ impl Plugins {
         self
     }
 
+    /// The folder of the plugins.
+    pub(crate) fn dir(&self) -> &Path {
+        &self.dir
+    }
+
     pub(crate) fn limits(&self) -> Limits {
         self.limits
     }
@@ -147,11 +153,6 @@ impl Plugins {
 
     pub(crate) fn grid_limits(&self) -> GridLimits {
         self.grid_limits
-    }
-
-    /// The folder holding the plugins of this data folder.
-    pub(crate) fn dir(&self) -> &Path {
-        &self.dir
     }
 
     /// The folder of an installed plugin's version.
@@ -331,8 +332,45 @@ impl Plugins {
         self.settings.set(id, field, value)
     }
 
-    /// Removes a plugin, its files and its settings.
+    /// The bytes of the font a plugin's theme has for `usage` (`ui`, `mono`), for the theme in
+    /// use: nothing reads them before. Checked again, as anything may have changed the file.
+    pub fn theme_font(&self, id: &str, usage: &str) -> Result<Vec<u8>, PluginError> {
+        let installed = self.installed_any(id)?;
+        if !installed.enabled {
+            return Err(PluginError::Disabled(id.to_owned()));
+        }
+        let path = installed
+            .manifest
+            .theme
+            .as_ref()
+            .and_then(|theme| theme.fonts.get(usage))
+            .ok_or_else(|| {
+                PluginError::Invalid(format!("the plugin {id:?} has no font for {usage:?}"))
+            })?;
+        let bytes = read_file(
+            &self.module_path(&installed.manifest).join(path),
+            theme::MAX_FONT,
+        )?;
+        theme::check_font(path, &bytes).map_err(PluginError::Invalid)?;
+        Ok(bytes)
+    }
+
+    /// Removes a plugin, its files, its settings and its secrets.
     pub fn remove(&self, id: &str) -> Result<(), PluginError> {
+        let fields = self.remove_files(id)?;
+        self.settings.forget_plugin(id, &fields)
+    }
+
+    /// Removes a plugin and keeps the values of its settings page for a later install. Its
+    /// secrets still leave the keychain: nothing would read them until then.
+    pub fn remove_keeping_settings(&self, id: &str) -> Result<(), PluginError> {
+        let fields = self.remove_files(id)?;
+        self.settings.forget_secrets(id, &fields);
+        Ok(())
+    }
+
+    /// Takes a plugin off the list and deletes its folder; gives back its settings fields.
+    fn remove_files(&self, id: &str) -> Result<Vec<SettingField>, PluginError> {
         // Its fields are in its manifest, about to go.
         let fields = self
             .installed_any(id)
@@ -351,7 +389,7 @@ impl Plugins {
             std::fs::remove_dir_all(&home).map_err(PluginError::io(&home))?;
         }
         frames::forget_state(&self.dir, id);
-        self.settings.forget(id, &fields)
+        Ok(fields)
     }
 
     /// An installed plugin, turned on or not.
@@ -516,12 +554,20 @@ fn matches_manifest(manifest: &Manifest, description: &Description) -> Result<()
 }
 
 /// A package as read: its manifest, its module, the documents of its tabs and panels with what
-/// they load, and the hash of them all.
+/// they load and a theme's fonts, and the hash of them all.
 struct Package {
     manifest: Manifest,
     wasm: Vec<u8>,
     files: PackageFiles,
     hash: String,
+}
+
+/// The lowercase hexadecimal of `bytes`.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 /// The SHA-256 of the manifest's bytes, the module's and those of the files with their names,
@@ -535,38 +581,26 @@ fn package_hash(manifest: &[u8], wasm: &[u8], files: &PackageFiles) -> String {
         ctx.update(&(part.len() as u64).to_le_bytes());
         ctx.update(part);
     }
-    ctx.finish()
-        .as_ref()
-        .iter()
-        .fold(String::new(), |mut s, b| {
-            let _ = write!(s, "{b:02x}");
-            s
-        })
+    hex(ctx.finish().as_ref())
 }
 
-/// The manifest and the module of a folder or a `.zip`; a package that needs no module has
-/// none, even if a file is there: nothing of it is read, copied or run.
+/// The manifest, the module and the fonts of a folder or a `.zip`. A package that needs no module
+/// has none, even if a file is there: nothing of it is read, copied or run.
 fn read_package(source: &Path) -> Result<Package, PluginError> {
-    if source.is_dir() {
-        let manifest = read_file(&source.join(MANIFEST_FILE), MAX_MANIFEST)?;
-        let parsed = parse_manifest(&manifest)?;
-        let wasm = if parsed.needs_module() {
-            read_file(&source.join(MODULE_FILE), MAX_MODULE)?
-        } else {
-            Vec::new()
-        };
-        let files = frames::read_folder_files(source, &parsed)?;
-        return Ok(package(&manifest, parsed, wasm, files));
-    }
-    let mut zip = ZipPackage::open(source)?;
-    let manifest = zip.read_manifest()?;
+    let mut from = PackageSource::open(source)?;
+    let manifest = from.read(MANIFEST_FILE, MAX_MANIFEST)?;
     let parsed = parse_manifest(&manifest)?;
     let wasm = if parsed.needs_module() {
-        zip.read_module()?
+        from.read(MODULE_FILE, MAX_MODULE)?
     } else {
         Vec::new()
     };
-    let files = zip.read_files(&parsed)?;
+    let mut files = from.frame_files(&parsed)?;
+    for path in parsed.theme.iter().flat_map(|t| t.fonts.values()) {
+        let bytes = from.read(path, theme::MAX_FONT)?;
+        theme::check_font(path, &bytes).map_err(PluginError::Invalid)?;
+        files.insert(path.clone(), bytes);
+    }
     Ok(package(&manifest, parsed, wasm, files))
 }
 
@@ -601,17 +635,26 @@ pub(crate) fn read_file(path: &Path, max: u64) -> Result<Vec<u8>, PluginError> {
     Ok(bytes)
 }
 
-/// A `.zip` package: the manifest at its root or in its one folder, the rest beside it.
-struct ZipPackage<'a> {
-    source: &'a Path,
-    archive: zip::ZipArchive<std::fs::File>,
-    names: Vec<String>,
-    /// What the names of its files start with: the folder of the manifest, with its `/`.
-    prefix: String,
+/// Where the files of a package are read from.
+enum PackageSource {
+    Folder(PathBuf),
+    Zip {
+        archive: zip::ZipArchive<std::fs::File>,
+        source: PathBuf,
+        /// The names in it, as written.
+        names: Vec<String>,
+        /// The folder the manifest is in, with its slash; empty at the root.
+        prefix: String,
+    },
 }
 
-impl<'a> ZipPackage<'a> {
-    fn open(source: &'a Path) -> Result<Self, PluginError> {
+impl PackageSource {
+    /// A folder, or a `.zip` whose names all stay inside it and with the manifest at its root or
+    /// in its one folder.
+    fn open(source: &Path) -> Result<Self, PluginError> {
+        if source.is_dir() {
+            return Ok(Self::Folder(source.to_owned()));
+        }
         let file = std::fs::File::open(source).map_err(PluginError::io(source))?;
         let archive = zip::ZipArchive::new(file).map_err(|e| {
             PluginError::Invalid(format!(
@@ -619,39 +662,58 @@ impl<'a> ZipPackage<'a> {
                 source.display()
             ))
         })?;
-        let names: Vec<String> = archive
+        let names = archive
             .file_names()
-            .filter_map(|n| n.ok().map(std::borrow::Cow::into_owned))
-            .collect();
-        let manifest = names
+            .map(|name| {
+                name.map(std::borrow::Cow::into_owned).map_err(|e| {
+                    PluginError::Invalid(format!("the .zip has a name it cannot read: {e}"))
+                })
+            })
+            .collect::<Result<Vec<String>, _>>()?;
+        if let Some(name) = names.iter().find(|name| climbs_out(name)) {
+            return Err(PluginError::Invalid(format!(
+                "the .zip has a path that climbs out of it: {name:?}"
+            )));
+        }
+        let manifest_name = names
             .iter()
             .filter(|n| n.as_str() == MANIFEST_FILE || n.ends_with(&format!("/{MANIFEST_FILE}")))
             .min_by_key(|n| n.matches('/').count())
             .ok_or_else(|| PluginError::Invalid(format!("the .zip has no {MANIFEST_FILE}")))?;
-        if manifest.matches('/').count() > 1 {
+        if manifest_name.matches('/').count() > 1 {
             return Err(PluginError::Invalid(format!(
                 "{MANIFEST_FILE} must be at the root of the .zip or in its one folder"
             )));
         }
-        let prefix = manifest[..manifest.len() - MANIFEST_FILE.len()].to_owned();
-        Ok(Self {
-            source,
+        let prefix = manifest_name[..manifest_name.len() - MANIFEST_FILE.len()].to_owned();
+        Ok(Self::Zip {
             archive,
-            names,
+            source: source.to_owned(),
+            names: names.clone(),
             prefix,
         })
     }
 
-    fn read(&mut self, name: &str, max: u64) -> Result<Vec<u8>, PluginError> {
-        let entry = self
-            .archive
-            .by_name(name)
+    /// The file at `path` of the package, at most `max` bytes.
+    fn read(&mut self, path: &str, max: u64) -> Result<Vec<u8>, PluginError> {
+        let (archive, source, prefix) = match self {
+            Self::Folder(folder) => return read_file(&folder.join(path), max),
+            Self::Zip {
+                archive,
+                source,
+                prefix,
+                ..
+            } => (archive, source, prefix),
+        };
+        let name = format!("{prefix}{path}");
+        let entry = archive
+            .by_name(&name)
             .map_err(|_| PluginError::Invalid(format!("the .zip has no {name}")))?;
         let mut bytes = Vec::new();
         entry
             .take(max + 1)
             .read_to_end(&mut bytes)
-            .map_err(PluginError::io(self.source))?;
+            .map_err(PluginError::io(&*source))?;
         if bytes.len() as u64 > max {
             return Err(PluginError::Invalid(format!(
                 "{name} is larger than {} KB",
@@ -661,38 +723,35 @@ impl<'a> ZipPackage<'a> {
         Ok(bytes)
     }
 
-    fn read_manifest(&mut self) -> Result<Vec<u8>, PluginError> {
-        self.read(&format!("{}{MANIFEST_FILE}", self.prefix), MAX_MANIFEST)
-    }
-
-    fn read_module(&mut self) -> Result<Vec<u8>, PluginError> {
-        let name = format!("{}{MODULE_FILE}", self.prefix);
-        if !self.names.contains(&name) {
-            return Err(PluginError::Invalid(format!(
-                "the .zip has no {MODULE_FILE}"
-            )));
-        }
-        self.read(&name, MAX_MODULE)
-    }
-
     /// The files of the tabs and panels of `manifest`, by their paths in the package.
-    fn read_files(&mut self, manifest: &Manifest) -> Result<PackageFiles, PluginError> {
-        let inside: Vec<String> = self
-            .names
-            .iter()
-            .filter_map(|n| n.strip_prefix(self.prefix.as_str()))
-            .map(str::to_owned)
-            .collect();
+    fn frame_files(&mut self, manifest: &Manifest) -> Result<PackageFiles, PluginError> {
+        let inside: Vec<String> = match self {
+            Self::Folder(folder) => return frames::read_folder_files(folder, manifest),
+            Self::Zip { names, prefix, .. } => names
+                .iter()
+                .filter_map(|n| n.strip_prefix(prefix.as_str()))
+                .map(str::to_owned)
+                .collect(),
+        };
         let wanted = frames::choose_files(manifest, &inside)?;
         let mut files = PackageFiles::new();
         let mut budget = frames::Budget::default();
         for path in wanted {
-            let bytes = self.read(&format!("{}{path}", self.prefix), frames::MAX_FILE)?;
+            let bytes = self.read(&path, frames::MAX_FILE)?;
             budget.spend(&path, bytes.len())?;
             files.insert(path, bytes);
         }
         Ok(files)
     }
+}
+
+/// A name in a `.zip` that would land outside the folder it is unpacked in: absolute, with a
+/// drive, or going up, with either kind of slash.
+fn climbs_out(name: &str) -> bool {
+    let name = name.replace('\\', "/");
+    name.starts_with('/')
+        || name.as_bytes().get(1) == Some(&b':')
+        || name.split('/').any(|part| part == "..")
 }
 
 fn write_package(

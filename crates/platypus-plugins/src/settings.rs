@@ -127,14 +127,37 @@ impl SettingsFiles {
         self.write(|store| store.set(&file_key(plugin, &field.key), stored))
     }
 
-    /// Forgets what `fields` hold: the plugin is gone, or they no longer exist. Best effort for
-    /// the keychain: a secret left there harms nothing, as it is read only through a field.
-    pub(crate) fn forget(&self, plugin: &str, fields: &[SettingField]) -> Result<(), PluginError> {
+    /// Takes the secrets of `fields` out of the keychain. Best effort: a secret left there harms
+    /// nothing, as it is read only through a field.
+    pub(crate) fn forget_secrets(&self, plugin: &str, fields: &[SettingField]) {
         for field in fields {
             if field.kind == SettingKind::Secret {
                 let _ = self.secrets.delete(secret_id(plugin, &field.key));
             }
         }
+    }
+
+    /// Forgets everything of a plugin that is gone: its secrets and its section of the file, and
+    /// the file with the last one.
+    pub(crate) fn forget_plugin(
+        &self,
+        plugin: &str,
+        fields: &[SettingField],
+    ) -> Result<(), PluginError> {
+        self.forget_secrets(plugin, fields);
+        if !self.file.exists() {
+            return Ok(());
+        }
+        self.write(|store| store.set(&plugin.replace('.', "~"), None))?;
+        if self.store()?.all().is_empty() {
+            std::fs::remove_file(&self.file).map_err(PluginError::io(&self.file))?;
+        }
+        Ok(())
+    }
+
+    /// Forgets what `fields` hold, as they no longer exist.
+    pub(crate) fn forget(&self, plugin: &str, fields: &[SettingField]) -> Result<(), PluginError> {
+        self.forget_secrets(plugin, fields);
         if !self.file.exists() {
             return Ok(());
         }
