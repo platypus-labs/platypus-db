@@ -3362,6 +3362,11 @@ const es: Record<string, string> = {
   "Some text of this theme may be hard to read: {pairs}": "Parte del texto de este tema puede ser difícil de leer: {pairs}",
   "Remove and keep its settings": "Quitar y conservar sus ajustes",
   "Remove everything": "Quitar todo",
+  "Files are only looked for in a selection of up to 20,000 rows": "Los archivos solo se buscan en una selección de hasta 20.000 filas",
+  "Save files to a folder…": "Guardar los archivos en una carpeta…",
+  "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "El alias de Db2 {alias} no tiene host: indica host, puerto y base de datos antes de conectar.",
+  "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} propuso cambios en los datos, pero no se pudo conectar con {name}, así que no se abrieron.",
+  "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} propuso cambios en {table}, pero no se pudo conectar con {name}, así que no se abrieron.",
 };
 
 export default es;
