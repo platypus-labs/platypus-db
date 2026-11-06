@@ -1053,16 +1053,17 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     </select>
                   </label>
                   {signIn ? (
-                    signIn.id === "aws_iam" ? (
-                      <>
-                        <OptionField conn={conn} setOption={setOption} name="aws_region" label={t("AWS region")} placeholder={t("The profile's")} />
-                        <OptionField conn={conn} setOption={setOption} name="aws_profile" label={t("AWS profile")} placeholder="default" />
-                      </>
-                    ) : (
-                      signIn.id === "kerberos" && (
+                    <>
+                      {signIn.id === "aws_iam" && (
+                        <>
+                          <OptionField conn={conn} setOption={setOption} name="aws_region" label={t("AWS region")} placeholder={t("The profile's")} />
+                          <OptionField conn={conn} setOption={setOption} name="aws_profile" label={t("AWS profile")} placeholder="default" />
+                        </>
+                      )}
+                      {signIn.id === "kerberos" && (
                         <OptionField conn={conn} setOption={setOption} name="krb_service" label={t("Kerberos service name")} placeholder="postgres" />
-                      )
-                    )
+                      )}
+                    </>
                   ) : manager ? (
                     <label className="field">
                       <span>{t("Secret in {manager}", { manager: manager.name })}</span>
