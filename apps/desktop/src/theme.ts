@@ -7,7 +7,7 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { defineSetting, getSetting, getStored, onSettingsChanged, setSetting } from "./settings";
 import { msg } from "./i18n";
-import { luminance, pluginThemeOf } from "./themes/color";
+import { luminance, pluginThemeOf, themeFontsKey } from "./themes/color";
 
 /** Fired on `window` when the theme changes, for code that caches colors (the grid). */
 export const THEME_EVENT = "platypus-theme";
@@ -573,6 +573,8 @@ interface PluginTheme {
   id: string;
   theme: CustomTheme;
   fonts: string[];
+  /** What the fonts in use are compared by: a new version of the plugin may have others. */
+  fontsKey: string | null;
 }
 
 /** The theme picker's own choices; the plugins' go after them. */
@@ -581,11 +583,12 @@ const builtInOptions = swatches.options;
 
 /** The themes of the plugins that are on, from the list of plugins. A theme no one chose costs its
  *  card in the picker. */
-export function setPluginThemes(list: { id: string; theme: { name: string; light?: Record<string, string>; dark?: Record<string, string>; fonts?: Record<string, string> } }[]) {
+export function setPluginThemes(list: { id: string; version: string; theme: { name: string; light?: Record<string, string>; dark?: Record<string, string>; fonts?: Record<string, string> } }[]) {
   pluginThemes = new Map();
-  for (const { id, theme } of list) {
+  for (const { id, version, theme } of list) {
     const shown = pluginThemeOf(theme, PALETTE_KEYS) as CustomTheme | null;
-    if (shown) pluginThemes.set(PLUGIN_THEME + id, { id, theme: shown, fonts: Object.keys(theme.fonts ?? {}) });
+    const fonts = Object.keys(theme.fonts ?? {});
+    if (shown) pluginThemes.set(PLUGIN_THEME + id, { id, theme: shown, fonts, fontsKey: themeFontsKey(id, version, fonts) });
   }
   swatches.options = [...pluginThemes].reduce(
     (options, [value, { theme }]) => {
@@ -734,17 +737,17 @@ function paint(dark: boolean, vars: Record<string, string>) {
 let zoom = 0;
 let painted = "";
 let appearanceStarted = false;
-/** The plugin whose theme's fonts are in use. */
+/** The plugin's version whose theme's fonts are in use. */
 let fontsOf: string | null = null;
 
 /** Follows the fonts of the theme in use. Nothing is loaded unless a plugin's theme has fonts. */
 function syncThemeFonts() {
   const plugin = preview ? null : chosenPluginTheme();
-  const wanted = plugin && plugin.fonts.length > 0 ? plugin.id : null;
+  const wanted = plugin?.fontsKey ?? null;
   if (wanted === fontsOf) return;
   fontsOf = wanted;
   void import("./plugins/themeFonts")
-    .then((m) => m.applyThemeFonts(wanted, plugin?.fonts ?? []))
+    .then((m) => m.applyThemeFonts(wanted === null ? null : plugin!.id, plugin?.fonts ?? []))
     .catch((e: unknown) => console.warn("theme fonts", e));
 }
 

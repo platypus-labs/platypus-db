@@ -1,7 +1,8 @@
 // Grid extensions (examples/plugins/grid-demo): a computed column, a renderer and a command on a
 // cell. The grid draws what they answer, as text on its canvas; markup is an error of its cell and
 // reaches no DOM; a row's error stays in that row; a crash and an endless loop show in the column
-// and leave the grid working; while masking is on the plugin reads dots, and its answers show it;
+// and leave the grid working; a sensitive column reads as dots to the plugin whether or not masking
+// is on, and its answers show it, while the grid draws the real value until masking goes on;
 // without the plugin, or its permission, the grid is as it always was. A scroll over a large result
 // makes batches, not a call per cell, and the figures with and without the extension are logged.
 //
@@ -33,7 +34,7 @@ export function setup({ dir }) {
   const db = new DatabaseSync(join(dir, "grid.db"));
   db.exec(`
     CREATE TABLE items (email TEXT, name TEXT, state STATUS);
-    INSERT INTO items VALUES ('a@b.c', 'apple', 'ok'), ('boom', 'pear', 'failed'), ('x@y.z', NULL, 'markup'), (NULL, 'kiwi', 'other');
+    INSERT INTO items VALUES ('a@b.c', 'apple', 'ok'), ('m@n.o', 'boom', 'failed'), ('x@y.z', NULL, 'markup'), (NULL, 'kiwi', 'other');
     CREATE TABLE broken (name TEXT);
     INSERT INTO broken VALUES ('crash'), ('fine');
     CREATE TABLE endless (name TEXT);
@@ -99,7 +100,7 @@ async function install(page, dir) {
   await page.eval(`${panel}.querySelector('[data-action="install-folder"]').click()`);
   await page.waitFor(`${review} !== null`, 15_000);
   const text = await page.eval(`${review}.textContent`);
-  for (const line of ["Add columns, cell views and cell commands to the result grid", "“Total length” in the result grid", "“Status colours” in the result grid", "“Shout this value” in the result grid"]) {
+  for (const line of ["Read the cells of results, with sensitive columns masked, and add columns, cell views and cell commands to the result grid", "“Total length” in the result grid", "“Status colours” in the result grid", "“Shout this value” in the result grid"]) {
     assert.ok(text.includes(line), `${line}: ${text}`);
   }
   await page.eval(`${review}.querySelector('[data-action="confirm-install"]').click()`);
@@ -136,7 +137,9 @@ async function computedAndRendered(page) {
   await openTable(page, NAME, "items", "4 rows");
   // The column, with what it answers for each row.
   await page.waitFor(drew("Total length"), 15_000);
-  await page.waitFor(`${drew("10")} && ${drew("5")} && ${drew("4")}`, 15_000);
+  // `email` reads as six dots to it, with masking off: 6 + 5, 6 alone, and 4 with its NULL.
+  await page.waitFor(`${drew("11")} && ${drew("6")} && ${drew("4")}`, 15_000);
+  assert.equal(await page.eval(drew("a@b.c")), true, "the grid itself draws the real value");
   // A row's error is that row's.
   await page.waitFor(drew("⚠ this row cannot be counted"));
   // The type of the column it does not read does not count: `state` is not text.
@@ -165,15 +168,16 @@ async function cellCommand(page, title) {
 }
 
 async function maskedForThePlugin(page) {
-  assert.match(await cellCommand(page, "Shout this value"), /A@B\.C/);
-  // Masking on: `email` shows as dots, and the plugin reads them. It counts 6 for them, and a row
-  // it would have refused by its value (`boom`) is a row of dots to it.
+  // Masking off, the grid shows the email and a plugin reads dots all the same.
+  const shouted = await cellCommand(page, "Shout this value");
+  assert.ok(shouted.includes(DOTS), shouted);
+  assert.ok(!/A@B\.C/.test(shouted), shouted);
+  // Masking on: `email` shows as dots too, and what the plugin answers is the same.
   await forget(page);
   await page.key("m", "KeyM", 77, CTRL | ALT);
   await page.waitFor(drew(DOTS), 15_000);
-  await page.waitFor(`${drew("11")} && ${drew("10")} && ${drew("6")} && ${drew("4")}`, 15_000);
+  await page.waitFor(`${drew("11")} && ${drew("6")} && ${drew("4")}`, 15_000);
   assert.equal(await page.eval(drew("a@b.c")), false);
-  assert.equal(await page.eval(drew("⚠ this row cannot be counted")), false);
   // A command on the cell reads the dots too.
   assert.ok((await cellCommand(page, "Shout this value")).includes(DOTS));
   await forget(page);

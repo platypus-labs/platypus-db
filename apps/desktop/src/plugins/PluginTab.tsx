@@ -5,12 +5,14 @@ import type { TabProps } from "../tabs/registry";
 import type { PluginTabModel } from "../tabs/plugin";
 import { EmptyState } from "../ui/State";
 import { PluginFrame } from "./PluginFrame";
-import { installedPlugins, reloadPlugins, usePlugins } from "./store";
+import { followPluginChanges, installedPlugins, reloadPlugins, usePlugins } from "./store";
 
 export default function PluginTab({ tab, connection }: TabProps<PluginTabModel>) {
   const plugins = usePlugins();
   // A tab restored at start, or moved to a window of its own, may come before the list of plugins.
   const [read, setRead] = useState(() => installedPlugins().length > 0);
+  // Turned off or removed in another window, it goes here too.
+  useEffect(followPluginChanges, []);
   useEffect(() => {
     if (!read) {
       void reloadPlugins()

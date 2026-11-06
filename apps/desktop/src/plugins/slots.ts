@@ -12,8 +12,9 @@ export interface GridPluginInput {
   /** These and the user's computed columns, after which the plugins' go. */
   shown: ColumnInfo[];
   rows: Rows;
-  /** By result column: its values show as dots. */
-  masked: boolean[];
+  /** Whether a result column's values are sensitive: a plugin reads them as dots, whether or not
+   *  the screen masks them now. */
+  sensitive: (column: ColumnInfo) => boolean;
   topRows: number;
   redraw: () => void;
 }
@@ -61,8 +62,8 @@ export function usePluginPanels() {
  *  any, and the grid then has nothing more to go through. */
 export function useGridPlugins(input: GridPluginInput): GridPluginView | null {
   const attach = useSyncExternalStore(subscribe, () => slots.grid);
-  const { columns, shown, rows, masked, topRows } = input;
-  const view = useMemo(() => attach?.(input) ?? null, [attach, columns, shown, rows, masked, topRows]);
+  const { columns, shown, rows, sensitive, topRows } = input;
+  const view = useMemo(() => attach?.(input) ?? null, [attach, columns, shown, rows, sensitive, topRows]);
   useEffect(() => () => view?.dispose(), [view]);
   return view;
 }

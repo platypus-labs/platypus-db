@@ -7,9 +7,10 @@
 // at a time per extension. A renderer's answers are kept by value, a column's by row, and scrolling
 // back costs nothing. The newest cells noted go first: those are what is on screen now.
 //
-// A plugin reads a cell as the grid shows it: a masked one as dots, NULL as NULL. A column whose
-// batch fails shows its error in its cells, and asks no more; a renderer's goes back to the plain
-// value. Neither takes the grid with it.
+// A plugin never reads a sensitive cell: it gets dots whether or not the screen masks them now, and
+// NULL as NULL. A renderer has nothing to draw there, so none is asked. A column whose batch fails
+// shows its error in its cells, and asks no more; a renderer's goes back to the plain value. Neither
+// takes the grid with it.
 import type { ColumnInfo, InstalledPlugin, PluginGridCell, PluginGridColumn, PluginGridRendered, PluginGridValue } from "../api";
 import type { CellDecoration } from "../grid/DataGrid";
 import type { Rows } from "../grid/RowCache";
@@ -34,6 +35,14 @@ export interface GridBackend {
   /** A batch of this extension failed: at most once per plugin, the user hears of it. */
   failed(plugin: InstalledPlugin, title: string, reason: string): void;
   reason(error: unknown): string;
+}
+
+/** `value` at most as long as a plugin gets it, cut between two characters. */
+export function cutValue(value: string): string {
+  if (value.length <= MAX_VALUE) return value;
+  // Half of a surrogate pair is no text: the backend's JSON would refuse the whole batch.
+  const high = value.charCodeAt(MAX_VALUE - 1);
+  return value.slice(0, high >= 0xd800 && high <= 0xdbff ? MAX_VALUE - 1 : MAX_VALUE);
 }
 
 /** Whether a column of `dbType` is one of `types`; all are without any. A size is not the type. */
@@ -131,13 +140,14 @@ class Sender<K> {
 
 /** The grid of `input` with the extensions of `plugins`; `null` when none of them applies. */
 export function createGridView(input: GridPluginInput, plugins: InstalledPlugin[], backend: GridBackend): GridPluginView | null {
-  const { columns, shown, rows, masked, topRows, redraw } = input;
+  const { columns, shown, rows, sensitive, topRows, redraw } = input;
   const usable = plugins.filter((p) => p.enabled && p.approved.grid && p.manifest.grid);
   if (usable.length === 0) return null;
+  const masked = columns.map(sensitive);
   const senders: { stop(): void }[] = [];
   const as = (c: number): PluginGridColumn => ({ name: columns[c]!.name, type: columns[c]!.db_type, masked: !!masked[c] });
-  /** A value as the grid shows it. */
-  const shownValue = (c: number, value: string | null) => (value !== null && masked[c] ? backend.mask : value);
+  /** A value as a plugin may read it, within its limit. */
+  const readable = (c: number, value: string | null) => (value === null ? null : masked[c] ? backend.mask : cutValue(value));
   const matching = (types: string[] | undefined) => columns.flatMap((c, i) => (typeMatches(types, c.db_type) ? [i] : []));
 
   // Computed columns: by row.
@@ -153,7 +163,7 @@ export function createGridView(input: GridPluginInput, plugins: InstalledPlugin[
         // A row not loaded is noted again when it is drawn after it loads.
         const ready = keys.filter((row) => cols.every((c) => rows.get(row, c) !== undefined));
         if (!ready.length) return;
-        const batch = ready.map((row) => cols.map((c) => shownValue(c, rows.get(row, c) as string | null)?.slice(0, MAX_VALUE) ?? null));
+        const batch = ready.map((row) => cols.map((c) => readable(c, rows.get(row, c) as string | null)));
         try {
           const answer = await backend.column(plugin.manifest.id, extension.id, cols.map(as), batch);
           answer.forEach((a, i) => remember(values, ready[i]!, "error" in a ? `⚠ ${a.error}` : a.text));
@@ -181,7 +191,7 @@ export function createGridView(input: GridPluginInput, plugins: InstalledPlugin[
   for (const plugin of usable) {
     for (const extension of plugin.manifest.grid!.renderers ?? []) {
       for (const c of matching(extension.types)) {
-        if (renderers[c]) continue;
+        if (renderers[c] || masked[c]) continue;
         const cells = new Map<string, CellDecoration | null>();
         let failed = false;
         const sender = new Sender<string>(async (values) => {
@@ -220,7 +230,7 @@ export function createGridView(input: GridPluginInput, plugins: InstalledPlugin[
         const draw = renderers[col];
         if (!draw || row < topRows) return undefined;
         const value = rows.get(row - topRows, col);
-        return value == null ? undefined : draw(masked[col] ? backend.mask : value);
+        return value == null ? undefined : draw(value);
       }
     : undefined;
 
@@ -231,7 +241,7 @@ export function createGridView(input: GridPluginInput, plugins: InstalledPlugin[
     cell: (row, col) => {
       if (col >= columns.length || row < topRows) return null;
       const value = rows.get(row - topRows, col);
-      return value === undefined ? null : { column: as(col), value: shownValue(col, value)?.slice(0, MAX_VALUE) ?? null };
+      return value === undefined ? null : { column: as(col), value: readable(col, value) };
     },
     dispose: () => senders.forEach((s) => s.stop()),
   };

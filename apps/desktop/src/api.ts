@@ -3378,6 +3378,9 @@ export interface InstalledPlugin {
   enabled: boolean;
   approved: PluginPermissions;
   description: PluginDescription;
+  /** Its files are missing or not its own: only its name and version are known, and it can only
+   *  be removed. */
+  broken: boolean;
 }
 
 /** One plugin of a catalog's index. */
@@ -3427,6 +3430,9 @@ export interface InspectedPlugin {
   added: PluginPermissions;
   /** The package's hash, given back to `pluginInstall` so that what is installed is what was reviewed. */
   hash: string;
+  /** The installed version has another signer (a trusted key's name, `null` for none): installing
+   *  clears the plugin's secrets and what its pages keep. */
+  signer_change: { from: string | null; to: string | null } | null;
 }
 
 /** What the app does with an action's result. */

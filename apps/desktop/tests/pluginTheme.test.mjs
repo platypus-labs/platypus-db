@@ -4,11 +4,17 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { isThemeColor, luminance, pluginThemeOf } from "../src/themes/color.ts";
+import { isThemeColor, luminance, pluginThemeOf, themeFontsKey } from "../src/themes/color.ts";
 import { contrastRatio, lowContrast, opaqueRgb } from "../src/themes/contrast.ts";
 import { entryAction, keepableSettings } from "../src/plugins/catalogEntry.ts";
 
 const repoFile = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
+
+test("a new version of a plugin counts as other fonts", () => {
+  assert.notEqual(themeFontsKey("sea", "1.0.0", ["ui"]), themeFontsKey("sea", "1.1.0", ["ui"]));
+  assert.equal(themeFontsKey("sea", "1.0.0", ["ui"]), themeFontsKey("sea", "1.0.0", ["ui"]));
+  assert.equal(themeFontsKey("sea", "1.0.0", []), null);
+});
 
 test("a color and nothing else", () => {
   for (const good of ["#fff", "#ffff", "#0B1D26", "#0b1d26cc", "rgb(1, 2, 3)", "rgb(1 2 3 / 50%)", "rgba(255, 141, 40, 0.14)", "hsl(200, 50%, 40%)", "hsla(200, 50%, 40%, .5)", "transparent"]) {

@@ -23,6 +23,12 @@ export interface ThemeVariantsOf {
   dark?: Record<string, string>;
 }
 
+/** What tells the fonts of a plugin's theme from those it had: a new version may have others under
+ *  the same names. `null` without any. */
+export function themeFontsKey(id: string, version: string, fonts: string[]): string | null {
+  return fonts.length > 0 ? `${id}@${version}` : null;
+}
+
 /** What of a plugin's theme can be painted: its known tokens with color values. The crate checked
  *  the same when it read the manifest, so anything dropped here means the file was changed by
  *  something else. A theme left with no variant is no theme. */

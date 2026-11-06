@@ -42,7 +42,8 @@ export function readFrameMessage(data: unknown): FrameMessage {
   const m = data as Record<string, unknown>;
   if (m.platypus !== 1) return BROKEN;
   const fields = Object.keys(m).length;
-  if (m.type === "pong") return fields === 3 && typeof m.n === "number" ? { kind: "pong", n: m.n } : BROKEN;
+  // A count: `NaN` would make the watchdog's sum `NaN`, and a frame that never counts as hung.
+  if (m.type === "pong") return fields === 3 && Number.isSafeInteger(m.n) ? { kind: "pong", n: m.n as number } : BROKEN;
   if (m.type !== "request" || fields !== 5 || !Number.isSafeInteger(m.id)) return BROKEN;
   const id = m.id as number;
   if (typeof m.name !== "string" || typeof m.params !== "string") return BROKEN;

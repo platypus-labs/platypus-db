@@ -4,7 +4,7 @@ import { api, type InspectedPlugin, type InstalledPlugin, type PluginDescription
 import { msg, t } from "../i18n";
 import { ask, choose } from "../ui/ask";
 import { answerFor } from "../testAnswers";
-import { reloadPlugins, usePlugins } from "./store";
+import { pluginListProblem, reloadPlugins, usePlugins } from "./store";
 import { pickFolder } from "../projects/shared";
 import { EmptyState } from "../ui/State";
 import { PALETTE_KEYS, customPreset } from "../theme";
@@ -35,7 +35,7 @@ function permissionLines(permissions: PluginPermissions): string[] {
   if (permissions.clipboard) lines.push(t("Put text on the clipboard"));
   if (permissions.hooks) lines.push(t("Know when statements run and connections open, see statements with sensitive values masked, and stop a statement or a save"));
   if (permissions.tabs) lines.push(t("Show its own pages in tabs and side panels"));
-  if (permissions.grid) lines.push(t("Add columns, cell views and cell commands to the result grid"));
+  if (permissions.grid) lines.push(t("Read the cells of results, with sensitive columns masked, and add columns, cell views and cell commands to the result grid"));
   return lines;
 }
 
@@ -101,6 +101,16 @@ function ThemeContrast({ theme }: { theme: NonNullable<PluginManifest["theme"]> 
   );
 }
 
+/** The installed version has another signer: nothing says this is the same publisher. */
+function SignerChangeNotice({ change }: { change: NonNullable<InspectedPlugin["signer_change"]> }) {
+  const signed = (key: string | null) => (key === null ? t("not signed") : t("signed by {key}", { key }));
+  return (
+    <p className="notice warn small" data-field="signer-change">
+      {t("This may be another publisher: the installed version is {from}, and this package is {to}. Installing clears the plugin's secrets and what its pages keep.", { from: signed(change.from), to: signed(change.to) })}
+    </p>
+  );
+}
+
 /** What a package provides and asks for, and the answer to it: the review of every install, from a
  *  file or from the catalog. `children` goes above what it asks. */
 export function PluginReview(props: { plugin: InspectedPlugin; busy: boolean; onInstall: () => void; onCancel: () => void; children?: ReactNode }) {
@@ -120,6 +130,7 @@ export function PluginReview(props: { plugin: InspectedPlugin; busy: boolean; on
       {children}
       <Provides description={plugin.description} manifest={plugin.manifest} />
       {plugin.manifest.theme && <ThemeContrast theme={plugin.manifest.theme} />}
+      {plugin.signer_change && <SignerChangeNotice change={plugin.signer_change} />}
       <h4>{t("It asks to")}</h4>
       <PermissionList permissions={plugin.manifest.permissions} />
       {plugin.replaces && permissionLines(plugin.added).length > 0 && (
@@ -144,6 +155,7 @@ export function PluginReview(props: { plugin: InspectedPlugin; busy: boolean; on
  *  the install of a package after reviewing what it asks for. */
 export function PluginsPanel() {
   const plugins = usePlugins();
+  const listProblem = pluginListProblem();
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<{ path: string; plugin: InspectedPlugin } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -198,8 +210,12 @@ export function PluginsPanel() {
         : null;
     if (keep === null) return;
     await attempt(async () => {
-      await api.pluginRemove(plugin.manifest.id, keep);
-      await reloadPlugins();
+      try {
+        await api.pluginRemove(plugin.manifest.id, keep);
+      } finally {
+        // Removed in part it is off the list, and the error says what is left.
+        await reloadPlugins();
+      }
     });
   }
 
@@ -223,13 +239,18 @@ export function PluginsPanel() {
           {error}
         </div>
       )}
+      {listProblem && (
+        <div className="notice error small" data-field="plugin-list-error">
+          {t("The list of plugins cannot be read, so no plugin runs and no hook guards a statement: {reason}", { reason: listProblem })}
+        </div>
+      )}
       {(plugins.length > 0 || review) && <div className="driver-actions">{installButtons}</div>}
       {review && <PluginReview plugin={review.plugin} busy={busy} onInstall={() => void install(review.path, review.plugin.hash)} onCancel={() => setReview(null)} />}
       {plugins.length === 0 && !review && (
         <EmptyState icon="extension" title={t("No plugin installed.")} actions={installButtons} />
       )}
       {plugins.map((p) => (
-        <div key={p.manifest.id} className="driver-block" data-plugin={p.manifest.id} data-enabled={p.enabled}>
+        <div key={p.manifest.id} className="driver-block" data-plugin={p.manifest.id} data-enabled={p.enabled} data-broken={p.broken || undefined}>
           <div className="driver-row-inner">
             <div>
               <strong>{p.manifest.name}</strong> · <span data-field="version">{p.manifest.version}</span>
@@ -246,14 +267,21 @@ export function PluginsPanel() {
                 {t("Settings")}
               </button>
             )}
-            <label className="check">
-              <input type="checkbox" data-action="toggle" checked={p.enabled} disabled={busy} onChange={() => void toggle(p)} />
-              {t("Turned on")}
-            </label>
+            {!p.broken && (
+              <label className="check">
+                <input type="checkbox" data-action="toggle" checked={p.enabled} disabled={busy} onChange={() => void toggle(p)} />
+                {t("Turned on")}
+              </label>
+            )}
             <button type="button" data-action="remove" disabled={busy} onClick={() => void remove(p)}>
               {t("Remove")}
             </button>
           </div>
+          {p.broken && (
+            <p className="notice warn small" data-field="plugin-broken">
+              {t("Its files are missing or damaged, and it does not run. Remove it, and install it again if you still want it.")}
+            </p>
+          )}
           {p.manifest.description && <p className="muted small">{p.manifest.description}</p>}
           <Provides description={p.description} manifest={p.manifest} />
           {p.manifest.theme && <ThemeContrast theme={p.manifest.theme} />}

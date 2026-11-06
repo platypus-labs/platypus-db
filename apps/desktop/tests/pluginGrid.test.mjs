@@ -4,7 +4,7 @@
 // The figures of the last test show with `node --test --test-reporter=spec tests/pluginGrid.test.mjs`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_VALUE, Notes, createGridView, typeMatches } from "../src/plugins/gridView.ts";
+import { MAX_VALUE, Notes, createGridView, cutValue, typeMatches } from "../src/plugins/gridView.ts";
 
 const MASK = "••••••";
 const settle = () => new Promise((done) => setTimeout(done, 60));
@@ -53,10 +53,14 @@ function backend(over = {}) {
   };
 }
 
-function view(grid, { count = 1000, masked = [false, false], topRows = 0, shown, plugins, api = backend(), columns = [column("name"), column("state", "status")] } = {}) {
+/** A test of sensitive columns: those `names` lists. */
+const sensitiveIn = (...names) => (c) => names.includes(c.name);
+const nothingSensitive = () => false;
+
+function view(grid, { count = 1000, sensitive = nothingSensitive, topRows = 0, shown, plugins, api = backend(), columns = [column("name"), column("state", "status")] } = {}) {
   let redraws = 0;
   const made = createGridView(
-    { columns, shown: shown ?? columns, rows: result(count), masked, topRows, redraw: () => (redraws += 1) },
+    { columns, shown: shown ?? columns, rows: result(count), sensitive, topRows, redraw: () => (redraws += 1) },
     plugins ?? [plugin(grid)],
     api,
   );
@@ -65,6 +69,28 @@ function view(grid, { count = 1000, masked = [false, false], topRows = 0, shown,
 
 const LENGTH = { columns: [{ id: "length", title: "Length", types: ["text"] }] };
 const STATUS = { renderers: [{ id: "status", title: "Status", types: ["status"] }] };
+
+test("a long value is cut between two characters, so that the batch stays good JSON for the backend", async () => {
+  assert.equal(cutValue("short"), "short");
+  const pair = "\u{1F600}";
+  // The cut would fall between the two halves of the pair.
+  const across = "x".repeat(MAX_VALUE - 1) + pair;
+  assert.equal(cutValue(across), "x".repeat(MAX_VALUE - 1));
+  assert.equal(cutValue(pair.repeat(MAX_VALUE)).length, MAX_VALUE);
+  assert.equal(cutValue("x".repeat(MAX_VALUE + 5)).length, MAX_VALUE);
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  assert.equal(lone.test(cutValue(across)), false);
+  // The same, on its way to a plugin: a computed column and a command.
+  const rows = { get: () => across, ensure: () => {} };
+  const api = backend();
+  const columns = [column("text")];
+  const grid = createGridView({ columns, shown: columns, rows, sensitive: nothingSensitive, topRows: 0, redraw: () => {} }, [plugin(LENGTH)], api);
+  grid.rows.get(0, 1);
+  await settle();
+  assert.equal(lone.test(api.calls.column[0].rows[0][0]), false);
+  assert.equal(lone.test(grid.cell(0, 0).value), false);
+  grid.dispose();
+});
 
 test("a type matches without its size or case; no types match all", () => {
   assert.ok(typeMatches(undefined, "anything"));
@@ -145,7 +171,7 @@ test("a row not loaded is not asked for, and is noted again when it is drawn", a
   grid.dispose();
 });
 
-test("a plugin reads a masked cell as dots, and NULL as NULL", async () => {
+test("a plugin reads a sensitive cell as dots, and NULL as NULL", async () => {
   const seen = [];
   const api = backend({
     column: async (_, __, columns, rows) => {
@@ -159,7 +185,7 @@ test("a plugin reads a masked cell as dots, and NULL as NULL", async () => {
     ensure: () => {},
   };
   const grid = createGridView(
-    { columns, shown: columns, rows, masked: [true, false], topRows: 0, redraw: () => {} },
+    { columns, shown: columns, rows, sensitive: sensitiveIn("email"), topRows: 0, redraw: () => {} },
     [plugin({ columns: [{ id: "c", title: "C" }] })],
     api,
   );
@@ -182,7 +208,7 @@ test("a plugin reads a masked cell as dots, and NULL as NULL", async () => {
   grid.dispose();
 });
 
-test("a renderer asks once per value, and gets a masked value as dots", async () => {
+test("a renderer asks once per value, and is not asked about a sensitive column", async () => {
   const { view: grid, api, redraws } = view(STATUS);
   assert.equal(grid.columns.length, 2);
   // Other columns cost one check.
@@ -200,11 +226,10 @@ test("a renderer asks once per value, and gets a masked value as dots", async ()
   assert.equal(api.calls.render.length, 1);
   grid.dispose();
 
-  const masked = view(STATUS, { masked: [false, true] });
-  for (let row = 0; row < 30; row += 1) masked.view.decorate(row, 1);
+  const masked = view(STATUS, { sensitive: sensitiveIn("state") });
+  assert.equal(masked.view.decorate, undefined);
   await settle();
-  assert.deepEqual(masked.api.calls.render[0].values, [MASK]);
-  assert.equal(masked.api.calls.render[0].column.masked, true);
+  assert.equal(masked.api.calls.render.length, 0);
   masked.view.dispose();
 });
 
@@ -222,7 +247,7 @@ test("the rows on top are not a renderer's, and NULL is not drawn by it", async 
   const rows = { get: () => null, ensure: () => {} };
   const api2 = backend();
   const columns = [column("state", "status")];
-  const nulls = createGridView({ columns, shown: columns, rows, masked: [false], topRows: 0, redraw: () => {} }, [plugin(STATUS)], api2);
+  const nulls = createGridView({ columns, shown: columns, rows, sensitive: nothingSensitive, topRows: 0, redraw: () => {} }, [plugin(STATUS)], api2);
   assert.equal(nulls.decorate(0, 0), undefined);
   await settle();
   assert.equal(api2.calls.render.length, 0);
@@ -250,7 +275,7 @@ test("a value too long is drawn as it is, or cut for a column", async () => {
   const rows = { get: () => long, ensure: () => {} };
   const api = backend();
   const columns = [column("state", "status"), column("name")];
-  const grid = createGridView({ columns, shown: columns, rows, masked: [], topRows: 0, redraw: () => {} }, [plugin({ ...STATUS, ...LENGTH })], api);
+  const grid = createGridView({ columns, shown: columns, rows, sensitive: nothingSensitive, topRows: 0, redraw: () => {} }, [plugin({ ...STATUS, ...LENGTH })], api);
   assert.equal(grid.decorate(0, 0), undefined);
   grid.rows.get(0, 2);
   await settle();
@@ -383,7 +408,7 @@ test("what scrolling a large result costs, with and without an extension", async
   const values = ["ok", "failed", "other"];
   const base = { get: (row, col) => (col === 1 ? values[row % 3] : `n${row}`), ensure: () => {} };
   const columns = Array.from({ length: 12 }, (_, i) => column(`c${i}`, i === 1 ? "status" : "text"));
-  const attach = (grid, api) => createGridView({ columns, shown: columns, rows: base, masked: [], topRows: 0, redraw: () => {} }, [plugin(grid)], api);
+  const attach = (grid, api) => createGridView({ columns, shown: columns, rows: base, sensitive: nothingSensitive, topRows: 0, redraw: () => {} }, [plugin(grid)], api);
 
   // Warm the engine the same way for each.
   scroll(undefined, base.get, shape);

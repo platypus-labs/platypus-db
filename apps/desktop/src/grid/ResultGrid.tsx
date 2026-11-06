@@ -199,7 +199,7 @@ export function ResultGrid({ jobId, columns, rowCount, cache, version, sort, onH
     columns,
     shown: computed.columns,
     rows: computed.rows,
-    masked,
+    sensitive,
     topRows,
     redraw: () => grid.current?.redraw(),
   });

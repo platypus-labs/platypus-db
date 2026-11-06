@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { changeFollower } from "../src/plugins/changeFollower.ts";
 import { FRAME_REQUESTS, FrameGuard, MAX_IN_FLIGHT, MAX_PARAMS, hung, readFrameMessage, refusedBy } from "../src/plugins/frameProtocol.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -37,6 +38,11 @@ test("anything else is not one of the app's messages", () => {
     { platypus: 1 },
     { platypus: 1, type: "unknown" },
     { platypus: 1, type: "pong", n: "1" },
+    { platypus: 1, type: "pong", n: Number.NaN },
+    { platypus: 1, type: "pong", n: Number.POSITIVE_INFINITY },
+    { platypus: 1, type: "pong", n: 1.5 },
+    { platypus: 1, type: "pong", n: 2 ** 53 },
+    request({ id: Number.NaN }),
     { platypus: 1, type: "pong", n: 1, junk: "x".repeat(1000) },
     request({ id: "1" }),
     request({ id: 1.5 }),
@@ -155,4 +161,34 @@ test("the page's script answers pings and tells of events, late listeners too", 
     ["init", "p"],
     ["theme", 1],
   ]);
+});
+
+test("the changes of plugins are followed from the first time it is asked for, and at no cost before", async () => {
+  const heard = [];
+  let reloads = 0;
+  const follow = changeFollower(
+    async (handler) => heard.push(handler),
+    () => (reloads += 1),
+  );
+  assert.equal(heard.length, 0, "nothing listens until it is asked");
+  follow();
+  follow();
+  assert.equal(heard.length, 1);
+  heard[0]();
+  assert.equal(reloads, 1);
+
+  // A listener that could not be set up is tried again.
+  let tries = 0;
+  const warn = console.warn;
+  console.warn = () => {};
+  const flaky = changeFollower(async () => {
+    tries += 1;
+    throw new Error("no window");
+  }, () => {});
+  flaky();
+  await new Promise((done) => setTimeout(done));
+  flaky();
+  await new Promise((done) => setTimeout(done));
+  console.warn = warn;
+  assert.equal(tries, 2);
 });

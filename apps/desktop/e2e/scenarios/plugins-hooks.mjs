@@ -1,7 +1,7 @@
 // Event hooks of a plugin (Settings > Plugins, examples/plugins/query-guard). A package that does
 // not ask for the permission, or names one the app does not know, is refused by name. A hook blocks
-// a statement with a message naming the plugin; it sees the statement with sensitive literals and
-// passwords masked. The app's own checks come first and stay: a hook that allows does not lift the
+// a statement with a message naming the plugin; it sees the statement with every value and
+// password masked. The app's own checks come first and stay: a hook that allows does not lift the
 // question before a DELETE without WHERE, nor the read-only connection's refusal, and a refused
 // statement never runs. A hook that crashes or loops lets the statement run and the user is told
 // once. It runs on connect and after a statement (in the log), and may block a save of edited
@@ -238,12 +238,14 @@ async function blocksStatements(page, db) {
   const error = await refused(page, "SELECT * FROM forbidden_table");
   assert.ok(error.includes(`${BLOCKED} forbidden_table is off limits.`), error);
 
-  // What the hook sees: the literal of a sensitive column masked, the others not.
+  // What the hook sees: what the statement does, and none of what it carries.
   const seen = await refused(page, "SELECT id /* show_hook_view */ FROM items WHERE email = 'a@b.c' AND name = 'apple'");
   assert.ok(seen.includes(BLOCKED), seen);
   assert.ok(seen.includes("'••••••'"), seen);
   assert.ok(!seen.includes("a@b.c"), seen);
-  assert.ok(seen.includes("'apple'"), seen);
+  assert.ok(!seen.includes("apple"), seen);
+  assert.ok(seen.includes("email"), seen);
+  assert.ok(seen.includes("items"), seen);
 
   // Never a password.
   const secret = await refused(page, "CREATE USER bob WITH PASSWORD 'hunter2' /* show_hook_view */");
