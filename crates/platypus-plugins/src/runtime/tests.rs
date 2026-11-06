@@ -174,7 +174,7 @@ fn http_sandbox(allowed: &[&str]) -> Sandbox {
     let grants = Grants {
         plugin: "test".to_owned(),
         http: allowed.iter().map(|h| (*h).to_owned()).collect(),
-        proxy: None,
+        ..Grants::default()
     };
     let module = compile(&guest(&http_forward(ACTION))).unwrap();
     Sandbox::new(&module, &grants, small()).unwrap()
@@ -226,6 +226,101 @@ async fn sends_http_to_allowed_hosts_only() {
     })
     .await
     .unwrap();
+}
+
+/// An entry point that sends its request to `setting` and answers what it got.
+fn setting_forward(entry: &str) -> String {
+    format!(
+        r#"(import "platypus" "setting" (func $setting (param i32 i32) (result i32)))
+  (import "platypus" "take" (func $take2 (param i32)))
+  (memory (export "memory") 4)
+  (global $next (mut i32) (i32.const 65536))
+  (func (export "platypus_alloc") (param $len i32) (result i32)
+    (local $p i32)
+    (local.set $p (global.get $next))
+    (global.set $next (i32.add (global.get $next) (local.get $len)))
+    (local.get $p))
+  (func (export "platypus_dealloc") (param i32 i32))
+  (func (export "{entry}") (param $ptr i32) (param $len i32) (result i64)
+    (local $n i32) (local $out i32)
+    (local.set $n (call $setting (local.get $ptr) (local.get $len)))
+    (local.set $out (global.get $next))
+    (global.set $next (i32.add (global.get $next) (local.get $n)))
+    (call $take2 (local.get $out))
+    (i64.or
+      (i64.shl (i64.extend_i32_u (local.get $out)) (i64.const 32))
+      (i64.extend_i32_u (local.get $n))))"#
+    )
+}
+
+fn setting_module() -> Vec<u8> {
+    wat::parse_str(format!("(module {})", setting_forward(ACTION))).unwrap()
+}
+
+#[test]
+fn setting_is_a_host_function_of_abi_2_only() {
+    let module = compile(&setting_module()).unwrap();
+    // Under ABI 1 the import stays unknown: the module does not load, as ever.
+    for api in [0, 1] {
+        let grants = Grants {
+            api,
+            ..Grants::default()
+        };
+        let e = Sandbox::new(&module, &grants, small()).unwrap_err();
+        assert!(e.to_string().contains("cannot be loaded"), "{e}");
+    }
+    let grants = Grants {
+        api: 2,
+        ..Grants::default()
+    };
+    let mut sandbox = Sandbox::new(&module, &grants, small()).unwrap();
+    // Without settings the call fails cleanly, and the sandbox goes on.
+    let e = sandbox
+        .call::<_, Value>(ACTION, &json!({ "key": "token" }))
+        .unwrap_err();
+    assert!(e.to_string().contains("not allowed"), "{e}");
+    assert!(!sandbox.is_broken());
+}
+
+#[test]
+fn setting_reads_only_the_plugins_own_fields() {
+    let data = tempfile::tempdir().unwrap();
+    let manifest = crate::manifest::Manifest::parse(
+        r#"
+        id = "own"
+        name = "Own"
+        version = "1"
+        api = 2
+        kinds = ["actions"]
+
+        [[settings]]
+        key = "url"
+        label = "URL"
+        type = "text"
+        default = "https://default"
+        "#,
+    )
+    .unwrap();
+    let files = crate::settings::SettingsFiles::new(data.path())
+        .with_secrets(std::sync::Arc::new(platypus_store::MemorySecrets::default()));
+    let grants = Grants {
+        api: 2,
+        settings: Some(SettingsAccess::new("own", &manifest.settings, files)),
+        ..Grants::default()
+    };
+    let module = compile(&setting_module()).unwrap();
+    let mut sandbox = Sandbox::new(&module, &grants, small()).unwrap();
+    let url: Value = sandbox.call(ACTION, &json!({ "key": "url" })).unwrap();
+    assert_eq!(url, "https://default");
+    let e = sandbox
+        .call::<_, Value>(ACTION, &json!({ "key": "other" }))
+        .unwrap_err();
+    assert!(e.to_string().contains("not allowed"), "{e}");
+    assert!(!sandbox.is_broken());
+    let e = sandbox
+        .call::<_, Value>(ACTION, &json!("not an object"))
+        .unwrap_err();
+    assert!(e.to_string().contains("key"), "{e}");
 }
 
 #[test]

@@ -36,7 +36,7 @@ use serde_json::{Value, json};
 use crate::PluginError;
 use crate::manifest::Kind;
 use crate::package::{Plugins, blocking};
-use crate::runtime::{self, DRIVER, Grants, Sandbox};
+use crate::runtime::{self, DRIVER, Sandbox};
 
 /// The connection option with the id of the plugin that is its driver.
 pub const PLUGIN_OPTION: &str = "plugin";
@@ -141,15 +141,11 @@ impl PluginConnection {
         else {
             return Err(Error::Config(format!("the plugin {id:?} has no driver")));
         };
-        let mut http = installed.approved.http.clone();
+        let mut grants = plugins.grants(&installed);
         if !config.host.trim().is_empty() {
-            http.push(config.host.trim().to_owned());
+            grants.http.push(config.host.trim().to_owned());
         }
-        let grants = Grants {
-            plugin: id,
-            http,
-            proxy: config.options.get("proxy").cloned(),
-        };
+        grants.proxy = config.options.get("proxy").cloned();
         let request = connect_request(config);
         let limits = plugins.limits();
         let (sandbox, hello) = blocking(move || {

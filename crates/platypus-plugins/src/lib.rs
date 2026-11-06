@@ -1,5 +1,5 @@
-//! WebAssembly plugins: commands for the editor, the result grid and the navigator, and
-//! drivers for databases the app does not know.
+//! WebAssembly plugins: commands for the editor, the result grid and the navigator, drivers for
+//! databases the app does not know, hooks on the app's events and a settings page.
 //!
 //! A plugin is a package with a manifest ([`manifest`]) and a WebAssembly module. The module
 //! runs in an interpreter ([`wasmi`]) with no access to anything but the JSON messages the
@@ -9,14 +9,18 @@
 //! guest ABI is described in `docs/PLUGINS.md`; [`runtime`] implements the host side.
 //!
 //! [`package`] installs, lists, enables and removes plugins under `<data>/plugins`,
-//! [`action`] runs their commands and [`driver`] opens their connections.
+//! [`action`] runs their commands, [`driver`] opens their connections, [`hooks`] calls them on
+//! events and [`settings`] keeps the values of their pages.
 
 pub mod action;
 pub mod driver;
+pub mod extensions;
+pub mod hooks;
 mod http;
 pub mod manifest;
 pub mod package;
 pub mod runtime;
+pub mod settings;
 #[cfg(test)]
 mod testing;
 
@@ -24,12 +28,20 @@ use std::sync::OnceLock;
 
 pub use action::{ActionInfo, ActionOutcome, ActionScope};
 pub use driver::{DriverInfo, PLUGIN_OPTION, PluginDriver};
-pub use manifest::{Kind, Manifest, Permissions};
+pub use extensions::{HookEvent, SettingField, SettingKind};
+pub use hooks::{
+    HOOKS, HookBlock, HookConnection, HookContext, HookFailure, HookLimits, HookReport,
+    HookStatement, HookTable, QueryStatus,
+};
+pub use manifest::{Capability, Kind, Manifest, Permissions};
 pub use package::{Inspected, Installed, Plugins};
 pub use runtime::{Description, Limits};
+pub use settings::SettingState;
 
 /// The guest ABI this host speaks; a manifest names the one its module was written for.
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 2;
+/// The oldest guest ABI this host still speaks.
+pub const MIN_API_VERSION: u32 = 1;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {

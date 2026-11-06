@@ -6,20 +6,24 @@
 //! Installing reads the module's description, so a module that does not load is refused
 //! before it is copied; the user approves the manifest's permissions by installing it
 //! (the app shows them first, from [`Plugins::inspect`]), and the install takes the hash of
-//! the package inspected, so it installs exactly what was shown.
+//! the package inspected, so it installs exactly what was shown. A package that is only a theme
+//! has no module, and nothing runs for it.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
+use platypus_store::SecretStore;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::action::{self, ActionInfo, ActionOutcome};
-use crate::manifest::{Kind, MANIFEST_FILE, MODULE_FILE, Manifest, Permissions};
-use crate::runtime::{self, DESCRIBE, Description, Grants, Limits, Sandbox};
+use crate::hooks::HookLimits;
+use crate::manifest::{Capability, Kind, MANIFEST_FILE, MODULE_FILE, Manifest, Permissions};
+use crate::runtime::{self, DESCRIBE, Description, Grants, HOOK, Limits, Sandbox};
+use crate::settings::{SettingState, SettingsAccess, SettingsFiles};
 use crate::{PluginError, driver};
 
 const STATE_FILE: &str = "plugins.json";
@@ -40,6 +44,9 @@ pub struct Inspected {
     pub description: Description,
     /// The version of the same plugin already installed, which this one replaces.
     pub replaces: Option<String>,
+    /// What it asks beyond what the user approved for that version; all it asks on a first
+    /// install. Installing approves it, so the app shows it before.
+    pub added: Permissions,
     /// A hash of the package's two files, given back to [`Plugins::install`]: what is
     /// installed is exactly what the user reviewed, even if the package changes in between.
     pub hash: String,
@@ -74,15 +81,20 @@ struct State {
 pub struct Plugins {
     dir: PathBuf,
     limits: Limits,
+    hook_limits: HookLimits,
+    settings: SettingsFiles,
 }
 
 impl Plugins {
     /// The plugins kept in `<data_dir>/plugins`.
     #[must_use]
     pub fn new(data_dir: &Path) -> Self {
+        let dir = data_dir.join("plugins");
         Self {
-            dir: data_dir.join("plugins"),
+            settings: SettingsFiles::new(&dir),
+            dir,
             limits: Limits::default(),
+            hook_limits: HookLimits::default(),
         }
     }
 
@@ -100,8 +112,45 @@ impl Plugins {
         self
     }
 
+    /// The same plugins, their hooks run with other limits.
+    #[must_use]
+    pub fn with_hook_limits(mut self, limits: HookLimits) -> Self {
+        self.hook_limits = limits;
+        self
+    }
+
+    /// The same plugins, their secret settings kept in `secrets` and not the system's keychain.
+    #[must_use]
+    pub fn with_secrets(mut self, secrets: Arc<dyn SecretStore>) -> Self {
+        self.settings = self.settings.with_secrets(secrets);
+        self
+    }
+
     pub(crate) fn limits(&self) -> Limits {
         self.limits
+    }
+
+    pub(crate) fn hook_limits(&self) -> HookLimits {
+        self.hook_limits
+    }
+
+    /// The folder of an installed plugin's version.
+    pub(crate) fn module_path(&self, manifest: &Manifest) -> PathBuf {
+        self.dir.join(&manifest.id).join(&manifest.version)
+    }
+
+    /// What a sandbox of an installed plugin may reach: what the user approved.
+    pub(crate) fn grants(&self, installed: &Installed) -> Grants {
+        let manifest = &installed.manifest;
+        Grants {
+            plugin: manifest.id.clone(),
+            http: installed.approved.http.clone(),
+            proxy: None,
+            api: manifest.api,
+            settings: (!manifest.settings.is_empty()).then(|| {
+                SettingsAccess::new(&manifest.id, &manifest.settings, self.settings.clone())
+            }),
+        }
     }
 
     /// Reads a package and its module's description, without installing it.
@@ -112,15 +161,14 @@ impl Plugins {
             hash,
         } = read_package(source)?;
         let description = describe(&manifest, wasm, self.limits).await?;
-        let replaces = self
-            .read_state()?
-            .plugins
-            .get(&manifest.id)
-            .map(|e| e.version.clone());
+        let state = self.read_state()?;
+        let current = state.plugins.get(&manifest.id);
+        let approved = current.map(|e| e.approved.clone()).unwrap_or_default();
         Ok(Inspected {
+            added: manifest.permissions.beyond(&approved),
+            replaces: current.map(|e| e.version.clone()),
             manifest,
             description,
-            replaces,
             hash,
         })
     }
@@ -142,6 +190,10 @@ impl Plugins {
             ));
         }
         let description = describe(&manifest, wasm.clone(), self.limits).await?;
+        let previous = self
+            .list()?
+            .into_iter()
+            .find(|p| p.manifest.id == manifest.id);
         let home = self.dir.join(&manifest.id);
         std::fs::create_dir_all(&home).map_err(PluginError::io(&home))?;
         let tmp = home.join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
@@ -173,6 +225,17 @@ impl Plugins {
             state.plugins.insert(manifest.id.clone(), entry);
             Ok(())
         })?;
+        // A field the new version no longer has leaves nothing behind. Its secret is out of
+        // the module's reach already, as is any value: the rest of the install stands.
+        if let Some(previous) = previous {
+            let dropped: Vec<_> = previous
+                .manifest
+                .settings
+                .into_iter()
+                .filter(|old| !manifest.settings.iter().any(|f| f.key == old.key))
+                .collect();
+            let _ = self.settings.forget(&manifest.id, &dropped);
+        }
         Ok(Installed {
             approved: manifest.permissions.clone(),
             manifest,
@@ -203,8 +266,56 @@ impl Plugins {
         })
     }
 
-    /// Removes a plugin and its files.
+    /// Whether the user approved `capability` for the plugin `id`; an error that says so when
+    /// not, for what is about to use it. Nothing of the plugin has run then.
+    pub fn require(&self, id: &str, capability: Capability) -> Result<Installed, PluginError> {
+        let entry = self
+            .read_state()?
+            .plugins
+            .remove(id)
+            .ok_or_else(|| PluginError::NotInstalled(id.to_owned()))?;
+        let installed = self.installed(id, entry)?;
+        if !installed.enabled {
+            return Err(PluginError::Disabled(id.to_owned()));
+        }
+        if installed.approved.allows(capability) {
+            Ok(installed)
+        } else {
+            Err(PluginError::Denied(format!(
+                "the plugin {id:?} has no permission for {capability:?}"
+            )))
+        }
+    }
+
+    /// The fields of a plugin's settings page with what they hold; a secret only says if it
+    /// is set.
+    pub fn settings_of(&self, id: &str) -> Result<Vec<SettingState>, PluginError> {
+        let installed = self.installed_any(id)?;
+        self.settings.states(id, &installed.manifest.settings)
+    }
+
+    /// Saves a value of a plugin's settings page; `null` goes back to the default. A key its
+    /// manifest does not declare, or a value that does not fit the field, is refused.
+    pub fn set_setting(&self, id: &str, key: &str, value: &Value) -> Result<(), PluginError> {
+        let installed = self.installed_any(id)?;
+        let field = installed
+            .manifest
+            .settings
+            .iter()
+            .find(|f| f.key == key)
+            .ok_or_else(|| {
+                PluginError::Invalid(format!("the plugin {id:?} has no setting {key:?}"))
+            })?;
+        self.settings.set(id, field, value)
+    }
+
+    /// Removes a plugin, its files and its settings.
     pub fn remove(&self, id: &str) -> Result<(), PluginError> {
+        // Its fields are in its manifest, about to go.
+        let fields = self
+            .installed_any(id)
+            .map(|p| p.manifest.settings)
+            .unwrap_or_default();
         self.update_state(|state| {
             state
                 .plugins
@@ -217,25 +328,31 @@ impl Plugins {
         if home.exists() {
             std::fs::remove_dir_all(&home).map_err(PluginError::io(&home))?;
         }
-        Ok(())
+        self.settings.forget(id, &fields)
     }
 
-    /// An installed plugin that is turned on, with its module's bytes.
-    pub(crate) fn load(&self, id: &str) -> Result<(Installed, Vec<u8>), PluginError> {
+    /// An installed plugin, turned on or not.
+    fn installed_any(&self, id: &str) -> Result<Installed, PluginError> {
         let entry = self
             .read_state()?
             .plugins
             .remove(id)
             .ok_or_else(|| PluginError::NotInstalled(id.to_owned()))?;
-        let installed = self.installed(id, entry)?;
+        self.installed(id, entry)
+    }
+
+    /// An installed plugin that is turned on, with its module's bytes.
+    pub(crate) fn load(&self, id: &str) -> Result<(Installed, Vec<u8>), PluginError> {
+        let installed = self.installed_any(id)?;
         if !installed.enabled {
             return Err(PluginError::Disabled(id.to_owned()));
         }
-        let path = self
-            .dir
-            .join(id)
-            .join(&installed.manifest.version)
-            .join(MODULE_FILE);
+        if !installed.manifest.needs_module() {
+            return Err(PluginError::Invalid(format!(
+                "the plugin {id:?} has no module"
+            )));
+        }
+        let path = self.module_path(&installed.manifest).join(MODULE_FILE);
         let wasm = std::fs::read(&path).map_err(PluginError::io(&path))?;
         Ok((installed, wasm))
     }
@@ -257,11 +374,7 @@ impl Plugins {
             .ok_or_else(|| {
                 PluginError::Invalid(format!("the plugin {id:?} has no action {action:?}"))
             })?;
-        let grants = Grants {
-            plugin: id.to_owned(),
-            http: installed.approved.http.clone(),
-            proxy: None,
-        };
+        let grants = self.grants(&installed);
         let clipboard = installed.approved.clipboard;
         let limits = self.limits;
         blocking(move || {
@@ -320,19 +433,32 @@ pub(crate) async fn blocking<T: Send + 'static>(
         .map_err(|e| PluginError::Trap(e.to_string()))?
 }
 
-/// Loads the module and checks that its description matches the manifest's kinds.
+/// Loads the module and checks that its description matches the manifest's kinds, and that it
+/// has the entry point of the hooks the manifest declares. A package without a module provides
+/// nothing to describe.
 async fn describe(
     manifest: &Manifest,
     wasm: Vec<u8>,
     limits: Limits,
 ) -> Result<Description, PluginError> {
+    if !manifest.needs_module() {
+        return Ok(Description::default());
+    }
     let grants = Grants {
         plugin: manifest.id.clone(),
+        api: manifest.api,
         ..Grants::default()
     };
+    let hooks = !manifest.hooks.is_empty();
     let description: Description = blocking(move || {
         let module = runtime::compile(&wasm)?;
-        Sandbox::new(&module, &grants, limits)?.call(DESCRIBE, &serde_json::json!({}))
+        let mut sandbox = Sandbox::new(&module, &grants, limits)?;
+        if hooks && !sandbox.exports(HOOK) {
+            return Err(PluginError::Invalid(format!(
+                "the manifest declares hooks and the module does not export `{HOOK}`"
+            )));
+        }
+        sandbox.call(DESCRIBE, &serde_json::json!({}))
     })
     .await?;
     matches_manifest(manifest, &description)?;
@@ -384,23 +510,29 @@ fn package_hash(manifest: &[u8], wasm: &[u8]) -> String {
         })
 }
 
-/// The manifest and the module of a folder or a `.zip`.
+/// The manifest and the module of a folder or a `.zip`; a package that needs no module has
+/// none, even if a file is there: nothing of it is read, copied or run.
 fn read_package(source: &Path) -> Result<Package, PluginError> {
-    let (manifest, wasm) = if source.is_dir() {
-        (
-            read_file(&source.join(MANIFEST_FILE), MAX_MANIFEST)?,
-            read_file(&source.join(MODULE_FILE), MAX_MODULE)?,
-        )
+    let (manifest, zipped) = if source.is_dir() {
+        (read_file(&source.join(MANIFEST_FILE), MAX_MANIFEST)?, None)
     } else {
-        read_zip(source)?
+        let (manifest, module) = read_zip(source)?;
+        (manifest, Some(module))
     };
-    let hash = package_hash(&manifest, &wasm);
-    let text = String::from_utf8(manifest)
+    let text = std::str::from_utf8(&manifest)
         .map_err(|_| PluginError::Invalid(format!("{MANIFEST_FILE} is not UTF-8 text")))?;
+    let parsed = Manifest::parse(text)?;
+    let wasm = match zipped {
+        _ if !parsed.needs_module() => Vec::new(),
+        Some(module) => {
+            module.ok_or_else(|| PluginError::Invalid(format!("the .zip has no {MODULE_FILE}")))?
+        }
+        None => read_file(&source.join(MODULE_FILE), MAX_MODULE)?,
+    };
     Ok(Package {
-        manifest: Manifest::parse(&text)?,
+        hash: package_hash(&manifest, &wasm),
+        manifest: parsed,
         wasm,
-        hash,
     })
 }
 
@@ -420,8 +552,8 @@ fn read_file(path: &Path, max: u64) -> Result<Vec<u8>, PluginError> {
     Ok(bytes)
 }
 
-/// The two files of a `.zip`, at its root or in its one folder.
-fn read_zip(source: &Path) -> Result<(Vec<u8>, Vec<u8>), PluginError> {
+/// The manifest of a `.zip`, at its root or in its one folder, and the module beside it if any.
+fn read_zip(source: &Path) -> Result<(Vec<u8>, Option<Vec<u8>>), PluginError> {
     let file = std::fs::File::open(source).map_err(PluginError::io(source))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| {
         PluginError::Invalid(format!(
@@ -466,7 +598,11 @@ fn read_zip(source: &Path) -> Result<(Vec<u8>, Vec<u8>), PluginError> {
         Ok(bytes)
     };
     let manifest = read(&manifest_name, MAX_MANIFEST)?;
-    let module = read(&module_name, MAX_MODULE)?;
+    let module = if names.contains(&module_name) {
+        Some(read(&module_name, MAX_MODULE)?)
+    } else {
+        None
+    };
     Ok((manifest, module))
 }
 
@@ -475,8 +611,11 @@ fn write_package(dir: &Path, manifest: &Manifest, wasm: &[u8]) -> Result<(), Plu
     let text = toml::to_string_pretty(manifest).map_err(|e| PluginError::Invalid(e.to_string()))?;
     let path = dir.join(MANIFEST_FILE);
     std::fs::write(&path, text).map_err(PluginError::io(&path))?;
-    let path = dir.join(MODULE_FILE);
-    std::fs::write(&path, wasm).map_err(PluginError::io(&path))
+    if manifest.needs_module() {
+        let path = dir.join(MODULE_FILE);
+        std::fs::write(&path, wasm).map_err(PluginError::io(&path))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
