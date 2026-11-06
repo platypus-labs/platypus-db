@@ -827,6 +827,14 @@ mod tests {
         let rw = |sql| check_mongo(sql, AgentAccess::ReadWrite, UnfilteredRule::Refuse, "m");
         assert!(rw("db.orders.deleteMany({ a: 1 })").is_ok());
         assert!(denied(rw("db.orders.deleteMany({})")).contains("every document of `orders`"));
+
+        // bulkWrite is held to the same: read only refuses it, and it cannot hide a change to
+        // every document among narrower ones.
+        let narrow = "db.orders.bulkWrite([{ deleteOne: { filter: { a: 1 } } }])";
+        assert!(denied(ro(narrow)).contains("changes documents"));
+        assert!(rw(narrow).is_ok());
+        let hidden = "db.orders.bulkWrite([{ deleteOne: { filter: { a: 1 } } }, { deleteMany: { filter: {} } }])";
+        assert!(denied(rw(hidden)).contains("every document of `orders`"));
     }
 
     fn denied(r: Result<&str>) -> String {

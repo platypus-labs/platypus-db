@@ -6047,6 +6047,7 @@ dependencies = [
  "futures",
  "mongodb",
  "platypus-core",
+ "serde",
  "serde_json",
  "tokio",
 ]

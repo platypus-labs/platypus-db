@@ -22,6 +22,24 @@ export default async function (page) {
   await page.waitFor(`document.querySelector('.modal') !== null`, 10_000);
   const text = await page.eval(`document.querySelector('.modal').textContent`);
   await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Cancel').click()`);
-  await runStatement(page, "db.qa_sql_guard.drop()");
+  await page.waitFor(`document.querySelector('.modal') === null`);
   assert.doesNotMatch(text, /DELETEMANY|WHERE/, text);
+
+  // The same change inside a bulkWrite asks too, and Cancel keeps the documents.
+  await setEditor(page, "db.qa_sql_guard.bulkWrite([{ insertOne: { document: { a: 2 } } }, { deleteMany: { filter: {} } }])");
+  await clearStatus(page);
+  await page.key("Enter", "Enter", 13, CTRL);
+  await page.waitFor(`document.querySelector('.modal') !== null`, 10_000);
+  const bulk = await page.eval(`document.querySelector('.modal').textContent`);
+  assert.match(bulk, /bulkWrite/, bulk);
+  await page.eval(`[...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Cancel').click()`);
+  await page.waitFor(`document.querySelector('.modal') === null`);
+  assert.match(await runStatement(page, "db.qa_sql_guard.countDocuments({})"), /1 row/);
+
+  // A bulkWrite that names what it changes just runs, and says how many documents.
+  assert.match(
+    await runStatement(page, "db.qa_sql_guard.bulkWrite([{ insertOne: { document: { a: 3 } } }, { deleteOne: { filter: { a: 1 } } }])"),
+    /2 /,
+  );
+  await runStatement(page, "db.qa_sql_guard.drop()");
 }

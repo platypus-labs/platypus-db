@@ -16,7 +16,7 @@ To do something step by step, see the [user guide](guide/README.md).
 | SQLite | embedded | |
 | DuckDB | embedded, Arrow results; DuckDB's library downloaded on first use | Also opens CSV, JSON, Parquet and Excel files as databases |
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
-| MongoDB 5+ | official driver | mongosh syntax; no transactions, explain or data editing |
+| MongoDB 5+ | official driver | mongosh syntax; no transactions or data editing |
 | Redis 6+ | `redis` crate (RESP3, rustls) | Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON |
 | Elasticsearch 8 and OpenSearch 2 | HTTP API (`reqwest`, rustls) | Requests as Kibana's console writes them, and SQL; indices as tables, edited in the grid |
 | Apache Cassandra 4+ and ScyllaDB 5.4+ | `scylla` crate (rustls) | CQL; keyspaces as schemas, tables, materialized views, types and functions in the navigator; edited in the grid by full primary key; no row count, sort or filter in the data viewer |
@@ -612,8 +612,9 @@ box resize by their edge or corner; the list keeps its width.
 
 Statements in mongosh syntax: `db.orders.find({ status: 'paid' }).sort({ placed_at: -1 }).limit(10)`,
 `aggregate`, `countDocuments`, `distinct`, `insertOne`/`insertMany`, `updateOne`/`updateMany`,
-`replaceOne`, `deleteOne`/`deleteMany`, `createIndex`, `db.runCommand`, `show dbs`,
-`show collections` and `use`, with the shell's values (`ObjectId(...)`, `ISODate(...)`,
+`replaceOne`, `deleteOne`/`deleteMany`, `bulkWrite`, `findOneAndUpdate` and the like, index and statistics
+methods, `.explain()`, `db.runCommand` and the server's helpers (users, profiler, `rs.status`), `show dbs`,
+`show collections` and `use`, with every option passed on, with the shell's values (`ObjectId(...)`, `ISODate(...)`,
 `NumberLong(...)`, `/regex/i`) and Extended JSON. Results are a grid of the top-level fields
 with the focused document as a tree beside it (`F7`). The navigator lists databases,
 collections, fields sampled from the documents and indexes; the editor completes collections,

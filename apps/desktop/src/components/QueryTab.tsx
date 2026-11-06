@@ -1259,7 +1259,7 @@ export function QueryTab({
             const script = from === to ? text : text.slice(from, to);
             workbench().openDialog((close) => <MultiRunDialog script={script} origin={connection} onClose={close} />);
           },
-    explain: isNoSql(connection.driver) ? undefined : (analyze) => void explain(analyze),
+    explain: isNoSql(connection.driver) && !isMongo(connection.driver) ? undefined : (analyze) => void explain(analyze),
     openSql: (sql) => workbench().openTab("query", connection.id, { sql, database: tab.database }),
   };
 

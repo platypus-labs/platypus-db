@@ -144,6 +144,431 @@ async fn streams_results_in_batches() {
     );
 }
 
+/// What an `execute` that must fail says.
+async fn refused(conn: &dyn Connection, src: &str) -> String {
+    conn.execute(src, &ExecOptions::default())
+        .await
+        .unwrap_err()
+        .to_string()
+}
+
+#[tokio::test]
+async fn bulk_write_runs_in_order_and_says_how_far_it_got() {
+    let Some(conn) = connect().await else { return };
+    let conn = &*conn;
+    scratch(conn, "t_bulk").await;
+    // Every kind, in order; each counts what it changed.
+    assert_eq!(
+        affected(
+            conn,
+            "db.t_bulk.bulkWrite([
+                { insertOne: { document: { _id: 1, n: 1 } } },
+                { insertOne: { document: { _id: 2, n: 2 } } },
+                { insertOne: { document: { _id: 3, n: 3 } } },
+                { updateOne: { filter: { _id: 1 }, update: { $inc: { n: 10 } } } },
+                { updateMany: { filter: { n: { $lte: 3 } }, update: { $set: { low: true } } } },
+                { updateOne: { filter: { _id: 4 }, update: { $set: { n: 4 } }, upsert: true } },
+                { replaceOne: { filter: { _id: 2 }, replacement: { n: 20 } } },
+                { deleteOne: { filter: { _id: 3 } } },
+                { deleteMany: { filter: { n: 4 } } },
+            ])"
+        )
+        .await,
+        3 + 1 + 2 + 1 + 1 + 1 + 1
+    );
+    let left = rows(conn, "db.t_bulk.find({}, { n: 1 }).sort({ _id: 1 })").await;
+    let n = left[0]
+        .column(1)
+        .as_primitive::<arrow_array::types::Int32Type>();
+    assert_eq!(n.values(), &[11, 20]);
+
+    // Ordered, the first failure stops it: what ran stays, the rest does not run.
+    let stopped = refused(
+        conn,
+        "db.t_bulk.bulkWrite([
+            { insertOne: { document: { _id: 5 } } },
+            { deleteOne: { filter: { _id: 1 } } },
+            { insertOne: { document: { _id: 2 } } },
+            { deleteOne: { filter: { _id: 5 } } },
+        ])",
+    )
+    .await;
+    assert!(stopped.contains("operation 3 of 4"), "{stopped}");
+    assert!(stopped.contains("2 documents changed"), "{stopped}");
+    assert_eq!(count(&rows(conn, "db.t_bulk.find({ _id: 5 })").await), 1);
+
+    // Unordered, the rest goes on, and the error says how many failed.
+    let unordered = refused(
+        conn,
+        "db.t_bulk.bulkWrite([
+            { insertOne: { document: { _id: 2 } } },
+            { insertOne: { document: { _id: 6 } } },
+            { insertOne: { document: { _id: 5 } } },
+            { insertOne: { document: { _id: 7 } } },
+        ], { ordered: false })",
+    )
+    .await;
+    assert!(unordered.contains("operation 1 of 4"), "{unordered}");
+    assert!(
+        unordered.contains("2 of 4 failed, 2 documents changed"),
+        "{unordered}"
+    );
+    assert_eq!(
+        count(&rows(conn, "db.t_bulk.find({ _id: { $in: [6, 7] } })").await),
+        2
+    );
+
+    // Neighbouring inserts go together: the failure names the batch, those before it are in.
+    let batch = refused(
+        conn,
+        "db.t_bulk.bulkWrite([
+            { insertOne: { document: { _id: 8 } } },
+            { insertOne: { document: { _id: 2 } } },
+            { insertOne: { document: { _id: 9 } } },
+        ])",
+    )
+    .await;
+    assert!(batch.contains("operations 1-3 of 3"), "{batch}");
+    assert_eq!(count(&rows(conn, "db.t_bulk.find({ _id: 8 })").await), 1);
+    assert_eq!(count(&rows(conn, "db.t_bulk.find({ _id: 9 })").await), 0);
+
+    // Its options reach the server, and common ones go with each write.
+    affected(conn, "db.t_bulk.deleteMany({})").await;
+    affected(conn, "db.t_bulk.insertOne({ _id: 1, x: [1, 2, 3] })").await;
+    assert_eq!(
+        affected(
+            conn,
+            "db.t_bulk.bulkWrite([
+                { updateOne: { filter: { _id: 1 }, update: { $set: { 'x.$[e]': 0 } }, arrayFilters: [{ e: { $gte: 2 } }] } },
+            ], { writeConcern: { w: 1 } })"
+        )
+        .await,
+        1
+    );
+    assert_eq!(
+        count(&rows(conn, "db.t_bulk.find({ x: [1, 0, 0] })").await),
+        1
+    );
+    affected(conn, "db.t_bulk.drop()").await;
+}
+
+/// `arrayFilters`, `collation`, `hint` and the like used to be read and dropped: a write
+/// reached documents other than the ones asked for.
+#[tokio::test]
+async fn options_of_a_write_reach_the_server() {
+    let Some(conn) = connect().await else { return };
+    let conn = &*conn;
+    scratch(conn, "t_options").await;
+    affected(
+        conn,
+        "db.t_options.insertOne({ _id: 1, x: [1, 2, 3], s: 'Ann' })",
+    )
+    .await;
+    affected(conn, "db.t_options.updateOne({ _id: 1 }, { $set: { 'x.$[e]': 0 } }, { arrayFilters: [{ e: { $gte: 2 } }] })").await;
+    assert_eq!(
+        count(&rows(conn, "db.t_options.find({ x: [1, 0, 0] })").await),
+        1
+    );
+    // Without the collation this matches nothing: the case differs.
+    assert_eq!(
+        affected(
+            conn,
+            "db.t_options.updateOne({ s: 'ANN' }, { $set: { n: 1 } })"
+        )
+        .await,
+        0
+    );
+    assert_eq!(
+        affected(conn, "db.t_options.updateOne({ s: 'ANN' }, { $set: { n: 1 } }, { collation: { locale: 'en', strength: 2 } })").await,
+        1
+    );
+    // A hint the collection has no index for: only the server can refuse it, if it gets it.
+    let hint = refused(
+        conn,
+        "db.t_options.updateOne({ s: 'Ann' }, { $set: { n: 2 } }, { hint: 'no_such_index' })",
+    )
+    .await;
+    assert!(hint.to_lowercase().contains("hint"), "{hint}");
+    let hint = refused(
+        conn,
+        "db.t_options.deleteOne({ s: 'Ann' }, { hint: 'no_such_index' })",
+    )
+    .await;
+    assert!(hint.to_lowercase().contains("hint"), "{hint}");
+    // `let` variables, in a filter.
+    assert_eq!(
+        affected(conn, "db.t_options.updateOne({ $expr: { $eq: ['$s', '$$who'] } }, { $set: { n: 3 } }, { let: { who: 'Ann' } })").await,
+        1
+    );
+    // Ordered or not decides whether a bad document stops the rest.
+    let stopped = refused(conn, "db.t_options.insertMany([{ _id: 1 }, { _id: 2 }])").await;
+    assert!(stopped.contains("document 0"), "{stopped}");
+    assert_eq!(count(&rows(conn, "db.t_options.find({ _id: 2 })").await), 0);
+    refused(
+        conn,
+        "db.t_options.insertMany([{ _id: 1 }, { _id: 3 }], { ordered: false })",
+    )
+    .await;
+    assert_eq!(count(&rows(conn, "db.t_options.find({ _id: 3 })").await), 1);
+    // Deleting with a collation.
+    assert_eq!(
+        affected(
+            conn,
+            "db.t_options.deleteOne({ s: 'ANN' }, { collation: { locale: 'en', strength: 2 } })"
+        )
+        .await,
+        1
+    );
+    // Reads too.
+    affected(conn, "db.t_options.insertOne({ _id: 9, s: 'Bob' })").await;
+    assert_eq!(
+        count(
+            &rows(
+                conn,
+                "db.t_options.find({ s: 'BOB' }).collation({ locale: 'en', strength: 2 })"
+            )
+            .await
+        ),
+        1
+    );
+    assert_eq!(count(&rows(conn, "db.t_options.find({ s: 'BOB' }, null, { collation: { locale: 'en', strength: 2 } })").await), 1);
+    assert_eq!(
+        count(&rows(conn, "db.t_options.find({ s: 'BOB' })").await),
+        0
+    );
+    assert_eq!(count(&rows(conn, "db.t_options.distinct('s', { s: 'BOB' }, { collation: { locale: 'en', strength: 2 } })").await), 1);
+    let found = refused(conn, "db.t_options.find().hint('no_such_index')").await;
+    assert!(found.to_lowercase().contains("hint"), "{found}");
+    let counted = refused(
+        conn,
+        "db.t_options.countDocuments({}, { hint: 'no_such_index' })",
+    )
+    .await;
+    assert!(
+        counted.to_lowercase().contains("hint") || counted.contains("index"),
+        "{counted}"
+    );
+    affected(conn, "db.t_options.drop()").await;
+}
+
+#[tokio::test]
+async fn find_one_and_answers_with_the_document() {
+    let Some(conn) = connect().await else { return };
+    let conn = &*conn;
+    scratch(conn, "t_foam").await;
+    affected(
+        conn,
+        "db.t_foam.insertMany([{ _id: 1, n: 1 }, { _id: 2, n: 2 }])",
+    )
+    .await;
+    let value = |batches: &[RecordBatch], column: &str| -> i32 {
+        let schema = batches[0].schema();
+        batches[0]
+            .column(schema.index_of(column).unwrap())
+            .as_primitive::<arrow_array::types::Int32Type>()
+            .value(0)
+    };
+    // The document as it was, by default; `sort` picks which.
+    let before = rows(
+        conn,
+        "db.t_foam.findOneAndUpdate({}, { $inc: { n: 10 } }, { sort: { _id: -1 } })",
+    )
+    .await;
+    assert_eq!(value(&before, "n"), 2);
+    let after = rows(
+        conn,
+        "db.t_foam.findOneAndUpdate({ _id: 2 }, { $inc: { n: 10 } }, { returnDocument: 'after' })",
+    )
+    .await;
+    assert_eq!(value(&after, "n"), 22);
+    let legacy = rows(
+        conn,
+        "db.t_foam.findOneAndUpdate({ _id: 1 }, { $set: { n: 5 } }, { returnNewDocument: true })",
+    )
+    .await;
+    assert_eq!(value(&legacy, "n"), 5);
+    let projected = rows(conn, "db.t_foam.findOneAndReplace({ _id: 1 }, { n: 6 }, { returnDocument: 'after', projection: { n: 1, _id: 0 } })").await;
+    assert!(projected[0].schema().index_of("_id").is_err());
+    assert_eq!(value(&projected, "n"), 6);
+    let modified = rows(
+        conn,
+        "db.t_foam.findAndModify({ query: { _id: 1 }, update: { $set: { n: 7 } }, new: true })",
+    )
+    .await;
+    assert_eq!(value(&modified, "n"), 7);
+    // Nothing matched: no document, no error.
+    assert_eq!(
+        count(&rows(conn, "db.t_foam.findOneAndDelete({ _id: 99 })").await),
+        0
+    );
+    let deleted = rows(conn, "db.t_foam.findOneAndDelete({ _id: 1 })").await;
+    assert_eq!(value(&deleted, "n"), 7);
+    assert_eq!(count(&rows(conn, "db.t_foam.find({ _id: 1 })").await), 0);
+    let removed = rows(
+        conn,
+        "db.t_foam.findAndModify({ query: { _id: 2 }, remove: true })",
+    )
+    .await;
+    assert_eq!(value(&removed, "n"), 22);
+    assert_eq!(count(&rows(conn, "db.t_foam.find()").await), 0);
+    affected(conn, "db.t_foam.drop()").await;
+}
+
+#[tokio::test]
+async fn indexes_statistics_and_names() {
+    let Some(conn) = connect().await else { return };
+    let conn = &*conn;
+    scratch(conn, "t_admin").await;
+    affected(conn, "db.t_admin.insertOne({ _id: 1, a: 1, b: 2 })").await;
+    let names = |batches: Vec<RecordBatch>| -> Vec<String> {
+        let schema = batches[0].schema();
+        let column = batches[0]
+            .column(schema.index_of("name").unwrap())
+            .as_string::<i32>();
+        column.iter().flatten().map(str::to_owned).collect()
+    };
+    rows(conn, "db.t_admin.createIndexes([{ a: 1 }, { b: 1 }])").await;
+    assert_eq!(count(&rows(conn, "db.t_admin.getIndexes()").await), 3);
+    assert_eq!(count(&rows(conn, "db.t_admin.getIndexSpecs()").await), 3);
+    rows(conn, "db.t_admin.hideIndex('a_1')").await;
+    rows(conn, "db.t_admin.unhideIndex('a_1')").await;
+    rows(conn, "db.t_admin.dropIndexes('b_1')").await;
+    assert_eq!(count(&rows(conn, "db.t_admin.getIndexes()").await), 2);
+    rows(conn, "db.t_admin.dropIndexes()").await;
+    assert_eq!(count(&rows(conn, "db.t_admin.getIndexes()").await), 1);
+    affected(conn, "db.t_admin.ensureIndex({ a: 1 })").await;
+    assert_eq!(count(&rows(conn, "db.t_admin.getIndexes()").await), 2);
+
+    assert_eq!(count(&rows(conn, "db.t_admin.stats()").await), 1);
+    assert_eq!(count(&rows(conn, "db.t_admin.validate()").await), 1);
+    assert_eq!(count(&rows(conn, "db.t_admin.latencyStats()").await), 1);
+    for stat in [
+        "dataSize",
+        "storageSize",
+        "totalIndexSize",
+        "totalSize",
+        "isCapped",
+    ] {
+        let answer = rows(conn, &format!("db.t_admin.{stat}()")).await;
+        assert!(answer[0].schema().index_of(stat).is_ok(), "{stat}");
+    }
+    assert_eq!(names(rows(conn, "db.t_admin.getName()").await), ["t_admin"]);
+    assert_eq!(
+        names(rows(conn, "db.t_admin.getFullName()").await),
+        ["platypus.t_admin"]
+    );
+    assert_eq!(names(rows(conn, "db.getName()").await), ["platypus"]);
+    assert_eq!(count(&rows(conn, "db.t_admin.exists()").await), 1);
+    assert_eq!(count(&rows(conn, "db.t_none.exists()").await), 0);
+    assert_eq!(count(&rows(conn, "db.serverStatus()").await), 1);
+    assert_eq!(count(&rows(conn, "db.hello()").await), 1);
+    assert_eq!(count(&rows(conn, "show users").await), 1);
+    assert_eq!(count(&rows(conn, "show logs").await), 1);
+    assert_eq!(
+        count(&rows(conn, "db.aggregate([{ $documents: [{ a: 1 }, { a: 2 }] }])").await),
+        2
+    );
+    affected(conn, "db.t_admin.drop()").await;
+}
+
+fn holds(node: &platypus_core::PlanNode, operation: &str) -> bool {
+    node.operation == operation || node.children.iter().any(|c| holds(c, operation))
+}
+
+/// A plan, of a read and of writes that stay unapplied, as the app's tab asks for it.
+#[tokio::test]
+async fn explains_without_changing_anything() {
+    let Some(conn) = connect().await else { return };
+    let conn = &*conn;
+    assert!(conn.capabilities().explain);
+    scratch(conn, "t_explain").await;
+    affected(
+        conn,
+        "db.t_explain.insertMany([{ _id: 1, a: 1 }, { _id: 2, a: 2 }])",
+    )
+    .await;
+    affected(conn, "db.t_explain.createIndex({ a: 1 })").await;
+
+    let planned = conn
+        .explain("db.t_explain.find({ a: 1 })", false)
+        .await
+        .unwrap();
+    assert!(!planned.analyzed);
+    assert!(planned.plan.contains("queryPlanner"), "{}", planned.plan);
+    assert!(planned.root.actual_rows.is_none());
+    let ran = conn
+        .explain("db.t_explain.find({ a: 1 })", true)
+        .await
+        .unwrap();
+    assert!(ran.analyzed);
+    assert_eq!(ran.root.actual_rows, Some(1.0));
+    assert!(holds(&ran.root, "IXSCAN"), "{:?}", ran.root);
+
+    // The statement's own explain, by either spelling, and its verbosity wins.
+    let own = conn
+        .explain(
+            "db.t_explain.find({ a: 1 }).explain('executionStats')",
+            false,
+        )
+        .await
+        .unwrap();
+    assert!(own.analyzed);
+    let chained = conn
+        .explain("db.t_explain.explain().find({ a: 1 })", true)
+        .await
+        .unwrap();
+    assert!(!chained.analyzed);
+    assert_eq!(
+        count(&rows(conn, "db.t_explain.find({ a: 1 }).explain()").await),
+        1
+    );
+
+    let grouped = conn
+        .explain(
+            "db.t_explain.aggregate([{ $group: { _id: '$a' } }, { $sort: { _id: 1 } }])",
+            true,
+        )
+        .await
+        .unwrap();
+    assert_ne!(grouped.root.operation, "");
+    conn.explain("db.t_explain.countDocuments({ a: 1 })", false)
+        .await
+        .unwrap();
+    conn.explain("db.t_explain.distinct('a', { a: 1 })", false)
+        .await
+        .unwrap();
+
+    // Even with what would run it, a write stays unapplied.
+    for write in [
+        "db.t_explain.deleteMany({})",
+        "db.t_explain.updateMany({}, { $set: { a: 9 } })",
+        "db.t_explain.replaceOne({ _id: 1 }, { a: 9 })",
+        "db.t_explain.findOneAndDelete({ _id: 1 })",
+        "db.t_explain.findOneAndUpdate({ _id: 1 }, { $set: { a: 9 } })",
+    ] {
+        conn.explain(write, true)
+            .await
+            .unwrap_or_else(|e| panic!("{write}: {e}"));
+    }
+    assert_eq!(
+        count(&rows(conn, "db.t_explain.find({ a: { $in: [1, 2] } })").await),
+        2
+    );
+
+    // What has no plan says so, and is not run.
+    for none in [
+        "show dbs",
+        "db.t_explain.drop()",
+        "db.t_explain.insertOne({ a: 3 })",
+        "db.runCommand({ ping: 1 })",
+    ] {
+        let refused = conn.explain(none, false).await.unwrap_err().to_string();
+        assert!(refused.contains("plan"), "{none}: {refused}");
+    }
+    assert_eq!(count(&rows(conn, "db.t_explain.find()").await), 2);
+    affected(conn, "db.t_explain.drop()").await;
+}
+
 #[tokio::test]
 async fn writes_documents() {
     let Some(conn) = connect().await else { return };
@@ -204,6 +629,7 @@ async fn writes_documents() {
     );
     assert_eq!(count(&rows(&*conn, "db.t_writes.getIndexes()").await), 2);
     assert_eq!(affected(&*conn, "db.t_writes.deleteMany({})").await, 3);
+
     scratch(&*conn, "t_renamed").await;
     affected(&*conn, "db.t_writes.renameCollection('t_renamed')").await;
     assert_eq!(count(&rows(&*conn, "db.t_renamed.getIndexes()").await), 2);
