@@ -24,7 +24,7 @@ dot after a page's name means it holds settings.
 
 - **General**: host, port, user, database and where the password comes from (below).
 - **Appearance and safety**: the environment (Development, Test or Production), a color, the
-  **Read-only (warn before modifying data)** box, the boxes that stop exports and data editing,
+  **Read-only (refuses changes to data)** box, the boxes that stop exports and data editing,
   and the agents' access. See [Safety](safety.md) and [Agents](agents.md).
 - **Network**: SSH tunnel, SSL mode and certificates, proxy, port forward and commands around the
   connection.

@@ -85,7 +85,7 @@
 <p>From then on every change on that connection is listed in a dialog titled &quot;Changes on <code>&lt;name&gt;</code> (production)&quot;, with the statements, and runs only after you confirm. Settings (<code>Ctrl+,</code>) › <strong>Safety</strong> › <strong>Ask before changes on production connections</strong> turns this off for the app. Agents are never more than read only on a production connection.</p>
 <h2 id="make-a-connection-read-only">Make a connection read-only</h2>
 <ol>
-<li>On the same page, tick <strong>Read-only (warn before modifying data)</strong>. Despite its label, the connection refuses; it does not only warn.</li>
+<li>On the same page, tick <strong>Read-only (refuses changes to data)</strong>.</li>
 <li>A statement that may modify data does not run. The editor shows &quot;<code>&lt;name&gt;</code> is read-only and this may modify data.&quot; with no way past it. The same holds for Explain with analyze (&quot;this statement may modify data.&quot;), a file included with <code>@include</code>, a notebook cell (&quot;this cell may change data.&quot;), the command-line client, and a run on several connections, which lists the connection as skipped (&quot;Read-only connection&quot;).</li>
 <li>Not offered at all: <strong>Import data…</strong>, <strong>Import data into a new table…</strong>, <strong>Paste CSV as a new table…</strong>, <strong>Generate data…</strong>, <strong>Run SQL file…</strong>, creating objects, saving in the table designer, and editing rows in the grid. Agents stay read only.</li>
 </ol>

@@ -596,7 +596,7 @@ const es: Record<string, string> = {
   "Shell command": "Comando de shell",
   "Command that prints the {secret}": "Comando que imprime {secret}",
   "{secret} (only to test the connection)": "{secret} (solo para probar la conexión)",
-  "Read-only (warn before modifying data)": "Solo lectura (avisar antes de modificar datos)",
+  "Read-only (refuses changes to data)": "Solo lectura (rechaza cambios en los datos)",
   "Projects": "Proyectos",
   "Network profile": "Perfil de red",
   "None — this connection's own settings": "Ninguno — los ajustes propios de esta conexión",

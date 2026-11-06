@@ -1180,7 +1180,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
             <h3>{t("Safety")}</h3>
             <label className="check">
               <input type="checkbox" checked={conn.read_only} onChange={(e) => set("read_only", e.target.checked)} />
-              {t("Read-only (warn before modifying data)")}
+              {t("Read-only (refuses changes to data)")}
             </label>
 
             <label className="check">

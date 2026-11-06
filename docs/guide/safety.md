@@ -20,8 +20,7 @@ off for the app. Agents are never more than read only on a production connection
 
 ## Make a connection read-only
 
-1. On the same page, tick **Read-only (warn before modifying data)**. Despite its label, the
-   connection refuses; it does not only warn.
+1. On the same page, tick **Read-only (refuses changes to data)**.
 2. A statement that may modify data does not run. The editor shows "`<name>` is read-only and this
    may modify data." with no way past it. The same holds for Explain with analyze ("this
    statement may modify data."), a file included with `@include`, a notebook cell ("this cell may

@@ -596,7 +596,7 @@ const zh: Record<string, string> = {
   "Shell command": "Shell 命令",
   "Command that prints the {secret}": "输出{secret}的命令",
   "{secret} (only to test the connection)": "{secret}（仅用于测试连接）",
-  "Read-only (warn before modifying data)": "只读（修改数据前发出警告）",
+  "Read-only (refuses changes to data)": "只读（拒绝修改数据）",
   "Projects": "项目",
   "Network profile": "网络配置",
   "None — this connection's own settings": "无 — 使用此连接自己的设置",
