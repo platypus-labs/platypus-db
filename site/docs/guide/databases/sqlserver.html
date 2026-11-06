@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PlatypusDB · SQL Server and Azure SQL</title>
-  <meta name="description" content="The driver speaks TDS itself (a patched tiberius), so there is nothing to install or download. It opens SQL Server 2017 (14.0) and later, and Azure SQL.">
+  <meta name="description" content="The driver speaks TDS itself (a patched tiberius), so there is nothing to install or download. It is written for SQL Server 2017 (14.0) and later, and for…">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0b0d0f">
   <link rel="icon" type="image/png" href="../../../img/icon.png">
@@ -88,7 +88,7 @@
     <div class="crumbs">Docs / SQL Server and Azure SQL</div>
 <p><a href="index.html">← Databases</a></p>
 <h1 id="sql-server-and-azure-sql">SQL Server and Azure SQL</h1>
-<p>The driver speaks TDS itself (a patched <code>tiberius</code>), so there is nothing to install or download. It opens SQL Server 2017 (14.0) and later, and Azure SQL.</p>
+<p>The driver speaks TDS itself (a patched <code>tiberius</code>), so there is nothing to install or download. It is written for SQL Server 2017 (14.0) and later, and for Azure SQL (not tested against the service: see the end of this page).</p>
 <h2 id="connect">Connect</h2>
 <div class="table-wrap"><table class="grid">
 <thead><tr><th>You paste</th><th>Read as</th></tr></thead>
@@ -111,7 +111,7 @@
 <h2 id="privileges">Privileges</h2>
 <p>Browsing needs what the login can see. The administration tabs read:</p>
 <ul>
-<li><strong>Sessions and locks</strong>: <code>sys.dm_exec_sessions</code>, <code>dm_exec_requests</code>, <code>dm_exec_connections</code> and <code>dm_tran_locks</code>. To see what other logins do, the login needs <code>VIEW SERVER STATE</code>.</li>
+<li><strong>Sessions</strong> and <strong>Locks</strong>: <code>sys.dm_exec_sessions</code>, <code>dm_exec_requests</code>, <code>dm_exec_connections</code> and <code>dm_tran_locks</code>. To see what other logins do, the login needs <code>VIEW SERVER STATE</code>.</li>
 <li><strong>Costliest statements</strong>: <code>sys.dm_exec_query_stats</code>, the plan cache.</li>
 <li><strong>Tables and indexes</strong>: <code>sys.tables</code>, <code>dm_db_partition_stats</code>, <code>dm_db_index_usage_stats</code> and <code>sys.stats</code>.</li>
 <li><strong>Parameters</strong>: <code>sys.configurations</code>; <em>Open in the editor</em> writes a <code>sp_configure</code> statement.</li>

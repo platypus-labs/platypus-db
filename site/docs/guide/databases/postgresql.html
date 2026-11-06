@@ -125,9 +125,9 @@
 <li><strong>GSS encryption</strong> (<code>hostgssenc</code>, <code>gssencmode</code>) is not used: use TLS for encryption, with <code>hostssl</code> or <code>host</code> lines. A <code>krbsrvname</code> in a pasted URL is left out, like any other parameter the app does not know.</li>
 </ul>
 <p><strong>Poolers.</strong> Behind PgBouncer, Supavisor or Neon&#39;s pooler in transaction mode, choose <em>Transaction mode</em> in the form (or add <code>pgbouncer=true</code> to the URL). Statements then run unnamed, because the next transaction may be on another server session. The form suggests it for hosts ending in <code>.pooler.supabase.com</code> and for Neon hosts with <code>-pooler</code> in the name. In that mode the PL/pgSQL debugger is off, and agents&#39; read-only sessions rely on the statement check alone.</p>
-<p>The other servers have buttons of their own, which only set defaults:</p>
+<p>The other servers have tiles of their own, which only set defaults:</p>
 <div class="table-wrap"><table class="grid">
-<thead><tr><th>Button</th><th>Defaults it sets</th></tr></thead>
+<thead><tr><th>Tile</th><th>Defaults it sets</th></tr></thead>
 <tbody>
 <tr><td>CockroachDB</td><td>port 26257</td></tr>
 <tr><td>YugabyteDB</td><td>port 5433, user and database <code>yugabyte</code></td></tr>
@@ -139,7 +139,7 @@
 <h2 id="privileges">Privileges</h2>
 <p>Browsing needs only what the server shows the login. The administration tabs read these:</p>
 <ul>
-<li><strong>Sessions and locks</strong>: <code>pg_stat_activity</code> and <code>pg_locks</code>. Other users&#39; sessions and statements show for a superuser or a member of <code>pg_read_all_stats</code>. <em>Cancel statement</em> and <em>End session</em> call <code>pg_cancel_backend</code> and <code>pg_terminate_backend</code>.</li>
+<li><strong>Sessions</strong> and <strong>Locks</strong>: <code>pg_stat_activity</code> and <code>pg_locks</code>. The app lists the client sessions the server returns; how much of other users&#39; sessions and statements the server shows to the login is the server&#39;s rule, which the app does not check. <em>Cancel statement</em> and <em>End session</em> call <code>pg_cancel_backend</code> and <code>pg_terminate_backend</code>; the server decides whether the login may.</li>
 <li><strong>Costliest statements</strong>: the <code>pg_stat_statements</code> extension. Without it the tab says how to turn it on (add it to <code>shared_preload_libraries</code>, restart, <code>CREATE EXTENSION</code>).</li>
 <li><strong>Tables and indexes</strong>: <code>pg_stat_user_tables</code> and <code>pg_stat_user_indexes</code>.</li>
 <li><strong>Parameters</strong> and <strong>Dashboard</strong>: <code>pg_settings</code>, <code>pg_stat_database</code>, <code>pg_stat_activity</code> and the replication views; the standbys are listed only to a member of <code>pg_monitor</code>. A figure the login cannot read shows &quot;—&quot; and why.</li>
@@ -157,7 +157,7 @@
 <li>Imports and copies into PostgreSQL use <code>COPY</code>.</li>
 <li>Every administration tab above, the PL/pgSQL debugger, and schema tools (table editor, ER diagram, comparison).</li>
 </ul>
-<p><strong>CockroachDB and YugabyteDB</strong> open with the same driver, but the app finds out which server it is, and the server tools that rely on PostgreSQL&#39;s own views are off: no sessions, locks, dashboard, statements, tables and indexes, parameters, users or maintenance tabs, and no debugger. CockroachDB has its own plan format (Explain and Explain analyze work) and imports go as <code>INSERT</code> statements instead of <code>COPY</code>. A CockroachDB table without a key is edited by its hidden <code>rowid</code>. TimescaleDB, Supabase, Neon and AlloyDB are PostgreSQL to the app, with everything above.</p>
+<p><strong>CockroachDB and YugabyteDB</strong> open with the same driver, but the app finds out which server it is, and the server tools that rely on PostgreSQL&#39;s own views are off: no sessions, locks, dashboard, statements, tables and indexes, parameters, users or maintenance tabs, and no debugger. CockroachDB has its own plan format (Explain and Explain analyze work) and imports go as <code>INSERT</code> statements instead of <code>COPY</code>. A CockroachDB table without a key is edited by its hidden <code>rowid</code>. TimescaleDB (tested), Supabase, Neon and AlloyDB (not tested against the services) are PostgreSQL to the app, with everything above; what a hosted service restricts for your role is its own rule.</p>
 <h2 id="agents">Agents</h2>
 <p>Read-only agents and read-only connections open the session with <code>default_transaction_read_only</code> (PostgreSQL, CockroachDB and YugabyteDB), so the server itself refuses writes; behind a transaction-mode pooler only the statement check does. <code>server_activity</code> and <code>top_queries</code> work on PostgreSQL proper, not on CockroachDB or YugabyteDB. See <a href="../../agents.html">Agents and the CLI</a>.</p>
 <h2 id="known-limits">Known limits</h2>

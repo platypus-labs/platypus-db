@@ -124,7 +124,7 @@
 <li><a href="docs/guide/databases/postgresql.html">PostgreSQL</a> — One driver, built on tokio-postgres, speaks the PostgreSQL protocol. It opens PostgreSQL 12 and later, and the servers and services that speak the same…</li>
 <li><a href="docs/guide/databases/mysql.html">MySQL</a> — One driver (the mysql_async client) opens MySQL 5.7 and later and MariaDB 10.6 and later. Both have a tile in the grid of databases; the driver tells which…</li>
 <li><a href="docs/guide/databases/sqlite.html">SQLite</a> — SQLite runs inside the app (rusqlite with SQLite built in): no server, no host, no user, no password, nothing to download.</li>
-<li><a href="docs/guide/databases/sqlserver.html">SQL Server</a> — The driver speaks TDS itself (a patched tiberius), so there is nothing to install or download. It opens SQL Server 2017 (14.0) and later, and Azure SQL.</li>
+<li><a href="docs/guide/databases/sqlserver.html">SQL Server</a> — The driver speaks TDS itself (a patched tiberius), so there is nothing to install or download. It is written for SQL Server 2017 (14.0) and later, and for…</li>
 <li><a href="docs/guide/databases/oracle.html">Oracle</a> — The driver uses Oracle&#39;s client library (ODPI-C, through the oracle crate), loaded when you connect. The library is Oracle Instant Client, which the app…</li>
 <li><a href="docs/guide/databases/clickhouse.html">ClickHouse</a> — The driver talks to ClickHouse&#39;s HTTP interface and reads results in the Arrow stream format. It is part of the app; nothing is downloaded. It browses,…</li>
 <li><a href="docs/guide/databases/duckdb.html">DuckDB</a> — DuckDB runs inside the app, like SQLite: no server, host, user or password. Unlike SQLite, the app does not carry DuckDB&#39;s library; it downloads it the…</li>

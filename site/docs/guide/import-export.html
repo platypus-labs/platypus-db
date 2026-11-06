@@ -81,20 +81,21 @@
 <li>Right-click the table in the navigator, then <strong>Data</strong> › <strong>Import data…</strong>.</li>
 <li>Choose the file: CSV, TSV, JSON, NDJSON, Parquet or Excel.</li>
 <li>Check the preview and the mapping of the columns.</li>
-<li>Choose whether to add the rows, replace them, or update those with the same key, and run it.</li>
+<li>Choose <strong>Add the rows</strong>, <strong>Replace all rows</strong> or <strong>Update rows with the same key, add the others</strong>, then click <strong>Import</strong>. The last one needs a primary key on the table, and is not offered on ClickHouse.</li>
 </ol>
-<p>For a new table, right-click the schema and choose <strong>Import data into a new table…</strong>: the types are those DuckDB infers from the file. <strong>Paste CSV as a new table…</strong> (same menu) imports the clipboard.</p>
+<p><strong>Import data…</strong> is offered on tables, not on views. For a new table, right-click the schema and choose <strong>Import data into a new table…</strong>: the types are those DuckDB infers from the file, and there is no choice of mode. <strong>Paste CSV as a new table…</strong> (same menu) imports the clipboard.</p>
 <p>Import is not offered on a read-only connection, on one that forbids data editing, or on NoSQL databases.</p>
 <h2 id="export-tables-to-a-file">Export tables to a file</h2>
 <ol>
 <li>Right-click one table, or select several, then <strong>Data</strong> › <strong>Export data…</strong>. For every table of a schema, right-click the schema and choose <strong>Export all tables…</strong>.</li>
-<li>Choose the format (CSV, JSON, NDJSON, Parquet, Excel, SQL <code>INSERT</code>, Markdown, HTML or XML) and the file.</li>
-<li>Optionally compress it (gzip or zstd) or upload it to a bucket or a signed URL.</li>
+<li>Choose the <strong>Format</strong> (CSV, JSON, NDJSON, Parquet, Excel, SQL <code>INSERT</code>, Markdown, HTML or XML) and click <strong>Export to folder…</strong>: even for one table the app asks for a folder, and writes one file per table, named after it.</li>
+<li>Optionally set <strong>Compression</strong> (gzip or zstd; not for Parquet and Excel, which are packed already) and <strong>Also upload to…</strong> a bucket (S3, GCS, R2 or MinIO).</li>
 </ol>
+<p>When you export a query&#39;s result instead (the export of the results grid), the dialog asks for one file, and upload can also go to a signed URL (S3 or GCS).</p>
 <p>CSV cells that a spreadsheet would run as a formula get a leading <code>&#39;</code> unless you turn off <strong>Formulas as text, for spreadsheets</strong>. A connection can forbid exports (<strong>Appearance and safety</strong> page); the action is then not offered. See <a href="safety.html">Safety</a>.</p>
 <p>To take a query&#39;s result out, copy it from the grid as CSV, JSON, Markdown, HTML, SQL <code>INSERT</code> or an <code>IN</code> list.</p>
 <h2 id="copy-a-table-or-a-schema-to-another-database">Copy a table or a schema to another database</h2>
-<p>Right-click the tables and choose <strong>Data</strong> › <strong>Copy tables to a database…</strong>, or right-click the schema and choose <strong>Copy schema to a database…</strong>. It works between any pair of databases; the types are mapped.</p>
+<p>Right-click one table and choose <strong>Data</strong> › <strong>Copy to a database…</strong> (it lets you map the columns), select several tables of a schema and choose <strong>Data</strong> › <strong>Copy tables to a database…</strong>, or right-click the schema and choose <strong>Copy schema to a database…</strong>. The types are mapped. The target is a SQL connection that is not read-only and allows data editing. Copying several tables or a schema is for SQL sources; one MongoDB collection or Redis key type can be copied to a SQL database. None of these is offered when the connection forbids exports.</p>
 <h2 id="run-a-sql-file-or-dump-to-one">Run a SQL file, or dump to one</h2>
 <p>Right-click a connection or a database and choose <strong>Run SQL file…</strong>: it runs a <code>.sql</code> file (or <code>.sql.gz</code>, <code>.sql.zst</code>) of any size statement by statement, with progress and Stop, by default in one transaction that a failure rolls back. <strong>Dump to SQL file…</strong> (on a schema, or on tables under <strong>Data</strong>) writes the DDL of a schema or of chosen objects, and if wanted their rows, to one file.</p>
 <h2 id="save-a-transfer-for-later">Save a transfer for later</h2>

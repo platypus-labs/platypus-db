@@ -13,11 +13,13 @@ The actions below are in the right-click menu of the navigator, and in the comma
 1. Right-click the table in the navigator, then **Data** › **Import data…**.
 2. Choose the file: CSV, TSV, JSON, NDJSON, Parquet or Excel.
 3. Check the preview and the mapping of the columns.
-4. Choose whether to add the rows, replace them, or update those with the same key, and run it.
+4. Choose **Add the rows**, **Replace all rows** or **Update rows with the same key, add the
+   others**, then click **Import**. The last one needs a primary key on the table, and is not
+   offered on ClickHouse.
 
-For a new table, right-click the schema and choose **Import data into a new table…**: the types
-are those DuckDB infers from the file. **Paste CSV as a new table…** (same menu) imports the
-clipboard.
+**Import data…** is offered on tables, not on views. For a new table, right-click the schema and
+choose **Import data into a new table…**: the types are those DuckDB infers from the file, and
+there is no choice of mode. **Paste CSV as a new table…** (same menu) imports the clipboard.
 
 Import is not offered on a read-only connection, on one that forbids data editing, or on
 NoSQL databases.
@@ -26,9 +28,14 @@ NoSQL databases.
 
 1. Right-click one table, or select several, then **Data** › **Export data…**. For every table of a
    schema, right-click the schema and choose **Export all tables…**.
-2. Choose the format (CSV, JSON, NDJSON, Parquet, Excel, SQL `INSERT`, Markdown, HTML or XML) and
-   the file.
-3. Optionally compress it (gzip or zstd) or upload it to a bucket or a signed URL.
+2. Choose the **Format** (CSV, JSON, NDJSON, Parquet, Excel, SQL `INSERT`, Markdown, HTML or XML)
+   and click **Export to folder…**: even for one table the app asks for a folder, and writes one
+   file per table, named after it.
+3. Optionally set **Compression** (gzip or zstd; not for Parquet and Excel, which are packed
+   already) and **Also upload to…** a bucket (S3, GCS, R2 or MinIO).
+
+When you export a query's result instead (the export of the results grid), the dialog asks for one
+file, and upload can also go to a signed URL (S3 or GCS).
 
 CSV cells that a spreadsheet would run as a formula get a leading `'` unless you turn off
 **Formulas as text, for spreadsheets**. A connection can forbid exports (**Appearance and safety**
@@ -39,9 +46,12 @@ or an `IN` list.
 
 ## Copy a table or a schema to another database
 
-Right-click the tables and choose **Data** › **Copy tables to a database…**, or right-click the
-schema and choose **Copy schema to a database…**. It works between any pair of databases; the
-types are mapped.
+Right-click one table and choose **Data** › **Copy to a database…** (it lets you map the columns),
+select several tables of a schema and choose **Data** › **Copy tables to a database…**, or
+right-click the schema and choose **Copy schema to a database…**. The types are mapped. The target
+is a SQL connection that is not read-only and allows data editing. Copying several tables or a
+schema is for SQL sources; one MongoDB collection or Redis key type can be copied to a SQL
+database. None of these is offered when the connection forbids exports.
 
 ## Run a SQL file, or dump to one
 

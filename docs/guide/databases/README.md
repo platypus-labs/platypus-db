@@ -24,6 +24,10 @@ the errors, and [FEATURES.md](../../FEATURES.md) is the reference by feature.
 | [ADBC](adbc.md) | Snowflake, BigQuery, Databricks, Trino, any other ADBC driver |
 | [Db2 and ODBC](db2-odbc.md) | IBM Db2, any ODBC driver or data source (Windows) |
 
+Azure SQL, Supabase, Neon, AlloyDB, Turso's cloud, Snowflake, BigQuery, Databricks and IBM Db2 are
+listed because the app has a driver, a preset or a tile for them; nobody has run the app against
+those services (see "Tested on" below and on each page).
+
 ## What works where
 
 "Rows" is editing in the grid. "Admin" is the server tabs of *Server activity…* (sessions, locks,
