@@ -140,6 +140,12 @@ to the package manager.
   from `aws`, `gcloud` or `az` at each connection and is never saved. SQL Server also signs in
   as the Windows user (SSPI: Kerberos or NTLM) on Windows. Imported or pasted Windows and
   Entra ID logins keep their way to sign in.
+- **Kerberos for PostgreSQL** in the Windows (SSPI) and Linux (GSSAPI) builds: a ticket from
+  `kinit` or a keytab (`KRB5CCNAME`, `KRB5_CLIENT_KTNAME`), or the Windows session's, and a service
+  name that defaults to `postgres`. No password is asked, saved or sent, and a server that does not
+  ask for Kerberos is refused. A connection without a ticket says what to run. `psql`, `pg_dump` and
+  `pg_restore` sign in the same way. Tested with a real KDC from Linux; the real login through SSPI
+  is not tested yet.
 - **Test connections**: *Test connections* in a project's menu, in the navigator's menu or in
   the command palette tries every connection of the project, four at a time, and lists how each
   went.
