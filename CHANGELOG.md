@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-06
+
 ### Added
 
 - **Plugins**: ABI 2 (`api = 2`; plugins of ABI 1 work as before). A manifest can declare event
@@ -388,7 +390,9 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.2.1...v0.3.0
