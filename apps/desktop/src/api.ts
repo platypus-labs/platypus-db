@@ -3231,7 +3231,23 @@ export const api = {
    *  no longer the one reviewed (`hash` from `pluginInspect`). */
   pluginInstall: (path: string, hash: string) => invoke<InstalledPlugin>("plugin_install", { path, hash }),
   pluginSetEnabled: (id: string, enabled: boolean) => invoke<void>("plugin_set_enabled", { id, enabled }),
-  pluginRemove: (id: string) => invoke<void>("plugin_remove", { id }),
+  /** Removes a plugin; the values of its settings page stay with `keepSettings`, its secrets never. */
+  pluginRemove: (id: string, keepSettings = false) => invoke<void>("plugin_remove", { id, keepSettings }),
+  /** The bytes of a font of a plugin's theme (`ui`, `mono`). */
+  pluginThemeFont: (id: string, usage: string) => invoke<ArrayBuffer>("plugin_theme_font", { id, usage }),
+  /** The catalog of the index the user set; empty, contacting nothing, without one. */
+  pluginCatalogFetch: () => invoke<CatalogView>("plugin_catalog_fetch"),
+  pluginCatalogUrl: () => invoke<string>("plugin_catalog_url"),
+  pluginCatalogSetUrl: (url: string) => invoke<string>("plugin_catalog_set_url", { url }),
+  pluginCatalogKeys: () => invoke<TrustedPluginKey[]>("plugin_catalog_keys"),
+  pluginCatalogTrust: (name: string, key: string) => invoke<TrustedPluginKey[]>("plugin_catalog_trust", { name, key }),
+  pluginCatalogUntrust: (key: string) => invoke<TrustedPluginKey[]>("plugin_catalog_untrust", { key }),
+  /** Downloads and checks a package for the review; a package with no valid signature is refused
+   *  (kind `plugin_unsigned`) unless the user confirmed `allowUnsigned`. */
+  pluginCatalogPrepare: (entry: CatalogEntry, allowUnsigned: boolean, allowDowngrade: boolean) =>
+    invoke<PreparedPlugin>("plugin_catalog_prepare", { entry, allowUnsigned, allowDowngrade }),
+  pluginCatalogInstall: (ticket: string, hash: string) => invoke<InstalledPlugin>("plugin_catalog_install", { ticket, hash }),
+  pluginCatalogDiscard: (ticket: string) => invoke<void>("plugin_catalog_discard", { ticket }),
   /** Runs a plugin's action on the context of its scope; the page applies the outcome. */
   pluginRunAction: (plugin: string, action: string, context: unknown) =>
     invoke<PluginOutcome>("plugin_run_action", { plugin, action, context }),
@@ -3326,6 +3342,44 @@ export interface InstalledPlugin {
   enabled: boolean;
   approved: PluginPermissions;
   description: PluginDescription;
+}
+
+/** One plugin of a catalog's index. */
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  version: string;
+  author?: string;
+  description?: string;
+  url: string;
+  sha256: string;
+  signature?: string;
+}
+
+export interface CatalogItem {
+  entry: CatalogEntry;
+  /** The version installed, if any. */
+  installed: string | null;
+  status: "new" | "update" | "current" | "older";
+}
+
+export interface CatalogView {
+  url: string;
+  items: CatalogItem[];
+  /** The entries of the index that were left out, and why. */
+  problems: { id: string | null; reason: string }[];
+}
+
+export interface TrustedPluginKey {
+  name: string;
+  key: string;
+}
+
+/** A package that passed the catalog's checks and waits for the user's review. */
+export interface PreparedPlugin {
+  ticket: string;
+  inspected: InspectedPlugin;
+  signature: { state: "verified"; key: string } | { state: "unsigned"; reason: string };
 }
 
 export interface InspectedPlugin {

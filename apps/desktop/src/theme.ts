@@ -7,6 +7,7 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { defineSetting, getSetting, getStored, onSettingsChanged, setSetting } from "./settings";
 import { msg } from "./i18n";
+import { luminance, pluginThemeOf } from "./themes/color";
 
 /** Fired on `window` when the theme changes, for code that caches colors (the grid). */
 export const THEME_EVENT = "platypus-theme";
@@ -408,7 +409,10 @@ export const PRESETS = {
 } satisfies Record<string, Preset>;
 
 export type PresetName = keyof typeof PRESETS;
-export type ThemeName = "system" | typeof CUSTOM | PresetName;
+export type ThemeName = "system" | typeof CUSTOM | PresetName | `plugin:${string}`;
+
+/** The start of the theme setting's value for the theme of a plugin, the plugin's id after it. */
+const PLUGIN_THEME = "plugin:";
 
 /** Every color a theme sets, as its variable is named without `--`. */
 export const PALETTE_KEYS = Object.keys(paletteOf(PRESETS.platypus_dark)) as (keyof Palette)[];
@@ -539,12 +543,9 @@ const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Black or white, whichever reads better on `hex`. */
 function readableOn(hex: string): string {
-  const [r, g, b] = [1, 3, 5].map((i) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   // Above this luminance black contrasts more than white.
-  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.179 ? "#000000" : "#ffffff";
+  return luminance(r!, g!, b!) > 0.179 ? "#000000" : "#ffffff";
 }
 
 const systemDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -564,9 +565,48 @@ export function customTheme(): CustomTheme | null {
   }
 }
 
+/** The themes of the plugins that are turned on, by the setting's value; `null` until the list of
+ *  plugins is read, which the appearance waits for only if one of them is the theme chosen. */
+let pluginThemes: Map<string, PluginTheme> | null = null;
+
+interface PluginTheme {
+  id: string;
+  theme: CustomTheme;
+  fonts: string[];
+}
+
+/** The theme picker's own choices; the plugins' go after them. */
+const swatches = themeSetting.control as Extract<typeof themeSetting.control, { type: "swatches" }>;
+const builtInOptions = swatches.options;
+
+/** The themes of the plugins that are on, from the list of plugins. A theme no one chose costs its
+ *  card in the picker. */
+export function setPluginThemes(list: { id: string; theme: { name: string; light?: Record<string, string>; dark?: Record<string, string>; fonts?: Record<string, string> } }[]) {
+  pluginThemes = new Map();
+  for (const { id, theme } of list) {
+    const shown = pluginThemeOf(theme, PALETTE_KEYS) as CustomTheme | null;
+    if (shown) pluginThemes.set(PLUGIN_THEME + id, { id, theme: shown, fonts: Object.keys(theme.fonts ?? {}) });
+  }
+  swatches.options = [...pluginThemes].reduce(
+    (options, [value, { theme }]) => {
+      const c = customPreset(theme, !theme.light).colors;
+      return [...options, { value, label: theme.name, colors: [c.bg, c["bg-sidebar"], c.accent, c["syn-keyword"], c["syn-string"]] }];
+    },
+    builtInOptions,
+  );
+  // The chosen theme may have come or gone; one that went falls back to the default.
+  if (appearanceStarted && getSetting(themeSetting).startsWith(PLUGIN_THEME)) applyAppearance();
+}
+
+/** The theme of a plugin that is in use, when one is. */
+function chosenPluginTheme(): PluginTheme | null {
+  return pluginThemes?.get(getSetting(themeSetting)) ?? null;
+}
+
 export function themeName(): ThemeName {
   const name = getSetting(themeSetting);
   if (name === CUSTOM) return customTheme() ? CUSTOM : "system";
+  if (name.startsWith(PLUGIN_THEME)) return chosenPluginTheme() ? (name as ThemeName) : "system";
   return name === "system" || name in PRESETS ? (name as ThemeName) : "system";
 }
 
@@ -593,14 +633,16 @@ function shownPreset(dark?: boolean): Preset {
   if (preview) return customPreset(preview, dark);
   const name = themeName();
   if (name === CUSTOM) return customPreset(customTheme()!, dark);
-  return PRESETS[name === "system" ? systemPreset(dark) : name];
+  if (name.startsWith(PLUGIN_THEME)) return customPreset(chosenPluginTheme()!.theme, dark);
+  return PRESETS[name === "system" ? systemPreset(dark) : (name as PresetName)];
 }
 
 /** The name of the theme in use, as the Settings list it (an imported one by its own). */
 export function themeLabel(): string {
   const name = themeName();
   if (name === "system") return "System";
-  return name === CUSTOM ? customTheme()!.name : PRESETS[name].label;
+  if (name.startsWith(PLUGIN_THEME)) return chosenPluginTheme()!.theme.name;
+  return name === CUSTOM ? customTheme()!.name : PRESETS[name as PresetName].label;
 }
 
 /** The colors of the theme in use, with the custom colors over them, as a theme file holds
@@ -608,7 +650,7 @@ export function themeLabel(): string {
 export function currentThemeColors(): CustomTheme {
   const name = themeName();
   const label = themeLabel();
-  const custom = name === CUSTOM ? customTheme()! : null;
+  const custom = name === CUSTOM ? customTheme()! : (chosenPluginTheme()?.theme ?? null);
   const both = name === "system" || (!!custom?.light && !!custom.dark);
   const colorsOf = (dark?: boolean) => {
     const { vars } = variables(dark);
@@ -691,6 +733,20 @@ function paint(dark: boolean, vars: Record<string, string>) {
 
 let zoom = 0;
 let painted = "";
+let appearanceStarted = false;
+/** The plugin whose theme's fonts are in use. */
+let fontsOf: string | null = null;
+
+/** Follows the fonts of the theme in use. Nothing is loaded unless a plugin's theme has fonts. */
+function syncThemeFonts() {
+  const plugin = preview ? null : chosenPluginTheme();
+  const wanted = plugin && plugin.fonts.length > 0 ? plugin.id : null;
+  if (wanted === fontsOf) return;
+  fontsOf = wanted;
+  void import("./plugins/themeFonts")
+    .then((m) => m.applyThemeFonts(wanted, plugin?.fonts ?? []))
+    .catch((e: unknown) => console.warn("theme fonts", e));
+}
 
 /** Applies the appearance settings, and keeps them for the next start. */
 export function applyAppearance() {
@@ -701,6 +757,9 @@ export function applyAppearance() {
       .setZoom(scale)
       .catch((e: unknown) => console.warn("zoom", e));
   }
+  // A plugin's theme is known once the list of plugins is read: until then the last paint stays.
+  if (pluginThemes === null && !preview && getSetting(themeSetting).startsWith(PLUGIN_THEME)) return;
+  syncThemeFonts();
   const { dark, vars } = variables();
   // Any setting change calls this: repaint only when the appearance changed.
   const signature = JSON.stringify([dark, vars]);
@@ -736,6 +795,7 @@ export function paintCached() {
 /** Follows the settings and, for the system theme, the system's light or dark mode. Call
  *  once the settings are loaded. */
 export function startAppearance() {
+  appearanceStarted = true;
   // 0.1 kept a light/dark choice in the browser storage; it becomes the setting.
   try {
     const old = localStorage.getItem("platypus.theme");
@@ -748,7 +808,7 @@ export function startAppearance() {
   onSettingsChanged(applyAppearance);
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     const name = themeName();
-    if (name === "system" || name === CUSTOM || preview) applyAppearance();
+    if (name === "system" || name === CUSTOM || name.startsWith(PLUGIN_THEME) || preview) applyAppearance();
   });
 }
 

@@ -306,6 +306,15 @@
   padding-left: var(--space-16);
 }
 
+.catalog-panel [data-field="catalog-url"] input {
+  width: 320px;
+}
+
+.catalog-panel [data-field="key-text"] {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Where a dragged project would land: a line between two squares, or the square or folder
    it would join outlined. */
 .project-rail {

@@ -1,12 +1,16 @@
-import { Suspense, lazy, useState } from "react";
+import { type ReactNode, Suspense, lazy, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type InspectedPlugin, type InstalledPlugin, type PluginDescription, type PluginHookEvent, type PluginManifest, type PluginPermissions, toCommandError } from "../api";
 import { msg, t } from "../i18n";
-import { ask } from "../ui/ask";
+import { ask, choose } from "../ui/ask";
 import { answerFor } from "../testAnswers";
 import { reloadPlugins, usePlugins } from "./store";
 import { pickFolder } from "../projects/shared";
 import { EmptyState } from "../ui/State";
+import { PALETTE_KEYS, customPreset } from "../theme";
+import { pluginThemeOf } from "../themes/color";
+import { lowContrast } from "../themes/contrast";
+import { keepableSettings } from "./catalogEntry";
 
 const SCOPES: Record<string, string> = {
   editor: msg("SQL editor"),
@@ -81,6 +85,61 @@ function Provides({ description, manifest }: { description: PluginDescription; m
   );
 }
 
+/** A warning when a theme's text would be hard to read; the theme still installs. */
+function ThemeContrast({ theme }: { theme: NonNullable<PluginManifest["theme"]> }) {
+  const shown = pluginThemeOf(theme, PALETTE_KEYS);
+  if (!shown) return null;
+  const variants = [...(shown.light ? [false] : []), ...(shown.dark ? [true] : [])];
+  const pairs = variants.flatMap((dark) =>
+    lowContrast(customPreset(shown, dark).colors).map((p) => `${dark ? t("dark") : t("light")}: ${p.fg} / ${p.bg} (${p.ratio}:1)`),
+  );
+  if (pairs.length === 0) return null;
+  return (
+    <p className="notice warn small" data-field="theme-contrast">
+      {t("Some text of this theme may be hard to read: {pairs}", { pairs: pairs.join(", ") })}
+    </p>
+  );
+}
+
+/** What a package provides and asks for, and the answer to it: the review of every install, from a
+ *  file or from the catalog. `children` goes above what it asks. */
+export function PluginReview(props: { plugin: InspectedPlugin; busy: boolean; onInstall: () => void; onCancel: () => void; children?: ReactNode }) {
+  const { plugin, busy, onInstall, onCancel, children } = props;
+  return (
+    <div className="driver-block plugin-review" data-field="plugin-review" data-plugin={plugin.manifest.id}>
+      <strong>
+        {plugin.manifest.name} · {plugin.manifest.version}
+      </strong>
+      {plugin.manifest.author && <div className="muted small">{plugin.manifest.author}</div>}
+      {plugin.manifest.description && <p className="small">{plugin.manifest.description}</p>}
+      {plugin.replaces && (
+        <p className="small" data-field="replaces">
+          {t("Replaces the installed version {version}.", { version: plugin.replaces })}
+        </p>
+      )}
+      {children}
+      <Provides description={plugin.description} manifest={plugin.manifest} />
+      {plugin.manifest.theme && <ThemeContrast theme={plugin.manifest.theme} />}
+      <h4>{t("It asks to")}</h4>
+      <PermissionList permissions={plugin.manifest.permissions} />
+      {plugin.replaces && permissionLines(plugin.added).length > 0 && (
+        <>
+          <h4>{t("New since the installed version")}</h4>
+          <PermissionList permissions={plugin.added} field="added-permissions" />
+        </>
+      )}
+      <div className="driver-actions">
+        <button type="button" className="primary" data-action="confirm-install" disabled={busy} onClick={onInstall}>
+          {t("Install and allow")}
+        </button>
+        <button type="button" data-action="cancel-install" disabled={busy} onClick={onCancel}>
+          {t("Cancel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Settings › Plugins: the installed WebAssembly plugins, turned on or off and removed, and
  *  the install of a package after reviewing what it asks for. */
 export function PluginsPanel() {
@@ -127,11 +186,19 @@ export function PluginsPanel() {
     });
 
   async function remove(plugin: InstalledPlugin) {
-    if (!(await ask(t("Remove the plugin {name}? Its connections stop working.", { name: plugin.manifest.name }), { confirm: t("Remove"), danger: true }))) {
-      return;
-    }
+    const question = t("Remove the plugin {name}? Its connections stop working.", { name: plugin.manifest.name });
+    // Only what can stay is asked: a secret always leaves the keychain.
+    const keep = keepableSettings(plugin.manifest.settings)
+      ? await choose<boolean>(question, [
+          { label: t("Remove and keep its settings"), value: true },
+          { label: t("Remove everything"), value: false, danger: true },
+        ])
+      : (await ask(question, { confirm: t("Remove"), danger: true }))
+        ? false
+        : null;
+    if (keep === null) return;
     await attempt(async () => {
-      await api.pluginRemove(plugin.manifest.id);
+      await api.pluginRemove(plugin.manifest.id, keep);
       await reloadPlugins();
     });
   }
@@ -157,37 +224,7 @@ export function PluginsPanel() {
         </div>
       )}
       {(plugins.length > 0 || review) && <div className="driver-actions">{installButtons}</div>}
-      {review && (
-        <div className="driver-block plugin-review" data-field="plugin-review" data-plugin={review.plugin.manifest.id}>
-          <strong>
-            {review.plugin.manifest.name} · {review.plugin.manifest.version}
-          </strong>
-          {review.plugin.manifest.author && <div className="muted small">{review.plugin.manifest.author}</div>}
-          {review.plugin.manifest.description && <p className="small">{review.plugin.manifest.description}</p>}
-          {review.plugin.replaces && (
-            <p className="small" data-field="replaces">
-              {t("Replaces the installed version {version}.", { version: review.plugin.replaces })}
-            </p>
-          )}
-          <Provides description={review.plugin.description} manifest={review.plugin.manifest} />
-          <h4>{t("It asks to")}</h4>
-          <PermissionList permissions={review.plugin.manifest.permissions} />
-          {review.plugin.replaces && permissionLines(review.plugin.added).length > 0 && (
-            <>
-              <h4>{t("New since the installed version")}</h4>
-              <PermissionList permissions={review.plugin.added} field="added-permissions" />
-            </>
-          )}
-          <div className="driver-actions">
-            <button type="button" className="primary" data-action="confirm-install" disabled={busy} onClick={() => void install(review.path, review.plugin.hash)}>
-              {t("Install and allow")}
-            </button>
-            <button type="button" data-action="cancel-install" disabled={busy} onClick={() => setReview(null)}>
-              {t("Cancel")}
-            </button>
-          </div>
-        </div>
-      )}
+      {review && <PluginReview plugin={review.plugin} busy={busy} onInstall={() => void install(review.path, review.plugin.hash)} onCancel={() => setReview(null)} />}
       {plugins.length === 0 && !review && (
         <EmptyState icon="extension" title={t("No plugin installed.")} actions={installButtons} />
       )}
@@ -219,6 +256,7 @@ export function PluginsPanel() {
           </div>
           {p.manifest.description && <p className="muted small">{p.manifest.description}</p>}
           <Provides description={p.description} manifest={p.manifest} />
+          {p.manifest.theme && <ThemeContrast theme={p.manifest.theme} />}
           <PermissionList permissions={p.approved} />
           {settingsOf === p.manifest.id && (
             <Suspense fallback={null}>

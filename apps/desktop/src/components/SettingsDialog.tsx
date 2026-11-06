@@ -19,6 +19,8 @@ type Value = boolean | number | string;
 
 /** Settings › Plugins, a chunk of its own: the app does not load it until the page opens. */
 const PluginsPanel = lazy(() => import("../plugins/PluginsPanel").then((m) => ({ default: m.PluginsPanel })));
+/** Settings › Plugin catalog, a chunk of its own too. */
+const CatalogPanel = lazy(() => import("../plugins/CatalogPanel"));
 
 /** The pages after the declared settings' sections, each with its own panel; `keywords`
  *  (English) are found by the search too, and a panel with `contains` is also found by its
@@ -43,6 +45,15 @@ const PANELS: {
       </Suspense>
     ),
   },
+  {
+    title: msg("Plugin catalog"),
+    keywords: "plugin catalog index download update signature minisign keys install",
+    render: () => (
+      <Suspense fallback={null}>
+        <CatalogPanel />
+      </Suspense>
+    ),
+  },
   { title: msg("Diagnostics"), keywords: "log logs crash report bug support zip", render: () => <DiagnosticsPanel /> },
   {
     title: msg("Keyboard shortcuts"),
@@ -56,7 +67,7 @@ const PANELS: {
 const NAV_GROUPS: { label: string; pages: string[] }[] = [
   { label: msg("Interface"), pages: ["Appearance", "Navigator", "SQL editor", "Results", "Toolbar", "Tabs", "Themes", "Keyboard shortcuts"] },
   { label: msg("Data and safety"), pages: ["Safety", "Connections", "Performance", "Master password", "Sync", "Driver updates"] },
-  { label: msg("Tools"), pages: ["Agents", "Drivers", "Plugins", "Diagnostics"] },
+  { label: msg("Tools"), pages: ["Agents", "Drivers", "Plugins", "Plugin catalog", "Diagnostics"] },
 ];
 
 /** The icon and one line about each page, shown above its content. */
@@ -77,6 +88,7 @@ const PAGE_HEAD: Record<string, { icon: IconName; about: string }> = {
   "Agents": { icon: "agent", about: msg("Connect assistants and tools that work with your databases.") },
   "Drivers": { icon: "database", about: msg("Database drivers installed and available to download.") },
   "Plugins": { icon: "extension", about: msg("Add-ons that extend PlatypusDB.") },
+  "Plugin catalog": { icon: "download", about: msg("Plugins from an index you choose, checked before they install.") },
   "Diagnostics": { icon: "activity", about: msg("Logs and reports to help find and fix problems.") },
   "Keyboard shortcuts": { icon: "terminal", about: msg("Every command and its key combination.") },
 };
