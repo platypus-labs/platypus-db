@@ -1,10 +1,11 @@
 // Ways to sign in without a password: a token a cloud's CLI makes at each connection (AWS
-// and Google Cloud IAM, Microsoft Entra ID), or Windows' own sign-in to SQL Server. The
-// connection keeps the way in its `auth` option; `platypus-net` runs the CLI.
+// and Google Cloud IAM, Microsoft Entra ID), Windows' own sign-in to SQL Server, or a Kerberos
+// ticket for PostgreSQL. The connection keeps the way in its `auth` option; `platypus-net`
+// runs the CLI.
 // Types only: the unit tests load this module without the app's.
 import type { DriverKind, SavedConnection } from "./api";
 
-export type SignInId = "aws_iam" | "gcp_iam" | "entra_id" | "windows";
+export type SignInId = "aws_iam" | "gcp_iam" | "entra_id" | "windows" | "kerberos";
 
 export interface SignIn {
   id: SignInId;
@@ -12,7 +13,7 @@ export interface SignIn {
   name: string;
   /** The databases it signs in to. */
   drivers: DriverKind[];
-  /** The command that makes the token, shown to the user; none for Windows. */
+  /** The command that makes the token, shown to the user; none for Windows and Kerberos. */
   command: ((c: SavedConnection) => string) | null;
 }
 
@@ -41,6 +42,7 @@ export const SIGN_INS: SignIn[] = [
       `az account get-access-token --resource ${c.driver === "sqlserver" ? "https://database.windows.net/" : "https://ossrdbms-aad.database.windows.net"}`,
   },
   { id: "windows", name: "Windows", drivers: ["sqlserver"], command: null },
+  { id: "kerberos", name: "Kerberos", drivers: ["postgres"], command: null },
 ];
 
 /** The way `c` signs in without a password, `undefined` when it uses one. */
@@ -55,5 +57,7 @@ export function withSignIn(c: SavedConnection, id: SignInId | null): SavedConnec
   const options = { ...c.options };
   if (id) options.auth = id;
   else delete options.auth;
+  // The service name means nothing to the other ways.
+  if (id !== "kerberos") delete options.krb_service;
   return { ...c, options };
 }
