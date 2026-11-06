@@ -56,7 +56,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 | A — Agents and MCP | ✅ completed |
 | B — Plugins and mods | ✅ completed |
 | C — Kerberos and authentication | ✅ completed |
-| D — User documentation | 🔒 Andrea · evo-d-docs-split · 2026-11-06 |
+| D — User documentation | ✅ done (P2; P3 in part) |
 | E — Publishing and distribution | ⏸ waiting (the owner's decision on making the repository public) |
 
 ### Group A — Agents and MCP
