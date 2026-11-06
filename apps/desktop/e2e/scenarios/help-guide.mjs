@@ -172,13 +172,13 @@ export default async function (page) {
   // A page that is missing, and a file outside the guide: a plain message, the dialog stays.
   await page.eval(`${link("A page that is not there")}.click()`);
   await page.waitFor(`${reader}.querySelector('.guide-missing') !== null`);
-  assert.match(await page.eval(`${reader}.textContent`), /docs\/guide\/nothing\.md/);
+  assert.match(await page.eval(`${reader}.textContent`), /docs\/user\/guide\/nothing\.md/);
   assert.ok(await page.eval(`${dialog} !== null`));
   await page.eval(`${dialog}.querySelector('.guide-index button[data-page=README]').click()`);
   await page.waitFor(`${reader}.querySelector('h1') !== null`);
   await page.eval(`${link("Outside the guide")}.click()`);
   await page.waitFor(`${reader}.querySelector('.guide-missing') !== null`);
-  assert.match(await page.eval(`${reader}.textContent`), /docs\/FEATURES\.md/);
+  assert.match(await page.eval(`${reader}.textContent`), /docs\/user\/FEATURES\.md/);
 
   // An address opens in the browser (here: collected), not in the window.
   await page.eval(`${dialog}.querySelector('.guide-index button[data-page=README]').click()`);
