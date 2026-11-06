@@ -3,7 +3,8 @@
 PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for
 `wasm32-unknown-unknown`, AssemblyScript, TinyGo, C, Zig…). A plugin can add **actions**
 (commands in the editor, the result grid and the navigator), a **driver** for a database that
-speaks HTTP, **event hooks** and a **settings page**. Plugins run in a sandbox: an interpreter
+speaks HTTP, **event hooks**, a **settings page** and a **theme**, which is the one kind with no
+code at all. Plugins run in a sandbox: an interpreter
 (`wasmi`) with no access to files, programs, sockets or the clock, only to the JSON messages the
 app gives them and the host functions their permissions open.
 
@@ -41,7 +42,9 @@ kind the app does not know, by name. Packages are kept in `<data>/plugins/<id>/<
 version replaces the old one after the same review, which lists apart what it asks that the
 installed version was not approved for. `<data>/plugins/plugins.json` records which plugins are
 on, the approved permissions and the description. A plugin turned off offers no action and no
-driver and runs no hook; removing it deletes its folder and its settings.
+driver and runs no hook. Removing it deletes its folder and its secrets in the keychain; a plugin
+with other settings asks whether to keep their values for a later install, and otherwise they go
+too. Packages can also come from a [catalog](#catalog).
 
 ### What ABI 2 declares
 
@@ -73,10 +76,10 @@ id = "length"
 title = "Length"
 types = ["text"]                # optional; all types without it
 
-[theme]                         # colours by the names of a theme file, and fonts
+[theme]                         # colours by the names of a theme file, and fonts of the package
 name = "Sea"
 dark = { bg = "#0b1d26", accent = "#3fc1c9" }
-fonts = { mono = "Fira Code" }
+fonts = { mono = "fonts/Sea-Mono.woff2" }
 
 [[settings]]                    # the plugin's settings page, below
 key = "endpoint"
@@ -89,8 +92,123 @@ A kind and what it declares go together, and each needs its permission: declarin
 that is only a `theme` has no module: nothing of it runs, and a `plugin.wasm` beside its manifest
 is neither read nor copied. Everything else needs one.
 
-Tabs, panels, grid extensions and themes are declared and checked here, and shown at install; what
-the app does with them comes with those features.
+Tabs, panels and grid extensions are declared and checked here, and shown at install; what the app
+does with them comes with those features.
+
+### Themes
+
+A package with `kinds = ["theme"]` and no module shows up as a card in Settings › Appearance › Theme.
+`examples/plugins/theme-sea` is one, with both variants:
+
+```toml
+id = "theme-sea"
+name = "Sea theme"
+version = "1.0.0"
+api = 2
+kinds = ["theme"]
+
+[theme]
+name = "Sea"                    # as the picker shows it
+
+[theme.dark]                    # and/or [theme.light]
+bg = "#0b1d26"
+accent = "#3fc1c9"
+```
+
+With both variants the theme follows the system's light or dark mode. A colour it leaves out comes
+from the Platypus theme of the same lightness, as in a theme file.
+
+**Colours.** A name must be one of the app's tokens (`PALETTE_KEYS` in
+`apps/desktop/src/theme.ts`, the same names as a theme file), and a value must be `#rgb`, `#rgba`,
+`#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, `hsl()` or `hsla()` with numbers only, or `transparent`.
+Anything else refuses the package by name at install: `url(...)`, `expression(...)`, `var(...)`,
+`color-mix(...)`, a named colour, a `;` or a `}`. The page checks each value again and sets it with
+`style.setProperty`; nothing of a theme is written as CSS text.
+
+**Fonts.** `fonts` maps `ui` or `mono` to a path inside the package, of a `.woff2`, `.woff`, `.ttf`
+or `.otf` file of at most 4 MB, which must really be a font by its first bytes. A family name or an
+address is refused: a font comes only from the package. The app gives it a family name of its own.
+
+**Legibility.** The review and the plugin's row warn when text would be hard to read, with the pairs
+and their contrast (`fg / bg`, `fg-muted / bg`, `accent-fg / accent`…); it is a warning, not a
+refusal.
+
+A theme costs nothing unless it is chosen: its colours are in the list of plugins the page reads
+anyway, and its fonts are read when it is the theme in use. When its plugin is turned off or removed,
+or its files are gone, the app uses the default theme, and comes back to it if the plugin returns.
+
+## Catalog
+
+Settings › Plugin catalog lists the plugins of an index and installs, updates or reinstalls them. The
+address of the index is a setting (`plugins.catalog_url`). It starts empty and there is no built-in
+one: until you set it the app contacts nothing. The index is read when the page opens or when you
+ask, never in the background. Nothing installs without your click, and an install goes through the
+same review as a manual one, with the permissions in plain words and what an update asks anew.
+
+### Building an index
+
+An index is JSON, on any HTTPS server:
+
+```json
+{
+  "format": 1,
+  "plugins": [
+    {
+      "id": "theme-sea",
+      "name": "Sea theme",
+      "version": "1.0.0",
+      "author": "PlatypusDB",
+      "description": "A theme with no code.",
+      "url": "theme-sea-1.0.0.zip",
+      "sha256": "<the SHA-256 of the .zip, in hexadecimal>",
+      "signature": "<the text of its .minisig file>"
+    }
+  ]
+}
+```
+
+`id`, `name`, `version`, `url` and `sha256` are required, one entry per plugin. `url` may be relative
+to the index. An entry that cannot be read is listed apart with its reason, and the others stay
+usable. Fields it does not know are ignored. [`examples/plugins/catalog`](../examples/plugins/catalog)
+has a complete one.
+
+### Signing a package
+
+A package is signed with [minisign](https://jedisct1.github.io/minisign/), by a detached signature
+over the bytes of the `.zip`. The signature goes in the entry, so the package itself does not change:
+
+```bash
+minisign -G -p publisher.pub -s publisher.key          # once: keep the secret key
+zip -r theme-sea-1.0.0.zip plugin.toml                 # the package, as for a manual install
+minisign -S -s publisher.key -m theme-sea-1.0.0.zip    # writes theme-sea-1.0.0.zip.minisig
+sha256sum theme-sea-1.0.0.zip                          # the entry's sha256
+```
+
+Publish the `.pub` file where your users can check it is yours. They paste it under **Keys you
+trust**, with a name: the app has no keys of its own, and trusts none until they do. Signatures of the
+legacy format (`minisign -S -l`) are refused.
+
+### What is checked
+
+Each check refuses with its own reason, and leaves nothing behind.
+
+| Check | Refused when |
+|---|---|
+| Address | The index or the package is not HTTPS. `http://` works only on this computer (`localhost`, `127.0.0.1`, `::1`), for tests, and an index on the network cannot point to this computer at all. A redirect goes through the same check, and an address with a user name or password is refused. |
+| Size | The index is over 2 MB or the package over 64 MB. |
+| Hash | The SHA-256 of the download is not the entry's. |
+| Signature | It has no signature, or it is not by a trusted key, or it does not match the package. |
+| Paths | A name in the `.zip` is absolute or climbs out of it with `..`. A manual install refuses this too. |
+| Identity | The `id` or `version` of the manifest is not the entry's. |
+| Downgrade | The version is older than the installed one. |
+
+Two of them are yours to lift, each from its own question. A package with no valid signature shows
+why, and installs only through **Install as unsigned** in a separate warning; the review then says it
+is not signed. An older version installs only after you confirm it over the newer one. The hash, the
+paths and the identity are always checked. Then the module is loaded for the review, and installing
+takes the hash of what you reviewed, as a manual install does.
+
+The download waits in `<data>/plugins/.downloads` until you answer, and goes whatever the answer.
 
 ## ABI, versions 1 and 2
 
@@ -351,6 +469,11 @@ The examples build with `opt-level = "z"`, LTO and `panic = "abort"`: about 90 K
   and log what ran. `tests/hooks.rs` runs it, and also without its permission.
 - `examples/plugins/settings-demo`: a settings page with a field of each type, and actions that
   read them, and try a key the manifest does not declare.
+- `examples/plugins/theme-sea`: a theme and nothing else, with no module.
+- `examples/plugins/catalog`: an index with one entry, `theme-sea` as a `.zip`, its `.minisig` and the
+  public key that verifies it (`trusted.pub`; its secret key was thrown away, so sign your own with
+  yours). `tests/catalog.rs` serves it from a local server and installs it with that key, and is
+  refused with any other.
 
 After changing an example, build it again and copy its module next to its `plugin.toml`: the
 tests use the committed `plugin.wasm`.

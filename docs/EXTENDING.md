@@ -310,6 +310,20 @@ own read only when used. The page (`PluginSettings.tsx`, a chunk loaded when it 
 field to a `SettingDef` (`settingFields.ts`) and draws it with `SettingRow`, as the app's own
 settings; a secret has a row of its own, since it never comes back to the page.
 
+**Themes.** `theme.rs` holds what a theme may set: `TOKENS`, the grammar of a colour and the font
+formats. A token added to the palette in `apps/desktop/src/theme.ts` goes in `TOKENS` too, and
+`tests/pluginTheme.test.mjs` fails until it does. `themes/color.ts` is the same grammar on the page,
+which registers a plugin's theme with `setPluginThemes`, from the list of plugins it reads anyway; a
+theme reaches the variables like a theme file does, through `style.setProperty`. Fonts are
+`plugins/themeFonts.ts`, a chunk loaded only when the theme in use has some.
+
+**Catalog.** `catalog.rs` reads an index and prepares a package: the checks, in order, then the review
+of a manual install (`Plugins::inspect`), then `Plugins::install` with its hash. A new check goes in
+`catalog_prepare` before `inspect` when it needs nothing of the package's content, with its own test
+in `tests/catalog.rs`. A refusal the user may lift has its own `PluginError` variant, and an error kind
+in `commands/plugins.rs` for the page; everything else is `PluginError::Catalog`. The page
+(`CatalogPanel.tsx`) is a chunk of its own, and the settings live in `commands/plugin_catalog.rs`.
+
 ### Vendor client libraries: Oracle, ODBC and DuckDB
 
 Oracle, IBM Db2, DuckDB and any ODBC driver need a library that the vendor publishes and the
