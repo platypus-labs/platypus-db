@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Kerberos logins (SSPI on Windows, GSSAPI elsewhere). Off by default: on Linux and macOS it links
+# the system's Kerberos library and needs its headers to build.
+kerberos = ["tokio-postgres/kerberos"]
+
 [dependencies]
 arrow-array.workspace = true
 arrow-schema.workspace = true
@@ -26,7 +31,7 @@ tokio-postgres-rustls.workspace = true
 [dev-dependencies]
 arrow-cast.workspace = true
 criterion.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
 
 [[bench]]
 name = "decode"

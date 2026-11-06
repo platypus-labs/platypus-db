@@ -57,8 +57,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
+          # libkrb5-dev and libclang-dev: Kerberos for PostgreSQL (see src-tauri/Cargo.toml).
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev
+            libayatana-appindicator3-dev librsvg2-dev libkrb5-dev libclang-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}

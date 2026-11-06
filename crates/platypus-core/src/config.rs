@@ -365,6 +365,10 @@ pub const AFTER_DISCONNECT: &str = "after_disconnect";
 /// The option that says how the user signs in when it is not with a password: see [`Auth`].
 pub const AUTH: &str = "auth";
 
+/// The option with the Kerberos service name of a [`Auth::Kerberos`] login: the ticket asked for
+/// is for the principal `service/host`. PostgreSQL's default is `postgres`.
+pub const KRB_SERVICE: &str = "krb_service";
+
 /// The options of a port forward made by a cloud's CLI (run by `platypus-net`): `forward`
 /// is `kubernetes` (`kubectl port-forward` to `k8s_target`, e.g. `svc/postgres`, in
 /// `k8s_namespace` of `k8s_context`) or `ssm` (an AWS SSM session through the EC2 instance
@@ -389,6 +393,9 @@ pub enum Auth {
     EntraId,
     /// Windows' own sign-in (SSPI, Kerberos or NTLM), SQL Server on Windows only.
     Windows,
+    /// A Kerberos ticket from the system (SSPI on Windows, GSSAPI elsewhere), PostgreSQL only.
+    /// No password goes to the server.
+    Kerberos,
 }
 
 impl Auth {
@@ -400,6 +407,7 @@ impl Auth {
             "gcp_iam" => Self::GcpIam,
             "entra_id" => Self::EntraId,
             "windows" => Self::Windows,
+            "kerberos" => Self::Kerberos,
             other => return Err(Error::Config(format!("unknown authentication `{other}`"))),
         })
     }
@@ -419,6 +427,7 @@ impl Auth {
             Self::AwsIam | Self::GcpIam => pg_or_mysql,
             Self::EntraId => pg_or_mysql || matches!(driver, DriverKind::SqlServer),
             Self::Windows => matches!(driver, DriverKind::SqlServer),
+            Self::Kerberos => matches!(driver, DriverKind::Postgres),
         }
     }
 
@@ -431,6 +440,7 @@ impl Auth {
             Self::GcpIam => "Google Cloud IAM",
             Self::EntraId => "Microsoft Entra ID",
             Self::Windows => "Windows sign-in",
+            Self::Kerberos => "Kerberos",
         }
     }
 }
@@ -462,6 +472,17 @@ impl ConnectionConfig {
     /// How the user signs in, from the option [`AUTH`].
     pub fn auth(&self) -> Result<Auth> {
         Auth::from_option(self.options.get(AUTH).map(String::as_str))
+    }
+
+    /// The Kerberos service name of a [`Auth::Kerberos`] login: the option [`KRB_SERVICE`], or
+    /// PostgreSQL's default.
+    #[must_use]
+    pub fn krb_service(&self) -> &str {
+        self.options
+            .get(KRB_SERVICE)
+            .map(|service| service.trim())
+            .filter(|service| !service.is_empty())
+            .unwrap_or("postgres")
     }
 
     /// Parses a connection URL such as `postgres://user:pass@host:5432/db?sslmode=require`,
@@ -997,6 +1018,30 @@ fn decode(s: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kerberos_signs_in_to_postgresql_only() {
+        assert_eq!(Auth::from_option(Some("kerberos")).unwrap(), Auth::Kerberos);
+        assert!(Auth::Kerberos.fits(DriverKind::Postgres));
+        for driver in [DriverKind::MySql, DriverKind::SqlServer, DriverKind::Sqlite] {
+            assert!(!Auth::Kerberos.fits(driver), "{driver:?}");
+        }
+        assert!(!Auth::Kerberos.is_token(), "the ticket is not a password");
+    }
+
+    #[test]
+    fn the_kerberos_service_name_defaults_to_postgres() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        assert_eq!(config.krb_service(), "postgres");
+        config
+            .options
+            .insert(KRB_SERVICE.to_owned(), "  ".to_owned());
+        assert_eq!(config.krb_service(), "postgres");
+        config
+            .options
+            .insert(KRB_SERVICE.to_owned(), " pgprod ".to_owned());
+        assert_eq!(config.krb_service(), "pgprod");
+    }
 
     #[test]
     fn driver_kinds_round_trip() {

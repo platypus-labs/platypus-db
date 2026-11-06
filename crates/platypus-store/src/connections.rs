@@ -649,8 +649,8 @@ impl SavedConnection {
             && !self.signs_in_without_password()
     }
 
-    /// Whether it signs in with a token from a cloud's CLI or with Windows' own sign-in: no
-    /// password is asked, saved or looked up.
+    /// Whether it signs in with a token from a cloud's CLI, Windows' own sign-in or a Kerberos
+    /// ticket: no password is asked, saved or looked up.
     #[must_use]
     pub fn signs_in_without_password(&self) -> bool {
         Auth::from_option(self.options.get(AUTH).map(String::as_str))

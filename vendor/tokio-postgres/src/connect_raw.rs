@@ -1,6 +1,7 @@
 use crate::codec::{BackendMessage, BackendMessages, FrontendMessage, PostgresCodec};
 use crate::config::{self, Config};
 use crate::connect_tls::connect_tls;
+use crate::gss::{self, GssError};
 use crate::maybe_tls_stream::MaybeTlsStream;
 use crate::tls::{TlsConnect, TlsStream};
 use crate::{Client, Connection, Error};
@@ -165,7 +166,21 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
     T: TlsStream + Unpin,
 {
-    match stream.try_next().await.map_err(Error::io)? {
+    let first = stream.try_next().await.map_err(Error::io)?;
+    if config.gss_target.is_some() {
+        match first {
+            Some(
+                Message::AuthenticationCleartextPassword
+                | Message::AuthenticationMd5Password(_)
+                | Message::AuthenticationSasl(_),
+            ) => return Err(Error::authentication(Box::new(GssError::PasswordAsked))),
+            Some(Message::AuthenticationOk) => {
+                return Err(Error::authentication(Box::new(GssError::NotAsked)));
+            }
+            _ => {}
+        }
+    }
+    match first {
         Some(Message::AuthenticationOk) => {
             can_skip_channel_binding(config)?;
             return Ok(());
@@ -194,10 +209,15 @@ where
         Some(Message::AuthenticationSasl(body)) => {
             authenticate_sasl(stream, body, config).await?;
         }
-        Some(Message::AuthenticationKerberosV5)
-        | Some(Message::AuthenticationScmCredential)
-        | Some(Message::AuthenticationGss)
-        | Some(Message::AuthenticationSspi) => {
+        Some(message @ (Message::AuthenticationGss | Message::AuthenticationSspi)) => {
+            let Some(target) = &config.gss_target else {
+                return Err(Error::authentication(Box::new(GssError::NotChosen)));
+            };
+            can_skip_channel_binding(config)?;
+            let negotiate = matches!(message, Message::AuthenticationSspi);
+            return gss::authenticate(stream, target, negotiate).await;
+        }
+        Some(Message::AuthenticationKerberosV5) | Some(Message::AuthenticationScmCredential) => {
             return Err(Error::authentication(
                 "unsupported authentication method".into(),
             ));

@@ -18,6 +18,8 @@ pub mod decode;
 mod explain;
 mod security;
 pub use explain::read_plan;
+mod kerberos;
+pub use kerberos::AVAILABLE as KERBEROS_AVAILABLE;
 mod meta;
 mod monitor;
 mod tls;
@@ -33,7 +35,7 @@ use arrow_schema::Schema;
 use async_trait::async_trait;
 use futures::StreamExt;
 use platypus_core::{
-    CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
+    Auth, CancelHandle, Canceller, CatalogColumn, Connection, ConnectionConfig, DbError, Driver,
     DriverKind, Error, ExecOptions, ExecResult, Executed, ObjectMeta, RecordBatchStream,
     ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails, TransactionState, TxEffect,
     TxTracker, classify, execute_each,
@@ -175,15 +177,24 @@ impl PgConnection {
         let port = config
             .connect_addr
             .map_or(config.port.unwrap_or(5432), |a| a.port());
-        pg.host(&config.host)
-            .port(port)
-            .dbname(&config.database)
-            .user(&config.user);
+        pg.host(&config.host).port(port).dbname(&config.database);
+        // A Kerberos login without a user name goes as the system user, as libpq's does.
+        if !config.user.is_empty() || !matches!(config.auth()?, Auth::Kerberos) {
+            pg.user(&config.user);
+        }
         if let Some(addr) = config.connect_addr {
             pg.hostaddr(addr.ip());
         }
-        if let Some(password) = &config.password {
-            pg.password(password.expose());
+        // A Kerberos login sends no password, even if one came with the connection.
+        match kerberos::target(config)? {
+            Some(target) => {
+                pg.gss_target(target);
+            }
+            None => {
+                if let Some(password) = &config.password {
+                    pg.password(password.expose());
+                }
+            }
         }
         if let Some(name) = &config.application_name {
             pg.application_name(name);
@@ -261,17 +272,21 @@ where
         Some(limit) => tokio::time::timeout(*limit, connecting)
             .await
             .map_err(|_| {
-                Error::Connect(format!(
-                    "the server did not answer within {} s",
-                    limit.as_secs()
-                ))
+                // The login may be waiting for the Kerberos server, not for this one.
+                let who = match config.get_gss_target() {
+                    Some(_) => "the server or the Kerberos server (KDC)",
+                    None => "the server",
+                };
+                Error::Connect(format!("{who} did not answer within {} s", limit.as_secs()))
             })?,
         None => connecting.await,
     };
-    let (client, connection) = connected.map_err(|e| match e.as_db_error() {
-        Some(_) => map_error(e),
-        None => Error::Connect(error_chain(&e)),
-    })?;
+    let (client, connection) =
+        connected.map_err(|e| match (e.as_db_error(), kerberos::explain(&e)) {
+            (Some(_), _) => map_error(e),
+            (None, Some(message)) => Error::Connect(message),
+            (None, None) => Error::Connect(error_chain(&e)),
+        })?;
     // The connection drives the socket, keeping the notices it reads; it ends when the
     // client is dropped. A notice is read before the end of the statement that raised it.
     let mut connection = connection;

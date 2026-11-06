@@ -53,7 +53,7 @@ site/                      static presentation page
 - Rust ≥ 1.99 (`rustup`)
 - Node.js ≥ 24 (LTS, see `.nvmrc`)
 - Tauri system prerequisites: <https://v2.tauri.app/start/prerequisites/>
-  (Windows: MSVC Build Tools + WebView2; Linux: `libwebkit2gtk-4.1-dev` and friends)
+  (Windows: MSVC Build Tools + WebView2; Linux: `libwebkit2gtk-4.1-dev` and friends, and `libkrb5-dev` and `libclang-dev` for Kerberos)
 - Docker, for the dev databases
 
 ## Build, run and test
