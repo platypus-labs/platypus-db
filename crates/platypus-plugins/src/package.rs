@@ -589,7 +589,9 @@ fn package_hash(manifest: &[u8], wasm: &[u8], files: &PackageFiles) -> String {
 fn read_package(source: &Path) -> Result<Package, PluginError> {
     let mut from = PackageSource::open(source)?;
     let manifest = from.read(MANIFEST_FILE, MAX_MANIFEST)?;
-    let parsed = parse_manifest(&manifest)?;
+    let text = std::str::from_utf8(&manifest)
+        .map_err(|_| PluginError::Invalid(format!("{MANIFEST_FILE} is not UTF-8 text")))?;
+    let parsed = Manifest::parse(text)?;
     let wasm = if parsed.needs_module() {
         from.read(MODULE_FILE, MAX_MODULE)?
     } else {
@@ -601,34 +603,35 @@ fn read_package(source: &Path) -> Result<Package, PluginError> {
         theme::check_font(path, &bytes).map_err(PluginError::Invalid)?;
         files.insert(path.clone(), bytes);
     }
-    Ok(package(&manifest, parsed, wasm, files))
-}
-
-fn parse_manifest(bytes: &[u8]) -> Result<Manifest, PluginError> {
-    let text = std::str::from_utf8(bytes)
-        .map_err(|_| PluginError::Invalid(format!("{MANIFEST_FILE} is not UTF-8 text")))?;
-    Manifest::parse(text)
-}
-
-fn package(manifest: &[u8], parsed: Manifest, wasm: Vec<u8>, files: PackageFiles) -> Package {
-    Package {
-        hash: package_hash(manifest, &wasm, &files),
+    Ok(Package {
+        hash: package_hash(&manifest, &wasm, &files),
         manifest: parsed,
         wasm,
         files,
-    }
+    })
 }
 
 pub(crate) fn read_file(path: &Path, max: u64) -> Result<Vec<u8>, PluginError> {
     let file = std::fs::File::open(path).map_err(PluginError::io(path))?;
+    read_capped(file, max, path, &path.display().to_string())
+}
+
+/// All of `reader`, at most `max` bytes; `at` is where I/O errors are blamed, `label` names it
+/// in the size error.
+fn read_capped(
+    reader: impl std::io::Read,
+    max: u64,
+    at: &Path,
+    label: &str,
+) -> Result<Vec<u8>, PluginError> {
     let mut bytes = Vec::new();
-    file.take(max + 1)
+    reader
+        .take(max + 1)
         .read_to_end(&mut bytes)
-        .map_err(PluginError::io(path))?;
+        .map_err(PluginError::io(at))?;
     if bytes.len() as u64 > max {
         return Err(PluginError::Invalid(format!(
-            "{} is larger than {} KB",
-            path.display(),
+            "{label} is larger than {} KB",
             max >> 10
         )));
     }
@@ -689,7 +692,7 @@ impl PackageSource {
         Ok(Self::Zip {
             archive,
             source: source.to_owned(),
-            names: names.clone(),
+            names,
             prefix,
         })
     }
@@ -709,18 +712,7 @@ impl PackageSource {
         let entry = archive
             .by_name(&name)
             .map_err(|_| PluginError::Invalid(format!("the .zip has no {name}")))?;
-        let mut bytes = Vec::new();
-        entry
-            .take(max + 1)
-            .read_to_end(&mut bytes)
-            .map_err(PluginError::io(&*source))?;
-        if bytes.len() as u64 > max {
-            return Err(PluginError::Invalid(format!(
-                "{name} is larger than {} KB",
-                max >> 10
-            )));
-        }
-        Ok(bytes)
+        read_capped(entry, max, source, &name)
     }
 
     /// The files of the tabs and panels of `manifest`, by their paths in the package.
