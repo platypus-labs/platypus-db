@@ -485,8 +485,8 @@ name cannot be opened, and neither `plugin.toml` nor `plugin.wasm` can be read f
 **A page is untrusted, and it is isolated by these, all of them:**
 
 - It runs in `<iframe sandbox="allow-scripts">`, never `allow-same-origin`, so on an opaque origin:
-  no access to the app's DOM, `window.__TAURI__`, `__TAURI_INTERNALS__` or the app's storage, and it
-  has no storage of its own. No popups, forms, dialogs, downloads or top navigation.
+  no access to the app's DOM or the app's storage, and it has no storage of its own. No popups,
+  forms, dialogs, downloads or top navigation.
 - It is served from a scheme of its own (`platypus-plugin`), whose answers carry its policy:
   `sandbox allow-scripts` again, whoever opens it, and `default-src 'none'`, with scripts and styles
   only inline or from the plugin's own folder, images and fonts also from `data:`. No `fetch`,
@@ -495,8 +495,19 @@ name cannot be opened, and neither `plugin.toml` nor `plugin.wasm` can be read f
   anywhere outside it.
 - Messages are the only way out. One counts only if it comes from that frame's window and from the
   opaque origin, and nothing of it is read before that.
-- Tauri puts its scripts in the main frame only and its calls need a key given to that frame, so a
-  frame has no way to call a command, even if it finds the transport.
+- It has no way to run one of the app's commands, and that does not rest on what it can see. On
+  Windows WebView2 runs Tauri's scripts in every frame: `__TAURI_INTERNALS__.invoke`, `window.ipc` and
+  `chrome.webview.postMessage` are there, and a page can take Tauri's invoke key from them, by
+  replacing what they call. They lead nowhere. The app's windows turn WebView2's web messages off, so
+  the message goes nowhere, from any frame; even with them on, WebView2 gives the window's handler
+  only the main frame's. The one route left is Tauri's `fetch` to `http://ipc.localhost`: the page's
+  policy stops it, and behind the policy Tauri refuses a request whose origin is `null`, which is a
+  sandboxed frame's. The E2E scenario `plugins-panels` tries each of these from a hostile page, with
+  the key, on WebView2 156.
+
+  On macOS and Linux (WebKit) nothing of this has been run. By reading Tauri and wry: the scripts
+  stay in the main frame, so a frame has no key; `webkit.messageHandlers.ipc` is there, and Tauri
+  drops a message without the key; and the policy and the `null` origin stop `fetch` the same way.
 
 `window.platypus` is there before the page's first script, with `request(name, params)`, a promise,
 and `on(listener)`, told `listener("init", {plugin, language, theme, connection})` (a late listener

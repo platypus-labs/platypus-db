@@ -5921,6 +5921,7 @@ dependencies = [
  "tower-service",
  "url",
  "uuid",
+ "webview2-com",
  "windows-sys 0.61.2",
  "zip 9.1.0",
 ]

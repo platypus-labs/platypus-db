@@ -10,6 +10,11 @@
 // text. Then pages that leave their document, flood the app, send garbage or huge messages, and
 // loop for ever: each is stopped and the user told, and the app goes on.
 //
+// And what matters most: on WebView2 Tauri's scripts run in the frame too, with the invoke key, and
+// that gives it nothing. It tries every route to a command it can find, each with something a page
+// should never do; none runs, while the same message from the main frame's own route does, so the
+// message is a good one.
+//
 // What the crate checks is in crates/platypus-plugins/tests/frames.rs.
 import assert from "node:assert/strict";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -17,7 +22,7 @@ import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { CTRL } from "../cdp.mjs";
+import { connect, CTRL } from "../cdp.mjs";
 import { palette } from "../plans.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +45,26 @@ const shownBox = `${shownPane}?.querySelector('[data-field="plugin-frame"]')`;
 const shownFrame = `${shownBox}?.querySelector('iframe')`;
 const stoppedText = `(${shownBox}?.dataset.stopped ? ${shownBox}.textContent : '')`;
 
+/** Saved connections a route to a command would delete: each route has its own. */
+const victim = (n) => `00000000-0000-4000-8000-0000000e0e${String(n).padStart(2, "0")}`;
+const FRAME_ROUTES = 8;
+const MAIN_FETCH = 20;
+const MAIN_POST = 21;
+const MAIN_IPC = 22;
+const SAME_ORIGIN_FRAME = 23;
+const OPAQUE_FETCH = 24;
+const OPAQUE_POST = 25;
+const OTHER_WINDOW = 26;
+const VICTIMS = [...Array(FRAME_ROUTES).keys(), MAIN_FETCH, MAIN_POST, MAIN_IPC, SAME_ORIGIN_FRAME, OPAQUE_FETCH, OPAQUE_POST, OTHER_WINDOW];
+
+/** A message of Tauri's web message route, and the headers of its fetch route. */
+const ipcMessage = (key, cmd, payload) => JSON.stringify({ cmd, callback: 11, error: 12, payload, __TAURI_INVOKE_KEY__: key });
+const ipcHeaders = (key) => ({ "Content-Type": "application/json", "Tauri-Callback": "11", "Tauri-Error": "12", "Tauri-Invoke-Key": key });
+const ipcFetch = (key, id) =>
+  `fetch("http://ipc.localhost/delete_connection", { method: "POST", headers: ${JSON.stringify(ipcHeaders(key))}, body: ${JSON.stringify(JSON.stringify({ id }))} }).then(async (r) => r.status + " " + await r.text(), (e) => "failed: " + e.message)`;
+const ipcPost = (object, key, id) =>
+  `(() => { try { ${object}.postMessage(${JSON.stringify(ipcMessage(key, "delete_connection", { id }))}); return "sent"; } catch (e) { return "threw: " + e.message; } })()`;
+
 /** A page that tells what it finds through the app's one way out: the plugin's state. */
 const PROBE = `<!doctype html><title>probe</title><script>
 (async () => {
@@ -50,10 +75,42 @@ const PROBE = `<!doctype html><title>probe</title><script>
   const fails = (make) => new Promise((yes, no) => { setTimeout(() => no(new Error("no answer")), 3000); make(() => yes("REACHED"), () => no(new Error("blocked"))); });
   await attempt("origin", () => self.origin);
   await attempt("__TAURI__", () => typeof window.__TAURI__);
-  await attempt("__TAURI_INTERNALS__", () => typeof window.__TAURI_INTERNALS__);
-  await attempt("ipc", () => typeof window.ipc);
-  await attempt("webview", () => typeof window.chrome?.webview);
   await attempt("__platypus", () => typeof window.__platypus);
+  // What Tauri's scripts leave here (WebView2 runs them in every frame): told, not assumed.
+  report.leftHere = {
+    internals: typeof window.__TAURI_INTERNALS__,
+    invoke: typeof window.__TAURI_INTERNALS__?.invoke,
+    ipc: typeof window.ipc,
+    webview: typeof window.chrome?.webview?.postMessage,
+  };
+  // Its key, as a page can take it: it goes through the frame's own objects on its way out.
+  const realSet = Headers.prototype.set;
+  const realStringify = JSON.stringify;
+  let key = "unknown";
+  Headers.prototype.set = function (name, value) { if (name === "Tauri-Invoke-Key") key = value; return realSet.call(this, name, value); };
+  JSON.stringify = function (value, ...rest) { if (value && value.__TAURI_INVOKE_KEY__) key = value.__TAURI_INVOKE_KEY__; return realStringify(value, ...rest); };
+  const noAnswer = (work) => Promise.race([work, new Promise((yes) => setTimeout(() => yes("NO ANSWER"), 2000))]);
+  const invoke = (cmd, args) => noAnswer(window.__TAURI_INTERNALS__.invoke(cmd, args).then((v) => "ANSWERED " + realStringify(v), (e) => "refused: " + e));
+  await attempt("invoke delete", () => invoke("delete_connection", { id: "${victim(0)}" }));
+  JSON.stringify = realStringify;
+  await attempt("invoke read", () => invoke("list_connections"));
+  await attempt("invoke event", () => invoke("plugin:event|listen", { event: "x", target: { kind: "Any" }, handler: 1 }));
+  Headers.prototype.set = realSet;
+  report.key = key;
+  // Every route, with it.
+  const message = (cmd, payload) => JSON.stringify({ cmd, callback: 11, error: 12, payload, __TAURI_INVOKE_KEY__: key });
+  const post = (route, cmd, payload) => attempt(route, () => (window.chrome.webview.postMessage(message(cmd, payload)), "sent"));
+  await post("post delete", "delete_connection", { id: "${victim(1)}" });
+  await attempt("ipc delete", () => (window.ipc.postMessage(message("delete_connection", { id: "${victim(2)}" })), "sent"));
+  await attempt("post with objects", () => (window.chrome.webview.postMessageWithAdditionalObjects(message("delete_connection", { id: "${victim(3)}" }), []), "sent"));
+  const headers = { "Content-Type": "application/json", "Tauri-Callback": "11", "Tauri-Error": "12", "Tauri-Invoke-Key": key };
+  await attempt("fetch http", () => fetch("http://ipc.localhost/delete_connection", { method: "POST", headers, body: JSON.stringify({ id: "${victim(4)}" }) }).then((r) => "REACHED " + r.status));
+  await attempt("fetch scheme", () => fetch("ipc://localhost/delete_connection", { method: "POST", headers, body: JSON.stringify({ id: "${victim(5)}" }) }).then((r) => "REACHED " + r.status));
+  await attempt("xhr ipc", () => fails((yes, no) => { const x = new XMLHttpRequest(); x.open("POST", "http://ipc.localhost/delete_connection"); for (const name in headers) x.setRequestHeader(name, headers[name]); x.onload = yes; x.onerror = no; x.send(JSON.stringify({ id: "${victim(6)}" })); }));
+  await attempt("beacon ipc", () => (navigator.sendBeacon("http://ipc.localhost/delete_connection", JSON.stringify({ id: "${victim(7)}" })), "tried"));
+  await post("post open url", "open_external_url", { url: "${EVIL}/opened" });
+  for (const session of [1, 2, 3]) await post("post sql " + session, "run_query", { sessionId: session, sql: "CREATE TABLE owned_by_a_frame_" + session + " (x)", onEvent: "__CHANNEL__:" + (90 + session) });
+  await new Promise((done) => setTimeout(done, 700));
   await attempt("parent document", () => window.parent.document.title);
   await attempt("top document", () => window.top.document.title);
   await attempt("parent global", () => typeof window.parent.__TAURI_INTERNALS__);
@@ -128,7 +185,8 @@ name = "${NAME}"
 driver = "sqlite"
 database = '${join(dir, "panels.db")}'
 save_password = false
-`,
+
+${VICTIMS.map((n) => `[[connections]]\nid = "${victim(n)}"\nname = "Victim ${n}"\ndriver = "sqlite"\ndatabase = '${join(dir, "panels.db")}'\nsave_password = false\n`).join("\n")}`,
   );
   writeFileSync(join(dir, "settings.toml"), `version = 1\n\n[drivers]\nauto_update = false\n`);
 }
@@ -329,9 +387,14 @@ async function hostileProbe(page, dir, evil) {
   const report = await stateOf(dir, HOSTILE);
 
   assert.equal(report.origin, "null");
-  for (const global of ["__TAURI__", "__TAURI_INTERNALS__", "ipc", "webview", "__platypus"]) {
-    assert.equal(report[global], "undefined", global);
-  }
+  for (const global of ["__TAURI__", "__platypus"]) assert.equal(report[global], "undefined", global);
+  console.log(`in the frame: ${JSON.stringify(report.leftHere)}, ${report.key === "unknown" ? "no key" : "the invoke key"}`);
+  assert.ok(!/^ANSWERED/.test(report["invoke read"]), report["invoke read"]);
+  assert.ok(!/^ANSWERED/.test(report["invoke event"]), report["invoke event"]);
+  // What a page does with what it found comes to nothing, here or anywhere else.
+  assert.deepEqual(victimsGone(dir), [], JSON.stringify(report));
+  assert.deepEqual(tablesOf(dir), ["items"], JSON.stringify(report));
+  for (const net of ["fetch http", "fetch scheme", "xhr ipc"]) assert.match(report[net], /^refused/, net);
   for (const reach of ["parent document", "top document", "parent global", "parent write", "localStorage", "sessionStorage", "cookie", "indexedDB"]) {
     assert.match(report[reach], /^refused: SecurityError/, reach);
   }
@@ -363,6 +426,73 @@ async function hostileProbe(page, dir, evil) {
   await page.sleep(500);
   assert.deepEqual(evil, [], `reached the network: ${evil.join(", ")}`);
   await closeShownTab(page);
+  return report.key;
+}
+
+/** The victims a command deleted, from the file that keeps them. */
+function victimsGone(dir) {
+  const saved = readFileSync(join(dir, "connections.toml"), "utf8");
+  return VICTIMS.filter((n) => !saved.includes(victim(n)));
+}
+
+function tablesOf(dir) {
+  const db = new DatabaseSync(join(dir, "panels.db"));
+  try {
+    return db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((t) => t.name);
+  } finally {
+    db.close();
+  }
+}
+
+/** What a message does, with the key the frame took, from everywhere that is not the frame: only
+ *  the main frame's fetch runs a command, and that one shows the message is a good one. */
+async function onlyTheMainFramesFetchRuns(page, dir, port, key) {
+  const stayed = async (what) => {
+    await page.sleep(700);
+    assert.deepEqual(victimsGone(dir), [MAIN_FETCH], what);
+  };
+  assert.match(await page.eval(ipcFetch(key, victim(MAIN_FETCH))), /^200 /);
+  assert.deepEqual(victimsGone(dir), [MAIN_FETCH], "the control: the main frame's fetch runs it");
+
+  // The app's windows have no other route, so whatever carries a frame's message goes nowhere.
+  assert.equal(await page.eval(ipcPost("window.chrome.webview", key, victim(MAIN_POST))), "sent");
+  await stayed("a web message of the main frame ran a command");
+  assert.equal(await page.eval(ipcPost("window.ipc", key, victim(MAIN_IPC))), "sent");
+  await stayed("window.ipc of the main frame ran a command");
+
+  // A frame on the app's own origin.
+  await page.eval(`(() => { const i = document.createElement('iframe'); i.id = 'e2e-same'; i.srcdoc = '<!doctype html>'; document.body.append(i); })()`);
+  await page.waitFor(`document.getElementById('e2e-same').contentWindow.chrome?.webview != null`);
+  await page.eval(ipcPost(`document.getElementById('e2e-same').contentWindow.chrome.webview`, key, victim(SAME_ORIGIN_FRAME)));
+  await stayed("a frame on the app's origin ran a command");
+  await page.eval(`document.getElementById('e2e-same').remove()`);
+
+  // An opaque origin under the app's policy, where nothing stops its fetch: the backend does.
+  await page.eval(`(() => { const i = document.createElement('iframe'); i.id = 'e2e-opaque'; i.setAttribute('sandbox', 'allow-scripts'); i.srcdoc = '<!doctype html><title>opaque</title>'; document.body.append(i); })()`);
+  const opaque = await frameSession(port, "about:srcdoc");
+  try {
+    assert.equal(await opaque.evaluate("self.origin"), "null");
+    assert.match(await opaque.evaluate(ipcFetch(key, victim(OPAQUE_FETCH))), /^500 Origin header is not a valid URL/);
+    assert.equal(await opaque.evaluate(ipcPost("window.chrome.webview", key, victim(OPAQUE_POST))), "sent");
+    await stayed("an opaque frame ran a command");
+  } finally {
+    opaque.close();
+  }
+  await page.eval(`document.getElementById('e2e-opaque').remove()`);
+
+  // Another window of the app is built the same way, later and from another thread.
+  const mainId = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === "page").id;
+  const label = await page.eval(`window.__TAURI_INTERNALS__.invoke("open_tab_window", { tab: "{}", title: "e2e" })`);
+  const other = await connect(port, 30_000, (t) => t.type === "page" && t.id !== mainId);
+  try {
+    await other.waitFor(`document.readyState === 'complete' && window.chrome?.webview != null`, 30_000);
+    assert.equal(await other.eval(ipcPost("window.chrome.webview", key, victim(OTHER_WINDOW))), "sent");
+    await stayed("a web message of another window ran a command");
+  } finally {
+    other.close();
+  }
+  await page.eval(`window.__TAURI_INTERNALS__.invoke("plugin:window|destroy", { label: ${JSON.stringify(label)} })`);
+  await page.sleep(300);
 }
 
 async function stoppedPages(page, evil) {
@@ -468,7 +598,8 @@ export default async function (page, { dir, port }) {
     await exampleTab(page, dir, port);
     await examplePanel(page);
     await turningOffTakesItAway(page);
-    await hostileProbe(page, dir, evil);
+    const key = await hostileProbe(page, dir, evil);
+    await onlyTheMainFramesFetchRuns(page, dir, port, key);
     await stoppedPages(page, evil);
     await theBackendAsksToo(page, dir);
     await endlessLoop(page);
