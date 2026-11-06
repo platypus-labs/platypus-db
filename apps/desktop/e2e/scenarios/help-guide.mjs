@@ -153,6 +153,9 @@ export default async function (page) {
   await page.eval(`${link("PostgreSQL")}.click()`);
   await page.waitFor(`${pageOf} === 'databases/postgres'`);
   await page.waitFor(`${reader}.scrollTop > 100`);
+  // Read a little further down, so that Back must return here and not to the heading.
+  await page.eval(`${reader}.scrollTop += 7`);
+  const left = await page.eval(`${reader}.scrollTop`);
   await page.eval(`${link("connect")}.click()`);
   await page.waitFor(`${pageOf} === 'connect'`);
   await page.waitFor(`${reader}.scrollTop > 100`);
@@ -160,6 +163,7 @@ export default async function (page) {
   // Back follows the way taken: connect, postgres, connect <- postgres <- connect <- README.
   await page.eval(`${dialog}.querySelector('.guide-head button').click()`);
   await page.waitFor(`${pageOf} === 'databases/postgres'`);
+  assert.equal(await page.eval(`${reader}.scrollTop`), left, "Back returns to where the reader was");
   await page.eval(`${dialog}.querySelector('.guide-head button').click()`);
   await page.waitFor(`${pageOf} === 'connect'`);
   await page.eval(`${link("the index")}.click()`);
