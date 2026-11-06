@@ -3,11 +3,12 @@
 
 use futures::TryStreamExt;
 use platypus_core::{DriverKind, ExecOptions, ExecResult, ObjectKind, ObjectRef, Property};
+use platypus_plugins::QueryStatus;
 use platypus_sql::{Dialect, ObjectName};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use super::{AppState, one_off};
+use super::{AppState, one_off, plugins};
 use crate::error::CommandResult;
 
 /// An object as the UI identifies it.
@@ -92,13 +93,20 @@ pub async fn list_databases(
 /// when there is one.
 #[tauri::command]
 pub async fn execute_statement(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     session_id: u64,
     sql: String,
 ) -> CommandResult<Option<u64>> {
     state.may_run(session_id, &sql)?;
+    let after = if plugins::query_hooked() {
+        plugins::before_query(&app, &state, session_id, &sql).await?
+    } else {
+        None
+    };
     let conn = state.live(session_id).await?;
-    one_off(&conn, async {
+    let started = std::time::Instant::now();
+    let result = one_off(&conn, async {
         match conn.execute(&sql, &ExecOptions::default()).await? {
             ExecResult::Affected { rows } => Ok(Some(rows)),
             ExecResult::Rows(stream) => {
@@ -107,7 +115,15 @@ pub async fn execute_statement(
             }
         }
     })
-    .await
+    .await;
+    if let Some(after) = after {
+        let (status, affected) = match &result {
+            Ok(rows) => (QueryStatus::Ok, *rows),
+            Err(_) => (QueryStatus::Error, None),
+        };
+        after.fire(status, started.elapsed(), affected);
+    }
+    result
 }
 
 /// A table or other object to generate SQL for. Columns and keys apply to DML.

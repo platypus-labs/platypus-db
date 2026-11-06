@@ -372,12 +372,16 @@ async fn wait_or_cancel(
 /// `cancel_cli` with the same `run_id` stops it, also while the SSH tunnel opens.
 #[tauri::command]
 pub async fn run_cli(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     session_id: u64,
     run_id: u64,
     script: String,
 ) -> CommandResult<CliOutput> {
     state.may_run(session_id, &script)?;
+    if super::plugins::query_hooked() {
+        super::plugins::before_query(&app, &state, session_id, &script).await?;
+    }
     let (stop, cancel) = oneshot::channel();
     lock(&state.clis).insert(run_id, stop);
     let out = run(&state, session_id, run_id, script, cancel).await;

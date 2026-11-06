@@ -3,13 +3,14 @@
 //! none on the session of the result being edited.
 
 use arrow_array::RecordBatch;
+use platypus_plugins::{HOOKS, HookEvent};
 use platypus_sql::dml::{self, ApplyError, Column, Statement, Value, ValueKind};
 use platypus_sql::{Dialect, pg_literal};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use super::AppState;
 use super::query::stop_jobs;
+use super::{AppState, plugins};
 use crate::display;
 use crate::error::{CommandError, CommandResult};
 use crate::jobs::Job;
@@ -586,12 +587,22 @@ pub struct Saved {
 /// session. The UI reloads the data afterwards.
 #[tauri::command]
 pub async fn save_changes(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     job_id: u64,
     changes: Changes,
 ) -> CommandResult<Saved> {
     let job = state.job(job_id)?;
     state.editable(job.session_id)?;
+    if HOOKS.wanted(HookEvent::BeforeSave) {
+        let counts = plugins::SaveCounts {
+            updates: changes.updates.len(),
+            inserts: changes.inserts.len(),
+            deletes: changes.deletes.len(),
+        };
+        let table = (changes.table.schema.as_str(), changes.table.name.as_str());
+        plugins::before_save(&app, &state, job.session_id, table, counts).await?;
+    }
     if let Some((commands, undo)) = command_script(&state, &job, &changes).await? {
         return save_commands(&state, &job, &commands, &undo).await;
     }

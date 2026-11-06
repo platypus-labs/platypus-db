@@ -3295,6 +3295,22 @@ const it: Record<string, string> = {
   "Errors": "Errori",
   "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "Le chiamate fatte prima che il registro registrasse queste cifre mostrano –; le cifre contano solo le chiamate registrate con esse.",
   "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "Le tabelle lette sono una stima per le istruzioni: le tabelle indicate dopo FROM e JOIN.",
+  "Runs before a statement, and may stop it": "Si esegue prima di un'istruzione e può fermarla",
+  "Runs after a statement": "Si esegue dopo un'istruzione",
+  "Runs when a connection opens": "Si esegue quando si apre una connessione",
+  "Runs before edited rows are saved, and may stop it": "Si esegue prima di salvare le righe modificate e può fermare il salvataggio",
+  "Know when statements run and connections open, see statements with sensitive values masked, and stop a statement or a save": "Sapere quando si eseguono istruzioni e si aprono connessioni, vedere le istruzioni con i valori sensibili mascherati, e fermare un'istruzione o un salvataggio",
+  "Show its own pages in tabs and side panels": "Mostrare pagine proprie in schede e pannelli laterali",
+  "Add columns, cell views and cell commands to the result grid": "Aggiungere colonne, viste di cella e comandi di cella alla griglia dei risultati",
+  "Theme “{name}”": "Tema “{name}”",
+  "Tab “{title}”": "Scheda “{title}”",
+  "Side panel “{title}”": "Pannello laterale “{title}”",
+  "“{title}” in the result grid": "“{title}” nella griglia dei risultati",
+  "Its own settings: {fields}": "Impostazioni proprie: {fields}",
+  "Kept in the system's keychain: {fields}": "Conservato nel portachiavi di sistema: {fields}",
+  "New since the installed version": "Nuovo rispetto alla versione installata",
+  "Not set": "Non impostato",
+  "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "L'hook del plugin “{name}” non è riuscito e l'azione è andata avanti: {reason}",
 };
 
 export default it;

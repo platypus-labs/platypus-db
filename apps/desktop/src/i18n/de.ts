@@ -3295,6 +3295,22 @@ const de: Record<string, string> = {
   "Errors": "Fehler",
   "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "Für Aufrufe, die vor der Aufzeichnung dieser Zahlen erfolgten, steht –; die Zahlen zählen nur die Aufrufe, die damit aufgezeichnet wurden.",
   "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "Gelesene Tabellen sind bei Anweisungen eine Schätzung: die nach FROM und JOIN genannten Tabellen.",
+  "Runs before a statement, and may stop it": "Läuft vor einer Anweisung und kann sie stoppen",
+  "Runs after a statement": "Läuft nach einer Anweisung",
+  "Runs when a connection opens": "Läuft, wenn eine Verbindung geöffnet wird",
+  "Runs before edited rows are saved, and may stop it": "Läuft vor dem Speichern bearbeiteter Zeilen und kann es stoppen",
+  "Know when statements run and connections open, see statements with sensitive values masked, and stop a statement or a save": "Erfahren, wann Anweisungen laufen und Verbindungen geöffnet werden, Anweisungen mit maskierten sensiblen Werten sehen und eine Anweisung oder ein Speichern stoppen",
+  "Show its own pages in tabs and side panels": "Eigene Seiten in Tabs und Seitenleisten anzeigen",
+  "Add columns, cell views and cell commands to the result grid": "Spalten, Zellenansichten und Zellenbefehle zum Ergebnisraster hinzufügen",
+  "Theme “{name}”": "Design „{name}“",
+  "Tab “{title}”": "Tab „{title}“",
+  "Side panel “{title}”": "Seitenleiste „{title}“",
+  "“{title}” in the result grid": "„{title}“ im Ergebnisraster",
+  "Its own settings: {fields}": "Eigene Einstellungen: {fields}",
+  "Kept in the system's keychain: {fields}": "Im Schlüsselbund des Systems gespeichert: {fields}",
+  "New since the installed version": "Neu gegenüber der installierten Version",
+  "Not set": "Nicht festgelegt",
+  "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "Der Hook des Plugins „{name}“ ist fehlgeschlagen, die Aktion wurde trotzdem ausgeführt: {reason}",
 };
 
 export default de;

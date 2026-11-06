@@ -5,12 +5,13 @@ use platypus_driver_sqlite::meta::is_plan_step;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use super::AppState;
+use super::{AppState, plugins};
 use crate::error::{CommandError, CommandResult};
 
 /// The plan of one statement; with `analyze` it runs, and its changes are rolled back.
 #[tauri::command]
 pub async fn explain(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     session_id: u64,
     sql: String,
@@ -19,6 +20,9 @@ pub async fn explain(
     // Analyze runs the statement.
     if analyze {
         state.may_run(session_id, &sql)?;
+        if plugins::query_hooked() {
+            plugins::before_query(&app, &state, session_id, &sql).await?;
+        }
     }
     let conn = state.live(session_id).await?;
     // `EXPLAIN SELECT 1;` is a valid request, but not with a semicolon then more text.

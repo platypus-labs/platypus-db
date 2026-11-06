@@ -3295,6 +3295,22 @@ const pt: Record<string, string> = {
   "Errors": "Erros",
   "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "As chamadas feitas antes de o registo guardar estes números mostram –; os números contam apenas as chamadas registadas com eles.",
   "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "As tabelas lidas são uma estimativa nas instruções: as tabelas indicadas depois de FROM e JOIN.",
+  "Runs before a statement, and may stop it": "Executa antes de uma instrução e pode impedi-la",
+  "Runs after a statement": "Executa depois de uma instrução",
+  "Runs when a connection opens": "Executa ao abrir uma conexão",
+  "Runs before edited rows are saved, and may stop it": "Executa antes de salvar as linhas editadas e pode impedir",
+  "Know when statements run and connections open, see statements with sensitive values masked, and stop a statement or a save": "Saber quando instruções são executadas e conexões são abertas, ver as instruções com valores sensíveis mascarados e impedir uma instrução ou um salvamento",
+  "Show its own pages in tabs and side panels": "Mostrar páginas próprias em abas e painéis laterais",
+  "Add columns, cell views and cell commands to the result grid": "Adicionar colunas, visualizações e comandos de célula à grade de resultados",
+  "Theme “{name}”": "Tema “{name}”",
+  "Tab “{title}”": "Aba “{title}”",
+  "Side panel “{title}”": "Painel lateral “{title}”",
+  "“{title}” in the result grid": "“{title}” na grade de resultados",
+  "Its own settings: {fields}": "Configurações próprias: {fields}",
+  "Kept in the system's keychain: {fields}": "Guardado no chaveiro do sistema: {fields}",
+  "New since the installed version": "Novo em relação à versão instalada",
+  "Not set": "Não definido",
+  "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "O hook do plugin “{name}” falhou e a ação prosseguiu: {reason}",
 };
 
 export default pt;

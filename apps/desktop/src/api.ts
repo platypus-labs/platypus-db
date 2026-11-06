@@ -3235,6 +3235,11 @@ export const api = {
   /** Runs a plugin's action on the context of its scope; the page applies the outcome. */
   pluginRunAction: (plugin: string, action: string, context: unknown) =>
     invoke<PluginOutcome>("plugin_run_action", { plugin, action, context }),
+  /** What the fields of a plugin's settings page hold; a secret only says if it is set. */
+  pluginSettings: (id: string) => invoke<PluginSettingState[]>("plugin_settings", { id }),
+  /** Saves a value of a plugin's settings page; `null` goes back to the default. */
+  pluginSetSetting: (id: string, key: string, value: string | number | boolean | null) =>
+    invoke<void>("plugin_set_setting", { id, key, value }),
 };
 
 // Group O: WebAssembly plugins (`platypus-plugins`)
@@ -3242,6 +3247,45 @@ export interface PluginPermissions {
   /** Hosts the plugin may send HTTP requests to (`*.example.com` for subdomains). */
   http: string[];
   clipboard: boolean;
+  /** Runs on the app's events. */
+  hooks: boolean;
+  /** Shows its own documents in tabs and side panels. */
+  tabs: boolean;
+  /** Adds to the result grid. */
+  grid: boolean;
+}
+
+export type PluginHookEvent = "before_query" | "after_query" | "on_connect" | "before_save";
+
+/** One field of a plugin's settings page, in the plugin's own language. */
+export interface PluginSettingField {
+  key: string;
+  label: string;
+  description?: string;
+  type: "text" | "number" | "boolean" | "choice" | "secret";
+  default?: string | number | boolean;
+  options?: { value: string; label: string }[];
+  min?: number;
+  max?: number;
+}
+
+/** What a field of a settings page holds: `value` is never a secret. */
+export interface PluginSettingState {
+  key: string;
+  value: string | number | boolean | null;
+  set: boolean;
+}
+
+interface PluginDocument {
+  title: string;
+  /** The HTML document, a path inside the package. */
+  entry: string;
+}
+
+interface PluginGridExtension {
+  id: string;
+  title: string;
+  types?: string[];
 }
 
 export interface PluginManifest {
@@ -3251,8 +3295,15 @@ export interface PluginManifest {
   author: string;
   description: string;
   api: number;
-  kinds: ("actions" | "driver")[];
+  kinds: ("actions" | "driver" | "theme" | "hooks" | "tabs" | "panels" | "grid")[];
   permissions: PluginPermissions;
+  // ABI 2: left out when empty.
+  hooks?: PluginHookEvent[];
+  tabs?: (PluginDocument & { kind: string })[];
+  panels?: (PluginDocument & { id: string })[];
+  grid?: { columns?: PluginGridExtension[]; renderers?: PluginGridExtension[]; actions?: PluginGridExtension[] };
+  settings?: PluginSettingField[];
+  theme?: { name: string; light?: Record<string, string>; dark?: Record<string, string>; fonts?: Record<string, string> };
 }
 
 export type PluginActionScope = "editor" | "grid" | "navigator.object";
@@ -3282,6 +3333,8 @@ export interface InspectedPlugin {
   description: PluginDescription;
   /** The installed version it replaces. */
   replaces: string | null;
+  /** What it asks beyond what was approved for that version: installing approves it. */
+  added: PluginPermissions;
   /** The package's hash, given back to `pluginInstall` so that what is installed is what was reviewed. */
   hash: string;
 }

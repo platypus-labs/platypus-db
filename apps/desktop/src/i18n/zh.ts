@@ -3295,6 +3295,22 @@ const zh: Record<string, string> = {
   "Errors": "错误",
   "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "日志记录这些数字之前发生的调用显示为 –；这些数字只统计带有它们的调用。",
   "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "对语句而言，读取的表是估计值：即 FROM 和 JOIN 之后列出的表。",
+  "Runs before a statement, and may stop it": "在语句运行前执行，并可阻止它",
+  "Runs after a statement": "在语句运行后执行",
+  "Runs when a connection opens": "在连接打开时执行",
+  "Runs before edited rows are saved, and may stop it": "在保存已编辑的行之前执行，并可阻止保存",
+  "Know when statements run and connections open, see statements with sensitive values masked, and stop a statement or a save": "了解语句何时运行、连接何时打开，查看已遮盖敏感值的语句，并阻止语句或保存",
+  "Show its own pages in tabs and side panels": "在标签页和侧面板中显示自己的页面",
+  "Add columns, cell views and cell commands to the result grid": "向结果网格添加列、单元格视图和单元格命令",
+  "Theme “{name}”": "主题“{name}”",
+  "Tab “{title}”": "标签页“{title}”",
+  "Side panel “{title}”": "侧面板“{title}”",
+  "“{title}” in the result grid": "结果网格中的“{title}”",
+  "Its own settings: {fields}": "自己的设置：{fields}",
+  "Kept in the system's keychain: {fields}": "保存在系统钥匙串中：{fields}",
+  "New since the installed version": "相较已安装版本新增",
+  "Not set": "未设置",
+  "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "插件“{name}”的钩子失败，操作已继续：{reason}",
 };
 
 export default zh;
