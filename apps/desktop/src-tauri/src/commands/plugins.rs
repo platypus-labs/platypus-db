@@ -7,33 +7,37 @@
 //! checks. Each command first asks `HOOKS.wanted(..)`, one atomic load: everything else here
 //! runs only when some plugin hooks that event. A hook gets a masked copy of the statement and
 //! answers allow or block; the statement that runs is the command's own.
+//!
+//! Every window reads the plugins again on [`PLUGINS_CHANGED`], so that a tab moved to a window of
+//! its own does not go on running what was turned off in another.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use platypus_core::DriverKind;
-use platypus_mcp::masking_seal::{MaskingRules, MaskingSeal};
 use platypus_plugins::{
     ActionOutcome, FRAME_SCHEME, FrameFile, FrameRequest, GridColumn, GridRendered, GridValue,
-    HOOKS, HookConnection, HookContext, HookEvent, HookFailure, HookReport, HookStatement,
-    Inspected, Installed, PluginError, Plugins, QueryStatus, SettingState, frame_csp, frame_target,
+    HOOKS, HookBlock, HookConnection, HookContext, HookEvent, HookFailure, HookReport,
+    HookStatement, Inspected, Installed, PluginError, Plugins, QueryStatus, SettingState,
+    frame_csp, frame_target,
 };
 use platypus_sql::Dialect;
 use platypus_sql::security::mask_secrets;
-use platypus_sql::sensitive::{NameRules, mask_literals, mask_strings};
+use platypus_sql::sensitive::mask_every_literal;
 use platypus_store::{ConnectionType, HistoryStatus};
 use serde_json::Value;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter};
-use uuid::Uuid;
 
+use super::connections::SavedConfig;
 use super::{AppState, Session};
 use crate::applog;
 use crate::error::{CommandError, CommandResult};
 
 /// Tells the page that a hook failed and the action went ahead: a [`HookFailure`].
 const HOOK_FAILED: &str = "plugin-hook-failed";
+/// Tells every window that the plugins changed.
+const PLUGINS_CHANGED: &str = "plugins-changed";
 
 fn error(e: &PluginError) -> CommandError {
     let kind = match e {
@@ -68,10 +72,13 @@ pub fn plugins_list() -> CommandResult<Vec<Installed>> {
     Ok(list)
 }
 
-/// Reads the plugins again for the table of hooks, after a change to them.
-pub(super) fn reload_hooks(plugins: &Plugins) -> CommandResult<()> {
+/// After a change to the plugin `id`: reads them again for the table of hooks, and tells every
+/// window.
+pub(super) fn plugins_changed(app: &AppHandle, plugins: &Plugins, id: &str) -> CommandResult<()> {
+    HOOKS.forgive(id);
     let list = plugins.list().map_err(failed)?;
     HOOKS.load(plugins, &list);
+    let _ = app.emit(PLUGINS_CHANGED, ());
     Ok(())
 }
 
@@ -84,34 +91,39 @@ pub async fn plugin_inspect(path: PathBuf) -> CommandResult<Inspected> {
 /// Installs a package the user reviewed; its permissions are approved by this call. `hash` is
 /// the one `plugin_inspect` gave: a package changed since the review is refused.
 #[tauri::command]
-pub async fn plugin_install(path: PathBuf, hash: String) -> CommandResult<Installed> {
+pub async fn plugin_install(
+    app: AppHandle,
+    path: PathBuf,
+    hash: String,
+) -> CommandResult<Installed> {
     let plugins = plugins()?;
     let installed = plugins.install(&path, &hash).await.map_err(failed)?;
-    HOOKS.forgive(&installed.manifest.id);
-    reload_hooks(&plugins)?;
+    plugins_changed(&app, &plugins, &installed.manifest.id)?;
     Ok(installed)
 }
 
 #[tauri::command]
-pub fn plugin_set_enabled(id: String, enabled: bool) -> CommandResult<()> {
+pub fn plugin_set_enabled(app: AppHandle, id: String, enabled: bool) -> CommandResult<()> {
     let plugins = plugins()?;
     plugins.set_enabled(&id, enabled).map_err(failed)?;
-    HOOKS.forgive(&id);
-    reload_hooks(&plugins)
+    plugins_changed(&app, &plugins, &id)
 }
 
 /// Removes a plugin. Its files go, and its secrets leave the keychain; the values of its settings
-/// page stay only when the user chose `keep_settings`.
+/// page stay only when the user chose `keep_settings`. Removed in part, it is off the list all
+/// the same, and the error says what is left.
 #[tauri::command]
-pub fn plugin_remove(id: String, keep_settings: bool) -> CommandResult<()> {
+pub fn plugin_remove(app: AppHandle, id: String, keep_settings: bool) -> CommandResult<()> {
     let plugins = plugins()?;
-    if keep_settings {
-        plugins.remove_keeping_settings(&id).map_err(failed)?;
+    let removed = if keep_settings {
+        plugins.remove_keeping_settings(&id)
     } else {
-        plugins.remove(&id).map_err(failed)?;
+        plugins.remove(&id)
+    };
+    if matches!(removed, Ok(()) | Err(PluginError::PartlyRemoved(_))) {
+        plugins_changed(&app, &plugins, &id)?;
     }
-    HOOKS.forgive(&id);
-    reload_hooks(&plugins)
+    removed.map_err(failed)
 }
 
 /// The bytes of a font of a plugin's theme, read when that theme is the one in use.
@@ -264,64 +276,28 @@ fn frame_response(get: bool, path: &str) -> tauri::http::Response<Vec<u8>> {
     })
 }
 
-/// What the rules of agents say is sensitive on a connection.
-struct SensitiveNames {
-    rules: NameRules,
-    /// The user's marks, in lower case.
-    marked: HashSet<String>,
-}
-
-impl SensitiveNames {
-    fn of(state: &AppState, connection: Uuid) -> CommandResult<Self> {
-        let files = state.with_settings(|s| Ok(MaskingRules::of(Some(s))))?;
-        let marks = state.with_catalog(|c| c.sensitive_columns(connection))?;
-        let seal = state
-            .agent_seal()
-            .map_or(MaskingSeal::Files, |seal| seal.masking(&seal.read()));
-        Ok(Self {
-            rules: NameRules::new(&seal.rules(files).names),
-            marked: seal
-                .marks(connection, marks)
-                .into_iter()
-                .filter(|m| m.sensitive)
-                .map(|m| m.key.column.to_lowercase())
-                .collect(),
-        })
-    }
-
-    fn is(&self, name: &str) -> bool {
-        self.marked.contains(&name.to_lowercase()) || self.rules.matches(name)
-    }
-}
-
-/// A statement as a hook may see it: without the passwords the query log hides, and with the
-/// literals of sensitive columns masked as they are for agents. When the rules cannot be read
-/// every string is masked. A driver that does not speak SQL has literals no one can tell, so
-/// its statements give no text at all.
-fn masked_statement(
-    state: &AppState,
-    connection: Uuid,
-    driver: DriverKind,
-    sql: &str,
-) -> HookStatement {
+/// A statement as a hook may see it: `None`, no text at all, on a driver that does not speak SQL
+/// or whose language is the plugin's own, where a literal cannot be told. Otherwise every value is
+/// masked, not only those a column's name gives away: `INSERT INTO t VALUES ('a@b.c', 's3cret')`
+/// names none, and a hook may have the network. A guard still reads keywords, tables and columns.
+fn hook_text(sql: &str, driver: DriverKind) -> Option<String> {
     if matches!(
         driver,
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch
+        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Plugin
     ) {
-        return HookStatement::new(None);
+        return None;
     }
-    let names = SensitiveNames::of(state, connection).ok();
-    HookStatement::new(Some(masked_text(sql, driver, names.as_ref())))
+    Some(mask_every_literal(
+        &mask_secrets(sql),
+        Dialect::from(driver),
+    ))
 }
 
-/// `sql` without its passwords and the literals of `names`; every string without any `names`.
-fn masked_text(sql: &str, driver: DriverKind, names: Option<&SensitiveNames>) -> String {
-    let dialect = Dialect::from(driver);
-    let sql = mask_secrets(sql);
-    match names {
-        Some(names) => mask_literals(&sql, dialect, &|column| names.is(column)),
-        None => mask_strings(&sql, dialect),
-    }
+fn driver_name(driver: DriverKind) -> String {
+    serde_json::to_value(driver)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 fn hook_connection(state: &AppState, session: &Session) -> HookConnection {
@@ -333,12 +309,19 @@ fn hook_connection(state: &AppState, session: &Session) -> HookConnection {
         .unwrap_or(false);
     HookConnection {
         name: session.label.clone(),
-        driver: serde_json::to_value(session.config.driver)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_owned))
-            .unwrap_or_default(),
+        driver: driver_name(session.config.driver),
         database: session.config.database.clone(),
         production,
+    }
+}
+
+/// The connection of a run nobody attends.
+pub(crate) fn saved_connection(saved: &SavedConfig) -> HookConnection {
+    HookConnection {
+        name: saved.label.clone(),
+        driver: driver_name(saved.config.driver),
+        database: saved.config.database.clone(),
+        production: saved.production,
     }
 }
 
@@ -350,6 +333,16 @@ fn tell_failures(app: &AppHandle, failures: &[HookFailure]) {
 }
 
 /// The error of a hook that blocked, naming its plugin: its message is not the app's.
+fn block_error(block: &HookBlock) -> CommandError {
+    CommandError::new(
+        "plugin_blocked",
+        format!(
+            "The plugin “{}” blocked this: {}",
+            block.plugin, block.message
+        ),
+    )
+}
+
 fn blocked(app: &AppHandle, report: &HookReport) -> CommandResult<()> {
     tell_failures(app, &report.failures);
     match &report.blocked {
@@ -358,13 +351,7 @@ fn blocked(app: &AppHandle, report: &HookReport) -> CommandResult<()> {
                 "INFO",
                 &format!("the plugin {} blocked an action", block.plugin),
             );
-            Err(CommandError::new(
-                "plugin_blocked",
-                format!(
-                    "The plugin “{}” blocked this: {}",
-                    block.plugin, block.message
-                ),
-            ))
+            Err(block_error(block))
         }
         None => Ok(()),
     }
@@ -416,6 +403,15 @@ pub(crate) fn query_hooked() -> bool {
     HOOKS.wanted(HookEvent::BeforeQuery) || HOOKS.wanted(HookEvent::AfterQuery)
 }
 
+/// How something that ended the way `result` says is told to a hook.
+pub(crate) fn status_of<T>(result: &Result<T, platypus_core::Error>) -> QueryStatus {
+    match result {
+        Ok(_) => QueryStatus::Ok,
+        Err(platypus_core::Error::Cancelled) => QueryStatus::Cancelled,
+        Err(_) => QueryStatus::Error,
+    }
+}
+
 /// The `before_query` hooks of a statement that passed the app's checks; a hook that blocks is
 /// the command's error. Answers what to tell the `after_query` hooks, when there are any.
 pub(crate) async fn before_query(
@@ -424,13 +420,23 @@ pub(crate) async fn before_query(
     session_id: u64,
     sql: &str,
 ) -> CommandResult<Option<AfterQuery>> {
+    let session = state.session(session_id)?;
+    let connection = hook_connection(state, &session);
+    before_statement(app, connection, session.config.driver, sql).await
+}
+
+/// [`before_query`] of a statement that no session runs.
+pub(crate) async fn before_statement(
+    app: &AppHandle,
+    connection: HookConnection,
+    driver: DriverKind,
+    sql: &str,
+) -> CommandResult<Option<AfterQuery>> {
     // Without a data folder there are no plugins.
     let Ok(plugins) = Plugins::shared() else {
         return Ok(None);
     };
-    let session = state.session(session_id)?;
-    let connection = hook_connection(state, &session);
-    let statement = masked_statement(state, session.connection_id, session.config.driver, sql);
+    let statement = HookStatement::new(hook_text(sql, driver));
     let context = HookContext::BeforeQuery {
         connection: connection.clone(),
         statement: statement.clone(),
@@ -485,56 +491,75 @@ pub(crate) async fn before_save(
 
 #[cfg(test)]
 mod tests {
-    use platypus_sql::sensitive::DEFAULT_NAMES;
-
     use super::*;
 
-    fn names() -> SensitiveNames {
-        SensitiveNames {
-            rules: NameRules::new(DEFAULT_NAMES),
-            marked: HashSet::from(["nickname".to_owned()]),
-        }
+    const DOTS: &str = "'••••••'";
+
+    fn text(sql: &str) -> String {
+        hook_text(sql, DriverKind::Postgres).unwrap()
     }
 
     #[test]
-    fn a_hook_reads_statements_as_agents_do() {
-        let names = names();
-        let masked = |sql: &str| masked_text(sql, DriverKind::Postgres, Some(&names));
-        // A sensitive column by the rules, by a mark, and a column that is neither.
+    fn a_hook_reads_what_a_statement_does_and_none_of_what_it_carries() {
+        // Where no name could place the value.
+        let masked = text("INSERT INTO users VALUES ('a@b.c', 's3cret', 4111111111111111)");
         assert_eq!(
-            masked("SELECT 1 FROM t WHERE email = 'a@b.c' AND name = 'apple'"),
-            "SELECT 1 FROM t WHERE email = '••••••' AND name = 'apple'"
+            masked,
+            format!("INSERT INTO users VALUES ({DOTS}, {DOTS}, {DOTS})")
         );
+        // Beside a column of no interest too, and the guard still reads the table and the column.
         assert_eq!(
-            masked("UPDATE t SET NickName = 'x'"),
-            "UPDATE t SET NickName = '••••••'"
+            text("SELECT id FROM items WHERE name = 'apple' AND price > 10"),
+            format!("SELECT id FROM items WHERE name = {DOTS} AND price > {DOTS}")
         );
-        assert_eq!(
-            masked("INSERT INTO t (id, password) VALUES (1, 'p')"),
-            "INSERT INTO t (id, password) VALUES (1, '••••••')"
-        );
+        assert_eq!(text("DELETE FROM items"), "DELETE FROM items");
     }
 
     #[test]
     fn a_hook_never_reads_a_password() {
-        let names = names();
         for sql in [
             "CREATE USER bob WITH PASSWORD 'hunter2'",
             "ALTER USER bob IDENTIFIED BY 'hunter2'",
         ] {
-            let text = masked_text(sql, DriverKind::Postgres, Some(&names));
+            let text = text(sql);
             assert!(!text.contains("hunter2"), "{text}");
         }
     }
 
     #[test]
-    fn rules_that_cannot_be_read_mask_every_string() {
-        let text = masked_text(
-            "SELECT 1 FROM t WHERE name = 'apple'",
-            DriverKind::Postgres,
-            None,
+    fn a_driver_whose_literals_cannot_be_told_gives_no_text() {
+        for driver in [
+            DriverKind::Mongo,
+            DriverKind::Redis,
+            DriverKind::Elasticsearch,
+            DriverKind::Plugin,
+        ] {
+            assert_eq!(hook_text("find 'a@b.c'", driver), None, "{driver:?}");
+        }
+        assert!(hook_text("SELECT 1", DriverKind::Cassandra).is_some());
+        assert!(hook_text("SELECT 1", DriverKind::Sqlite).is_some());
+    }
+
+    #[test]
+    fn a_block_says_who_and_why() {
+        let error = block_error(&HookBlock {
+            plugin: "Guard".to_owned(),
+            message: "not on Fridays".to_owned(),
+        });
+        assert_eq!(
+            error.message(),
+            "The plugin “Guard” blocked this: not on Fridays"
         );
-        assert!(!text.contains("apple"), "{text}");
+    }
+
+    #[test]
+    fn a_statement_ends_as_its_result_says() {
+        let ok: Result<u8, platypus_core::Error> = Ok(1);
+        assert_eq!(status_of(&ok), QueryStatus::Ok);
+        let cancelled: Result<u8, _> = Err(platypus_core::Error::Cancelled);
+        assert_eq!(status_of(&cancelled), QueryStatus::Cancelled);
+        let failed: Result<u8, _> = Err(platypus_core::Error::Closed);
+        assert_eq!(status_of(&failed), QueryStatus::Error);
     }
 
     #[test]

@@ -4,12 +4,11 @@
 //! answering the user, and an empty address contacts nothing.
 
 use platypus_plugins::catalog::{self, CatalogLimits};
-use platypus_plugins::{
-    CatalogRequest, CatalogView, HOOKS, IndexEntry, Installed, Prepared, TrustedKey,
-};
+use platypus_plugins::{CatalogRequest, CatalogView, IndexEntry, Installed, Prepared, TrustedKey};
+use tauri::AppHandle;
 
 use super::AppState;
-use super::plugins::{failed, plugins, reload_hooks};
+use super::plugins::{failed, plugins, plugins_changed};
 use crate::error::CommandResult;
 
 /// The index's address in `settings.toml`; none until the user sets it.
@@ -121,14 +120,17 @@ pub async fn plugin_catalog_prepare(
 
 /// Installs the package the user reviewed: as `plugin_install`, from its download.
 #[tauri::command]
-pub async fn plugin_catalog_install(ticket: String, hash: String) -> CommandResult<Installed> {
+pub async fn plugin_catalog_install(
+    app: AppHandle,
+    ticket: String,
+    hash: String,
+) -> CommandResult<Installed> {
     let plugins = plugins()?;
     let installed = plugins
         .catalog_install(&ticket, &hash)
         .await
         .map_err(failed)?;
-    HOOKS.forgive(&installed.manifest.id);
-    reload_hooks(&plugins)?;
+    plugins_changed(&app, &plugins, &installed.manifest.id)?;
     Ok(installed)
 }
 

@@ -38,6 +38,10 @@ impl CommandError {
         &self.message
     }
 
+    pub fn kind(&self) -> &'static str {
+        self.kind
+    }
+
     pub fn not_found(what: &str, id: impl std::fmt::Display) -> Self {
         Self::new("not_found", format!("{what} {id} not found"))
     }

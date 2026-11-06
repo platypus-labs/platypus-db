@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use platypus_core::{Auth, ConnectionConfig, DriverKind, ExecOptions, ExecResult, SslMode};
 use platypus_net::Tunnel;
+use platypus_plugins::QueryStatus;
 use serde::Serialize;
 use tauri::State;
 use tokio::io::AsyncWriteExt;
@@ -393,14 +394,29 @@ pub async fn run_cli(
     script: String,
 ) -> CommandResult<CliOutput> {
     state.may_run(session_id, &script)?;
-    if super::plugins::query_hooked() {
-        super::plugins::before_query(&app, &state, session_id, &script).await?;
-    }
+    let after = if super::plugins::query_hooked() {
+        super::plugins::before_query(&app, &state, session_id, &script).await?
+    } else {
+        None
+    };
     let (stop, cancel) = oneshot::channel();
     lock(&state.clis).insert(run_id, stop);
+    let started = Instant::now();
     let out = run(&state, session_id, run_id, script, cancel).await;
     lock(&state.clis).remove(&run_id);
+    if let Some(after) = after {
+        after.fire(run_status(&out), started.elapsed(), None);
+    }
     out
+}
+
+/// How a run of the client ended, as a hook is told it: the client's exit says, not what it printed.
+fn run_status(out: &CommandResult<CliOutput>) -> QueryStatus {
+    match out {
+        Ok(output) if output.status == Some(0) => QueryStatus::Ok,
+        Err(e) if e.kind() == "cancelled" => QueryStatus::Cancelled,
+        _ => QueryStatus::Error,
+    }
 }
 
 pub(super) fn stopped(program: &str) -> CommandError {
@@ -550,6 +566,26 @@ mod tests {
     use platypus_core::Secret;
 
     use super::*;
+
+    #[test]
+    fn a_hook_hears_how_the_client_ended() {
+        let exited = |status| {
+            Ok(CliOutput {
+                command: "psql".to_owned(),
+                status,
+                output: String::new(),
+                elapsed_ms: 1,
+            })
+        };
+        assert_eq!(run_status(&exited(Some(0))), QueryStatus::Ok);
+        assert_eq!(run_status(&exited(Some(3))), QueryStatus::Error);
+        assert_eq!(run_status(&exited(None)), QueryStatus::Error);
+        assert_eq!(run_status(&Err(stopped("psql"))), QueryStatus::Cancelled);
+        assert_eq!(
+            run_status(&Err(CommandError::new("cli", "no client"))),
+            QueryStatus::Error
+        );
+    }
 
     #[test]
     fn cancelling_kills_the_client() {
