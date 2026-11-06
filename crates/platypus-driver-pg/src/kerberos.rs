@@ -25,10 +25,15 @@ pub(crate) fn target(config: &ConnectionConfig) -> Result<Option<String>> {
             "the Kerberos service name `{service}` is not valid: it is a single word, usually `postgres`"
         )));
     }
-    Ok(Some(format!(
-        "{service}/{}",
-        config.host.trim().to_ascii_lowercase()
-    )))
+    let host = config.host.trim();
+    if host.is_empty() || host.starts_with('/') {
+        return Err(Error::Config(
+            "a Kerberos login needs the server's name as the host, the one in its service \
+             principal: not an empty host or a socket path"
+                .to_owned(),
+        ));
+    }
+    Ok(Some(format!("{service}/{}", host.to_ascii_lowercase())))
 }
 
 /// What to tell the user about `error`, when Kerberos is why it failed.
@@ -154,6 +159,14 @@ mod tests {
                 .insert(KRB_SERVICE.to_owned(), service.to_owned());
             let error = target(&config).unwrap_err().to_string();
             assert!(error.contains("service name"), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_login_without_a_server_name_says_so() {
+        for host in ["", "  ", "/var/run/postgresql"] {
+            let error = target(&kerberos(host)).unwrap_err().to_string();
+            assert!(error.contains("server's name"), "{error}");
         }
     }
 
