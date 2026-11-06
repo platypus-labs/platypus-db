@@ -5693,7 +5693,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "platypus-cli"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -5713,7 +5713,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-conformance"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -5754,7 +5754,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -5770,7 +5770,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-desktop"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arboard",
  "arrow-array 60.0.0",
@@ -5837,14 +5837,14 @@ dependencies = [
 
 [[package]]
 name = "platypus-docs"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "platypus-driver-adbc"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "adbc_core",
  "adbc_driver_manager",
@@ -5868,7 +5868,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-cassandra"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -5885,7 +5885,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-clickhouse"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-buffer 60.0.0",
@@ -5906,7 +5906,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-duckdb"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -5929,7 +5929,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-libsql"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
@@ -5948,7 +5948,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-mongo"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
@@ -5962,7 +5962,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-mssql"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -5978,7 +5978,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-mysql"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -5996,7 +5996,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-odbc"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-odbc",
@@ -6010,7 +6010,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-oracle"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
@@ -6025,7 +6025,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-pg"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -6047,7 +6047,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-redis"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
@@ -6063,7 +6063,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-search"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
@@ -6079,7 +6079,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-driver-sqlite"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
@@ -6094,7 +6094,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-drivers"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "flate2",
  "futures",
@@ -6116,7 +6116,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-duckdb-loader"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "duckdb",
  "libloading 0.8.9",
@@ -6124,7 +6124,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-local"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -6141,7 +6141,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-mcp"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",
@@ -6189,7 +6189,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-net"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6205,7 +6205,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-plugins"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-schema 60.0.0",
@@ -6231,7 +6231,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-schema"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "crc32fast",
  "futures",
@@ -6249,7 +6249,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-sql"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "platypus-core",
  "serde",
@@ -6257,7 +6257,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-store"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "aes",
  "argon2",
@@ -6280,7 +6280,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-sync"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "argon2",
  "platypus-core",
@@ -6296,7 +6296,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-tls"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "platypus-core",
  "rustls 0.23.46",
@@ -6305,7 +6305,7 @@ dependencies = [
 
 [[package]]
 name = "platypus-transfer"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "arrow-array 60.0.0",
  "arrow-cast",

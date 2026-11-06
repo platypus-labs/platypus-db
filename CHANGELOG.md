@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-05
+
 ### Added
 
 - **Grid**: a cell that holds a file offers to save it, in any type of column: binary, or text with a
