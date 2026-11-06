@@ -2131,7 +2131,8 @@ export type ImportNote =
   | { kind: "windows_auth" }
   | { kind: "entra_auth" }
   | { kind: "named_instance"; instance: string }
-  | { kind: "missing_file"; path: string };
+  | { kind: "missing_file"; path: string }
+  | { kind: "cataloged_alias"; alias: string };
 
 /** About a pasted URL or connection string: the notes of an import, and the parameters it
  *  left out (by name). */

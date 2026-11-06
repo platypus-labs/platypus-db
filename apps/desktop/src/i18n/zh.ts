@@ -3362,6 +3362,11 @@ const zh: Record<string, string> = {
   "Some text of this theme may be hard to read: {pairs}": "此主题的部分文字可能难以阅读：{pairs}",
   "Remove and keep its settings": "移除并保留其设置",
   "Remove everything": "全部移除",
+  "Files are only looked for in a selection of up to 20,000 rows": "只在最多 20,000 行的选区中查找文件",
+  "Save files to a folder…": "将文件保存到文件夹…",
+  "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "Db2 别名 {alias} 没有主机：连接前请填写主机、端口和数据库。",
+  "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} 提议修改数据，但无法连接 {name}，因此没有打开。",
+  "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} 提议修改 {table}，但无法连接 {name}，因此没有打开。",
 };
 
 export default zh;

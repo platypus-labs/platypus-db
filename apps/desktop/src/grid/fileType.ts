@@ -25,3 +25,10 @@ export function defaultFileName(column: string, file: { ext: string } | null, bi
   const stem = column.replace(/[<>:"/\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "") || "value";
   return `${stem}.${file?.ext ?? (binary ? "bin" : "txt")}`;
 }
+
+/** Files of more rows than this are not looked for when the grid's menu opens (the menu says so in
+ *  "Files are only looked for in a selection of up to 20,000 rows"). */
+export const FILE_LOOKUP_ROWS = 20_000;
+
+/** Whether a selection of `rows` rows is short enough to look for files in. */
+export const lookupFiles = (rows: number) => rows <= FILE_LOOKUP_ROWS;

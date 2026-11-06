@@ -78,6 +78,8 @@ function parseList(lines: string[], at: number, anchors: (text: string) => strin
     if (!match || indentOf(lines[i]!) > base + 1 || /\d/.test(match[2]!) !== ordered) break;
     const offset = indentOf(lines[i]!) + match[2]!.length + 1;
     const body = [match[3]!];
+    // Inside a fenced code block of the item, no line is a lazy continuation.
+    let fenced = false;
     i++;
     while (i < lines.length) {
       const line = lines[i]!;
@@ -92,7 +94,11 @@ function parseList(lines: string[], at: number, anchors: (text: string) => strin
         }
         break;
       }
-      if (indentOf(line) >= offset || (indentOf(line) > base && !startsBlock(line))) {
+      // Lazy continuation, as on GitHub: a line with no block of its own, right after the item's
+      // paragraph text, belongs to it at any indent (also at the list's own).
+      const lazy = !startsBlock(line) && !fenced && !isBlank(body[body.length - 1]!);
+      if (indentOf(line) >= offset || lazy) {
+        if (FENCE.test(line)) fenced = !fenced;
         body.push(line.replace(/\t/g, "    ").slice(Math.min(offset, indentOf(line))));
         i++;
       } else break;

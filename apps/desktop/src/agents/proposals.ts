@@ -9,6 +9,7 @@ import { workbench } from "../workbench";
 import { plural, t } from "../i18n";
 import { ask } from "../ui/ask";
 import { floods, lately } from "./flood";
+import { proposedTable } from "./proposalTarget";
 
 /** How often the app looks for new proposals. */
 const POLL_MS = 2000;
@@ -20,6 +21,14 @@ let recent: number[] = [];
 export function proposalSql(p: AgentProposal): string {
   const note = t("Proposed by {agent}: review it, then run it yourself.", { agent: p.agent });
   return `-- ${note}\n${p.sql}\n`;
+}
+
+/** Why the data viewer of a proposal did not open because its connection did not. */
+function noConnectionText(agent: string, edits: string, name: string): string {
+  const table = proposedTable(edits);
+  return table === null
+    ? t("{agent} proposed changes to data, but {name} could not be connected, so they were not opened.", { agent, name })
+    : t("{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.", { agent, table, name });
 }
 
 const proposalTitle = (p: AgentProposal) => p.title ?? t("Proposed by {agent}", { agent: p.agent });
@@ -35,7 +44,8 @@ async function openEdits(p: AgentProposal, edits: string, connection: SavedConne
   }
   try {
     const session = await wb.sideSession(connection);
-    if (session === null) return;
+    // The connection's own error is shown; this says which proposal was lost with it.
+    if (session === null) return wb.showError(noConnectionText(p.agent, edits, connection.name));
     const view = await api.proposedViewer(session, edits);
     wb.openTab("query", connection.id, {
       sql: view.sql,

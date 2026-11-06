@@ -68,6 +68,19 @@ All notable changes to PlatypusDB are listed here. The format follows
   `pg_dump` and `pg_restore` sign in the same way. Not in the macOS builds yet. A real ticket has
   logged in from Linux against a test KDC; the login through SSPI has not been tried with one.
 
+### Fixed
+
+- **Grid**: a selection of more than 20,000 rows shows **Save files to a folder…** greyed out, saying why,
+  instead of losing the item. A text cell that holds a file shows in the menu and the value panel only,
+  as the guide now says.
+- **Import**: a Db2 connection by alias (`jdbc:db2:ALIAS`) says it has no host, so it is filled in before
+  connecting.
+- **Agents**: when the connection of a proposed change to data cannot be opened, the message names the
+  agent and the table.
+- **Updates**: `latest.json` points Windows at the NSIS installer, as the app installs.
+- **Guide**: Back returns to where the reader was on the page. A line under a list item with no block of its
+  own continues the item, as on GitHub.
+
 ## [0.4.2] - 2026-11-05
 
 ### Added

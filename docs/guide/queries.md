@@ -34,6 +34,9 @@ variables is checked again filled in (see [Safety](safety.md)).
   type and size, such as `PDF · 2.3 MB`. The grid menu offers **Save PDF…** (or the file's type)
   and, on several cells of a column, **Save N files to a folder…**. The value panel has the same
   button.
+  A text cell that holds a file (a `data:` URL, base64 or hex) has no label in the grid, which
+  would mean reading every text cell to tell: the grid menu and the value panel show it, for the
+  cells you select.
 - `Ctrl+F` finds in the loaded rows; `Ctrl+Shift+C` copies the selection with headers.
 - A result can switch from the grid to a chart from the status bar.
 

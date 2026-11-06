@@ -180,3 +180,50 @@ test("what is new: the section of the running version, else the unreleased one",
   assert.equal(changelogSection(CHANGELOG, "0.4").exact, false);
   assert.equal(changelogSection("# Changelog\n\n## [0.1.0]\n- a", "0.2.0"), null);
 });
+
+test("Back in the guide returns to where the reader was", async () => {
+  const { advance, arrival, back } = await import("../src/help/trail.ts");
+  let trail = [{ page: "README", anchor: null, scroll: null }];
+  assert.deepEqual(arrival(trail[0]), { anchor: null });
+  trail = advance(trail, 640, { page: "connect", anchor: "tls" });
+  assert.equal(trail[0].scroll, 640);
+  assert.deepEqual(arrival(trail[1]), { anchor: "tls" });
+  trail = advance(trail, 25, { page: "queries", anchor: null });
+  trail = back(back(trail));
+  assert.deepEqual(trail.map((p) => p.page), ["README"]);
+  assert.deepEqual(arrival(trail[0]), { top: 640 });
+  // Nothing to go back to: the trail stays.
+  assert.equal(back(trail), trail);
+  // Scroll position 0 is a position, not "unset".
+  assert.deepEqual(arrival(advance(trail, 0, { page: "x", anchor: null })[0]), { top: 0 });
+});
+
+test("a line with no block of its own continues the list item above it", () => {
+  // At the list's own indent, as on GitHub.
+  const blocks = parseMarkdown("- first line\ncontinued here\n- second");
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].kind, "list");
+  assert.equal(blocks[0].items.length, 2);
+  assert.equal(plainText(blocks[0].items[0][0].children), "first line continued here");
+  assert.equal(parseMarkdown("- outer\n  - inner\ntail").length, 1);
+  // A blank line, a heading or a quote still end the list.
+  assert.deepEqual(parseMarkdown("- a\n\nb").map((b) => b.kind), ["list", "paragraph"]);
+  assert.deepEqual(parseMarkdown("- a\n# H").map((b) => b.kind), ["list", "heading"]);
+  assert.deepEqual(parseMarkdown("- a\n> q").map((b) => b.kind), ["list", "quote"]);
+  // Not inside a fenced block of the item.
+  const fenced = parseMarkdown("- a\n  ```\n  code\nafter\n  ```");
+  assert.equal(fenced[0].kind, "list");
+  assert.equal(fenced[1]?.kind, "paragraph");
+});
+
+test("FEATURES.md and AGENTS.md have no line the lazy continuation would change", () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "docs");
+  const item = /^\s*([-*+]|\d+[.)])\s/;
+  for (const name of ["FEATURES.md", "AGENTS.md"]) {
+    const lines = readFileSync(join(root, name), "utf8").split(/\r?\n/);
+    // A plain line right under a list item line, not indented under it, would now join the item.
+    const lazy = lines.filter((l, i) => i > 0 && l.trim() && !item.test(l) && item.test(lines[i - 1]) && !/^\s{2,}/.test(l) && !/^(#|>|```|\||<)/.test(l.trim()));
+    assert.deepEqual(lazy, [], name);
+    assert.ok(parseMarkdown(lines.join("\n")).some((b) => b.kind === "list"), name);
+  }
+});
