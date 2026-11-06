@@ -19,6 +19,10 @@ export function installedPlugins(): InstalledPlugin[] {
 function setPlugins(list: InstalledPlugin[]) {
   plugins = list;
   listeners.forEach((l) => l());
+  // What tells the user of a hook that failed, only once a plugin has hooks.
+  if (list.some((p) => p.enabled && p.manifest.hooks?.length)) {
+    import("./hookNotices").catch((e: unknown) => console.warn("plugins", e));
+  }
 }
 
 /** Reads the plugins again from the data folder. */

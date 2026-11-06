@@ -6,6 +6,25 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Plugins**: ABI 2 (`api = 2`; plugins of ABI 1 work as before). A manifest can declare event
+  hooks, tabs, side panels, grid extensions, a theme with no module and a settings page, with the
+  new permissions `hooks`, `tabs` and `grid` shown in plain words at install; whatever it does not
+  know is refused by name, and an update lists what it asks anew.
+- **Plugins**: event hooks, before and after a statement, on connect and before saving edited rows.
+  A "before" hook can block with a message, after the Safety checks, which it cannot lift, and cannot
+  change the statement. It sees the statement with passwords and sensitive literals masked, and
+  never a value of a result. A hook that crashes or hangs does not stop anything: the action goes
+  ahead and the user is told once. Without hooks a statement pays one atomic read.
+- **Plugins**: a settings page per plugin from its manifest (text, number, boolean, choice, secret),
+  saved in the data folder, secrets in the system's keychain and never in a file, read by the module
+  through a host function limited to its own values.
+
+### Changed
+
+- **Settings**: the Plugins page is loaded when it opens.
+
 ## [0.4.2] - 2026-11-05
 
 ### Added

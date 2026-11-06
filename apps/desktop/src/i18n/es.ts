@@ -3295,6 +3295,22 @@ const es: Record<string, string> = {
   "Errors": "Errores",
   "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "Las llamadas anteriores a que el registro guardara estas cifras muestran –; las cifras cuentan solo las llamadas registradas con ellas.",
   "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "Las tablas leídas son una estimación en las sentencias: las tablas nombradas después de FROM y JOIN.",
+  "Runs before a statement, and may stop it": "Se ejecuta antes de una instrucción y puede detenerla",
+  "Runs after a statement": "Se ejecuta después de una instrucción",
+  "Runs when a connection opens": "Se ejecuta al abrir una conexión",
+  "Runs before edited rows are saved, and may stop it": "Se ejecuta antes de guardar las filas editadas y puede detenerlo",
+  "Know when statements run and connections open, see statements with sensitive values masked, and stop a statement or a save": "Saber cuándo se ejecutan instrucciones y se abren conexiones, ver las instrucciones con los valores sensibles enmascarados y detener una instrucción o un guardado",
+  "Show its own pages in tabs and side panels": "Mostrar sus propias páginas en pestañas y paneles laterales",
+  "Add columns, cell views and cell commands to the result grid": "Añadir columnas, vistas de celda y comandos de celda a la cuadrícula de resultados",
+  "Theme “{name}”": "Tema «{name}»",
+  "Tab “{title}”": "Pestaña «{title}»",
+  "Side panel “{title}”": "Panel lateral «{title}»",
+  "“{title}” in the result grid": "«{title}» en la cuadrícula de resultados",
+  "Its own settings: {fields}": "Ajustes propios: {fields}",
+  "Kept in the system's keychain: {fields}": "Guardado en el llavero del sistema: {fields}",
+  "New since the installed version": "Nuevo respecto a la versión instalada",
+  "Not set": "Sin definir",
+  "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "El hook del plugin «{name}» falló y la acción siguió adelante: {reason}",
 };
 
 export default es;

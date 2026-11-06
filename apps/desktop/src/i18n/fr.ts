@@ -3295,6 +3295,22 @@ const fr: Record<string, string> = {
   "Errors": "Erreurs",
   "Calls made before the log recorded these figures show – for them; the figures count only the calls recorded with them.": "Les appels faits avant que le journal enregistre ces chiffres affichent – ; les chiffres ne comptent que les appels enregistrés avec eux.",
   "Tables read are an estimate for statements: the tables named after FROM and JOIN.": "Les tables lues sont une estimation pour les instructions : les tables nommées après FROM et JOIN.",
+  "Runs before a statement, and may stop it": "S'exécute avant une instruction et peut l'arrêter",
+  "Runs after a statement": "S'exécute après une instruction",
+  "Runs when a connection opens": "S'exécute à l'ouverture d'une connexion",
+  "Runs before edited rows are saved, and may stop it": "S'exécute avant l'enregistrement des lignes modifiées et peut l'arrêter",
+  "Know when statements run and connections open, see statements with sensitive values masked, and stop a statement or a save": "Savoir quand des instructions s'exécutent et des connexions s'ouvrent, voir les instructions avec les valeurs sensibles masquées, et arrêter une instruction ou un enregistrement",
+  "Show its own pages in tabs and side panels": "Afficher ses propres pages dans des onglets et des panneaux latéraux",
+  "Add columns, cell views and cell commands to the result grid": "Ajouter des colonnes, des vues et des commandes de cellule à la grille de résultats",
+  "Theme “{name}”": "Thème « {name} »",
+  "Tab “{title}”": "Onglet « {title} »",
+  "Side panel “{title}”": "Panneau latéral « {title} »",
+  "“{title}” in the result grid": "« {title} » dans la grille de résultats",
+  "Its own settings: {fields}": "Ses propres paramètres : {fields}",
+  "Kept in the system's keychain: {fields}": "Conservé dans le trousseau du système : {fields}",
+  "New since the installed version": "Nouveau par rapport à la version installée",
+  "Not set": "Non défini",
+  "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "Le hook du plugin « {name} » a échoué et l'action a continué : {reason}",
 };
 
 export default fr;

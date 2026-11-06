@@ -1,0 +1,41 @@
+id = "settings-demo"
+name = "Settings demo"
+version = "1.0.0"
+author = "PlatypusDB"
+description = "A settings page with one field of each type, and actions that read them."
+api = 2
+kinds = ["actions"]
+
+[[settings]]
+key = "endpoint"
+label = "Endpoint"
+description = "Where the plugin would send its requests."
+type = "text"
+default = "https://example.com"
+
+[[settings]]
+key = "retries"
+label = "Retries"
+type = "number"
+default = 3
+min = 0
+max = 10
+
+[[settings]]
+key = "verbose"
+label = "Verbose"
+type = "boolean"
+default = false
+
+[[settings]]
+key = "mode"
+label = "Mode"
+type = "choice"
+default = "fast"
+options = [{ value = "fast", label = "Fast" }, { value = "safe", label = "Safe" }]
+
+[[settings]]
+key = "token"
+label = "API token"
+description = "Kept in the system's keychain."
+type = "secret"

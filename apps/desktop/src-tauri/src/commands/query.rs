@@ -8,7 +8,7 @@ use platypus_store::{HistoryStatus, NewHistoryEntry};
 use tauri::ipc::{Channel, Response};
 use tauri::{Manager, State};
 
-use super::{AppState, lock};
+use super::{AppState, lock, plugins};
 use crate::display;
 use crate::error::{CommandError, CommandResult};
 use crate::formats::DisplayFormat;
@@ -29,6 +29,12 @@ pub async fn run_query(
 ) -> CommandResult<u64> {
     let keep = history.unwrap_or(true);
     state.may_run(session_id, &sql)?;
+    // After the app's own checks: a hook can only add a refusal. No hook, one load and no more.
+    let after = if plugins::query_hooked() {
+        plugins::before_query(&app, &state, session_id, &sql).await?
+    } else {
+        None
+    };
     let before = state.session(session_id)?.conn;
     let conn = state.live(session_id).await?;
     if !Arc::ptr_eq(&before, &conn) {
@@ -57,6 +63,9 @@ pub async fn run_query(
                 (elapsed, None, HistoryStatus::Error, Some(error.to_string()))
             }
         };
+        if let Some(after) = after {
+            after.fire(plugins::query_status(status), duration, rows);
+        }
         if !keep {
             return;
         }

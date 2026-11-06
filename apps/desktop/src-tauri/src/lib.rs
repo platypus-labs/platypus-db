@@ -426,6 +426,8 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::plugins::plugin_set_enabled,
         commands::plugins::plugin_remove,
         commands::plugins::plugin_run_action,
+        commands::plugins::plugin_settings,
+        commands::plugins::plugin_set_setting,
         commands::analysis::sql::fetch_whole,
         commands::analysis::sql::stop_fetch,
         commands::analysis::sql::open_result_db,

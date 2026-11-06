@@ -115,9 +115,10 @@ like `http` and `clipboard`; the changes do not break ABI 1 (`api = 2`, backward
 |---|---|---|
 | 🆕 **Plugin panels and tab kinds**: a plugin declares a tab (`kind`) or a side panel; the content is an HTML document in an isolated iframe that talks to the app by messages, registered through `registerTabKind` | P2 | U |
 | 🆕 **Themes as plugins**: a package with only colour tokens and fonts (`kinds = ["theme"]`), no WASM module, which shows up in the theme picker | P2 | U |
-| 🆕 **Event hooks**: before and after a query, on connect, on saving edits; a "before" hook can block with a message, and goes through the Safety checks (group L) | P2 | U |
+| ✅ **Event hooks**: before and after a query, on connect, on saving edits; a "before" hook can block with a message, and goes through the Safety checks (group L) | P2 | U |
 | 🆕 **Grid extensions**: a plugin adds computed columns, cell renderers or cell actions through `GridSourceExtensions` | P3 | U |
-| 🆕 **Plugin settings page**: field schema in the manifest, drawn by the app in Settings and saved in the store, read by the module | P2 | U |
+| ✅ **Manifest and permissions of ABI 2** (`api = 2`, ABI 1 keeps working): `kinds` with `theme` and no module, declared `tabs`, `panels`, `hooks`, `grid` and `settings`, the permissions `hooks`, `tabs` and `grid`; what it does not know is refused by name; an update lists what it asks anew | P2 | U |
+| ✅ **Plugin settings page**: field schema in the manifest, drawn by the app in Settings and saved in the store, read by the module | P2 | U |
 | 🆕 **Catalog and installer**: a list of plugins from an index (JSON) with download, SHA-256 hash and package signature checks, update and removal | P2 | U |
 | 🆕 Documentation and an example plugin in `examples/plugins` for each new point, with a test of the denied permission | P2 | U |
 

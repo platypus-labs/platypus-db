@@ -1,5 +1,6 @@
-//! The guest side of the PlatypusDB plugin ABI, version 1 (see `docs/PLUGINS.md`), for
-//! plugins written in Rust and built for `wasm32-unknown-unknown`.
+//! The guest side of the PlatypusDB plugin ABI, versions 1 and 2 (see `docs/PLUGINS.md`), for
+//! plugins written in Rust and built for `wasm32-unknown-unknown`. A module imports only the
+//! host functions it uses: [`setting`] needs `api = 2`, the rest works under either.
 //!
 //! A plugin calls [`export_allocator!`] once and writes its entry points with [`entry`]:
 //!
@@ -22,6 +23,8 @@ unsafe extern "C" {
     fn host_http(ptr: i32, len: i32) -> i32;
     #[link_name = "take"]
     fn host_take(ptr: i32);
+    #[link_name = "setting"]
+    fn host_setting(ptr: i32, len: i32) -> i32;
 }
 
 /// Exports `platypus_alloc` and `platypus_dealloc`, through Rust's allocator.
@@ -102,17 +105,28 @@ pub fn log(level: i32, message: &str) {
 /// (`{"status", "headers", "body"}`), or why it failed or was not allowed.
 pub fn http(request: &Value) -> Result<Value, String> {
     let bytes = serde_json::to_vec(request).map_err(|e| e.to_string())?;
-    // SAFETY: the host reads the request during the call, then writes exactly `n` bytes
-    // into the buffer given to `take`.
-    let answer = unsafe {
-        let n = host_http(bytes.as_ptr() as i32, bytes.len() as i32);
-        let mut buf = vec![0u8; usize::try_from(n).unwrap_or(0)];
-        host_take(buf.as_mut_ptr() as i32);
-        buf
-    };
-    let mut answer: Value = serde_json::from_slice(&answer).map_err(|e| e.to_string())?;
+    // SAFETY: the host reads the request during the call.
+    let n = unsafe { host_http(bytes.as_ptr() as i32, bytes.len() as i32) };
+    take(n, "HTTP failed")
+}
+
+/// One of the plugin's own settings: what the user saved, or the default of the manifest, or
+/// `null`; a secret as its text. A key the manifest does not declare is an error (ABI 2).
+pub fn setting(key: &str) -> Result<Value, String> {
+    let bytes = serde_json::to_vec(&json!({ "key": key })).map_err(|e| e.to_string())?;
+    // SAFETY: the host reads the request during the call.
+    let n = unsafe { host_setting(bytes.as_ptr() as i32, bytes.len() as i32) };
+    take(n, "the setting cannot be read")
+}
+
+/// Copies the answer of the last host call, `n` bytes, and reads its `ok` or `error`.
+fn take(n: i32, failed: &str) -> Result<Value, String> {
+    let mut buf = vec![0u8; usize::try_from(n).unwrap_or(0)];
+    // SAFETY: the host writes exactly `n` bytes into the buffer.
+    unsafe { host_take(buf.as_mut_ptr() as i32) };
+    let mut answer: Value = serde_json::from_slice(&buf).map_err(|e| e.to_string())?;
     if let Some(error) = answer.get("error") {
-        return Err(error.as_str().unwrap_or("HTTP failed").to_owned());
+        return Err(error.as_str().unwrap_or(failed).to_owned());
     }
     Ok(answer["ok"].take())
 }
