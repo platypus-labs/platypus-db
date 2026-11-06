@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Keyboard shortcuts</title>
+  <meta name="description" content="On macOS use Cmd instead of Ctrl. Every shortcut can be changed in Settings › Keyboard shortcuts.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../img/icon.png">
+  <link rel="preload" href="../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../index.html" aria-label="PlatypusDB, home">
+        <img src="../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../index.html#tour">Tour</a>
+        <a href="../features.html">Features</a>
+        <a href="../databases.html">Databases</a>
+        <a href="../compare.html">Compare</a>
+        <a href="../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../docs.html">Getting started</a>
+<a href="guide/index.html">User guide</a>
+<h6>Guide</h6>
+<a href="guide/connect.html">Connect to a database</a>
+<a href="guide/queries.html">Run queries and read results</a>
+<a href="guide/edit-data.html">Edit data</a>
+<a href="guide/import-export.html">Import and export</a>
+<a href="guide/safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="guide/projects-sharing.html">Projects and sharing</a>
+<a href="guide/agents.html">Use PlatypusDB from an agent</a>
+<a href="guide/troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="guide/databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="features.html">Features</a>
+<a href="shortcuts.html" class="on" aria-current="page">Keyboard shortcuts</a>
+<a href="agents.html">Agents (MCP) and the CLI</a>
+<a href="plugins.html">Plugins</a>
+<a href="connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Keyboard shortcuts</div>
+<p><a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">← README</a></p>
+<h1 id="keyboard-shortcuts">Keyboard shortcuts</h1>
+<p>On macOS use <code>Cmd</code> instead of <code>Ctrl</code>. Every shortcut can be changed in Settings › Keyboard shortcuts.</p>
+<p>On keyboards that type a character with Shift (<code>/</code> is <code>Shift+7</code> on Italian and German ones) the shortcut takes Shift too: <code>Ctrl+/</code> is <code>Ctrl+Shift+7</code> there. <code>AltGr</code> always types its character: Windows reports it as <code>Ctrl+Alt</code>, so <code>Ctrl+Alt</code> with a symbol (<code>[</code>, <code>@</code>, <code>{</code>, <code>\</code>...) is never a shortcut outside macOS.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Keys</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>Ctrl+Enter</code></td><td>Run the statement under the cursor (or the selection)</td></tr>
+<tr><td><code>Alt+X</code>, <code>Ctrl+Shift+Enter</code></td><td>Run the script</td></tr>
+<tr><td><code>Ctrl+.</code></td><td>Cancel the running statement (also in the command palette)</td></tr>
+<tr><td><code>Ctrl+\</code></td><td>Run into a new result tab</td></tr>
+<tr><td><code>Ctrl+Space</code></td><td>Autocomplete</td></tr>
+<tr><td><code>Ctrl+/</code></td><td>Comment / uncomment</td></tr>
+<tr><td><code>Ctrl+Shift+F</code></td><td>Format the script (or the selection)</td></tr>
+<tr><td><code>Ctrl+Shift+A</code></td><td>Select the statement under the cursor</td></tr>
+<tr><td><code>Ctrl+Shift+E</code></td><td>Explain the statement under the cursor</td></tr>
+<tr><td><code>Ctrl+Shift+M</code></td><td>Query manager</td></tr>
+<tr><td><code>Shift+Alt+Down</code>, <code>Shift+Alt+Up</code></td><td>Duplicate the line</td></tr>
+<tr><td><code>Alt+Up</code>, <code>Alt+Down</code></td><td>Move the line</td></tr>
+<tr><td><code>Ctrl+Shift+K</code></td><td>Delete the line</td></tr>
+<tr><td><code>Ctrl+Alt+Up</code>, <code>Ctrl+Alt+Down</code></td><td>Add a cursor above / below</td></tr>
+<tr><td><code>Ctrl+Alt+F</code>, <code>Ctrl+Alt+Shift+F</code> (macOS: <code>⌘⌥[</code>, <code>⌘⌥]</code>)</td><td>Fold / unfold everything</td></tr>
+<tr><td><code>Ctrl+D</code>, <code>Ctrl+Shift+L</code></td><td>Select the next / every occurrence</td></tr>
+<tr><td><code>Alt+drag</code></td><td>Rectangular selection</td></tr>
+<tr><td><code>Ctrl+F</code></td><td>Find and replace</td></tr>
+<tr><td><code>Ctrl+S</code>, <code>Ctrl+O</code></td><td>Save / open a <code>.sql</code> file</td></tr>
+<tr><td><code>Ctrl+K</code>, <code>Ctrl+Shift+P</code></td><td>Command palette</td></tr>
+<tr><td><code>Ctrl+B</code></td><td>Hide / show the navigator</td></tr>
+<tr><td><code>Ctrl+T</code>, <code>Ctrl+W</code>, <code>Ctrl+Shift+T</code></td><td>New tab / close tab / reopen the closed tab</td></tr>
+<tr><td><code>Ctrl+Tab</code>, <code>Ctrl+Shift+Tab</code></td><td>Next / previous tab</td></tr>
+<tr><td><code>Ctrl+Shift+D</code></td><td>Split the editor / close the split</td></tr>
+<tr><td><code>Ctrl+=</code>, <code>Ctrl+-</code>, <code>Ctrl+0</code></td><td>Bigger / smaller / normal interface</td></tr>
+<tr><td><code>Ctrl+1</code>, <code>Ctrl+2</code>… <code>Ctrl+9</code></td><td>All connections / the projects in rail order</td></tr>
+<tr><td><code>Ctrl+Alt+PageDown</code>, <code>Ctrl+Alt+PageUp</code></td><td>Next / previous project</td></tr>
+<tr><td><code>Ctrl+,</code></td><td>Settings</td></tr>
+<tr><td><code>F2</code>, <code>Enter</code>, typing</td><td>Edit the cell (data viewer, one-table queries)</td></tr>
+<tr><td><code>Insert</code>, <code>Ctrl+D</code>, <code>Delete</code></td><td>Add, duplicate, delete rows</td></tr>
+<tr><td><code>Shift+Delete</code></td><td>Set the selected cells to NULL</td></tr>
+<tr><td><code>Ctrl+Alt+D</code> (macOS: <code>⌃⇧D</code>)</td><td>Fill the selected cells down from the first row</td></tr>
+<tr><td><code>Ctrl+V</code>, <code>Ctrl+Shift+V</code></td><td>Paste over the cells / as new rows</td></tr>
+<tr><td><code>Ctrl+S</code>, <code>Ctrl+Z</code></td><td>Save / undo data changes (grid focused)</td></tr>
+<tr><td><code>Ctrl+Shift+C</code></td><td>Copy the selection with headers</td></tr>
+<tr><td><code>Ctrl+F</code>, <code>F7</code></td><td>Find in the results / value panel (grid focused)</td></tr>
+<tr><td><code>Ctrl+Alt+R</code></td><td>Record view of the focused row; <code>←</code> <code>→</code> move through the rows</td></tr>
+<tr><td><code>F5</code>, <code>F2</code>, <code>F4</code>, <code>Delete</code></td><td>Navigator: refresh, rename, edit the table, drop (after its confirmation)</td></tr>
+</tbody>
+</table></div>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../index.html"><img src="../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../docs.html">Getting started</a></li>
+          <li><a href="../docs/guide/index.html">User guide</a></li>
+          <li><a href="../docs/features.html">Features</a></li>
+          <li><a href="../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../site.js" defer></script>
+</body>
+</html>

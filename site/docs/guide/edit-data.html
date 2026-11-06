@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Edit data</title>
+  <meta name="description" content="Pending changes in the data editor">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../img/icon.png">
+  <link rel="preload" href="../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../index.html#tour">Tour</a>
+        <a href="../../features.html">Features</a>
+        <a href="../../databases.html">Databases</a>
+        <a href="../../compare.html">Compare</a>
+        <a href="../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../docs.html">Getting started</a>
+<a href="index.html">User guide</a>
+<h6>Guide</h6>
+<a href="connect.html">Connect to a database</a>
+<a href="queries.html">Run queries and read results</a>
+<a href="edit-data.html" class="on" aria-current="page">Edit data</a>
+<a href="import-export.html">Import and export</a>
+<a href="safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="projects-sharing.html">Projects and sharing</a>
+<a href="agents.html">Use PlatypusDB from an agent</a>
+<a href="troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="../features.html">Features</a>
+<a href="../shortcuts.html">Keyboard shortcuts</a>
+<a href="../agents.html">Agents (MCP) and the CLI</a>
+<a href="../plugins.html">Plugins</a>
+<a href="../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Edit data</div>
+<p><a href="index.html">← User guide</a></p>
+<h1 id="edit-data">Edit data</h1>
+<p><img src="../../img/screenshots/data-editor.png" alt="Pending changes in the data editor" loading="lazy"></p>
+<h2 id="change-rows-in-the-grid">Change rows in the grid</h2>
+<ol>
+<li>Open a table from the navigator, or run a query that reads one table.</li>
+<li>Double-click a cell, press <code>F2</code>, or just type, to change it. <code>Shift+Delete</code> sets the selected cells to NULL.</li>
+<li><code>Insert</code> adds a row, <code>Ctrl+D</code> duplicates the selected one, <code>Delete</code> deletes it.</li>
+<li>The changes stay highlighted until you save. Use <strong>Preview SQL</strong> to read the statements.</li>
+<li>Press <code>Ctrl+S</code> (or <strong>Save changes</strong>) to save all of them, or nothing if one fails. <code>Ctrl+Z</code> undoes the changes not saved yet.</li>
+</ol>
+<p>Every save leaves an undo script that puts the rows back. In manual-commit mode the changes join the open transaction.</p>
+<h2 id="when-the-grid-is-read-only">When the grid is read-only</h2>
+<p>A table needs a primary key, or a unique key on non-null columns, or a virtual key you pick; otherwise the grid says why it cannot be edited. A connection can also forbid data editing (<strong>Appearance and safety</strong> page of its settings): rows then change only by SQL.</p>
+<h2 id="edit-many-cells-at-once">Edit many cells at once</h2>
+<p>Select the cells and use <strong>Edit selection</strong> in the grid menu: one value, NULL or DEFAULT in every cell, find and replace in the text cells, or a number sequence. <code>Ctrl+Alt+D</code> fills down from the first row (<code>⌃⇧D</code> on macOS). Only the rows loaded in the grid change, and the result is pending changes you preview, save or undo together.</p>
+<p>Paste from a spreadsheet with <code>Ctrl+V</code> over the cells, or <code>Ctrl+Shift+V</code> as new rows.</p>
+<h2 id="load-a-file-into-a-cell">Load a file into a cell</h2>
+<p>From the grid menu, or the <code>…</code> button of the cell editor: bytes go into binary columns and UTF-8 text into text columns. Files over 50 MB ask first; files over 200 MB are refused.</p>
+<h2 id="rows-proposed-by-an-agent">Rows proposed by an agent</h2>
+<p>When an agent calls <code>propose_edits</code>, the table opens in its data viewer with the proposed rows as pending changes, colored like yours. Nothing is written until you save them; discard them to refuse. See <a href="agents.html">Agents</a>.</p>
+<h2 id="more">More</h2>
+<p>Foreign keys, arrays, the table editor (columns, keys, indexes) and fake data are in <a href="../features.html#data-editor">FEATURES.md</a>. Production connections confirm every change first: see <a href="safety.html">Safety</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#change-rows-in-the-grid">Change rows in the grid</a>
+    <a href="#when-the-grid-is-read-only">When the grid is read-only</a>
+    <a href="#edit-many-cells-at-once">Edit many cells at once</a>
+    <a href="#load-a-file-into-a-cell">Load a file into a cell</a>
+    <a href="#rows-proposed-by-an-agent">Rows proposed by an agent</a>
+    <a href="#more">More</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../index.html"><img src="../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../docs.html">Getting started</a></li>
+          <li><a href="../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../docs/features.html">Features</a></li>
+          <li><a href="../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../site.js" defer></script>
+</body>
+</html>

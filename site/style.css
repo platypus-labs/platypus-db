@@ -2284,3 +2284,119 @@ svg.i.sm {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+/* Generated documentation pages (scripts/build-site-docs.mjs). */
+.docs nav details > summary {
+  display: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  color: var(--hi);
+  font-size: 14.5px;
+}
+
+.docs nav a.sub {
+  padding-left: 26px;
+  font-size: 13.5px;
+}
+
+.docs article h3 {
+  margin: 30px 0 10px;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.docs article h4,
+.docs article h5,
+.docs article h6 {
+  margin: 22px 0 8px;
+  color: var(--hi);
+  font-size: 15px;
+}
+
+.docs article :is(ul, ol) {
+  margin: 0 0 14px;
+  padding-left: 24px;
+}
+
+.docs article li {
+  margin: 4px 0;
+}
+
+.docs article li > :is(p, ul, ol, pre) {
+  margin-top: 6px;
+}
+
+.docs article blockquote {
+  margin: 0 0 14px;
+  padding: 2px 16px;
+  border-left: 3px solid var(--acc);
+  color: var(--mut);
+}
+
+.docs article pre {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.docs article pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.docs article img {
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.docs article hr {
+  margin: 28px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.docs article .table-wrap {
+  margin: 0 0 16px;
+}
+
+.docs article .grid {
+  min-width: 0;
+}
+
+.docs article .grid th,
+.docs article .grid td {
+  padding: 9px 12px;
+}
+
+.docs article .grid thead th {
+  white-space: normal;
+}
+
+.docs article :is(td, li, p) code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .docs nav details > summary {
+    display: block;
+  }
+
+  .docs nav details[open] > summary {
+    margin-bottom: 8px;
+  }
+
+  .docs article h1 {
+    font-size: 34px;
+  }
+}

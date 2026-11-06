@@ -77,6 +77,13 @@ cargo test --workspace --exclude platypus-desktop
 # The relative links and anchors of the documentation and the site; run it after changing docs/ or site/
 node scripts/check-links.mjs
 
+# The site's documentation pages (site/docs.html, site/docs/) are generated from docs/guide/ and the
+# reference documents; run it after changing them, then copy the pictures. --check writes nothing and
+# exits 1 when the pages on disk are not what the documents produce
+node scripts/build-site-docs.mjs
+node scripts/copy-site-screenshots.mjs
+node scripts/build-site-docs.mjs --check
+
 # CLI: table (first 200 rows), csv, ndjson, json or parquet (json and parquet need -o); Ctrl+C or --timeout cancel server-side
 export PLATYPUS_URL="postgres://platypus:platypus@localhost:55432/platypus?sslmode=disable"
 cargo run -p platypus-cli -- query "select * from demo.type_zoo"
