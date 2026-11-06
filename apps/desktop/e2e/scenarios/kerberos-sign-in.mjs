@@ -82,7 +82,7 @@ export default async function (page, { dir }) {
 
     // Chosen: the password field goes, the service name comes, and the note says no password
     // is sent.
-    assert.notEqual(await page.eval(passwordInput), null);
+    assert.ok(await page.eval(`${passwordInput} !== null`));
     await page.eval(fill(source, "kerberos"));
     await page.waitFor(`${service} !== null`);
     await page.waitFor(`${passwordInput} === null`);
@@ -95,7 +95,7 @@ export default async function (page, { dir }) {
     assert.match(noTicket, /klist|kinit|no Kerberos/, noTicket);
     assert.match(noTicket, /Kerberos/, noTicket);
     assert.equal(server.received.length, 0, "no ticket, nothing sent");
-    assert.equal(await page.eval(`document.querySelector('.modal input[type=password]')`), null, "no password is asked");
+    assert.ok(await page.eval(`document.querySelector('.modal input[type=password]') === null`), "no password is asked");
 
     // The ticket asked for is for the service name in the field, on the connection's host.
     await page.eval(fill(service, "pg-prod"));
@@ -128,7 +128,7 @@ export default async function (page, { dir }) {
     await editConnection(page, NAME);
     assert.equal(await page.eval(`${source}.value`), "kerberos");
     await page.waitFor(`${service}?.value === 'pg-prod'`);
-    assert.equal(await page.eval(passwordInput), null);
+    assert.ok(await page.eval(`${passwordInput} === null`));
 
     // Another way to sign in takes the service name with it.
     await page.eval(fill(source, "keychain"));
