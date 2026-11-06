@@ -284,7 +284,31 @@ API (`DriverKind::Plugin`, the plugin's id in the `plugin` option). The guest AB
 permissions and the limits are in [PLUGINS.md](PLUGINS.md); the host is
 `crates/platypus-plugins`, the desktop commands `commands/plugins.rs`, the page side
 `apps/desktop/src/plugins/` (the actions join the action registry under a "Plugins" submenu).
-A change to the ABI raises `API_VERSION` and keeps the old version working while plugins use it.
+A change to the ABI raises `API_VERSION` and keeps the old version working while plugins use it:
+`MIN_API_VERSION` is the oldest still spoken, and the linker in `runtime.rs` links the host
+functions of a module's own ABI only.
+
+A new capability for plugins goes in these places:
+
+- its fields in `Manifest` (`manifest.rs`, types in `extensions.rs`), checked by `check_declared`,
+  which also refuses them under `api = 1`;
+- its permission in `Permissions` and `Capability`, and its plain words in `permissionLines`
+  (`PluginsPanel.tsx`). `Plugins::require` is the check before using it: it answers
+  `PluginError::Denied` and nothing of the plugin has run;
+- a test that the denied permission does nothing, in the crate and with an example of
+  `examples/plugins`.
+
+**Hooks.** `hooks::HOOKS` holds which plugins hook which events. A command that runs on the user's
+behalf asks `HOOKS.wanted(event)` first, one atomic load, and only then calls the helpers of
+`commands/plugins.rs`, after its own checks (`state.may_run`): the query path neither waits nor
+allocates without a hook, and a hook can only add a refusal. A new event is a variant of
+`HookEvent` and of `HookContext`: the context's fields are all that a hook can ever be told, so
+keep values of results and passwords out of them. A statement goes in through `masked_statement`.
+
+**Settings.** A plugin's values are `Plugins::settings_of` and `set_setting`, in a store of their
+own read only when used. The page (`PluginSettings.tsx`, a chunk loaded when it opens) maps each
+field to a `SettingDef` (`settingFields.ts`) and draws it with `SettingRow`, as the app's own
+settings; a secret has a row of its own, since it never comes back to the page.
 
 ### Vendor client libraries: Oracle, ODBC and DuckDB
 

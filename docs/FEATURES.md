@@ -817,8 +817,10 @@ through the MCP server.
   exist or values a column refuses are listed in the viewer and the rest is applied. See
   [AGENTS.md](AGENTS.md).
 - **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
-  and the navigator, or a driver for a database reached over HTTP; each asks for its
-  permissions at install. See [PLUGINS.md](PLUGINS.md).
+  and the navigator, a driver for a database reached over HTTP, hooks that see statements with
+  sensitive values masked and may stop a statement or a save, and a settings page of their own,
+  with secrets in the system's keychain; each asks for its permissions at install. See
+  [PLUGINS.md](PLUGINS.md).
 
 ## Settings and themes
 
