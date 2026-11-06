@@ -8,7 +8,7 @@ The actions below are in the right-click menu of the navigator, and in the comma
 
 ## Import a file into a table
 
-![The preview of a file to import](../screenshots/guide/import-preview.png)
+![The preview of a file to import](../../screenshots/guide/import-preview.png)
 
 1. Right-click the table in the navigator, then **Data** › **Import data…**.
 2. Choose the file: CSV, TSV, JSON, NDJSON, Parquet or Excel.

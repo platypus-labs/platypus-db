@@ -55,17 +55,17 @@ Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates 
 
 **Portable copy**: put the executable in a folder with an empty `data` folder beside it.
 Connections, settings, history and scripts then live in `data`, and the folder can move to
-another machine or a USB stick ([more](docs/FEATURES.md#portable-copy)).
+another machine or a USB stick ([more](docs/user/FEATURES.md#portable-copy)).
 
-The [user guide](docs/guide/README.md) goes on from here, task by task: [getting
-started](docs/guide/getting-started.md), connecting, queries, safety, troubleshooting.
+The [user guide](docs/user/guide/README.md) goes on from here, task by task: [getting
+started](docs/user/guide/getting-started.md), connecting, queries, safety, troubleshooting.
 
 ## Databases
 
 PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB,
 Redis, Elasticsearch, Cassandra, Snowflake, BigQuery, Databricks, Trino, IBM Db2, ODBC and the
 databases that speak the PostgreSQL protocol. How each one connects, its oldest supported
-version and what works on it are in the [databases guide](docs/guide/databases/README.md).
+version and what works on it are in the [databases guide](docs/user/guide/databases/README.md).
 
 ## Features
 
@@ -80,15 +80,15 @@ version and what works on it are in the [databases guide](docs/guide/databases/R
 Connections over SSH, proxies and cloud sign-in; a SQL editor with completion; a data viewer and
 editor; charts and notebooks; table design, ER diagrams and schema comparison; query plans;
 server activity; import, export and transfer; projects and seven languages. Every feature, area
-by area: **[docs/FEATURES.md](docs/FEATURES.md)**. Task by task: the
-[user guide](docs/guide/README.md). Keyboard shortcuts: [docs/SHORTCUTS.md](docs/SHORTCUTS.md).
+by area: **[docs/user/FEATURES.md](docs/user/FEATURES.md)**. Task by task: the
+[user guide](docs/user/guide/README.md). Keyboard shortcuts: [docs/user/SHORTCUTS.md](docs/user/SHORTCUTS.md).
 
 ## Agents (MCP) and the CLI
 
 Claude Code, Codex, Cursor and other MCP clients can use your saved connections, with the access
 you give each one: none, read only (the default) or read and write. A change an agent wants to
 run opens a dialog in the app first. Setup, tools, limits and the `platypus` CLI:
-[docs/AGENTS.md](docs/AGENTS.md).
+[docs/user/AGENTS.md](docs/user/AGENTS.md).
 
 ## Performance
 
@@ -109,12 +109,12 @@ run opens a dialog in the app first. Setup, tools, limits and the `platypus` CLI
 
 Windows 11, Ryzen 7 9700X. Sizes of the official Linux downloads of PlatypusDB 0.2.0, DBeaver CE
 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 and Beekeeper Studio 6.2.0; start and memory side by side are still to be measured.
-Method, scale tests and the first Linux numbers in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+Method, scale tests and the first Linux numbers in [docs/dev/BENCHMARKS.md](docs/dev/BENCHMARKS.md).
 
 ## Development
 
-Build, test, project layout and the dev databases: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-What comes next is in [docs/ROADMAP.md](docs/ROADMAP.md); every document is listed in
+Build, test, project layout and the dev databases: [docs/dev/DEVELOPMENT.md](docs/dev/DEVELOPMENT.md).
+What comes next is in [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md); every document is listed in
 [docs/README.md](docs/README.md), and the changes of each release in
 [CHANGELOG.md](CHANGELOG.md).
 

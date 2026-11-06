@@ -1,4 +1,4 @@
-// Complete user journey 3, a working day (docs/COLLAUDO.md 5.3): three connections, two editors
+// Complete user journey 3, a working day (docs/dev/COLLAUDO.md 5.3): three connections, two editors
 // and a table open; a script saved, renamed and found again; an old query reopened from the
 // history; an open transaction that warns when the window is closed (and rolls back when it is);
 // the zoom and the theme changed and kept after a restart. Run in English, in Italian and

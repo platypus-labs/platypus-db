@@ -5,7 +5,7 @@
 //! A help against reading them by accident, not a wall: columns are told by their names, in the
 //! result and in the select list, so a value that a subquery renames, a second branch of a
 //! `UNION` or a `WHERE` that tests it still get through. The database's own permissions are the
-//! wall (see docs/AGENTS.md).
+//! wall (see docs/user/AGENTS.md).
 
 use platypus_core::DriverKind;
 use platypus_sql::Dialect;

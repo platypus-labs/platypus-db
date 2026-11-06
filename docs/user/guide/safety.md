@@ -4,7 +4,7 @@
 
 Everything here is also in [FEATURES.md](../FEATURES.md#transactions-and-safety).
 
-![Settings, the Safety page](../screenshots/guide/safety.png)
+![Settings, the Safety page](../../screenshots/guide/safety.png)
 
 ## Mark a connection as production
 

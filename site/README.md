@@ -41,10 +41,10 @@ already typed; the GIFs of the tour play anyway, since they are what the tour sh
 
 ## Update
 
-The text follows the README and [docs/FEATURES.md](../docs/FEATURES.md), the source of truth for features. When the screenshots or GIFs in
+The text follows the README and [docs/user/FEATURES.md](../docs/user/FEATURES.md), the source of truth for features. When the screenshots or GIFs in
 `docs/screenshots/` change, run `node scripts/copy-site-screenshots.mjs`: it copies the ones the pages show into `img/screenshots/`.
 
-The docs pages come from `docs/guide/**/*.md`, FEATURES.md, SHORTCUTS.md, AGENTS.md, PLUGINS.md
+The docs pages come from `docs/user/guide/**/*.md`, FEATURES.md, SHORTCUTS.md, AGENTS.md, PLUGINS.md
 and CONNECTIONS_FILE.md. After changing any of them, run, from the root:
 
 ```bash

@@ -2,7 +2,7 @@
 
 # Run queries and read results
 
-![JOIN completion from the foreign keys](../screenshots/autocomplete.png)
+![JOIN completion from the foreign keys](../../screenshots/autocomplete.png)
 
 ## Run a statement
 
@@ -40,7 +40,7 @@ variables is checked again filled in (see [Safety](safety.md)).
 - `Ctrl+F` finds in the loaded rows; `Ctrl+Shift+C` copies the selection with headers.
 - A result can switch from the grid to a chart from the status bar.
 
-![Cells that hold files, with their type and size](../screenshots/guide/file-cell.png)
+![Cells that hold files, with their type and size](../../screenshots/guide/file-cell.png)
 
 ## Understand a slow query
 

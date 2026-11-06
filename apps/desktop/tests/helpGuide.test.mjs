@@ -19,9 +19,9 @@ import {
 } from "../src/help/pages.ts";
 
 test("a relative link names a page by its path below the guide", () => {
-  assert.deepEqual(classifyLink("README", "connect.md"), { kind: "page", key: "connect", path: "docs/guide/connect.md", anchor: null });
-  assert.deepEqual(classifyLink("README", "./connect.md#tls"), { kind: "page", key: "connect", path: "docs/guide/connect.md", anchor: "tls" });
-  assert.deepEqual(classifyLink("connect", "databases/postgres.md"), { kind: "page", key: "databases/postgres", path: "docs/guide/databases/postgres.md", anchor: null });
+  assert.deepEqual(classifyLink("README", "connect.md"), { kind: "page", key: "connect", path: "docs/user/guide/connect.md", anchor: null });
+  assert.deepEqual(classifyLink("README", "./connect.md#tls"), { kind: "page", key: "connect", path: "docs/user/guide/connect.md", anchor: "tls" });
+  assert.deepEqual(classifyLink("connect", "databases/postgres.md"), { kind: "page", key: "databases/postgres", path: "docs/user/guide/databases/postgres.md", anchor: null });
 });
 
 test("links climb out of the databases folder and into it", () => {
@@ -51,7 +51,7 @@ test("a file outside the guide, or one that is not a page, is not a guide page",
   const features = classifyLink("connect", "../FEATURES.md#grid");
   assert.equal(features.kind, "page");
   assert.equal(features.key, null);
-  assert.equal(features.path, "docs/FEATURES.md");
+  assert.equal(features.path, "docs/user/FEATURES.md");
   assert.equal(classifyLink("connect", "../../README.md").key, null);
   assert.equal(classifyLink("connect", "../../../../x.md").kind, "none");
   assert.equal(classifyLink("connect", "../screenshots/palette.png").kind, "none");
@@ -60,7 +60,7 @@ test("a file outside the guide, or one that is not a page, is not a guide page",
 test("every link of the guide leads to something the app carries", () => {
   const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
   const bundled = readFileSync(join(repo, "apps/desktop/src/help/bundled.ts"), "utf8");
-  const guide = join(repo, "docs/guide");
+  const guide = join(repo, "docs/user/guide");
   const files = readdirSync(guide, { recursive: true }).map((f) => String(f).replaceAll("\\", "/")).filter((f) => f.endsWith(".md"));
   const keys = new Set(files.map((f) => f.slice(0, -3)));
   for (const file of files) {
@@ -86,21 +86,21 @@ test("the guide's text stays out of the app's main chunk", () => {
 });
 
 test("the page of a path, and a page the guide does not have", () => {
-  assert.equal(pageKeyOf("docs/guide/connect.md"), "connect");
-  assert.equal(pageKeyOf("docs/guide/databases/"), "databases/README");
-  assert.equal(pageKeyOf("docs/guide/"), "README");
-  assert.equal(pageKeyOf("docs/FEATURES.md"), null);
-  assert.equal(pageKeyOf("docs/guide/x.png"), null);
+  assert.equal(pageKeyOf("docs/user/guide/connect.md"), "connect");
+  assert.equal(pageKeyOf("docs/user/guide/databases/"), "databases/README");
+  assert.equal(pageKeyOf("docs/user/guide/"), "README");
+  assert.equal(pageKeyOf("docs/user/FEATURES.md"), null);
+  assert.equal(pageKeyOf("docs/user/guide/x.png"), null);
   const pages = { README: "# Guide" };
   assert.deepEqual(pageSource(pages, "README"), { text: "# Guide" });
-  assert.deepEqual(pageSource(pages, "connect"), { missing: "docs/guide/connect.md" });
-  assert.deepEqual(pageSource(pages, "toString"), { missing: "docs/guide/toString.md" });
-  assert.deepEqual(pageSource(pages, "docs/FEATURES.md"), { missing: "docs/FEATURES.md" });
+  assert.deepEqual(pageSource(pages, "connect"), { missing: "docs/user/guide/connect.md" });
+  assert.deepEqual(pageSource(pages, "toString"), { missing: "docs/user/guide/toString.md" });
+  assert.deepEqual(pageSource(pages, "docs/user/FEATURES.md"), { missing: "docs/user/FEATURES.md" });
 });
 
 test("images are found by their path in the repository; addresses are left out", () => {
-  assert.equal(imagePath("connect", "../screenshots/palette.png"), "docs/screenshots/palette.png");
-  assert.equal(imagePath("databases/postgres", "../../screenshots/a%20b.png?raw=true"), "docs/screenshots/a b.png");
+  assert.equal(imagePath("connect", "../../screenshots/palette.png"), "docs/screenshots/palette.png");
+  assert.equal(imagePath("databases/postgres", "../../../screenshots/a%20b.png?raw=true"), "docs/screenshots/a b.png");
   assert.equal(imagePath("connect", "https://example.org/x.png"), null);
   assert.equal(imagePath("connect", "//example.org/x.png"), null);
 });
@@ -217,7 +217,7 @@ test("a line with no block of its own continues the list item above it", () => {
 });
 
 test("FEATURES.md and AGENTS.md have no line the lazy continuation would change", () => {
-  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "docs");
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "docs", "user");
   const item = /^\s*([-*+]|\d+[.)])\s/;
   for (const name of ["FEATURES.md", "AGENTS.md"]) {
     const lines = readFileSync(join(root, name), "utf8").split(/\r?\n/);

@@ -2,7 +2,7 @@
 // (dark/light theme x English/Italian), for a reviewer to go through and note what looks wrong.
 // The four scenarios `inventory-<theme>-<language>.mjs` seed a profile with `seed` and walk the
 // list below with `runInventory`. They run only with PLATYPUS_INVENTORY set, and the pictures
-// go to <PLATYPUS_E2E_SHOTS>/inventory/<variant>/<NN-name>.png. See docs/INVENTORY.md.
+// go to <PLATYPUS_E2E_SHOTS>/inventory/<variant>/<NN-name>.png. See docs/dev/INVENTORY.md.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

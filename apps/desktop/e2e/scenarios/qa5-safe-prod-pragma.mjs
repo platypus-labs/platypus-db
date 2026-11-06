@@ -3,7 +3,7 @@
 // Steps: SQLite connection of type Production; in its SQL editor run `PRAGMA user_version = 42`
 // (also `PRAGMA writable_schema = 1`, which lets a session edit the schema table by hand).
 // Expected: like every change on production ("every change is listed and confirmed before it
-// runs", docs/FEATURES.md, Transactions and safety): the "Changes on Prod db (production)" dialog
+// runs", docs/user/FEATURES.md, Transactions and safety): the "Changes on Prod db (production)" dialog
 // lists the statement. Actual: no dialog; the statement runs ("0 rows affected") and the session
 // shows "Transaction open". The same hole is there for `SET GLOBAL ...` / `SET PASSWORD` on MySQL
 // and MariaDB and `ANALYZE`, which only the session-local meaning of PostgreSQL's SET justifies.

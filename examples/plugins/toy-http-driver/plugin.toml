@@ -2,7 +2,7 @@ id = "toy-http-driver"
 name = "Toy HTTP database"
 version = "1.0.0"
 author = "PlatypusDB"
-description = "A driver for a database that answers SQL over a small HTTP JSON API (see docs/PLUGINS.md)."
+description = "A driver for a database that answers SQL over a small HTTP JSON API (see docs/user/PLUGINS.md)."
 api = 1
 kinds = ["driver"]
 

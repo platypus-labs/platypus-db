@@ -22,7 +22,7 @@ Installazione di Windows: NSIS per l'utente corrente (senza amministratore, `ins
 currentUser`) e MSI. Gli aggiornamenti arrivano da
 `github.com/PaoloCisly/platypus-db/releases/latest/download/latest.json` (installazione passiva).
 
-Lo script [scripts/collaudo-profile.ps1](../scripts/collaudo-profile.ps1) copia, confronta e
+Lo script [scripts/collaudo-profile.ps1](../../scripts/collaudo-profile.ps1) copia, confronta e
 ripristina le due cartelle (non le password, che restano nella Gestione credenziali). Solo
 `-Restore` sostituisce dati, e prima salva lo stato attuale in una copia a parte. Esempi:
 
@@ -200,7 +200,7 @@ e `~/.local/share`, password nel Secret Service, vassoio solo con AppIndicator.
 12. Scala frazionaria (125%, 150%) su Wayland e X11, due monitor con scale diverse: come 2.4 punti 4-5. - [ ]
 13. Aspetto chiaro/scuro del desktop. Atteso: l'app segue il sistema. - [ ]
 14. Barra del titolo con decorazioni del sistema (GNOME) e senza (alcuni WM). Atteso: si sposta, ridimensiona, chiude. - [ ]
-15. Layout di tastiera italiano e inglese e le scorciatoie di [SHORTCUTS.md](SHORTCUTS.md). Atteso: tutte funzionano. - [ ]
+15. Layout di tastiera italiano e inglese e le scorciatoie di [SHORTCUTS.md](../user/SHORTCUTS.md). Atteso: tutte funzionano. - [ ]
 
 ---
 
@@ -276,7 +276,7 @@ vero dell'app a metà; restano a mano solo le parti fuori dalla portata degli E2
 3. Confronto di schema tra due database e script di sincronizzazione. Atteso: script da rivedere prima dell'esecuzione. - [ ]
 4. Dati finti su tabelle con chiavi esterne. Atteso: riferimenti validi. - [ ]
 5. **Riavvio**. Atteso: la scheda dello script torna con il suo file. - [ ]
-6. Da tastiera: Ctrl+T apre un editor e vi si scrive subito; Escape poi Tab esce dall'editor. Atteso: come in [SHORTCUTS.md](SHORTCUTS.md). - [ ]
+6. Da tastiera: Ctrl+T apre un editor e vi si scrive subito; Escape poi Tab esce dall'editor. Atteso: come in [SHORTCUTS.md](../user/SHORTCUTS.md). - [ ]
 
 ### 5.6 Agenti
 

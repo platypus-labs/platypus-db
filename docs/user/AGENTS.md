@@ -1,4 +1,4 @@
-[← README](../README.md)
+[← README](../../README.md)
 
 # Agents (MCP) and the CLI
 
@@ -96,7 +96,7 @@ claude plugin install platypus-db@platypus-db
 The plugin starts `platypus-db --mcp`. Where the app is not on `PATH` (Windows and macOS; the
 Linux packages put it there), set `PLATYPUS_DB` to its full path, e.g.
 `C:\Program Files\PlatypusDB\platypus-db.exe`, before starting Claude Code. For Codex,
-[`plugins/codex`](../plugins/codex) has the `config.toml` entry and the same instructions as an
+[`plugins/codex`](../../plugins/codex) has the `config.toml` entry and the same instructions as an
 `AGENTS.md` to copy into `~/.codex/AGENTS.md` or a project's `AGENTS.md`.
 
 <details>

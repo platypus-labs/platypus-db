@@ -1,4 +1,4 @@
-// Journey (docs/COLLAUDO.md 5.6): an agent through the app's MCP server, played by a JSON-RPC
+// Journey (docs/dev/COLLAUDO.md 5.6): an agent through the app's MCP server, played by a JSON-RPC
 // client, on a PostgreSQL connection the user makes in the app (its password goes to the
 // keychain, never to a response). Settings > Agents shows the command that registers the
 // server; the agent lists the connection and reads a table; its write is refused while the

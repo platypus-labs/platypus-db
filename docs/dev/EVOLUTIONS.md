@@ -3,7 +3,7 @@
 Ideas and evolutions for after the [roadmap](ROADMAP.md). They follow the same logic: **independent
 groups**, each with its own area of code, which several people can work on in parallel.
 They are taken once every roadmap group is `✅ completed`, `✅ done (…)` with nothing left to
-pick, `🔒`, `⏸ waiting` or `⛔ blocked`. The procedure is the one in [CLAUDE.md](../CLAUDE.md),
+pick, `🔒`, `⏸ waiting` or `⛔ blocked`. The procedure is the one in [CLAUDE.md](../../CLAUDE.md),
 with these differences: the lock lives in the "Evolution locks" table below and the branch is
 named `evo-<letter>-<topic>` (e.g. `evo-a-agents`).
 
@@ -38,7 +38,7 @@ meaning: they are not taken and do not count towards `✅ completed`. Rows that 
 choice are marked `to decide`: ask first, then implement.
 
 Before adding a type, a `Connection` trait method or a module in `platypus-core` or
-`platypus-sql`, check that it does not exist yet (see [CLAUDE.md](../CLAUDE.md)). The roadmap's
+`platypus-sql`, check that it does not exist yet (see [CLAUDE.md](../../CLAUDE.md)). The roadmap's
 "Open fixes" always come first.
 
 ---
@@ -63,7 +63,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 
 **Status: completed.** Remote MCP (the `/mcp` endpoint reachable from other machines, with TLS and OAuth 2.1) was dropped on 2026-11-05: it would expose saved connections on the network, and no concrete use asks for it.
 
-**What exists** (roadmap group N, [AGENTS.md](AGENTS.md)): the server (`platypus-db --mcp` on
+**What exists** (roadmap group N, [AGENTS.md](../user/AGENTS.md)): the server (`platypus-db --mcp` on
 stdio, `/mcp` over HTTP through the bridge with the open app) with the tools `list_connections`,
 `list_schemas`, `list_objects` (pages), `describe_table` (with database comments),
 `get_ddl`, `search_objects` (by name), `run_query` (limits on rows, bytes and time,
@@ -102,9 +102,9 @@ configuration. The rows below add only what is not there.
 
 ### Group B — Plugins and mods
 
-**Status: completed.** Tested on Windows with WebView2, a frame's routes to the app's commands included; macOS and Linux are read from the sources, not run: see [PLUGINS.md](PLUGINS.md).
+**Status: completed.** Tested on Windows with WebView2, a frame's routes to the app's commands included; macOS and Linux are read from the sources, not run: see [PLUGINS.md](../user/PLUGINS.md).
 
-**Area:** `crates/platypus-plugins`, `apps/desktop/src/plugins/`, [PLUGINS.md](PLUGINS.md); existing hook points in [EXTENDING.md](EXTENDING.md): action registry, `registerTabKind`, `GridSourceExtensions`, settings sections, theme
+**Area:** `crates/platypus-plugins`, `apps/desktop/src/plugins/`, [PLUGINS.md](../user/PLUGINS.md); existing hook points in [EXTENDING.md](EXTENDING.md): action registry, `registerTabKind`, `GridSourceExtensions`, settings sections, theme
 **Depends on:** WASM plugins from roadmap group G (actions and drivers, ABI 1)
 
 Today a plugin adds actions and a driver (HTTP). Here the ABI grows so that add-ons attach to the
@@ -145,14 +145,14 @@ F says what is left.
 
 **Status: P2 done, in P3 help in the app, the link check and the guide's screenshots done; the shorter READMEs and the site's pages from `docs/` done; to do: the split of `docs/`, translations.**
 
-**What exists:** [README.md](../README.md) and [README.it.md](../README.it.md) (the same ten
+**What exists:** [README.md](../../README.md) and [README.it.md](../../README.it.md) (the same ten
 sections: why, install, databases, features, agents, performance, development, contributing,
-security, licence); [FEATURES.md](FEATURES.md), the reference of every feature area by area,
-with a table of databases and one line of notes each; [SHORTCUTS.md](SHORTCUTS.md);
-[AGENTS.md](AGENTS.md), complete for agents and the CLI; [PLUGINS.md](PLUGINS.md); the developer
+security, licence); [FEATURES.md](../user/FEATURES.md), the reference of every feature area by area,
+with a table of databases and one line of notes each; [SHORTCUTS.md](../user/SHORTCUTS.md);
+[AGENTS.md](../user/AGENTS.md), complete for agents and the CLI; [PLUGINS.md](../user/PLUGINS.md); the developer
 documents (DEVELOPMENT, EXTENDING, RELEASING, BENCHMARKS) and the internal ones in Italian
 (ROADMAP, COVERAGE, COLLAUDO, INVENTORY, MVP_PLAN), all side by side in `docs/` with the index
-[docs/README.md](README.md); `docs/screenshots/` made by the E2E `readme` and `gifs` scenarios;
+[docs/README.md](../README.md); `docs/screenshots/` made by the E2E `readme` and `gifs` scenarios;
 CONTRIBUTING and CHANGELOG at the root. The site `site/` has home, features, databases,
 compare, download and docs; `docs.html` and `site/docs/` are generated from the guide and the
 reference documents (`scripts/build-site-docs.mjs`). The interface speaks seven languages, the
@@ -163,13 +163,13 @@ documentation English (the README also Italian).
 
 | Feature | Prio | Origin |
 |---|---|---|
-| ✅ A **user guide by task** in `docs/guide/`: connect (URL, SSH, TLS, keychain), run queries and read results, edit data, import and export, safety (Prod, read-only, confirmations), projects and sharing, agents; steps and a screenshot per page, with links to FEATURES.md, which stays the reference by area and not a path to follow | P2 | U |
-| ✅ **Getting started** in the repository, as the guide's first page: today it is only in `site/docs.html`; the text moves to `docs/guide/` and the site page comes from it | P2 | U |
+| ✅ A **user guide by task** in `docs/user/guide/`: connect (URL, SSH, TLS, keychain), run queries and read results, edit data, import and export, safety (Prod, read-only, confirmations), projects and sharing, agents; steps and a screenshot per page, with links to FEATURES.md, which stays the reference by area and not a path to follow | P2 | U |
+| ✅ **Getting started** in the repository, as the guide's first page: today it is only in `site/docs.html`; the text moves to `docs/user/guide/` and the site page comes from it | P2 | U |
 | ✅ **A page per database**: how to connect, privileges needed, what works and what does not (editing, explain, transactions, administration), drivers downloaded on first use (DuckDB, ADBC), ODBC and Db2 on Windows; from the one-line notes of the FEATURES.md table and `site/databases.html` | P2 | U |
 | ✅ **Troubleshooting and FAQ**, missing today: connection errors (TLS, SSH, proxy, keychain and master password), a DuckDB or ADBC download that fails, an agent that does not see a connection (access off, master password, password asked every time), the portable copy, where the data folder and the logs are, updates | P2 | U |
 | ✅ The guide's screenshots made by E2E scenarios, as `readme` and `gifs` do for `docs/screenshots/`, so they are redone when the interface changes; a script copies them into `site/img/screenshots/` (by hand today, see `site/README.md`) | P3 | U |
 | ✅ **Help in the app**: a Help entry in the command palette and the menu (guide, shortcuts, report a bug, what is new from CHANGELOG) and "?" links to the guide page from the connection form, Settings → Agents and Safety | P3 | D |
-| 🆕 User documentation apart from developer documentation: `docs/user/` (guide, features, shortcuts, agents, plugins) and `docs/dev/` (development, extending, releasing, benchmarks, and the internal documents in Italian), with docs/README.md and the links of the READMEs, the site and the code updated | P3 | U |
+| ✅ User documentation apart from developer documentation: `docs/user/` (guide, features, shortcuts, agents, plugins) and `docs/dev/` (development, extending, releasing, benchmarks, and the internal documents in Italian), with docs/README.md and the links of the READMEs, the site and the code updated | P3 | U |
 | ✅ A shorter README, in English and Italian: what it is, why, install, a link to the guide; the databases, features and agents sections, already in the guide and FEATURES.md, shrink to a few lines. A check that the two READMEs have the same sections (`scripts/readme-sections.test.mjs`) | P3 | U |
 | ✅ **Site docs pages from `docs/`**: a script in `scripts/` (no new build tool) turns the guide's Markdown into pages in the site's style, instead of `site/docs.html` linking the Markdown on GitHub; publishing the site is in group E (`scripts/build-site-docs.mjs`, with `--check`; the pages are in `site/docs/`) | P3 | U |
 | 🆕 **Translations of the guide**. **To decide**: which of the app's languages and which pages (getting started first) | P3 | U |

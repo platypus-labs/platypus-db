@@ -1,4 +1,4 @@
-// Journey (docs/COLLAUDO.md 5.4): an analyst on a SQLite file. A result of 100,000 rows loaded
+// Journey (docs/dev/COLLAUDO.md 5.4): an analyst on a SQLite file. A result of 100,000 rows loaded
 // in full; SQL on the result; the statistics of a column; the chart exported to PNG; the
 // result exported to Excel and to Parquet (files checked); an .xlsx and the .parquet imported
 // into new tables with the right types; the data changes, the statement runs again and

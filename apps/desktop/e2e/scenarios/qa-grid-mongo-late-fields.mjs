@@ -1,5 +1,5 @@
 // GRID-12 (medium), MongoDB. The grid's columns are the top-level fields of the first batch of
-// documents (docs/EXTENDING.md, "one column per top-level field of the first batch"): a field
+// documents (docs/dev/EXTENDING.md, "one column per top-level field of the first batch"): a field
 // that first appears in a later document never gets a column, even after all the documents
 // are loaded, so its values cannot be seen, copied or exported from the grid.
 // Steps: a collection of 3000 documents {_id, a}, the 2501st also has `late`; open its data,

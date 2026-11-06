@@ -1,7 +1,7 @@
 // Fills the package manager manifests in `packaging/` (winget, Homebrew cask, AUR, Flatpak)
 // for a release: version, date, download URLs and the SHA-256 of the installers, read from the
 // folder where the release's files were downloaded. A manifest whose installers are not there
-// is skipped (v0.2.1 has only the Windows ones). Submitting them is in docs/RELEASING.md.
+// is skipped (v0.2.1 has only the Windows ones). Submitting them is in docs/dev/RELEASING.md.
 //
 //   node scripts/packaging.mjs 0.3.0 ~/Downloads/v0.3.0
 //   node scripts/packaging.mjs 0.3.0 ~/Downloads/v0.3.0 --date 2026-11-20 --out packaging-out

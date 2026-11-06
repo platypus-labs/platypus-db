@@ -1,8 +1,8 @@
-[← README](README.md)
+[← README](../README.md)
 
 # Copertura dei test
 
-Per ogni funzionalità visibile all'utente, il test che la copre. Le funzionalità vengono da [FEATURES.md](FEATURES.md) e dalle righe ✅ della [roadmap](ROADMAP.md); i test sono gli scenari E2E, i test di conformance e, quando sono l'unica copertura, i test unitari. È l'inventario del gruppo S (collaudo finale): i buchi in fondo (sezione "Buchi") diventano test.
+Per ogni funzionalità visibile all'utente, il test che la copre. Le funzionalità vengono da [FEATURES.md](../user/FEATURES.md) e dalle righe ✅ della [roadmap](ROADMAP.md); i test sono gli scenari E2E, i test di conformance e, quando sono l'unica copertura, i test unitari. È l'inventario del gruppo S (collaudo finale): i buchi in fondo (sezione "Buchi") diventano test.
 
 ## Come si legge
 

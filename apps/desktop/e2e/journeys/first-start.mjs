@@ -1,4 +1,4 @@
-// Complete user journey 1, the first start (docs/COLLAUDO.md 5.1): an empty profile opens on the
+// Complete user journey 1, the first start (docs/dev/COLLAUDO.md 5.1): an empty profile opens on the
 // home screen; a PostgreSQL connection (docker, port 55432) is made with a wrong password first
 // (a readable error) and then the right one, saved; a SQLite one; a table opened, a cell edited
 // and saved; a query in a new editor, exported to CSV; the app restarted (the connections connect

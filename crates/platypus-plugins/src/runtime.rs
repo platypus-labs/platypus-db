@@ -1,5 +1,5 @@
 //! The host side of the guest ABI (version [`API_VERSION`](crate::API_VERSION); the full
-//! description is in `docs/PLUGINS.md`).
+//! description is in `docs/user/PLUGINS.md`).
 //!
 //! Messages are UTF-8 JSON in the guest's linear memory. The host asks the guest for a
 //! buffer with `platypus_alloc(len) -> ptr`, writes the request there and calls an entry

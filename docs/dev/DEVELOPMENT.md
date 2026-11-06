@@ -1,13 +1,13 @@
-[← README](../README.md)
+[← README](../../README.md)
 
 # Development
 
 What comes next is planned in [ROADMAP.md](ROADMAP.md), and the working rules are in
-[CONTRIBUTING.md](../CONTRIBUTING.md). [EXTENDING.md](EXTENDING.md) explains how features
+[CONTRIBUTING.md](../../CONTRIBUTING.md). [EXTENDING.md](EXTENDING.md) explains how features
 plug in (actions, tab kinds, settings, driver capabilities); [RELEASING.md](RELEASING.md)
 how releases are made, and [MVP_PLAN.md](MVP_PLAN.md) the scope of the first release.
-All the documents are listed in [the documentation index](README.md), and the changes of each
-release in [CHANGELOG.md](../CHANGELOG.md).
+All the documents are listed in [the documentation index](../README.md), and the changes of each
+release in [CHANGELOG.md](../../CHANGELOG.md).
 
 ## Layout
 
@@ -77,7 +77,7 @@ cargo test --workspace --exclude platypus-desktop
 # The relative links and anchors of the documentation and the site; run it after changing docs/ or site/
 node scripts/check-links.mjs
 
-# The site's documentation pages (site/docs.html, site/docs/) are generated from docs/guide/ and the
+# The site's documentation pages (site/docs.html, site/docs/) are generated from docs/user/guide/ and the
 # reference documents; run it after changing them, then copy the pictures. --check writes nothing and
 # exits 1 when the pages on disk are not what the documents produce
 node scripts/build-site-docs.mjs
@@ -101,7 +101,7 @@ cargo test -p platypus-conformance --test scale -- --nocapture
 # benchmarks with thresholds (scripts/bench-thresholds.json); `app` needs an X display on Linux
 cargo bench -p platypus-driver-pg --bench decode && python3 scripts/bench.py decode
 xvfb-run -a -s "-screen 0 1600x1000x24" python3 scripts/bench.py app target/release/platypus-db
-# the same start and memory of another client, for docs/BENCHMARKS.md "Side by side" (no limits)
+# the same start and memory of another client, for docs/dev/BENCHMARKS.md "Side by side" (no limits)
 xvfb-run -a -s "-screen 0 1600x1000x24" python3 scripts/bench.py other dbeaver ~/dbeaver/dbeaver
 
 # frees the space `target` gathers: incremental caches, builds unused for 7 days (--days N)
@@ -150,7 +150,7 @@ tasks to start and stop the dev databases.
 ## Sample database
 
 `node scripts/sample-db.mjs` builds `samples/wildlife.db` from
-[samples/wildlife.sql](../samples/wildlife.sql): a SQLite platypus field survey with regions,
+[samples/wildlife.sql](../../samples/wildlife.sql): a SQLite platypus field survey with regions,
 rivers, researchers, tagged animals, surveys, about 15,000 sightings and a `platypus_stats`
 view, with foreign keys between all of them. Open it with a new SQLite connection, or from the
 welcome screen, which builds it with the scripts in `samples/scripts/`.

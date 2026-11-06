@@ -6,7 +6,7 @@
 //! host gives it and the host functions its approved permissions open: HTTP to the hosts it
 //! named, and a log. Every call has a fuel budget, a memory cap and a deadline; running out
 //! of any of them, or a trap, is an error of that call and never takes the app down. The
-//! guest ABI is described in `docs/PLUGINS.md`; [`runtime`] implements the host side.
+//! guest ABI is described in `docs/user/PLUGINS.md`; [`runtime`] implements the host side.
 //!
 //! [`package`] installs, lists, enables and removes plugins under `<data>/plugins`,
 //! [`action`] runs their commands, [`driver`] opens their connections, [`hooks`] calls them on

@@ -1,7 +1,7 @@
 # PlatypusDB — regole di lavoro
 
 Valgono per ogni sessione, umana o di un agente. Le regole di area e di qualità dei gruppi sono in
-[docs/ROADMAP.md](docs/ROADMAP.md) ("Regole per tutti i gruppi" e "Definition of Done"): vanno
+[docs/dev/ROADMAP.md](docs/dev/ROADMAP.md) ("Regole per tutti i gruppi" e "Definition of Done"): vanno
 rispettate anche quelle.
 
 ## Requisiti
@@ -21,8 +21,8 @@ rispettate anche quelle.
    scrivere codice.
 2. **Aggiornare graphify** se non è stato fatto negli ultimi 7 giorni: `uv tool upgrade graphifyy`;
    se la versione è cambiata, rilanciare `graphify install --platform windows` per aggiornare la skill.
-3. **Controllare la roadmap.** Se la sezione "Correzioni aperte" di [docs/ROADMAP.md](docs/ROADMAP.md)
-   ha delle righe, correggerle prima di tutto il resto. Poi, nella tabella "Lock dei gruppi" di [docs/ROADMAP.md](docs/ROADMAP.md)
+3. **Controllare la roadmap.** Se la sezione "Correzioni aperte" di [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md)
+   ha delle righe, correggerle prima di tutto il resto. Poi, nella tabella "Lock dei gruppi" di [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md)
    scegliere un gruppo disponibile, con le dipendenze pronte, seguendo le "Ondate consigliate".
    **Disponibile** vuol dire `libero` **oppure** `✅ fatto (…)`: un gruppo fatto in parte si prende
    per le funzionalità che restano, alla pari di uno libero. Non si prendono solo i gruppi
@@ -32,7 +32,7 @@ rispettate anche quelle.
    Un lock è scaduto se il branch indicato non ha commit da più di **3 giorni**
    (`git log -1 --format=%cd origin/<branch>`): in quel caso il gruppo si considera libero.
    Quando ogni gruppo della roadmap è completato, fatto, bloccato o in attesa, si sceglie da
-   [docs/EVOLUTIONS.md](docs/EVOLUTIONS.md) con le stesse regole (lock nella sua tabella, branch
+   [docs/dev/EVOLUTIONS.md](docs/dev/EVOLUTIONS.md) con le stesse regole (lock nella sua tabella, branch
    `evo-<lettera>-<tema>`).
 4. **Prendere il lock e pusharlo su main**, prima di scrivere codice:
    - su `main` aggiornato, modificare solo la riga del gruppo in "Lock dei gruppi":
@@ -114,7 +114,7 @@ sono molto più lenti che in locale: un test che passa in locale può fallire l�
    `docker/compose.yml`, `up -d` ricrea i container interessati.
 3. **Code review** con `/code-review` sul branch e correzione dei problemi trovati.
 4. **Aggiornare la documentazione**: la riga "Stato" del gruppo in ROADMAP.md, EXTENDING.md se
-   nasce un nuovo punto di estensione, docs/FEATURES.md per le funzionalità utente (e il README,
+   nasce un nuovo punto di estensione, docs/user/FEATURES.md per le funzionalità utente (e il README,
    in inglese e in italiano, solo se cambia il quadro generale).
 5. **Unire in `main`** (niente pull request):
    ```bash
