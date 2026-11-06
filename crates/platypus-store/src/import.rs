@@ -318,7 +318,7 @@ fn locate_files(project: &mut ImportedProject, base: Option<&Path>) {
 /// (`jdbc:db2:ALIAS`), which cannot be followed here.
 fn note_aliases(project: &mut ImportedProject) {
     for c in &project.connections {
-        if c.driver == DriverKind::Db2 && c.host.trim().is_empty() {
+        if c.driver == DriverKind::Db2 && c.host.trim().is_empty() && !c.database.is_empty() {
             let note = ImportNote::CatalogedAlias {
                 alias: c.database.clone(),
             };
