@@ -54,10 +54,10 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 | Group | Lock |
 |---|---|
 | A — Agents and MCP | ✅ completed |
-| B — Plugins and mods | 🔒 Delfa · evo-b-plugins · 2026-11-06 |
+| B — Plugins and mods | ✅ completed |
 | C — Kerberos and authentication | ✅ completed |
 | D — User documentation | ✅ done (P2; P3 in part) |
-| E — Publishing and distribution | free |
+| E — Publishing and distribution | ⏸ waiting (the owner's decision on making the repository public) |
 
 ### Group A — Agents and MCP
 
@@ -102,7 +102,7 @@ configuration. The rows below add only what is not there.
 
 ### Group B — Plugins and mods
 
-**Status: to do.**
+**Status: completed.** Tested on Windows with WebView2, a frame's routes to the app's commands included; macOS and Linux are read from the sources, not run: see [PLUGINS.md](PLUGINS.md).
 
 **Area:** `crates/platypus-plugins`, `apps/desktop/src/plugins/`, [PLUGINS.md](PLUGINS.md); existing hook points in [EXTENDING.md](EXTENDING.md): action registry, `registerTabKind`, `GridSourceExtensions`, settings sections, theme
 **Depends on:** WASM plugins from roadmap group G (actions and drivers, ABI 1)
