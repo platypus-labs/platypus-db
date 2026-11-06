@@ -69,6 +69,9 @@ runs, as a change. See [Agents and the CLI](../../AGENTS.md).
 ## Known limits
 
 - The app does not compare the server's version with a minimum; the client it downloads is 23.26.4.
+- For a server older than 12 the navigator reads the dictionary another way (no
+  `ORACLE_MAINTAINED`, no `FETCH FIRST`). Only Oracle Free 23.26 runs in the tests, so that path is
+  unexercised. Autonomous Database and other Oracle cloud services are not tested either.
 - Instant Client is not downloaded on macOS.
 
 ## Tested on

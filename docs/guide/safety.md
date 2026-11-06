@@ -20,13 +20,20 @@ off for the app. Agents are never more than read only on a production connection
 
 ## Make a connection read-only
 
-1. On the same page, tick **Read-only (warn before modifying data)**.
-2. A statement that may modify data is stopped in the editor with "`<name>` is read-only and this
-   may modify data."; some entry points ask "Run anyway?" instead. Import into tables is not
-   offered, and agents stay read only.
+1. On the same page, tick **Read-only (warn before modifying data)**. Despite its label, the
+   connection refuses; it does not only warn.
+2. A statement that may modify data does not run. The editor shows "`<name>` is read-only and this
+   may modify data." with no way past it. The same holds for Explain with analyze ("this
+   statement may modify data."), a file included with `@include`, a notebook cell ("this cell may
+   change data."), the command-line client, and a run on several connections, which lists the
+   connection as skipped ("Read-only connection").
+3. Not offered at all: **Import data…**, **Import data into a new table…**, **Paste CSV as a new
+   table…**, **Generate data…**, **Run SQL file…**, creating objects, saving in the table
+   designer, and editing rows in the grid. Agents stay read only.
 
 The lock button of an editor tab makes just that tab read-only, without changing the saved
-connection.
+connection. This is the one case that asks: the editor shows the same message with a
+**Run anyway** button, and the command-line client asks "Run anyway?".
 
 The same page has two more boxes: **No exports** (its data goes to no file, other database or
 agent) and **No data editing** (rows change only by SQL, not in the grid, imports or generated

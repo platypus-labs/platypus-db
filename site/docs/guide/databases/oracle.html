@@ -122,6 +122,7 @@
 <h2 id="known-limits">Known limits</h2>
 <ul>
 <li>The app does not compare the server&#39;s version with a minimum; the client it downloads is 23.26.4.</li>
+<li>For a server older than 12 the navigator reads the dictionary another way (no <code>ORACLE_MAINTAINED</code>, no <code>FETCH FIRST</code>). Only Oracle Free 23.26 runs in the tests, so that path is unexercised. Autonomous Database and other Oracle cloud services are not tested either.</li>
 <li>Instant Client is not downloaded on macOS.</li>
 </ul>
 <h2 id="tested-on">Tested on</h2>
