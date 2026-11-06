@@ -9,6 +9,8 @@ import type { TabInit, TabKindName, TabModel } from "./tabs/registry";
 
 export interface Workbench {
   connections(): SavedConnection[];
+  /** The active tab's connection or, with none open, the first of the project shown. */
+  currentConnection(): string | null;
   /** Replaces the saved connections, e.g. with what a command that changed one returned. */
   setConnections(all: SavedConnection[]): void;
   projects(): Project[];

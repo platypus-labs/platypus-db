@@ -3,7 +3,8 @@
 PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for
 `wasm32-unknown-unknown`, AssemblyScript, TinyGo, C, Zig…). A plugin can add **actions**
 (commands in the editor, the result grid and the navigator), a **driver** for a database that
-speaks HTTP, **event hooks** and a **settings page**. Plugins run in a sandbox: an interpreter
+speaks HTTP, **event hooks**, a **settings page**, **tabs and side panels** with pages of their own
+and **extensions of the result grid**. Plugins run in a sandbox: an interpreter
 (`wasmi`) with no access to files, programs, sockets or the clock, only to the JSON messages the
 app gives them and the host functions their permissions open.
 
@@ -17,6 +18,7 @@ A package is a folder, or a `.zip` with the files at its root or in one folder:
 ```
 plugin.toml    the manifest
 plugin.wasm    the module
+ui/            what the pages of its tabs and panels load, if it has any
 ```
 
 ```toml
@@ -89,13 +91,14 @@ A kind and what it declares go together, and each needs its permission: declarin
 that is only a `theme` has no module: nothing of it runs, and a `plugin.wasm` beside its manifest
 is neither read nor copied. Everything else needs one.
 
-Tabs, panels, grid extensions and themes are declared and checked here, and shown at install; what
-the app does with them comes with those features.
+Themes are declared and checked here, and shown at install; what the app does with them comes with
+that feature. Tabs and panels are below in [Tabs and side panels](#tabs-and-side-panels), grid
+extensions in [Grid extensions](#grid-extensions).
 
 ## ABI, versions 1 and 2
 
-Version 2 adds an entry point (`platypus_hook`) and a host function (`setting`) to version 1. The
-rest is the same, and a module of version 1 cannot import `setting`: it would not load.
+Version 2 adds two entry points (`platypus_hook`, `platypus_grid`) and a host function (`setting`) to
+version 1. The rest is the same, and a module of version 1 cannot import `setting`: it would not load.
 
 Messages are UTF-8 JSON in the module's linear memory. The module exports:
 
@@ -108,6 +111,7 @@ Messages are UTF-8 JSON in the module's linear memory. The module exports:
 | `platypus_action` | `(ptr: i32, len: i32) -> i64` | runs an action (kind `actions`) |
 | `platypus_driver` | `(ptr: i32, len: i32) -> i64` | one driver operation (kind `driver`) |
 | `platypus_hook` | `(ptr: i32, len: i32) -> i64` | one event (kind `hooks`, ABI 2) |
+| `platypus_grid` | `(ptr: i32, len: i32) -> i64` | one batch (kind `grid`, ABI 2) |
 
 A call: the host allocates a buffer with `platypus_alloc`, writes the request, calls the entry
 point with its pointer and length (0, 0 for an empty request), and reads the answer at the
@@ -309,6 +313,114 @@ its text) or `{"error": "…"}`. Only the keys of its own manifest can be named,
 values are out of reach; any other key gets an error and the call goes on. Removing a plugin
 forgets its values, and an update forgets those of the fields it dropped.
 
+### Tabs and side panels
+
+`[[tabs]]` adds a kind of tab and `[[panels]]` a side panel, each with its page, an HTML document of
+the package. The command palette has a command for each with its title, and a connection's menu in
+the navigator opens a tab on that connection (a tab belongs to a connection). A panel opens beside
+the tabs, one at a time, and goes when it is closed. A tab is kept for the next start, as other tabs
+are; while its plugin is off or gone it says so, and comes back with it.
+
+What is copied at install: the documents the manifest names, and under `ui/` the files of the kinds
+a page can load (`html`, `js`, `css`, `json`, `svg`, `png`, `jpg`, `gif`, `webp`, `woff2`), at most
+256 files, 8 MB each and 32 MB in all. The hash of the review covers them. A name that climbs out of
+the package or a link is refused. Anything else is left behind. A document the manifest does not
+name cannot be opened, and neither `plugin.toml` nor `plugin.wasm` can be read from a page.
+
+**A page is untrusted, and it is isolated by these, all of them:**
+
+- It runs in `<iframe sandbox="allow-scripts">`, never `allow-same-origin`, so on an opaque origin:
+  no access to the app's DOM, `window.__TAURI__`, `__TAURI_INTERNALS__` or the app's storage, and it
+  has no storage of its own. No popups, forms, dialogs, downloads or top navigation.
+- It is served from a scheme of its own (`platypus-plugin`), whose answers carry its policy:
+  `sandbox allow-scripts` again, whoever opens it, and `default-src 'none'`, with scripts and styles
+  only inline or from the plugin's own folder, images and fonts also from `data:`. No `fetch`,
+  WebSocket, frames, workers, `eval`, `<base>` or forms, and WebRTC blocked. The app's own policy
+  admits this scheme as a frame and nothing else (`frame-src`), which also stops a page navigating
+  anywhere outside it.
+- Messages are the only way out. One counts only if it comes from that frame's window and from the
+  opaque origin, and nothing of it is read before that.
+- Tauri puts its scripts in the main frame only and its calls need a key given to that frame, so a
+  frame has no way to call a command, even if it finds the transport.
+
+`window.platypus` is there before the page's first script, with `request(name, params)`, a promise,
+and `on(listener)`, told `listener("init", {plugin, language, theme, connection})` (a late listener
+too), and `listener("theme", theme)` when the theme changes. `theme` is the app's colours and fonts
+as CSS variables, `connection` the name, driver and database of the tab's connection, or the active
+tab's for a panel; never its host, user or password.
+
+| Request | Params | Needs | Answer |
+|---|---|---|---|
+| `setting` | `{key}` | its manifest declares it, and not as a `secret` | the value |
+| `notify` | `{text}` | | shows a message, one line of plain text with the plugin's name |
+| `clipboard` | `{text}` | `permissions.clipboard` | puts the text on the clipboard |
+| `open_query` | `{text}` | | opens a new SQL tab with this text, **not run** |
+| `http` | as the `http` host function | the host in `permissions.http` | `{status, headers, body}` |
+| `run_action` | `{action, context}` | an action of its own module | what the action answers (not applied) |
+| `state_get` | `{}` | | what its pages kept, `null` before anything |
+| `state_set` | `{value}` | at most 256 KB, for each plugin | kept until the plugin is removed |
+
+There is nothing else. **A page cannot run SQL, or read saved connections, passwords or a query's
+rows**, and no permission opens that: the text of `open_query` runs only if the user runs it, through
+the Safety checks of any statement. The network is reached only by the `http` request, by the app,
+with the same limits as a module. Each request is checked in the page and again in the backend, for
+its name, its fields, its permission, its size (1 MB) and its rate (50 a second after a burst of 100,
+and a message or a new tab once a second). A refusal rejects the promise and the page goes on.
+
+The app **stops a page**, removes it and says why, with a button to load it again, when it leaves its
+document, sends more than 500 messages over the rate, sends three messages that are not the app's,
+takes more than 20 s to load, or leaves four pings in a row unanswered, 8 s.
+
+**What this cannot protect from.** In WebView2 (Windows) a sandboxed frame on this scheme runs in a
+process of its own, and the app keeps answering while it loops forever or eats memory, until the
+pings remove it. In WebKit (macOS, Linux) a frame shares the page's thread and process, so **a page
+that loops forever freezes the whole window, and one that exhausts memory can take it down**: there
+the app has no code running to stop it, and that is not something a same-process frame can be
+protected from. A message's size can be known only once it has arrived: one very large message (a
+400 MB string costs about a second to copy) is paid for before it is refused. The page can also draw
+anything inside its own rectangle, a fake dialog included, and has the keyboard while it has the focus.
+So install a plugin with a page as you would any program you run: the sandbox limits what it reaches,
+not what it can make you believe.
+
+### Grid extensions
+
+`[[grid.columns]]`, `[[grid.renderers]]` and `[[grid.actions]]` add to the result grid, for the columns
+of the database types in `types`, ignoring case and sizes (`varchar(20)` is `varchar`); all of them
+without it. `platypus_grid` takes batches, in a new instance each, and keeps nothing:
+
+| Request | Answer |
+|---|---|
+| `{"op": "column", "id", "columns": [{"name", "type", "masked"}], "rows": [[…], …]}` | `{"values": […]}`, one per row |
+| `{"op": "render", "id", "column": {…}, "values": ["…", …]}` | `{"cells": […]}`, one per value |
+| `{"op": "action", "id", "column": {…}, "value": "…"}` | what an action answers |
+
+- A **computed column** is one more column after the result's, whose rows hold the values of the columns
+  it applies to (and with no such column in the result, it is not added). A value is text, a number, a
+  boolean, `null`, or `{"error": "…"}`, which shows in that cell. It is not part of the result, so
+  copies, exports, totals and sorting leave it out, as with the grid's own computed columns.
+- A **renderer** draws the cells of a column, one renderer per column, the first to claim it. A cell is
+  `null` (as usual) or `{"text", "color", "background", "hint", "strike"}`, all optional, colours as
+  `#rgb`, `#rrggbb` or `#rrggbbaa`. That is all it can say: the grid draws on a canvas, so a text is
+  drawn as text, and a field that is not on this list, or a colour that is not one, is an error shown in
+  that cell. There is no HTML. An unsaved edit, and search highlights, are drawn over it.
+- A **command** is in the cell's menu, under Plugins. It runs on the focused cell, and its answer does
+  what an action's does; `copy` needs `permissions.clipboard`.
+
+**A plugin reads a cell as the grid shows it.** While masking is on (Settings › Safety), a sensitive cell
+comes as `••••••` with `"masked": true`; NULL stays `null`. It has no network here, whatever its `http`
+says: a value read to draw a cell has nowhere to go.
+
+A batch has 300 million units of fuel, a tenth of an action's, 64 MB of memory, 4 MB per message and 2 s
+of wall time; at most 1000 rows or values, each cut at 16 KB (a renderer leaves longer ones alone). A
+batch that crashes, runs out, or answers the wrong number of values costs its extension for that result:
+a column shows the error in its cells and a renderer goes back to plain values, the user is told once,
+and the grid goes on.
+
+**The grid never calls a module while drawing.** A cell is one map lookup, by row for a column and by
+value for a renderer. A miss draws the value as it is, or as loading, and notes it; a timer outside the
+frame sends what was noted, at most 200 at a time and one batch at a time per extension, the most recent
+first, and redraws when the answer comes. Without an extension the grid goes through none of this.
+
 ## Writing a plugin in Rust
 
 `examples/plugins/sdk` is a small guest library: `export_allocator!()` exports
@@ -351,6 +463,11 @@ The examples build with `opt-level = "z"`, LTO and `panic = "abort"`: about 90 K
   and log what ran. `tests/hooks.rs` runs it, and also without its permission.
 - `examples/plugins/settings-demo`: a settings page with a field of each type, and actions that
   read them, and try a key the manifest does not declare.
+- `examples/plugins/panel-demo`: a tab and a side panel: pages in `ui/` that read a setting, keep their
+  state, call the module, show a message and open a query. `tests/frames.rs` serves them, and also
+  without their permission.
+- `examples/plugins/grid-demo`: a computed column, a renderer and a command on a cell, with rows that
+  break a batch on purpose. `tests/grid.rs` runs it, and also without its permission.
 
 After changing an example, build it again and copy its module next to its `plugin.toml`: the
 tests use the committed `plugin.wasm`.

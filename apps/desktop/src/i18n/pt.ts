@@ -3311,6 +3311,19 @@ const pt: Record<string, string> = {
   "New since the installed version": "Novo em relação à versão instalada",
   "Not set": "Não definido",
   "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "O hook do plugin “{name}” falhou e a ação prosseguiu: {reason}",
+  "“{title}” of the plugin “{name}” failed: {reason}": "“{title}” do plugin “{name}” falhou: {reason}",
+  "Add a connection first: a tab belongs to one.": "Adicione primeiro uma conexão: cada separador pertence a uma.",
+  "The page is not isolated as it should be.": "A página não está isolada como deveria.",
+  "The page sent too many messages.": "A página enviou demasiadas mensagens.",
+  "The page sent messages the app does not understand.": "A página enviou mensagens que a aplicação não entende.",
+  "The page tried to leave its document.": "A página tentou sair do seu documento.",
+  "The page stopped responding.": "A página deixou de responder.",
+  "The page did not load.": "A página não foi carregada.",
+  "The page of “{name}” was stopped": "A página de “{name}” foi parada",
+  "Load it again": "Carregar de novo",
+  "Resize the plugin's panel": "Redimensionar o painel do plugin",
+  "This tab's plugin is not available": "O plugin deste separador não está disponível",
+  "It was removed or turned off. Settings › Plugins lists what is installed.": "Foi removido ou desligado. Definições › Plugins lista o que está instalado.",
 };
 
 export default pt;

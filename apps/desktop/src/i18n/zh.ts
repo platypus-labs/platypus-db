@@ -3311,6 +3311,19 @@ const zh: Record<string, string> = {
   "New since the installed version": "相较已安装版本新增",
   "Not set": "未设置",
   "The hook of the plugin “{name}” failed and the action went ahead: {reason}": "插件“{name}”的钩子失败，操作已继续：{reason}",
+  "“{title}” of the plugin “{name}” failed: {reason}": "插件“{name}”的“{title}”失败:{reason}",
+  "Add a connection first: a tab belongs to one.": "请先添加连接:标签页属于某个连接。",
+  "The page is not isolated as it should be.": "该页面未按要求隔离。",
+  "The page sent too many messages.": "该页面发送了过多消息。",
+  "The page sent messages the app does not understand.": "该页面发送了应用无法理解的消息。",
+  "The page tried to leave its document.": "该页面试图离开其文档。",
+  "The page stopped responding.": "该页面已停止响应。",
+  "The page did not load.": "该页面未能加载。",
+  "The page of “{name}” was stopped": "“{name}”的页面已被停止",
+  "Load it again": "重新加载",
+  "Resize the plugin's panel": "调整插件面板大小",
+  "This tab's plugin is not available": "此标签页的插件不可用",
+  "It was removed or turned off. Settings › Plugins lists what is installed.": "它已被移除或关闭。设置 › 插件列出了已安装的内容。",
 };
 
 export default zh;

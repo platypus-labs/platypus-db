@@ -23,6 +23,10 @@ function setPlugins(list: InstalledPlugin[]) {
   if (list.some((p) => p.enabled && p.manifest.hooks?.length)) {
     import("./hookNotices").catch((e: unknown) => console.warn("plugins", e));
   }
+  // What their tabs, panels and grid extensions need, only once a plugin has one.
+  if (list.some((p) => p.enabled && (p.manifest.tabs || p.manifest.panels || p.manifest.grid))) {
+    import("./extensions").catch((e: unknown) => console.warn("plugins", e));
+  }
 }
 
 /** Reads the plugins again from the data folder. */

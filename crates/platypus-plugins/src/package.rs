@@ -20,9 +20,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::action::{self, ActionInfo, ActionOutcome};
+use crate::frames::{self, PackageFiles};
+use crate::grid::GridLimits;
 use crate::hooks::HookLimits;
 use crate::manifest::{Capability, Kind, MANIFEST_FILE, MODULE_FILE, Manifest, Permissions};
-use crate::runtime::{self, DESCRIBE, Description, Grants, HOOK, Limits, Sandbox};
+use crate::runtime::{self, DESCRIBE, Description, GRID, Grants, HOOK, Limits, Sandbox};
 use crate::settings::{SettingState, SettingsAccess, SettingsFiles};
 use crate::{PluginError, driver};
 
@@ -82,6 +84,7 @@ pub struct Plugins {
     dir: PathBuf,
     limits: Limits,
     hook_limits: HookLimits,
+    grid_limits: GridLimits,
     settings: SettingsFiles,
 }
 
@@ -95,6 +98,7 @@ impl Plugins {
             dir,
             limits: Limits::default(),
             hook_limits: HookLimits::default(),
+            grid_limits: GridLimits::default(),
         }
     }
 
@@ -119,6 +123,13 @@ impl Plugins {
         self
     }
 
+    /// The same plugins, their grid extensions run with other limits.
+    #[must_use]
+    pub fn with_grid_limits(mut self, limits: GridLimits) -> Self {
+        self.grid_limits = limits;
+        self
+    }
+
     /// The same plugins, their secret settings kept in `secrets` and not the system's keychain.
     #[must_use]
     pub fn with_secrets(mut self, secrets: Arc<dyn SecretStore>) -> Self {
@@ -132,6 +143,15 @@ impl Plugins {
 
     pub(crate) fn hook_limits(&self) -> HookLimits {
         self.hook_limits
+    }
+
+    pub(crate) fn grid_limits(&self) -> GridLimits {
+        self.grid_limits
+    }
+
+    /// The folder holding the plugins of this data folder.
+    pub(crate) fn dir(&self) -> &Path {
+        &self.dir
     }
 
     /// The folder of an installed plugin's version.
@@ -159,6 +179,7 @@ impl Plugins {
             manifest,
             wasm,
             hash,
+            ..
         } = read_package(source)?;
         let description = describe(&manifest, wasm, self.limits).await?;
         let state = self.read_state()?;
@@ -181,6 +202,7 @@ impl Plugins {
         let Package {
             manifest,
             wasm,
+            files,
             hash,
         } = read_package(source)?;
         if hash != reviewed {
@@ -197,7 +219,7 @@ impl Plugins {
         let home = self.dir.join(&manifest.id);
         std::fs::create_dir_all(&home).map_err(PluginError::io(&home))?;
         let tmp = home.join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
-        let written = write_package(&tmp, &manifest, &wasm);
+        let written = write_package(&tmp, &manifest, &wasm, &files);
         if let Err(e) = written {
             let _ = std::fs::remove_dir_all(&tmp);
             return Err(e);
@@ -328,6 +350,7 @@ impl Plugins {
         if home.exists() {
             std::fs::remove_dir_all(&home).map_err(PluginError::io(&home))?;
         }
+        frames::forget_state(&self.dir, id);
         self.settings.forget(id, &fields)
     }
 
@@ -450,12 +473,18 @@ async fn describe(
         ..Grants::default()
     };
     let hooks = !manifest.hooks.is_empty();
+    let grid = !manifest.grid.is_empty();
     let description: Description = blocking(move || {
         let module = runtime::compile(&wasm)?;
         let mut sandbox = Sandbox::new(&module, &grants, limits)?;
         if hooks && !sandbox.exports(HOOK) {
             return Err(PluginError::Invalid(format!(
                 "the manifest declares hooks and the module does not export `{HOOK}`"
+            )));
+        }
+        if grid && !sandbox.exports(GRID) {
+            return Err(PluginError::Invalid(format!(
+                "the manifest declares grid extensions and the module does not export `{GRID}`"
             )));
         }
         sandbox.call(DESCRIBE, &serde_json::json!({}))
@@ -486,18 +515,23 @@ fn matches_manifest(manifest: &Manifest, description: &Description) -> Result<()
     Err(PluginError::Invalid(why.to_owned()))
 }
 
-/// A package as read: its manifest, its module, and the hash of both files.
+/// A package as read: its manifest, its module, the documents of its tabs and panels with what
+/// they load, and the hash of them all.
 struct Package {
     manifest: Manifest,
     wasm: Vec<u8>,
+    files: PackageFiles,
     hash: String,
 }
 
-/// The SHA-256 of the manifest's bytes and the module's, each preceded by its length so the
-/// boundary between them counts too.
-fn package_hash(manifest: &[u8], wasm: &[u8]) -> String {
+/// The SHA-256 of the manifest's bytes, the module's and those of the files with their names,
+/// each preceded by its length so the boundaries between them count too.
+fn package_hash(manifest: &[u8], wasm: &[u8], files: &PackageFiles) -> String {
     let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
-    for part in [manifest, wasm] {
+    let named = files
+        .iter()
+        .flat_map(|(name, bytes)| [name.as_bytes(), bytes.as_slice()]);
+    for part in [manifest, wasm].into_iter().chain(named) {
         ctx.update(&(part.len() as u64).to_le_bytes());
         ctx.update(part);
     }
@@ -513,30 +547,45 @@ fn package_hash(manifest: &[u8], wasm: &[u8]) -> String {
 /// The manifest and the module of a folder or a `.zip`; a package that needs no module has
 /// none, even if a file is there: nothing of it is read, copied or run.
 fn read_package(source: &Path) -> Result<Package, PluginError> {
-    let (manifest, zipped) = if source.is_dir() {
-        (read_file(&source.join(MANIFEST_FILE), MAX_MANIFEST)?, None)
+    if source.is_dir() {
+        let manifest = read_file(&source.join(MANIFEST_FILE), MAX_MANIFEST)?;
+        let parsed = parse_manifest(&manifest)?;
+        let wasm = if parsed.needs_module() {
+            read_file(&source.join(MODULE_FILE), MAX_MODULE)?
+        } else {
+            Vec::new()
+        };
+        let files = frames::read_folder_files(source, &parsed)?;
+        return Ok(package(&manifest, parsed, wasm, files));
+    }
+    let mut zip = ZipPackage::open(source)?;
+    let manifest = zip.read_manifest()?;
+    let parsed = parse_manifest(&manifest)?;
+    let wasm = if parsed.needs_module() {
+        zip.read_module()?
     } else {
-        let (manifest, module) = read_zip(source)?;
-        (manifest, Some(module))
+        Vec::new()
     };
-    let text = std::str::from_utf8(&manifest)
-        .map_err(|_| PluginError::Invalid(format!("{MANIFEST_FILE} is not UTF-8 text")))?;
-    let parsed = Manifest::parse(text)?;
-    let wasm = match zipped {
-        _ if !parsed.needs_module() => Vec::new(),
-        Some(module) => {
-            module.ok_or_else(|| PluginError::Invalid(format!("the .zip has no {MODULE_FILE}")))?
-        }
-        None => read_file(&source.join(MODULE_FILE), MAX_MODULE)?,
-    };
-    Ok(Package {
-        hash: package_hash(&manifest, &wasm),
-        manifest: parsed,
-        wasm,
-    })
+    let files = zip.read_files(&parsed)?;
+    Ok(package(&manifest, parsed, wasm, files))
 }
 
-fn read_file(path: &Path, max: u64) -> Result<Vec<u8>, PluginError> {
+fn parse_manifest(bytes: &[u8]) -> Result<Manifest, PluginError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| PluginError::Invalid(format!("{MANIFEST_FILE} is not UTF-8 text")))?;
+    Manifest::parse(text)
+}
+
+fn package(manifest: &[u8], parsed: Manifest, wasm: Vec<u8>, files: PackageFiles) -> Package {
+    Package {
+        hash: package_hash(manifest, &wasm, &files),
+        manifest: parsed,
+        wasm,
+        files,
+    }
+}
+
+pub(crate) fn read_file(path: &Path, max: u64) -> Result<Vec<u8>, PluginError> {
     let file = std::fs::File::open(path).map_err(PluginError::io(path))?;
     let mut bytes = Vec::new();
     file.take(max + 1)
@@ -552,43 +601,57 @@ fn read_file(path: &Path, max: u64) -> Result<Vec<u8>, PluginError> {
     Ok(bytes)
 }
 
-/// The manifest of a `.zip`, at its root or in its one folder, and the module beside it if any.
-fn read_zip(source: &Path) -> Result<(Vec<u8>, Option<Vec<u8>>), PluginError> {
-    let file = std::fs::File::open(source).map_err(PluginError::io(source))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
-        PluginError::Invalid(format!(
-            "{} is neither a folder nor a .zip package: {e}",
-            source.display()
-        ))
-    })?;
-    let names: Vec<String> = archive
-        .file_names()
-        .filter_map(|n| n.ok().map(std::borrow::Cow::into_owned))
-        .collect();
-    let manifest_name = names
-        .iter()
-        .filter(|n| n.as_str() == MANIFEST_FILE || n.ends_with(&format!("/{MANIFEST_FILE}")))
-        .min_by_key(|n| n.matches('/').count())
-        .ok_or_else(|| PluginError::Invalid(format!("the .zip has no {MANIFEST_FILE}")))?
-        .clone();
-    if manifest_name.matches('/').count() > 1 {
-        return Err(PluginError::Invalid(format!(
-            "{MANIFEST_FILE} must be at the root of the .zip or in its one folder"
-        )));
+/// A `.zip` package: the manifest at its root or in its one folder, the rest beside it.
+struct ZipPackage<'a> {
+    source: &'a Path,
+    archive: zip::ZipArchive<std::fs::File>,
+    names: Vec<String>,
+    /// What the names of its files start with: the folder of the manifest, with its `/`.
+    prefix: String,
+}
+
+impl<'a> ZipPackage<'a> {
+    fn open(source: &'a Path) -> Result<Self, PluginError> {
+        let file = std::fs::File::open(source).map_err(PluginError::io(source))?;
+        let archive = zip::ZipArchive::new(file).map_err(|e| {
+            PluginError::Invalid(format!(
+                "{} is neither a folder nor a .zip package: {e}",
+                source.display()
+            ))
+        })?;
+        let names: Vec<String> = archive
+            .file_names()
+            .filter_map(|n| n.ok().map(std::borrow::Cow::into_owned))
+            .collect();
+        let manifest = names
+            .iter()
+            .filter(|n| n.as_str() == MANIFEST_FILE || n.ends_with(&format!("/{MANIFEST_FILE}")))
+            .min_by_key(|n| n.matches('/').count())
+            .ok_or_else(|| PluginError::Invalid(format!("the .zip has no {MANIFEST_FILE}")))?;
+        if manifest.matches('/').count() > 1 {
+            return Err(PluginError::Invalid(format!(
+                "{MANIFEST_FILE} must be at the root of the .zip or in its one folder"
+            )));
+        }
+        let prefix = manifest[..manifest.len() - MANIFEST_FILE.len()].to_owned();
+        Ok(Self {
+            source,
+            archive,
+            names,
+            prefix,
+        })
     }
-    let module_name = format!(
-        "{}{MODULE_FILE}",
-        &manifest_name[..manifest_name.len() - MANIFEST_FILE.len()]
-    );
-    let mut read = |name: &str, max: u64| -> Result<Vec<u8>, PluginError> {
-        let entry = archive
+
+    fn read(&mut self, name: &str, max: u64) -> Result<Vec<u8>, PluginError> {
+        let entry = self
+            .archive
             .by_name(name)
             .map_err(|_| PluginError::Invalid(format!("the .zip has no {name}")))?;
         let mut bytes = Vec::new();
         entry
             .take(max + 1)
             .read_to_end(&mut bytes)
-            .map_err(PluginError::io(source))?;
+            .map_err(PluginError::io(self.source))?;
         if bytes.len() as u64 > max {
             return Err(PluginError::Invalid(format!(
                 "{name} is larger than {} KB",
@@ -596,17 +659,48 @@ fn read_zip(source: &Path) -> Result<(Vec<u8>, Option<Vec<u8>>), PluginError> {
             )));
         }
         Ok(bytes)
-    };
-    let manifest = read(&manifest_name, MAX_MANIFEST)?;
-    let module = if names.contains(&module_name) {
-        Some(read(&module_name, MAX_MODULE)?)
-    } else {
-        None
-    };
-    Ok((manifest, module))
+    }
+
+    fn read_manifest(&mut self) -> Result<Vec<u8>, PluginError> {
+        self.read(&format!("{}{MANIFEST_FILE}", self.prefix), MAX_MANIFEST)
+    }
+
+    fn read_module(&mut self) -> Result<Vec<u8>, PluginError> {
+        let name = format!("{}{MODULE_FILE}", self.prefix);
+        if !self.names.contains(&name) {
+            return Err(PluginError::Invalid(format!(
+                "the .zip has no {MODULE_FILE}"
+            )));
+        }
+        self.read(&name, MAX_MODULE)
+    }
+
+    /// The files of the tabs and panels of `manifest`, by their paths in the package.
+    fn read_files(&mut self, manifest: &Manifest) -> Result<PackageFiles, PluginError> {
+        let inside: Vec<String> = self
+            .names
+            .iter()
+            .filter_map(|n| n.strip_prefix(self.prefix.as_str()))
+            .map(str::to_owned)
+            .collect();
+        let wanted = frames::choose_files(manifest, &inside)?;
+        let mut files = PackageFiles::new();
+        let mut budget = frames::Budget::default();
+        for path in wanted {
+            let bytes = self.read(&format!("{}{path}", self.prefix), frames::MAX_FILE)?;
+            budget.spend(&path, bytes.len())?;
+            files.insert(path, bytes);
+        }
+        Ok(files)
+    }
 }
 
-fn write_package(dir: &Path, manifest: &Manifest, wasm: &[u8]) -> Result<(), PluginError> {
+fn write_package(
+    dir: &Path,
+    manifest: &Manifest,
+    wasm: &[u8],
+    files: &PackageFiles,
+) -> Result<(), PluginError> {
     std::fs::create_dir_all(dir).map_err(PluginError::io(dir))?;
     let text = toml::to_string_pretty(manifest).map_err(|e| PluginError::Invalid(e.to_string()))?;
     let path = dir.join(MANIFEST_FILE);
@@ -615,7 +709,7 @@ fn write_package(dir: &Path, manifest: &Manifest, wasm: &[u8]) -> Result<(), Plu
         let path = dir.join(MODULE_FILE);
         std::fs::write(&path, wasm).map_err(PluginError::io(&path))?;
     }
-    Ok(())
+    frames::write_files(dir, files)
 }
 
 #[cfg(test)]

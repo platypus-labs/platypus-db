@@ -20,6 +20,18 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **Plugins**: a settings page per plugin from its manifest (text, number, boolean, choice, secret),
   saved in the data folder, secrets in the system's keychain and never in a file, read by the module
   through a host function limited to its own values.
+- **Plugins**: tabs and side panels with an HTML page of the plugin. A page runs in a sandboxed frame
+  on an opaque origin, with a strict policy of its own and no network, and cannot reach the app's
+  DOM, globals or storage. It talks to the app through a short list of requests, each checked for its
+  permission, size and rate in the page and the backend; none runs SQL or reads connections, passwords
+  or rows. A page that leaves its document, floods the app or stops responding is stopped and the user
+  told. On WebKit (macOS, Linux) a page that loops forever still freezes the window: see the plugin
+  documentation.
+- **Plugins**: computed columns, cell renderers and cell commands in the result grid, in the WebAssembly
+  sandbox with fuel and time limits and no network. They read a masked cell as dots, and a renderer
+  answers text and colours, never HTML. A column that fails shows its error in its cells. A frame never
+  calls a module: answers are cached and fetched in batches, away from drawing, and without an extension
+  the grid is as it was.
 
 ### Changed
 

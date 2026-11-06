@@ -194,6 +194,21 @@ impl SettingsAccess {
     }
 }
 
+/// The value of the field `key` for a plugin's page in a frame: a secret is for its module only,
+/// which has no way to show it, and a page is refused it.
+pub(crate) fn plain_value(access: &SettingsAccess, key: &str) -> Result<Value, PluginError> {
+    if access
+        .fields
+        .iter()
+        .any(|f| f.key == key && f.kind == SettingKind::Secret)
+    {
+        return Err(PluginError::Denied(format!(
+            "`{key}` is a secret: a page cannot read it"
+        )));
+    }
+    access.value(key)
+}
+
 /// The answer to a `setting` call of a guest: `{"ok": value}` or `{"error": message}`. The
 /// access is `None` under a sandbox without any settings.
 pub(crate) fn answer(access: Option<&SettingsAccess>, request: &[u8]) -> Value {
