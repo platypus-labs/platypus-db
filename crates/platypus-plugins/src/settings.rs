@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::PluginError;
 use crate::extensions::{SettingField, SettingKind};
 
-const FILE: &str = "settings.toml";
+pub(crate) const FILE: &str = "settings.toml";
 /// The keychain's service for plugin secrets, apart from the connections' passwords.
 const SECRET_SERVICE: &str = "platypusdb-plugins";
 /// The longest value saved, in bytes.
@@ -127,24 +127,24 @@ impl SettingsFiles {
         self.write(|store| store.set(&file_key(plugin, &field.key), stored))
     }
 
-    /// Takes the secrets of `fields` out of the keychain. Best effort: a secret left there harms
-    /// nothing, as it is read only through a field.
-    pub(crate) fn forget_secrets(&self, plugin: &str, fields: &[SettingField]) {
-        for field in fields {
-            if field.kind == SettingKind::Secret {
-                let _ = self.secrets.delete(secret_id(plugin, &field.key));
-            }
+    /// Takes the secrets of `keys` out of the keychain: each is tried, and the first failure said.
+    pub(crate) fn forget_secrets(&self, plugin: &str, keys: &[String]) -> Result<(), PluginError> {
+        let mut result = Ok(());
+        for key in keys {
+            let deleted = self.secrets.delete(secret_id(plugin, key));
+            result = result.and(deleted.map_err(store_error));
         }
+        result
     }
 
     /// Forgets everything of a plugin that is gone: its secrets and its section of the file, and
-    /// the file with the last one.
-    pub(crate) fn forget_plugin(
-        &self,
-        plugin: &str,
-        fields: &[SettingField],
-    ) -> Result<(), PluginError> {
-        self.forget_secrets(plugin, fields);
+    /// the file with the last one. Each is tried, and the first failure said.
+    pub(crate) fn forget_plugin(&self, plugin: &str, keys: &[String]) -> Result<(), PluginError> {
+        let secrets = self.forget_secrets(plugin, keys);
+        secrets.and(self.forget_section(plugin))
+    }
+
+    fn forget_section(&self, plugin: &str) -> Result<(), PluginError> {
         if !self.file.exists() {
             return Ok(());
         }
@@ -157,16 +157,17 @@ impl SettingsFiles {
 
     /// Forgets what `fields` hold, as they no longer exist.
     pub(crate) fn forget(&self, plugin: &str, fields: &[SettingField]) -> Result<(), PluginError> {
-        self.forget_secrets(plugin, fields);
+        let secrets = self.forget_secrets(plugin, &secret_keys(fields));
         if !self.file.exists() {
-            return Ok(());
+            return secrets;
         }
-        self.write(|store| {
+        let plain = self.write(|store| {
             fields
                 .iter()
                 .filter(|field| field.kind != SettingKind::Secret)
                 .try_for_each(|field| store.set(&file_key(plugin, &field.key), None))
-        })
+        });
+        secrets.and(plain)
     }
 
     fn write(
@@ -180,6 +181,15 @@ impl SettingsFiles {
         }
         change(&mut store).map_err(store_error)
     }
+}
+
+/// The keys of the secrets among `fields`.
+pub(crate) fn secret_keys(fields: &[SettingField]) -> Vec<String> {
+    fields
+        .iter()
+        .filter(|field| field.kind == SettingKind::Secret)
+        .map(|field| field.key.clone())
+        .collect()
 }
 
 /// What a sandbox may read through the `setting` host function: its own plugin's fields.

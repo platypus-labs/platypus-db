@@ -22,12 +22,17 @@
 use serde::{Deserialize, Serialize};
 
 use crate::extensions::{self, GridDecl, HookEvent, PanelDecl, SettingField, TabDecl, ThemeDecl};
-use crate::{API_VERSION, MIN_API_VERSION, PluginError};
+use crate::package::{STATE_FILE, STATE_TMP};
+use crate::{API_VERSION, MIN_API_VERSION, PluginError, settings};
 
 /// The manifest's file name, at the root of a package.
 pub const MANIFEST_FILE: &str = "plugin.toml";
 /// The module's file name, beside the manifest.
 pub const MODULE_FILE: &str = "plugin.wasm";
+/// The files of the plugins' folder itself: a plugin named so would take their place.
+const OWN_FILES: [&str; 3] = [STATE_FILE, STATE_TMP, settings::FILE];
+/// The device names Windows keeps, with any case and any extension.
+const DEVICE_NAMES: [&str; 4] = ["con", "prn", "aux", "nul"];
 
 /// What a plugin provides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -127,7 +132,8 @@ impl Permissions {
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// Unique and stable: lowercase letters, digits, `-`, `_` and `.`; the folder it is
-    /// installed in.
+    /// installed in, so a name that folder could not have on some system is refused
+    /// ([`is_plain_name`]).
     pub id: String,
     pub name: String,
     pub version: String,
@@ -173,7 +179,7 @@ impl Manifest {
         let invalid = |why: String| Err(PluginError::Invalid(format!("{MANIFEST_FILE}: {why}")));
         if !is_plain_name(&self.id) {
             return invalid(format!(
-                "the id {:?} must be lowercase letters, digits, `-`, `_` or `.`",
+                "the id {:?} must be lowercase letters, digits, `-`, `_` or `.`, must not end in a dot, and must not be a device name of Windows or a file of the plugins' folder",
                 self.id
             ));
         }
@@ -292,14 +298,29 @@ impl Manifest {
     }
 }
 
-/// Safe as a single path component: no separators, no `..`, nothing hidden.
+/// Safe as a single path component, and the same one on every system: no separators, no `..`,
+/// nothing hidden, no trailing dot or space (Windows drops them, so `foo.` would be the folder of
+/// `foo`), no device name of Windows, and none of the files beside the plugins' folders. A package
+/// refused on one system is refused on all.
 pub(crate) fn is_plain_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
         && !name.starts_with('.')
+        && !name.ends_with(['.', ' '])
+        && !is_device_name(name)
+        && !OWN_FILES.contains(&name)
         && name
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'))
+}
+
+/// `con`, `COM1`, `nul.txt`, `aux.tar.gz`: Windows opens the device whatever follows the first dot.
+fn is_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_lowercase();
+    let numbered = stem.len() == 4
+        && (stem.starts_with("com") || stem.starts_with("lpt"))
+        && stem.ends_with(|c: char| c.is_ascii_digit());
+    numbered || DEVICE_NAMES.contains(&stem.as_str())
 }
 
 /// A host name, or `*.` and one: letters, digits, `-` and `.`, no scheme, port or path.
@@ -359,6 +380,67 @@ mod tests {
         .unwrap();
         assert_eq!(m.permissions.http.len(), 2);
         assert!(m.permissions.clipboard);
+    }
+
+    #[test]
+    fn a_name_is_one_folder_on_every_system() {
+        for good in [
+            "foo",
+            "foo.bar",
+            "a-b_c",
+            "1.0.0",
+            "1.0.0-rc1",
+            "console",
+            "com10",
+            "plugins",
+        ] {
+            assert!(is_plain_name(good), "{good}");
+        }
+        for bad in [
+            "",
+            ".",
+            "..",
+            ".foo",
+            "foo.",
+            "foo..",
+            "1.0.",
+            "foo ",
+            "a/b",
+            "a\\b",
+            "Foo",
+            "con",
+            "prn",
+            "aux",
+            "nul",
+            "com1",
+            "com9",
+            "lpt1",
+            "lpt9",
+            "con.txt",
+            "nul.tar.gz",
+            "aux.",
+            "lpt3.x",
+            "plugins.json",
+            "plugins.json.tmp",
+            "settings.toml",
+        ] {
+            assert!(!is_plain_name(bad), "{bad:?}");
+        }
+        // A version is read in lower case: any case of these goes too.
+        for (id, version) in [
+            ("foo.", "1"),
+            ("con", "1"),
+            ("settings.toml", "1"),
+            ("foo", "1.0."),
+            ("foo", "CON"),
+            ("foo", "Lpt2.x"),
+            ("foo", "Plugins.json"),
+        ] {
+            let text = format!(
+                "id = \"{id}\"\nname = \"N\"\nversion = \"{version}\"\napi = 1\nkinds = [\"actions\"]\n"
+            );
+            assert!(Manifest::parse(&text).is_err(), "{id} {version}");
+        }
     }
 
     #[test]

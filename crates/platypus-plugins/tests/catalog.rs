@@ -13,7 +13,8 @@ use base64::engine::general_purpose::STANDARD;
 use blake2::{Blake2b512, Digest as _};
 use platypus_plugins::catalog::{CatalogLimits, EntryStatus};
 use platypus_plugins::{
-    CatalogRequest, IndexEntry, PluginError, Plugins, Prepared, SignatureState, TrustedKey,
+    CatalogRequest, IndexEntry, PluginError, Plugins, Prepared, SignatureState, SignerChange,
+    TrustedKey,
 };
 use ring::signature::{Ed25519KeyPair, KeyPair as _};
 use serde_json::json;
@@ -224,7 +225,12 @@ impl Fixture {
     /// A download left in the data folder, of any plugin.
     fn downloads(&self) -> Vec<PathBuf> {
         std::fs::read_dir(self.data.path().join("plugins/.downloads"))
-            .map(|d| d.flatten().map(|e| e.path()).collect())
+            .map(|d| {
+                d.flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().is_some_and(|e| e == "zip"))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -509,6 +515,128 @@ async fn a_zip_with_paths_that_climb_out_is_refused() {
         assert_eq!(f.downloads().len(), 0);
     }
     assert_eq!(f.plugins.list().unwrap().len(), 0);
+}
+
+/// An index on the network cannot send the app inside, however it writes the address: neither its
+/// entries nor a redirect of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_index_on_the_network_reaches_neither_this_computer_nor_its_network() {
+    use platypus_plugins::catalog::parse_index;
+    for near in [
+        "https://localhost./p.zip",
+        "https://a.localhost/p.zip",
+        "https://0.0.0.0/p.zip",
+        "https://[::ffff:127.0.0.1]/p.zip",
+        "https://10.0.0.1/p.zip",
+        "https://192.168.1.2/p.zip",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://[fd00::1]/p.zip",
+    ] {
+        let index = json!({ "format": 1, "plugins": [{
+            "id": "sea", "name": "Sea", "version": "1.0.0", "url": near, "sha256": "ab".repeat(32)
+        }] });
+        let (entries, problems) = parse_index(
+            &serde_json::to_vec(&index).unwrap(),
+            "https://example.com/index.json",
+        )
+        .unwrap();
+        assert_eq!(entries.len(), 0, "{near}");
+        assert!(
+            problems[0].reason.contains("and the index is not"),
+            "{near}: {problems:?}"
+        );
+    }
+}
+
+/// A plugin's secrets and page state go with its signer: another key that signs the same id is not
+/// known to be the same publisher.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_package_signed_by_another_key_says_so_and_clears_what_the_plugin_was_given() {
+    let mut f = Fixture::new().await;
+    f.plugins = Plugins::new(f.data.path())
+        .with_secrets(Arc::new(platypus_store::MemorySecrets::default()));
+    let id = "settings-demo";
+    let package = |version: &str| {
+        let module = std::fs::read(example("settings-demo/plugin.wasm")).unwrap();
+        let manifest = std::fs::read_to_string(example("settings-demo/plugin.toml"))
+            .unwrap()
+            .replace("version = \"1.0.0\"", &format!("version = \"{version}\""));
+        zipped(&[
+            ("plugin.toml", manifest.as_bytes()),
+            ("plugin.wasm", &module),
+        ])
+    };
+    let token = |f: &Fixture| {
+        f.plugins
+            .settings_of(id)
+            .unwrap()
+            .into_iter()
+            .find(|s| s.key == "token")
+            .unwrap()
+            .set
+    };
+    let page_state = f
+        .data
+        .path()
+        .join("plugins/.frame-state/settings-demo.json");
+    let bytes = package("1.0.0");
+    f.installs(f.publish(id, "1.0.0", &bytes)).await;
+    f.plugins
+        .set_setting(id, "token", &json!("s3cret"))
+        .unwrap();
+    std::fs::create_dir_all(page_state.parent().unwrap()).unwrap();
+    std::fs::write(&page_state, "{}").unwrap();
+
+    // The same key: an update as any other.
+    let bytes = package("1.1.0");
+    let same = f
+        .prepare(f.request(f.publish(id, "1.1.0", &bytes)))
+        .await
+        .unwrap();
+    assert_eq!(same.inspected.signer_change, None);
+    f.plugins
+        .catalog_install(&same.ticket, &same.inspected.hash)
+        .await
+        .unwrap();
+    assert!(token(&f));
+    assert!(page_state.is_file());
+
+    // Another key, also trusted, over the same id: the review says so before anything happens.
+    let other = Signer::new(9);
+    let bytes = package("1.2.0");
+    let mut entry = f.publish(id, "1.2.0", &bytes);
+    entry.signature = Some(other.sign(&bytes));
+    let mut request = f.request(entry);
+    request.keys.push(other.trusted("Stranger"));
+    let prepared = f.prepare(request).await.unwrap();
+    assert_eq!(
+        prepared.inspected.signer_change,
+        Some(SignerChange {
+            from: Some("Jane".to_owned()),
+            to: Some("Stranger".to_owned())
+        })
+    );
+    assert!(token(&f), "nothing goes before the user answers");
+    f.plugins
+        .catalog_install(&prepared.ticket, &prepared.inspected.hash)
+        .await
+        .unwrap();
+    assert!(!token(&f));
+    assert!(!page_state.exists());
+
+    // To unsigned, the user having confirmed it: said too.
+    let bytes = package("1.3.0");
+    let mut request = f.request(f.publish(id, "1.3.0", &bytes));
+    request.entry.signature = None;
+    request.allow_unsigned = true;
+    let prepared = f.prepare(request).await.unwrap();
+    assert_eq!(
+        prepared.inspected.signer_change,
+        Some(SignerChange {
+            from: Some("Stranger".to_owned()),
+            to: None
+        })
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

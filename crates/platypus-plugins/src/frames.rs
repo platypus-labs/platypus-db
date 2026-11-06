@@ -116,9 +116,18 @@ impl Budget {
     }
 }
 
+/// A path with a hidden part (`.DS_Store`, `.git/config`) and nothing that moves about in it:
+/// nobody's page, so a `.zip` skips it as a folder does.
+fn is_hidden(path: &str) -> bool {
+    let mut parts = path.split(['/', '\\']);
+    let moves = |part: &str| part.is_empty() || part == "." || part == "..";
+    !parts.clone().any(moves) && parts.any(|part| part.starts_with('.'))
+}
+
 /// Which of `names`, the paths found in a package, are its documents' files: the documents of the
-/// manifest, all of them there, and what is under `ui/` of a kind that may be served. A name under
-/// `ui/` that climbs out or hides is a broken package, not something to skip.
+/// manifest, all of them there, and what is under `ui/` of a kind that may be served. A hidden file
+/// is skipped; any other name under `ui/` that is no plain path is a broken package, not something
+/// to skip.
 pub(crate) fn choose_files(
     manifest: &Manifest,
     names: &[String],
@@ -141,7 +150,7 @@ pub(crate) fn choose_files(
             continue;
         };
         // The folder itself, in a .zip.
-        if rest.is_empty() || rest.ends_with('/') {
+        if rest.is_empty() || rest.ends_with('/') || is_hidden(rest) {
             continue;
         }
         if !is_package_path(name) {
@@ -385,9 +394,13 @@ fn state_file(plugins_dir: &Path, id: &str) -> PathBuf {
     plugins_dir.join(STATE_DIR).join(format!("{id}.json"))
 }
 
-/// Forgets what a plugin's documents kept; nothing is lost but that.
-pub(crate) fn forget_state(plugins_dir: &Path, id: &str) {
-    let _ = std::fs::remove_file(state_file(plugins_dir, id));
+/// Forgets what a plugin's documents kept; nothing is lost but that. `id` is a checked one.
+pub(crate) fn forget_state(plugins_dir: &Path, id: &str) -> Result<(), PluginError> {
+    let path = state_file(plugins_dir, id);
+    match std::fs::remove_file(&path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(PluginError::io(&path)(e)),
+        _ => Ok(()),
+    }
 }
 
 impl Plugins {
@@ -604,7 +617,7 @@ mod tests {
     fn a_document_must_be_in_the_package_and_a_path_may_not_climb_out() {
         let e = choose_files(&manifest(&["ui/a.html"]), &[]).unwrap_err();
         assert!(e.to_string().contains("not in the package"), "{e}");
-        for bad in ["ui/../secret.js", "ui/.hidden.js", "ui/a\\b.js", "ui//a.js"] {
+        for bad in ["ui/../secret.js", "ui/a\\b.js", "ui//a.js"] {
             let names = vec!["ui/a.html".to_owned(), bad.to_owned()];
             let e = choose_files(&manifest(&["ui/a.html"]), &names).unwrap_err();
             assert!(e.to_string().contains("inside the package"), "{bad}: {e}");
@@ -619,6 +632,28 @@ mod tests {
         .unwrap();
         let names = vec!["ui/a.js".to_owned()];
         assert!(choose_files(&plain, &names).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_hidden_file_is_skipped_and_a_path_that_climbs_is_not() {
+        let m = manifest(&["ui/a.html"]);
+        let names = [
+            "ui/a.html",
+            "ui/.DS_Store",
+            "ui/.hidden/x.js",
+            "ui/sub/.y.js",
+            "ui/b.js",
+        ]
+        .map(str::to_owned);
+        let chosen = choose_files(&m, &names).unwrap();
+        assert_eq!(
+            chosen.into_iter().collect::<Vec<_>>(),
+            ["ui/a.html", "ui/b.js"]
+        );
+        for bad in ["ui/../x.js", "ui/.hidden/../x.js", "ui/./x.js", "ui//x.js"] {
+            let names = ["ui/a.html".to_owned(), bad.to_owned()];
+            assert!(choose_files(&m, &names).is_err(), "{bad}");
+        }
     }
 
     #[test]

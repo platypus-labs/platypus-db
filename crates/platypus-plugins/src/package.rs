@@ -20,16 +20,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::action::{self, ActionInfo, ActionOutcome};
-use crate::extensions::SettingField;
+use crate::extensions::{GridDecl, SettingField, SettingKind};
 use crate::frames::{self, PackageFiles};
 use crate::grid::GridLimits;
 use crate::hooks::HookLimits;
-use crate::manifest::{Capability, Kind, MANIFEST_FILE, MODULE_FILE, Manifest, Permissions};
+use crate::manifest::{
+    Capability, Kind, MANIFEST_FILE, MODULE_FILE, Manifest, Permissions, is_plain_name,
+};
 use crate::runtime::{self, DESCRIBE, Description, GRID, Grants, HOOK, Limits, Sandbox};
-use crate::settings::{SettingState, SettingsAccess, SettingsFiles};
-use crate::{PluginError, driver, theme};
+use crate::settings::{SettingState, SettingsAccess, SettingsFiles, secret_keys};
+use crate::{API_VERSION, PluginError, driver, log, theme};
 
-const STATE_FILE: &str = "plugins.json";
+pub(crate) const STATE_FILE: &str = "plugins.json";
+pub(crate) const STATE_TMP: &str = "plugins.json.tmp";
 /// The largest manifest read.
 const MAX_MANIFEST: u64 = 64 << 10;
 /// The largest module read.
@@ -53,6 +56,26 @@ pub struct Inspected {
     /// A hash of the package's files, given back to [`Plugins::install`]: what is
     /// installed is exactly what the user reviewed, even if the package changes in between.
     pub hash: String,
+    /// The installed version has another signer, or none where this one has one: it may be
+    /// another publisher, and installing clears the secrets and the state of its pages.
+    pub signer_change: Option<SignerChange>,
+}
+
+/// How the signer of a package differs from the installed version's: the names the user gave the
+/// keys, `None` for a package with no signature, as any manual install is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SignerChange {
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+/// The trusted key that signed a package.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Signer {
+    /// The public key, what is compared.
+    pub(crate) key: String,
+    /// The name the user gave it.
+    pub(crate) name: String,
 }
 
 /// An installed plugin.
@@ -63,6 +86,9 @@ pub struct Installed {
     /// The permissions the user approved: the manifest's, at install.
     pub approved: Permissions,
     pub description: Description,
+    /// Its files are missing or are not its own: it is listed so that it can be removed, its
+    /// manifest stands for nothing but its name, and nothing of it runs.
+    pub broken: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +97,12 @@ struct Entry {
     enabled: bool,
     approved: Permissions,
     description: Description,
+    /// The keys of its secret settings: its manifest may be gone when they have to be forgotten.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    secrets: Vec<String>,
+    /// Who signed the package installed; nobody, for a manual or an unsigned install.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    signer: Option<Signer>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -176,6 +208,15 @@ impl Plugins {
 
     /// Reads a package and its module's description, without installing it.
     pub async fn inspect(&self, source: &Path) -> Result<Inspected, PluginError> {
+        self.inspect_signed(source, None).await
+    }
+
+    /// [`Self::inspect`] of a package `signer` is known to have signed.
+    pub(crate) async fn inspect_signed(
+        &self,
+        source: &Path,
+        signer: Option<&Signer>,
+    ) -> Result<Inspected, PluginError> {
         let Package {
             manifest,
             wasm,
@@ -189,17 +230,35 @@ impl Plugins {
         Ok(Inspected {
             added: manifest.permissions.beyond(&approved),
             replaces: current.map(|e| e.version.clone()),
+            signer_change: current
+                .filter(|e| !same_signer(e.signer.as_ref(), signer))
+                .map(|e| SignerChange {
+                    from: e.signer.as_ref().map(|s| s.name.clone()),
+                    to: signer.map(|s| s.name.clone()),
+                }),
             manifest,
             description,
             hash,
         })
     }
 
-    /// Installs a package, replacing any version of the same plugin, turned on and with
-    /// its manifest's permissions approved. `reviewed` is the [`Inspected::hash`] of the
-    /// package the user approved: a package that changed since (other permissions, another
-    /// module) is refused.
+    /// Installs a package, replacing any version of the same plugin, with its manifest's
+    /// permissions approved: turned on, or as the user left the version it replaces. `reviewed` is
+    /// the [`Inspected::hash`] of the package the user approved: a package that changed since (other
+    /// permissions, another module) is refused.
     pub async fn install(&self, source: &Path, reviewed: &str) -> Result<Installed, PluginError> {
+        self.install_signed(source, reviewed, None).await
+    }
+
+    /// [`Self::install`] of a package `signer` is known to have signed. When that is not who signed
+    /// the version it replaces, nothing the user gave that one reaches this one: its secrets and
+    /// the state of its pages go, as the id alone does not say that it is the same publisher.
+    pub(crate) async fn install_signed(
+        &self,
+        source: &Path,
+        reviewed: &str,
+        signer: Option<Signer>,
+    ) -> Result<Installed, PluginError> {
         let Package {
             manifest,
             wasm,
@@ -213,23 +272,45 @@ impl Plugins {
             ));
         }
         let description = describe(&manifest, wasm.clone(), self.limits).await?;
-        let previous = self
-            .list()?
-            .into_iter()
-            .find(|p| p.manifest.id == manifest.id);
+        let previous = self.read_state()?.plugins.remove(&manifest.id);
+        let old_fields = previous
+            .as_ref()
+            .and_then(|e| self.installed(&manifest.id, e).ok())
+            .map_or_else(Vec::new, |p| p.manifest.settings);
         let home = self.dir.join(&manifest.id);
         std::fs::create_dir_all(&home).map_err(PluginError::io(&home))?;
         let tmp = home.join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
-        let written = write_package(&tmp, &manifest, &wasm, &files);
-        if let Err(e) = written {
-            let _ = std::fs::remove_dir_all(&tmp);
+        let target = home.join(&manifest.version);
+        let swapped = write_package(&tmp, &manifest, &wasm, &files)
+            .and_then(|()| swap_in(&tmp, &target, &home));
+        let aside = match swapped {
+            Ok(aside) => aside,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&tmp);
+                return Err(e);
+            }
+        };
+        let enabled = previous.as_ref().is_none_or(|e| e.enabled);
+        let entry = Entry {
+            version: manifest.version.clone(),
+            enabled,
+            approved: manifest.permissions.clone(),
+            description: description.clone(),
+            secrets: secret_keys(&manifest.settings),
+            signer: signer.clone(),
+        };
+        let saved = self
+            .clear_for_signer(&manifest, previous.as_ref(), &old_fields, signer.as_ref())
+            .and_then(|()| {
+                self.update_state(|state| {
+                    state.plugins.insert(manifest.id.clone(), entry);
+                    Ok(())
+                })
+            });
+        if let Err(e) = saved {
+            swap_back(&target, aside.as_deref());
             return Err(e);
         }
-        let target = home.join(&manifest.version);
-        if target.exists() {
-            std::fs::remove_dir_all(&target).map_err(PluginError::io(&target))?;
-        }
-        std::fs::rename(&tmp, &target).map_err(PluginError::io(&target))?;
         // The other versions and leftovers of failed installs go.
         if let Ok(entries) = std::fs::read_dir(&home) {
             for entry in entries.flatten() {
@@ -238,42 +319,78 @@ impl Plugins {
                 }
             }
         }
-        let entry = Entry {
-            version: manifest.version.clone(),
-            enabled: true,
-            approved: manifest.permissions.clone(),
-            description: description.clone(),
-        };
-        self.update_state(|state| {
-            state.plugins.insert(manifest.id.clone(), entry);
-            Ok(())
-        })?;
-        // A field the new version no longer has leaves nothing behind. Its secret is out of
-        // the module's reach already, as is any value: the rest of the install stands.
-        if let Some(previous) = previous {
-            let dropped: Vec<_> = previous
-                .manifest
-                .settings
-                .into_iter()
-                .filter(|old| !manifest.settings.iter().any(|f| f.key == old.key))
-                .collect();
-            let _ = self.settings.forget(&manifest.id, &dropped);
-        }
+        self.forget_dropped(&manifest, previous.as_ref(), old_fields);
         Ok(Installed {
             approved: manifest.permissions.clone(),
             manifest,
-            enabled: true,
+            enabled,
             description,
+            broken: false,
         })
     }
 
-    /// The installed plugins, by id; one whose files are gone is left out.
+    /// What the plugin `manifest` replaces was given by the user, when it has another signer than
+    /// `signer`: its secrets and the state of its pages go. A failure refuses the install, as the
+    /// next publisher would read them.
+    fn clear_for_signer(
+        &self,
+        manifest: &Manifest,
+        previous: Option<&Entry>,
+        old_fields: &[SettingField],
+        signer: Option<&Signer>,
+    ) -> Result<(), PluginError> {
+        let Some(previous) = previous.filter(|e| !same_signer(e.signer.as_ref(), signer)) else {
+            return Ok(());
+        };
+        let mut keys = previous.secrets.clone();
+        keys.extend(secret_keys(old_fields));
+        keys.extend(secret_keys(&manifest.settings));
+        self.settings.forget_secrets(&manifest.id, &keys)?;
+        frames::forget_state(&self.dir, &manifest.id)
+    }
+
+    /// A field the new version no longer has, or has as another kind, leaves nothing behind: text
+    /// that became a secret is not left in the file, nor a secret that became text in the keychain.
+    /// Either is out of the module's reach already: the rest of the install stands.
+    fn forget_dropped(
+        &self,
+        manifest: &Manifest,
+        previous: Option<&Entry>,
+        old_fields: Vec<SettingField>,
+    ) {
+        let kept = |key: &str, kind| {
+            manifest
+                .settings
+                .iter()
+                .any(|f| f.key == key && f.kind == kind)
+        };
+        let dropped: Vec<_> = old_fields
+            .into_iter()
+            .filter(|old| !kept(&old.key, old.kind))
+            .collect();
+        let _ = self.settings.forget(&manifest.id, &dropped);
+        let orphans: Vec<_> = previous
+            .iter()
+            .flat_map(|e| &e.secrets)
+            .filter(|key| !kept(key, SettingKind::Secret))
+            .cloned()
+            .collect();
+        let _ = self.settings.forget_secrets(&manifest.id, &orphans);
+    }
+
+    /// The installed plugins, by id. One whose files are gone, or are not its own, is still listed,
+    /// as `broken`: what is not listed cannot be removed.
     pub fn list(&self) -> Result<Vec<Installed>, PluginError> {
         Ok(self
             .read_state()?
             .plugins
             .into_iter()
-            .filter_map(|(id, entry)| self.installed(&id, entry).ok())
+            .map(|(id, entry)| {
+                self.installed(&id, &entry).unwrap_or_else(|e| {
+                    log("WARN", &format!("plugin {id}: {e}"));
+                    broken(id, entry)
+                })
+            })
             .collect())
     }
 
@@ -292,12 +409,7 @@ impl Plugins {
     /// Whether the user approved `capability` for the plugin `id`; an error that says so when
     /// not, for what is about to use it. Nothing of the plugin has run then.
     pub fn require(&self, id: &str, capability: Capability) -> Result<Installed, PluginError> {
-        let entry = self
-            .read_state()?
-            .plugins
-            .remove(id)
-            .ok_or_else(|| PluginError::NotInstalled(id.to_owned()))?;
-        let installed = self.installed(id, entry)?;
+        let installed = self.installed_any(id)?;
         if !installed.enabled {
             return Err(PluginError::Disabled(id.to_owned()));
         }
@@ -357,47 +469,72 @@ impl Plugins {
 
     /// Removes a plugin, its files, its settings and its secrets.
     pub fn remove(&self, id: &str) -> Result<(), PluginError> {
-        let fields = self.remove_files(id)?;
-        self.settings.forget_plugin(id, &fields)
+        self.remove_with(id, false)
     }
 
     /// Removes a plugin and keeps the values of its settings page for a later install. Its
     /// secrets still leave the keychain: nothing would read them until then.
     pub fn remove_keeping_settings(&self, id: &str) -> Result<(), PluginError> {
-        let fields = self.remove_files(id)?;
-        self.settings.forget_secrets(id, &fields);
-        Ok(())
+        self.remove_with(id, true)
     }
 
-    /// Takes a plugin off the list and deletes its folder; gives back its settings fields.
-    fn remove_files(&self, id: &str) -> Result<Vec<SettingField>, PluginError> {
-        // Its fields are in its manifest, about to go.
-        let fields = self
-            .installed_any(id)
-            .map(|p| p.manifest.settings)
-            .unwrap_or_default();
-        self.update_state(|state| {
-            state
-                .plugins
-                .remove(id)
-                .map(|_| ())
-                .ok_or_else(|| PluginError::NotInstalled(id.to_owned()))
-        })?;
-        // The state holds checked ids only (see `Manifest::parse`): a plain folder name.
-        let home = self.dir.join(id);
-        if home.exists() {
-            std::fs::remove_dir_all(&home).map_err(PluginError::io(&home))?;
-        }
-        frames::forget_state(&self.dir, id);
-        Ok(fields)
-    }
-
-    /// An installed plugin, turned on or not.
-    fn installed_any(&self, id: &str) -> Result<Installed, PluginError> {
+    /// Takes a plugin off the list, then clears all there is of it: one thing that fails does not
+    /// keep the others, as a second try would find no plugin to remove. A
+    /// [`PluginError::PartlyRemoved`] says what is left.
+    fn remove_with(&self, id: &str, keep_settings: bool) -> Result<(), PluginError> {
         let entry = self
             .read_state()?
             .plugins
             .remove(id)
+            .ok_or_else(|| PluginError::NotInstalled(id.to_owned()))?;
+        // The fields are in its manifest, if it is there still; what it installed with is kept too.
+        let fields = self
+            .installed(id, &entry)
+            .map(|p| p.manifest.settings)
+            .unwrap_or_default();
+        let mut secrets = entry.secrets;
+        secrets.extend(secret_keys(&fields));
+        self.update_state(|state| {
+            state.plugins.remove(id);
+            Ok(())
+        })?;
+        let mut left = Vec::new();
+        // An id from a list written before it had to be plain, or by hand, is no path to follow:
+        // `foo.` is the folder of `foo` on Windows.
+        if is_plain_name(id) {
+            let home = self.dir.join(id);
+            if home.exists()
+                && let Err(e) = std::fs::remove_dir_all(&home)
+            {
+                left.push(format!("its folder ({e})"));
+            }
+            if let Err(e) = frames::forget_state(&self.dir, id) {
+                left.push(format!("the state of its pages ({e})"));
+            }
+        }
+        let forgotten = if keep_settings {
+            self.settings.forget_secrets(id, &secrets)
+        } else {
+            self.settings.forget_plugin(id, &secrets)
+        };
+        if let Err(e) = forgotten {
+            left.push(format!("its settings or secrets ({e})"));
+        }
+        if left.is_empty() {
+            return Ok(());
+        }
+        Err(PluginError::PartlyRemoved(format!(
+            "The plugin {id:?} is removed, but not {}.",
+            left.join(", ")
+        )))
+    }
+
+    /// An installed plugin, turned on or not.
+    fn installed_any(&self, id: &str) -> Result<Installed, PluginError> {
+        let state = self.read_state()?;
+        let entry = state
+            .plugins
+            .get(id)
             .ok_or_else(|| PluginError::NotInstalled(id.to_owned()))?;
         self.installed(id, entry)
     }
@@ -445,14 +582,33 @@ impl Plugins {
         .await
     }
 
-    fn installed(&self, id: &str, entry: Entry) -> Result<Installed, PluginError> {
+    /// The plugin of an entry of the list, from its files. The list and the files must agree: the
+    /// permissions there were approved for this id and this version, and for no other's files.
+    fn installed(&self, id: &str, entry: &Entry) -> Result<Installed, PluginError> {
+        if !is_plain_name(id) || !is_plain_name(&entry.version.to_ascii_lowercase()) {
+            return Err(PluginError::Invalid(format!(
+                "the list of plugins names {id:?}, version {:?}, which cannot be a folder",
+                entry.version
+            )));
+        }
         let path = self.dir.join(id).join(&entry.version).join(MANIFEST_FILE);
         let text = std::fs::read_to_string(&path).map_err(PluginError::io(&path))?;
+        let manifest = Manifest::parse(&text)?;
+        if manifest.id != id || manifest.version != entry.version {
+            return Err(PluginError::Invalid(format!(
+                "{} is the plugin {:?}, version {:?}, and the list says {id:?}, version {:?}",
+                path.display(),
+                manifest.id,
+                manifest.version,
+                entry.version
+            )));
+        }
         Ok(Installed {
-            manifest: Manifest::parse(&text)?,
+            manifest,
             enabled: entry.enabled,
-            approved: entry.approved,
-            description: entry.description,
+            approved: entry.approved.clone(),
+            description: entry.description.clone(),
+            broken: false,
         })
     }
 
@@ -477,11 +633,71 @@ impl Plugins {
         change(&mut state)?;
         std::fs::create_dir_all(&self.dir).map_err(PluginError::io(&self.dir))?;
         let path = self.dir.join(STATE_FILE);
-        let tmp = self.dir.join(format!("{STATE_FILE}.tmp"));
+        let tmp = self.dir.join(STATE_TMP);
         let json =
             serde_json::to_vec_pretty(&state).map_err(|e| PluginError::Invalid(e.to_string()))?;
         std::fs::write(&tmp, json).map_err(PluginError::io(&tmp))?;
         std::fs::rename(&tmp, &path).map_err(PluginError::io(&path))
+    }
+}
+
+/// Whether two packages have the same signer: the key, whatever the user calls it, or both none.
+fn same_signer(a: Option<&Signer>, b: Option<&Signer>) -> bool {
+    a.map(|s| &s.key) == b.map(|s| &s.key)
+}
+
+/// A plugin of the list whose files cannot be read: its name and version are all there is to show,
+/// and it provides nothing.
+fn broken(id: String, entry: Entry) -> Installed {
+    Installed {
+        manifest: Manifest {
+            name: id.clone(),
+            id,
+            version: entry.version,
+            author: String::new(),
+            description: String::new(),
+            api: API_VERSION,
+            kinds: Vec::new(),
+            hooks: Vec::new(),
+            permissions: entry.approved.clone(),
+            tabs: Vec::new(),
+            panels: Vec::new(),
+            grid: GridDecl::default(),
+            settings: Vec::new(),
+            theme: None,
+        },
+        enabled: entry.enabled,
+        approved: entry.approved,
+        description: Description::default(),
+        broken: true,
+    }
+}
+
+/// Puts the folder `new` at `target`. What was there moves aside in `home` first, and is given
+/// back to be deleted or restored ([`swap_back`]): a failure at any point leaves it where the list
+/// expects it.
+fn swap_in(new: &Path, target: &Path, home: &Path) -> Result<Option<PathBuf>, PluginError> {
+    let aside = if target.exists() {
+        let aside = home.join(format!("{TMP_PREFIX}{}", uuid::Uuid::new_v4()));
+        std::fs::rename(target, &aside).map_err(PluginError::io(target))?;
+        Some(aside)
+    } else {
+        None
+    };
+    if let Err(e) = std::fs::rename(new, target) {
+        if let Some(aside) = &aside {
+            let _ = std::fs::rename(aside, target);
+        }
+        return Err(PluginError::io(target)(e));
+    }
+    Ok(aside)
+}
+
+/// Undoes a [`swap_in`] whose install did not go through.
+fn swap_back(target: &Path, aside: Option<&Path>) {
+    let _ = std::fs::remove_dir_all(target);
+    if let Some(aside) = aside {
+        let _ = std::fs::rename(aside, target);
     }
 }
 

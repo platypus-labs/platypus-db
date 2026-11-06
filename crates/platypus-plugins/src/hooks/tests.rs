@@ -172,6 +172,55 @@ async fn an_event_runs_only_the_hooks_of_that_event() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_list_that_cannot_be_read_is_told_and_counts_again_once_repaired() {
+    let s = setup();
+    s.install("guard", BEFORE, &answering(BLOCK)).await;
+    let list = s.data.path().join("plugins/plugins.json");
+    let good = std::fs::read(&list).unwrap();
+    std::fs::write(&list, "{ broken").unwrap();
+    let table = HookTable::new();
+
+    // The action goes ahead, the user hears of it once, and the table has not settled for nothing.
+    let report = table.run(&s.plugins, &before_query()).await;
+    assert_eq!(report.blocked, None);
+    assert_eq!(report.failures.len(), 1, "{report:?}");
+    assert_eq!(report.failures[0].plugin, "");
+    assert!(
+        report.failures[0].reason.contains("plugins.json"),
+        "{report:?}"
+    );
+    let again = table.run(&s.plugins, &before_query()).await;
+    assert_eq!(again, HookReport::default());
+    assert!(table.wanted(HookEvent::BeforeQuery));
+
+    std::fs::write(&list, good).unwrap();
+    let report = table.run(&s.plugins, &before_query()).await;
+    assert!(report.blocked.is_some(), "{report:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_guard_whose_files_are_gone_says_so_at_the_next_event() {
+    let s = setup();
+    s.install("guard", BEFORE, &answering(BLOCK)).await;
+    std::fs::remove_dir_all(s.data.path().join("plugins/guard")).unwrap();
+    s.reload();
+    assert!(s.table.wanted(HookEvent::BeforeSave));
+
+    let report = s.table.run(&s.plugins, &before_query()).await;
+    assert_eq!(report.blocked, None);
+    assert_eq!(report.failures.len(), 1, "{report:?}");
+    assert_eq!(report.failures[0].plugin, "guard");
+    assert!(report.failures[0].reason.contains("missing"), "{report:?}");
+    let again = s.table.run(&s.plugins, &before_query()).await;
+    assert_eq!(again, HookReport::default());
+
+    // Removed, or turned off, it has nothing to say: it can be.
+    s.plugins.remove("guard").unwrap();
+    s.reload();
+    assert!(!s.table.wanted(HookEvent::BeforeQuery));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_broken_hook_lets_the_action_through_and_is_told_once() {
     for (name, hook) in [
         (

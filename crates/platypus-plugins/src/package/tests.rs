@@ -344,6 +344,7 @@ async fn a_theme_brings_its_fonts_from_the_package() {
     std::fs::write(dir.join("fonts/Sea.woff2"), FONT).unwrap();
     let inspected = plugins.inspect(&dir).await.unwrap();
     plugins.install(&dir, &inspected.hash).await.unwrap();
+    plugins.set_enabled("sea", true).unwrap();
     assert_eq!(plugins.theme_font("sea", "mono").unwrap(), FONT);
 }
 
@@ -602,6 +603,383 @@ async fn saves_and_forgets_settings_with_the_plugin() {
     install(&plugins, &source).await.unwrap();
     let states = plugins.settings_of("cfg").unwrap();
     assert!(states.iter().all(|s| !s.set), "{states:?}");
+}
+
+/// The list of plugins as JSON, changed by `edit` and written back.
+fn edit_state(data: &Path, edit: impl FnOnce(&mut Value)) {
+    let path = data.join("plugins").join(STATE_FILE);
+    let mut state: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    edit(&mut state);
+    std::fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_list_and_the_files_must_agree() {
+    let data = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(data.path());
+    install(
+        &plugins,
+        &actions_package(data.path(), "1.0.0", "[permissions]\nclipboard = true\n"),
+    )
+    .await
+    .unwrap();
+    let file = data.path().join("plugins/rows/1.0.0").join(MANIFEST_FILE);
+    let original = std::fs::read_to_string(&file).unwrap();
+
+    // The files of another plugin, or of another version, do not get its approved permissions.
+    for other in [
+        original.replace("id = \"rows\"", "id = \"other\""),
+        original.replace("version = \"1.0.0\"", "version = \"9\""),
+    ] {
+        std::fs::write(&file, other).unwrap();
+        let list = plugins.list().unwrap();
+        assert!(list[0].broken, "{list:?}");
+        assert!(plugins.run_action("rows", "copy", json!({})).await.is_err());
+        assert!(plugins.require("rows", Capability::Hooks).is_err());
+    }
+    std::fs::write(&file, &original).unwrap();
+    assert!(!plugins.list().unwrap()[0].broken);
+    plugins.run_action("rows", "copy", json!({})).await.unwrap();
+
+    // An entry written before the names were this strict, where `rows.` is the folder of `rows` on
+    // Windows: not listed as working, and removing it leaves the folder of `rows`.
+    edit_state(data.path(), |state| {
+        state["plugins"]["rows."] = state["plugins"]["rows"].clone();
+    });
+    let list = plugins.list().unwrap();
+    assert!(
+        list.iter().any(|p| p.manifest.id == "rows." && p.broken),
+        "{list:?}"
+    );
+    assert!(
+        plugins
+            .run_action("rows.", "copy", json!({}))
+            .await
+            .is_err()
+    );
+    plugins.remove("rows.").unwrap();
+    assert!(file.is_file());
+    assert_eq!(plugins.list().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_package_cannot_be_named_after_what_the_folder_holds() {
+    let data = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(data.path());
+    install(&plugins, &actions_package(data.path(), "1.0.0", ""))
+        .await
+        .unwrap();
+    for (name, id, version) in [
+        ("a", "plugins.json", "1"),
+        ("b", "settings.toml", "1"),
+        ("c", "rows.", "1"),
+        ("d", "nul", "1"),
+        ("e", "rows", "1.0.0."),
+    ] {
+        let source = package(
+            data.path(),
+            name,
+            &manifest(id, version, "[\"actions\"]", ""),
+            DESCRIBE_ACTIONS,
+            COPY,
+        );
+        assert!(plugins.inspect(&source).await.is_err(), "{id} {version}");
+    }
+    assert_eq!(plugins.list().unwrap().len(), 1);
+    assert!(data.path().join("plugins/rows/1.0.0").is_dir());
+}
+
+/// A plugin `cfg` with a text and a secret, both set, and what its pages kept.
+async fn configured(data: &Path, root: &Path) -> Plugins {
+    let plugins = memory_plugins(data);
+    let source = package(
+        root,
+        "cfg",
+        &abi2_actions("1", URL_AND_TOKEN),
+        DESCRIBE_ACTIONS,
+        COPY,
+    );
+    install(&plugins, &source).await.unwrap();
+    plugins
+        .set_setting("cfg", "url", &json!("https://x"))
+        .unwrap();
+    plugins
+        .set_setting("cfg", "token", &json!("s3cret"))
+        .unwrap();
+    let state = data.join("plugins/.frame-state");
+    std::fs::create_dir_all(&state).unwrap();
+    std::fs::write(state.join("cfg.json"), "{}").unwrap();
+    plugins
+}
+
+/// Whether a new install of `cfg` finds the secret that was set.
+async fn secret_survives(plugins: &Plugins, root: &Path) -> bool {
+    let source = package(
+        root,
+        "again",
+        &abi2_actions("9", URL_AND_TOKEN),
+        DESCRIBE_ACTIONS,
+        COPY,
+    );
+    install(plugins, &source).await.unwrap();
+    plugins.settings_of("cfg").unwrap()[1].set
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_removal_still_forgets_everything_and_says_so() {
+    let data = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let plugins = configured(data.path(), root.path()).await;
+    // A file where its folder should be: it cannot be deleted as one.
+    let home = data.path().join("plugins/cfg");
+    std::fs::remove_dir_all(&home).unwrap();
+    std::fs::write(&home, "in the way").unwrap();
+
+    let e = plugins.remove("cfg").unwrap_err();
+    assert!(matches!(e, PluginError::PartlyRemoved(_)), "{e}");
+    assert!(e.to_string().contains("its folder"), "{e}");
+    assert_eq!(plugins.list().unwrap().len(), 0);
+    assert!(!data.path().join("plugins/.frame-state/cfg.json").exists());
+    let file =
+        std::fs::read_to_string(data.path().join("plugins/settings.toml")).unwrap_or_default();
+    assert!(!file.contains("https://x"), "{file}");
+    assert!(matches!(
+        plugins.remove("cfg"),
+        Err(PluginError::NotInstalled(_))
+    ));
+
+    std::fs::remove_file(&home).unwrap();
+    assert!(!secret_survives(&plugins, root.path()).await);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_plugin_whose_files_are_gone_is_listed_and_removable() {
+    let data = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let plugins = configured(data.path(), root.path()).await;
+    std::fs::remove_dir_all(data.path().join("plugins/cfg")).unwrap();
+
+    let list = plugins.list().unwrap();
+    assert_eq!(list.len(), 1);
+    assert!(list[0].broken);
+    assert_eq!(list[0].manifest.id, "cfg");
+    assert_eq!(list[0].manifest.version, "1");
+    assert_eq!(list[0].description, Description::default());
+    assert!(plugins.run_action("cfg", "copy", json!({})).await.is_err());
+
+    // Its manifest is gone, and its secret goes all the same.
+    plugins.remove("cfg").unwrap();
+    assert_eq!(plugins.list().unwrap().len(), 0);
+    assert!(!secret_survives(&plugins, root.path()).await);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reinstall_that_fails_leaves_the_version_it_found() {
+    let data = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(data.path());
+    let first = actions_package(data.path(), "1.0.0", "");
+    install(&plugins, &first).await.unwrap();
+    let kept = data.path().join("plugins/rows/1.0.0").join(MODULE_FILE);
+    let before = std::fs::read(&kept).unwrap();
+
+    let changed = package(
+        data.path(),
+        "changed",
+        &manifest("rows", "1.0.0", "[\"actions\"]", ""),
+        DESCRIBE_ACTIONS,
+        r#"{"ok":{"kind":"copy","text":"other"}}"#,
+    );
+    // The list cannot be written: a folder is in the way of its temporary file.
+    let blocker = data.path().join("plugins").join(STATE_TMP);
+    std::fs::create_dir_all(&blocker).unwrap();
+    assert!(install(&plugins, &changed).await.is_err());
+    assert_eq!(std::fs::read(&kept).unwrap(), before);
+    assert!(!plugins.list().unwrap()[0].broken);
+    let left: Vec<_> = std::fs::read_dir(data.path().join("plugins/rows"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert_eq!(left, ["1.0.0"], "no temporary folder stays");
+
+    // A new version's failure leaves the old one too.
+    let newer = actions_package(data.path(), "2.0.0", "");
+    assert!(install(&plugins, &newer).await.is_err());
+    assert!(kept.is_file());
+    assert!(!data.path().join("plugins/rows/2.0.0").exists());
+    assert_eq!(plugins.list().unwrap()[0].manifest.version, "1.0.0");
+
+    std::fs::remove_dir(&blocker).unwrap();
+    install(&plugins, &changed).await.unwrap();
+    assert_ne!(std::fs::read(&kept).unwrap(), before);
+    assert!(!plugins.list().unwrap()[0].broken);
+}
+
+#[test]
+fn a_swap_that_cannot_finish_puts_the_old_folder_back() {
+    let home = tempfile::tempdir().unwrap();
+    let target = home.path().join("1.0.0");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("kept"), "x").unwrap();
+    assert!(swap_in(&home.path().join("missing"), &target, home.path()).is_err());
+    assert!(target.join("kept").is_file());
+
+    let new = home.path().join("new");
+    std::fs::create_dir(&new).unwrap();
+    std::fs::write(new.join("fresh"), "y").unwrap();
+    let aside = swap_in(&new, &target, home.path()).unwrap();
+    assert!(target.join("fresh").is_file());
+    swap_back(&target, aside.as_deref());
+    assert!(target.join("kept").is_file());
+    assert!(!target.join("fresh").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_update_keeps_a_plugin_turned_off() {
+    let data = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(data.path());
+    install(&plugins, &actions_package(data.path(), "1.0.0", ""))
+        .await
+        .unwrap();
+    plugins.set_enabled("rows", false).unwrap();
+    let installed = install(&plugins, &actions_package(data.path(), "1.1.0", ""))
+        .await
+        .unwrap();
+    assert!(!installed.enabled);
+    assert!(!plugins.list().unwrap()[0].enabled);
+    plugins.set_enabled("rows", true).unwrap();
+    let installed = install(&plugins, &actions_package(data.path(), "1.2.0", ""))
+        .await
+        .unwrap();
+    assert!(installed.enabled);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_field_that_changes_kind_leaves_nothing_behind() {
+    let data = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let plugins = memory_plugins(data.path());
+    let field =
+        |kind: &str| format!("[[settings]]\nkey = \"value\"\nlabel = \"V\"\ntype = \"{kind}\"\n");
+    let version = async |number: &str, kind: &str| {
+        let source = package(
+            root.path(),
+            number,
+            &abi2_actions(number, &field(kind)),
+            DESCRIBE_ACTIONS,
+            COPY,
+        );
+        install(&plugins, &source).await.unwrap();
+    };
+    let file = data.path().join("plugins/settings.toml");
+
+    // Text that becomes a secret: its plain text does not stay in the file.
+    version("1", "text").await;
+    plugins
+        .set_setting("cfg", "value", &json!("plain words"))
+        .unwrap();
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("plain words")
+    );
+    version("2", "secret").await;
+    assert!(
+        !std::fs::read_to_string(&file)
+            .unwrap_or_default()
+            .contains("plain words")
+    );
+
+    // A secret that becomes text: nothing stays in the keychain, which shows when it is one again.
+    plugins
+        .set_setting("cfg", "value", &json!("s3cret"))
+        .unwrap();
+    version("3", "text").await;
+    version("4", "secret").await;
+    assert!(!plugins.settings_of("cfg").unwrap()[0].set);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_manual_install_over_a_signed_one_says_so_and_clears_what_it_was_given() {
+    let data = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let plugins = configured(data.path(), root.path()).await;
+    let state = data.path().join("plugins/.frame-state/cfg.json");
+    let signer = Signer {
+        key: "key-a".to_owned(),
+        name: "Jane".to_owned(),
+    };
+    let source = package(
+        root.path(),
+        "2",
+        &abi2_actions("2", URL_AND_TOKEN),
+        DESCRIBE_ACTIONS,
+        COPY,
+    );
+    let hash = read_package(&source).unwrap().hash;
+
+    // Nothing changes while nobody signs: both by hand.
+    assert_eq!(plugins.inspect(&source).await.unwrap().signer_change, None);
+    plugins.install(&source, &hash).await.unwrap();
+    assert!(plugins.settings_of("cfg").unwrap()[1].set);
+    assert!(state.is_file());
+
+    // From nobody to a key: said in the review, and all of it goes.
+    let inspected = plugins
+        .inspect_signed(&source, Some(&signer))
+        .await
+        .unwrap();
+    assert_eq!(
+        inspected.signer_change,
+        Some(SignerChange {
+            from: None,
+            to: Some("Jane".to_owned())
+        })
+    );
+    plugins
+        .install_signed(&source, &hash, Some(signer.clone()))
+        .await
+        .unwrap();
+    assert!(!plugins.settings_of("cfg").unwrap()[1].set);
+    assert!(!state.exists());
+    // What is not a secret stays.
+    assert_eq!(
+        plugins.settings_of("cfg").unwrap()[0].value,
+        Some(json!("https://x"))
+    );
+
+    // The same key under another name is the same signer.
+    plugins
+        .set_setting("cfg", "token", &json!("again"))
+        .unwrap();
+    let renamed = Signer {
+        key: signer.key.clone(),
+        name: "J.".to_owned(),
+    };
+    assert_eq!(
+        plugins
+            .inspect_signed(&source, Some(&renamed))
+            .await
+            .unwrap()
+            .signer_change,
+        None
+    );
+    plugins
+        .install_signed(&source, &hash, Some(renamed))
+        .await
+        .unwrap();
+    assert!(plugins.settings_of("cfg").unwrap()[1].set);
+
+    // From a key to a manual install: said, and cleared.
+    assert_eq!(
+        plugins.inspect(&source).await.unwrap().signer_change,
+        Some(SignerChange {
+            from: Some("J.".to_owned()),
+            to: None
+        })
+    );
+    plugins.install(&source, &hash).await.unwrap();
+    assert!(!plugins.settings_of("cfg").unwrap()[1].set);
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -9,7 +9,8 @@
 //! Every hook is bound: a new sandbox per call with less fuel than an action, and a limit on its
 //! wall time, past which the action no longer waits for it. A hook that crashes, runs out of
 //! fuel or time, or answers nonsense does not stop anything: the action goes ahead and the
-//! caller gets a [`HookFailure`] once per plugin, to tell the user.
+//! caller gets a [`HookFailure`] once per plugin, to tell the user. The same goes for a plugin that
+//! should have run and cannot: its files are gone, or the list of plugins cannot be read.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -30,6 +31,10 @@ use crate::{PluginError, log};
 /// Set while the table has not been read: every event then looks wanted, so that the first
 /// asks. A hook has no way to be missed by coming before the list.
 const UNREAD: u8 = 1 << 7;
+/// Every event: what a plugin that cannot run hears of, to say so at the first one.
+const ALL_EVENTS: u8 = !UNREAD;
+/// Who failed when the list of plugins cannot be read: no plugin, and no id is empty.
+const NO_LIST: &str = "";
 /// The longest message of a hook that blocks, in characters.
 const MAX_MESSAGE: usize = 500;
 /// The longest statement a hook gets, in bytes.
@@ -177,7 +182,7 @@ pub struct HookBlock {
 /// A hook failed and the action went ahead; each plugin's only once.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HookFailure {
-    /// The plugin's name.
+    /// The plugin's name; empty when the list of plugins cannot be read, so that no hook ran.
     pub plugin: String,
     pub reason: String,
 }
@@ -256,23 +261,33 @@ impl HookTable {
     }
 
     /// Fills the table from the plugins of `list`: those turned on, with the `hooks` permission
-    /// approved. A plugin without it is not called at all.
+    /// approved. A plugin without it is not called at all. One whose files are gone may have been
+    /// a guard: its events are not known any more, so the first of any says it did not run.
     pub fn load(&self, plugins: &Plugins, list: &[Installed]) {
         let entries: Vec<Arc<Entry>> = list
             .iter()
             .filter(|p| {
-                p.enabled && p.approved.allows(Capability::Hooks) && !p.manifest.hooks.is_empty()
+                p.enabled
+                    && p.approved.allows(Capability::Hooks)
+                    && (p.broken || !p.manifest.hooks.is_empty())
             })
             .map(|p| {
                 let manifest = &p.manifest;
+                let (events, module) = if p.broken {
+                    let why = "its files are missing or damaged: remove it and install it again";
+                    (ALL_EVENTS, OnceLock::from(Err(why.to_owned())))
+                } else {
+                    let events = manifest.hooks.iter().fold(0, |bits, e| bits | e.bit());
+                    (events, OnceLock::new())
+                };
                 Arc::new(Entry {
                     id: manifest.id.clone(),
                     name: manifest.name.clone(),
-                    events: manifest.hooks.iter().fold(0, |bits, e| bits | e.bit()),
+                    events,
                     grants: plugins.grants(p),
                     limits: plugins.hook_limits(),
                     module_path: plugins.module_path(manifest).join(MODULE_FILE),
-                    module: OnceLock::new(),
+                    module,
                 })
             })
             .collect();
@@ -290,16 +305,18 @@ impl HookTable {
     }
 
     /// Runs the hooks of the context's event, at the same time and within their limits, and
-    /// says what they answered. Reads the list of plugins first if nothing did yet, and fails
-    /// open on a list that cannot be read: a broken file must not stop the user's queries.
+    /// says what they answered. Reads the list of plugins first if nothing did yet. A list that
+    /// cannot be read must not stop the user's queries, and a guard that does not run must not go
+    /// unnoticed: the action goes ahead, the user is told once, and the table stays unread, so
+    /// that a file put right counts from the next statement.
     pub async fn run(&self, plugins: &Plugins, context: &HookContext) -> HookReport {
         if self.active.load(Ordering::Relaxed) & UNREAD != 0 {
             match plugins.list() {
-                Ok(list) => self.load(plugins, &list),
-                Err(e) => {
-                    log("WARN", &format!("hooks: {e}"));
-                    self.load(plugins, &[]);
+                Ok(list) => {
+                    self.load(plugins, &list);
+                    self.forgive(NO_LIST);
                 }
+                Err(e) => return self.list_failed(&e),
             }
         }
         let event = context.event();
@@ -361,6 +378,19 @@ impl HookTable {
                     }
                 }
             }
+        }
+        report
+    }
+
+    fn list_failed(&self, e: &PluginError) -> HookReport {
+        let reason = clean_message(&e.to_string());
+        log("WARN", &format!("hooks: no hook runs: {reason}"));
+        let mut report = HookReport::default();
+        if self.first_failure(NO_LIST) {
+            report.failures.push(HookFailure {
+                plugin: NO_LIST.to_owned(),
+                reason,
+            });
         }
         report
     }

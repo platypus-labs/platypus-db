@@ -44,7 +44,7 @@ pub use hooks::{
     HookStatement, HookTable, QueryStatus,
 };
 pub use manifest::{Capability, Kind, Manifest, Permissions};
-pub use package::{Inspected, Installed, Plugins};
+pub use package::{Inspected, Installed, Plugins, SignerChange};
 pub use runtime::{Description, Limits};
 pub use settings::SettingState;
 
@@ -85,6 +85,9 @@ pub enum PluginError {
     /// A version older than the installed one: only the user's own request lets it through.
     #[error("version {offered} is older than the installed {installed}")]
     Downgrade { installed: String, offered: String },
+    /// A plugin left the list, and something of it could not be cleared; says what.
+    #[error("{0}")]
+    PartlyRemoved(String),
     #[error("{path}: {source}")]
     Io {
         path: String,
