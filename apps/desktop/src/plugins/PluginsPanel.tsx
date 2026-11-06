@@ -209,6 +209,8 @@ export function PluginsPanel() {
         ? false
         : null;
     if (keep === null) return;
+    // Its page goes with it: installed again, it starts closed.
+    setSettingsOf((open) => (open === plugin.manifest.id ? null : open));
     await attempt(async () => {
       try {
         await api.pluginRemove(plugin.manifest.id, keep);
