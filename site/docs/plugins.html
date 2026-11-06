@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Plugins</title>
+  <meta name="description" content="PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for wasm32-unknown-unknown, AssemblyScript, TinyGo, C, Zig…). A plugin…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../img/icon.png">
+  <link rel="preload" href="../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../index.html" aria-label="PlatypusDB, home">
+        <img src="../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../index.html#tour">Tour</a>
+        <a href="../features.html">Features</a>
+        <a href="../databases.html">Databases</a>
+        <a href="../compare.html">Compare</a>
+        <a href="../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../docs.html">Getting started</a>
+<a href="guide/index.html">User guide</a>
+<h6>Guide</h6>
+<a href="guide/connect.html">Connect to a database</a>
+<a href="guide/queries.html">Run queries and read results</a>
+<a href="guide/edit-data.html">Edit data</a>
+<a href="guide/import-export.html">Import and export</a>
+<a href="guide/safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="guide/projects-sharing.html">Projects and sharing</a>
+<a href="guide/agents.html">Use PlatypusDB from an agent</a>
+<a href="guide/troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="guide/databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="features.html">Features</a>
+<a href="shortcuts.html">Keyboard shortcuts</a>
+<a href="agents.html">Agents (MCP) and the CLI</a>
+<a href="plugins.html" class="on" aria-current="page">Plugins</a>
+<a href="connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Plugins</div>
+<h1 id="plugins">Plugins</h1>
+<p>PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for <code>wasm32-unknown-unknown</code>, AssemblyScript, TinyGo, C, Zig…). A plugin can add <strong>actions</strong> (commands in the editor, the result grid and the navigator) and a <strong>driver</strong> for a database that speaks HTTP. Plugins run in a sandbox: an interpreter (<code>wasmi</code>) with no access to files, programs, sockets or the clock, only to the JSON messages the app gives them and the host functions their permissions open.</p>
+<p>The host side is the crate <code>platypus-plugins</code>; the examples are in <a href="https://github.com/PaoloCisly/platypus-db/tree/main/examples/plugins"><code>examples/plugins</code></a> with their built modules.</p>
+<h2 id="package">Package</h2>
+<p>A package is a folder, or a <code>.zip</code> with the files at its root or in one folder:</p>
+<pre><code>plugin.toml    the manifest
+plugin.wasm    the module</code></pre>
+<pre><code class="language-toml">id = &quot;sql-tools&quot;                # lowercase letters, digits, - _ . ; stable
+name = &quot;SQL tools&quot;
+version = &quot;1.0.0&quot;
+author = &quot;Jane Doe&quot;             # optional
+description = &quot;What it does.&quot;   # optional
+api = 1                         # the ABI version below
+kinds = [&quot;actions&quot;]             # &quot;actions&quot; and/or &quot;driver&quot;
+
+[permissions]                   # optional; nothing is allowed by default
+http = [&quot;api.example.com&quot;, &quot;*.example.org&quot;]   # hosts for the http function
+clipboard = true                # an action may put text on the clipboard</code></pre>
+<p>Settings › Plugins installs a package from a folder or a <code>.zip</code>. Before installing, the app loads the module, asks it what it provides (<code>platypus_describe</code>) and shows that with the permissions; installing approves them. A module whose description does not match <code>kinds</code>, or that does not load, is refused. Packages are kept in <code>&lt;data&gt;/plugins/&lt;id&gt;/&lt;version&gt;/</code>; a new version replaces the old one (and its permissions must be approved again). <code>&lt;data&gt;/plugins/plugins.json</code> records which plugins are on, the approved permissions and the description. A plugin turned off offers no action and no driver; removing it deletes its folder.</p>
+<h2 id="abi-version-1">ABI, version 1</h2>
+<p>Messages are UTF-8 JSON in the module&#39;s linear memory. The module exports:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Export</th><th>Signature</th><th></th></tr></thead>
+<tbody>
+<tr><td><code>memory</code></td><td>memory</td><td>its linear memory</td></tr>
+<tr><td><code>platypus_alloc</code></td><td><code>(len: i32) -&gt; i32</code></td><td>a buffer of <code>len</code> bytes; 0 on failure</td></tr>
+<tr><td><code>platypus_dealloc</code></td><td><code>(ptr: i32, len: i32)</code></td><td>frees a buffer from <code>platypus_alloc</code> or an answer</td></tr>
+<tr><td><code>platypus_describe</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>what it provides</td></tr>
+<tr><td><code>platypus_action</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>runs an action (kind <code>actions</code>)</td></tr>
+<tr><td><code>platypus_driver</code></td><td><code>(ptr: i32, len: i32) -&gt; i64</code></td><td>one driver operation (kind <code>driver</code>)</td></tr>
+</tbody>
+</table></div>
+<p>A call: the host allocates a buffer with <code>platypus_alloc</code>, writes the request, calls the entry point with its pointer and length (0, 0 for an empty request), and reads the answer at the pointer in the high 32 bits of the result, of the length in the low 32 bits. Then the host frees both the request and the answer with <code>platypus_dealloc</code>: the module must not keep either. Every answer is an object:</p>
+<pre><code class="language-json">{&quot;ok&quot;: &lt;value&gt;}            or            {&quot;error&quot;: &quot;a message for the user&quot;}</code></pre>
+<p>The module may import only these functions, from the module <code>platypus</code>:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Import</th><th>Signature</th><th></th></tr></thead>
+<tbody>
+<tr><td><code>log</code></td><td><code>(level: i32, ptr: i32, len: i32)</code></td><td>a line in the app&#39;s log: 0 error, 1 warning, 2 information</td></tr>
+<tr><td><code>http</code></td><td><code>(ptr: i32, len: i32) -&gt; i32</code></td><td>sends a request; returns the length of the answer</td></tr>
+<tr><td><code>take</code></td><td><code>(ptr: i32)</code></td><td>copies the answer of the last <code>http</code> into a buffer of that length</td></tr>
+</tbody>
+</table></div>
+<p>A module that imports anything else (WASI, for example) does not load: build Rust plugins for <code>wasm32-unknown-unknown</code>, not <code>wasm32-wasip1</code>.</p>
+<p><code>http</code> takes <code>{&quot;method&quot;: &quot;GET&quot;, &quot;url&quot;: &quot;https://…&quot;, &quot;headers&quot;: {…}, &quot;body&quot;: &quot;text&quot;}</code> (only <code>url</code> is required) and answers <code>{&quot;ok&quot;: {&quot;status&quot;: 200, &quot;headers&quot;: {…}, &quot;body&quot;: &quot;text&quot;}}</code> or <code>{&quot;error&quot;: &quot;…&quot;}</code>. It goes only to the hosts of the approved permissions (and, for a driver, the host of its connection); any other host, a scheme other than <code>http</code>/<code>https</code>, or a plugin without the permission gets an error, and the call goes on. Redirects are followed only to allowed hosts. Requests go through the app&#39;s network stack: verified TLS, the system&#39;s proxy (<code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>NO_PROXY</code>, and the system settings on Windows and macOS), or the connection&#39;s <code>http://</code> proxy for a driver. Bodies are text (invalid UTF-8 is replaced).</p>
+<h3 id="limits">Limits</h3>
+<p>Each call has:</p>
+<ul>
+<li><strong>fuel</strong>: about 3 billion units, roughly one per WebAssembly instruction (a few seconds of the interpreter). An endless loop stops there with &quot;the plugin used up its time for this call&quot;;</li>
+<li><strong>memory</strong>: the module&#39;s memory may not grow past 64 MB; a module that asks for more at start does not load, and a growth past it fails (<code>memory.grow</code> returns -1);</li>
+<li><strong>messages</strong>: 16 MB each way, an HTTP answer included;</li>
+<li><strong>time</strong>: 60 s for the call, checked by the host functions; one HTTP request at most 30 s;</li>
+<li><strong>log</strong>: 100 lines, 4 KB each.</li>
+</ul>
+<p>A trap (<code>unreachable</code>, an access outside memory, a failed allocation), running out of fuel or time, or an answer that points outside memory ends the call with an error and never takes the app down. After that the module&#39;s state may be inconsistent: an action starts from a fresh instance anyway, and a driver connection is closed.</p>
+<h3 id="describe">Describe</h3>
+<p><code>platypus_describe</code> gets an empty request and answers:</p>
+<pre><code class="language-json">{&quot;ok&quot;: {
+  &quot;actions&quot;: [
+    {&quot;id&quot;: &quot;uppercase&quot;, &quot;title&quot;: &quot;Uppercase SQL keywords&quot;, &quot;scope&quot;: &quot;editor&quot;, &quot;shortcut&quot;: &quot;Mod+Alt+U&quot;},
+    {&quot;id&quot;: &quot;markdown&quot;, &quot;title&quot;: &quot;Copy rows as Markdown table&quot;, &quot;scope&quot;: &quot;grid&quot;},
+    {&quot;id&quot;: &quot;count&quot;, &quot;title&quot;: &quot;Count rows&quot;, &quot;scope&quot;: &quot;navigator.object&quot;}
+  ],
+  &quot;driver&quot;: {&quot;name&quot;: &quot;Toy HTTP database&quot;, &quot;metadata&quot;: true}
+}}</code></pre>
+<p>Titles are shown as written (plugins are not translated). Shortcuts use the app&#39;s notation (<code>Mod</code> is Ctrl, or Cmd on macOS) and can be changed in Settings › Keyboard shortcuts.</p>
+<h3 id="actions">Actions</h3>
+<p>Actions appear under a <strong>Plugins</strong> submenu of the context menu of their scope, and run with their shortcut where that scope has the focus. Each call to <code>platypus_action</code> starts a new instance of the module, so actions keep nothing between calls. The request is <code>{&quot;action&quot;: id, &quot;scope&quot;: scope, &quot;context&quot;: {…}}</code>, with the context of the scope:</p>
+<ul>
+<li><code>editor</code>: <code>{&quot;text&quot;: &quot;…&quot;, &quot;selection&quot;: {&quot;from&quot;, &quot;to&quot;, &quot;text&quot;} | null, &quot;driver&quot;: &quot;postgres&quot;}</code>;</li>
+<li><code>grid</code>: <code>{&quot;columns&quot;: [{&quot;name&quot;, &quot;type&quot;}], &quot;rows&quot;: [[…], …], &quot;truncated&quot;: false}</code>: the selected rows and columns, values as &quot;Copy as JSON&quot; writes them (numbers and booleans bare, the rest as text, <code>null</code>), at most 1000 rows (<code>truncated</code> says there were more);</li>
+<li><code>navigator.object</code>: <code>{&quot;connection&quot;: {&quot;name&quot;, &quot;driver&quot;, &quot;host&quot;, &quot;port&quot;, &quot;database&quot;, &quot;user&quot;}, &quot;database&quot;, &quot;schema&quot;, &quot;object&quot;: {&quot;name&quot;, &quot;kind&quot;}, &quot;target&quot;: &quot;\&quot;main\&quot;.\&quot;items\&quot;&quot;}</code>: never a password; <code>target</code> is the quoted, qualified name.</li>
+</ul>
+<p>The answer is one of:</p>
+<pre><code class="language-json">{&quot;kind&quot;: &quot;replace&quot;, &quot;text&quot;: &quot;…&quot;}   the editor&#39;s selection, or its whole text without one
+{&quot;kind&quot;: &quot;new_tab&quot;, &quot;text&quot;: &quot;…&quot;}   a new SQL tab on the same connection
+{&quot;kind&quot;: &quot;copy&quot;, &quot;text&quot;: &quot;…&quot;}      the clipboard: only with the clipboard permission
+{&quot;kind&quot;: &quot;message&quot;, &quot;text&quot;: &quot;…&quot;}   a message
+{&quot;kind&quot;: &quot;none&quot;}</code></pre>
+<h3 id="drivers">Drivers</h3>
+<p>A connection whose driver is a plugin (<code>driver = &quot;plugin&quot;</code>, the plugin&#39;s id in the <code>plugin</code> option) has its own instance of the module for as long as it is open, so the module can keep its session in memory. Calls on one connection run one at a time. <code>platypus_driver</code> receives:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Request</th><th>Answer</th></tr></thead>
+<tbody>
+<tr><td><code>{&quot;op&quot;: &quot;connect&quot;, &quot;config&quot;: {&quot;host&quot;, &quot;port&quot;, &quot;database&quot;, &quot;user&quot;, &quot;ssl_mode&quot;, &quot;options&quot;}, &quot;secrets&quot;: {&quot;password&quot;}}</code></td><td><code>{&quot;product&quot;, &quot;version&quot;}</code> (both optional)</td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;execute&quot;, &quot;sql&quot;: &quot;…&quot;}</code></td><td><code>{&quot;columns&quot;: [{&quot;name&quot;, &quot;type&quot;}], &quot;rows&quot;: [[…]]}</code>, or <code>{&quot;affected&quot;: n}</code></td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;schemas&quot;}</code></td><td><code>[{&quot;name&quot;, &quot;current&quot;}]</code></td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;objects&quot;, &quot;schema&quot;: &quot;…&quot;}</code></td><td><code>[{&quot;name&quot;, &quot;kind&quot;, &quot;comment&quot;}]</code>, <code>kind</code> as the app names them (<code>table</code>, <code>view</code>, …; <code>table</code> by default)</td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;table&quot;, &quot;schema&quot;: &quot;…&quot;, &quot;table&quot;: &quot;…&quot;}</code></td><td><code>{&quot;columns&quot;: [{&quot;name&quot;, &quot;type&quot;, &quot;nullable&quot;, &quot;primary_key&quot;, &quot;comment&quot;}]}</code></td></tr>
+<tr><td><code>{&quot;op&quot;: &quot;close&quot;}</code></td><td>anything; sent when the connection is dropped</td></tr>
+</tbody>
+</table></div>
+<p>The password is only in the <code>connect</code> request, in memory; the <code>options</code> sent leave out the app&#39;s own (<code>plugin</code>, <code>proxy</code>, the connect and disconnect commands). The navigator calls <code>schemas</code>, <code>objects</code> and <code>table</code> only when the description says <code>&quot;metadata&quot;: true</code>; without it the navigator stays empty and the editor still runs statements.</p>
+<p>The host turns rows into Arrow batches. A column takes its declared <code>type</code> when every value fits it (<code>bool</code>/<code>boolean</code>, <code>int</code>/<code>integer</code>/<code>bigint</code>, <code>float</code>/<code>double</code>/<code>real</code>/<code>number</code>/ <code>numeric</code>/<code>decimal</code>, <code>text</code>/<code>string</code>/<code>varchar</code>), otherwise the narrowest type all its values fit (boolean, 64-bit integer, double), otherwise text, where objects and arrays are written as JSON. The declared type is shown as the column&#39;s type.</p>
+<p>A driver reaches its database <strong>only through <code>http</code></strong>: the host of the connection, as the user typed it, is allowed without a permission; other hosts (a login service) must be listed in <code>permissions.http</code>. Raw TCP, UDP and local files are not possible, so databases with an HTTP API only. Plugin drivers have no transactions (autocommit only), no cancel (the call&#39;s fuel and deadline stop it), no SSH tunnel (the tunnel&#39;s local address is not passed to the plugin) and no terminal mode. They use the standard SQL dialect in the editor.</p>
+<h2 id="writing-a-plugin-in-rust">Writing a plugin in Rust</h2>
+<p><code>examples/plugins/sdk</code> is a small guest library: <code>export_allocator!()</code> exports <code>platypus_alloc</code> and <code>platypus_dealloc</code>, <code>entry(ptr, len, |request| …)</code> reads a request and writes the answer, <code>http</code> and <code>log</code> wrap the host functions.</p>
+<pre><code class="language-rust">use platypus_plugin_sdk::entry;
+use serde_json::json;
+
+platypus_plugin_sdk::export_allocator!();
+
+#[unsafe(no_mangle)]
+pub extern &quot;C&quot; fn platypus_describe(ptr: i32, len: i32) -&gt; i64 {
+    entry(ptr, len, |_| Ok(json!({ &quot;actions&quot;: [
+        { &quot;id&quot;: &quot;hello&quot;, &quot;title&quot;: &quot;Say hello&quot;, &quot;scope&quot;: &quot;editor&quot; }
+    ] })))
+}
+
+#[unsafe(no_mangle)]
+pub extern &quot;C&quot; fn platypus_action(ptr: i32, len: i32) -&gt; i64 {
+    entry(ptr, len, |_| Ok(json!({ &quot;kind&quot;: &quot;message&quot;, &quot;text&quot;: &quot;Hello!&quot; })))
+}</code></pre>
+<pre><code class="language-bash">rustup target add wasm32-unknown-unknown
+cargo build --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/&lt;name&gt;.wasm plugin.wasm</code></pre>
+<p>The examples build with <code>opt-level = &quot;z&quot;</code>, LTO and <code>panic = &quot;abort&quot;</code>: about 90 KB each.</p>
+<ul>
+<li><code>examples/plugins/sql-tools</code>: an action per scope (uppercase keywords in the editor, copy rows as a Markdown table, count a table&#39;s rows in a new tab).</li>
+<li><code>examples/plugins/toy-http-driver</code>: a driver for a database answering <code>GET /hello</code>, <code>POST /query</code>, <code>GET /tables</code> and <code>GET /tables/&lt;name&gt;</code> with JSON, the password sent as a bearer token. The tests of <code>platypus-plugins</code> (<code>tests/examples.rs</code>) run it against a local server.</li>
+</ul>
+<p>After changing an example, build it again and copy its module next to its <code>plugin.toml</code>: the tests use the committed <code>plugin.wasm</code>.</p>
+<p>Other languages export the same functions: <code>memory</code>, an allocator under the names <code>platypus_alloc</code> and <code>platypus_dealloc</code> (for actions a bump allocator is enough, since each runs in a new instance; a driver keeps its instance and needs a real one), and the entry points; and import <code>log</code>, <code>http</code> and <code>take</code> from the module <code>platypus</code> (in AssemblyScript, <code>@external(&quot;platypus&quot;, &quot;http&quot;)</code>).</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#package">Package</a>
+    <a href="#abi-version-1">ABI, version 1</a>
+    <a href="#writing-a-plugin-in-rust">Writing a plugin in Rust</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../index.html"><img src="../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../docs.html">Getting started</a></li>
+          <li><a href="../docs/guide/index.html">User guide</a></li>
+          <li><a href="../docs/features.html">Features</a></li>
+          <li><a href="../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Run queries and read results</title>
+  <meta name="description" content="JOIN completion from the foreign keys">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../img/icon.png">
+  <link rel="preload" href="../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../index.html#tour">Tour</a>
+        <a href="../../features.html">Features</a>
+        <a href="../../databases.html">Databases</a>
+        <a href="../../compare.html">Compare</a>
+        <a href="../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../docs.html">Getting started</a>
+<a href="index.html">User guide</a>
+<h6>Guide</h6>
+<a href="connect.html">Connect to a database</a>
+<a href="queries.html" class="on" aria-current="page">Run queries and read results</a>
+<a href="edit-data.html">Edit data</a>
+<a href="import-export.html">Import and export</a>
+<a href="safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="projects-sharing.html">Projects and sharing</a>
+<a href="agents.html">Use PlatypusDB from an agent</a>
+<a href="troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="../features.html">Features</a>
+<a href="../shortcuts.html">Keyboard shortcuts</a>
+<a href="../agents.html">Agents (MCP) and the CLI</a>
+<a href="../plugins.html">Plugins</a>
+<a href="../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Run queries and read results</div>
+<p><a href="index.html">← User guide</a></p>
+<h1 id="run-queries-and-read-results">Run queries and read results</h1>
+<p><img src="../../img/screenshots/autocomplete.png" alt="JOIN completion from the foreign keys" loading="lazy"></p>
+<h2 id="run-a-statement">Run a statement</h2>
+<ol>
+<li>Double-click a connection (or a table) to open a SQL editor.</li>
+<li>Type a statement. <code>Ctrl+Space</code> completes keywords, tables and columns; <code>JOIN</code> offers the related tables from the foreign keys.</li>
+<li>Press <code>Ctrl+Enter</code> to run the statement under the cursor (or the selection), or <code>Alt+X</code> to run the whole script. <code>Ctrl+\</code> runs into a new result tab.</li>
+<li><code>Ctrl+.</code> cancels a statement that is running.</li>
+</ol>
+<p>Statements end at a <code>;</code>, or at a blank line before a word that starts a new one. When a statement fails, the error is pointed out in the text and the error panel offers <strong>Go to the error</strong>. <code>Ctrl+Shift+F</code> formats the script; <code>Ctrl+S</code> saves it as a <code>.sql</code> file.</p>
+<h2 id="parameters-and-variables">Parameters and variables</h2>
+<p><code>:id</code> and <code>?</code> in a statement, and <code>${name}</code> variables, are asked in a dialog before the run and kept in a Variables panel. A <code>${name}</code> value goes into the SQL as it is, so a statement with variables is checked again filled in (see <a href="safety.html">Safety</a>).</p>
+<h2 id="read-the-results">Read the results</h2>
+<ul>
+<li>The grid reads rows a page at a time. Click a column header to sort: it writes the <code>ORDER BY</code> in the editor and runs again; a second click reverses it, a third puts back the query&#39;s own.</li>
+<li>Open a table from the navigator to browse it; a <code>WHERE</code> typed in the editor filters it.</li>
+<li><code>F7</code> opens the value panel: long text, JSON and XML formatted, hex and images from binary columns.</li>
+<li>A cell that holds a file (a PDF, an image, a ZIP and others, recognized by its bytes) shows its type and size, such as <code>PDF · 2.3 MB</code>. The grid menu offers <strong>Save PDF…</strong> (or the file&#39;s type) and, on several cells of a column, <strong>Save N files to a folder…</strong>. The value panel has the same button.</li>
+<li><code>Ctrl+F</code> finds in the loaded rows; <code>Ctrl+Shift+C</code> copies the selection with headers.</li>
+<li>A result can switch from the grid to a chart from the status bar.</li>
+</ul>
+<p><img src="../../img/screenshots/guide/file-cell.png" alt="Cells that hold files, with their type and size" loading="lazy"></p>
+<h2 id="understand-a-slow-query">Understand a slow query</h2>
+<p>Press <code>Ctrl+Shift+E</code> on a statement to see its plan. See <a href="../features.html#query-plans-and-performance">FEATURES.md</a>.</p>
+<h2 id="more">More</h2>
+<p>Saved scripts, snippets, history, vim mode, running a script on several connections, the query builder and data analysis are in <a href="../features.html#sql-editor">FEATURES.md</a>. The result grid is in <a href="../features.html#results-and-the-data-viewer">FEATURES.md</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#run-a-statement">Run a statement</a>
+    <a href="#parameters-and-variables">Parameters and variables</a>
+    <a href="#read-the-results">Read the results</a>
+    <a href="#understand-a-slow-query">Understand a slow query</a>
+    <a href="#more">More</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../index.html"><img src="../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../docs.html">Getting started</a></li>
+          <li><a href="../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../docs/features.html">Features</a></li>
+          <li><a href="../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../site.js" defer></script>
+</body>
+</html>

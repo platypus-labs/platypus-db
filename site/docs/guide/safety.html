@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Work safely: production, read-only, confirmations, masking</title>
+  <meta name="description" content="Everything here is also in FEATURES.md.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../img/icon.png">
+  <link rel="preload" href="../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../index.html#tour">Tour</a>
+        <a href="../../features.html">Features</a>
+        <a href="../../databases.html">Databases</a>
+        <a href="../../compare.html">Compare</a>
+        <a href="../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../docs.html">Getting started</a>
+<a href="index.html">User guide</a>
+<h6>Guide</h6>
+<a href="connect.html">Connect to a database</a>
+<a href="queries.html">Run queries and read results</a>
+<a href="edit-data.html">Edit data</a>
+<a href="import-export.html">Import and export</a>
+<a href="safety.html" class="on" aria-current="page">Work safely: production, read-only, confirmations, masking</a>
+<a href="projects-sharing.html">Projects and sharing</a>
+<a href="agents.html">Use PlatypusDB from an agent</a>
+<a href="troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="../features.html">Features</a>
+<a href="../shortcuts.html">Keyboard shortcuts</a>
+<a href="../agents.html">Agents (MCP) and the CLI</a>
+<a href="../plugins.html">Plugins</a>
+<a href="../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Work safely: production, read-only, confirmations, masking</div>
+<p><a href="index.html">← User guide</a></p>
+<h1 id="work-safely-production-read-only-confirmations-masking">Work safely: production, read-only, confirmations, masking</h1>
+<p>Everything here is also in <a href="../features.html#transactions-and-safety">FEATURES.md</a>.</p>
+<p><img src="../../img/screenshots/guide/safety.png" alt="Settings, the Safety page" loading="lazy"></p>
+<h2 id="mark-a-connection-as-production">Mark a connection as production</h2>
+<ol>
+<li>Edit the connection, open the <strong>Appearance and safety</strong> page.</li>
+<li>Set the environment to <strong>Production</strong> (the other choices are Development and Test). Production asks before changes and starts in manual commit.</li>
+<li>Optionally pick a color, so the connection is easy to tell apart.</li>
+</ol>
+<p>From then on every change on that connection is listed in a dialog titled &quot;Changes on <code>&lt;name&gt;</code> (production)&quot;, with the statements, and runs only after you confirm. Settings (<code>Ctrl+,</code>) › <strong>Safety</strong> › <strong>Ask before changes on production connections</strong> turns this off for the app. Agents are never more than read only on a production connection.</p>
+<h2 id="make-a-connection-read-only">Make a connection read-only</h2>
+<ol>
+<li>On the same page, tick <strong>Read-only (warn before modifying data)</strong>.</li>
+<li>A statement that may modify data is stopped in the editor with &quot;<code>&lt;name&gt;</code> is read-only and this may modify data.&quot;; some entry points ask &quot;Run anyway?&quot; instead. Import into tables is not offered, and agents stay read only.</li>
+</ol>
+<p>The lock button of an editor tab makes just that tab read-only, without changing the saved connection.</p>
+<p>The same page has two more boxes: <strong>No exports</strong> (its data goes to no file, other database or agent) and <strong>No data editing</strong> (rows change only by SQL, not in the grid, imports or generated data).</p>
+<h2 id="confirmations">Confirmations</h2>
+<p>Settings › <strong>Safety</strong> › <strong>Before changes</strong>:</p>
+<ul>
+<li><strong>UPDATE or DELETE without WHERE</strong> (also <code>TRUNCATE</code>): <strong>Ask before running</strong> (the default), <strong>Never run</strong> or <strong>Run without asking</strong>. The dialog asks &quot;Change every row?&quot; and says about how many rows.</li>
+<li><strong>Warn when a transaction stays open for (minutes)</strong>: 10 by default, 0 never warns.</li>
+<li><strong>Add a LIMIT to queries without one (rows)</strong>: 0 (the default) never adds one.</li>
+<li><strong>Ask before agents change data</strong>: see <a href="agents.html">Agents</a>.</li>
+</ul>
+<h2 id="undo-a-change">Undo a change</h2>
+<p>On by default, <strong>Keep the rows an UPDATE or DELETE changes, to put them back</strong> (Settings › Safety › <strong>Lock and backups</strong>) keeps the rows of an <code>UPDATE</code> or <code>DELETE</code> of one table, up to 10,000, run from the editor. Open the <strong>Transaction log</strong> in the editor&#39;s toolbar and click <strong>Restore…</strong>, or run <strong>Snapshots before changes…</strong> from the command palette, to get the script that puts them back.</p>
+<h2 id="mask-sensitive-data">Mask sensitive data</h2>
+<ol>
+<li>Press <code>Ctrl+Alt+M</code> (or run <strong>Mask sensitive data</strong> from the command palette): the values of sensitive columns show as dots while the screen is shared. Copies keep the real values.</li>
+<li>Settings › <strong>Safety</strong> › <strong>Masking</strong> sets which columns are sensitive, by name (<code>*password*</code>, <code>*token*</code>, <code>*email*</code> and others by default; <code>*</code> is any characters) and by type. You can also mark a column in its table&#39;s tab.</li>
+</ol>
+<p>Agents read the sensitive columns masked too, unless you tick <strong>Show agents the values of sensitive columns</strong> for that connection in Settings › Agents › <strong>Security</strong>. A sensitive field inside a MongoDB document (<code>user.password</code>) is masked too. When an agent asks what you are working on, a column read under another name (<code>SELECT email AS contact</code>) is masked as well; if the statement hides it behind a subquery, the whole shared result is masked.</p>
+<p>A rule or a mark removed outside the app (an agent with file tools editing <code>settings.toml</code> or <code>catalog.db</code>) does not reach agents until you accept it: the app asks, and Settings › Agents › <strong>Security</strong> lists it, with a way to accept or undo it. One added outside the app applies at once. This covers edits of those files and nothing more. An agent that can run commands as your user can read the database by other routes, or the system keychain the seal lives in: to keep values from such an agent, run it as another user and give the connection a database user without access to those columns.</p>
+<p>An answer holds for what the question listed: if the files change again while it is open, <strong>Accept</strong> accepts nothing and the list is shown again.</p>
+<h2 id="lock-the-app">Lock the app</h2>
+<p>With a master password set (see <a href="connect.html#master-password">Connect</a>), Settings › <strong>Safety</strong> › <strong>Lock the app after this many idle minutes</strong> (0, the default, never locks) locks PlatypusDB and closes the production connections. <strong>Lock PlatypusDB</strong> in the command palette locks it at once. Enter the master password to unlock: production connections reconnect when used.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#mark-a-connection-as-production">Mark a connection as production</a>
+    <a href="#make-a-connection-read-only">Make a connection read-only</a>
+    <a href="#confirmations">Confirmations</a>
+    <a href="#undo-a-change">Undo a change</a>
+    <a href="#mask-sensitive-data">Mask sensitive data</a>
+    <a href="#lock-the-app">Lock the app</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../index.html"><img src="../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../docs.html">Getting started</a></li>
+          <li><a href="../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../docs/features.html">Features</a></li>
+          <li><a href="../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Databases</title>
+  <meta name="description" content="One page for each database: how to connect, what the login needs, what works and what does not, and which versions the test suite runs on. Connecting…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../../docs.html">Getting started</a>
+<a href="../index.html">User guide</a>
+<h6>Guide</h6>
+<a href="../connect.html">Connect to a database</a>
+<a href="../queries.html">Run queries and read results</a>
+<a href="../edit-data.html">Edit data</a>
+<a href="../import-export.html">Import and export</a>
+<a href="../safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="../projects-sharing.html">Projects and sharing</a>
+<a href="../agents.html">Use PlatypusDB from an agent</a>
+<a href="../troubleshooting.html">Troubleshooting and FAQ</a>
+<a href="index.html" class="on" aria-current="page">Databases</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 and ODBC</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Databases</div>
+<p><a href="../index.html">← Guide</a></p>
+<h1 id="databases">Databases</h1>
+<p>One page for each database: how to connect, what the login needs, what works and what does not, and which versions the test suite runs on. <a href="../connect.html">Connecting</a> explains the parts every database shares (SSH, proxy, the keychain, projects), <a href="../troubleshooting.html">Troubleshooting</a> the errors, and <a href="../../features.html">FEATURES.md</a> is the reference by feature.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Page</th><th>Databases</th></tr></thead>
+<tbody>
+<tr><td><a href="postgresql.html">PostgreSQL</a></td><td>PostgreSQL, CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB</td></tr>
+<tr><td><a href="mysql.html">MySQL</a></td><td>MySQL, MariaDB</td></tr>
+<tr><td><a href="sqlite.html">SQLite</a></td><td>SQLite</td></tr>
+<tr><td><a href="sqlserver.html">SQL Server</a></td><td>SQL Server, Azure SQL</td></tr>
+<tr><td><a href="oracle.html">Oracle</a></td><td>Oracle Database</td></tr>
+<tr><td><a href="clickhouse.html">ClickHouse</a></td><td>ClickHouse</td></tr>
+<tr><td><a href="duckdb.html">DuckDB</a></td><td>DuckDB, and CSV, JSON, Parquet and Excel files</td></tr>
+<tr><td><a href="libsql.html">libSQL</a></td><td>libSQL (<code>sqld</code>), Turso</td></tr>
+<tr><td><a href="mongodb.html">MongoDB</a></td><td>MongoDB</td></tr>
+<tr><td><a href="redis.html">Redis</a></td><td>Redis</td></tr>
+<tr><td><a href="elasticsearch.html">Elasticsearch</a></td><td>Elasticsearch, OpenSearch</td></tr>
+<tr><td><a href="cassandra.html">Cassandra</a></td><td>Apache Cassandra, ScyllaDB</td></tr>
+<tr><td><a href="adbc.html">ADBC</a></td><td>Snowflake, BigQuery, Databricks, Trino, any other ADBC driver</td></tr>
+<tr><td><a href="db2-odbc.html">Db2 and ODBC</a></td><td>IBM Db2, any ODBC driver or data source (Windows)</td></tr>
+</tbody>
+</table></div>
+<h2 id="what-works-where">What works where</h2>
+<p>&quot;Rows&quot; is editing in the grid. &quot;Admin&quot; is the server tabs of <em>Server activity…</em> (sessions, locks, dashboard, costliest statements, tables and indexes, parameters, users and roles, maintenance). A dash is &quot;not available&quot;; &quot;untested&quot; means the app does not block it but nothing runs it.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Database</th><th>Default port</th><th>Manual commit</th><th>Cancel</th><th>Explain</th><th>Rows</th><th>Admin</th></tr></thead>
+<tbody>
+<tr><td>PostgreSQL</td><td>5432</td><td>yes</td><td>yes</td><td>plan, analyze</td><td>yes</td><td>all</td></tr>
+<tr><td>CockroachDB, YugabyteDB</td><td>26257, 5433</td><td>yes</td><td>yes</td><td>plan, analyze</td><td>yes</td><td>–</td></tr>
+<tr><td>MySQL, MariaDB</td><td>3306</td><td>yes</td><td>yes</td><td>plan; analyze on MySQL 8.0.18+ and MariaDB</td><td>yes</td><td>all</td></tr>
+<tr><td>SQL Server</td><td>1433</td><td>yes</td><td>yes</td><td>estimated plan</td><td>yes</td><td>all; ends sessions, cannot cancel another&#39;s statement</td></tr>
+<tr><td>Oracle</td><td>1521</td><td>yes</td><td>yes</td><td>estimated plan</td><td>yes</td><td>–</td></tr>
+<tr><td>ClickHouse</td><td>8123 (8443 with TLS)</td><td>–</td><td>yes</td><td>plan</td><td>–</td><td>parameters, dashboard, users</td></tr>
+<tr><td>SQLite</td><td>a file</td><td>yes</td><td>yes</td><td>query plan</td><td>yes</td><td>parameters</td></tr>
+<tr><td>DuckDB</td><td>a file</td><td>yes</td><td>yes</td><td>plan, analyze</td><td>yes</td><td>parameters</td></tr>
+<tr><td>libSQL, Turso</td><td>443 (80 without TLS)</td><td>yes</td><td>–</td><td>query plan</td><td>yes</td><td>–</td></tr>
+<tr><td>MongoDB</td><td>27017</td><td>–</td><td>yes</td><td>–</td><td>–</td><td>–</td></tr>
+<tr><td>Redis</td><td>6379</td><td><code>MULTI</code>/<code>EXEC</code> only</td><td>yes</td><td>–</td><td>yes</td><td>–</td></tr>
+<tr><td>Elasticsearch, OpenSearch</td><td>9200</td><td>–</td><td>yes</td><td>–</td><td>yes</td><td>–</td></tr>
+<tr><td>Cassandra, ScyllaDB</td><td>9042</td><td>–</td><td>yes</td><td>–</td><td>yes, by full primary key</td><td>–</td></tr>
+<tr><td>Snowflake, BigQuery, Databricks, Trino</td><td>see the page</td><td>–</td><td>yes</td><td>–</td><td>–</td><td>–</td></tr>
+<tr><td>Db2, other ODBC</td><td>50000 for Db2</td><td>yes</td><td>yes</td><td>–</td><td>untested</td><td>–</td></tr>
+</tbody>
+</table></div>
+<p>&quot;Admin&quot; on CockroachDB and YugabyteDB is off because those servers lack parts of what the tabs call (CockroachDB has no <code>pg_blocking_pids</code> or <code>pg_terminate_backend</code>, YugabyteDB keeps its locks elsewhere). The databases with no SQL (MongoDB, Redis, Elasticsearch, Cassandra) also have no table editor, ER diagram, schema comparison, query builder, SQL import, snapshots before changes or query plans; their pages say what they have instead.</p>
+<p>Every database gets the editor, the grid and the navigator. Rows in the grid are found by the table&#39;s primary key, a unique key on non-null columns, or a <em>virtual key</em> you set.</p>
+<h2 id="drivers-downloaded-on-first-use">Drivers downloaded on first use</h2>
+<p>PostgreSQL, MySQL, SQL Server, SQLite, libSQL, ClickHouse, MongoDB, Redis, Elasticsearch and Cassandra are built into the app. The others need a library that the app downloads once:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Database</th><th>What is downloaded</th><th>From</th></tr></thead>
+<tbody>
+<tr><td>DuckDB</td><td>DuckDB&#39;s library, 2.0.0</td><td>DuckDB&#39;s release on GitHub</td></tr>
+<tr><td>Oracle</td><td>Oracle Instant Client, Basic Light 23.26.4 (Windows, Linux; not macOS)</td><td>Oracle</td></tr>
+<tr><td>IBM Db2</td><td>IBM Data Server Driver for ODBC and CLI 12.1.4 (Windows)</td><td>IBM</td></tr>
+<tr><td>Snowflake, BigQuery, Databricks, Trino</td><td>their ADBC driver</td><td>the dbc driver registry (Columnar)</td></tr>
+</tbody>
+</table></div>
+<p><strong>When you pick the database</strong> for a new connection, and the library is not on this machine, a popup opens over the form that says what it is, its version and size, its license and where it comes from, and that the download is checked against a SHA-256. <strong>Download</strong> fetches it (Windows asks for administrator permission to register IBM&#39;s driver); <strong>Cancel</strong> leaves the form usable. The offer returns at <em>Test connection</em> and at the first opening. The check reads only this machine, so it appears offline, and the download needs the network. <em>Settings › Drivers</em> lists, updates and removes what was downloaded.</p>
+<h2 id="versions">Versions</h2>
+<p>The oldest version each database is checked against, and what the conformance suite runs on (<code>docker/compose.yml</code> and the <code>versions</code> profile). A server older than the minimum connects with a warning that some features may not work, except Cassandra, ScyllaDB, Elasticsearch and OpenSearch, which refuse it.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Database</th><th>Minimum</th><th>The suite runs on</th></tr></thead>
+<tbody>
+<tr><td>PostgreSQL</td><td>12</td><td>12, 14, 16, 17</td></tr>
+<tr><td>MySQL</td><td>5.7</td><td>5.7, 8.0, 8.4</td></tr>
+<tr><td>MariaDB</td><td>10.6</td><td>10.6, 11.4</td></tr>
+<tr><td>SQL Server</td><td>2017</td><td>2017, 2022</td></tr>
+<tr><td>MongoDB</td><td>5.0</td><td>5.0, 8.0</td></tr>
+<tr><td>Redis</td><td>6.0</td><td>Redis Stack 7.4</td></tr>
+<tr><td>Elasticsearch, OpenSearch</td><td>7.10, 1.0</td><td>8.15.3, 2.17.1</td></tr>
+<tr><td>Cassandra, ScyllaDB</td><td>4.0, 5.4</td><td>5, 2025.1</td></tr>
+<tr><td>ClickHouse</td><td>none</td><td>26.3</td></tr>
+<tr><td>TimescaleDB, CockroachDB, YugabyteDB</td><td>none</td><td>2.30 (on PostgreSQL 17), 26.2, 2025.2</td></tr>
+<tr><td>libSQL (<code>sqld</code>)</td><td>none</td><td>0.24.33</td></tr>
+<tr><td>Oracle</td><td>none</td><td>Free 23.26</td></tr>
+<tr><td>Trino</td><td>none</td><td>484</td></tr>
+<tr><td>SQLite, DuckDB</td><td>none</td><td>the version built into the app, DuckDB 2.0</td></tr>
+</tbody>
+</table></div>
+<p>Not tested at all: Azure SQL, Supabase, Neon, AlloyDB, Turso&#39;s cloud, Snowflake, BigQuery, Databricks and IBM Db2.</p>
+<h2 id="agents">Agents</h2>
+<p><a href="../../agents.html">Agents and the CLI</a> works on every database above. The differences are on each page: how a read-only session is made (the server refuses writes on PostgreSQL, CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB and ClickHouse; everywhere else the statement check alone), and what is refused (<code>explain</code> on MongoDB, Redis, Elasticsearch and Cassandra; <code>get_er_diagram</code> on MongoDB, Redis and Elasticsearch; <code>propose_edits</code> wherever the grid does not edit rows by key: MongoDB, Redis, Elasticsearch, Cassandra, ClickHouse and the ADBC databases). <code>server_activity</code> and <code>top_queries</code> work on PostgreSQL, MySQL, MariaDB and SQL Server.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#what-works-where">What works where</a>
+    <a href="#drivers-downloaded-on-first-use">Drivers downloaded on first use</a>
+    <a href="#versions">Versions</a>
+    <a href="#agents">Agents</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

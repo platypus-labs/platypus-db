@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Troubleshooting and FAQ</title>
+  <meta name="description" content="Start with Test connection in the connection&#39;s form: it reports the failure with the server&#39;s own message, and names the server version where that helps.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../img/icon.png">
+  <link rel="preload" href="../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../img/mark.png" alt="" width="26" height="26">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../index.html#tour">Tour</a>
+        <a href="../../features.html">Features</a>
+        <a href="../../databases.html">Databases</a>
+        <a href="../../compare.html">Compare</a>
+        <a href="../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/PaoloCisly/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../../docs.html">Getting started</a>
+<a href="index.html">User guide</a>
+<h6>Guide</h6>
+<a href="connect.html">Connect to a database</a>
+<a href="queries.html">Run queries and read results</a>
+<a href="edit-data.html">Edit data</a>
+<a href="import-export.html">Import and export</a>
+<a href="safety.html">Work safely: production, read-only, confirmations, masking</a>
+<a href="projects-sharing.html">Projects and sharing</a>
+<a href="agents.html">Use PlatypusDB from an agent</a>
+<a href="troubleshooting.html" class="on" aria-current="page">Troubleshooting and FAQ</a>
+<a href="databases/index.html">Databases</a>
+<h6>Reference</h6>
+<a href="../features.html">Features</a>
+<a href="../shortcuts.html">Keyboard shortcuts</a>
+<a href="../agents.html">Agents (MCP) and the CLI</a>
+<a href="../plugins.html">Plugins</a>
+<a href="../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a>
+<a href="https://github.com/PaoloCisly/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Troubleshooting and FAQ</div>
+<p><a href="index.html">← User guide</a></p>
+<h1 id="troubleshooting-and-faq">Troubleshooting and FAQ</h1>
+<p>Start with <strong>Test connection</strong> in the connection&#39;s form: it reports the failure with the server&#39;s own message, and names the server version where that helps.</p>
+<h2 id="connection-errors">Connection errors</h2>
+<h3 id="the-host-cannot-be-reached">The host cannot be reached</h3>
+<p>Check the host and the port first (the form says &quot;The host is missing.&quot; or &quot;The port must be a number from 1 to 65535.&quot;). Then look at what sits between you and the server: an SSH tunnel, a proxy, a port forward, or a command around the connection that brings a VPN up (<strong>Network</strong> page). Each adds its own message, below.</p>
+<h3 id="tls">TLS</h3>
+<p>On the <strong>Network</strong> page, <strong>SSL mode</strong> decides what is checked (see <a href="connect.html#tls">Connect</a>).</p>
+<ul>
+<li>A server that refuses an unencrypted connection needs <code>require</code> or above; a server with a certificate your computer does not trust needs <code>verify-ca</code> or <code>verify-full</code> with the <strong>CA certificate (PEM)</strong>, or <code>require</code> to encrypt without checking.</li>
+<li>&quot;invalid certificate&quot; and &quot;invalid root certificates&quot; mean a PEM file that cannot be read: check that it is the certificate itself, not a key.</li>
+<li>&quot;a client certificate needs both the certificate and its key&quot;: fill in <strong>Client certificate (PEM)</strong> and <strong>Client key (PEM)</strong> together. &quot;invalid client certificate or key&quot; means they do not match or are not PEM.</li>
+<li>Redis, Elasticsearch and Cassandra take TLS from an SSL mode of <code>require</code> or above.</li>
+</ul>
+<h3 id="ssh">SSH</h3>
+<p>Errors begin with <code>SSH &lt;user&gt;@&lt;host&gt;:&lt;port&gt;:</code>.</p>
+<ul>
+<li><code>no answer within 10 s</code> or <code>cannot reach &lt;host&gt;:&lt;port&gt;</code>: the SSH server (or the proxy in front of it) is not reachable from here.</li>
+<li><code>cannot read the key &lt;path&gt;</code>: the <strong>Private key file</strong> is missing, unreadable, or needs its passphrase.</li>
+<li><code>no SSH agent is running</code>: start your SSH agent, or use a key file or a password.</li>
+<li>A refused password or key is the server&#39;s answer: check <strong>SSH user</strong> and the method.</li>
+<li>A server whose key changed since the first connection is refused. The keys are those of <code>~/.ssh/known_hosts</code>, shared with OpenSSH: remove the old line there if the change is expected.</li>
+</ul>
+<h3 id="proxy">Proxy</h3>
+<p>Errors name the proxy, such as <code>SOCKS5 proxy host:1080: …</code> or <code>HTTP proxy host:3128: …</code>.</p>
+<ul>
+<li><code>no answer within 10 s</code>: the proxy does not answer.</li>
+<li><code>the proxy asks for a user and password, or refused them</code>: write them in the URL (<code>http://user:password@host:3128</code>).</li>
+<li><code>cannot reach &lt;host&gt;:&lt;port&gt;: …</code>: the proxy answered but could not reach the database.</li>
+<li>A URL that is not understood is reported as <code>proxy &quot;&lt;url&gt;&quot;: …</code>. A port forward goes alone: remove the SSH tunnel or the proxy.</li>
+</ul>
+<h3 id="keychain">Keychain</h3>
+<ul>
+<li><code>keychain error: …</code>, or &quot;the system has no keychain to save the password in&quot;: on Linux a Secret Service such as GNOME Keyring or KWallet must be running. Without one, set a master password (Settings › <strong>Master password</strong>) or choose <strong>Ask every time</strong> for the password.</li>
+<li>&quot;No password is saved for this connection: it will be saved in the keychain.&quot; is only a notice.</li>
+<li>Passwords imported from another tool without theirs (DBeaver with its own master password, for one) are asked at first use.</li>
+</ul>
+<h3 id="master-password">Master password</h3>
+<ul>
+<li>&quot;PlatypusDB is locked&quot; or &quot;Enter the master password to use them&quot;: type it and click <strong>Unlock</strong>. Idle locking is in Settings › <strong>Safety</strong>; production connections reconnect when used.</li>
+<li>It cannot be recovered. If it is lost, the saved passwords are lost: set the passwords again in each connection.</li>
+<li>To go back to the keychain, Settings › <strong>Master password</strong> › <strong>Turn off…</strong> (it asks for the current one).</li>
+</ul>
+<h2 id="a-driver-download-fails">A driver download fails</h2>
+<p>DuckDB, Snowflake, BigQuery, Databricks, Trino, other ADBC drivers, Oracle and IBM Db2 download their library the first time they are used. The popup says &quot;Downloading the <code>&lt;name&gt;</code> driver…&quot; with a <strong>Cancel</strong>, and a failure shows a message with <strong>Try again</strong>.</p>
+<ul>
+<li><code>the download failed (check the internet connection)</code> or <code>cannot reach the driver registry</code>: no route to the registry; check the network, the proxy or the firewall, then <strong>Try again</strong>.</li>
+<li><code>the downloaded driver is corrupted (its SHA-256 does not match)</code>: the file was altered or cut in transit; try again, and report it if it persists.</li>
+<li><code>no &lt;name&gt; driver for this platform</code>, or &quot;PlatypusDB downloads DuckDB on Windows, macOS and Linux, on x64 and ARM processors; not on this system.&quot;: there is no build for your system.</li>
+<li><code>the driver&#39;s license (…) does not allow downloading it here</code>: the app does not download drivers whose license forbids it.</li>
+<li>IBM Db2 is reached through ODBC on Windows only for now; registering its driver asks for administrator permission (User Account Control). Answer yes, or the driver is not registered.</li>
+<li><strong>Cancel</strong> leaves the form usable; the offer returns at <strong>Test connection</strong> or at the first opening.</li>
+</ul>
+<p>Settings › <strong>Drivers</strong> lists what is downloaded, removes a driver, and shows the system&#39;s ODBC drivers. A removal Windows refused is finished at the next start.</p>
+<h2 id="an-agent-does-not-see-a-connection">An agent does not see a connection</h2>
+<p>Work down this list.</p>
+<ol>
+<li><strong>Access is off.</strong> The agent answers &quot;<code>&lt;name&gt;</code> is not available to agents&quot;. In Settings › <strong>Agents</strong> › <strong>Security</strong>, set the connection to <strong>Read only</strong> or <strong>Read and write</strong>. A connection that came from a shared project starts at <strong>Off</strong> on your computer.</li>
+<li><strong>A master password.</strong> The agent answers &quot;the saved password of <code>&lt;name&gt;</code> is locked by PlatypusDB&#39;s master password, which agents cannot enter&quot;. Give that connection a password command or <code>.pgpass</code>, or turn the master password off.</li>
+<li><strong>The password is asked every time.</strong> The agent answers &quot;<code>&lt;name&gt;</code> asks for its password at each connection, and agents cannot type it&quot;. Save it in the keychain, or use <code>.pgpass</code> or a password command.</li>
+<li><strong>Writes refused.</strong> Production and read-only connections are never more than read only; on others the change waits for your answer in the app (<a href="agents.html">Agents</a>).</li>
+<li><strong>The client was not restarted</strong> after <strong>Install</strong>, or the entry is missing: Settings › <strong>Agents</strong> › <strong>Setup</strong> says whether PlatypusDB is in the client&#39;s file.</li>
+<li><strong>A portable copy or another profile.</strong> The agent reads the connections of the profile it was started from; a client set up with the installed app does not see a portable copy&#39;s <code>data</code> folder.</li>
+</ol>
+<h2 id="the-portable-copy">The portable copy</h2>
+<ul>
+<li>It is an executable with an empty <code>data</code> folder beside it. If the folder is not there at start, the app uses the system&#39;s folders instead, so a renamed <code>data</code> folder looks like lost connections: rename it back.</li>
+<li>Everything is in <code>data</code>, logs included; the folder moves with the executable. Saved passwords stay in the system keychain of the computer, unless a master password keeps them in the folder too: on another computer, either set the master password first or enter the passwords again.</li>
+<li>It does not update by itself: replace its executable with the new one. The welcome screen says <code>portable</code> beside the version.</li>
+</ul>
+<h2 id="where-the-data-and-the-logs-are">Where the data and the logs are</h2>
+<p>The app keeps connections and settings (<code>connections.toml</code>, <code>settings.toml</code>, and <code>secrets.vault</code> with a master password) in its config folder, and history, scripts, downloaded drivers and logs in its data folder, both named <code>dev.platypusdb.desktop</code>:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>System</th><th>Config folder</th><th>Data folder</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td><code>%APPDATA%\dev.platypusdb.desktop</code></td><td><code>%APPDATA%\dev.platypusdb.desktop</code></td></tr>
+<tr><td>macOS</td><td><code>~/Library/Application Support/dev.platypusdb.desktop</code></td><td>the same</td></tr>
+<tr><td>Linux</td><td><code>~/.config/dev.platypusdb.desktop</code></td><td><code>~/.local/share/dev.platypusdb.desktop</code></td></tr>
+</tbody>
+</table></div>
+<p>A portable copy keeps everything in its <code>data</code> folder, and the environment variable <code>PLATYPUS_DATA_DIR</code> puts everything in the folder it names.</p>
+<p><img src="../../img/screenshots/guide/diagnostics.png" alt="Settings, the Diagnostics page" loading="lazy"></p>
+<p>The log is <code>logs/platypus.log</code> in the data folder: one line per start, error and crash, rotated at 1 MB with two older files (<code>platypus.1.log</code>, <code>platypus.2.log</code>). Settings › <strong>Diagnostics</strong> shows the folder (<strong>Copy</strong>) and <strong>Save diagnostic package…</strong>, a zip with the version, the system, the settings without passwords and the logs, to attach to a bug report. Nothing is sent anywhere; read the logs before sharing, since an error may name a server or a table. After a crash, the next start offers the same package.</p>
+<h2 id="updates">Updates</h2>
+<ul>
+<li>At start the app looks for a newer release and shows &quot;PlatypusDB <code>&lt;version&gt;</code> is available&quot; with <strong>Later</strong> and <strong>Install and restart</strong>.</li>
+<li>A portable copy only says so: replace its executable. An install from a package manager (Flatpak, the AUR) says so and leaves the update to it.</li>
+<li>Downloaded drivers update separately: Settings › <strong>Drivers</strong> › <strong>Check for updates</strong>, or the settings <strong>Look for driver updates at startup</strong> (on, once a day at most) and <strong>Install driver updates by itself</strong> (off). The built-in drivers update with the app.</li>
+</ul>
+<h2 id="faq">FAQ</h2>
+<p><strong>Can I use PlatypusDB offline?</strong> Yes, with a local database. Downloads (drivers, updates) need the network.</p>
+<p><strong>Where do I report a bug?</strong> On the <a href="https://github.com/PaoloCisly/platypus-db/issues">issue tracker</a>, with the diagnostic package if you can.</p>
+<p><strong>Where are the shortcuts?</strong> <a href="../shortcuts.html">SHORTCUTS.md</a>, and Settings › Keyboard shortcuts to change them.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#connection-errors">Connection errors</a>
+    <a href="#a-driver-download-fails">A driver download fails</a>
+    <a href="#an-agent-does-not-see-a-connection">An agent does not see a connection</a>
+    <a href="#the-portable-copy">The portable copy</a>
+    <a href="#where-the-data-and-the-logs-are">Where the data and the logs are</a>
+    <a href="#updates">Updates</a>
+    <a href="#faq">FAQ</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../index.html"><img src="../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../docs.html">Getting started</a></li>
+          <li><a href="../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../docs/features.html">Features</a></li>
+          <li><a href="../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/blob/main/docs/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/PaoloCisly/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>PlatypusDB · AGPL-3.0</span>
+      <span>Inter and JetBrains Mono under the <a href="../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0).</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../site.js" defer></script>
+</body>
+</html>
