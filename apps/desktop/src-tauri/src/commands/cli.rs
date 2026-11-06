@@ -113,12 +113,16 @@ pub(super) fn pg_connection(
     host: &str,
     port: Option<u16>,
 ) -> Invocation {
-    let mut args: Vec<String> = vec![
-        format!("--host={host}"),
-        format!("--username={}", config.user),
-        "-d".to_owned(),
-        pg_database(&config.database),
-    ];
+    let kerberos = matches!(config.auth(), Ok(Auth::Kerberos));
+    // The ticket is for the server's name: through a tunnel, the socket goes to host and the
+    // name stays --host, as it does in the driver.
+    let name = if kerberos { config.host.as_str() } else { host };
+    let mut args: Vec<String> = vec![format!("--host={name}")];
+    // Without a name, the client takes the system user's, as the driver does.
+    if !(kerberos && config.user.is_empty()) {
+        args.push(format!("--username={}", config.user));
+    }
+    args.extend(["-d".to_owned(), pg_database(&config.database)]);
     if let Some(port) = port {
         args.extend(["-p".to_owned(), port.to_string()]);
     }
@@ -135,6 +139,16 @@ pub(super) fn pg_connection(
     ];
     if let Some(cert) = &config.ssl_root_cert {
         env.push(("PGSSLROOTCERT", cert.display().to_string()));
+    }
+    if kerberos {
+        env.push(("PGKRBSRVNAME", config.krb_service().to_owned()));
+        // Refused unless the server asks for it, as in the driver; a client older than 16
+        // ignores it.
+        env.push(("PGREQUIREAUTH", "gss".to_owned()));
+        if name != host {
+            env.push(("PGHOSTADDR", host.to_owned()));
+        }
+        return (args, env);
     }
     env.extend(
         config
@@ -767,6 +781,67 @@ mod tests {
             .insert(platypus_core::AUTH.to_owned(), "entra_id".to_owned());
         let (args, _) = invocation(&config, "db", None);
         assert!(args.iter().any(|a| a == "-G"));
+    }
+
+    #[test]
+    fn psql_signs_in_with_the_kerberos_ticket() {
+        let mut config = ConnectionConfig::new(DriverKind::Postgres);
+        config.host = "db.corp.example".to_owned();
+        config.user = "alice".to_owned();
+        config.database = "shop".to_owned();
+        config.password = Some(Secret::new("never sent"));
+        config
+            .options
+            .insert(platypus_core::AUTH.to_owned(), "kerberos".to_owned());
+
+        // No tunnel: the default service, and no password in the arguments or the environment.
+        let (args, env) = invocation(&config, "db.corp.example", Some(5432));
+        assert!(
+            args.contains(&"--host=db.corp.example".to_owned()),
+            "{args:?}"
+        );
+        assert!(args.contains(&"--username=alice".to_owned()), "{args:?}");
+        assert!(env.contains(&("PGKRBSRVNAME", "postgres".to_owned())));
+        assert!(env.contains(&("PGREQUIREAUTH", "gss".to_owned())));
+        assert!(
+            !env.iter().any(|(name, _)| *name == "PGPASSWORD"),
+            "{env:?}"
+        );
+        assert!(
+            !env.iter().any(|(name, _)| *name == "PGHOSTADDR"),
+            "{env:?}"
+        );
+
+        // Through a tunnel the socket goes to its local end, and the ticket is still for the
+        // server's name.
+        config
+            .options
+            .insert(platypus_core::KRB_SERVICE.to_owned(), "pgprod".to_owned());
+        let (args, env) = invocation(&config, "127.0.0.1", Some(40001));
+        assert!(
+            args.contains(&"--host=db.corp.example".to_owned()),
+            "{args:?}"
+        );
+        assert!(env.contains(&("PGHOSTADDR", "127.0.0.1".to_owned())));
+        assert!(env.contains(&("PGKRBSRVNAME", "pgprod".to_owned())));
+
+        // No user: left to the client, which takes the system user's.
+        config.user = String::new();
+        let (args, _) = invocation(&config, "db.corp.example", None);
+        assert!(
+            !args.iter().any(|a| a.starts_with("--username")),
+            "{args:?}"
+        );
+
+        // A password login sets none of it.
+        config.options.remove(platypus_core::AUTH);
+        config.user = "alice".to_owned();
+        let (_, env) = invocation(&config, "db.corp.example", None);
+        assert!(env.contains(&("PGPASSWORD", "never sent".to_owned())));
+        assert!(
+            !env.iter().any(|(name, _)| *name == "PGKRBSRVNAME"),
+            "{env:?}"
+        );
     }
 
     #[test]

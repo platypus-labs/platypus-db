@@ -45,7 +45,7 @@ const SECRET_WORDS: [&str; 13] = [
 /// someone adds it here on purpose. Left out on purpose: `before_connect` and
 /// `after_disconnect` (shell commands that would run on the other machine), `env_file`,
 /// `driver_file` and `credentials_file` (paths on this machine), and anything secret.
-const SHARED_OPTIONS: [&str; 27] = [
+const SHARED_OPTIONS: [&str; 28] = [
     // Snowflake, BigQuery, Databricks, Trino and plain ADBC.
     "warehouse",
     "role",
@@ -63,6 +63,7 @@ const SHARED_OPTIONS: [&str; 27] = [
     "dsn_string",
     // How the connection is reached and signed in to.
     "auth",
+    "krb_service",
     "pooler",
     "flavor",
     "proxy",
@@ -751,6 +752,7 @@ mod tests {
         assert_eq!(opts["uri"], "grpc://host:1/db?mode=x");
         assert_eq!(opts["connection_string"], "Server=h;Database=d");
         assert_eq!(opts.len(), 3, "{opts:?}");
+        assert!(is_shared_option("auth") && is_shared_option("krb_service"));
     }
 
     #[test]

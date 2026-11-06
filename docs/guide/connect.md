@@ -45,6 +45,13 @@ Any field can read an environment variable written `${env:NAME}`. Password manag
 the database supports them: give the secret's reference. Their command-line tool must be
 installed and signed in.
 
+Some databases sign in with no password at all, and the same list offers them: a token from a
+cloud's command-line tool, Windows' sign-in for SQL Server, and a **Kerberos ticket** for PostgreSQL
+on Windows and Linux. Run `kinit` first, or set `KRB5CCNAME` or `KRB5_CLIENT_KTNAME`; on Windows the
+ticket is your session's. The ticket is the only thing that goes to the server, and a test without
+one says what to run. The [PostgreSQL page](databases/postgresql.md) has the details, and what is
+and is not tested: a real ticket has logged in from Linux, not yet through Windows' SSPI.
+
 ### Master password
 
 A master password keeps the saved passwords in an encrypted file instead of the keychain.

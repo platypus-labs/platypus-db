@@ -360,6 +360,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::connections::parse_connection_url,
         commands::connections::connection_url,
         commands::connections::form_connection_url,
+        commands::connections::kerberos_available,
         commands::connections::connection_has_password,
         commands::connections::remember_password,
         commands::connections::duplicate_connection,

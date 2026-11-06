@@ -17,7 +17,7 @@ const TOKEN_TIMEOUT: Duration = Duration::from_secs(120);
 pub(crate) fn command(config: &ConnectionConfig) -> Result<Option<(&'static str, Vec<String>)>> {
     let args = |items: &[&str]| items.iter().map(|&s| s.to_owned()).collect::<Vec<_>>();
     Ok(Some(match config.auth()? {
-        Auth::Password | Auth::Windows => return Ok(None),
+        Auth::Password | Auth::Windows | Auth::Kerberos => return Ok(None),
         Auth::AwsIam => {
             let port = config
                 .port
@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn passwords_and_windows_sign_in_need_no_token() {
+    fn passwords_windows_and_kerberos_sign_in_need_no_token() {
         assert!(
             command(&config(DriverKind::Postgres, ""))
                 .unwrap()
@@ -153,7 +153,12 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        assert!(command(&config(DriverKind::Postgres, "kerberos")).is_err());
+        assert!(
+            command(&config(DriverKind::Postgres, "kerberos"))
+                .unwrap()
+                .is_none()
+        );
+        assert!(command(&config(DriverKind::Postgres, "ntlm")).is_err());
         let gcp = command(&config(DriverKind::MySql, "gcp_iam"))
             .unwrap()
             .unwrap();
@@ -176,6 +181,15 @@ mod tests {
         );
         let mut aws_on_sql_server = config(DriverKind::SqlServer, "aws_iam");
         assert!(crate::sign_in(&mut aws_on_sql_server).await.is_err());
+        let mut kerberos_on_mysql = config(DriverKind::MySql, "kerberos");
+        let error = crate::sign_in(&mut kerberos_on_mysql)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Kerberos does not sign in to"), "{error}");
+        let mut kerberos = config(DriverKind::Postgres, "kerberos");
+        crate::sign_in(&mut kerberos).await.unwrap();
+        assert!(kerberos.password.is_none());
         let mut password = config(DriverKind::SqlServer, "");
         crate::sign_in(&mut password).await.unwrap();
         assert!(password.password.is_none());

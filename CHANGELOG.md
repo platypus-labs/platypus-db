@@ -47,6 +47,12 @@ All notable changes to PlatypusDB are listed here. The format follows
 ### Changed
 
 - **Settings**: the Plugins page is loaded when it opens.
+- **Connections**: PostgreSQL signs in with a Kerberos ticket, under Password from: on Linux from
+  `kinit` or a keytab (`KRB5CCNAME`, `KRB5_CLIENT_KTNAME`), on Windows the session's (SSPI). A field
+  sets the service name, `postgres` by default. No password is asked, saved or sent, and a server
+  that does not ask for Kerberos is refused. Without a ticket, the test says what to run. `psql`,
+  `pg_dump` and `pg_restore` sign in the same way. Not in the macOS builds yet. A real ticket has
+  logged in from Linux against a test KDC; the login through SSPI has not been tried with one.
 
 ## [0.4.2] - 2026-11-05
 

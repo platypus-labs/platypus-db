@@ -55,7 +55,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 |---|---|
 | A — Agents and MCP | ✅ completed |
 | B — Plugins and mods | 🔒 Delfa · evo-b-plugins · 2026-11-06 |
-| C — Kerberos and authentication | 🔒 Delfa · evo-c-kerberos · 2026-11-06 |
+| C — Kerberos and authentication | ✅ completed |
 | D — User documentation | ✅ done (P2; P3 in part) |
 | E — Publishing and distribution | free |
 
@@ -126,17 +126,17 @@ like `http` and `clipboard`; the changes do not break ABI 1 (`api = 2`, backward
 
 ### Group C — Kerberos and authentication
 
-**Status: to do.** The Kerberos row of roadmap group F stays as it is (`⛔ blocked`); this group
-holds the plan to get past it.
+**Status: completed.** A real ticket logs in on Linux, tested against a KDC in Docker. Windows' SSPI against a real KDC is untested (no domain here), macOS builds without it, and the MySQL row stays `⛔ blocked`.
+F says what is left.
 
 **Area:** `vendor/tokio-postgres`, `crates/platypus-driver-pg` (and `platypus-core` for `Auth`), `docker/compose.yml` (test KDC), `crates/platypus-driver-mysql` for the blocked row
 **Depends on:** roadmap group F (completed)
 
 | Feature | Prio | Origin |
 |---|---|---|
-| 🆕 **Kerberos/GSSAPI for PostgreSQL**: in the `tokio-postgres` copy already maintained in `vendor/`, handle the GSS authentication messages with `cross-krb5` (SSPI on Windows, GSSAPI elsewhere); a new `Auth` value (`kerberos`) and a field for the service name. Optional Cargo feature, so those who do not want it do not depend on the Kerberos libraries | P2 | D+ |
-| 🆕 Test with a KDC in Docker (a `kdc` service and PostgreSQL with `gss` in `pg_hba.conf`, a `docker/compose.yml` profile), in the conformance suite; skipped without a ticket or KDC | P2 | D+ |
-| 🆕 Ticket from an external `kinit` or from a keytab (`KRB5CCNAME`, `KRB5_CLIENT_KTNAME`) and a clear message when it is missing; `sign_in` for `psql` too | P3 | D+ |
+| ✅ **Kerberos/GSSAPI for PostgreSQL**: in the `tokio-postgres` copy already maintained in `vendor/`, handle the GSS authentication messages with `cross-krb5` (SSPI on Windows, GSSAPI elsewhere); a new `Auth` value (`kerberos`) and a field for the service name. Optional Cargo feature, so those who do not want it do not depend on the Kerberos libraries | P2 | D+ |
+| ✅ Test with a KDC in Docker (a `kdc` service and PostgreSQL with `gss` in `pg_hba.conf`, a `docker/compose.yml` profile), in the conformance suite; skipped without a ticket or KDC | P2 | D+ |
+| ✅ Ticket from an external `kinit` or from a keytab (`KRB5CCNAME`, `KRB5_CLIENT_KTNAME`) and a clear message when it is missing; `sign_in` for `psql` too | P3 | D+ |
 | ⛔ blocked — **Kerberos for MySQL and MariaDB**, MariaDB's `auth_gssapi` first (MySQL's Kerberos plugin is Enterprise only). `mysql_async` has no hook for authentication plugins: that comes first (a patch or a copy in `vendor/`) | P3 | D+ |
 
 ---
