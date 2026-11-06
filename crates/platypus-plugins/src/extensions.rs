@@ -338,8 +338,13 @@ fn is_setting_key(key: &str) -> bool {
 
 /// A relative path to an `.html` file that stays inside the package.
 fn is_package_document(path: &str) -> bool {
+    path.to_ascii_lowercase().ends_with(".html") && is_package_path(path)
+}
+
+/// A relative path that stays inside the package: no `..`, no root, no drive, no backslash and
+/// nothing hidden, on any system. A `%` is refused too, so nothing is decoded on the way in.
+pub(crate) fn is_package_path(path: &str) -> bool {
     path.len() <= 200
-        && path.to_ascii_lowercase().ends_with(".html")
         && path.split('/').all(|part| {
             !part.is_empty()
                 && !part.starts_with('.')

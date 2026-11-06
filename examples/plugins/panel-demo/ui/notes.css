@@ -1,0 +1,21 @@
+body {
+  font: 13px var(--font-ui, sans-serif);
+  color: var(--fg, #222);
+  background: var(--bg, #fff);
+  margin: 16px;
+}
+
+h1 {
+  font-size: 16px;
+}
+
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

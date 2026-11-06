@@ -1,0 +1,31 @@
+id = "panel-demo"
+name = "Panel demo"
+version = "1.0.0"
+author = "PlatypusDB"
+description = "A notes tab and a side panel in isolated frames, which talk to the app by messages."
+api = 2
+kinds = ["actions", "tabs", "panels"]
+
+[permissions]
+tabs = true
+
+[[tabs]]
+kind = "notes"
+title = "Demo notes"
+entry = "ui/notes.html"
+
+[[panels]]
+id = "outline"
+title = "Demo outline"
+entry = "ui/outline.html"
+
+[[settings]]
+key = "greeting"
+label = "Greeting"
+type = "text"
+default = "Hello from the settings"
+
+[[settings]]
+key = "token"
+label = "Token"
+type = "secret"

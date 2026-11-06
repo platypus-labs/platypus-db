@@ -53,6 +53,8 @@ pub const ACTION: &str = "platypus_action";
 pub const DRIVER: &str = "platypus_driver";
 /// `(ptr, len) -> i64`: one event for its hooks (ABI 2).
 pub const HOOK: &str = "platypus_hook";
+/// `(ptr, len) -> i64`: one batch for its grid extensions (ABI 2).
+pub const GRID: &str = "platypus_grid";
 
 /// What one call may use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

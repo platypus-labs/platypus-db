@@ -277,6 +277,14 @@ impl Manifest {
         self.kinds.contains(&kind)
     }
 
+    /// The HTML documents of its tabs and panels.
+    pub fn documents(&self) -> impl Iterator<Item = &str> {
+        self.tabs
+            .iter()
+            .map(|t| t.entry.as_str())
+            .chain(self.panels.iter().map(|p| p.entry.as_str()))
+    }
+
     /// Needs a WebAssembly module: everything does except a package that is only a theme.
     #[must_use]
     pub fn needs_module(&self) -> bool {

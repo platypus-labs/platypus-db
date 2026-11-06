@@ -10,11 +10,15 @@
 //!
 //! [`package`] installs, lists, enables and removes plugins under `<data>/plugins`,
 //! [`action`] runs their commands, [`driver`] opens their connections, [`hooks`] calls them on
-//! events and [`settings`] keeps the values of their pages.
+//! events, [`settings`] keeps the values of their pages, [`frames`] serves the documents of their
+//! tabs and panels and answers what those ask, and [`grid`] runs their extensions of the result
+//! grid.
 
 pub mod action;
 pub mod driver;
 pub mod extensions;
+pub mod frames;
+pub mod grid;
 pub mod hooks;
 mod http;
 pub mod manifest;
@@ -29,6 +33,8 @@ use std::sync::OnceLock;
 pub use action::{ActionInfo, ActionOutcome, ActionScope};
 pub use driver::{DriverInfo, PLUGIN_OPTION, PluginDriver};
 pub use extensions::{HookEvent, SettingField, SettingKind};
+pub use frames::{FRAME_SCHEME, FrameFile, FrameRequest, frame_csp, frame_target};
+pub use grid::{GridColumn, GridLimits, GridRendered, GridValue};
 pub use hooks::{
     HOOKS, HookBlock, HookConnection, HookContext, HookFailure, HookLimits, HookReport,
     HookStatement, HookTable, QueryStatus,
