@@ -100,6 +100,7 @@ import {
 } from "./viewerSort";
 import { useCompare } from "../analysis/compare";
 import { editMeta } from "../grid/edit/meta";
+import { sourceObject } from "../grid/edit/sourceObject";
 import { t, plural, msg } from "../i18n";
 import { rememberScript } from "../scripts/recent";
 
@@ -1592,9 +1593,8 @@ export function QueryTab({
     const schema = query.schema ?? (await api.listSchemas(own ?? id)).find((s) => s.current)?.name;
     if (!schema) return null;
     const objects = await api.listObjects(id, schema);
-    const object =
-      objects.find((o) => o.name === query.name) ??
-      objects.find((o) => o.name.toLowerCase() === query.name.toLowerCase());
+    // A view keeps its kind: `editMeta` refuses it ("only tables can be edited").
+    const object = sourceObject(objects, query.name, isMongo(connection.driver));
     if (!object) return null;
     const table: TableRef = { schema, name: object.name, kind: object.kind };
     return { table, details: await api.tableDetails(id, schema, object.name), items: query.items };

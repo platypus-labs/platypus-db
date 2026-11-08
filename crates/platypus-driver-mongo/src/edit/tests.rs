@@ -38,6 +38,8 @@ fn updated(column: &str, ty: &str, old: Option<&str>, new: Option<&str>) -> Resu
     script(&e)
 }
 
+/// The values an `updateOne` sets: those of its `$set`, or of the `$set` stage of its pipeline,
+/// where a literal is its value and a number kept in the stored type is its default.
 fn set_of(command: &str) -> Document {
     let Ok(Command::Collection {
         op: CollectionOp::Update { update, many, .. },
@@ -47,34 +49,125 @@ fn set_of(command: &str) -> Document {
         panic!("not an updateOne: {command}");
     };
     assert!(!many);
-    let Bson::Document(update) = update else {
-        panic!()
+    let set = match update {
+        Bson::Document(update) => return update.get_document("$set").unwrap().clone(),
+        Bson::Array(stages) => {
+            assert_eq!(stages.len(), 1, "{command}");
+            stages[0]
+                .as_document()
+                .and_then(|s| s.get_document("$set").ok())
+                .unwrap()
+                .clone()
+        }
+        other => panic!("{other}"),
     };
-    update.get_document("$set").unwrap().clone()
+    set.into_iter()
+        .map(|(name, value)| {
+            let Bson::Document(expression) = value else {
+                panic!("{name}: not an expression in {command}");
+            };
+            let value = match expression.get_document("$switch") {
+                Ok(switch) => switch.get("default").unwrap().clone(),
+                Err(_) => expression.get("$literal").unwrap().clone(),
+            };
+            (name, value)
+        })
+        .collect()
 }
 
 #[test]
 fn updates_a_document_by_id_and_undoes() {
-    let columns = names(&["_id", "total", "note", "paid"]);
-    let types = names(&["objectId", "long", "string", "bool"]);
+    let columns = names(&["_id", "note", "paid"]);
+    let types = names(&["objectId", "string", "bool"]);
     let mut e = edits(&columns, &types);
     e.updates.push(Update {
-        loaded: vec![some(ID), some("5"), some("hi"), some("false")],
-        set: vec![(1, some("7")), (2, None), (3, some("TRUE"))],
+        loaded: vec![some(ID), some("hi"), some("false")],
+        set: vec![(1, None), (2, some("TRUE"))],
     });
     let s = script(&e).unwrap();
     assert_eq!(
         s.commands,
         [format!(
-            "db.orders.updateOne({{ _id: ObjectId(\"{ID}\") }}, {{ $set: {{ total: NumberLong(7), note: null, paid: true }} }})"
+            "db.orders.updateOne({{ _id: ObjectId(\"{ID}\") }}, {{ $set: {{ note: null, paid: true }} }})"
         )]
     );
     assert_eq!(
         s.undo,
         [format!(
-            "db.orders.updateOne({{ _id: ObjectId(\"{ID}\") }}, {{ $set: {{ total: NumberLong(5), note: \"hi\", paid: false }} }})"
+            "db.orders.updateOne({{ _id: ObjectId(\"{ID}\") }}, {{ $set: {{ note: \"hi\", paid: false }} }})"
         )]
     );
+}
+
+#[test]
+fn a_changed_number_keeps_the_type_the_document_stores() {
+    let columns = names(&["_id", "total", "note", "tags"]);
+    let types = names(&["objectId", "long", "string", "document"]);
+    let mut e = edits(&columns, &types);
+    e.updates.push(Update {
+        loaded: vec![some(ID), some("5"), some("hi"), some("{\"a\":1}")],
+        set: vec![
+            (1, some("7")),
+            (2, some("$not an operator")),
+            (3, some("{\"$price\": 2}")),
+        ],
+    });
+    let s = script(&e).unwrap();
+    let total = "{ $switch: { branches: [\
+        { case: { $eq: [{ $type: \"$total\" }, \"int\"] }, then: 7 }, \
+        { case: { $eq: [{ $type: \"$total\" }, \"long\"] }, then: NumberLong(7) }, \
+        { case: { $eq: [{ $type: \"$total\" }, \"double\"] }, then: 7.0 }, \
+        { case: { $eq: [{ $type: \"$total\" }, \"decimal\"] }, then: NumberDecimal(\"7\") }], \
+        default: NumberLong(7) } }";
+    assert_eq!(
+        s.commands,
+        [format!(
+            "db.orders.updateOne({{ _id: ObjectId(\"{ID}\") }}, [{{ $set: {{ total: {total}, \
+             note: {{ $literal: \"$not an operator\" }}, tags: {{ $literal: {{ $price: 2 }} }} }} }}])"
+        )]
+    );
+    let set = set_of(&s.commands[0]);
+    assert_eq!(set.get("total"), Some(&Bson::Int64(7)));
+    assert_eq!(set.get_str("note"), Ok("$not an operator"));
+    assert_eq!(set.get_document("tags"), Ok(&doc! { "$price": 2 }));
+    // The undo puts the number back by the same switch; a whole number has every type.
+    assert_eq!(s.undo.len(), 1, "{:?}", s.undo);
+    assert!(
+        s.undo[0].contains("default: NumberLong(5)"),
+        "{}",
+        s.undo[0]
+    );
+    assert_eq!(set_of(&s.undo[0]).get_str("note"), Ok("hi"));
+
+    // 3.5 is no int or long: such a field becomes a double, which the undo says.
+    let s = updated("qty", "int", Some("2"), Some("3.5")).unwrap();
+    let command = &s.commands[0];
+    assert!(
+        !command.contains("\"int\"] }") && !command.contains("\"long\"] }"),
+        "{command}"
+    );
+    assert!(command.contains("default: 3.5"), "{command}");
+    assert!(
+        s.undo[0].starts_with("// _id") && s.undo[0].contains("qty (not an exact int or long)"),
+        "{:?}",
+        s.undo
+    );
+    // Beyond 2^53 a long has no double branch.
+    let s = updated("n", "long", None, Some("9007199254740993")).unwrap();
+    assert!(
+        !s.commands[0].contains("\"double\"] }"),
+        "{}",
+        s.commands[0]
+    );
+    assert!(s.commands[0].contains("default: NumberLong(\"9007199254740993\")"));
+    // A NULL number is a literal null.
+    let s = updated("n", "long", Some("5"), None).unwrap();
+    assert!(
+        s.commands[0].ends_with("{ $set: { n: null } })"),
+        "{}",
+        s.commands[0]
+    );
+    assert!(s.undo[0].contains("$switch"), "{}", s.undo[0]);
 }
 
 #[test]
@@ -170,7 +263,11 @@ fn a_document_keeps_its_longs_and_doubles_through_the_grid() {
 #[test]
 fn a_whole_double_is_not_read_back_as_an_int() {
     let s = updated("f", "double", None, Some("2")).unwrap();
-    assert!(s.commands[0].contains("f: 2.0 }"), "{}", s.commands[0]);
+    assert!(
+        s.commands[0].contains("default: 2.0 }"),
+        "{}",
+        s.commands[0]
+    );
     assert_eq!(set_of(&s.commands[0]).get("f"), Some(&Bson::Double(2.0)));
     for (text, check) in [
         ("NaN", f64::is_nan as fn(f64) -> bool),
@@ -200,14 +297,14 @@ fn a_null_cell_sets_null_and_the_undo_says_it_may_have_been_missing() {
 #[test]
 fn refuses_values_that_do_not_fit() {
     for (ty, text, message) in [
-        ("int", "2147483648", "32-bit"),
-        ("int", "1.5", "invalid integer"),
-        ("long", "1.5", "invalid integer"),
+        ("int", "abc", "invalid number"),
+        ("long", "1.5.2", "invalid number"),
         ("double", "abc", "invalid number"),
+        ("double", "0x10", "invalid number"),
         ("bool", "yes", "true or false"),
         ("objectId", "xyz", "ObjectId"),
         ("date", "yesterday", "invalid date"),
-        ("decimal", "1,5", "invalid decimal"),
+        ("decimal", "1,5", "invalid number"),
         ("document", "[1]", "not a document"),
         ("document", "{ a: ", "not a document"),
         ("array", "{\"a\":1}", "not an array"),
@@ -250,7 +347,7 @@ fn refuses_field_names_that_set_reads_as_paths_or_operators() {
 #[test]
 fn refuses_to_change_the_id_but_accepts_it_unchanged() {
     let columns = names(&["_id", "n"]);
-    let types = names(&["objectId", "int"]);
+    let types = names(&["objectId", "string"]);
     let mut e = edits(&columns, &types);
     e.updates.push(Update {
         loaded: vec![some(ID), some("1")],
@@ -263,7 +360,7 @@ fn refuses_to_change_the_id_but_accepts_it_unchanged() {
     );
     e.updates[0].set = vec![(0, some(ID)), (1, some("2"))];
     let s = script(&e).unwrap();
-    assert!(s.commands[0].contains("{ $set: { n: 2 } }"));
+    assert!(s.commands[0].contains("{ $set: { n: \"2\" } }"));
     // Only the unchanged _id: nothing to run.
     e.updates[0].set = vec![(0, some(ID))];
     assert_eq!(script(&e).unwrap().commands, Vec::<String>::new());

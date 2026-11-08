@@ -704,3 +704,94 @@ async fn the_grids_save_is_all_or_nothing_on_a_replica_set() {
     save_in_own_transaction(conn, &good.commands).await.unwrap();
     assert_eq!(changed("{ v: { $in: ['x', 'y'] } }").await, 2);
 }
+
+/// The grid's edits of `grid_types` on `conn`: numbers keep the type the document stores when
+/// it holds them, other values are written as they are, and the undo puts the numbers back.
+async fn edits_keep_the_stored_types(conn: &dyn Connection) {
+    use platypus_driver_mongo::edit::{Edits, Update, script};
+    run(conn, "use platypus").await;
+    run(conn, "db.grid_types.drop()").await;
+    run(
+        conn,
+        "db.grid_types.insertOne({ _id: 1, i: NumberInt(1), l: NumberLong(1), d: 1.5, \
+         m: NumberInt(2), s: 'x', o: { a: 1 } })",
+    )
+    .await;
+    let columns: Vec<String> = ["_id", "i", "l", "d", "m", "s", "o"]
+        .map(str::to_owned)
+        .to_vec();
+    // A long column holds ints too, a double column any number.
+    let types: Vec<String> = [
+        "int", "long", "long", "double", "long", "string", "document",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let some = |t: &str| Some(t.to_owned());
+    let edits = Edits {
+        db: None,
+        collection: "grid_types",
+        columns: &columns,
+        types: &types,
+        updates: vec![Update {
+            loaded: vec![
+                some("1"),
+                some("1"),
+                some("1"),
+                some("1.5"),
+                some("2"),
+                some("x"),
+                some("{\"a\":1}"),
+            ],
+            set: vec![
+                (1, some("5")),
+                (2, some("6")),
+                (3, some("7")),
+                (4, some("3.5")),
+                (5, some("$abc")),
+                (6, some("{\"$k\": 1}")),
+            ],
+        }],
+        inserts: Vec::new(),
+        deletes: Vec::new(),
+    };
+    let s = script(&edits).unwrap();
+    let commands: Vec<&str> = s.commands.iter().map(String::as_str).collect();
+    let ran = conn.execute_all(&commands, &[1]).await;
+    assert!(ran.error.is_none() && ran.rows == [1], "{ran:?}");
+    let saved = "db.grid_types.find({ _id: 1, i: { $eq: 5, $type: 'int' }, \
+                 l: { $eq: 6, $type: 'long' }, d: { $eq: 7, $type: 'double' }, \
+                 m: { $eq: 3.5, $type: 'double' }, s: { $eq: '$abc', $type: 'string' }, \
+                 $expr: { $eq: ['$o', { $literal: { $k: 1 } }] } })";
+    assert_eq!(rows(conn, saved).await, 1, "{}", s.commands[0]);
+
+    let undo: Vec<&str> = s
+        .undo
+        .iter()
+        .map(String::as_str)
+        .filter(|l| !l.starts_with("//"))
+        .collect();
+    let ran = conn.execute_all(&undo, &[1]).await;
+    assert!(ran.error.is_none() && ran.rows == [1], "{ran:?}");
+    // The int that became a double comes back as one: the undo says so.
+    let restored = "db.grid_types.find({ _id: 1, i: { $eq: 1, $type: 'int' }, \
+                    l: { $eq: 1, $type: 'long' }, d: { $eq: 1.5, $type: 'double' }, \
+                    m: { $eq: 2, $type: 'double' }, s: 'x', o: { a: 1 } })";
+    assert_eq!(rows(conn, restored).await, 1, "{:?}", s.undo);
+    assert!(
+        s.undo
+            .iter()
+            .any(|l| l.starts_with("//") && l.contains('m'))
+    );
+    run(conn, "db.grid_types.drop()").await;
+}
+
+#[tokio::test]
+async fn the_grids_edits_keep_the_stored_types() {
+    if let Some(conn) = connect().await {
+        edits_keep_the_stored_types(&*conn).await;
+    }
+    let _one = REPLICA_SET.lock().await;
+    if let Some(conn) = connect_to("PLATYPUS_TEST_MONGO_RS", REPLICA_SET_URL).await {
+        edits_keep_the_stored_types(&*conn).await;
+    }
+}

@@ -28,7 +28,8 @@ otherwise the grid says why it cannot be edited. A connection can also forbid da
 Redis, Elasticsearch, Cassandra and MongoDB results are edited too, with their own commands instead
 of SQL: **Preview SQL** shows them. On MongoDB the result of a plain `find` on one collection is
 editable by `_id`. Each change is one `updateOne`, `insertOne` or `deleteOne`, written with the
-BSON type of the column. Editing `_id`, columns of mixed types and fields with a `.` in their name
+BSON type of the column; a changed number keeps the numeric type the document stores when that
+type holds it exactly. Editing `_id`, columns of mixed types and fields with a `.` in their name
 are refused, with the reason. On a replica set a save is all or nothing; on a standalone server the
 commands run one after the other and the error says how many were saved. See
 [MongoDB](databases/mongodb.md#edit-documents-in-the-grid).

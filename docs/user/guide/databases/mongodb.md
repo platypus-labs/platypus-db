@@ -99,17 +99,28 @@ without `_id` and a projection that leaves fields out stay read-only.
 A document is found by its `_id`. A result without `_id` is read-only. **Preview SQL** shows the
 mongosh that will run, one statement per document:
 
-- an edited document is `updateOne({ _id: … }, { $set: { … } })`. A NULL cell writes `null`;
+- an edited document is `updateOne({ _id: … }, { $set: { … } })`. A NULL cell writes `null`. When
+  a number changes, the update is a pipeline instead, `[{ $set: { … } }]`: the number is written
+  with a `$switch` on the type the document stores (see below), and every other value as a
+  `$literal`, so that a string such as `$total` or a document with `$` keys is saved as it is;
 - a new document is `insertOne({ … })`. Cells left NULL are not sent. Without an `_id`, the app
   makes an `ObjectId`;
 - a deleted document is `deleteOne({ _id: … })`.
 
-Values are written with the BSON type of their column: `int` (a 32-bit int), `long`, `double`,
-`decimal`, `bool`, `string`, `objectId`, `date`, and `document` and `array` from the JSON the grid
-shows. A date is written like `2024-01-02 10:30:00`, with or without the time zone (UTC without
-one). A whole `double` is written with a decimal point, so it stays a double. Numbers inside a
-document or an array keep the type JSON gives them: a whole number is an int, a number with a
-fraction a double.
+Values are written with the BSON type of their column: `bool`, `string`, `objectId`, `date`, and
+`document` and `array` from the JSON the grid shows. A date is written like `2024-01-02 10:30:00`,
+with or without the time zone (UTC without one). Numbers inside a document or an array keep the
+type JSON gives them: a whole number is an int (a long beyond 32 bits), a number with a fraction or
+an exponent a double.
+
+A number keeps the type the document stores, `int`, `long`, `double` or `decimal`, whenever that
+type holds the new value exactly: a column's type is only what its documents share (ints and longs
+make a `long` column, any of them with doubles a `double` one), so it does not say what one
+document holds. An int edited to `7` stays an int, a long a long, a double a double. A value the
+stored type cannot hold takes the column's type, or the first numeric type that holds it: `3.5` in
+an int field becomes a double, `3000000000` a long. A long beyond 2^53 is never written as a
+double, which would lose digits. Nothing is converted on the server: the app only writes the
+number in the types it knows hold it exactly.
 
 These are refused before anything runs, with the reason:
 
@@ -119,8 +130,8 @@ These are refused before anything runs, with the reason:
   timestamps, JavaScript);
 - a field with a `.` in its name or a name that starts with `$`: `$set` would read it as a path or
   an operator;
-- a value that does not fit its type, such as `many` in an `int` column, a number beyond 32 bits in
-  an `int` column, or an array in a `document` column.
+- a value that does not fit its type, such as `many` in an `int` column or an array in a
+  `document` column.
 
 Each statement must change exactly one document. If one finds none, because the document was
 deleted or its `_id` changed since the grid read it, the save stops and says which command.
@@ -135,7 +146,9 @@ other, and a failure stops the rest. The commands before it stay saved, and the 
 The undo script that follows a save puts the documents back: `$set` of the old values for edits,
 `deleteOne` for new documents, `insertOne` of the loaded fields for deleted ones. Lines starting
 with `//` say what it cannot restore exactly: fields the result did not show, columns of types the
-grid cannot write, and fields that were NULL (they come back as `null`, or are left out).
+grid cannot write, fields that were NULL (they come back as `null`, or are left out), and numbers
+whose type the edit may have changed (they come back as numbers of the type they have then, by the
+same `$switch`).
 
 ## Transactions
 

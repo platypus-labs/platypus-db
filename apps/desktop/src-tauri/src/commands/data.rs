@@ -543,6 +543,11 @@ async fn mongo_script(
              with a script",
         ));
     }
+    // The grid refuses a view's result already; checked here too, so that a save never reaches
+    // the server (where it would fail, and roll back the user's open transaction).
+    if let Some(error) = not_a_collection(&conn.objects(schema).await?, &changes.table.name) {
+        return Err(error);
+    }
     let edits = edit::Edits {
         db: (current.as_deref() != Some(schema)).then_some(schema),
         collection: &changes.table.name,
@@ -557,6 +562,21 @@ async fn mongo_script(
         deletes: rows.deletes,
     };
     edit::script(&edits).map_err(|m| CommandError::new("invalid_value", m))
+}
+
+/// Why the documents of `name`, among `objects` of its database, cannot be edited: it is a view
+/// (MongoDB names are case-sensitive). `None` for a collection, or one not created yet.
+fn not_a_collection(objects: &[platypus_core::ObjectMeta], name: &str) -> Option<CommandError> {
+    objects
+        .iter()
+        .find(|o| o.name == name)
+        .filter(|o| o.kind != platypus_core::ObjectKind::Table)
+        .map(|_| {
+            CommandError::new(
+                "read_only",
+                format!("{name} is a view: only tables can be edited"),
+            )
+        })
 }
 
 /// The lines of a CQL undo script ended with `;`, the way a CQL editor splits a script; comment
@@ -823,7 +843,27 @@ pub fn join_literal(composite: bool, type_name: &str, items: Vec<Option<String>>
 mod tests {
     use platypus_core::{Error, Executed};
 
-    use super::{mongo_problem, mongo_saved, terminated};
+    use super::{mongo_problem, mongo_saved, not_a_collection, terminated};
+
+    #[test]
+    fn a_mongo_view_is_not_edited() {
+        use platypus_core::{ObjectKind, ObjectMeta};
+        let objects = [
+            ObjectMeta::new("orders", ObjectKind::Table, None),
+            ObjectMeta::new(
+                "order_totals",
+                ObjectKind::View,
+                Some("view on orders".into()),
+            ),
+        ];
+        let refused = not_a_collection(&objects, "order_totals").unwrap();
+        assert_eq!(refused.kind(), "read_only");
+        assert!(refused.message().contains("only tables can be edited"));
+        assert!(not_a_collection(&objects, "orders").is_none());
+        // Not created yet: the inserts create it. Names are case-sensitive.
+        assert!(not_a_collection(&objects, "fresh").is_none());
+        assert!(not_a_collection(&objects, "Order_Totals").is_none());
+    }
 
     fn ran(rows: &[u64], error: Option<Error>) -> Executed {
         Executed {

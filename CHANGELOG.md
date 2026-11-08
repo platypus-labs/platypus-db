@@ -19,7 +19,8 @@ All notable changes to PlatypusDB are listed here. The format follows
   statement you type, with its `use` or `getSiblingDB` database and a projection that keeps `_id`), by
   `_id`. Each change is one `updateOne`, `insertOne` or `deleteOne`, shown by Preview SQL and written with
   the BSON type of the column (`int`, `long`, `double`, `decimal`, `bool`, `string`, `objectId`, `date`,
-  `document`, `array`). A change to `_id`, a column of mixed types or binary data, a field with a `.` or a
+  `document`, `array`); a changed number keeps the numeric type the document stores (`int`, `long`,
+  `double`, `decimal`) when that type holds it exactly, in a pipeline update. A change to `_id`, a column of mixed types or binary data, a field with a `.` or a
   leading `$`, and a value that does not fit are refused with the reason. A command that finds no
   document stops the save. On a replica set a save is all or nothing, in a transaction of its own or in
   the one the tab has open; on a standalone server the error says how many commands were saved. The undo
@@ -29,9 +30,10 @@ All notable changes to PlatypusDB are listed here. The format follows
   Rollback, which were hidden before.
 - **MongoDB**: manual commit on replica sets and sharded clusters. The reads and writes of documents,
   `createCollection` and `createIndex` run in a transaction of the connection's session, opened at the
-  first statement; metadata, the server's commands and the navigator run outside it. What MongoDB does
-  not run in a transaction (`drop`, `renameCollection`, `dropIndex`, `createView`, `$out`, `$merge`) is
-  refused in manual commit, and the transaction stays as it was. When the server ends a transaction
+  first statement, and so do the server commands that write documents (`runCommand({ insert: … })` and
+  the like); metadata, server information and the navigator run outside it. What MongoDB does not run in
+  a transaction (`drop`, `dropDatabase`, `renameCollection`, `dropIndex`, `createView`, `$out`, `$merge`)
+  is refused in manual commit, and the transaction stays as it was. When the server ends a transaction
   (after `transactionLifetimeLimitSeconds`, 60 by default, or on a duplicate key or a write conflict),
   the error says its changes were discarded and the transaction shows as closed. A cancel rolls it back.
   A standalone server still has no transactions, and says why.

@@ -44,6 +44,14 @@ import {
 const NAME = "E2E Mongo grid";
 const C = "e2e_ge";
 
+/** What an edit writes for whole number `n` in field `field`: the number in the numeric type the
+ *  document stores, `fallback` (the column's type) when it is none of them. */
+const whole = (field, n, fallback = String(n)) => {
+  const is = (type) => `{ case: { $eq: [{ $type: "$${field}" }, "${type}"] }`;
+  return `{ $switch: { branches: [${is("int")}, then: ${n} }, ${is("long")}, then: NumberLong(${n}) }, ` +
+    `${is("double")}, then: ${n}.0 }, ${is("decimal")}, then: NumberDecimal("${n}") }], default: ${fallback} } }`;
+};
+
 /** The documents of the collection, as the scenario starts and as it puts them back. */
 const SEED = `db.${C}.insertMany([
        { _id: 1, name: "Alpha", qty: NumberInt(1), big: NumberLong(10), price: 1.5, ok: false,
@@ -104,16 +112,17 @@ export default async function (page) {
   await editCell(page, row, g.col("meta"), '{"y":{"z":1.5}}');
   await editCell(page, row, g.col("dec"), "2.50");
   const sql = await preview(page);
-  assert.match(sql, new RegExp(`^db\\.${C}\\.updateOne\\(\\{ _id: 2 \\}, \\{ \\$set: \\{ `));
+  // A changed number makes the update a pipeline: numbers keep the stored type, the rest are literals.
+  assert.match(sql, new RegExp(`^db\\.${C}\\.updateOne\\(\\{ _id: 2 \\}, \\[\\{ \\$set: \\{ `));
   for (const piece of [
-    "qty: 7",
-    'big: NumberLong("9007199254740993")',
-    "price: 2.0",
-    "ok: false",
-    'born: ISODate("2025-03-04T05:06:07.089Z")',
-    'tags: ["x", 2]',
-    "meta: { y: { z: 1.5 } }",
-    'dec: NumberDecimal("2.50")',
+    `qty: ${whole("qty", 7)}`,
+    'default: NumberLong("9007199254740993")',
+    `price: ${whole("price", 2, "2.0")}`,
+    "ok: { $literal: false }",
+    'born: { $literal: ISODate("2025-03-04T05:06:07.089Z") }',
+    'tags: { $literal: ["x", 2] }',
+    "meta: { $literal: { y: { z: 1.5 } } }",
+    'then: NumberDecimal("2.50") }], default: NumberDecimal("2.50")',
   ]) {
     assert.ok(sql.includes(piece), `${piece} in ${sql}`);
   }
@@ -208,7 +217,7 @@ export default async function (page) {
   assert.match(await page.eval(editBar), /3 rows changed/);
   assert.deepEqual((await preview(page)).split("\n"), [
     `db.${C}.deleteOne({ _id: 3 })`,
-    `db.${C}.updateOne({ _id: 1 }, { $set: { qty: 9 } })`,
+    `db.${C}.updateOne({ _id: 1 }, [{ $set: { qty: ${whole("qty", 9)} } }])`,
     `db.${C}.insertOne({ _id: 60, name: "Zed" })`,
   ]);
   await save(page, "3 rows");
@@ -240,17 +249,13 @@ async function refused(page) {
 
   g = await layout(page);
   await editCell(page, g.row(1), g.col("qty"), "many");
-  await expectRefusal("text in an int", /column qty: invalid integer/);
-  await editCell(page, g.row(1), g.col("qty"), "3000000000");
-  await expectRefusal("an int beyond 32 bits", /does not fit a 32-bit int/);
-  await editCell(page, g.row(1), g.col("big"), "1.5");
-  await expectRefusal("a fraction in a long", /column big: invalid integer/);
+  await expectRefusal("text in an int", /column qty: invalid number/);
   await editCell(page, g.row(1), g.col("price"), "abc");
   await expectRefusal("text in a double", /column price: invalid number/);
   await editCell(page, g.row(1), g.col("born"), "yesterday");
   await expectRefusal("a date that is none", /column born: invalid date/);
   await editCell(page, g.row(1), g.col("dec"), "1,5");
-  await expectRefusal("a decimal that is none", /column dec: invalid decimal/);
+  await expectRefusal("a decimal that is none", /column dec: invalid number/);
   await editCell(page, g.row(1), g.col("meta"), "[1]");
   await expectRefusal("an array in a document column", /not a document/);
   await editCell(page, g.row(1), g.col("tags"), '{"a":1}');
@@ -269,7 +274,7 @@ async function refused(page) {
   await editCell(page, g.row(1), g.col("a.b"), "5");
   await expectRefusal("a dotted field", /path or an operator/);
   await editCell(page, g.row(1), g.col("c"), "7");
-  assert.equal(await preview(page), `db.${C}_dotted.updateOne({ _id: 1 }, { $set: { c: 7 } })`);
+  assert.equal(await preview(page), `db.${C}_dotted.updateOne({ _id: 1 }, [{ $set: { c: ${whole("c", 7)} } }])`);
   await closePreview(page);
   await discard(page);
   assert.equal(count("standalone", `${C}_dotted`, "{ c: 2 }"), 1);
@@ -324,7 +329,7 @@ async function typedFinds(page) {
   g = await layout(page);
   assert.deepEqual(g.header, ["_id", "name", "qty"]);
   await editCell(page, g.row(3), g.col("qty"), "33");
-  assert.equal(await preview(page), `db.${C}.updateOne({ _id: 3 }, { $set: { qty: 33 } })`);
+  assert.equal(await preview(page), `db.${C}.updateOne({ _id: 3 }, [{ $set: { qty: ${whole("qty", 33)} } }])`);
   await save(page, "3 rows");
   assert.ok(has(`{ _id: 3, qty: 33, name: "Gamma", big: NumberLong(30) }`), "the fields the projection left out changed");
   mongosh("standalone", `db.${C}.updateOne({ _id: 3 }, { $set: { qty: NumberInt(3) } })`);
@@ -354,7 +359,7 @@ async function typedFinds(page) {
   await editable(page, "1 row");
   g = await layout(page);
   await editCell(page, g.row(1), g.col("v"), "2");
-  assert.equal(await preview(page), `db.getCollection("${C} space").updateOne({ _id: 1 }, { $set: { v: 2 } })`);
+  assert.equal(await preview(page), `db.getCollection("${C} space").updateOne({ _id: 1 }, [{ $set: { v: ${whole("v", 2)} } }])`);
   await save(page, "1 row");
   assert.ok(has(`{ _id: 1, v: 2 }`, `${C} space`));
 }

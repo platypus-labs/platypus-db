@@ -627,7 +627,8 @@ Editing: the result of a plain `find` on one collection (the data viewer, or a s
 not a view, an aggregation or a projection without `_id`) is edited in the grid by `_id`. Each
 change is one `updateOne`, `insertOne` or `deleteOne` that **Preview SQL** shows, written with the
 BSON type of the column (`int`, `long`, `double`, `decimal`, `bool`, `string`, `objectId`, `date`,
-`document`, `array`). Changing `_id`, columns of mixed types or of binary data, and fields with a
+`document`, `array`); a changed number keeps the numeric type the document stores when that type
+holds it exactly. Changing `_id`, columns of mixed types or of binary data, and fields with a
 `.` in their name or starting with `$` are refused with the reason. Each command must change one
 document. On a replica set a save is all or nothing, in a transaction of its own or in the one you
 have open; on a standalone server the commands run one after the other. Details in the

@@ -3,7 +3,9 @@
 //! run one by one by `execute_all`:
 //!
 //! - an edited document is `updateOne({ _id: … }, { $set: { … } })`. A NULL cell sets the
-//!   field to `null`;
+//!   field to `null`. A changed number keeps the numeric type the document stores when that
+//!   type holds it ([`number`]): the update is then a pipeline, `[{ $set: { n: { $switch: … },
+//!   other: { $literal: … } } }]`, whose other values are literals;
 //! - a new document is `insertOne({ … })`. Cells left NULL are not sent. Without an `_id`
 //!   the app makes an `ObjectId`, so that the undo can name the document;
 //! - a deleted document is `deleteOne({ _id: … })`.
@@ -16,13 +18,15 @@
 //!
 //! [`META_DB_TYPE`]: platypus_core::META_DB_TYPE
 
-use std::str::FromStr;
+mod number;
 
-use mongodb::bson::{Bson, Decimal128, Document, doc, oid::ObjectId};
+use mongodb::bson::{Bson, Document, doc, oid::ObjectId};
 
 use crate::generate::collection_ref;
 use crate::literal::{Reader, quote, resolve_extended, to_shell};
 use crate::shell::{self, CollectionOp, Command};
+
+use self::number::{Exact, NUMERIC};
 
 /// A loaded row changed: its values as loaded, and the new values of some columns (`None`
 /// for NULL).
@@ -136,14 +140,10 @@ fn parse_with<T>(text: &str, what: &str, parse: impl Fn(&str) -> Option<T>) -> R
     parse(text).ok_or_else(|| format!("invalid {what} `{text}`"))
 }
 
-/// A double from its text: the grid shows the special values as Arrow prints them.
-fn double(text: &str) -> Option<f64> {
-    match text {
-        "NaN" | "nan" => Some(f64::NAN),
-        "Infinity" | "inf" | "+inf" => Some(f64::INFINITY),
-        "-Infinity" | "-inf" => Some(f64::NEG_INFINITY),
-        _ => text.parse::<f64>().ok().filter(|d| d.is_finite()),
-    }
+/// The number of a cell's text, in the numeric type of its column when that holds it, else in
+/// the first that does: `3.5` in an `int` column is a double.
+fn number(text: &str, db_type: &str) -> Result<Bson, String> {
+    parse_with(text, "number", |t| Exact::of(t)?.by_type(db_type))
 }
 
 /// A document or an array from the relaxed Extended JSON the grid shows, whose integers are
@@ -183,18 +183,7 @@ fn value(text: &str, db_type: &str) -> Result<Bson, String> {
             "false" => Ok(Bson::Boolean(false)),
             _ => Err(format!("invalid boolean `{t}`: true or false")),
         },
-        "int" => match t.parse::<i32>() {
-            Ok(n) => Ok(Bson::Int32(n)),
-            Err(_) if t.parse::<i64>().is_ok() => Err(format!(
-                "`{t}` does not fit a 32-bit int (-2147483648 to 2147483647)"
-            )),
-            Err(_) => Err(format!("invalid integer `{t}`")),
-        },
-        "long" => parse_with(t, "integer", |s| s.parse().ok()).map(Bson::Int64),
-        "double" => parse_with(t, "number", double).map(Bson::Double),
-        "decimal" => {
-            parse_with(t, "decimal number", |s| Decimal128::from_str(s).ok()).map(Bson::Decimal128)
-        }
+        "int" | "long" | "double" | "decimal" => number(t, db_type),
         "objectId" => parse_with(t, "ObjectId (24 hexadecimal characters)", |s| {
             ObjectId::parse_str(s).ok()
         })
@@ -261,15 +250,55 @@ impl Builder<'_> {
         self.id_value(column, text)
     }
 
+    /// An `_id`, in the type of its column only: it finds the document.
     fn id_value(&self, column: usize, text: &str) -> Result<Bson, String> {
-        value(text, self.db_type(column)).map_err(|e| format!("column _id: {e}"))
+        let ty = self.db_type(column);
+        let found = if NUMERIC.contains(&ty) {
+            parse_with(text.trim(), ty, |t| Exact::of(t)?.as_type(ty))
+        } else {
+            value(text, ty)
+        };
+        found.map_err(|e| format!("column _id: {e}"))
+    }
+
+    /// What `$set` writes to column `column` for a cell: in a pipeline, a number in the type the
+    /// document stores ([`Exact::kept`]) and any other value as a literal; `None` when the cell
+    /// is not a number, which the plain `$set` writes as well. After [`Self::cell`], which
+    /// refuses what cannot be written.
+    fn kept(&self, column: usize, text: Option<&str>) -> Option<Bson> {
+        let ty = self.db_type(column);
+        let text = text.filter(|_| NUMERIC.contains(&ty))?;
+        let kept = Exact::of(text.trim())?.kept(self.name(column), ty)?;
+        Some(Bson::Document(kept))
+    }
+
+    /// The `$set` of `fields` (each with its pipeline form, if a number): the plain update when
+    /// no number is among them, else the pipeline.
+    fn set(fields: Vec<(&str, Bson, Option<Bson>)>) -> Bson {
+        if fields.iter().all(|(_, _, kept)| kept.is_none()) {
+            let set: Document = fields
+                .into_iter()
+                .map(|(n, v, _)| (n.to_owned(), v))
+                .collect();
+            return Bson::Document(doc! { "$set": set });
+        }
+        let set: Document = fields
+            .into_iter()
+            .map(|(name, value, kept)| {
+                let value = kept.unwrap_or_else(|| Bson::Document(doc! { "$literal": value }));
+                (name.to_owned(), value)
+            })
+            .collect();
+        Bson::Array(vec![Bson::Document(doc! { "$set": set })])
     }
 
     fn statement(&self, method: &str, arguments: &[Document]) -> String {
-        let arguments: Vec<String> = arguments
-            .iter()
-            .map(|d| to_shell(&Bson::Document(d.clone())))
-            .collect();
+        let arguments: Vec<Bson> = arguments.iter().cloned().map(Bson::Document).collect();
+        self.call(method, &arguments)
+    }
+
+    fn call(&self, method: &str, arguments: &[Bson]) -> String {
+        let arguments: Vec<String> = arguments.iter().map(to_shell).collect();
         format!("{}.{method}({})", self.target, arguments.join(", "))
     }
 
@@ -279,7 +308,8 @@ impl Builder<'_> {
     }
 
     /// The `$set` of an update, and the one that puts the loaded values back, with a comment
-    /// for each field that was NULL: it may have been missing.
+    /// for each field that was NULL (it may have been missing) and for each number whose type
+    /// the edit may have changed (the undo puts the number back in the type it has then).
     fn update(
         &self,
         update: &Update,
@@ -287,8 +317,8 @@ impl Builder<'_> {
         undo: &mut Vec<String>,
     ) -> Result<(), String> {
         let id = self.id(&update.loaded)?;
-        let (mut new, mut old) = (Document::new(), Document::new());
-        let mut nulls = Vec::new();
+        let (mut new, mut old) = (Vec::new(), Vec::new());
+        let (mut nulls, mut retyped) = (Vec::new(), Vec::new());
         for (column, text) in &update.set {
             let name = self.name(*column);
             if name == "_id" {
@@ -302,27 +332,47 @@ impl Builder<'_> {
                 continue;
             }
             let before = update.loaded.get(*column).and_then(Option::as_deref);
-            new.insert(name, self.cell(*column, text.as_deref())?);
-            old.insert(name, self.cell(*column, before)?);
+            let text = text.as_deref();
+            new.push((name, self.cell(*column, text)?, self.kept(*column, text)));
+            old.push((
+                name,
+                self.cell(*column, before)?,
+                self.kept(*column, before),
+            ));
             if before.is_none() {
                 nulls.push(name);
+            }
+            let missing = text
+                .filter(|_| NUMERIC.contains(&self.db_type(*column)))
+                .and_then(|t| Exact::of(t.trim()))
+                .map(|n| n.missing())
+                .unwrap_or_default();
+            if !missing.is_empty() {
+                retyped.push(format!("{name} (not an exact {})", missing.join(" or ")));
             }
         }
         if new.is_empty() {
             return Ok(());
         }
-        let key = doc! { "_id": id.clone() };
+        let key = Bson::Document(doc! { "_id": id.clone() });
         script
             .commands
-            .push(self.statement("updateOne", &[key.clone(), doc! { "$set": new }]));
+            .push(self.call("updateOne", &[key.clone(), Self::set(new)]));
+        let shown = Self::shown(&id);
         if !nulls.is_empty() {
             undo.push(format!(
-                "// _id {}: {} was NULL, empty or missing, and comes back as null",
-                Self::shown(&id),
+                "// _id {shown}: {} was NULL, empty or missing, and comes back as null",
                 nulls.join(", ")
             ));
         }
-        undo.push(self.statement("updateOne", &[key, doc! { "$set": old }]));
+        if !retyped.is_empty() {
+            undo.push(format!(
+                "// _id {shown}: {} may have changed type, and comes back as a number of the type \
+                 it has now",
+                retyped.join(", ")
+            ));
+        }
+        undo.push(self.call("updateOne", &[key, Self::set(old)]));
         Ok(())
     }
 
