@@ -119,20 +119,41 @@
 <li>Results are a grid of the top-level fields, with the focused document as a tree beside it (<code>F7</code>). The navigator lists databases, collections, fields sampled from the documents, and indexes; the editor completes collections, methods and fields.</li>
 <li>Cancel stops a running statement; an abandoned result frees the connection.</li>
 <li><strong>Manual commit</strong> on a replica set or a sharded cluster (see <a href="#transactions">Transactions</a>).</li>
+<li><strong>Editing documents in the grid</strong> (see <a href="#edit-documents-in-the-grid">Edit documents in the grid</a>).</li>
 <li>A collection&#39;s definition as DDL.</li>
 <li><strong>Generate data</strong> fills a collection with fake documents.</li>
 <li>The same detail is in <a href="../../features.html#mongodb">FEATURES.md</a>.</li>
 </ul>
 <h2 id="what-does-not">What does not</h2>
 <ul>
-<li><strong>No data editing in the grid</strong>: results stay read-only. Change documents with <code>updateOne</code>, <code>insertOne</code> and the like.</li>
+<li><strong>Only some results are editable in the grid</strong>: the documents of one collection (see <a href="#edit-documents-in-the-grid">Edit documents in the grid</a>). Every other result, such as an aggregation, a view or a <code>findOne</code>, stays read-only. Change those documents with <code>updateOne</code>, <code>insertOne</code> and the like.</li>
 <li><strong>No transactions on a standalone server</strong>: MongoDB runs them only on a replica set or a sharded cluster. Manual commit is refused there, saying so.</li>
 <li><strong>No JavaScript</strong>: the editor runs statements, so <code>forEach</code>, <code>map</code>, <code>next</code>, <code>mapReduce</code>, the older bulk builders (use <code>bulkWrite</code>) and variables are refused, saying so. <code>watch</code> is refused too: a change stream would take over the connection. A <code>.comment()</code> on a read is left out: the app&#39;s own finds the operation to cancel it.</li>
 <li><code>bulkWrite</code> is not atomic, as in mongosh: what ran before a failure stays, and the error says how far it got. Neighbouring inserts travel together, every other write on its own trip.</li>
 <li>No SQL: no table editor, ER diagram, schema comparison, query builder, SQL import, snapshots before changes, or terminal mode (<code>mongosh</code> takes the password only on its command line).</li>
 </ul>
+<h2 id="edit-documents-in-the-grid">Edit documents in the grid</h2>
+<p>The grid edits the result of a plain <code>find</code> on one collection: the data viewer, or a statement you type, such as <code>db.orders.find({ status: &#39;paid&#39; }).sort({ _id: 1 }).limit(20)</code>. The collection can be named with <code>getCollection(&quot;my orders&quot;)</code> or <code>db.getSiblingDB(&quot;shop&quot;).orders</code>. After <code>use</code>, the collection is the one of the database you switched to. A projection is fine when it only lists fields to include and keeps <code>_id</code>. Views, aggregations, <code>findOne</code>, <code>distinct</code>, counts, a projection without <code>_id</code> and a projection that leaves fields out stay read-only.</p>
+<p>A document is found by its <code>_id</code>. A result without <code>_id</code> is read-only. <strong>Preview SQL</strong> shows the mongosh that will run, one statement per document:</p>
+<ul>
+<li>an edited document is <code>updateOne({ _id: … }, { $set: { … } })</code>. A NULL cell writes <code>null</code>;</li>
+<li>a new document is <code>insertOne({ … })</code>. Cells left NULL are not sent. Without an <code>_id</code>, the app makes an <code>ObjectId</code>;</li>
+<li>a deleted document is <code>deleteOne({ _id: … })</code>.</li>
+</ul>
+<p>Values are written with the BSON type of their column: <code>int</code> (a 32-bit int), <code>long</code>, <code>double</code>, <code>decimal</code>, <code>bool</code>, <code>string</code>, <code>objectId</code>, <code>date</code>, and <code>document</code> and <code>array</code> from the JSON the grid shows. A date is written like <code>2024-01-02 10:30:00</code>, with or without the time zone (UTC without one). A whole <code>double</code> is written with a decimal point, so it stays a double. Numbers inside a document or an array keep the type JSON gives them: a whole number is an int, a number with a fraction a double.</p>
+<p>These are refused before anything runs, with the reason:</p>
+<ul>
+<li>a change to <code>_id</code>: MongoDB never changes it. Delete the document and insert it again;</li>
+<li>a column of mixed types (<code>mixed</code>): the text of a value does not tell a string from a number;</li>
+<li>binary data and the other types the grid cannot write back exactly (regular expressions, timestamps, JavaScript);</li>
+<li>a field with a <code>.</code> in its name or a name that starts with <code>$</code>: <code>$set</code> would read it as a path or an operator;</li>
+<li>a value that does not fit its type, such as <code>many</code> in an <code>int</code> column, a number beyond 32 bits in an <code>int</code> column, or an array in a <code>document</code> column.</li>
+</ul>
+<p>Each statement must change exactly one document. If one finds none, because the document was deleted or its <code>_id</code> changed since the grid read it, the save stops and says which command.</p>
+<p><strong>All or nothing needs a replica set.</strong> On a replica set or a sharded cluster, a save runs in a transaction of its own and commits only if every command worked. If you have a transaction open (manual commit), the save runs in it and waits for Commit. If a command fails, MongoDB has no savepoints: the whole transaction is rolled back, with the changes you had not committed yet, and the error says so. On a standalone server there are no transactions: the commands run one after the other, and a failure stops the rest. The commands before it stay saved, and the error says how many.</p>
+<p>The undo script that follows a save puts the documents back: <code>$set</code> of the old values for edits, <code>deleteOne</code> for new documents, <code>insertOne</code> of the loaded fields for deleted ones. Lines starting with <code>//</code> say what it cannot restore exactly: fields the result did not show, columns of types the grid cannot write, and fields that were NULL (they come back as <code>null</code>, or are left out).</p>
 <h2 id="transactions">Transactions</h2>
-<p>Manual commit works on a replica set or a sharded cluster (a <code>mongos</code>); a single-node replica set is enough. On a standalone server it is refused. The connection keeps one session: the first statement after you switch to manual commit, or after a Commit or Rollback, opens a transaction in it, and Commit or Rollback ends it. Your reads in the transaction see its writes; other sessions see them only after Commit.</p>
+<p>Manual commit works on a replica set or a sharded cluster (a <code>mongos</code>); a single-node replica set is enough. On a standalone server it is refused: the <strong>Auto-commit</strong> button is disabled and says why. A production connection to a replica set opens in manual commit, with Commit and Rollback. The connection keeps one session: the first statement after you switch to manual commit, or after a Commit or Rollback, opens a transaction in it, and Commit or Rollback ends it. Your reads in the transaction see its writes; other sessions see them only after Commit.</p>
 <ul>
 <li><strong>In the transaction</strong>: <code>find</code>, <code>findOne</code>, <code>aggregate</code>, <code>countDocuments</code>, <code>distinct</code>, the inserts, updates, replaces and deletes, <code>bulkWrite</code>, the <code>findOneAnd…</code> methods, <code>createCollection</code> and <code>createIndex</code>. MongoDB takes an index in a transaction only on a collection created in the same transaction: on one that exists, the server refuses it and ends the transaction.</li>
 <li><strong>Outside it</strong>, as in autocommit mode, without touching it: what reads metadata or talks to the server. <code>show …</code>, <code>use</code>, <code>db.stats()</code>, <code>db.getCollectionNames()</code>, <code>getIndexes</code>, the collection&#39;s statistics, <code>estimatedDocumentCount</code>, <code>.explain()</code>, <code>db.runCommand</code>, <code>db.adminCommand</code>, <code>rs.*</code>, <code>sh.*</code>, users and roles, the profiler, the navigator and completion. Reads of the <code>admin</code>, <code>config</code> and <code>local</code> databases and of <code>system.*</code> collections run outside too.</li>
@@ -158,6 +179,7 @@
     <a href="#privileges">Privileges</a>
     <a href="#what-works">What works</a>
     <a href="#what-does-not">What does not</a>
+    <a href="#edit-documents-in-the-grid">Edit documents in the grid</a>
     <a href="#transactions">Transactions</a>
     <a href="#agents">Agents</a>
     <a href="#known-limits">Known limits</a>

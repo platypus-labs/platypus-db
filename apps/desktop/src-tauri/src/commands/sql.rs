@@ -607,7 +607,9 @@ pub enum SourceItem {
 pub struct QuerySource {
     schema: Option<String>,
     name: String,
-    items: Vec<SourceItem>,
+    /// The select list; `None` when the result's columns are matched to the table's by name
+    /// (MongoDB, whose projections leave fields out and keep the document's order).
+    items: Option<Vec<SourceItem>>,
 }
 
 /// The table `sql` reads when its rows are that table's rows; `None` for joins, grouping
@@ -623,7 +625,7 @@ pub fn query_source(sql: String, driver: DriverKind) -> Option<QuerySource> {
         return Some(QuerySource {
             schema: browse.db.map(platypus_driver_redis::meta::schema_name),
             name: browse.kind.table().to_owned(),
-            items: vec![SourceItem::All],
+            items: Some(vec![SourceItem::All]),
         });
     }
     if driver == DriverKind::Elasticsearch {
@@ -632,25 +634,33 @@ pub fn query_source(sql: String, driver: DriverKind) -> Option<QuerySource> {
         return Some(QuerySource {
             schema: None,
             name,
-            items: vec![SourceItem::All],
+            items: Some(vec![SourceItem::All]),
         });
     }
     if driver == DriverKind::Mongo {
-        return None;
+        // A plain `find` of one collection: its documents are edited by `_id`.
+        let source = platypus_driver_mongo::edit::source(&sql)?;
+        return Some(QuerySource {
+            schema: source.db,
+            name: source.collection,
+            items: None,
+        });
     }
     let source = platypus_sql::source_table(&sql, Dialect::from(driver))?;
     Some(QuerySource {
         schema: source.schema,
         name: source.name,
-        items: source
-            .items
-            .into_iter()
-            .map(|item| match item {
-                SelectItem::All => SourceItem::All,
-                SelectItem::Column(name) => SourceItem::Column { name },
-                SelectItem::Other => SourceItem::Other,
-            })
-            .collect(),
+        items: Some(
+            source
+                .items
+                .into_iter()
+                .map(|item| match item {
+                    SelectItem::All => SourceItem::All,
+                    SelectItem::Column(name) => SourceItem::Column { name },
+                    SelectItem::Other => SourceItem::Other,
+                })
+                .collect(),
+        ),
     })
 }
 
@@ -969,6 +979,41 @@ mod tests {
             .collect();
         assert_eq!(every, [("deleteMany", "b")]);
         assert!(query_source(src, DriverKind::Mongo).is_none());
+    }
+
+    #[test]
+    fn mongo_edits_the_collection_of_a_plain_find() {
+        let source = |sql: &str| query_source(sql.to_owned(), DriverKind::Mongo);
+        let found = source("db.orders.find({ paid: true }).sort({ _id: 1 }).limit(20)").unwrap();
+        assert_eq!(
+            (
+                found.schema.as_deref(),
+                found.name.as_str(),
+                found.items.is_none()
+            ),
+            (None, "orders", true)
+        );
+        let found =
+            source("db.getSiblingDB(\"shop\").getCollection(\"order items\").find()").unwrap();
+        assert_eq!(
+            (found.schema.as_deref(), found.name.as_str()),
+            (Some("shop"), "order items")
+        );
+        assert!(source("db.orders.find({}, { _id: 1, total: 1 })").is_some());
+        for read_only in [
+            "db.orders.findOne({})",
+            "db.orders.aggregate([{ $match: {} }])",
+            "db.orders.distinct(\"total\")",
+            "db.orders.countDocuments({})",
+            "db.orders.find({}, { _id: 0, total: 1 })",
+            "db.orders.find({}, { total: 0 })",
+            "db.orders.deleteMany({})",
+            "show collections",
+            "db.orders.find({}); db.other.find({})",
+            "SELECT * FROM orders",
+        ] {
+            assert!(source(read_only).is_none(), "{read_only}");
+        }
     }
 }
 

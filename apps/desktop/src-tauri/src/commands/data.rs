@@ -404,6 +404,20 @@ impl RowEdits {
         })
     }
 
+    /// The type of each result column (`META_DB_TYPE`), empty when the driver names none.
+    fn types(&self) -> Vec<String> {
+        self.schema
+            .fields()
+            .iter()
+            .map(|f| {
+                f.metadata()
+                    .get(platypus_core::META_DB_TYPE)
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
     fn columns(&self) -> Vec<String> {
         self.schema
             .fields()
@@ -448,17 +462,7 @@ fn search_script(
 ) -> CommandResult<platypus_driver_search::edit::Script> {
     use platypus_driver_search::edit;
     let rows = RowEdits::of(job, changes)?;
-    let types: Vec<String> = rows
-        .schema
-        .fields()
-        .iter()
-        .map(|f| {
-            f.metadata()
-                .get(platypus_core::META_DB_TYPE)
-                .cloned()
-                .unwrap_or_default()
-        })
-        .collect();
+    let types = rows.types();
     let edits = edit::Edits {
         index: &changes.table.name,
         columns: &rows.columns(),
@@ -484,17 +488,7 @@ async fn cassandra_script(
 ) -> CommandResult<platypus_driver_cassandra::edit::Script> {
     use platypus_driver_cassandra::{edit, meta};
     let rows = RowEdits::of(job, changes)?;
-    let types: Vec<String> = rows
-        .schema
-        .fields()
-        .iter()
-        .map(|f| {
-            f.metadata()
-                .get(platypus_core::META_DB_TYPE)
-                .cloned()
-                .unwrap_or_default()
-        })
-        .collect();
+    let types = rows.types();
     let udts = if edit::uses_udts(&types) {
         let conn = state.live(job.session_id).await?;
         meta::udts(conn.as_ref(), &changes.table.schema).await?
@@ -508,6 +502,42 @@ async fn cassandra_script(
         types: &types,
         key: &changes.key,
         udts: &udts,
+        updates: rows
+            .updates
+            .into_iter()
+            .map(|(loaded, set)| edit::Update { loaded, set })
+            .collect(),
+        inserts: rows.inserts,
+        deletes: rows.deletes,
+    };
+    edit::script(&edits).map_err(|m| CommandError::new("invalid_value", m))
+}
+
+/// The mongosh statements for `changes` to the documents of a MongoDB collection (see
+/// [`platypus_driver_mongo::edit`]), which the session runs one by one, each changing one
+/// document. The collection is named with its database only when that is not the session's
+/// current one.
+async fn mongo_script(
+    state: &AppState,
+    job: &Job,
+    changes: &Changes,
+) -> CommandResult<platypus_driver_mongo::edit::Script> {
+    use platypus_driver_mongo::edit;
+    let rows = RowEdits::of(job, changes)?;
+    let types = rows.types();
+    let conn = state.live(job.session_id).await?;
+    let current = conn
+        .schemas()
+        .await
+        .ok()
+        .and_then(|all| all.into_iter().find(|s| s.current))
+        .map(|s| s.name);
+    let schema = changes.table.schema.as_str();
+    let edits = edit::Edits {
+        db: (current.as_deref() != Some(schema)).then_some(schema),
+        collection: &changes.table.name,
+        columns: &rows.columns(),
+        types: &types,
         updates: rows
             .updates
             .into_iter()
@@ -535,8 +565,8 @@ fn terminated(lines: Vec<String>) -> Vec<String> {
 }
 
 /// The commands that saving `changes` runs when the result's session is a Redis, an
-/// Elasticsearch or a Cassandra one, whose edits are commands, not SQL, with the commands
-/// that undo them; `None` for the SQL drivers.
+/// Elasticsearch, a Cassandra or a MongoDB one, whose edits are commands, not SQL, with the
+/// commands that undo them; `None` for the SQL drivers.
 async fn command_script(
     state: &AppState,
     job: &Job,
@@ -554,6 +584,10 @@ async fn command_script(
         }
         platypus_core::DriverKind::Elasticsearch => {
             let script = search_script(job, changes)?;
+            Some((script.commands, script.undo))
+        }
+        platypus_core::DriverKind::Mongo => {
+            let script = mongo_script(state, job, changes).await?;
             Some((script.commands, script.undo))
         }
         _ => None,
@@ -628,8 +662,8 @@ pub async fn save_changes(
 }
 
 /// [`save_changes`] on Redis (one `MULTI`/`EXEC`), Elasticsearch and Cassandra (one request
-/// or statement after the other, up to the first the server refuses): the commands on the
-/// result's session.
+/// or statement after the other, up to the first the server refuses) and MongoDB (see
+/// [`save_mongo`]): the commands on the result's session.
 async fn save_commands(
     state: &AppState,
     job: &Job,
@@ -639,14 +673,107 @@ async fn save_commands(
     let conn = state.live(job.session_id).await?;
     stop_jobs(state, job.session_id);
     let commands: Vec<&str> = commands.iter().map(String::as_str).collect();
-    let ran = conn.execute_all(&commands, &[]).await;
-    if let Some(error) = ran.error {
-        return Err(CommandError::from(&error).context(format!("Command {}", ran.rows.len() + 1)));
+    if state.session(job.session_id)?.config.driver == platypus_core::DriverKind::Mongo {
+        save_mongo(conn.as_ref(), &commands).await?;
+    } else {
+        let ran = conn.execute_all(&commands, &[]).await;
+        if let Some(error) = ran.error {
+            return Err(
+                CommandError::from(&error).context(format!("Command {}", ran.rows.len() + 1))
+            );
+        }
     }
     Ok(Saved {
         statements: commands.len(),
-        undo: undo.join("\n") + "\n",
+        undo: undo.join(
+            "
+",
+        ) + "
+",
     })
+}
+
+/// The problem a MongoDB save ran into: a command the server refused, or one that changed other
+/// than the one document it names (the document was deleted, or its `_id` changed, since it
+/// was loaded). `None` when every command changed one document.
+fn mongo_problem(ran: &platypus_core::Executed) -> Option<CommandError> {
+    let saved = ran.rows.iter().position(|&n| n != 1);
+    if let Some(error) = &ran.error {
+        return Some(CommandError::from(error).context(format!("Command {}", ran.rows.len() + 1)));
+    }
+    saved.map(|at| {
+        CommandError::new(
+            "row_count",
+            format!(
+                "Command {}: the document was not found; it was deleted, or its _id changed,                  since it was loaded",
+                at + 1
+            ),
+        )
+    })
+}
+
+/// How many commands of a failed MongoDB save changed their document before the problem.
+fn mongo_saved(ran: &platypus_core::Executed) -> usize {
+    ran.rows
+        .iter()
+        .position(|&n| n != 1)
+        .unwrap_or(ran.rows.len())
+}
+
+/// Saves `commands`, each changing one document, on a MongoDB session. On a replica set or a
+/// sharded cluster all or none are saved: in a transaction of their own when the session is in
+/// autocommit, else in the one the user has open (or opens), which MongoDB aborts whole when
+/// a command fails. A standalone server has no transactions: the commands run one by one, and
+/// the error says how many were saved.
+async fn save_mongo(conn: &dyn platypus_core::Connection, commands: &[&str]) -> CommandResult<()> {
+    let expected = vec![1; commands.len()];
+    if !conn.capabilities().transactions {
+        let ran = conn.execute_all(commands, &expected).await;
+        let Some(problem) = mongo_problem(&ran) else {
+            return Ok(());
+        };
+        let saved = mongo_saved(&ran);
+        let note = match saved {
+            0 => "Nothing was saved.".to_owned(),
+            1 => "The command before it was saved, the others were not: this server has no transactions to undo it with.".to_owned(),
+            n => format!(
+                "The {n} commands before it were saved, the others were not: this server has no transactions to undo them with."
+            ),
+        };
+        return Err(problem.note(&note));
+    }
+    let before = conn.transaction();
+    if before.autocommit {
+        conn.set_autocommit(false).await?;
+    }
+    let ran = conn.execute_all(commands, &expected).await;
+    let problem = mongo_problem(&ran);
+    let result = match problem {
+        None if before.autocommit => conn.commit().await.map_err(|e| {
+            CommandError::from(e)
+                .context("The transaction could not be committed, and nothing was saved")
+        }),
+        None => Ok(()),
+        Some(problem) => {
+            // The server may have ended the transaction already: rolling back then does nothing.
+            let _ = conn.rollback().await;
+            Err(if before.open {
+                problem
+                    .note("MongoDB has no savepoints: the whole transaction was rolled back, with the changes you had not committed yet.")
+                    .with_kind("rolled_back")
+            } else {
+                problem.note("Nothing was saved: MongoDB rolled the transaction back.")
+            })
+        }
+    };
+    if before.autocommit {
+        // After a failed commit the transaction is still open: end it first.
+        if result.is_err() {
+            let _ = conn.rollback().await;
+        }
+        conn.set_autocommit(true).await?;
+    }
+    result
 }
 
 /// The full values of loaded rows `offset..offset + limit`, as text (`None` for NULL): the
@@ -687,7 +814,41 @@ pub fn join_literal(composite: bool, type_name: &str, items: Vec<Option<String>>
 
 #[cfg(test)]
 mod tests {
-    use super::terminated;
+    use platypus_core::{Error, Executed};
+
+    use super::{mongo_problem, mongo_saved, terminated};
+
+    fn ran(rows: &[u64], error: Option<Error>) -> Executed {
+        Executed {
+            rows: rows.to_vec(),
+            error,
+        }
+    }
+
+    #[test]
+    fn a_mongo_save_is_whole_when_every_command_changed_one_document() {
+        assert!(mongo_problem(&ran(&[1, 1, 1], None)).is_none());
+        assert!(mongo_problem(&ran(&[], None)).is_none());
+    }
+
+    #[test]
+    fn a_mongo_save_names_the_command_that_failed_or_found_no_document() {
+        let refused =
+            mongo_problem(&ran(&[1], Some(Error::Other("duplicate key".into())))).unwrap();
+        assert_eq!(refused.message(), "Command 2: duplicate key");
+        assert_eq!(
+            mongo_saved(&ran(&[1], Some(Error::Other(String::new())))),
+            1
+        );
+        let gone = mongo_problem(&ran(&[1, 1, 0], None)).unwrap();
+        assert_eq!(gone.kind(), "row_count");
+        assert!(
+            gone.message()
+                .starts_with("Command 3: the document was not found")
+        );
+        assert_eq!(mongo_saved(&ran(&[1, 1, 0], None)), 2);
+        assert_eq!(mongo_saved(&ran(&[0], None)), 0);
+    }
 
     #[test]
     fn each_cql_statement_of_an_undo_script_ends_with_a_semicolon() {

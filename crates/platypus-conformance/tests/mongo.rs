@@ -524,3 +524,84 @@ async fn a_transaction_the_server_ended_is_closed() {
         "nothing stays"
     );
 }
+
+/// What the grid's save does on a connection in autocommit: the commands in a transaction of
+/// their own, committed only when every one changed the one document it names.
+async fn save_in_own_transaction(conn: &dyn Connection, commands: &[String]) -> Result<(), String> {
+    let statements: Vec<&str> = commands.iter().map(String::as_str).collect();
+    conn.set_autocommit(false)
+        .await
+        .map_err(|e| e.to_string())?;
+    let ran = conn
+        .execute_all(&statements, &vec![1; statements.len()])
+        .await;
+    let ok = ran.error.is_none()
+        && ran.rows.len() == statements.len()
+        && ran.rows.iter().all(|&n| n == 1);
+    if ok {
+        conn.commit().await.map_err(|e| e.to_string())?;
+    } else {
+        conn.rollback().await.map_err(|e| e.to_string())?;
+    }
+    conn.set_autocommit(true).await.map_err(|e| e.to_string())?;
+    if ok {
+        Ok(())
+    } else {
+        Err(ran
+            .error
+            .map_or_else(|| "short count".to_owned(), |e| e.to_string()))
+    }
+}
+
+#[tokio::test]
+async fn the_grids_save_is_all_or_nothing_on_a_replica_set() {
+    use platypus_driver_mongo::edit::{Edits, Update, script};
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("grid_atomic").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    conn.set_autocommit(true).await.unwrap();
+    run(
+        conn,
+        "db.grid_atomic.insertMany([{ _id: 1, v: 'a' }, { _id: 2, v: 'b' }])",
+    )
+    .await;
+    let columns = vec!["_id".to_owned(), "v".to_owned()];
+    let types = vec!["int".to_owned(), "string".to_owned()];
+    let some = |t: &str| Some(t.to_owned());
+    let update = |id: &str, v: &str| Update {
+        loaded: vec![some(id), None],
+        set: vec![(1, some(v))],
+    };
+    let edits = |updates| Edits {
+        db: None,
+        collection: "grid_atomic",
+        columns: &columns,
+        types: &types,
+        updates,
+        inserts: Vec::new(),
+        deletes: Vec::new(),
+    };
+    let changed = |filter: &'static str| async move {
+        rows(other, &format!("db.grid_atomic.find({filter})")).await
+    };
+
+    // The second document is gone: the short count undoes the first update.
+    let gone = script(&edits(vec![update("1", "x"), update("9", "y")])).unwrap();
+    let error = save_in_own_transaction(conn, &gone.commands)
+        .await
+        .unwrap_err();
+    assert_eq!(error, "short count");
+    assert_eq!(
+        changed("{ v: 'x' }").await,
+        0,
+        "the first update was undone"
+    );
+    assert!(conn.transaction().autocommit && !conn.transaction().open);
+
+    // Every command works: all are saved, and visible to another session.
+    let good = script(&edits(vec![update("1", "x"), update("2", "y")])).unwrap();
+    save_in_own_transaction(conn, &good.commands).await.unwrap();
+    assert_eq!(changed("{ v: { $in: ['x', 'y'] } }").await, 2);
+}

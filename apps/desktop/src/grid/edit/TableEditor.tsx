@@ -8,6 +8,7 @@ import {
   type Generated,
   type GeneratedColumn,
   isCassandra,
+  isMongo,
   isRedis,
   isSearch,
   type SavedConnection,
@@ -883,7 +884,9 @@ export function useTableEditor({ target, jobId, columns, cache, version, rowCoun
                   ? "requests"
                   : target && isCassandra(target.connection.driver)
                     ? "statements"
-                    : undefined
+                    : target && isMongo(target.connection.driver)
+                      ? "mongosh"
+                      : undefined
             }
             onSave={() => void edit.save(true)}
             onClose={() => setPreview(null)}

@@ -15,6 +15,18 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Added
 
+- **MongoDB**: the grid edits the documents of a plain `find` on one collection (the data viewer, or a
+  statement you type, with its `use` or `getSiblingDB` database and a projection that keeps `_id`), by
+  `_id`. Each change is one `updateOne`, `insertOne` or `deleteOne`, shown by Preview SQL and written with
+  the BSON type of the column (`int`, `long`, `double`, `decimal`, `bool`, `string`, `objectId`, `date`,
+  `document`, `array`). A change to `_id`, a column of mixed types or binary data, a field with a `.` or a
+  leading `$`, and a value that does not fit are refused with the reason. A command that finds no
+  document stops the save. On a replica set a save is all or nothing, in a transaction of its own or in
+  the one the tab has open; on a standalone server the error says how many commands were saved. The undo
+  script puts the documents back.
+- **MongoDB**: the Auto-commit button is shown on every MongoDB connection, disabled with its reason on a
+  standalone server; a production connection to a replica set opens in manual commit with Commit and
+  Rollback, which were hidden before.
 - **MongoDB**: manual commit on replica sets and sharded clusters. The reads and writes of documents,
   `createCollection` and `createIndex` run in a transaction of the connection's session, opened at the
   first statement; metadata, the server's commands and the navigator run outside it. What MongoDB does

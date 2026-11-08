@@ -1587,7 +1587,9 @@ export function QueryTab({
     const query = await api.querySource(sql, connection.driver);
     if (!query) return null;
     const id = await sideId();
-    const schema = query.schema ?? (await api.listSchemas(id)).find((s) => s.current)?.name;
+    // The current database is the session's own: `use` in this tab changes it for this tab only.
+    const own = isMongo(connection.driver) ? await currentSession() : null;
+    const schema = query.schema ?? (await api.listSchemas(own ?? id)).find((s) => s.current)?.name;
     if (!schema) return null;
     const objects = await api.listObjects(id, schema);
     const object =
@@ -1603,9 +1605,6 @@ export function QueryTab({
    * editor that reads one table. Results of scripts stay read-only.
    */
   function editTarget(result: Result): TableEditTarget | null {
-    // The data editor writes SQL, Redis commands or Elasticsearch requests: MongoDB results
-    // stay read-only.
-    if (isMongo(connection.driver)) return null;
     const ref = tab.tableRef;
     const viewer = !!tab.table && !!ref && viewerOwn.has(result.sql);
     if (!viewer && results.length !== 1) return null;
@@ -1755,15 +1754,31 @@ export function QueryTab({
     onChange({ ddlOf: rest, ddlDone: done });
   });
   const health = useSessionHealth(currentSession, active && !running && !guard);
+  // MongoDB has transactions on a replica set or a sharded cluster only: the session knows.
+  const [mongoTransactions, setMongoTransactions] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!isMongo(connection.driver)) return;
+    let live = true;
+    void Promise.resolve(currentSession()).then((id) => {
+      if (live && id !== null) setMongoTransactions(!!workbench().capabilities(id)?.transactions);
+    });
+    return () => {
+      live = false;
+    };
+  }, [connection.driver, running]);
   const toolbar = useToolbar();
-  // ClickHouse, MongoDB and Redis have no transactions (`capabilities.transactions` is false):
-  // no commit mode.
+  // ClickHouse and Redis have no transactions, nor the other NoSQL drivers but MongoDB, which
+  // has them on a replica set or a sharded cluster only: the session says so
+  // (`capabilities.transactions`). No commit mode where there are none.
   // The data viewer's bar, with its row count: not on Redis, Elasticsearch and Cassandra, whose
   // rows are read as shown (CQL has no OFFSET to page with, and counting a table reads it all).
   const viewerBar = !!tab.table && !isRedis(connection.driver) && !isSearch(connection.driver) && !isCassandra(connection.driver);
   /** The table the data viewer browses, for its structure and its editor. */
   const viewed = tab.table && tab.tableRef ? { ...tab.tableRef, database: tab.database } : null;
-  const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && !isNoSql(connection.driver);
+  // Its commit mode is offered on every MongoDB connection, but disabled, with the reason, on a
+  // standalone server.
+  const noTransactions = isMongo(connection.driver) && mongoTransactions === false;
+  const showTx = toolbar.visible.transactions && connection.driver !== "clickhouse" && (isMongo(connection.driver) || !isNoSql(connection.driver));
   const dirty = tab.filePath !== null && tab.sql !== tab.savedSql;
   const rowsResult = view?.status.kind === "rows" && view.columns ? view : null;
   const manual = tx !== null && !tx.autocommit;
@@ -1861,10 +1876,12 @@ export function QueryTab({
           <button
             className={manual ? "toggled" : ""}
             onClick={() => void toggleAutocommit()}
-            disabled={running || !!tx?.open}
+            disabled={running || !!tx?.open || noTransactions}
             aria-label={t(manual ? "Manual commit" : "Auto-commit")}
             title={t(
-              tx?.open
+              noTransactions
+                ? "Manual commit needs a replica set or a sharded cluster: this MongoDB server is standalone"
+                : tx?.open
                 ? "Commit or roll back before switching"
                 : manual
                   ? "Manual commit: changes wait for Commit"
@@ -1894,7 +1911,7 @@ export function QueryTab({
               </button>
             </>
           )}
-          {showTx && (
+          {showTx && !noTransactions && (
             <button onClick={() => setLogOpen(true)} title={t("Transaction log")} aria-label={t("Transaction log")}>
               {toolbar.label("tx-log", t("Log"))}
             </button>

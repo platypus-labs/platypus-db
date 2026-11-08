@@ -138,6 +138,9 @@ export function editMeta(
 }
 
 const BOOL_TYPE = /^bool(ean)?$/i;
+/** The types document stores (MongoDB, Elasticsearch) give to nested objects and lists: their
+ *  text is JSON. */
+const DOCUMENT_TYPE = /^(document|array)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** Longer values get the multi-line editor. */
 const LONG_TEXT = 120;
@@ -165,5 +168,6 @@ export function editorKind(
 }
 
 export function isJson(column: ColumnInfo, meta: ColumnMeta | undefined): boolean {
-  return JSON_TYPE.test(meta?.data_type ?? column.db_type);
+  const type = meta?.data_type ?? column.db_type;
+  return JSON_TYPE.test(type) || DOCUMENT_TYPE.test(type);
 }

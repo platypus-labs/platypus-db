@@ -65,13 +65,16 @@ statements you write need the roles they need.
   indexes; the editor completes collections, methods and fields.
 - Cancel stops a running statement; an abandoned result frees the connection.
 - **Manual commit** on a replica set or a sharded cluster (see [Transactions](#transactions)).
+- **Editing documents in the grid** (see [Edit documents in the grid](#edit-documents-in-the-grid)).
 - A collection's definition as DDL.
 - **Generate data** fills a collection with fake documents.
 - The same detail is in [FEATURES.md](../../FEATURES.md#mongodb).
 
 ## What does not
 
-- **No data editing in the grid**: results stay read-only. Change documents with `updateOne`,
+- **Only some results are editable in the grid**: the documents of one collection (see
+  [Edit documents in the grid](#edit-documents-in-the-grid)). Every other result, such as an
+  aggregation, a view or a `findOne`, stays read-only. Change those documents with `updateOne`,
   `insertOne` and the like.
 - **No transactions on a standalone server**: MongoDB runs them only on a replica set or a sharded
   cluster. Manual commit is refused there, saying so.
@@ -84,10 +87,61 @@ statements you write need the roles they need.
 - No SQL: no table editor, ER diagram, schema comparison, query builder, SQL import, snapshots
   before changes, or terminal mode (`mongosh` takes the password only on its command line).
 
+## Edit documents in the grid
+
+The grid edits the result of a plain `find` on one collection: the data viewer, or a statement you
+type, such as `db.orders.find({ status: 'paid' }).sort({ _id: 1 }).limit(20)`. The collection can be
+named with `getCollection("my orders")` or `db.getSiblingDB("shop").orders`. After `use`, the
+collection is the one of the database you switched to. A projection is fine when it only lists
+fields to include and keeps `_id`. Views, aggregations, `findOne`, `distinct`, counts, a projection
+without `_id` and a projection that leaves fields out stay read-only.
+
+A document is found by its `_id`. A result without `_id` is read-only. **Preview SQL** shows the
+mongosh that will run, one statement per document:
+
+- an edited document is `updateOne({ _id: … }, { $set: { … } })`. A NULL cell writes `null`;
+- a new document is `insertOne({ … })`. Cells left NULL are not sent. Without an `_id`, the app
+  makes an `ObjectId`;
+- a deleted document is `deleteOne({ _id: … })`.
+
+Values are written with the BSON type of their column: `int` (a 32-bit int), `long`, `double`,
+`decimal`, `bool`, `string`, `objectId`, `date`, and `document` and `array` from the JSON the grid
+shows. A date is written like `2024-01-02 10:30:00`, with or without the time zone (UTC without
+one). A whole `double` is written with a decimal point, so it stays a double. Numbers inside a
+document or an array keep the type JSON gives them: a whole number is an int, a number with a
+fraction a double.
+
+These are refused before anything runs, with the reason:
+
+- a change to `_id`: MongoDB never changes it. Delete the document and insert it again;
+- a column of mixed types (`mixed`): the text of a value does not tell a string from a number;
+- binary data and the other types the grid cannot write back exactly (regular expressions,
+  timestamps, JavaScript);
+- a field with a `.` in its name or a name that starts with `$`: `$set` would read it as a path or
+  an operator;
+- a value that does not fit its type, such as `many` in an `int` column, a number beyond 32 bits in
+  an `int` column, or an array in a `document` column.
+
+Each statement must change exactly one document. If one finds none, because the document was
+deleted or its `_id` changed since the grid read it, the save stops and says which command.
+
+**All or nothing needs a replica set.** On a replica set or a sharded cluster, a save runs in a
+transaction of its own and commits only if every command worked. If you have a transaction open
+(manual commit), the save runs in it and waits for Commit. If a command fails, MongoDB has no
+savepoints: the whole transaction is rolled back, with the changes you had not committed yet, and
+the error says so. On a standalone server there are no transactions: the commands run one after the
+other, and a failure stops the rest. The commands before it stay saved, and the error says how many.
+
+The undo script that follows a save puts the documents back: `$set` of the old values for edits,
+`deleteOne` for new documents, `insertOne` of the loaded fields for deleted ones. Lines starting
+with `//` say what it cannot restore exactly: fields the result did not show, columns of types the
+grid cannot write, and fields that were NULL (they come back as `null`, or are left out).
+
 ## Transactions
 
 Manual commit works on a replica set or a sharded cluster (a `mongos`); a single-node replica set
-is enough. On a standalone server it is refused. The connection keeps one session: the first
+is enough. On a standalone server it is refused: the **Auto-commit** button is disabled and says
+why. A production connection to a replica set opens in manual commit, with Commit and Rollback. The connection keeps one session: the first
 statement after you switch to manual commit, or after a Commit or Rollback, opens a transaction in
 it, and Commit or Rollback ends it. Your reads in the transaction see its writes; other sessions
 see them only after Commit.

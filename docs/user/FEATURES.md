@@ -16,7 +16,7 @@ To do something step by step, see the [user guide](guide/README.md).
 | SQLite | embedded | |
 | DuckDB | embedded, Arrow results; DuckDB's library downloaded on first use | Also opens CSV, JSON, Parquet and Excel files as databases |
 | libSQL / Turso | Hrana over HTTP | Token in the password or in `authToken` |
-| MongoDB 5+ | official driver | mongosh syntax; transactions on replica sets and sharded clusters; no data editing |
+| MongoDB 5+ | official driver | mongosh syntax; transactions on replica sets and sharded clusters; documents of a `find` edited in the grid by `_id` |
 | Redis 6+ | `redis` crate (RESP3, rustls) | Commands in the editor; key types as tables, edited in the grid; JSON with RedisJSON |
 | Elasticsearch 8 and OpenSearch 2 | HTTP API (`reqwest`, rustls) | Requests as Kibana's console writes them, and SQL; indices as tables, edited in the grid |
 | Apache Cassandra 4+ and ScyllaDB 5.4+ | `scylla` crate (rustls) | CQL; keyspaces as schemas, tables, materialized views, types and functions in the navigator; edited in the grid by full primary key; no row count, sort or filter in the data viewer |
@@ -622,6 +622,16 @@ methods and fields. Generate data fills a collection with fake documents: new Ob
 numbers after the largest `_id`, lists of words for arrays, small documents for nested fields.
 `mongodb+srv://` and connection string options go in the Database field
 (`shop?authSource=admin&replicaSet=rs0`).
+
+Editing: the result of a plain `find` on one collection (the data viewer, or a statement you type;
+not a view, an aggregation or a projection without `_id`) is edited in the grid by `_id`. Each
+change is one `updateOne`, `insertOne` or `deleteOne` that **Preview SQL** shows, written with the
+BSON type of the column (`int`, `long`, `double`, `decimal`, `bool`, `string`, `objectId`, `date`,
+`document`, `array`). Changing `_id`, columns of mixed types or of binary data, and fields with a
+`.` in their name or starting with `$` are refused with the reason. Each command must change one
+document. On a replica set a save is all or nothing, in a transaction of its own or in the one you
+have open; on a standalone server the commands run one after the other. Details in the
+[MongoDB guide](guide/databases/mongodb.md#edit-documents-in-the-grid).
 
 Manual commit works on a replica set or a sharded cluster, not on a standalone server. The reads
 and writes of documents, `createCollection` and `createIndex` run in a transaction of the

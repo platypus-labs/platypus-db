@@ -8,6 +8,7 @@
 
 mod config;
 pub mod docs;
+pub mod edit;
 mod error;
 mod explain;
 pub mod generate;

@@ -23,6 +23,16 @@ A table needs a primary key, or a unique key on non-null columns, or a virtual k
 otherwise the grid says why it cannot be edited. A connection can also forbid data editing
 (**Appearance and safety** page of its settings): rows then change only by SQL.
 
+## Edit documents, keys and rows without SQL
+
+Redis, Elasticsearch, Cassandra and MongoDB results are edited too, with their own commands instead
+of SQL: **Preview SQL** shows them. On MongoDB the result of a plain `find` on one collection is
+editable by `_id`. Each change is one `updateOne`, `insertOne` or `deleteOne`, written with the
+BSON type of the column. Editing `_id`, columns of mixed types and fields with a `.` in their name
+are refused, with the reason. On a replica set a save is all or nothing; on a standalone server the
+commands run one after the other and the error says how many were saved. See
+[MongoDB](databases/mongodb.md#edit-documents-in-the-grid).
+
 ## Edit many cells at once
 
 Select the cells and use **Edit selection** in the grid menu: one value, NULL or DEFAULT in every

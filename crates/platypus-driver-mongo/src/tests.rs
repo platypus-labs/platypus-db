@@ -1013,3 +1013,228 @@ async fn a_cancel_rolls_the_transaction_back() {
     conn.commit().await.unwrap();
     assert_eq!(count(&rows(other, "db.t_tx_cancel.find()").await), 1);
 }
+
+/// The statements of an edit script, run one by one as the grid's save does, each checked
+/// to change one document.
+async fn save(conn: &dyn Connection, commands: &[String]) -> platypus_core::Executed {
+    let statements: Vec<&str> = commands.iter().map(String::as_str).collect();
+    conn.execute_all(&statements, &vec![1; statements.len()])
+        .await
+}
+
+/// How many documents of `collection` match `filter`.
+async fn matching(conn: &dyn Connection, collection: &str, filter: &str) -> i64 {
+    let batches = rows(conn, &format!("db.{collection}.countDocuments({filter})")).await;
+    batches[0]
+        .column(0)
+        .as_primitive::<arrow_array::types::Int64Type>()
+        .value(0)
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn some(text: &str) -> Option<String> {
+    Some(text.to_owned())
+}
+
+/// The columns of the grid edit test and their BSON types.
+fn grid_columns() -> (Vec<String>, Vec<String>) {
+    let columns: Vec<String> = [
+        "_id", "name", "n", "big", "price", "ok", "when", "tags", "meta", "dec", "oid",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let types: Vec<String> = [
+        "int", "string", "int", "long", "double", "bool", "date", "array", "document", "decimal",
+        "objectId",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    (columns, types)
+}
+
+/// What `saves_the_grids_edits_with_the_types_of_their_columns` saved, as the server holds it.
+async fn check_saved_edits(conn: &dyn Connection) {
+    let c = "t_grid_edit";
+    assert_eq!(
+        matching(conn, c, "{ _id: 1, name: 'uno', n: 1, big: NumberLong('9007199254740993'), price: { $type: 'double' }, ok: null }").await,
+        1
+    );
+    // The BSON types are the columns' types, a whole double included.
+    let typed = "{ _id: 100, name: { $type: 'string' }, n: { $type: 'int' }, big: { $type: 'long' },                  price: { $type: 'double' }, ok: { $type: 'bool' }, when: { $type: 'date' },                  tags: { $type: 'array' }, meta: { $type: 'object' }, dec: { $type: 'decimal' },                  oid: { $type: 'objectId' }, 'meta.a.b': 1.5, 'tags.2.k': null }";
+    assert_eq!(matching(conn, c, typed).await, 1);
+    assert_eq!(
+        matching(conn, c, "{ _id: 100, name: 'new \"quoted\"', price: 2.0 }").await,
+        1
+    );
+    assert_eq!(
+        matching(
+            conn,
+            c,
+            "{ _id: 100, when: ISODate('2024-01-02T03:04:05.678Z') }"
+        )
+        .await,
+        1
+    );
+    assert_eq!(matching(conn, c, "{ _id: 2 }").await, 0);
+}
+
+#[tokio::test]
+async fn saves_the_grids_edits_with_the_types_of_their_columns() {
+    use crate::edit::{Edits, Update, script};
+    let Some(conn) = connect().await else { return };
+    scratch(&*conn, "t_grid_edit").await;
+    affected(
+        &*conn,
+        "db.t_grid_edit.insertMany([{ _id: 1, name: 'one', n: 1, big: NumberLong(1), price: 1.5 }, \
+         { _id: 2, name: 'two', n: 2, big: NumberLong(2), price: 2.5 }])",
+    )
+    .await;
+    let (columns, types) = grid_columns();
+    let edits = Edits {
+        db: None,
+        collection: "t_grid_edit",
+        columns: &columns,
+        types: &types,
+        updates: vec![Update {
+            loaded: vec![
+                some("1"),
+                some("one"),
+                some("1"),
+                some("1"),
+                some("1.5"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+            set: vec![
+                (1, some("uno")),
+                (3, some("9007199254740993")),
+                (4, some("3")),
+                (5, None),
+            ],
+        }],
+        inserts: vec![vec![
+            (0, some("100")),
+            (1, some("new \"quoted\"")),
+            (2, some("7")),
+            (3, some("8")),
+            (4, some("2")),
+            (5, some("true")),
+            (6, some("2024-01-02 03:04:05.678+00:00")),
+            (7, some("[1, \"a\", {\"k\": null}]")),
+            (8, some("{\"a\": {\"b\": 1.5}}")),
+            (9, some("1.10")),
+            (10, some("65a1b2c3d4e5f60718293a4b")),
+        ]],
+        deletes: vec![vec![
+            some("2"),
+            some("two"),
+            some("2"),
+            some("2"),
+            some("2.5"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]],
+    };
+    let s = script(&edits).unwrap();
+    let ran = save(&*conn, &s.commands).await;
+    assert!(ran.error.is_none(), "{:?}", ran.error);
+    assert_eq!(ran.rows, [1, 1, 1]);
+
+    check_saved_edits(&*conn).await;
+    let c = "t_grid_edit";
+
+    // The undo script puts the loaded documents back.
+    let undo: Vec<String> = s
+        .undo
+        .iter()
+        .filter(|l| !l.starts_with("//"))
+        .cloned()
+        .collect();
+    let ran = save(&*conn, &undo).await;
+    assert!(ran.error.is_none(), "{:?}", ran.error);
+    assert_eq!(ran.rows, [1, 1, 1]);
+    assert_eq!(matching(&*conn, c, "{ _id: 100 }").await, 0);
+    assert_eq!(
+        matching(
+            &*conn,
+            c,
+            "{ _id: 1, name: 'one', big: NumberLong(1), price: 1.5, ok: null }"
+        )
+        .await,
+        1
+    );
+    assert_eq!(
+        matching(&*conn, c, "{ _id: 2, name: 'two', n: 2, price: 2.5 }").await,
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_save_of_a_document_that_is_gone_changes_nothing_and_says_so() {
+    use crate::edit::{Edits, Update, script};
+    let Some(conn) = connect().await else { return };
+    scratch(&*conn, "t_grid_gone").await;
+    affected(&*conn, "db.t_grid_gone.insertOne({ _id: 1, n: 1 })").await;
+    let columns = vec!["_id".to_owned(), "n".to_owned()];
+    let types = vec!["int".to_owned(), "int".to_owned()];
+    let edits = Edits {
+        db: None,
+        collection: "t_grid_gone",
+        columns: &columns,
+        types: &types,
+        updates: vec![Update {
+            loaded: vec![some("9"), some("1")],
+            set: vec![(1, some("5"))],
+        }],
+        inserts: Vec::new(),
+        deletes: vec![vec![some("9"), some("1")]],
+    };
+    let s = script(&edits).unwrap();
+    // The delete of a document that is gone matches none: the run stops there.
+    let ran = save(&*conn, &s.commands).await;
+    assert!(ran.error.is_none());
+    assert_eq!(ran.rows, [0]);
+    assert_eq!(matching(&*conn, "t_grid_gone", "{ n: 1 }").await, 1);
+}
+
+#[tokio::test]
+async fn a_replica_set_saves_all_or_nothing() {
+    use crate::edit::{Edits, script};
+    let Some((conn, other)) = manual_pair("t_grid_atomic").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    // Committed, so the failing save below has a duplicate to hit.
+    affected(conn, "db.t_grid_atomic.insertOne({ _id: 1 })").await;
+    conn.commit().await.unwrap();
+    let columns = vec!["_id".to_owned(), "v".to_owned()];
+    let types = vec!["int".to_owned(), "string".to_owned()];
+    let edits = Edits {
+        db: None,
+        collection: "t_grid_atomic",
+        columns: &columns,
+        types: &types,
+        updates: Vec::new(),
+        // The first insert works, the second hits the duplicate key.
+        inserts: vec![
+            vec![(0, some("2")), (1, some("a"))],
+            vec![(0, some("1")), (1, some("b"))],
+        ],
+        deletes: Vec::new(),
+    };
+    let s = script(&edits).unwrap();
+    let ran = save(conn, &s.commands).await;
+    assert_eq!(ran.rows, [1], "the first command ran");
+    assert!(ran.error.is_some(), "the second hit the duplicate key");
+    conn.rollback().await.unwrap();
+    assert_eq!(matching(other, "t_grid_atomic", "{}").await, 1);
+    assert_eq!(matching(other, "t_grid_atomic", "{ _id: 2 }").await, 0);
+}

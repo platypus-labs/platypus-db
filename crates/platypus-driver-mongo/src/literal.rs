@@ -595,6 +595,10 @@ pub fn to_shell(value: &Bson) -> String {
         }
         Bson::String(s) => quote(s),
         Bson::Int32(n) => n.to_string(),
+        // Beyond 2^53 a number is read as a double: the digits go in a string.
+        Bson::Int64(n) if n.unsigned_abs() > 1 << 53 => {
+            format!("NumberLong({})", quote(&n.to_string()))
+        }
         Bson::Int64(n) => format!("NumberLong({n})"),
         Bson::Double(d) if d.is_nan() => "NaN".to_owned(),
         Bson::Double(d) if d.is_infinite() => {
@@ -774,6 +778,19 @@ mod tests {
         assert_eq!(to_shell(&parsed), src.replace("                   ", ""));
         assert_eq!(value(&to_shell(&parsed)), parsed);
         assert_eq!(to_shell(&Bson::Double(3.0)), "3.0");
+    }
+
+    #[test]
+    fn writes_big_longs_exactly() {
+        let big = Bson::Int64(9_007_199_254_740_993);
+        assert_eq!(to_shell(&big), "NumberLong(\"9007199254740993\")");
+        assert_eq!(value(&to_shell(&big)), big);
+        let min = Bson::Int64(i64::MIN);
+        assert_eq!(value(&to_shell(&min)), min);
+        assert_eq!(
+            to_shell(&Bson::Int64(1 << 53)),
+            "NumberLong(9007199254740992)"
+        );
     }
 
     #[test]
