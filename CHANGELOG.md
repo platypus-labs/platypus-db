@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-08
+
 ### Changed
 
 - **Agents**: the dialog that asks about an agent's change shows the statement in the editor's colors and,
@@ -56,6 +58,12 @@ All notable changes to PlatypusDB are listed here. The format follows
   documents than the ones asked for. An option not known is refused by name.
 - **MongoDB**: `updateOne` with `{ multi: true }` changed every matching document; it is now refused, as
   `multi` belongs to the old `update()`.
+- **MongoDB**: a long beyond 2^53 was written as `NumberLong(9007199254740993)`, which reads back as a
+  double and loses digits (generated data, copied values); it is now `NumberLong("…")`.
+- **MongoDB**: the data viewer matched a collection's name ignoring case, so `db.Orders.find()` could be
+  taken for `orders`; MongoDB's names are case-sensitive, and so is the match now.
+- **MongoDB**: an `ISODate("…")` or a date cell with a character beyond ASCII in its first characters
+  crashed the statement's reader; it is now a syntax error.
 
 ## [0.5.0] - 2026-11-06
 
@@ -441,7 +449,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/PaoloCisly/platypus-db/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/PaoloCisly/platypus-db/compare/v0.4.0...v0.4.1
