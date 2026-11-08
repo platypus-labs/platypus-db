@@ -15,6 +15,14 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Added
 
+- **MongoDB**: manual commit on replica sets and sharded clusters. The reads and writes of documents,
+  `createCollection` and `createIndex` run in a transaction of the connection's session, opened at the
+  first statement; metadata, the server's commands and the navigator run outside it. What MongoDB does
+  not run in a transaction (`drop`, `renameCollection`, `dropIndex`, `createView`, `$out`, `$merge`) is
+  refused in manual commit, and the transaction stays as it was. When the server ends a transaction
+  (after `transactionLifetimeLimitSeconds`, 60 by default, or on a duplicate key or a write conflict),
+  the error says its changes were discarded and the transaction shows as closed. A cancel rolls it back.
+  A standalone server still has no transactions, and says why.
 - **MongoDB**: `bulkWrite`, with `insertOne`, `updateOne`, `updateMany`, `replaceOne`, `deleteOne` and
   `deleteMany`, ordered or not. As in mongosh it is not atomic: what ran before a failure stays, and the
   error says how far it got. A `deleteMany` or `updateMany` with an empty filter inside it asks, and is

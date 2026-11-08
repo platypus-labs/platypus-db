@@ -1,7 +1,8 @@
 //! The scenarios of `conformance.rs` that apply to a database without SQL, on MongoDB:
-//! server info, metadata, capabilities, cancel, abandoned results and errors. MongoDB
-//! comes from the `mongo` profile of `docker/compose.yml`, or `PLATYPUS_TEST_MONGO`;
-//! without it the tests are skipped.
+//! server info, metadata, capabilities, cancel, abandoned results, errors and transactions.
+//! MongoDB comes from the `mongo` profile of `docker/compose.yml`, or `PLATYPUS_TEST_MONGO`;
+//! the transactions need its replica set `mongo-rs`, or `PLATYPUS_TEST_MONGO_RS`. Without
+//! them the tests are skipped.
 //!
 //! Lost connections are left out: the client is a pool that reconnects by itself, so no
 //! server-side kill closes the session.
@@ -16,14 +17,21 @@ use platypus_driver_mongo::MongoDriver;
 
 const DEFAULT_URL: &str = "mongodb://platypus:platypus@localhost:57017/platypus?authSource=admin";
 
+/// A single-node replica set: a standalone server runs no transactions.
+const REPLICA_SET_URL: &str = "mongodb://localhost:57018/?replicaSet=rs0";
+
 async fn connect() -> Option<Box<dyn Connection>> {
+    connect_to("PLATYPUS_TEST_MONGO", DEFAULT_URL).await
+}
+
+async fn connect_to(variable: &str, default: &str) -> Option<Box<dyn Connection>> {
     // Another database alone (`PLATYPUS_TEST_ONLY`): not this one.
     if std::env::var("PLATYPUS_TEST_ONLY").is_ok_and(|only| only != "mongo") {
         return None;
     }
-    let (url, required) = match std::env::var("PLATYPUS_TEST_MONGO") {
+    let (url, required) = match std::env::var(variable) {
         Ok(url) => (url, true),
-        Err(_) => (DEFAULT_URL.to_owned(), false),
+        Err(_) => (default.to_owned(), false),
     };
     let mut config = ConnectionConfig::from_url(&url).unwrap();
     config.connect_timeout = Some(Duration::from_secs(3));
@@ -33,7 +41,7 @@ async fn connect() -> Option<Box<dyn Connection>> {
             eprintln!("skipping mongo: unreachable at {url}: {e}");
             None
         }
-        Err(e) => panic!("cannot connect to PLATYPUS_TEST_MONGO: {e}"),
+        Err(e) => panic!("cannot connect to {variable}: {e}"),
     }
 }
 
@@ -63,11 +71,15 @@ async fn connects_and_reports_the_server() {
 async fn capabilities_match_optional_methods() {
     let Some(conn) = connect().await else { return };
     let caps = conn.capabilities();
-    assert!(caps.cancel && !caps.transactions);
-    assert!(matches!(
-        conn.set_autocommit(false).await,
-        Err(Error::Unsupported(_))
-    ));
+    assert!(caps.cancel);
+    // The default server is standalone: no transactions.
+    let manual = conn.set_autocommit(false).await;
+    assert_eq!(
+        matches!(manual, Err(Error::Unsupported(_))),
+        !caps.transactions,
+        "{manual:?}"
+    );
+    conn.set_autocommit(true).await.unwrap();
     let explain = conn.explain("db.customers.find()", false).await;
     assert_eq!(matches!(explain, Err(Error::Unsupported(_))), !caps.explain);
     let object = ObjectRef {
@@ -276,4 +288,239 @@ async fn fills_a_collection_with_fake_documents() {
     assert_eq!(late.unwrap(), 10);
     assert_eq!(rows(conn, "db.fake_rows.find()").await, 1121);
     run("db.fake_rows.drop()").await;
+}
+/// The transaction tests one at a time: one lowers the server's transaction lifetime, which
+/// would end the transactions of the others.
+static REPLICA_SET: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Two sessions of the replica set in database `platypus`, the first in manual mode, with an
+/// empty collection `name`.
+async fn manual_pair(name: &str) -> Option<(Box<dyn Connection>, Box<dyn Connection>)> {
+    let conn = connect_to("PLATYPUS_TEST_MONGO_RS", REPLICA_SET_URL).await?;
+    let other = connect_to("PLATYPUS_TEST_MONGO_RS", REPLICA_SET_URL).await?;
+    assert!(conn.capabilities().transactions, "a replica set runs them");
+    for (session, statement) in [
+        (&conn, "use platypus".to_owned()),
+        (&other, "use platypus".to_owned()),
+        (&conn, format!("db.{name}.drop()")),
+        (&conn, format!("db.createCollection('{name}')")),
+    ] {
+        session
+            .execute(&statement, &ExecOptions::default())
+            .await
+            .unwrap();
+    }
+    conn.set_autocommit(false).await.unwrap();
+    Some((conn, other))
+}
+
+fn state(conn: &dyn Connection) -> (bool, bool) {
+    let tx = conn.transaction();
+    (tx.autocommit, tx.open)
+}
+
+async fn run(conn: &dyn Connection, src: &str) {
+    conn.execute(src, &ExecOptions::default()).await.unwrap();
+}
+
+#[tokio::test]
+async fn commits_and_rolls_back_on_a_replica_set() {
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("tx_commit").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    assert_eq!(state(conn), (false, false), "nothing open yet");
+    // Nothing open: both succeed and do nothing.
+    conn.commit().await.unwrap();
+    conn.rollback().await.unwrap();
+
+    run(conn, "db.tx_commit.insertOne({ _id: 1 })").await;
+    assert_eq!(state(conn), (false, true), "the first statement opens it");
+    assert_eq!(rows(conn, "db.tx_commit.find()").await, 1, "its own write");
+    assert_eq!(rows(other, "db.tx_commit.find()").await, 0, "not another's");
+    assert!(
+        conn.set_autocommit(true).await.is_err(),
+        "no switch while a transaction is open"
+    );
+    conn.rollback().await.unwrap();
+    assert_eq!(state(conn), (false, false));
+    assert_eq!(rows(conn, "db.tx_commit.find()").await, 0, "rolled back");
+    assert_eq!(state(conn), (false, true), "a read opens one too");
+    conn.rollback().await.unwrap();
+
+    run(conn, "db.tx_commit.insertOne({ _id: 2 })").await;
+    run(
+        conn,
+        "db.tx_commit.updateOne({ _id: 2 }, { $set: { n: 1 } })",
+    )
+    .await;
+    assert_eq!(rows(other, "db.tx_commit.find()").await, 0);
+    conn.commit().await.unwrap();
+    assert_eq!(state(conn), (false, false));
+    assert_eq!(
+        rows(other, "db.tx_commit.find({ n: 1 })").await,
+        1,
+        "committed"
+    );
+
+    conn.set_autocommit(true).await.unwrap();
+    assert_eq!(state(conn), (true, false));
+    run(conn, "db.tx_commit.insertOne({ _id: 3 })").await;
+    assert_eq!(state(conn), (true, false), "autocommit opens none");
+    assert_eq!(rows(other, "db.tx_commit.find()").await, 2);
+}
+
+#[tokio::test]
+async fn streams_more_than_a_batch_in_a_transaction() {
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("tx_stream").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    let docs: Vec<String> = (0..2500).map(|i| format!("{{ _id: {i} }}")).collect();
+    run(
+        conn,
+        &format!("db.tx_stream.insertMany([{}])", docs.join(", ")),
+    )
+    .await;
+    let options = ExecOptions {
+        batch_size: 1000,
+        paged: true,
+    };
+    let ExecResult::Rows(mut stream) = conn
+        .execute("db.tx_stream.find().sort({ _id: 1 })", &options)
+        .await
+        .unwrap()
+    else {
+        panic!("expected rows");
+    };
+    let mut sizes = vec![stream.next().await.unwrap().unwrap().num_rows()];
+    // Another statement runs between two batches, in the same transaction.
+    assert_eq!(
+        rows(conn, "db.tx_stream.find({ _id: { $gte: 2400 } })").await,
+        100
+    );
+    while let Some(batch) = stream.next().await {
+        sizes.push(batch.unwrap().num_rows());
+    }
+    assert_eq!(sizes, [1000, 1000, 500]);
+    assert_eq!(state(conn), (false, true));
+    assert_eq!(rows(other, "db.tx_stream.find()").await, 0);
+
+    // An abandoned result leaves the transaction usable.
+    let ExecResult::Rows(mut stream) = conn.execute("db.tx_stream.find()", &options).await.unwrap()
+    else {
+        panic!("expected rows");
+    };
+    stream.next().await.unwrap().unwrap();
+    drop(stream);
+    assert_eq!(rows(conn, "db.tx_stream.find().limit(7)").await, 7);
+    conn.rollback().await.unwrap();
+    assert_eq!(rows(other, "db.tx_stream.find()").await, 0);
+}
+
+#[tokio::test]
+async fn metadata_in_manual_mode_leaves_the_transaction_open() {
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("tx_meta").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    run(
+        conn,
+        "db.tx_meta.insertOne({ _id: 1, email: 'a@example.com' })",
+    )
+    .await;
+    for src in [
+        "show dbs",
+        "show collections",
+        "show users",
+        "db.getCollectionNames()",
+        "db.getCollectionInfos()",
+        "db.stats()",
+        "db.serverStatus()",
+        "db.runCommand({ ping: 1 })",
+        "db.adminCommand({ listDatabases: 1 })",
+        "rs.status()",
+        "db.tx_meta.getIndexes()",
+        "db.tx_meta.stats()",
+        "db.tx_meta.estimatedDocumentCount()",
+        "db.tx_meta.find().explain()",
+        "db.tx_meta.aggregate([{ $indexStats: {} }])",
+    ] {
+        let result = conn.execute(src, &ExecOptions::default()).await;
+        assert!(result.is_ok(), "{src}: {result:?}");
+        assert_eq!(state(conn), (false, true), "{src}");
+    }
+    conn.schemas().await.unwrap();
+    conn.objects("platypus").await.unwrap();
+    conn.table_details("platypus", "tx_meta").await.unwrap();
+    conn.catalog_columns().await.unwrap();
+    conn.explain("db.tx_meta.find()", true).await.unwrap();
+    // What MongoDB does not run in a transaction is refused, and the transaction stays.
+    let drop = conn
+        .execute("db.tx_meta.drop()", &ExecOptions::default())
+        .await;
+    assert!(matches!(drop, Err(Error::Unsupported(_))), "{drop:?}");
+    assert_eq!(state(conn), (false, true));
+    assert_eq!(rows(conn, "db.tx_meta.find()").await, 1);
+    conn.commit().await.unwrap();
+    assert_eq!(rows(other, "db.tx_meta.find()").await, 1);
+}
+
+#[tokio::test]
+async fn a_transaction_the_server_ended_is_closed() {
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("tx_expired").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    let limit = |n: u32| {
+        format!("db.adminCommand({{ setParameter: 1, transactionLifetimeLimitSeconds: {n} }})")
+    };
+    run(other, &limit(1)).await;
+    let wait = || tokio::time::sleep(Duration::from_secs(3));
+
+    run(conn, "db.tx_expired.insertOne({ _id: 1 })").await;
+    wait().await;
+    let statement = conn
+        .execute(
+            "db.tx_expired.insertOne({ _id: 2 })",
+            &ExecOptions::default(),
+        )
+        .await
+        .map(|_| ());
+    let after_statement = state(conn);
+    run(conn, "db.tx_expired.insertOne({ _id: 3 })").await;
+    let reopened = state(conn);
+    wait().await;
+    let commit = conn.commit().await;
+    let after_commit = state(conn);
+    run(other, &limit(60)).await;
+
+    let Err(e) = statement else {
+        panic!("a statement ran in an expired transaction");
+    };
+    let message = e.to_string();
+    assert!(
+        message.contains("1 seconds") && message.contains("discarded"),
+        "{message}"
+    );
+    assert_eq!(after_statement, (false, false), "closed once known");
+    assert_eq!(reopened, (false, true), "the next statement opens another");
+    let Err(e) = commit else {
+        panic!("an expired transaction committed");
+    };
+    let message = e.to_string();
+    assert!(
+        message.contains("1 seconds") && message.contains("discarded"),
+        "{message}"
+    );
+    assert_eq!(after_commit, (false, false));
+    assert_eq!(
+        rows(other, "db.tx_expired.find()").await,
+        0,
+        "nothing stays"
+    );
 }

@@ -64,6 +64,7 @@ statements you write need the roles they need.
   (`F7`). The navigator lists databases, collections, fields sampled from the documents, and
   indexes; the editor completes collections, methods and fields.
 - Cancel stops a running statement; an abandoned result frees the connection.
+- **Manual commit** on a replica set or a sharded cluster (see [Transactions](#transactions)).
 - A collection's definition as DDL.
 - **Generate data** fills a collection with fake documents.
 - The same detail is in [FEATURES.md](../../FEATURES.md#mongodb).
@@ -72,7 +73,8 @@ statements you write need the roles they need.
 
 - **No data editing in the grid**: results stay read-only. Change documents with `updateOne`,
   `insertOne` and the like.
-- **No transactions** (no manual commit).
+- **No transactions on a standalone server**: MongoDB runs them only on a replica set or a sharded
+  cluster. Manual commit is refused there, saying so.
 - **No JavaScript**: the editor runs statements, so `forEach`, `map`, `next`, `mapReduce`, the older
   bulk builders (use `bulkWrite`) and variables are refused, saying so. `watch` is refused too: a change
   stream would take over the connection. A `.comment()` on a read is left out: the app's own finds the
@@ -81,6 +83,44 @@ statements you write need the roles they need.
   it got. Neighbouring inserts travel together, every other write on its own trip.
 - No SQL: no table editor, ER diagram, schema comparison, query builder, SQL import, snapshots
   before changes, or terminal mode (`mongosh` takes the password only on its command line).
+
+## Transactions
+
+Manual commit works on a replica set or a sharded cluster (a `mongos`); a single-node replica set
+is enough. On a standalone server it is refused. The connection keeps one session: the first
+statement after you switch to manual commit, or after a Commit or Rollback, opens a transaction in
+it, and Commit or Rollback ends it. Your reads in the transaction see its writes; other sessions
+see them only after Commit.
+
+- **In the transaction**: `find`, `findOne`, `aggregate`, `countDocuments`, `distinct`, the inserts,
+  updates, replaces and deletes, `bulkWrite`, the `findOneAnd…` methods, `createCollection` and
+  `createIndex`. MongoDB takes an index in a transaction only on a collection created in the same
+  transaction: on one that exists, the server refuses it and ends the transaction.
+- **Outside it**, as in autocommit mode, without touching it: what reads metadata or talks to the
+  server. `show …`, `use`, `db.stats()`, `db.getCollectionNames()`, `getIndexes`, the collection's
+  statistics, `estimatedDocumentCount`, `.explain()`, `db.runCommand`, `db.adminCommand`, `rs.*`,
+  `sh.*`, users and roles, the profiler, the navigator and completion. Reads of the `admin`,
+  `config` and `local` databases and of `system.*` collections run outside too.
+- **Refused in manual commit**: `drop`, `renameCollection`, `dropIndex`, `dropIndexes`, `hideIndex`,
+  `convertToCapped`, `createView`, a time-series `createCollection`, an `aggregate` with `$out` or
+  `$merge`, and writes to `admin`, `config`, `local` or `system.*`. MongoDB does not run them in a
+  transaction, and run outside it they would apply at once, which Rollback could not undo. The
+  error says so; nothing is sent and the open transaction stays as it was. Switch to autocommit to
+  run them.
+- A result read in a transaction keeps loading as you scroll, a batch at a time, and other
+  statements can run in between. Its columns come from its first documents. After Commit or
+  Rollback the rest of it cannot be read: run the statement again.
+
+**When the server ends a transaction.** MongoDB aborts a transaction that stays open longer than
+`transactionLifetimeLimitSeconds`, 60 seconds by default. It also aborts one on some errors: a
+duplicate key, a write conflict with another session, a statement it refuses in a transaction,
+a time limit (`maxTimeMS`) reached. Other errors, such as an unknown pipeline stage, leave it
+open. After an error PlatypusDB asks the server whether the transaction still exists. When it does
+not, the statement's or Commit's error says that the server ended the transaction and that its
+changes were discarded (with the time limit when that was the reason), the transaction shows as
+closed, and the next statement opens a new one. Cancelling a statement in a transaction rolls the
+transaction back: the server ends a transaction whose operation is killed, and what the statement
+did is unknown.
 
 ## Agents
 
@@ -100,6 +140,8 @@ not told apart. See [Agents and the CLI](../../AGENTS.md).
 
 The conformance suite runs on MongoDB 5.0 and 8.0: server info, metadata, cancel, abandoned
 results, errors with their position, fake documents, and values in later documents that differ
-from the first.
+from the first. Transactions are tested on a single-node replica set of MongoDB 8.0: commit,
+rollback, reads inside and outside, a result of several batches, metadata in manual commit, and a
+transaction the server ended for its time limit.
 
 See also: [Connecting](../connect.md), [Troubleshooting](../troubleshooting.md).
