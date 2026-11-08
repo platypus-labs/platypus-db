@@ -3,7 +3,7 @@
 // keeps it, and a statement MongoDB does not run in a transaction (`drop()`) is refused with
 // its reason while the transaction stays open. On the standalone server the toggle is
 // disabled and says why, and there is no Commit or Rollback. A replica set marked as production
-// opens in manual commit, with Commit and Rollback shown.
+// opens in manual commit, with Commit and Rollback shown. A read opens no transaction.
 // Skipped when the standalone server or the replica set is not running.
 import assert from "node:assert/strict";
 import { resultError, visibleTab } from "../qa-sql.mjs";
@@ -60,6 +60,9 @@ async function developmentReplicaSet(page) {
   await page.waitFor(`${present("Commit")} && ${present("Rollback")}`, 10_000);
   // Nothing open: both are disabled.
   assert.equal(await page.eval(`${toolbarButton("Commit")}.disabled`), true);
+  // A read opens none: it sees what is committed.
+  await runStatement(page, `db.${C}.find()`);
+  assert.equal(await page.eval(transactionOpen), false, "a read opened a transaction");
 
   // An insert opens the transaction; another session does not see it; Rollback leaves nothing.
   await runStatement(page, `db.${C}.insertOne({ _id: 1, v: "rolled back" })`);
@@ -138,9 +141,7 @@ async function production(page) {
   await page.waitFor(present("Manual commit"), 15_000);
   await page.waitFor(`${present("Commit")} && ${present("Rollback")}`, 10_000);
   assert.equal(await page.eval(`${toolbarButton("Commit")}.disabled`), true);
-  // A read opens a transaction of its own that nothing needs to commit; end it.
-  if (await page.eval(transactionOpen)) {
-    await page.eval(`${toolbarButton("Rollback")}.click()`);
-    await page.waitFor(`!(${transactionOpen})`, 10_000);
-  }
+  // Browsing opens no transaction, which the server would end after its lifetime.
+  await runStatement(page, `db.${C}.find()`);
+  assert.equal(await page.eval(transactionOpen), false, "a read opened a transaction");
 }

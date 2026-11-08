@@ -195,9 +195,11 @@ impl MongoConnection {
         self.track(result)
     }
 
-    /// Runs `command` in the transaction of manual mode, opening one if none is. A failure
-    /// the server ended the transaction for closes it here too, and says so; a cancel rolls
-    /// it back, since what the statement did is unknown.
+    /// Runs `command` in the transaction of manual mode. A write opens one if none is; a read
+    /// while none is runs outside, on what is committed (as in autocommit), so that browsing
+    /// opens no transaction the server would end after its lifetime. A failure the server
+    /// ended the transaction for closes it here too, and says so; a cancel rolls it back,
+    /// since what the statement did is unknown.
     async fn in_transaction(
         &self,
         command: Command,
@@ -214,6 +216,15 @@ impl MongoConnection {
                 "the session of manual commit is gone: switch to autocommit and back".to_owned(),
             ));
         };
+        // Checked under the session's lock, which opening and closing a transaction take.
+        if !self.tx.state().open && shell::is_read_only(&command) {
+            drop(guard);
+            let mut alone = Ctx::default();
+            return tokio::select! {
+                result = self.run(command, options, &mut alone) => result,
+                () = cancelled(rx) => Err(Error::Cancelled),
+            };
+        }
         let generation = self.tx.begin(session).await?;
         let mut ctx = Ctx {
             session: Some(session),

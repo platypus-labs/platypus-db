@@ -1,5 +1,7 @@
 //! Manual commit: one [`ClientSession`] for the connection, a transaction opened in it at the
-//! first statement that runs in one, and what MongoDB refuses to run there.
+//! first statement that writes, and what MongoDB refuses to run there. Reads run in the open
+//! transaction, which they see the writes of; while none is open they run outside, on what is
+//! committed.
 //!
 //! Only replica sets and sharded clusters run transactions. The server ends a transaction by
 //! itself when it stays open longer than `transactionLifetimeLimitSeconds` (60 by default),
@@ -408,8 +410,8 @@ impl Transactions {
         Ok(())
     }
 
-    /// Opens a transaction in `session` if none is: the first statement after manual mode
-    /// started, or after a commit or rollback. The generation the statement runs in.
+    /// Opens a transaction in `session` if none is: the first write after manual mode started,
+    /// or after a commit or rollback. The generation the statement runs in.
     pub async fn begin(&self, session: &mut ClientSession) -> Result<u64> {
         if !self.state().open {
             // A transaction reads from the primary: one inherited from the connection's read

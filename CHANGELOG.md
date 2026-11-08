@@ -30,7 +30,7 @@ All notable changes to PlatypusDB are listed here. The format follows
   Rollback, which were hidden before.
 - **MongoDB**: manual commit on replica sets and sharded clusters. The reads and writes of documents,
   `createCollection` and `createIndex` run in a transaction of the connection's session, opened at the
-  first statement, and so do the server commands that write documents (`runCommand({ insert: … })` and
+  first change (reads before it see what is committed and open none), and so do the server commands that write documents (`runCommand({ insert: … })` and
   the like); metadata, server information and the navigator run outside it. What MongoDB does not run in
   a transaction (`drop`, `dropDatabase`, `renameCollection`, `dropIndex`, `createView`, `$out`, `$merge`)
   is refused in manual commit, and the transaction stays as it was. When the server ends a transaction

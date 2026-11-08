@@ -121,16 +121,17 @@ async function inOpenTransaction(page) {
   await page.waitFor(`!(${transactionOpen})`, 15_000);
   assert.equal(names(), "1:Alpha,2:Beta 2,3:Gamma");
 
-  // A document deleted by another session while the tab's transaction (opened by the read of
-  // the grid) is open: the update conflicts with the delete, and MongoDB ends the transaction.
+  // The grid's read opens no transaction: the save does. A document deleted by another session
+  // meanwhile is not found by it, and the transaction the save opened is rolled back.
   await openFresh(page, C, "3 rows");
+  assert.equal(await page.eval(transactionOpen), false, "a read opened a transaction");
   g = await layout(page);
   await editCell(page, g.row(1), g.col("name"), "Alpha 2");
   mongosh("replica", `db.${C}.deleteOne({ _id: 1 })`);
   await preview(page);
-  const conflict = await saveFails(page, /Command 1/);
-  assert.match(conflict, /write conflict/i);
-  assert.match(conflict, /the whole transaction was rolled back/);
+  const missing = await saveFails(page, /Command 1/);
+  assert.match(missing, /the document was not found/);
+  assert.match(missing, /Nothing was saved: MongoDB rolled the transaction back/);
   await page.waitFor(`!(${transactionOpen})`, 15_000);
   assert.equal(names(), "2:Beta 2,3:Gamma");
   await discard(page);

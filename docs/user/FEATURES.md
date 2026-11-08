@@ -636,7 +636,8 @@ have open; on a standalone server the commands run one after the other. Details 
 
 Manual commit works on a replica set or a sharded cluster, not on a standalone server. The reads
 and writes of documents, `createCollection` and `createIndex` run in a transaction of the
-connection's session, opened at the first statement and ended by Commit or Rollback; metadata, the
+connection's session, opened at the first change (reads before it open none and see what is
+committed) and ended by Commit or Rollback; metadata, the
 server's commands and the navigator run outside it. What MongoDB does not run in a transaction
 (`drop`, `renameCollection`, `dropIndex`, `createView`, `$out`, `$merge`) is refused in manual
 commit, leaving the transaction as it was. When the server ends a transaction (after 60 seconds by

@@ -346,8 +346,7 @@ async fn commits_and_rolls_back_on_a_replica_set() {
     conn.rollback().await.unwrap();
     assert_eq!(state(conn), (false, false));
     assert_eq!(rows(conn, "db.tx_commit.find()").await, 0, "rolled back");
-    assert_eq!(state(conn), (false, true), "a read opens one too");
-    conn.rollback().await.unwrap();
+    assert_eq!(state(conn), (false, false), "a read opens none");
 
     run(conn, "db.tx_commit.insertOne({ _id: 2 })").await;
     run(
@@ -369,6 +368,66 @@ async fn commits_and_rolls_back_on_a_replica_set() {
     run(conn, "db.tx_commit.insertOne({ _id: 3 })").await;
     assert_eq!(state(conn), (true, false), "autocommit opens none");
     assert_eq!(rows(other, "db.tx_commit.find()").await, 2);
+}
+
+#[tokio::test]
+async fn reads_open_no_transaction_and_outlive_its_lifetime() {
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("tx_reads").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    let limit = |n: u32| {
+        format!("db.adminCommand({{ setParameter: 1, transactionLifetimeLimitSeconds: {n} }})")
+    };
+    run(other, "db.tx_reads.insertMany([{ _id: 1 }, { _id: 2 }])").await;
+    run(other, &limit(1)).await;
+    let options = ExecOptions {
+        batch_size: 1,
+        paged: true,
+    };
+    let reads = async {
+        assert_eq!(
+            rows(conn, "db.tx_reads.find()").await,
+            2,
+            "what is committed"
+        );
+        let ExecResult::Rows(mut stream) = conn
+            .execute("db.tx_reads.find().sort({ _id: 1 })", &options)
+            .await
+            .unwrap()
+        else {
+            panic!("expected rows");
+        };
+        assert_eq!(stream.next().await.unwrap().unwrap().num_rows(), 1);
+        let opened = state(conn);
+        // Past the lifetime of a transaction: browsing still works.
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let later = conn
+            .execute("db.tx_reads.find()", &ExecOptions::default())
+            .await
+            .map(|_| ());
+        let after = state(conn);
+        // A write opens one; the result read before it goes on outside it.
+        run(conn, "db.tx_reads.insertOne({ _id: 3 })").await;
+        let written = state(conn);
+        let rest = stream.next().await.map(|b| b.map(|b| b.num_rows()));
+        let own = rows(conn, "db.tx_reads.find()").await;
+        let others = rows(other, "db.tx_reads.find()").await;
+        conn.rollback().await.unwrap();
+        (opened, later, after, written, rest, own, others)
+    }
+    .await;
+    run(other, &limit(60)).await;
+    let (opened, later, after, written, rest, own, others) = reads;
+    assert_eq!(opened, (false, false), "a find opens none");
+    assert!(later.is_ok(), "{later:?}");
+    assert_eq!(after, (false, false));
+    assert_eq!(written, (false, true), "the first write opens it");
+    assert!(matches!(rest, Some(Ok(1))), "{rest:?}");
+    assert_eq!(own, 3, "its own write, once open");
+    assert_eq!(others, 2, "not another's");
+    assert_eq!(rows(other, "db.tx_reads.find()").await, 2, "rolled back");
 }
 
 #[tokio::test]

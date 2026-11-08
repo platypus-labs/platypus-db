@@ -155,11 +155,15 @@ same `$switch`).
 Manual commit works on a replica set or a sharded cluster (a `mongos`); a single-node replica set
 is enough. On a standalone server it is refused: the **Auto-commit** button is disabled and says
 why. A production connection to a replica set opens in manual commit, with Commit and Rollback. The connection keeps one session: the first
-statement after you switch to manual commit, or after a Commit or Rollback, opens a transaction in
-it, and Commit or Rollback ends it. Your reads in the transaction see its writes; other sessions
-see them only after Commit.
+change after you switch to manual commit, or after a Commit or Rollback, opens a transaction in it
+(an insert, update or delete, `createCollection`, `createIndex`, a save of the grid), and Commit or
+Rollback ends it. Reads before it open none: they see what is committed, as in autocommit, so
+browsing data never leaves a transaction open for the server to end after its lifetime. Once a
+transaction is open, your reads run in it and see its writes; other sessions see them only after
+Commit.
 
-- **In the transaction**: `find`, `findOne`, `aggregate`, `countDocuments`, `distinct`, the inserts,
+- **In the transaction**, once one is open (the reads) or opening it (the rest): `find`, `findOne`,
+  `aggregate`, `countDocuments`, `distinct`, the inserts,
   updates, replaces and deletes, `bulkWrite`, the `findOneAnd…` methods, `createCollection` and
   `createIndex`. MongoDB takes an index in a transaction only on a collection created in the same
   transaction: on one that exists, the server refuses it and ends the transaction.
@@ -175,7 +179,8 @@ see them only after Commit.
   error says so; nothing is sent and the open transaction stays as it was. Switch to autocommit to
   run them.
 - A result read in a transaction keeps loading as you scroll, a batch at a time, and other
-  statements can run in between. Its columns come from its first documents. After Commit or
+  statements can run in between. A result read before the transaction opened keeps loading outside
+  it. Its columns come from its first documents. After Commit or
   Rollback the rest of it cannot be read: run the statement again.
 
 **When the server ends a transaction.** MongoDB aborts a transaction that stays open longer than
