@@ -258,8 +258,8 @@ impl Failure {
     pub fn record(&mut self, e: &mongodb::error::Error) {
         let answer = Answer::of(e);
         self.first.get_or_insert(answer);
-        if answer.ended() && self.ended.is_none() {
-            self.ended = Some(answer);
+        if answer.ended() {
+            self.ended.get_or_insert(answer);
         }
     }
 }
@@ -372,11 +372,12 @@ impl Transactions {
         self.close();
         let Err(e) = result else { return Ok(()) };
         let answer = Answer::of(&e);
-        if answer.ended() && !e.contains_label(UNKNOWN_TRANSACTION_COMMIT_RESULT) {
+        let unknown = e.contains_label(UNKNOWN_TRANSACTION_COMMIT_RESULT);
+        if answer.ended() && !unknown {
             let how = Self::how_ended(session, answer, age).await;
             return Err(ended_error(map_error(&e), how));
         }
-        if e.contains_label(UNKNOWN_TRANSACTION_COMMIT_RESULT) {
+        if unknown {
             return Err(map_error(&e).map_text(|m| {
                 format!("{m}. Whether the server committed the transaction is unknown")
             }));

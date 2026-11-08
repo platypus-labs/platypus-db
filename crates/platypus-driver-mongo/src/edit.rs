@@ -195,7 +195,7 @@ fn value(text: &str, db_type: &str) -> Result<Bson, String> {
 /// Why the grid cannot write a column of type `db_type`.
 fn unwritable(db_type: &str) -> String {
     match db_type {
-        "mixed" => "its values have several types, which their text cannot tell apart (a string                     from a number): change them with a script"
+        "mixed" => "its values have several types, which their text cannot tell apart (a string from a number): change them with a script"
             .to_owned(),
         "" => "its type is not known: change it with a script".to_owned(),
         other => format!(

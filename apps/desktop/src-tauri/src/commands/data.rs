@@ -697,15 +697,14 @@ async fn save_commands(
 /// than the one document it names (the document was deleted, or its `_id` changed, since it
 /// was loaded). `None` when every command changed one document.
 fn mongo_problem(ran: &platypus_core::Executed) -> Option<CommandError> {
-    let saved = ran.rows.iter().position(|&n| n != 1);
     if let Some(error) = &ran.error {
         return Some(CommandError::from(error).context(format!("Command {}", ran.rows.len() + 1)));
     }
-    saved.map(|at| {
+    ran.rows.iter().position(|&n| n != 1).map(|at| {
         CommandError::new(
             "row_count",
             format!(
-                "Command {}: the document was not found; it was deleted, or its _id changed,                  since it was loaded",
+                "Command {}: the document was not found; it was deleted, or its _id changed, since it was loaded",
                 at + 1
             ),
         )
