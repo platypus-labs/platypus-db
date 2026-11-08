@@ -165,12 +165,14 @@ Commit.
 - **In the transaction**, once one is open (the reads) or opening it (the rest): `find`, `findOne`,
   `aggregate`, `countDocuments`, `distinct`, the inserts,
   updates, replaces and deletes, `bulkWrite`, the `findOneAnd…` methods, `createCollection` and
-  `createIndex`. MongoDB takes an index in a transaction only on a collection created in the same
-  transaction: on one that exists, the server refuses it and ends the transaction.
+  `createIndex`, and `db.runCommand` or `db.adminCommand` with a command that reads or writes
+  documents (`find`, `aggregate`, `insert`, `update`, `delete`, `findAndModify`, …). MongoDB takes
+  an index in a transaction only on a collection created in the same transaction: on one that
+  exists, the server refuses it and ends the transaction.
 - **Outside it**, as in autocommit mode, without touching it: what reads metadata or talks to the
   server. `show …`, `use`, `db.stats()`, `db.getCollectionNames()`, `getIndexes`, the collection's
-  statistics, `estimatedDocumentCount`, `.explain()`, `db.runCommand`, `db.adminCommand`, `rs.*`,
-  `sh.*`, users and roles, the profiler, the navigator and completion. Reads of the `admin`,
+  statistics, `estimatedDocumentCount`, `.explain()`, the other commands of `db.runCommand` and
+  `db.adminCommand`, `rs.*`, `sh.*`, users and roles, the profiler, the navigator and completion. Reads of the `admin`,
   `config` and `local` databases and of `system.*` collections run outside too.
 - **Refused in manual commit**: `drop`, `renameCollection`, `dropIndex`, `dropIndexes`, `hideIndex`,
   `convertToCapped`, `createView`, a time-series `createCollection`, an `aggregate` with `$out` or
