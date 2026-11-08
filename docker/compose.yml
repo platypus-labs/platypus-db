@@ -184,6 +184,24 @@ services:
       retries: 90
       start_period: 5s
 
+  # Not started by default: `docker compose --profile mongo up -d --wait mongo mongo-rs`. A
+  # single-node replica set `rs0`, for transactions, which a standalone server does not run.
+  # No users: authentication on a replica set needs a keyFile. The member is `localhost:57018`,
+  # the address clients on the host reach, since they connect to the members the set names.
+  # The healthcheck initiates the set and passes once the node is a writable primary.
+  mongo-rs:
+    image: mongo:8.0.32
+    profiles: [mongo]
+    command: ["mongod", "--replSet", "rs0", "--port", "57018", "--bind_ip_all"]
+    ports:
+      - "57018:57018"
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "57018", "--quiet", "--eval", "try { rs.status() } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:57018'}]}) }; if (!db.hello().isWritablePrimary) quit(1)"]
+      interval: 2s
+      timeout: 10s
+      retries: 90
+      start_period: 5s
+
   # Older versions of the databases, not started by default:
   # `docker compose --profile versions up -d --wait`, then `node scripts/conformance-versions.mjs`
   # runs the conformance suite on each. The oldest of each is the minimum the app supports
