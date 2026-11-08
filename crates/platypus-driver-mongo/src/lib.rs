@@ -299,7 +299,9 @@ impl MongoConnection {
                 self.stream(cursor, options, None).await
             }
             Command::RunCommand { db, command } => {
-                let reply = self.track(self.db(db.as_deref()).run_command(command).await)?;
+                // A write of documents runs in the transaction (see `transaction::placement`).
+                let reply = send!(ctx, self.db(db.as_deref()).run_command(command));
+                let reply = self.track_in(&mut ctx.failure, reply)?;
                 // A command that opens a cursor (`find`, `aggregate`, …): its first batch.
                 let first_batch = reply
                     .get_document("cursor")
@@ -946,6 +948,11 @@ impl Rest {
                 db,
             } => (cursor, tx, *generation, db),
         };
+        // A cancel from before this batch, of another statement while the result sat unread:
+        // the result stops, and the transaction stays, as nothing of it was read since.
+        if rx.has_changed().unwrap_or(false) {
+            return Err(Error::Cancelled);
+        }
         let mut guard = tokio::select! {
             guard = tx.session.lock() => guard,
             () = cancelled(rx) => return Err(Error::Cancelled),

@@ -101,7 +101,19 @@ pub fn source(src: &str) -> Option<Source> {
         .projection
         .as_ref()
         .is_none_or(|p| p.is_empty() || keeps_whole_fields(p));
-    (!find.one && whole).then_some(Source { db, collection })
+    // `returnKey` reads the index keys instead of the documents, `showRecordId` adds a field.
+    let documents = ["returnKey", "showRecordId"]
+        .iter()
+        .all(|option| !find.options.get(option).is_some_and(includes));
+    (!find.one && whole && documents).then_some(Source { db, collection })
+}
+
+/// Whether the documents of collection `collection` of database `db` can be saved in a
+/// transaction: MongoDB runs none on the admin, config and local databases and on system
+/// collections.
+#[must_use]
+pub fn transactional(db: &str, collection: &str) -> bool {
+    crate::transaction::reachable(db, collection)
 }
 
 /// A field name `$set` and `insertOne` take as it is.
@@ -134,9 +146,10 @@ fn double(text: &str) -> Option<f64> {
     }
 }
 
-/// A document or an array from the relaxed Extended JSON the grid shows.
+/// A document or an array from the relaxed Extended JSON the grid shows, whose integers are
+/// ints and longs (a long beyond 2^53 as a double would lose digits).
 fn structured(text: &str, db_type: &str) -> Result<Bson, String> {
-    let mut reader = Reader::new(text);
+    let mut reader = Reader::json(text);
     let parsed = reader
         .value()
         .ok()

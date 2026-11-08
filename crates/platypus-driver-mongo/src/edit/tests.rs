@@ -139,6 +139,35 @@ fn writes_every_type_by_its_column() {
 }
 
 #[test]
+fn a_document_keeps_its_longs_and_doubles_through_the_grid() {
+    // The cell of a document is its relaxed Extended JSON, as the grid shows it.
+    let nested = doc! {
+        "big": 9_007_199_254_740_993_i64,
+        "wide": 3_000_000_000_i64,
+        "whole": 5.0,
+        "huge": 1e21,
+        "minus_zero": -0.0,
+        "nan": f64::NAN,
+        "at": mongodb::bson::DateTime::from_millis(1_704_191_400_123),
+        "list": [1, 2.5, -2_147_483_649_i64],
+    };
+    let text = crate::docs::text(&Bson::Document(nested.clone())).unwrap();
+    let s = updated("f", "document", None, Some(&text)).unwrap();
+    let Some(Bson::Document(written)) = set_of(&s.commands[0]).get("f").cloned() else {
+        panic!("{}", s.commands[0]);
+    };
+    for (key, value) in &nested {
+        match (value, written.get(key)) {
+            (Bson::Double(a), Some(Bson::Double(b))) if a.is_nan() => assert!(b.is_nan()),
+            (Bson::Double(a), Some(Bson::Double(b))) => {
+                assert_eq!(a.to_bits(), b.to_bits(), "{key}");
+            }
+            (a, b) => assert_eq!(Some(a), b, "{key}: {text}"),
+        }
+    }
+}
+
+#[test]
 fn a_whole_double_is_not_read_back_as_an_int() {
     let s = updated("f", "double", None, Some("2")).unwrap();
     assert!(s.commands[0].contains("f: 2.0 }"), "{}", s.commands[0]);
@@ -513,6 +542,12 @@ fn finds_the_collection_of_a_plain_find() {
             "orders",
         ),
         ("db.orders.find({}, {})", None, "orders"),
+        // Options that leave the documents whole.
+        (
+            "db.orders.find({}, {}, { comment: 'x', hint: { _id: 1 } }).returnKey(false)",
+            None,
+            "orders",
+        ),
     ] {
         assert_eq!(
             source(src),
@@ -538,6 +573,12 @@ fn does_not_edit_what_is_not_a_plain_find() {
         "db.orders.find({}, { \"a.b\": 1 })",
         "db.orders.find({}, { a: { $slice: 1 } })",
         "db.orders.find({}, { a: \"$b\" })",
+        "db.orders.find({}, { a: { $elemMatch: { b: 1 } } })",
+        "db.orders.find().returnKey()",
+        "db.orders.find({}, {}, { returnKey: true })",
+        "db.orders.find().showRecordId()",
+        "db.orders.find().explain()",
+        "db.orders.find().count()",
         "show dbs",
         "db.orders.find(",
         "SELECT * FROM orders",

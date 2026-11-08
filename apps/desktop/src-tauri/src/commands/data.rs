@@ -533,6 +533,16 @@ async fn mongo_script(
         .and_then(|all| all.into_iter().find(|s| s.current))
         .map(|s| s.name);
     let schema = changes.table.schema.as_str();
+    // The save runs in a transaction there, which MongoDB refuses: refused before anything runs,
+    // rather than by the first command, after the user's open transaction was joined.
+    if conn.capabilities().transactions && !edit::transactional(schema, &changes.table.name) {
+        return Err(CommandError::new(
+            "invalid_value",
+            "MongoDB runs no transaction on the admin, config and local databases nor on system \
+             collections, and the grid saves in one on a replica set: change these documents \
+             with a script",
+        ));
+    }
     let edits = edit::Edits {
         db: (current.as_deref() != Some(schema)).then_some(schema),
         collection: &changes.table.name,
@@ -685,11 +695,7 @@ async fn save_commands(
     }
     Ok(Saved {
         statements: commands.len(),
-        undo: undo.join(
-            "
-",
-        ) + "
-",
+        undo: undo.join("\n") + "\n",
     })
 }
 
@@ -748,10 +754,12 @@ async fn save_mongo(conn: &dyn platypus_core::Connection, commands: &[&str]) -> 
     let ran = conn.execute_all(commands, &expected).await;
     let problem = mongo_problem(&ran);
     let result = match problem {
-        None if before.autocommit => conn.commit().await.map_err(|e| {
-            CommandError::from(e)
-                .context("The transaction could not be committed, and nothing was saved")
-        }),
+        // The error says what became of the changes: discarded, or unknown when the answer
+        // to the commit was lost.
+        None if before.autocommit => conn
+            .commit()
+            .await
+            .map_err(|e| CommandError::from(e).context("The transaction could not be committed")),
         None => Ok(()),
         Some(problem) => {
             // The server may have ended the transaction already: rolling back then does nothing.

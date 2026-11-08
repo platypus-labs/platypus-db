@@ -42,12 +42,29 @@ const EXTENDED: &[&str] = &[
 pub struct Reader<'a> {
     pub src: &'a str,
     pub pos: usize,
+    /// Integers as JSON has them, an int or a long, instead of mongosh's double for one beyond
+    /// 32 bits.
+    json_integers: bool,
 }
 
 impl<'a> Reader<'a> {
     #[must_use]
     pub fn new(src: &'a str) -> Self {
-        Self { src, pos: 0 }
+        Self {
+            src,
+            pos: 0,
+            json_integers: false,
+        }
+    }
+
+    /// A reader of the relaxed Extended JSON the app writes for documents and arrays, where an
+    /// integer is an int or a long, never a double: a long beyond 2^53 keeps its digits.
+    #[must_use]
+    pub fn json(src: &'a str) -> Self {
+        Self {
+            json_integers: true,
+            ..Self::new(src)
+        }
     }
 
     pub fn error<T>(&self, message: impl Into<String>) -> ParseResult<T> {
@@ -314,7 +331,16 @@ impl<'a> Reader<'a> {
             .chars()
             .filter(|&c| c != '_' && c != '+')
             .collect();
-        parse_number(&text).map_or_else(
+        let json_long = || {
+            let n = text.parse::<i64>().ok()?;
+            Some(i32::try_from(n).map_or(Bson::Int64(n), Bson::Int32))
+        };
+        let parsed = if self.json_integers {
+            json_long().or_else(|| parse_number(&text))
+        } else {
+            parse_number(&text)
+        };
+        parsed.map_or_else(
             || {
                 self.pos = start;
                 self.error(format!("invalid number `{text}`"))
@@ -521,7 +547,9 @@ fn parse_date(s: &str) -> Option<DateTime> {
     if s.len() == 10 {
         candidates.push(format!("{s}T00:00:00Z"));
     }
-    if !s.ends_with('Z') && !s[s.len().saturating_sub(6)..].contains(['+', '-']) {
+    // The last characters, where a zone offset goes (`get`: not inside a character).
+    let tail = s.get(s.len().saturating_sub(6)..).unwrap_or(&s);
+    if !s.ends_with('Z') && !tail.contains(['+', '-']) {
         candidates.push(format!("{s}Z"));
         candidates.push(format!("{s}:00Z"));
     }
@@ -791,6 +819,34 @@ mod tests {
             to_shell(&Bson::Int64(1 << 53)),
             "NumberLong(9007199254740992)"
         );
+    }
+
+    #[test]
+    fn reads_json_integers_as_ints_and_longs() {
+        let json = |src: &str| Reader::json(src).value().unwrap();
+        assert_eq!(
+            json("{\"a\": 5, \"b\": 3000000000, \"c\": 9007199254740993, \"d\": 5.0, \"e\": 1e21}"),
+            Bson::Document(doc! {
+                "a": 5,
+                "b": 3_000_000_000_i64,
+                "c": 9_007_199_254_740_993_i64,
+                "d": 5.0,
+                "e": 1e21,
+            })
+        );
+        assert_eq!(
+            json("[-2147483649, -0.0]"),
+            Bson::Array(vec![Bson::Int64(-2_147_483_649), Bson::Double(-0.0)])
+        );
+        // mongosh's own reading: a number beyond 32 bits is a double.
+        assert_eq!(value("3000000000"), Bson::Double(3e9));
+    }
+
+    #[test]
+    fn a_date_with_other_characters_is_an_error_not_a_panic() {
+        for text in ["a€bcde", "2024-01-02 10:30€", "€€€"] {
+            assert!(parse_date(text).is_none(), "{text}");
+        }
     }
 
     #[test]

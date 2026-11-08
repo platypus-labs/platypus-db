@@ -470,6 +470,105 @@ async fn metadata_in_manual_mode_leaves_the_transaction_open() {
 }
 
 #[tokio::test]
+async fn server_commands_that_write_run_in_the_transaction_or_are_refused() {
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("tx_cmd").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    for src in [
+        "db.runCommand({ insert: 'tx_cmd', documents: [{ _id: 1 }, { _id: 2 }] })",
+        "db.runCommand({ update: 'tx_cmd', updates: [{ q: { _id: 1 }, u: { $set: { n: 1 } } }] })",
+        "db.runCommand({ findAndModify: 'tx_cmd', query: { _id: 2 }, remove: true })",
+        "db.runCommand({ find: 'tx_cmd', filter: {} })",
+    ] {
+        run(conn, src).await;
+        assert_eq!(state(conn), (false, true), "{src}");
+    }
+    assert_eq!(
+        rows(conn, "db.tx_cmd.find({ n: 1 })").await,
+        1,
+        "its own writes"
+    );
+    assert_eq!(
+        rows(other, "db.tx_cmd.find()").await,
+        0,
+        "nothing applied at once"
+    );
+    for src in [
+        "db.runCommand({ drop: 'tx_cmd' })",
+        "db.dropDatabase()",
+        "db.aggregate([{ $documents: [{ a: 1 }] }, { $out: 'tx_cmd_out' }])",
+    ] {
+        let refused = conn.execute(src, &ExecOptions::default()).await;
+        assert!(
+            matches!(refused, Err(Error::Unsupported(_))),
+            "{src}: {refused:?}"
+        );
+        assert_eq!(state(conn), (false, true), "{src}");
+    }
+    conn.rollback().await.unwrap();
+    assert_eq!(rows(other, "db.tx_cmd.find()").await, 0, "rolled back");
+    assert_eq!(rows(other, "db.tx_cmd.exists()").await, 1, "not dropped");
+}
+
+#[tokio::test]
+async fn a_secondary_read_preference_reads_the_transaction_from_the_primary() {
+    let _one = REPLICA_SET.lock().await;
+    // A variable no one sets: the replica set of `REPLICA_SET_URL`, skipped when unreachable.
+    let url = format!("{REPLICA_SET_URL}&readPreference=secondaryPreferred");
+    let Some(conn) = connect_to("PLATYPUS_TEST_MONGO_RS_READ_PREFERENCE", &url).await else {
+        return;
+    };
+    let conn = &*conn;
+    run(conn, "use platypus").await;
+    run(conn, "db.tx_readpref.drop()").await;
+    run(conn, "db.createCollection('tx_readpref')").await;
+    conn.set_autocommit(false).await.unwrap();
+    run(conn, "db.tx_readpref.insertOne({ _id: 1 })").await;
+    assert_eq!(
+        rows(conn, "db.tx_readpref.find()").await,
+        1,
+        "its own write"
+    );
+    assert_eq!(rows(conn, "db.tx_readpref.countDocuments({})").await, 1);
+    assert_eq!(state(conn), (false, true), "the transaction stays");
+    conn.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_cancel_before_the_next_batch_leaves_the_transaction() {
+    let _one = REPLICA_SET.lock().await;
+    let Some((conn, other)) = manual_pair("tx_stale").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    let docs: Vec<String> = (0..1500).map(|i| format!("{{ _id: {i} }}")).collect();
+    run(
+        conn,
+        &format!("db.tx_stale.insertMany([{}])", docs.join(", ")),
+    )
+    .await;
+    let options = ExecOptions {
+        batch_size: 1000,
+        paged: true,
+    };
+    let ExecResult::Rows(mut stream) = conn.execute("db.tx_stale.find()", &options).await.unwrap()
+    else {
+        panic!("expected rows");
+    };
+    stream.next().await.unwrap().unwrap();
+    // The cancel of a statement that ran meanwhile, while the result sat unread.
+    conn.cancel_handle().cancel().await.unwrap();
+    let rest = stream.next().await;
+    assert!(matches!(rest, Some(Err(Error::Cancelled))), "{rest:?}");
+    assert_eq!(state(conn), (false, true), "the transaction stays");
+    assert_eq!(rows(conn, "db.tx_stale.find().limit(5)").await, 5);
+    conn.commit().await.unwrap();
+    assert_eq!(rows(other, "db.tx_stale.find()").await, 1500, "committed");
+}
+
+#[tokio::test]
 async fn a_transaction_the_server_ended_is_closed() {
     let _one = REPLICA_SET.lock().await;
     let Some((conn, other)) = manual_pair("tx_expired").await else {

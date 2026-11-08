@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use mongodb::bson::{Bson, Document, doc};
 use mongodb::error::{ErrorKind, TRANSIENT_TRANSACTION_ERROR, UNKNOWN_TRANSACTION_COMMIT_RESULT};
+use mongodb::options::{ReadPreference, SelectionCriteria};
 use mongodb::{ClientSession, Database};
 use platypus_core::{Error, Result, TransactionState, TxTracker};
 
@@ -54,39 +55,122 @@ pub fn placement(command: &Command, current: &str) -> Placement {
         | Command::ShowCollections
         | Command::Use(_)
         | Command::DatabaseName { .. }
-        | Command::ListCollections { .. }
-        | Command::RunCommand { .. } => Placement::Outside,
+        | Command::ListCollections { .. } => Placement::Outside,
+        Command::RunCommand { db, command } => {
+            command_placement(command, db.as_deref().unwrap_or(current))
+        }
         Command::CreateCollection { db, options, .. } => {
-            if system(db.as_deref().unwrap_or(current), "") {
-                Placement::Refused("writing to the admin, config and local databases")
-            } else if options.contains_key("viewOn") || options.contains_key("timeseries") {
-                Placement::Refused("creating a view or a time-series collection")
-            } else {
-                Placement::Transaction
-            }
+            create_placement(db.as_deref().unwrap_or(current), options)
         }
-        Command::Collection { db, collection, op } => {
-            let place = op_placement(op);
-            if place == Placement::Transaction
-                && system(db.as_deref().unwrap_or(current), collection)
-            {
-                if crate::shell::is_read_only(command) {
-                    Placement::Outside
-                } else {
-                    Placement::Refused(
-                        "writing to the admin, config and local databases or to system collections",
-                    )
-                }
-            } else {
-                place
-            }
+        Command::Collection { db, collection, op } => in_reach(
+            op_placement(op),
+            db.as_deref().unwrap_or(current),
+            collection,
+            crate::shell::is_read_only(command),
+        ),
+    }
+}
+
+/// What writes to a database or collection a transaction cannot reach.
+const SYSTEM_WRITE: &str =
+    "writing to the admin, config and local databases or to system collections";
+
+/// `place` for an operation on collection `collection` of database `db`: what would run in the
+/// transaction there runs outside it when it `reads`, and is refused when it writes.
+fn in_reach(place: Placement, db: &str, collection: &str, reads: bool) -> Placement {
+    match place {
+        Placement::Transaction if system(db, collection) && reads => Placement::Outside,
+        Placement::Transaction if system(db, collection) => Placement::Refused(SYSTEM_WRITE),
+        place => place,
+    }
+}
+
+/// `create` in database `db`, with `options`.
+fn create_placement(db: &str, options: &Document) -> Placement {
+    if system(db, "") {
+        Placement::Refused(SYSTEM_WRITE)
+    } else if options.contains_key("viewOn") || options.contains_key("timeseries") {
+        Placement::Refused("creating a view or a time-series collection")
+    } else {
+        Placement::Transaction
+    }
+}
+
+/// A server command (`db.runCommand(…)`, `db.adminCommand(…)`, `db.aggregate(…)`,
+/// `db.dropDatabase()` and the other helpers that send one) in database `db`, by its name, as
+/// the collection methods that send the same command: the writes of documents run in the
+/// transaction, so that none of them is applied at once; the changes to collections and
+/// databases, which a transaction does not take, are refused; the rest (server information,
+/// administration) runs outside.
+fn command_placement(command: &Document, db: &str) -> Placement {
+    let Some((name, target)) = command.iter().next() else {
+        return Placement::Outside;
+    };
+    // `{ aggregate: 1 }` and the like name no collection.
+    let collection = target.as_str().unwrap_or_default();
+    let reach = |place: Placement, reads: bool| in_reach(place, db, collection, reads);
+    match name.to_ascii_lowercase().as_str() {
+        "find" | "distinct" => reach(Placement::Transaction, true),
+        "aggregate" => {
+            let stages: Vec<&Document> = command
+                .get_array("pipeline")
+                .map(|stages| stages.iter().filter_map(Bson::as_document).collect())
+                .unwrap_or_default();
+            reach(pipeline_placement(&stages), true)
         }
+        "insert" | "update" | "delete" | "findandmodify" | "createindexes" => {
+            reach(Placement::Transaction, false)
+        }
+        "create" => create_placement(db, command),
+        "drop" => Placement::Refused("dropping a collection"),
+        "dropdatabase" => Placement::Refused("dropping a database"),
+        "renamecollection" => Placement::Refused("renaming a collection"),
+        "dropindexes" | "deleteindexes" => Placement::Refused("dropping an index"),
+        "collmod"
+        | "converttocapped"
+        | "clonecollectionascapped"
+        | "reindex"
+        | "compact"
+        | "emptycapped"
+        | "createsearchindexes"
+        | "updatesearchindex"
+        | "dropsearchindex"
+        | "shardcollection"
+        | "reshardcollection"
+        | "refinecollectionshardkey"
+        | "unshardcollection"
+        | "movecollection" => Placement::Refused("changing a collection"),
+        "mapreduce" | "applyops" | "bulkwrite" => Placement::Refused("this command"),
+        _ => Placement::Outside,
     }
 }
 
 /// Whether a transaction cannot reach collection `collection` of database `db`.
 fn system(db: &str, collection: &str) -> bool {
     SYSTEM_DATABASES.contains(&db) || collection.starts_with("system.")
+}
+
+/// Whether the documents of collection `collection` of database `db` can be written in a
+/// transaction.
+#[must_use]
+pub fn reachable(db: &str, collection: &str) -> bool {
+    !system(db, collection)
+}
+
+/// An aggregation with `stages`.
+fn pipeline_placement(stages: &[&Document]) -> Placement {
+    let has = |names: &[&str]| {
+        stages
+            .iter()
+            .any(|s| names.iter().any(|name| s.contains_key(name)))
+    };
+    if has(&["$out", "$merge"]) {
+        Placement::Refused("an aggregation that writes with $out or $merge")
+    } else if has(&METADATA_STAGES) {
+        Placement::Outside
+    } else {
+        Placement::Transaction
+    }
 }
 
 fn op_placement(op: &CollectionOp) -> Placement {
@@ -106,18 +190,7 @@ fn op_placement(op: &CollectionOp) -> Placement {
         | CollectionOp::FindOneAndDelete { .. }
         | CollectionOp::CreateIndex { .. } => Placement::Transaction,
         CollectionOp::Aggregate { pipeline, .. } => {
-            let has = |stages: &[&str]| {
-                pipeline
-                    .iter()
-                    .any(|s| stages.iter().any(|name| s.contains_key(name)))
-            };
-            if has(&["$out", "$merge"]) {
-                Placement::Refused("an aggregation that writes with $out or $merge")
-            } else if has(&METADATA_STAGES) {
-                Placement::Outside
-            } else {
-                Placement::Transaction
-            }
+            pipeline_placement(&pipeline.iter().collect::<Vec<_>>())
         }
         CollectionOp::Admin { verb, .. } => match verb.as_str() {
             "createIndexes" => Placement::Transaction,
@@ -250,16 +323,22 @@ impl Answer {
 #[derive(Debug, Default)]
 pub struct Failure {
     first: Option<Answer>,
-    /// Some answer said the transaction had ended.
-    ended: Option<Answer>,
+    /// Some answer said the transaction had ended; with whether it was the first failure. One
+    /// after another failure (the writes of an unordered `bulkWrite` go on) found it ended by
+    /// that failure.
+    ended: Option<(Answer, bool)>,
 }
 
 impl Failure {
     pub fn record(&mut self, e: &mongodb::error::Error) {
-        let answer = Answer::of(e);
+        self.record_answer(Answer::of(e));
+    }
+
+    fn record_answer(&mut self, answer: Answer) {
+        let first = self.first.is_none();
         self.first.get_or_insert(answer);
         if answer.ended() {
-            self.ended.get_or_insert(answer);
+            self.ended.get_or_insert((answer, first));
         }
     }
 }
@@ -333,16 +412,21 @@ impl Transactions {
     /// started, or after a commit or rollback. The generation the statement runs in.
     pub async fn begin(&self, session: &mut ClientSession) -> Result<u64> {
         if !self.state().open {
-            if let Err(e) = session.start_transaction().await {
+            // A transaction reads from the primary: one inherited from the connection's read
+            // preference (`secondaryPreferred`, say) makes the driver refuse every read in it.
+            async fn start(session: &mut ClientSession) -> mongodb::error::Result<()> {
+                session
+                    .start_transaction()
+                    .selection_criteria(SelectionCriteria::ReadPreference(ReadPreference::Primary))
+                    .await
+            }
+            if let Err(e) = start(session).await {
                 // One the driver still holds as running, which this side had closed.
                 if !Answer::of(&e).driver_state {
                     return Err(map_error(&e));
                 }
                 let _ = session.abort_transaction().await;
-                session
-                    .start_transaction()
-                    .await
-                    .map_err(|e| map_error(&e))?;
+                start(session).await.map_err(|e| map_error(&e))?;
             }
             *self.started.lock().unwrap_or_else(PoisonError::into_inner) = Some(Instant::now());
             self.state.set_open(true);
@@ -420,10 +504,13 @@ impl Transactions {
             return None;
         }
         let how = match failure.ended {
-            Some(answer) if answer.gone() || answer.network => {
+            Some((answer, _)) if answer.network => Ended::Lost,
+            // Found gone at once: ended before the statement, or expired.
+            Some((answer, true)) if answer.gone() => {
                 Self::how_ended(session, answer, self.age()).await
             }
-            Some(answer) if answer.driver_state => Ended::Before,
+            Some((answer, true)) if answer.driver_state => Ended::Before,
+            // Ended by its error, or by the one of an earlier failure of the statement.
             Some(_) => Ended::ByThisError,
             None => {
                 let probe = db
@@ -625,8 +712,80 @@ mod tests {
         let mut failure = Failure::default();
         assert!(failure.first.is_none());
         failure.first = Some(duplicate);
-        failure.ended.get_or_insert(gone);
+        failure.ended.get_or_insert((gone, false));
         assert_eq!(failure.first, Some(duplicate));
+    }
+
+    #[test]
+    fn server_commands_run_where_the_methods_that_send_them_do() {
+        for src in [
+            "db.runCommand({ insert: 'c', documents: [{ a: 1 }] })",
+            "db.runCommand({ update: 'c', updates: [{ q: {}, u: { $set: { a: 1 } } }] })",
+            "db.runCommand({ delete: 'c', deletes: [{ q: {}, limit: 0 }] })",
+            "db.runCommand({ findAndModify: 'c', query: {}, remove: true })",
+            "db.runCommand({ findandmodify: 'c', query: {}, remove: true })",
+            "db.runCommand({ find: 'c', filter: {} })",
+            "db.runCommand({ aggregate: 'c', pipeline: [], cursor: {} })",
+            "db.runCommand({ distinct: 'c', key: 'a' })",
+            "db.runCommand({ create: 'fresh' })",
+            "db.runCommand({ createIndexes: 'c', indexes: [{ key: { a: 1 }, name: 'a_1' }] })",
+            "db.getSiblingDB('other').runCommand({ insert: 'c', documents: [{ a: 1 }] })",
+            "db.aggregate([{ $documents: [{ a: 1 }] }])",
+        ] {
+            assert_eq!(place(src), Placement::Transaction, "{src}");
+        }
+        for src in [
+            "db.dropDatabase()",
+            "db.runCommand({ drop: 'c' })",
+            "db.runCommand({ collMod: 'c', validator: {} })",
+            "db.runCommand({ dropIndexes: 'c', index: '*' })",
+            "db.runCommand({ create: 'v', viewOn: 'c', pipeline: [] })",
+            "db.runCommand({ aggregate: 'c', pipeline: [{ $out: 'd' }], cursor: {} })",
+            "db.aggregate([{ $documents: [{ a: 1 }] }, { $merge: { into: 'd' } }])",
+            "db.runCommand({ mapReduce: 'c', map: 'f', reduce: 'g', out: 'd' })",
+            "db.adminCommand({ renameCollection: 'shop.c', to: 'shop.d' })",
+            "db.adminCommand({ insert: 'c', documents: [{ a: 1 }] })",
+            "db.runCommand({ insert: 'system.js', documents: [{ a: 1 }] })",
+            "db.adminCommand({ bulkWrite: 1, ops: [], nsInfo: [] })",
+        ] {
+            assert!(
+                matches!(place(src), Placement::Refused(_)),
+                "{src}: {:?}",
+                place(src)
+            );
+        }
+        for src in [
+            "db.runCommand({ count: 'c' })",
+            "db.runCommand({ listIndexes: 'c' })",
+            "db.runCommand({ explain: { delete: 'c', deletes: [{ q: {}, limit: 0 }] } })",
+            "db.adminCommand({ find: 'system.version' })",
+            "db.aggregate([{ $currentOp: {} }])",
+            "db.runCommand({})",
+        ] {
+            assert_eq!(place(src), Placement::Outside, "{src}");
+        }
+    }
+
+    #[test]
+    fn a_failure_after_another_ended_the_transaction_with_it() {
+        let duplicate = Answer {
+            code: Some(11000),
+            ..Answer::default()
+        };
+        let gone = Answer {
+            code: Some(251),
+            transient: true,
+            ..Answer::default()
+        };
+        let mut failure = Failure::default();
+        failure.record_answer(duplicate);
+        failure.record_answer(gone);
+        assert_eq!(failure.first, Some(duplicate));
+        assert_eq!(failure.ended, Some((gone, false)), "ended by the duplicate");
+        let mut failure = Failure::default();
+        failure.record_answer(gone);
+        failure.record_answer(duplicate);
+        assert_eq!(failure.ended, Some((gone, true)), "found gone at once");
     }
 
     #[test]
