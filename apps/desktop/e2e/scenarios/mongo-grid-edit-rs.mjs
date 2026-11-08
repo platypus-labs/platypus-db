@@ -121,23 +121,39 @@ async function inOpenTransaction(page) {
   await page.waitFor(`!(${transactionOpen})`, 15_000);
   assert.equal(names(), "1:Alpha,2:Beta 2,3:Gamma");
 
-  // Another save in a transaction, then one that fails: MongoDB aborts the whole transaction,
-  // the first save with it, and the error says so.
+  // A document deleted by another session while the tab's transaction (opened by the read of
+  // the grid) is open: the update conflicts with the delete, and MongoDB ends the transaction.
+  await openFresh(page, C, "3 rows");
+  g = await layout(page);
+  await editCell(page, g.row(1), g.col("name"), "Alpha 2");
+  mongosh("replica", `db.${C}.deleteOne({ _id: 1 })`);
+  await preview(page);
+  const conflict = await saveFails(page, /Command 1/);
+  assert.match(conflict, /write conflict/i);
+  assert.match(conflict, /the whole transaction was rolled back/);
+  await page.waitFor(`!(${transactionOpen})`, 15_000);
+  assert.equal(names(), "2:Beta 2,3:Gamma");
+  await discard(page);
+  mongosh("replica", `db.${C}.insertOne({ _id: 1, name: "Alpha", qty: 1 })`);
+
+  // Another save in a transaction, then one that fails (a duplicate `_id`): MongoDB aborts the
+  // whole transaction, the first save with it, and the error says so.
   await openFresh(page, C, "3 rows");
   g = await layout(page);
   await editCell(page, g.row(3), g.col("name"), "Gamma 2");
   await saveChanges(page, "3 rows");
   await page.waitFor(transactionOpen, 15_000);
   assert.equal(names(), "1:Alpha,2:Beta 2,3:Gamma", "an uncommitted save is visible to others");
+  await insertRow(page);
   g = await layout(page);
-  await editCell(page, g.row(1), g.col("name"), "Alpha 2");
-  mongosh("replica", `db.${C}.deleteOne({ _id: 1 })`);
+  await editCell(page, 0, g.col("_id"), "2");
+  await editCell(page, 0, g.col("name"), "Duplicate");
   await preview(page);
   const shown = await saveFails(page, /rolled back/);
-  assert.match(shown, /Command 1: the document was not found/);
+  assert.match(shown, /Command 1: .*duplicate key/is);
   assert.match(shown, /the whole transaction was rolled back, with the changes you had not committed yet/);
   await page.waitFor(`!(${transactionOpen})`, 15_000);
-  assert.equal(names(), "2:Beta 2,3:Gamma", "the uncommitted save went with the transaction");
+  assert.equal(names(), "1:Alpha,2:Beta 2,3:Gamma", "the uncommitted save went with the transaction");
   await discard(page);
   assert.match(await page.eval(editBar), /to edit a cell/);
 

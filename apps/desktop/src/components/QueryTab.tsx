@@ -1658,6 +1658,7 @@ export function QueryTab({
         if (viewer && connection.driver === "duckdb") void keepKeyOrder(result).then((done) => !done && reload());
         else reload();
       },
+      onSaveFailed: () => void ensureSession().then((id) => (id === null ? undefined : refreshTx(id))),
       onDirtyChange: setUnsaved,
       proposed: viewer && tab.proposed ? { edits: tab.proposed, agent: tab.proposedBy ?? "", done: () => onChange({ proposed: null }) } : undefined,
     };

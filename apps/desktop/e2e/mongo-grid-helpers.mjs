@@ -21,12 +21,12 @@ export const SERVERS = {
   standalone: {
     label: "the standalone MongoDB",
     port: 57017,
-    shell: ["exec", "-i", "platypus-db-mongo-1", "mongosh", "--quiet", "-u", "platypus", "-p", "platypus", "--authenticationDatabase", "admin", "platypus"],
+    shell: ["exec", "platypus-db-mongo-1", "mongosh", "--quiet", "-u", "platypus", "-p", "platypus", "--authenticationDatabase", "admin", "platypus"],
   },
   replica: {
     label: "the MongoDB replica set",
     port: 57018,
-    shell: ["exec", "-i", "platypus-db-mongo-rs-1", "mongosh", "--port", "57018", "--quiet", "platypus"],
+    shell: ["exec", "platypus-db-mongo-rs-1", "mongosh", "--port", "57018", "--quiet", "platypus"],
   },
 };
 
@@ -51,16 +51,19 @@ export const needs =
     return null;
   };
 
-/** Runs a mongosh script on `server`, in the database `platypus`; returns what it printed. */
+/** Runs a mongosh script on `server`, in the database `platypus`; returns what it printed. The script
+ *  goes in `--eval`: read from stdin, mongosh echoes its prompt into the output. */
 export function mongosh(server, script) {
-  const r = spawnSync("docker", SERVERS[server].shell, { input: script, encoding: "utf8" });
+  const r = spawnSync("docker", [...SERVERS[server].shell, "--eval", script], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`${server}: ${r.stderr || r.stdout}`);
   return r.stdout.replace(/\r/g, "").trim();
 }
 
 /** How many documents of `collection` match `filter` (mongosh text, `{}` for all). */
 export function count(server, collection, filter = "{}") {
-  return Number(mongosh(server, `print(db.getCollection(${JSON.stringify(collection)}).countDocuments(${filter}))`));
+  // mongosh prints its deprecation warnings (a number in `NumberLong`) before the result.
+  const out = mongosh(server, `print(db.getCollection(${JSON.stringify(collection)}).countDocuments(${filter}))`);
+  return Number(out.split("\n").at(-1));
 }
 
 /** A saved connection to `server`; `n` makes its id. `extra` is more TOML lines. */
@@ -73,7 +76,8 @@ driver = "mongo"
 host = "localhost"
 port = ${SERVERS[server].port}
 database = "${replica ? "platypus?replicaSet=rs0" : "platypus?authSource=admin"}"
-${replica ? "" : 'user = "platypus"\npassword_command = "echo platypus"\n'}ssl_mode = "disable"
+${replica ? "" : 'user = "platypus"\n'}password_command = "echo platypus"
+ssl_mode = "disable"
 save_password = false
 ${extra}`;
 }
@@ -205,7 +209,8 @@ export async function openUndo(page) {
   await page.eval(`[...${visibleTab}.querySelectorAll('button')].find(b => b.textContent.includes('Undo script')).click()`);
   await page.waitFor(`document.querySelectorAll('.query-tab').length > ${before}`, 10_000);
   await page.waitFor(`${editorText}.length > 0`, 10_000);
-  return page.eval(editorText);
+  // The script ends with a newline.
+  return (await page.eval(editorText)).trimEnd();
 }
 
 /** Runs the undo script of the last save: opens it, runs it as a script, returns its text. */
