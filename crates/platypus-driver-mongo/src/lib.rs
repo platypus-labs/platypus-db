@@ -2,10 +2,13 @@
 //!
 //! Statements are mongosh, not SQL: [`shell`] parses the subset the editor runs. Results
 //! become Arrow batches with one column per top-level field ([`docs`]). Schemas are
-//! databases, objects are collections and views. There are no transactions.
+//! databases, objects are collections and views. Manual commit runs on replica sets and
+//! sharded clusters only: the documents' reads and writes run in a transaction of the
+//! connection's session, metadata and administration outside it.
 
 mod config;
 pub mod docs;
+pub mod edit;
 mod error;
 mod explain;
 pub mod generate;
@@ -14,6 +17,7 @@ mod meta;
 pub mod shell;
 #[cfg(test)]
 mod tests;
+mod transaction;
 pub mod viewer;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -22,25 +26,36 @@ use std::sync::{Arc, Mutex, PoisonError};
 use async_trait::async_trait;
 use std::time::Duration;
 
-use futures::TryStreamExt;
 use futures::stream::{self, BoxStream, StreamExt};
+use futures::{Stream, TryStreamExt};
 use mongodb::bson::{Bson, Document, doc};
 use mongodb::options::{
     AggregateOptions, CountOptions, DeleteOptions, DistinctOptions, FindOneAndDeleteOptions,
     FindOneAndReplaceOptions, FindOneAndUpdateOptions, FindOptions, InsertManyOptions,
     ReplaceOptions, UpdateModifications, UpdateOptions,
 };
-use mongodb::{Client, Cursor, Database};
+use mongodb::{Client, ClientSession, Cursor, Database, SessionCursor};
 use platypus_core::{
     CancelHandle, Canceller, Capabilities, CatalogColumn, Connection, ConnectionConfig, Driver,
     DriverKind, Error, ExecOptions, ExecResult, Explain, ExplainFormat, ObjectMeta, ObjectRef,
     Property, RecordBatchStream, ReferencingKey, Result, SchemaMeta, ServerInfo, TableDetails,
-    TransactionState, unsupported,
+    TransactionState,
 };
 use tokio::sync::watch;
 
 use crate::error::{map_error, parse_error};
 use crate::shell::{CollectionOp, Command, Find};
+use crate::transaction::{Failure, Placement, Transactions, ended_error};
+
+/// Sends `action` in the transaction of `ctx`, when the statement runs in one.
+macro_rules! send {
+    ($ctx:expr, $action:expr) => {
+        match $ctx.session.as_deref_mut() {
+            Some(session) => $action.session(session).await,
+            None => $action.await,
+        }
+    };
+}
 
 /// Numbers the sessions of the process, for their operation comments.
 static SESSIONS: AtomicU64 = AtomicU64::new(0);
@@ -64,6 +79,13 @@ impl Driver for MongoDriver {
             .await
             .map_err(|e| Error::Connect(error::message(&e)))?;
         let version = build.get_str("version").unwrap_or_default().to_owned();
+        // Transactions need a replica set member or a `mongos`.
+        let hello = admin
+            .run_command(doc! { "hello": 1 })
+            .await
+            .map_err(|e| Error::Connect(error::message(&e)))?;
+        let transactions =
+            hello.contains_key("setName") || hello.get_str("msg").is_ok_and(|m| m == "isdbgrid");
         let (cancel, _) = watch::channel(0u64);
         let conn = MongoConnection {
             client,
@@ -80,6 +102,7 @@ impl Driver for MongoDriver {
                 std::process::id(),
                 SESSIONS.fetch_add(1, Ordering::Relaxed)
             ),
+            tx: Arc::new(Transactions::new(transactions)),
         };
         for statement in config.init.sql(DriverKind::Mongo)? {
             conn.execute(&statement, &ExecOptions::default()).await?;
@@ -101,6 +124,29 @@ pub struct MongoConnection {
     cancel: Arc<watch::Sender<u64>>,
     /// Sent with every operation, so the cancel handle can find them in `$currentOp`.
     comment: String,
+    /// Manual commit: its session, and the transaction open in it.
+    tx: Arc<Transactions>,
+}
+
+/// Where the operations of a statement run: in the transaction of `session`, or on their own.
+#[derive(Default)]
+struct Ctx<'s> {
+    session: Option<&'s mut ClientSession>,
+    /// What the server answered the operations that failed, to learn whether the transaction
+    /// survived them.
+    failure: Failure,
+}
+
+/// The database a statement works in, when it names one.
+fn database_of(command: &Command) -> Option<&str> {
+    match command {
+        Command::Collection { db, .. }
+        | Command::CreateCollection { db, .. }
+        | Command::ListCollections { db, .. }
+        | Command::DatabaseName { db }
+        | Command::RunCommand { db, .. } => db.as_deref(),
+        Command::ShowDatabases | Command::ShowCollections | Command::Use(_) => None,
+    }
 }
 
 /// Waits until the cancel handle is used after the subscription.
@@ -141,7 +187,83 @@ impl MongoConnection {
         }
     }
 
-    async fn run(&self, command: Command, options: &ExecOptions) -> Result<ExecResult> {
+    /// [`track`](Self::track), keeping what the server answered a failed operation in `failure`.
+    fn track_in<T>(&self, failure: &mut Failure, result: mongodb::error::Result<T>) -> Result<T> {
+        if let Err(e) = &result {
+            failure.record(e);
+        }
+        self.track(result)
+    }
+
+    /// Runs `command` in the transaction of manual mode. A write opens one if none is; a read
+    /// while none is runs outside, on what is committed (as in autocommit), so that browsing
+    /// opens no transaction the server would end after its lifetime. A failure the server
+    /// ended the transaction for closes it here too, and says so; a cancel rolls it back,
+    /// since what the statement did is unknown.
+    async fn in_transaction(
+        &self,
+        command: Command,
+        options: &ExecOptions,
+        rx: &mut watch::Receiver<u64>,
+    ) -> Result<ExecResult> {
+        let db = self.db(database_of(&command));
+        let mut guard = tokio::select! {
+            guard = self.tx.session.lock() => guard,
+            () = cancelled(rx) => return Err(Error::Cancelled),
+        };
+        let Some(session) = guard.as_mut() else {
+            return Err(Error::Other(
+                "the session of manual commit is gone: switch to autocommit and back".to_owned(),
+            ));
+        };
+        // Checked under the session's lock, which opening and closing a transaction take.
+        if !self.tx.state().open && shell::is_read_only(&command) {
+            drop(guard);
+            let mut alone = Ctx::default();
+            return tokio::select! {
+                result = self.run(command, options, &mut alone) => result,
+                () = cancelled(rx) => Err(Error::Cancelled),
+            };
+        }
+        let generation = self.tx.begin(session).await?;
+        let mut ctx = Ctx {
+            session: Some(session),
+            failure: Failure::default(),
+        };
+        let result = tokio::select! {
+            result = self.run(command, options, &mut ctx) => result,
+            () = cancelled(rx) => Err(Error::Cancelled),
+        };
+        let Ctx {
+            session: Some(session),
+            failure,
+        } = ctx
+        else {
+            return result;
+        };
+        match result {
+            Err(Error::Cancelled) => {
+                self.tx.lose(session, generation).await;
+                Err(Error::Cancelled)
+            }
+            Err(e) => match self
+                .tx
+                .after_failure(session, generation, &failure, &db)
+                .await
+            {
+                Some(how) => Err(ended_error(e, how)),
+                None => Err(e),
+            },
+            ok => ok,
+        }
+    }
+
+    async fn run(
+        &self,
+        command: Command,
+        options: &ExecOptions,
+        ctx: &mut Ctx<'_>,
+    ) -> Result<ExecResult> {
         let batch = u32::try_from(options.batch_size.max(1)).unwrap_or(u32::MAX);
         match command {
             Command::ShowDatabases => {
@@ -188,7 +310,9 @@ impl MongoConnection {
                 self.stream(cursor, options, None).await
             }
             Command::RunCommand { db, command } => {
-                let reply = self.track(self.db(db.as_deref()).run_command(command).await)?;
+                // A write of documents runs in the transaction (see `transaction::placement`).
+                let reply = send!(ctx, self.db(db.as_deref()).run_command(command));
+                let reply = self.track_in(&mut ctx.failure, reply)?;
                 // A command that opens a cursor (`find`, `aggregate`, …): its first batch.
                 let first_batch = reply
                     .get_document("cursor")
@@ -202,13 +326,68 @@ impl MongoConnection {
             Command::CreateCollection { db, name, options } => {
                 let mut command = doc! { "create": name };
                 command.extend(options);
-                self.track(self.db(db.as_deref()).run_command(command).await)?;
+                let created = send!(ctx, self.db(db.as_deref()).run_command(command));
+                self.track_in(&mut ctx.failure, created)?;
                 Ok(ExecResult::Affected { rows: 0 })
             }
             Command::Collection { db, collection, op } => {
-                self.collection_op(db.as_deref(), &collection, op, batch, options)
+                self.collection_op(db.as_deref(), &collection, op, batch, options, ctx)
                     .await
             }
+        }
+    }
+
+    /// `find` and `aggregate`: a cursor to read in batches.
+    async fn rows_op(
+        &self,
+        coll: &mongodb::Collection<Document>,
+        op: CollectionOp,
+        batch: u32,
+        options: &ExecOptions,
+        ctx: &mut Ctx<'_>,
+    ) -> Result<ExecResult> {
+        match op {
+            CollectionOp::Find(find) => {
+                // The survey reads outside the transaction: see `stream_in`.
+                let survey = ctx.session.is_none().then(|| Survey::of_find(coll, &find));
+                let mut find = find;
+                let find_options = parsed::<FindOptions>(std::mem::take(&mut find.options))?;
+                let action = self.find(coll, find, find_options, batch);
+                if let Some(session) = ctx.session.as_deref_mut() {
+                    let cursor = action.session(&mut *session).await;
+                    let cursor = self.track_in(&mut ctx.failure, cursor)?;
+                    return self
+                        .stream_in(cursor, session, &mut ctx.failure, coll, options)
+                        .await;
+                }
+                let cursor = self.track(action.await)?;
+                self.stream(cursor, options, survey).await
+            }
+            CollectionOp::Aggregate {
+                pipeline,
+                options: aggregate,
+            } => {
+                let mut opts: AggregateOptions = mongodb::bson::from_document(aggregate)
+                    .map_err(|e| Error::Other(format!("invalid aggregate options: {e}")))?;
+                opts.batch_size = Some(batch);
+                opts.comment = Some(Bson::String(self.comment.clone()));
+                let survey = ctx
+                    .session
+                    .is_none()
+                    .then(|| Survey::of_pipeline(coll, &pipeline))
+                    .flatten();
+                let action = coll.aggregate(pipeline).with_options(opts);
+                if let Some(session) = ctx.session.as_deref_mut() {
+                    let cursor = action.session(&mut *session).await;
+                    let cursor = self.track_in(&mut ctx.failure, cursor)?;
+                    return self
+                        .stream_in(cursor, session, &mut ctx.failure, coll, options)
+                        .await;
+                }
+                let cursor = self.track(action.await)?;
+                self.stream(cursor, options, survey).await
+            }
+            _ => unreachable!("not an operation with a cursor"),
         }
     }
 
@@ -219,29 +398,14 @@ impl MongoConnection {
         op: CollectionOp,
         batch: u32,
         options: &ExecOptions,
+        ctx: &mut Ctx<'_>,
     ) -> Result<ExecResult> {
         let database = self.db(db);
         let coll = database.collection::<Document>(name);
         let comment = Bson::String(self.comment.clone());
         match op {
-            CollectionOp::Find(find) => {
-                let survey = Survey::of_find(&coll, &find);
-                let mut find = find;
-                let find_options = parsed::<FindOptions>(std::mem::take(&mut find.options))?;
-                let cursor = self.track(self.find(&coll, find, find_options, batch).await)?;
-                self.stream(cursor, options, Some(survey)).await
-            }
-            CollectionOp::Aggregate {
-                pipeline,
-                options: aggregate,
-            } => {
-                let mut opts: AggregateOptions = mongodb::bson::from_document(aggregate)
-                    .map_err(|e| Error::Other(format!("invalid aggregate options: {e}")))?;
-                opts.batch_size = Some(batch);
-                opts.comment = Some(comment);
-                let survey = Survey::of_pipeline(&coll, &pipeline);
-                let cursor = self.track(coll.aggregate(pipeline).with_options(opts).await)?;
-                self.stream(cursor, options, survey).await
+            op @ (CollectionOp::Find(_) | CollectionOp::Aggregate { .. }) => {
+                self.rows_op(&coll, op, batch, options, ctx).await
             }
             CollectionOp::CountDocuments {
                 filter,
@@ -259,7 +423,8 @@ impl MongoConnection {
                 if let Some(limit) = limit {
                     count = count.limit(limit);
                 }
-                count_result(self.track(count.await)?)
+                let counted = send!(ctx, count);
+                count_result(self.track_in(&mut ctx.failure, counted)?)
             }
             CollectionOp::EstimatedDocumentCount => {
                 count_result(self.track(coll.estimated_document_count().comment(comment).await)?)
@@ -269,12 +434,12 @@ impl MongoConnection {
                 filter,
                 options: distinct_options,
             } => {
-                let values = self.track(
-                    coll.distinct(&field, filter)
-                        .with_options(parsed::<DistinctOptions>(distinct_options)?)
-                        .comment(comment)
-                        .await,
-                )?;
+                let distinct = coll
+                    .distinct(&field, filter)
+                    .with_options(parsed::<DistinctOptions>(distinct_options)?)
+                    .comment(comment);
+                let values = send!(ctx, distinct);
+                let values = self.track_in(&mut ctx.failure, values)?;
                 let schema = docs::value_schema(&field, &values);
                 let rows: Vec<Document> = values.into_iter().map(|v| doc! { &field: v }).collect();
                 batch_result(schema, &rows)
@@ -288,13 +453,15 @@ impl MongoConnection {
             | CollectionOp::Drop
             | CollectionOp::CreateIndex { .. }
             | CollectionOp::DropIndex(_)
-            | CollectionOp::Rename { .. }) => self.write_op(&coll, op).await.map(affected_rows),
+            | CollectionOp::Rename { .. }) => {
+                self.write_op(&coll, op, ctx).await.map(affected_rows)
+            }
             CollectionOp::BulkWrite {
                 ops,
                 ordered,
                 options: common,
             } => self
-                .bulk_write(&coll, ops, ordered, &common)
+                .bulk_write(&coll, ops, ordered, &common, ctx)
                 .await
                 .map(affected_rows),
             op @ (CollectionOp::FindOneAndUpdate { .. }
@@ -305,7 +472,7 @@ impl MongoConnection {
             | CollectionOp::Exists
             | CollectionOp::Name { .. }
             | CollectionOp::Explain { .. }) => {
-                self.one_document_op(&coll, op, batch, options).await
+                self.one_document_op(&coll, op, batch, options, ctx).await
             }
             CollectionOp::GetIndexes => {
                 let cursor = self.track(
@@ -326,35 +493,45 @@ impl MongoConnection {
         op: CollectionOp,
         batch: u32,
         options: &ExecOptions,
+        ctx: &mut Ctx<'_>,
     ) -> Result<ExecResult> {
         let found = match op {
             CollectionOp::FindOneAndUpdate {
                 filter,
                 update,
                 options,
-            } => self.track(
-                coll.find_one_and_update(filter, modifications(update)?)
-                    .with_options(parsed::<FindOneAndUpdateOptions>(options)?)
-                    .await,
-            )?,
+            } => {
+                let action = coll
+                    .find_one_and_update(filter, modifications(update)?)
+                    .with_options(parsed::<FindOneAndUpdateOptions>(options)?);
+                let found = send!(ctx, action);
+                self.track_in(&mut ctx.failure, found)?
+            }
             CollectionOp::FindOneAndReplace {
                 filter,
                 replacement,
                 options,
-            } => self.track(
-                coll.find_one_and_replace(filter, replacement)
-                    .with_options(parsed::<FindOneAndReplaceOptions>(options)?)
-                    .await,
-            )?,
-            CollectionOp::FindOneAndDelete { filter, options } => self.track(
-                coll.find_one_and_delete(filter)
-                    .with_options(parsed::<FindOneAndDeleteOptions>(options)?)
-                    .await,
-            )?,
+            } => {
+                let action = coll
+                    .find_one_and_replace(filter, replacement)
+                    .with_options(parsed::<FindOneAndReplaceOptions>(options)?);
+                let found = send!(ctx, action);
+                self.track_in(&mut ctx.failure, found)?
+            }
+            CollectionOp::FindOneAndDelete { filter, options } => {
+                let action =
+                    coll.find_one_and_delete(filter)
+                        .with_options(parsed::<FindOneAndDeleteOptions>(options)?);
+                let found = send!(ctx, action);
+                self.track_in(&mut ctx.failure, found)?
+            }
             CollectionOp::Admin { verb, rest, .. } => {
                 let mut command = doc! { verb: coll.name() };
                 command.extend(rest);
-                Some(self.run_on(coll, command).await?)
+                // `createIndexes` is the one that runs in a transaction.
+                let database = self.client.database(&coll.namespace().db);
+                let reply = send!(ctx, database.run_command(command));
+                Some(self.track_in(&mut ctx.failure, reply)?)
             }
             CollectionOp::Stat(name) => {
                 let stats = self.run_on(coll, doc! { "collStats": coll.name() }).await?;
@@ -424,13 +601,14 @@ impl MongoConnection {
         ops: Vec<CollectionOp>,
         ordered: bool,
         common: &Document,
+        ctx: &mut Ctx<'_>,
     ) -> Result<u64> {
         let total = ops.len();
         let mut changed = 0;
         let mut at = 1;
         let mut failures: Vec<(Error, usize)> = Vec::new();
         for (op, size) in shell::write_batches(ops, ordered) {
-            match self.write_op(coll, with_common(op, common)).await {
+            match self.write_op(coll, with_common(op, common), ctx).await {
                 Ok(n) => changed += n,
                 Err(e) if ordered || !matches!(e, Error::Database(_)) => {
                     let before = if size == 1 {
@@ -466,29 +644,36 @@ impl MongoConnection {
         &self,
         coll: &mongodb::Collection<Document>,
         op: CollectionOp,
+        ctx: &mut Ctx<'_>,
     ) -> Result<u64> {
         match op {
             CollectionOp::InsertOne(document) => {
-                self.track(coll.insert_one(document).await)?;
+                let inserted = send!(ctx, coll.insert_one(document));
+                self.track_in(&mut ctx.failure, inserted)?;
                 Ok(1)
             }
             CollectionOp::InsertWith { documents, options } => {
                 if documents.is_empty() {
                     return Ok(0);
                 }
-                let result = self.track(
-                    coll.insert_many(documents)
-                        .with_options(parsed::<InsertManyOptions>(options)?)
-                        .await,
-                )?;
-                Ok(result.inserted_ids.len() as u64)
+                let action = coll
+                    .insert_many(documents)
+                    .with_options(parsed::<InsertManyOptions>(options)?);
+                let inserted = send!(ctx, action);
+                Ok(self
+                    .track_in(&mut ctx.failure, inserted)?
+                    .inserted_ids
+                    .len() as u64)
             }
             CollectionOp::InsertMany(documents) => {
                 if documents.is_empty() {
                     return Ok(0);
                 }
-                let result = self.track(coll.insert_many(documents).await)?;
-                Ok(result.inserted_ids.len() as u64)
+                let inserted = send!(ctx, coll.insert_many(documents));
+                Ok(self
+                    .track_in(&mut ctx.failure, inserted)?
+                    .inserted_ids
+                    .len() as u64)
             }
             CollectionOp::Update {
                 filter,
@@ -498,22 +683,16 @@ impl MongoConnection {
                 options,
             } => {
                 let update = modifications(update)?;
-                let options = parsed::<UpdateOptions>(options)?;
-                let result = if many {
-                    self.track(
-                        coll.update_many(filter, update)
-                            .with_options(options)
-                            .upsert(upsert)
-                            .await,
-                    )?
+                let action = if many {
+                    coll.update_many(filter, update)
                 } else {
-                    self.track(
-                        coll.update_one(filter, update)
-                            .with_options(options)
-                            .upsert(upsert)
-                            .await,
-                    )?
+                    coll.update_one(filter, update)
                 };
+                let action = action
+                    .with_options(parsed::<UpdateOptions>(options)?)
+                    .upsert(upsert);
+                let updated = send!(ctx, action);
+                let result = self.track_in(&mut ctx.failure, updated)?;
                 Ok(result.matched_count + u64::from(result.upserted_id.is_some()))
             }
             CollectionOp::Replace {
@@ -522,12 +701,12 @@ impl MongoConnection {
                 upsert,
                 options,
             } => {
-                let result = self.track(
-                    coll.replace_one(filter, replacement)
-                        .with_options(parsed::<ReplaceOptions>(options)?)
-                        .upsert(upsert)
-                        .await,
-                )?;
+                let action = coll
+                    .replace_one(filter, replacement)
+                    .with_options(parsed::<ReplaceOptions>(options)?)
+                    .upsert(upsert);
+                let replaced = send!(ctx, action);
+                let result = self.track_in(&mut ctx.failure, replaced)?;
                 Ok(result.matched_count + u64::from(result.upserted_id.is_some()))
             }
             CollectionOp::Delete {
@@ -535,27 +714,31 @@ impl MongoConnection {
                 many,
                 options,
             } => {
-                let options = parsed::<DeleteOptions>(options)?;
-                let result = if many {
-                    self.track(coll.delete_many(filter).with_options(options).await)?
+                let action = if many {
+                    coll.delete_many(filter)
                 } else {
-                    self.track(coll.delete_one(filter).with_options(options).await)?
+                    coll.delete_one(filter)
                 };
-                Ok(result.deleted_count)
+                let action = action.with_options(parsed::<DeleteOptions>(options)?);
+                let deleted = send!(ctx, action);
+                Ok(self.track_in(&mut ctx.failure, deleted)?.deleted_count)
             }
             op => {
-                self.schema_op(coll, op).await?;
+                self.schema_op(coll, op, ctx).await?;
                 Ok(0)
             }
         }
     }
 
-    /// What changes collections and indexes.
+    /// What changes collections and indexes. Only `createIndex` runs in a transaction: the
+    /// others are refused in manual mode.
     async fn schema_op(
         &self,
         coll: &mongodb::Collection<Document>,
         op: CollectionOp,
+        ctx: &mut Ctx<'_>,
     ) -> Result<()> {
+        let database = self.client.database(&coll.namespace().db);
         match op {
             CollectionOp::Drop => {
                 self.track(coll.drop().await)?;
@@ -567,18 +750,14 @@ impl MongoConnection {
             } => {
                 let mut spec = doc! { "key": keys.clone(), "name": meta::index_name(&keys) };
                 spec.extend(index);
-                self.track(
-                    self.client
-                        .database(&coll.namespace().db)
-                        .run_command(doc! { "createIndexes": coll.name(), "indexes": [spec] })
-                        .await,
-                )?;
+                let command = doc! { "createIndexes": coll.name(), "indexes": [spec] };
+                let created = send!(ctx, database.run_command(command));
+                self.track_in(&mut ctx.failure, created)?;
                 Ok(())
             }
             CollectionOp::DropIndex(index) => {
                 self.track(
-                    self.client
-                        .database(&coll.namespace().db)
+                    database
                         .run_command(doc! { "dropIndexes": coll.name(), "index": index })
                         .await,
                 )?;
@@ -601,13 +780,13 @@ impl MongoConnection {
         }
     }
 
-    async fn find(
+    fn find<'c>(
         &self,
-        coll: &mongodb::Collection<Document>,
+        coll: &'c mongodb::Collection<Document>,
         find: Find,
         options: FindOptions,
         batch: u32,
-    ) -> mongodb::error::Result<Cursor<Document>> {
+    ) -> mongodb::action::Find<'c, Document> {
         // The options first: setting them replaces what the calls below set.
         let mut action = coll
             .find(find.filter)
@@ -626,7 +805,7 @@ impl MongoConnection {
         if let Some(limit) = find.limit {
             action = action.limit(limit);
         }
-        action.await
+        action
     }
 
     /// The documents of `cursor` as a stream of batches. The first batch is read here; when
@@ -642,7 +821,9 @@ impl MongoConnection {
     ) -> Result<ExecResult> {
         let size = options.batch_size.max(1);
         let mut rx = self.cancel.subscribe();
-        let first = next_batch(&mut cursor, size, &mut rx, &self.closed).await?;
+        let first = read_batch(&mut cursor, size, &mut rx)
+            .await
+            .map_err(|stop| stop.into_error(&self.closed))?;
         let done = first.len() < size;
         let surveyed = match survey {
             Some(survey) if !done => survey.schema(&first, &self.comment).await,
@@ -653,25 +834,87 @@ impl MongoConnection {
             None if done => docs::infer_schema(&first),
             None => docs::widen_for_later(&docs::infer_schema(&first)),
         };
-        let first_batch = docs::to_batch(&schema, &first)?;
+        self.rows(
+            &first,
+            schema,
+            (!done).then_some(Rest::Alone(cursor)),
+            size,
+            rx,
+        )
+    }
+
+    /// The documents of `cursor`, opened in the transaction of `session`, as a stream of
+    /// batches: the first is read here, each later one with the session locked, so that other
+    /// statements run between them. Once the transaction ended, the rest fails: its cursor
+    /// ended with it. No survey: outside the transaction it would not see the transaction's
+    /// writes, and inside, its time limit would end the transaction; the first documents make
+    /// the schema.
+    async fn stream_in(
+        &self,
+        mut cursor: SessionCursor<Document>,
+        session: &mut ClientSession,
+        failure: &mut Failure,
+        coll: &mongodb::Collection<Document>,
+        options: &ExecOptions,
+    ) -> Result<ExecResult> {
+        let size = options.batch_size.max(1);
+        let mut rx = self.cancel.subscribe();
+        let read = {
+            let mut docs = cursor.stream(session);
+            read_batch(&mut docs, size, &mut rx).await
+        };
+        let first = match read {
+            Ok(docs) => docs,
+            Err(stop) => {
+                if let Stop::Failed(e) = &stop {
+                    failure.record(e);
+                }
+                return Err(stop.into_error(&self.closed));
+            }
+        };
+        let done = first.len() < size;
+        let schema = if done {
+            docs::infer_schema(&first)
+        } else {
+            docs::widen_for_later(&docs::infer_schema(&first))
+        };
+        let rest = (!done).then(|| Rest::InTransaction {
+            cursor,
+            tx: Arc::clone(&self.tx),
+            generation: self.tx.generation(),
+            db: self.client.database(&coll.namespace().db),
+        });
+        self.rows(&first, schema, rest, size, rx)
+    }
+
+    /// `first`, then the batches of `rest`, as the rows of a result of `schema`.
+    fn rows(
+        &self,
+        first: &[Document],
+        schema: arrow_schema::SchemaRef,
+        rest: Option<Rest>,
+        size: usize,
+        rx: watch::Receiver<u64>,
+    ) -> Result<ExecResult> {
+        let first_batch = docs::to_batch(&schema, first)?;
         let closed = Arc::clone(&self.closed);
-        let state = (Some(first_batch), (!done).then_some(cursor), rx);
+        let state = (Some(first_batch), rest, rx);
         let rest_schema = Arc::clone(&schema);
         let inner: BoxStream<'static, Result<arrow_array::RecordBatch>> =
-            stream::unfold(state, move |(first, cursor, mut rx)| {
+            stream::unfold(state, move |(first, rest, mut rx)| {
                 let schema = Arc::clone(&rest_schema);
                 let closed = Arc::clone(&closed);
                 async move {
                     if let Some(first) = first {
-                        return Some((Ok(first), (None, cursor, rx)));
+                        return Some((Ok(first), (None, rest, rx)));
                     }
-                    let mut cursor = cursor?;
-                    match next_batch(&mut cursor, size, &mut rx, &closed).await {
+                    let mut rest = rest?;
+                    match rest.next(size, &mut rx, &closed).await {
                         Ok(docs) if docs.is_empty() => None,
                         Ok(docs) => {
                             let more = docs.len() == size;
                             let batch = docs::to_batch(&schema, &docs);
-                            Some((batch, (None, more.then_some(cursor), rx)))
+                            Some((batch, (None, more.then_some(rest), rx)))
                         }
                         Err(e) => Some((Err(e), (None, None, rx))),
                     }
@@ -683,28 +926,117 @@ impl MongoConnection {
     }
 }
 
-/// Up to `size` documents of `cursor`; fails with [`Error::Cancelled`] when the cancel
-/// handle is used meanwhile.
-async fn next_batch(
-    cursor: &mut Cursor<Document>,
+/// The cursor of a result after its first batch.
+enum Rest {
+    Alone(Cursor<Document>),
+    /// Opened in transaction `generation`, of database `db`.
+    InTransaction {
+        cursor: SessionCursor<Document>,
+        tx: Arc<Transactions>,
+        generation: u64,
+        db: Database,
+    },
+}
+
+impl Rest {
+    /// The next batch, up to `size` documents.
+    async fn next(
+        &mut self,
+        size: usize,
+        rx: &mut watch::Receiver<u64>,
+        closed: &AtomicBool,
+    ) -> Result<Vec<Document>> {
+        let (cursor, tx, generation, db) = match self {
+            Self::Alone(cursor) => {
+                return read_batch(cursor, size, rx)
+                    .await
+                    .map_err(|stop| stop.into_error(closed));
+            }
+            Self::InTransaction {
+                cursor,
+                tx,
+                generation,
+                db,
+            } => (cursor, tx, *generation, db),
+        };
+        // A cancel from before this batch, of another statement while the result sat unread:
+        // the result stops, and the transaction stays, as nothing of it was read since.
+        if rx.has_changed().unwrap_or(false) {
+            return Err(Error::Cancelled);
+        }
+        let mut guard = tokio::select! {
+            guard = tx.session.lock() => guard,
+            () = cancelled(rx) => return Err(Error::Cancelled),
+        };
+        let Some(session) = guard.as_mut().filter(|_| tx.is_current(generation)) else {
+            return Err(Error::Other(
+                "the transaction this result was read in has ended, and its cursor with it: run \
+                 the statement again to read the rest"
+                    .to_owned(),
+            ));
+        };
+        let read = {
+            let mut docs = cursor.stream(&mut *session);
+            read_batch(&mut docs, size, rx).await
+        };
+        match read {
+            Ok(docs) => Ok(docs),
+            Err(Stop::Cancelled) => {
+                tx.lose(session, generation).await;
+                Err(Error::Cancelled)
+            }
+            Err(Stop::Failed(e)) => {
+                let mut failure = Failure::default();
+                failure.record(&e);
+                let error = Stop::Failed(e).into_error(closed);
+                match tx.after_failure(session, generation, &failure, db).await {
+                    Some(how) => Err(ended_error(error, how)),
+                    None => Err(error),
+                }
+            }
+        }
+    }
+}
+
+/// Why a batch stopped before it was full.
+enum Stop {
+    Cancelled,
+    Failed(mongodb::error::Error),
+}
+
+impl Stop {
+    /// The error to report; a server out of reach marks the connection `closed`.
+    fn into_error(self, closed: &AtomicBool) -> Error {
+        match self {
+            Self::Cancelled => Error::Cancelled,
+            Self::Failed(e) => {
+                if error::is_network(&e) {
+                    closed.store(true, Ordering::Relaxed);
+                }
+                map_error(&e)
+            }
+        }
+    }
+}
+
+/// Up to `size` documents of `docs`; stops when the cancel handle is used meanwhile.
+async fn read_batch<S>(
+    docs: &mut S,
     size: usize,
     rx: &mut watch::Receiver<u64>,
-    closed: &AtomicBool,
-) -> Result<Vec<Document>> {
+) -> std::result::Result<Vec<Document>, Stop>
+where
+    S: Stream<Item = mongodb::error::Result<Document>> + Unpin,
+{
     let mut out = Vec::with_capacity(size.min(1024));
     while out.len() < size {
         tokio::select! {
-            next = cursor.next() => match next {
+            next = docs.next() => match next {
                 Some(Ok(doc)) => out.push(doc),
-                Some(Err(e)) => {
-                    if error::is_network(&e) {
-                        closed.store(true, Ordering::Relaxed);
-                    }
-                    return Err(map_error(&e));
-                }
+                Some(Err(e)) => return Err(Stop::Failed(e)),
                 None => break,
             },
-            () = cancelled(rx) => return Err(Error::Cancelled),
+            () = cancelled(rx) => return Err(Stop::Cancelled),
         }
     }
     Ok(out)
@@ -974,8 +1306,18 @@ impl Connection for MongoConnection {
     async fn execute(&self, sql: &str, options: &ExecOptions) -> Result<ExecResult> {
         let command = shell::parse(sql).map_err(|e| parse_error(sql, &e))?;
         let mut rx = self.cancel.subscribe();
+        if !self.tx.state().autocommit {
+            match transaction::placement(&command, &self.current_database()) {
+                Placement::Transaction => {
+                    return self.in_transaction(command, options, &mut rx).await;
+                }
+                Placement::Refused(what) => return Err(transaction::refused(what)),
+                Placement::Outside => {}
+            }
+        }
+        let mut alone = Ctx::default();
         tokio::select! {
-            result = self.run(command, options) => result,
+            result = self.run(command, options, &mut alone) => result,
             () = cancelled(&mut rx) => Err(Error::Cancelled),
         }
     }
@@ -1019,31 +1361,24 @@ impl Connection for MongoConnection {
     }
 
     fn transaction(&self) -> TransactionState {
-        TransactionState {
-            autocommit: true,
-            open: false,
-        }
+        self.tx.state()
     }
 
     async fn set_autocommit(&self, on: bool) -> Result<()> {
-        if on {
-            Ok(())
-        } else {
-            Err(unsupported("transactions on MongoDB"))
-        }
+        self.tx.set_autocommit(&self.client, on).await
     }
 
     async fn commit(&self) -> Result<()> {
-        Ok(())
+        self.tx.commit().await
     }
 
     async fn rollback(&self) -> Result<()> {
-        Ok(())
+        self.tx.rollback().await
     }
 
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            transactions: false,
+            transactions: self.tx.supported,
             cancel: true,
             object_ddl: true,
             explain: true,

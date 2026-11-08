@@ -1353,8 +1353,8 @@ mod tests {
         assert_eq!(
             values,
             [
-                "NumberLong(9007199254740993)",
-                "NumberLong(9223372036854775807)",
+                "NumberLong(\"9007199254740993\")",
+                "NumberLong(\"9223372036854775807\")",
                 "5",
                 "NumberLong(5)",
                 "5.0",

@@ -761,3 +761,480 @@ async fn navigates_metadata() {
         "{props:?}"
     );
 }
+/// The single-node replica set of `docker/compose.yml` (service `mongo-rs`), or the one at
+/// `PLATYPUS_TEST_MONGO_RS`: transactions need one.
+const REPLICA_SET_URL: &str = "mongodb://localhost:57018/?replicaSet=rs0";
+
+async fn connect_replica_set() -> Option<Box<dyn Connection>> {
+    let (url, required) = match std::env::var("PLATYPUS_TEST_MONGO_RS") {
+        Ok(url) => (url, true),
+        Err(_) => (REPLICA_SET_URL.to_owned(), false),
+    };
+    let mut config = ConnectionConfig::from_url(&url).unwrap();
+    config.connect_timeout = Some(std::time::Duration::from_secs(3));
+    match MongoDriver.connect(&config).await {
+        Ok(conn) => Some(conn),
+        Err(e) if !required => {
+            eprintln!("skipping mongo replica set: unreachable at {url}: {e}");
+            None
+        }
+        Err(e) => panic!("cannot connect to PLATYPUS_TEST_MONGO_RS: {e}"),
+    }
+}
+
+/// Two sessions of the replica set, the first in manual mode, with an empty collection `name`
+/// in database `platypus`.
+async fn manual_pair(name: &str) -> Option<(Box<dyn Connection>, Box<dyn Connection>)> {
+    let conn = connect_replica_set().await?;
+    let other = connect_replica_set().await?;
+    scratch(&*conn, name).await;
+    affected(&*conn, &format!("db.createCollection('{name}')")).await;
+    affected(&*other, "use platypus").await;
+    conn.set_autocommit(false).await.unwrap();
+    Some((conn, other))
+}
+
+fn state(conn: &dyn Connection) -> (bool, bool) {
+    let tx = conn.transaction();
+    (tx.autocommit, tx.open)
+}
+
+fn names(batches: &[RecordBatch]) -> Vec<String> {
+    batches
+        .iter()
+        .flat_map(|b| {
+            b.column(0)
+                .as_string::<i32>()
+                .iter()
+                .flatten()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_standalone_server_has_no_transactions() {
+    let Some(conn) = connect().await else { return };
+    assert!(!conn.capabilities().transactions);
+    let Err(Error::Unsupported(why)) = conn.set_autocommit(false).await else {
+        panic!("manual commit on a standalone server");
+    };
+    assert!(
+        why.contains("replica set") && why.contains("standalone"),
+        "{why}"
+    );
+    conn.set_autocommit(true).await.unwrap();
+    assert_eq!(state(&*conn), (true, false));
+    conn.commit().await.unwrap();
+    conn.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn errors_end_the_transaction_only_when_the_server_does() {
+    let Some((conn, other)) = manual_pair("t_tx_errors").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    affected(other, "db.t_tx_errors.insertOne({ _id: 1 })").await;
+
+    // A pipeline the server refuses leaves the transaction as it was.
+    affected(conn, "db.t_tx_errors.insertOne({ _id: 2 })").await;
+    let bad = refused(conn, "db.t_tx_errors.aggregate([{ $nope: 1 }])").await;
+    assert!(!bad.contains("ended the transaction"), "{bad}");
+    assert_eq!(state(conn), (false, true));
+    // A duplicate key ends it: the insert before it is gone.
+    let duplicate = refused(conn, "db.t_tx_errors.insertOne({ _id: 1 })").await;
+    assert!(
+        duplicate.contains("E11000")
+            && duplicate.contains("ended the transaction")
+            && duplicate.contains("discarded"),
+        "{duplicate}"
+    );
+    assert_eq!(state(conn), (false, false));
+    assert_eq!(count(&rows(other, "db.t_tx_errors.find()").await), 1);
+    // The next statement opens another.
+    affected(conn, "db.t_tx_errors.insertOne({ _id: 3 })").await;
+    assert_eq!(state(conn), (false, true));
+    // An index on a collection that exists, which a transaction refuses, ends it too.
+    let index = refused(conn, "db.t_tx_errors.createIndex({ a: 1 })").await;
+    assert!(index.contains("ended the transaction"), "{index}");
+    assert_eq!(state(conn), (false, false));
+    conn.commit().await.unwrap();
+    assert_eq!(count(&rows(other, "db.t_tx_errors.find()").await), 1);
+}
+
+#[tokio::test]
+async fn writes_and_creations_run_in_the_transaction() {
+    let Some((conn, other)) = manual_pair("t_tx_writes").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    let _ = other
+        .execute("db.t_tx_fresh.drop()", &ExecOptions::default())
+        .await;
+    affected(
+        conn,
+        "db.t_tx_writes.insertMany([{ _id: 1, n: 1 }, { _id: 2, n: 2 }])",
+    )
+    .await;
+    affected(
+        conn,
+        "db.t_tx_writes.updateOne({ _id: 1 }, { $inc: { n: 10 } })",
+    )
+    .await;
+    affected(
+        conn,
+        "db.t_tx_writes.bulkWrite([{ deleteOne: { filter: { _id: 2 } } }, \
+         { insertOne: { document: { _id: 3, n: 3 } } }])",
+    )
+    .await;
+    let found = rows(
+        conn,
+        "db.t_tx_writes.findOneAndUpdate({ _id: 3 }, { $set: { n: 30 } }, \
+         { returnDocument: 'after' })",
+    )
+    .await;
+    assert_eq!(count(&found), 1);
+    let n = rows(conn, "db.t_tx_writes.countDocuments({ n: { $gt: 10 } })").await;
+    assert_eq!(
+        n[0].column(0)
+            .as_primitive::<arrow_array::types::Int64Type>()
+            .value(0),
+        2
+    );
+    assert_eq!(count(&rows(conn, "db.t_tx_writes.distinct('n')").await), 2);
+    // A collection and its index made in the transaction exist only once it commits.
+    affected(conn, "db.createCollection('t_tx_fresh')").await;
+    affected(conn, "db.t_tx_fresh.createIndex({ a: 1 })").await;
+    assert_eq!(count(&rows(other, "db.t_tx_writes.find()").await), 0);
+    let listed = names(&rows(other, "db.getCollectionNames()").await);
+    assert!(!listed.contains(&"t_tx_fresh".to_owned()), "{listed:?}");
+    conn.commit().await.unwrap();
+    assert_eq!(count(&rows(other, "db.t_tx_writes.find()").await), 2);
+    assert_eq!(count(&rows(other, "db.t_tx_fresh.getIndexes()").await), 2);
+    conn.set_autocommit(true).await.unwrap();
+    affected(conn, "db.t_tx_fresh.drop()").await;
+}
+
+#[tokio::test]
+async fn what_a_transaction_refuses_is_refused_in_manual_mode() {
+    let Some((conn, _other)) = manual_pair("t_tx_refused").await else {
+        return;
+    };
+    let conn = &*conn;
+    affected(conn, "db.t_tx_refused.insertOne({ _id: 1 })").await;
+    for src in [
+        "db.t_tx_refused.drop()",
+        "db.t_tx_refused.renameCollection('t_tx_elsewhere')",
+        "db.t_tx_refused.dropIndex('a_1')",
+        "db.t_tx_refused.aggregate([{ $out: 't_tx_out' }])",
+        "db.createView('t_tx_view', 't_tx_refused', [])",
+    ] {
+        let Err(Error::Unsupported(why)) = conn.execute(src, &ExecOptions::default()).await else {
+            panic!("{src}: not refused");
+        };
+        assert!(why.contains("manual commit"), "{src}: {why}");
+        assert_eq!(state(conn), (false, true), "{src}");
+    }
+    assert_eq!(count(&rows(conn, "db.t_tx_refused.find()").await), 1);
+    conn.rollback().await.unwrap();
+    // With no transaction open too: a rollback could not undo it.
+    assert!(matches!(
+        conn.execute("db.t_tx_refused.drop()", &ExecOptions::default())
+            .await,
+        Err(Error::Unsupported(_))
+    ));
+    assert_eq!(state(conn), (false, false));
+}
+
+#[tokio::test]
+async fn results_of_a_transaction_end_with_it() {
+    let Some((conn, _other)) = manual_pair("t_tx_stale").await else {
+        return;
+    };
+    let conn = &*conn;
+    let docs: Vec<String> = (0..30).map(|i| format!("{{ _id: {i} }}")).collect();
+    affected(
+        conn,
+        &format!("db.t_tx_stale.insertMany([{}])", docs.join(", ")),
+    )
+    .await;
+    let options = ExecOptions {
+        batch_size: 10,
+        paged: true,
+    };
+    let ExecResult::Rows(mut stream) = conn
+        .execute("db.t_tx_stale.find()", &options)
+        .await
+        .unwrap()
+    else {
+        panic!("expected rows");
+    };
+    let first = futures::StreamExt::next(&mut stream)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.num_rows(), 10);
+    conn.rollback().await.unwrap();
+    let rest = futures::StreamExt::next(&mut stream).await.unwrap();
+    let Err(Error::Other(why)) = rest else {
+        panic!("a result outlived its transaction: {rest:?}");
+    };
+    assert!(why.contains("has ended"), "{why}");
+    assert_eq!(count(&rows(conn, "db.t_tx_stale.find()").await), 0);
+}
+
+#[tokio::test]
+async fn a_cancel_rolls_the_transaction_back() {
+    let Some((conn, other)) = manual_pair("t_tx_cancel").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    affected(conn, "db.t_tx_cancel.insertMany([{ _id: 1 }, { _id: 2 }])").await;
+    let handle = conn.cancel_handle();
+    let cancel = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        handle.cancel().await
+    });
+    let endless = "db.t_tx_cancel.find({ $where: 'sleep(60000) || true' })";
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        conn.execute(endless, &ExecOptions::default()),
+    )
+    .await
+    .expect("cancel did not stop the query");
+    assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
+    cancel.await.unwrap().unwrap();
+    assert_eq!(state(conn), (false, false));
+    assert_eq!(count(&rows(other, "db.t_tx_cancel.find()").await), 0);
+    // The session goes on with another transaction.
+    affected(conn, "db.t_tx_cancel.insertOne({ _id: 3 })").await;
+    conn.commit().await.unwrap();
+    assert_eq!(count(&rows(other, "db.t_tx_cancel.find()").await), 1);
+}
+
+/// The statements of an edit script, run one by one as the grid's save does, each checked
+/// to change one document.
+async fn save(conn: &dyn Connection, commands: &[String]) -> platypus_core::Executed {
+    let statements: Vec<&str> = commands.iter().map(String::as_str).collect();
+    conn.execute_all(&statements, &vec![1; statements.len()])
+        .await
+}
+
+/// How many documents of `collection` match `filter`.
+async fn matching(conn: &dyn Connection, collection: &str, filter: &str) -> i64 {
+    let batches = rows(conn, &format!("db.{collection}.countDocuments({filter})")).await;
+    batches[0]
+        .column(0)
+        .as_primitive::<arrow_array::types::Int64Type>()
+        .value(0)
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn some(text: &str) -> Option<String> {
+    Some(text.to_owned())
+}
+
+/// The columns of the grid edit test and their BSON types.
+fn grid_columns() -> (Vec<String>, Vec<String>) {
+    let columns: Vec<String> = [
+        "_id", "name", "n", "big", "price", "ok", "when", "tags", "meta", "dec", "oid",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let types: Vec<String> = [
+        "int", "string", "int", "long", "double", "bool", "date", "array", "document", "decimal",
+        "objectId",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    (columns, types)
+}
+
+/// What `saves_the_grids_edits_with_the_types_of_their_columns` saved, as the server holds it.
+async fn check_saved_edits(conn: &dyn Connection) {
+    let c = "t_grid_edit";
+    assert_eq!(
+        matching(conn, c, "{ _id: 1, name: 'uno', n: 1, big: NumberLong('9007199254740993'), price: { $type: 'double' }, ok: null }").await,
+        1
+    );
+    // The BSON types are the columns' types, a whole double included.
+    let typed = "{ _id: 100, name: { $type: 'string' }, n: { $type: 'int' }, big: { $type: 'long' },                  price: { $type: 'double' }, ok: { $type: 'bool' }, when: { $type: 'date' },                  tags: { $type: 'array' }, meta: { $type: 'object' }, dec: { $type: 'decimal' },                  oid: { $type: 'objectId' }, 'meta.a.b': 1.5, 'tags.2.k': null }";
+    assert_eq!(matching(conn, c, typed).await, 1);
+    assert_eq!(
+        matching(conn, c, "{ _id: 100, name: 'new \"quoted\"', price: 2.0 }").await,
+        1
+    );
+    assert_eq!(
+        matching(
+            conn,
+            c,
+            "{ _id: 100, when: ISODate('2024-01-02T03:04:05.678Z') }"
+        )
+        .await,
+        1
+    );
+    assert_eq!(matching(conn, c, "{ _id: 2 }").await, 0);
+}
+
+#[tokio::test]
+async fn saves_the_grids_edits_with_the_types_of_their_columns() {
+    use crate::edit::{Edits, Update, script};
+    let Some(conn) = connect().await else { return };
+    scratch(&*conn, "t_grid_edit").await;
+    affected(
+        &*conn,
+        "db.t_grid_edit.insertMany([{ _id: 1, name: 'one', n: 1, big: NumberLong(1), price: 1.5 }, \
+         { _id: 2, name: 'two', n: 2, big: NumberLong(2), price: 2.5 }])",
+    )
+    .await;
+    let (columns, types) = grid_columns();
+    let edits = Edits {
+        db: None,
+        collection: "t_grid_edit",
+        columns: &columns,
+        types: &types,
+        updates: vec![Update {
+            loaded: vec![
+                some("1"),
+                some("one"),
+                some("1"),
+                some("1"),
+                some("1.5"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+            set: vec![
+                (1, some("uno")),
+                (3, some("9007199254740993")),
+                (4, some("3")),
+                (5, None),
+            ],
+        }],
+        inserts: vec![vec![
+            (0, some("100")),
+            (1, some("new \"quoted\"")),
+            (2, some("7")),
+            (3, some("8")),
+            (4, some("2")),
+            (5, some("true")),
+            (6, some("2024-01-02 03:04:05.678+00:00")),
+            (7, some("[1, \"a\", {\"k\": null}]")),
+            (8, some("{\"a\": {\"b\": 1.5}}")),
+            (9, some("1.10")),
+            (10, some("65a1b2c3d4e5f60718293a4b")),
+        ]],
+        deletes: vec![vec![
+            some("2"),
+            some("two"),
+            some("2"),
+            some("2"),
+            some("2.5"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]],
+    };
+    let s = script(&edits).unwrap();
+    let ran = save(&*conn, &s.commands).await;
+    assert!(ran.error.is_none(), "{:?}", ran.error);
+    assert_eq!(ran.rows, [1, 1, 1]);
+
+    check_saved_edits(&*conn).await;
+    let c = "t_grid_edit";
+
+    // The undo script puts the loaded documents back.
+    let undo: Vec<String> = s
+        .undo
+        .iter()
+        .filter(|l| !l.starts_with("//"))
+        .cloned()
+        .collect();
+    let ran = save(&*conn, &undo).await;
+    assert!(ran.error.is_none(), "{:?}", ran.error);
+    assert_eq!(ran.rows, [1, 1, 1]);
+    assert_eq!(matching(&*conn, c, "{ _id: 100 }").await, 0);
+    assert_eq!(
+        matching(
+            &*conn,
+            c,
+            "{ _id: 1, name: 'one', big: NumberLong(1), price: 1.5, ok: null }"
+        )
+        .await,
+        1
+    );
+    assert_eq!(
+        matching(&*conn, c, "{ _id: 2, name: 'two', n: 2, price: 2.5 }").await,
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_save_of_a_document_that_is_gone_changes_nothing_and_says_so() {
+    use crate::edit::{Edits, Update, script};
+    let Some(conn) = connect().await else { return };
+    scratch(&*conn, "t_grid_gone").await;
+    affected(&*conn, "db.t_grid_gone.insertOne({ _id: 1, n: 1 })").await;
+    let columns = vec!["_id".to_owned(), "n".to_owned()];
+    let types = vec!["int".to_owned(), "int".to_owned()];
+    let edits = Edits {
+        db: None,
+        collection: "t_grid_gone",
+        columns: &columns,
+        types: &types,
+        updates: vec![Update {
+            loaded: vec![some("9"), some("1")],
+            set: vec![(1, some("5"))],
+        }],
+        inserts: Vec::new(),
+        deletes: vec![vec![some("9"), some("1")]],
+    };
+    let s = script(&edits).unwrap();
+    // The delete of a document that is gone matches none: the run stops there.
+    let ran = save(&*conn, &s.commands).await;
+    assert!(ran.error.is_none());
+    assert_eq!(ran.rows, [0]);
+    assert_eq!(matching(&*conn, "t_grid_gone", "{ n: 1 }").await, 1);
+}
+
+#[tokio::test]
+async fn a_replica_set_saves_all_or_nothing() {
+    use crate::edit::{Edits, script};
+    let Some((conn, other)) = manual_pair("t_grid_atomic").await else {
+        return;
+    };
+    let (conn, other) = (&*conn, &*other);
+    // Committed, so the failing save below has a duplicate to hit.
+    affected(conn, "db.t_grid_atomic.insertOne({ _id: 1 })").await;
+    conn.commit().await.unwrap();
+    let columns = vec!["_id".to_owned(), "v".to_owned()];
+    let types = vec!["int".to_owned(), "string".to_owned()];
+    let edits = Edits {
+        db: None,
+        collection: "t_grid_atomic",
+        columns: &columns,
+        types: &types,
+        updates: Vec::new(),
+        // The first insert works, the second hits the duplicate key.
+        inserts: vec![
+            vec![(0, some("2")), (1, some("a"))],
+            vec![(0, some("1")), (1, some("b"))],
+        ],
+        deletes: Vec::new(),
+    };
+    let s = script(&edits).unwrap();
+    let ran = save(conn, &s.commands).await;
+    assert_eq!(ran.rows, [1], "the first command ran");
+    assert!(ran.error.is_some(), "the second hit the duplicate key");
+    conn.rollback().await.unwrap();
+    assert_eq!(matching(other, "t_grid_atomic", "{}").await, 1);
+    assert_eq!(matching(other, "t_grid_atomic", "{ _id: 2 }").await, 0);
+}

@@ -172,9 +172,17 @@ async function goTo(page, row, col) {
 
 /** Types `value` into the cell at `row`, `col` of the grid and confirms it. */
 export async function editCell(page, row, col, value) {
-  await goTo(page, row, col);
-  await page.key("F2", "F2", 113);
-  await page.waitFor(`document.querySelector('.cell-editor') !== null`);
+  // Keys sent while the grid is still redrawing (a row just added) can be lost: try again.
+  for (let attempt = 1; ; attempt++) {
+    await goTo(page, row, col);
+    await page.key("F2", "F2", 113);
+    try {
+      await page.waitFor(`document.querySelector('.cell-editor') !== null`, 3000);
+      break;
+    } catch (e) {
+      if (attempt === 3) throw e;
+    }
+  }
   // A boolean column edits through a select: pick the option, which applies it.
   const picked = await page.eval(`(() => {
     const el = document.querySelector('.cell-editor');

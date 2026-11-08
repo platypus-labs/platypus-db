@@ -8,6 +8,7 @@ import {
   type Generated,
   type GeneratedColumn,
   isCassandra,
+  isMongo,
   isRedis,
   isSearch,
   type SavedConnection,
@@ -55,6 +56,8 @@ export interface TableEditTarget {
   session: () => Promise<number | null>;
   /** Called after saving, to reload the data; `undo` puts the rows back. */
   onSaved: (undo: string) => void;
+  /** Called after a save that failed: the server may have ended the open transaction with it. */
+  onSaveFailed?: () => void;
   onDirtyChange: (dirty: boolean) => void;
   /** Rows an agent proposed: applied to the result as pending changes once, when its rows
    *  and the table's keys are loaded; `done` runs then, so that a result loaded again does
@@ -637,6 +640,7 @@ export function useTableEditor({ target, jobId, columns, cache, version, rowCoun
         latest.current?.onSaved(saved.undo);
       } catch (e) {
         fail(e);
+        latest.current?.onSaveFailed?.();
       } finally {
         setBusy(false);
       }
@@ -883,7 +887,9 @@ export function useTableEditor({ target, jobId, columns, cache, version, rowCoun
                   ? "requests"
                   : target && isCassandra(target.connection.driver)
                     ? "statements"
-                    : undefined
+                    : target && isMongo(target.connection.driver)
+                      ? "mongosh"
+                      : undefined
             }
             onSave={() => void edit.save(true)}
             onClose={() => setPreview(null)}

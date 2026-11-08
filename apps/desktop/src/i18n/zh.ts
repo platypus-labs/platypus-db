@@ -2334,6 +2334,9 @@ const zh: Record<string, string> = {
   "Password or API key": "密码或 API 密钥",
   "{n} request runs on the server: a request the server refuses stops the rest, and the ones before it stay.": "{n} 个请求在服务器上运行：服务器拒绝的请求会终止其余请求，之前的请求保持有效。",
   "{n} requests run one after the other: a request the server refuses stops the rest, and the ones before it stay.": "{n} 个请求依次运行：服务器拒绝的请求会终止其余请求，之前的请求保持有效。",
+  "Manual commit needs a replica set or a sharded cluster: this MongoDB server is standalone": "手动提交需要副本集或分片集群：此 MongoDB 服务器是单机服务器",
+  "{n} command runs on the server and changes one document.": "{n} 条命令在服务器上运行，并修改一个文档。",
+  "{n} commands run one after the other, each changing one document. On a replica set all are saved or none; on a standalone server a command the server refuses stops the rest, and the ones before it stay.": "{n} 条命令依次运行，每条修改一个文档。在副本集上，要么全部保存，要么都不保存；在单机服务器上，服务器拒绝的命令会终止其余命令，之前的命令保持有效。",
   "deletes every index of the cluster, as the pattern matches:": "删除集群中匹配该模式的所有索引：",
   "Auth token": "身份验证令牌",
   // Group I: schema changelog

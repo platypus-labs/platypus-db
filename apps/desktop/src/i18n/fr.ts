@@ -2334,6 +2334,9 @@ const fr: Record<string, string> = {
   "Password or API key": "Mot de passe ou clé d'API",
   "{n} request runs on the server: a request the server refuses stops the rest, and the ones before it stay.": "{n} requête s'exécute sur le serveur : une requête refusée par le serveur arrête les suivantes, et celles d'avant restent.",
   "{n} requests run one after the other: a request the server refuses stops the rest, and the ones before it stay.": "{n} requêtes s'exécutent l'une après l'autre : une requête refusée par le serveur arrête les suivantes, et celles d'avant restent.",
+  "Manual commit needs a replica set or a sharded cluster: this MongoDB server is standalone": "Le commit manuel demande un replica set ou un cluster shardé : ce serveur MongoDB est autonome (standalone)",
+  "{n} command runs on the server and changes one document.": "{n} commande s'exécute sur le serveur et modifie un document.",
+  "{n} commands run one after the other, each changing one document. On a replica set all are saved or none; on a standalone server a command the server refuses stops the rest, and the ones before it stay.": "{n} commandes s'exécutent l'une après l'autre, chacune modifie un document. Sur un replica set, toutes sont enregistrées ou aucune ; sur un serveur standalone, une commande refusée par le serveur arrête les suivantes, et celles d'avant restent.",
   "deletes every index of the cluster, as the pattern matches:": "supprime tous les index du cluster qui correspondent au motif :",
   "Auth token": "Jeton d'authentification",
   // Group I: schema changelog

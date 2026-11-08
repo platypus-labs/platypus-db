@@ -131,7 +131,8 @@ export function GenerateDataDialog({ connection, database, schema, currentSchema
     // The type picks the BSON type of a MongoDB field's numbers.
     const specs = filled.map((c) => ({ name: c.column.name, generator: c.generator, unique: c.unique, data_type: c.column.data_type }));
     const refresh = () => requestNavigatorRefresh({ connectionId: connection.id, database, schema });
-    // MongoDB has no transactions: the documents of a failed or stopped run stay.
+    // Generate data does not use the connection's transaction (MongoDB has them only on a
+    // replica set): the documents of a failed or stopped run stay.
     await start((onEvent) => api.fakeRows(sid, currentSchema ? null : schema, table, rows, specs, onEvent), refresh, mongo ? refresh : undefined);
   }
 

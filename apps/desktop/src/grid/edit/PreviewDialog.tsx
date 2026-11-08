@@ -7,9 +7,10 @@ interface Props {
   /** Saving changes a production database: said in the dialog. */
   production?: boolean;
   /** Commands rather than SQL statements: Redis's, sent as one MULTI/EXEC, Elasticsearch's
-   *  requests, sent one after the other, or Cassandra's statements, which run one after the
-   *  other too (there is no transaction to undo them with). */
-  commands?: "multi" | "requests" | "statements";
+   *  requests, sent one after the other, Cassandra's statements, which run one after the
+   *  other too (there is no transaction to undo them with), or MongoDB's mongosh commands,
+   *  each changing one document (saved all or none on a replica set). */
+  commands?: "multi" | "requests" | "statements" | "mongosh";
   onSave: () => void;
   onClose: () => void;
 }
@@ -36,6 +37,12 @@ export function PreviewDialog({ statements, busy, production = false, commands, 
                 statements.length,
                 "{n} statement runs on the server: a statement the server refuses stops the rest, and the ones before it stay.",
                 "{n} statements run one after the other: a statement the server refuses stops the rest, and the ones before it stay.",
+              )
+            : commands === "mongosh"
+            ? plural(
+                statements.length,
+                "{n} command runs on the server and changes one document.",
+                "{n} commands run one after the other, each changing one document. On a replica set all are saved or none; on a standalone server a command the server refuses stops the rest, and the ones before it stay.",
               )
             : commands
             ? plural(

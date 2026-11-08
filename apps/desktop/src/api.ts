@@ -1764,11 +1764,12 @@ export interface TableChanges {
 /** An item of a query's select list; see `commands/sql.rs`. */
 export type SourceItem = { kind: "all" } | { kind: "column"; name: string } | { kind: "other" };
 
-/** The one table a query reads; `schema` is `null` when left to the session. */
+/** The one table a query reads; `schema` is `null` when left to the session. `items` is `null`
+ *  when the result's columns are the table's, matched by name (a MongoDB projection). */
 export interface QuerySource {
   schema: string | null;
   name: string;
-  items: SourceItem[];
+  items: SourceItem[] | null;
 }
 
 /** A table a foreign key points to: its key column and the column describing a row. */
