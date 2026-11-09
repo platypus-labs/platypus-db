@@ -170,24 +170,44 @@ async function goTo(page, row, col) {
   for (let i = 0; i < col; i++) await page.key("ArrowRight", "ArrowRight", 39);
 }
 
-/** Types `value` into the cell at `row`, `col` of the grid and confirms it. */
-export async function editCell(page, row, col, value) {
+/** Opens the editor of the cell at `row`, `col` (F2), trying again if the keys were lost. */
+async function openCellEditor(page, row, col) {
   // Keys sent while the grid is still redrawing (a row just added) can be lost: try again.
   for (let attempt = 1; ; attempt++) {
     await goTo(page, row, col);
     await page.key("F2", "F2", 113);
     try {
       await page.waitFor(`document.querySelector('.cell-editor') !== null`, 3000);
-      break;
+      return;
     } catch (e) {
       if (attempt === 3) throw e;
       console.warn(`editCell: F2 opened no editor at row ${row}, col ${col} (attempt ${attempt})`);
     }
   }
+}
+
+/** The editor of a cell, closed again without a change: its tag and, for a select, its option values. */
+export async function cellEditorKind(page, row, col) {
+  await openCellEditor(page, row, col);
+  const kind = await page.eval(`(() => {
+    const el = document.querySelector('.cell-editor');
+    return { tag: el.tagName, options: el.tagName === 'SELECT' ? [...el.options].map(o => o.value) : [] };
+  })()`);
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`document.querySelector('.cell-editor') === null`);
+  return kind;
+}
+
+/** Types `value` into the cell at `row`, `col` of the grid and confirms it. */
+export async function editCell(page, row, col, value) {
+  await openCellEditor(page, row, col);
   // A boolean column edits through a select: pick the option, which applies it.
   const picked = await page.eval(`(() => {
     const el = document.querySelector('.cell-editor');
     if (el.tagName !== 'SELECT') return false;
+    if (![...el.options].some(o => o.value === ${JSON.stringify(value)})) {
+      throw new Error('editCell: ' + ${JSON.stringify(String(value))} + ' is not an option of the select: ' + [...el.options].map(o => o.value).join(', '));
+    }
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, ${JSON.stringify(value)});
     el.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
