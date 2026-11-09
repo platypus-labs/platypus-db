@@ -472,9 +472,12 @@ fn same_target(form: &SavedConnection, saved: &SavedConnection) -> bool {
             .map(|hop| (hop.host.trim().to_owned(), hop.port))
             .collect()
     };
-    // Only a name on these servers; elsewhere it may be a descriptor or a client's alias.
-    let names_only = matches!(form.driver, DriverKind::Postgres | DriverKind::MySql)
-        && !form.host.trim().is_empty();
+    // Only a name on these servers (for Elasticsearch an index pattern); elsewhere it may be a
+    // descriptor or a client's alias.
+    let names_only = matches!(
+        form.driver,
+        DriverKind::Postgres | DriverKind::MySql | DriverKind::Elasticsearch
+    ) && !form.host.trim().is_empty();
     let address = |c: &SavedConnection| -> Vec<(String, String)> {
         c.options
             .iter()
@@ -913,6 +916,13 @@ mod tests {
         assert!(same_target(&form, &saved));
         form.database = "another of the same server".to_owned();
         assert!(same_target(&form, &saved), "a database is only a name here");
+
+        // An Elasticsearch index pattern names indices, not a server.
+        let mut search = saved.clone();
+        search.driver = DriverKind::Elasticsearch;
+        let mut other_pattern = search.clone();
+        other_pattern.database = "logs-*".to_owned();
+        assert!(same_target(&other_pattern, &search));
 
         // Elsewhere a database can say where the server is.
         let mut oracle = saved.clone();
