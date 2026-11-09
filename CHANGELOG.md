@@ -14,6 +14,14 @@ All notable changes to PlatypusDB are listed here. The format follows
   of the grid's save, and Save writes them as the grid does (all or nothing on a replica set). Views are
   refused.
 
+### Fixed
+
+- **Editor**: Explain plan and Explain analyze are no longer offered on databases whose driver has no
+  query plans (ADBC, ODBC and Db2 among them); asked for before the session says so, they explain why
+  instead of opening a tab that fails.
+- **Elasticsearch**: testing an edited connection with the password field left empty uses the saved
+  password even when only the index pattern changed, as saving it already did.
+
 ## [0.6.0] - 2026-11-08
 
 ### Changed
