@@ -181,6 +181,7 @@ export async function editCell(page, row, col, value) {
       break;
     } catch (e) {
       if (attempt === 3) throw e;
+      console.warn(`editCell: F2 opened no editor at row ${row}, col ${col} (attempt ${attempt})`);
     }
   }
   // A boolean column edits through a select: pick the option, which applies it.
