@@ -274,6 +274,9 @@ async function tampered(page, dir) {
     [{ ...base, deletes: "nope" }, "not a list of rows to change"],
   ];
   for (const [i, [edits, why]] of attacks.entries()) {
+    // The previous attack's toast says the same: dismissed, or the wait below would not wait.
+    await page.eval(`document.querySelectorAll('.toaster .toast').forEach(t => t.click())`);
+    await page.waitFor(`document.querySelector('.toaster .toast') === null`);
     tamper(dir, edits, `Intruder ${i}`);
     // The app took it, refused it with an error that says why, and opened no tab.
     await taken(page, dir);
