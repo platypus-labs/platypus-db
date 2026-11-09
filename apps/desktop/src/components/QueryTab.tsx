@@ -1243,6 +1243,12 @@ export function QueryTab({
       }
       if (!(await confirmed([p]))) return;
     }
+    const session = await currentSession();
+    if (session !== null && workbench().capabilities(session)?.explain === false) {
+      setNoExplain(true);
+      onError(t("{name} has no Explain.", { name: connection.name }));
+      return;
+    }
     workbench().openTab("explain", connection.id, { database: tab.database, sql, analyze });
   }
 

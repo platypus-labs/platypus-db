@@ -205,6 +205,7 @@ const zh: Record<string, string> = {
   "LIMIT of Generate SELECT": "生成 SELECT 的 LIMIT",
   "Visual query builder": "可视化查询构建器",
   "Explain plan": "执行计划",
+  "{name} has no Explain.": "{name} 不支持 Explain。",
   "Explain analyze (runs the statement)": "分析执行计划（会运行语句）",
   "Create table…": "创建表…",
   "Edit table…": "编辑表…",
