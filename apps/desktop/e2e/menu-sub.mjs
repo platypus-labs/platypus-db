@@ -10,7 +10,8 @@ export async function revealItem(page, item) {
   if (await page.eval(listed(item))) return true;
   const count = await page.eval(`${buttons}.filter(b => b.hasAttribute('aria-haspopup')).length`);
   for (let i = 0; i < count; i++) {
-    await page.eval(`${buttons}.filter(b => b.hasAttribute('aria-haspopup'))[${i}].click()`);
+    // The menu closed (the window lost focus): nothing to reveal.
+    if (!(await page.eval(`(() => { const b = ${buttons}.filter(b => b.hasAttribute('aria-haspopup'))[${i}]; b?.click(); return !!b; })()`))) return false;
     // The submenu renders on the next frame; give it a moment before reading it.
     for (let tries = 0; tries < 10; tries++) {
       if (await page.eval(listed(item))) return true;
