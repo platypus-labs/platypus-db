@@ -99,7 +99,7 @@ export default async function (page) {
   assert.match(await page.eval(editorText), /\.sort\(\{ _id: 1 \}\)$/);
 
   // The editor runs a mongosh statement.
-  assert.equal(await run(page, "db.orders.countDocuments({ status: 'paid' })", "s.includes('row')"), "1 row");
+  assert.equal(await run(page, "db.orders.countDocuments({ status: 'paid' })", "s === '1 row'"), "1 row");
   await countIs(page, 5000);
 
   await generateData(page);
@@ -152,7 +152,7 @@ async function generateData(page) {
   await page.eval(`${button("Close")}.click()`);
 
   // The new documents follow the largest _id, with an array and a document.
-  await run(page, "db.fake_e2e.countDocuments({ _id: { $gt: 1, $lte: 21 }, tags: { $type: 'array' }, address: { $type: 'object' } })", "s.includes('row')");
+  await run(page, "db.fake_e2e.countDocuments({ _id: { $gt: 1, $lte: 21 }, tags: { $type: 'array' }, address: { $type: 'object' } })", "s === '1 row'");
   await countIs(page, 20);
   await run(page, "db.fake_e2e.drop()");
 }

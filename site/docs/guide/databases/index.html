@@ -168,7 +168,7 @@
 </table></div>
 <p>Not tested at all: Azure SQL, Supabase, Neon, AlloyDB, Turso&#39;s cloud, Snowflake, BigQuery, Databricks and IBM Db2.</p>
 <h2 id="agents">Agents</h2>
-<p><a href="../../agents.html">Agents and the CLI</a> works on every database above. The differences are on each page: how a read-only session is made (the server refuses writes on PostgreSQL, CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB and ClickHouse; everywhere else the statement check alone), and what is refused (<code>explain</code> on MongoDB, Redis, Elasticsearch and Cassandra; <code>get_er_diagram</code> on MongoDB, Redis and Elasticsearch; <code>propose_edits</code> wherever the grid does not edit rows by key: MongoDB, Redis, Elasticsearch, Cassandra, ClickHouse and the ADBC databases). <code>server_activity</code> and <code>top_queries</code> work on PostgreSQL, MySQL, MariaDB and SQL Server.</p>
+<p><a href="../../agents.html">Agents and the CLI</a> works on every database above. The differences are on each page: how a read-only session is made (the server refuses writes on PostgreSQL, CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB and ClickHouse; everywhere else the statement check alone), and what is refused (<code>explain</code> on MongoDB, Redis, Elasticsearch and Cassandra; <code>get_er_diagram</code> on MongoDB, Redis and Elasticsearch; <code>propose_edits</code> wherever the grid does not edit rows by key: Redis, Elasticsearch, Cassandra, ClickHouse and the ADBC databases; on MongoDB it names documents by <code>_id</code>). <code>server_activity</code> and <code>top_queries</code> work on PostgreSQL, MySQL, MariaDB and SQL Server.</p>
   </article>
 
   <aside class="toc-r">

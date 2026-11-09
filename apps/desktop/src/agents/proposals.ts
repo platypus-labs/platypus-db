@@ -4,7 +4,7 @@
  * user to review. SQL opens in the editor, to run by hand; rows to change open in the table's
  * data viewer as pending edits, to save or discard. Nothing runs or is saved unasked.
  */
-import { api, type AgentProposal, isCassandra, isMongo, isRedis, isSearch, type SavedConnection, toCommandError } from "../api";
+import { api, type AgentProposal, isCassandra, isRedis, isSearch, type SavedConnection, toCommandError } from "../api";
 import { workbench } from "../workbench";
 import { plural, t } from "../i18n";
 import { ask } from "../ui/ask";
@@ -34,12 +34,14 @@ function noConnectionText(agent: string, edits: string, name: string): string {
 const proposalTitle = (p: AgentProposal) => p.title ?? t("Proposed by {agent}", { agent: p.agent });
 
 /** Rows to change open in the table's data viewer; the viewer's statement is written by the
- *  app's backend from the table's catalog after it checked the proposal, never from its text. */
+ *  app's backend from the table's catalog after it checked the proposal, never from its text.
+ *  On MongoDB it is the collection's `find` of the proposed `_id`s, which come back as the grid
+ *  shows them, so that the editor finds the documents by their text. */
 async function openEdits(p: AgentProposal, edits: string, connection: SavedConnection) {
   const wb = workbench();
   const refused = (message: string) => wb.showError(t("{agent} proposed changes that could not be opened: {message}", { agent: p.agent, message }));
   const driver = connection.driver;
-  if (isMongo(driver) || isRedis(driver) || isSearch(driver) || isCassandra(driver)) {
+  if (isRedis(driver) || isSearch(driver) || isCassandra(driver)) {
     return refused(t("the rows of {name} are not edited by key", { name: connection.name }));
   }
   try {

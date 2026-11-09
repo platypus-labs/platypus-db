@@ -47,6 +47,8 @@ export async function connect(port, timeoutMs = 30_000, pick = () => true) {
     });
   const page = new Page(send, () => ws.close());
   page.targetId = target.id;
+  // The page keeps focus whatever the OS window does: the app closes its context menus on a window blur.
+  await page.send("Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
   return page;
 }
 

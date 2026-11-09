@@ -115,6 +115,7 @@ page: how a read-only session is made (the server refuses writes on PostgreSQL, 
 YugabyteDB, MySQL, MariaDB, SQLite, DuckDB and ClickHouse; everywhere else the statement check
 alone), and what is refused (`explain` on MongoDB, Redis, Elasticsearch and Cassandra;
 `get_er_diagram` on MongoDB, Redis and Elasticsearch; `propose_edits` wherever the grid does not
-edit rows by key: MongoDB, Redis, Elasticsearch, Cassandra, ClickHouse and the ADBC databases).
+edit rows by key: Redis, Elasticsearch, Cassandra, ClickHouse and the ADBC databases; on MongoDB
+it names documents by `_id`).
 `server_activity` and `top_queries` work on PostgreSQL, MySQL,
 MariaDB and SQL Server.

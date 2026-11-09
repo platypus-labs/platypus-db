@@ -1243,8 +1243,27 @@ export function QueryTab({
       }
       if (!(await confirmed([p]))) return;
     }
+    const session = await currentSession();
+    if (session !== null && workbench().capabilities(session)?.explain === false) {
+      setNoExplain(true);
+      onError(t("{name} has no Explain.", { name: connection.name }));
+      return;
+    }
     workbench().openTab("explain", connection.id, { database: tab.database, sql, analyze });
   }
+
+  // Explain is offered until the open session says its driver has none (`capabilities.explain`).
+  const [noExplain, setNoExplain] = useState(false);
+  useEffect(() => {
+    if (isNoSql(connection.driver) && !isMongo(connection.driver)) return;
+    let live = true;
+    void Promise.resolve(currentSession()).then((id) => {
+      if (live && id !== null) setNoExplain(workbench().capabilities(id)?.explain === false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [connection.driver, running]);
 
   const host: EditorHost = {
     openObject: (schema, name) => void openObject(schema, name),
@@ -1260,7 +1279,7 @@ export function QueryTab({
             const script = from === to ? text : text.slice(from, to);
             workbench().openDialog((close) => <MultiRunDialog script={script} origin={connection} onClose={close} />);
           },
-    explain: isNoSql(connection.driver) && !isMongo(connection.driver) ? undefined : (analyze) => void explain(analyze),
+    explain: (isNoSql(connection.driver) && !isMongo(connection.driver)) || noExplain ? undefined : (analyze) => void explain(analyze),
     openSql: (sql) => workbench().openTab("query", connection.id, { sql, database: tab.database }),
   };
 

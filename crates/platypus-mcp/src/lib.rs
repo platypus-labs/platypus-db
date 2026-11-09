@@ -72,7 +72,7 @@ pub use link::{
 pub use output::{Format, QueryResult};
 pub use plan::PlanResult;
 pub use profile::Profile;
-pub use propose_edits::{ProposeEditsArgs, UpdateArg};
+pub use propose_edits::{ProposeEditsArgs, UpdateArg, mongo_viewer};
 pub use query::Limits;
 pub use server_views::{STATEMENT_CHARS, ServerViewArgs};
 pub use table_profile::ProfileArgs;

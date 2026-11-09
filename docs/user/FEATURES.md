@@ -845,8 +845,8 @@ through the MCP server.
 - **Edits proposed by agents**: an agent can propose rows to insert, update or delete in a table
   (`propose_edits`); the table opens in its data viewer with them as pending edits, coloured like
   your own, and you save or discard them. Nothing is written until you save; rows that no longer
-  exist or values a column refuses are listed in the viewer and the rest is applied. See
-  [AGENTS.md](AGENTS.md).
+  exist or values a column refuses are listed in the viewer and the rest is applied. On MongoDB
+  the agent proposes documents of a collection, named by `_id`. See [AGENTS.md](AGENTS.md).
 - **Plugins** (Settings › Plugins): WebAssembly plugins add actions to the editor, the grid
   and the navigator, a driver for a database reached over HTTP, hooks that see statements with
   their values masked and may stop a statement or a save, a settings page of their own,

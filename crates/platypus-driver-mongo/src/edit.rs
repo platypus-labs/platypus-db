@@ -19,6 +19,7 @@
 //! [`META_DB_TYPE`]: platypus_core::META_DB_TYPE
 
 mod number;
+mod proposed;
 
 use mongodb::bson::{Bson, Document, doc, oid::ObjectId};
 
@@ -27,6 +28,7 @@ use crate::literal::{Reader, quote, resolve_extended, to_shell};
 use crate::shell::{self, CollectionOp, Command};
 
 use self::number::{Exact, NUMERIC};
+pub use self::proposed::{ProposedFind, check_proposed_cell, find_proposed};
 
 /// A loaded row changed: its values as loaded, and the new values of some columns (`None`
 /// for NULL).
@@ -206,6 +208,28 @@ fn unwritable(db_type: &str) -> String {
     }
 }
 
+/// A cell of field `name`, of type `db_type`, as a BSON value (NULL as `null`), refusing the
+/// fields the grid cannot write.
+fn cell(name: &str, db_type: &str, text: Option<&str>) -> Result<Bson, String> {
+    let written = field_name(name).and_then(|()| {
+        if !WRITABLE.contains(&db_type) {
+            return Err(unwritable(db_type));
+        }
+        text.map_or(Ok(Bson::Null), |text| value(text, db_type))
+    });
+    written.map_err(|e| format!("column {name}: {e}"))
+}
+
+/// An `_id` of type `db_type`, in that type only: it finds the document.
+fn id_value(db_type: &str, text: &str) -> Result<Bson, String> {
+    let found = if NUMERIC.contains(&db_type) {
+        parse_with(text.trim(), db_type, |t| Exact::of(t)?.as_type(db_type))
+    } else {
+        value(text, db_type)
+    };
+    found.map_err(|e| format!("column _id: {e}"))
+}
+
 /// The statements for a collection's edits.
 struct Builder<'a> {
     edits: &'a Edits<'a>,
@@ -224,15 +248,7 @@ impl Builder<'_> {
 
     /// A cell as a BSON value (NULL as `null`), refusing the columns it cannot be written to.
     fn cell(&self, column: usize, text: Option<&str>) -> Result<Bson, String> {
-        let name = self.name(column);
-        let ty = self.db_type(column);
-        let written = field_name(name).and_then(|()| {
-            if !WRITABLE.contains(&ty) {
-                return Err(unwritable(ty));
-            }
-            text.map_or(Ok(Bson::Null), |text| value(text, ty))
-        });
-        written.map_err(|e| format!("column {name}: {e}"))
+        cell(self.name(column), self.db_type(column), text)
     }
 
     /// The `_id` of a loaded row.
@@ -252,13 +268,7 @@ impl Builder<'_> {
 
     /// An `_id`, in the type of its column only: it finds the document.
     fn id_value(&self, column: usize, text: &str) -> Result<Bson, String> {
-        let ty = self.db_type(column);
-        let found = if NUMERIC.contains(&ty) {
-            parse_with(text.trim(), ty, |t| Exact::of(t)?.as_type(ty))
-        } else {
-            value(text, ty)
-        };
-        found.map_err(|e| format!("column _id: {e}"))
+        id_value(self.db_type(column), text)
     }
 
     /// What `$set` writes to column `column` for a cell: in a pipeline, a number in the type the

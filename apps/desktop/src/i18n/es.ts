@@ -205,6 +205,7 @@ const es: Record<string, string> = {
   "LIMIT of Generate SELECT": "LIMIT de Generar SELECT",
   "Visual query builder": "Constructor visual de consultas",
   "Explain plan": "Plan de ejecución",
+  "{name} has no Explain.": "{name} no tiene Explain.",
   "Explain analyze (runs the statement)": "Explain analyze (ejecuta la sentencia)",
   "Create table…": "Crear una tabla…",
   "Edit table…": "Editar la tabla…",

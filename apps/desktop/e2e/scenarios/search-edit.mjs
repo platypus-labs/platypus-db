@@ -15,6 +15,7 @@ import {
   discard,
   drop,
   editBar,
+  cellEditorKind,
   editCell,
   expandCluster,
   insertRow,
@@ -189,9 +190,14 @@ export default async function (page) {
   await wait(page, /invalid integer/i);
   await discard(page);
   g = await layout(page);
-  await editCell(page, g.row("a"), g.col("ok"), "maybe");
-  assert.equal(await preview(page), null);
-  await discard(page);
+  // A boolean cannot take free text: its editor is a select of the boolean values and null only.
+  const okEditor = await cellEditorKind(page, g.row("a"), g.col("ok"));
+  assert.equal(okEditor.tag, "SELECT");
+  assert.deepEqual(okEditor.options.filter((v) => !v.startsWith("\0")).sort(), ["false", "true"]);
+  assert.equal(okEditor.options.filter((v) => v.startsWith("\0")).length, 1, "null is the one other option");
+  await assert.rejects(editCell(page, g.row("a"), g.col("ok"), "maybe"), /not an option/);
+  await page.key("Escape", "Escape", 27);
+  await page.waitFor(`document.querySelector('.cell-editor') === null`);
   g = await layout(page);
   await editCell(page, g.row("a"), g.col("_id"), "renamed");
   assert.equal(await preview(page), null);
