@@ -1512,8 +1512,9 @@ fn proposes_sql_for_the_app_to_open() {
     );
 }
 
-/// A profile as [`profile`], with connections that `propose_edits` refuses: read-only, no data
-/// editing, and the kinds of database whose rows the data viewer does not edit by key.
+/// A profile as [`profile`], with connections that `propose_edits` refuses: read-only (a
+/// MongoDB one too), no data editing, and the kinds of database whose rows the data viewer
+/// does not edit by key.
 fn profile_with_refusals(dir: &Path) {
     profile(dir);
     let mut toml = std::fs::read_to_string(dir.join("connections.toml")).unwrap();
@@ -1539,6 +1540,11 @@ fn profile_with_refusals(dir: &Path) {
             "\n[[connections]]\nid = \"00000000-0000-4000-8000-0000000000c{i}\"\nname = \"{driver}\"\n\
              driver = \"{driver}\"\nhost = \"127.0.0.1\"\nport = 1\n"
         );
+        // MongoDB documents are proposed like rows: refused for a read-only connection, before
+        // it is connected.
+        if *driver == "mongo" {
+            toml += "read_only = true\n";
+        }
     }
     std::fs::write(dir.join("connections.toml"), toml).unwrap();
 }
@@ -1784,7 +1790,7 @@ fn propose_edits_refuses_values_sizes_and_connections() {
     for (name, why) in [
         ("Locked", "read-only"),
         ("NoEditing", "does not allow editing"),
-        ("mongo", "MongoDB"),
+        ("mongo", "read-only"),
         ("redis", "Redis"),
         ("elasticsearch", "Elasticsearch"),
         ("cassandra", "Cassandra"),

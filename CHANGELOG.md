@@ -6,6 +6,14 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Agents**: `propose_edits` works on MongoDB collections. The agent names documents by `_id` (an
+  `ObjectId` as its 24 hexadecimal digits, read by the type of the collection's `_id`); the collection
+  opens in its data viewer with a `find` of those `_id`s and the changes pending, checked by the rules
+  of the grid's save, and Save writes them as the grid does (all or nothing on a replica set). Views are
+  refused.
+
 ## [0.6.0] - 2026-11-08
 
 ### Changed

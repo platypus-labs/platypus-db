@@ -3,9 +3,14 @@
 //! written here, whatever the connection's agent access, as with `propose_sql`.
 //!
 //! What is kept is data only: names and values, checked against the table's keys. The app
-//! checks them again and writes every statement itself (see [`platypus_sql::proposed`]).
+//! checks them again and writes every statement itself (see [`platypus_sql::proposed`], and
+//! [`mongo`] for the documents of a MongoDB collection).
 
-use platypus_core::{Bridge, DriverKind};
+mod mongo;
+
+pub use mongo::mongo_viewer;
+
+use platypus_core::{Bridge, DriverKind, ObjectKind};
 use platypus_sql::Dialect;
 use platypus_sql::proposed::{self, Edits, MAX_BYTES, MAX_ROWS, Row, Update};
 use platypus_store::SavedConnection;
@@ -20,9 +25,9 @@ use crate::error::{AgentError, Result};
 pub struct ProposeEditsArgs {
     /// The connection's name, as `list_connections` shows it.
     pub connection: String,
-    /// The table's schema (a database in MySQL, `main` in SQLite and DuckDB).
+    /// The table's schema (a database in MySQL and MongoDB, `main` in SQLite and DuckDB).
     pub schema: String,
-    /// The table.
+    /// The table (a collection in MongoDB).
     pub table: String,
     /// The data viewer tab's title, e.g. what the changes do.
     pub title: Option<String>,
@@ -30,16 +35,20 @@ pub struct ProposeEditsArgs {
     /// boolean or null; columns left out take their default.
     pub inserts: Option<Vec<Map<String, Value>>>,
     /// Rows to change: `key` names a row by exactly the columns of a primary or unique key
-    /// of the table, `set` gives the new values of other columns (or the same).
+    /// of the table, `set` gives the new values of other columns (or the same). In MongoDB
+    /// the key is `_id` alone, read by the type of the collection's `_id`: an `ObjectId` as
+    /// its 24 hexadecimal digits (`{"_id": "65a1b2c3d4e5f60718293a4b"}`), a number as a number.
     pub updates: Option<Vec<UpdateArg>>,
-    /// Rows to delete: each names a row by exactly the columns of a primary or unique key.
+    /// Rows to delete: each names a row by exactly the columns of a primary or unique key
+    /// (`_id` alone in MongoDB, as for `updates`).
     pub deletes: Option<Vec<Map<String, Value>>>,
 }
 
 /// One row to change.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UpdateArg {
-    /// Column to value, the columns of a primary or unique key; no value is null.
+    /// Column to value, the columns of a primary or unique key (`_id` alone in MongoDB, an
+    /// `ObjectId` as its 24 hexadecimal digits); no value is null.
     pub key: Map<String, Value>,
     /// Column to new value; not empty.
     pub set: Map<String, Value>,
@@ -118,8 +127,7 @@ fn edits_of(args: &ProposeEditsArgs) -> Result<Edits> {
 fn edited_only_by_statements(driver: DriverKind) -> bool {
     matches!(
         driver,
-        DriverKind::Mongo
-            | DriverKind::Redis
+        DriverKind::Redis
             | DriverKind::Elasticsearch
             | DriverKind::Cassandra
             | DriverKind::ClickHouse
@@ -178,8 +186,21 @@ impl Agent {
             .await?;
         // What the app will check again when it opens the proposal, and the statement it
         // will write from it.
-        proposed::viewer(Dialect::from(saved.driver), &edits, &details)
-            .map_err(AgentError::Invalid)?;
+        if saved.driver == DriverKind::Mongo {
+            let kind = self
+                .object_kind(&store, &saved, &args.schema, &args.table)
+                .await?;
+            if kind.is_some_and(|k| k != ObjectKind::Table) {
+                return Err(AgentError::Denied(format!(
+                    "`{}.{}` is a view: only the documents of a collection can be edited",
+                    args.schema, args.table
+                )));
+            }
+            mongo_viewer(&edits, &details).map_err(AgentError::Invalid)?;
+        } else {
+            proposed::viewer(Dialect::from(saved.driver), &edits, &details)
+                .map_err(AgentError::Invalid)?;
+        }
         let title = proposal_title(args.title.as_deref());
         let origin = crate::agent::origin_name(origin);
         let kept = self.with_calls(|calls| {
@@ -218,7 +239,6 @@ mod tests {
     #[test]
     fn databases_without_editing_in_the_viewer_get_no_proposal() {
         for driver in [
-            DriverKind::Mongo,
             DriverKind::Redis,
             DriverKind::Elasticsearch,
             DriverKind::Cassandra,
@@ -231,7 +251,12 @@ mod tests {
         ] {
             assert!(edited_only_by_statements(driver), "{driver:?}");
         }
-        for driver in [DriverKind::Postgres, DriverKind::Sqlite, DriverKind::Odbc] {
+        for driver in [
+            DriverKind::Postgres,
+            DriverKind::Sqlite,
+            DriverKind::Odbc,
+            DriverKind::Mongo,
+        ] {
             assert!(!edited_only_by_statements(driver), "{driver:?}");
         }
     }

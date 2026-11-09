@@ -200,8 +200,14 @@ did is unknown.
 
 `run_query`, `sample_rows` (`find({}).limit(n)`) and the rest work with mongosh statements; a
 statement that is not a plain query is asked about first. Refused on MongoDB: `explain`,
-`get_er_diagram`, `propose_edits` and `query_across_databases`; `estimate_change` answers with a
-note. Sensitive columns are masked by top-level field only: a sensitive field inside a document is
+`get_er_diagram` and `query_across_databases`; `estimate_change` answers with a note.
+
+`propose_edits` proposes documents to insert, update or delete in a collection (not a view): the
+collection opens in its data viewer with a `find` of the proposed `_id`s and the changes pending,
+which you save or discard as your own edits. A document is named by `_id` alone; an `ObjectId`
+`_id` is sent as its 24 hexadecimal digits and read as an `ObjectId` because the collection's
+`_id` is one. Values are checked by the rules of the grid's save (see above), before anything
+opens. Sensitive columns are masked by top-level field only: a sensitive field inside a document is
 not told apart. See [Agents and the CLI](../../AGENTS.md).
 
 ## Known limits

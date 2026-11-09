@@ -566,7 +566,10 @@ async fn mongo_script(
 
 /// Why the documents of `name`, among `objects` of its database, cannot be edited: it is a view
 /// (MongoDB names are case-sensitive). `None` for a collection, or one not created yet.
-fn not_a_collection(objects: &[platypus_core::ObjectMeta], name: &str) -> Option<CommandError> {
+pub(crate) fn not_a_collection(
+    objects: &[platypus_core::ObjectMeta],
+    name: &str,
+) -> Option<CommandError> {
     objects
         .iter()
         .find(|o| o.name == name)

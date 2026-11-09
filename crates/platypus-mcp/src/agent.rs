@@ -780,6 +780,24 @@ impl Agent {
         })
     }
 
+    /// The kind of `schema.table` (a table, a view…), `None` when the schema lists no such
+    /// object.
+    pub(crate) async fn object_kind(
+        &self,
+        store: &ConnectionStore,
+        saved: &SavedConnection,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<ObjectKind>> {
+        let lease = self.lease(store, saved).await?;
+        let objects = timed(lease.conn().objects(schema)).await;
+        Ok(lease
+            .settle(objects)?
+            .into_iter()
+            .find(|o| o.name == table)
+            .map(|o| o.kind))
+    }
+
     /// Columns, keys, foreign keys (both ways), indexes and constraints of a table or view.
     pub async fn describe_table(
         &self,

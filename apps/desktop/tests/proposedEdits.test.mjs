@@ -151,3 +151,33 @@ test("the proposal goes on top of edits already pending, the rows keep their pla
   assert.deepEqual([...second.state.inserts[0]], [[1, value("two")]]);
   assert.deepEqual([...second.state.updates.get(1)], [[1, value("B")]]);
 });
+
+test("MongoDB documents are found by their _id as the grid shows it", () => {
+  // The backend writes each proposed `_id` as the grid shows it: an ObjectId in lower-case hex.
+  const id = "65a1b2c3d4e5f60718293a4b";
+  const mongo = [
+    { name: "_id", rule: columnRule(info("_id", "objectId"), meta("_id", "objectId", { nullable: false, primary_key: true })) },
+    { name: "qty", rule: columnRule(info("qty", "int", { numeric: true }), meta("qty", "int")) },
+    { name: "total", rule: columnRule(info("total", "long", { numeric: true }), meta("total", "long")) },
+  ];
+  const docs = [
+    [id, "1", "10"],
+    ["65a1b2c3d4e5f60718293a4c", "2", "20"],
+  ];
+  const run = (p) => applyProposal(EMPTY, p, mongo, docs.length, (row, col) => docs[row]?.[col]);
+  const out = run(
+    proposal({
+      updates: [{ key: [["_id", id]], set: [["qty", "5"], ["total", "10.0"]] }],
+      deletes: [[["_id", "65a1b2c3d4e5f60718293a4c"]]],
+      inserts: [[["qty", "3"]]],
+    }),
+  );
+  assert.deepEqual(out.skipped, []);
+  // `10.0` is the loaded 10: only qty changes.
+  assert.deepEqual([...out.state.updates.get(0)], [[1, value("5")]]);
+  assert.deepEqual([...out.state.deletes], [1]);
+  assert.equal(out.state.inserts.length, 1);
+  // Text the grid does not show (upper case) finds no document: the backend normalizes it first.
+  const upper = run(proposal({ deletes: [[["_id", id.toUpperCase()]]] }));
+  assert.deepEqual(upper.skipped.map((s) => s.reason), ["no_row"]);
+});

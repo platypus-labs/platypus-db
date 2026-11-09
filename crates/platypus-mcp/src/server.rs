@@ -809,8 +809,10 @@ impl PlatypusServer {
         column to value. updates: {key, set}, key naming a row by exactly the columns of a \
         primary or unique key. deletes: objects naming rows by such a key. A value is a string, \
         number, boolean or null (no arrays or objects); at most 500 rows and 1 MiB in all. The \
-        table needs a primary or unique key; MongoDB, Redis, Elasticsearch and Cassandra, \
-        read-only connections and those that forbid editing data are refused. title names the tab."
+        table needs a primary or unique key. On MongoDB the table is a collection (not a view) \
+        and the key is _id alone, read by the type of the collection's _id: an ObjectId as its \
+        24 hex digits. Redis, Elasticsearch and Cassandra, read-only connections and those that \
+        forbid editing data are refused. title names the tab."
     )]
     async fn propose_edits(
         &self,

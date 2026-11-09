@@ -390,7 +390,8 @@ pub async fn take_agent_proposals(app: AppHandle) -> CommandResult<Vec<AgentProp
 #[derive(Debug, Serialize)]
 pub struct ProposedViewer {
     /// The viewer's statement, written here from the table's catalog (see
-    /// [`platypus_sql::proposed::viewer`]); no text of the proposal is part of it as SQL.
+    /// [`platypus_sql::proposed::viewer`], and [`platypus_mcp::mongo_viewer`] for a MongoDB
+    /// collection); no text of the proposal is part of it as SQL.
     sql: String,
     /// The table, qualified and quoted, as the viewer names it.
     table: String,
@@ -425,16 +426,30 @@ pub async fn proposed_viewer(
     let driver = state.session(session_id)?.config.driver;
     if matches!(
         driver,
-        DriverKind::Mongo | DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
+        DriverKind::Redis | DriverKind::Elasticsearch | DriverKind::Cassandra
     ) {
         return Err(invalid(format!(
             "rows of {} are not edited by key from the data viewer",
             driver.name()
         )));
     }
-    let dialect = state.dialect(session_id)?;
     let conn = state.live(session_id).await?;
     let details = conn.table_details(&edits.schema, &edits.table).await?;
+    if driver == DriverKind::Mongo {
+        // The documents of a view cannot be saved: refused before the viewer opens.
+        let objects = conn.objects(&edits.schema).await?;
+        if let Some(error) = super::data::not_a_collection(&objects, &edits.table) {
+            return Err(error);
+        }
+        // Each `_id` comes back as the grid shows it, which the editor finds the rows by.
+        let (viewer, edits) = platypus_mcp::mongo_viewer(&edits, &details).map_err(invalid)?;
+        return Ok(ProposedViewer {
+            sql: viewer.sql,
+            table: viewer.table,
+            edits,
+        });
+    }
+    let dialect = state.dialect(session_id)?;
     let viewer = proposed::viewer(dialect, &edits, &details).map_err(invalid)?;
     Ok(ProposedViewer {
         sql: viewer.sql,

@@ -854,3 +854,82 @@ async fn the_grids_edits_keep_the_stored_types() {
         edits_keep_the_stored_types(&*conn).await;
     }
 }
+
+/// The data viewer's statement for documents an agent proposes to change (`propose_edits`)
+/// reads exactly the documents the proposal names, by an `ObjectId` or a number `_id` as the
+/// collection stores it, and gives each `_id` back as the grid shows it.
+#[tokio::test]
+async fn proposed_edits_open_the_documents_they_name() {
+    use platypus_sql::proposed::{Edits, Row, Update};
+    let Some(conn) = connect().await else { return };
+    let conn = &*conn;
+    let id = |n: u8| format!("65a1b2c3d4e5f60718293a{n:02x}");
+    run(conn, "db.proposed_oids.drop()").await;
+    run(conn, "db.proposed_ints.drop()").await;
+    run(
+        conn,
+        &format!(
+            "db.proposed_oids.insertMany([{{ _id: ObjectId('{}'), n: 1 }}, \
+             {{ _id: ObjectId('{}'), n: 2 }}, {{ _id: ObjectId('{}'), n: 3 }}])",
+            id(1),
+            id(2),
+            id(3)
+        ),
+    )
+    .await;
+    run(
+        conn,
+        "db.proposed_ints.insertMany([{ _id: 1, n: 1 }, { _id: 2, n: 2 }, { _id: 3, n: 3 }])",
+    )
+    .await;
+    let key = |v: &str| -> Row { vec![("_id".to_owned(), Some(v.to_owned()))] };
+    let set: Row = vec![("n".to_owned(), Some("9".to_owned()))];
+    let edits = |table: &str, updated: &str, deleted: &str| Edits {
+        schema: "platypus".to_owned(),
+        table: table.to_owned(),
+        updates: vec![Update {
+            key: key(updated),
+            set: set.clone(),
+        }],
+        deletes: vec![key(deleted)],
+        ..Edits::default()
+    };
+
+    // ObjectIds in upper case: read as ObjectIds, shown in lower case.
+    let details = conn
+        .table_details("platypus", "proposed_oids")
+        .await
+        .unwrap();
+    let proposal = edits(
+        "proposed_oids",
+        &id(1).to_ascii_uppercase(),
+        &id(3).to_ascii_uppercase(),
+    );
+    let (viewer, shown) = platypus_mcp::mongo_viewer(&proposal, &details).unwrap();
+    assert_eq!(rows(conn, &viewer.sql).await, 2, "{}", viewer.sql);
+    assert_eq!(shown.updates[0].key, key(&id(1)));
+    assert_eq!(shown.deletes[0], key(&id(3)));
+
+    // Numbers as the collection stores them: `02` is the int 2.
+    let details = conn
+        .table_details("platypus", "proposed_ints")
+        .await
+        .unwrap();
+    let (viewer, shown) =
+        platypus_mcp::mongo_viewer(&edits("proposed_ints", "02", "3"), &details).unwrap();
+    assert_eq!(rows(conn, &viewer.sql).await, 2, "{}", viewer.sql);
+    assert_eq!(shown.updates[0].key, key("2"));
+    // Only inserts: the whole collection.
+    let inserts = Edits {
+        schema: "platypus".to_owned(),
+        table: "proposed_ints".to_owned(),
+        inserts: vec![vec![("n".to_owned(), Some("4".to_owned()))]],
+        ..Edits::default()
+    };
+    let (viewer, _) = platypus_mcp::mongo_viewer(&inserts, &details).unwrap();
+    assert_eq!(rows(conn, &viewer.sql).await, 3, "{}", viewer.sql);
+    // An ObjectId's text is not an int `_id`: refused, never read as another document.
+    assert!(platypus_mcp::mongo_viewer(&edits("proposed_ints", &id(1), "3"), &details).is_err());
+    run(conn, "db.proposed_oids.drop()").await;
+    run(conn, "db.proposed_ints.drop()").await;
+}

@@ -426,8 +426,17 @@ most 500 rows and 1 MiB in all. It writes nothing, whatever the agent access (re
 app opens the table's data viewer with the rows as pending edits (new rows green, changed cells
 and deleted rows marked), which you save or discard like your own; a row it cannot find or a
 value the column refuses is said so in the viewer and the rest is applied. A table with no
-primary or unique key, a connection saved as read-only or that forbids editing data, and MongoDB,
-Redis, Elasticsearch, Cassandra, ClickHouse and the databases reached through ADBC are refused.
+primary or unique key, a connection saved as read-only or that forbids editing data, and Redis,
+Elasticsearch, Cassandra, ClickHouse and the databases reached through ADBC are refused.
+
+On MongoDB `schema` is the database and `table` a collection (a view is refused). A document is
+named by `_id` alone, read by the type the collection's `_id` has: an `ObjectId` as its 24
+hexadecimal digits (`{"_id": "65a1b2c3d4e5f60718293a4b"}`, upper or lower case), a number as a
+number. The values are checked as the grid's save checks them: a change of `_id`, a field of
+mixed types or binary data, a field with a `.` or a leading `$` and a value that does not fit the
+field's type are refused. The data viewer opens with
+`db.getSiblingDB("<database>").<collection>.find({ _id: { $in: [ … ] } })`, and Save writes the
+grid's `updateOne`, `insertOne` and `deleteOne`, all or nothing on a replica set.
 
 On read-only connections only statements that change nothing run, inside the database's
 read-only transaction (PostgreSQL, MySQL and MariaDB `READ ONLY`, SQLite `query_only`; DuckDB
