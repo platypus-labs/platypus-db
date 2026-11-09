@@ -143,7 +143,7 @@ mod tests {
     fn only_inserts_read_the_whole_collection() {
         let all = find_proposed("shop", "orders", "objectId", &[]).unwrap();
         assert_eq!(all.statement, r#"db.getSiblingDB("shop").orders.find({})"#);
-        assert!(all.ids.is_empty());
+        assert_eq!(all.ids, Vec::<String>::new());
     }
 
     #[test]
