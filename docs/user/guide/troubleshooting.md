@@ -162,7 +162,7 @@ same package.
 **Can I use PlatypusDB offline?** Yes, with a local database. Downloads (drivers, updates) need the
 network.
 
-**Where do I report a bug?** On the [issue tracker](https://github.com/PaoloCisly/platypus-db/issues),
+**Where do I report a bug?** On the [issue tracker](https://github.com/platypus-db/platypus-db/issues),
 with the diagnostic package if you can.
 
 **Where are the shortcuts?** [SHORTCUTS.md](../SHORTCUTS.md), and Settings › Keyboard shortcuts to

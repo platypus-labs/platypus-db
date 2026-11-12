@@ -5,9 +5,9 @@ PackageLocale: en-US
 Publisher: PlatypusDB
 PublisherUrl: https://github.com/PaoloCisly
 PackageName: PlatypusDB
-PackageUrl: https://github.com/PaoloCisly/platypus-db
+PackageUrl: https://github.com/platypus-db/platypus-db
 License: AGPL-3.0-or-later
-LicenseUrl: https://github.com/PaoloCisly/platypus-db/blob/main/LICENSE
+LicenseUrl: https://github.com/platypus-db/platypus-db/blob/main/LICENSE
 ShortDescription: Fast, lightweight SQL client
 Description: A fast, lightweight desktop SQL client for PostgreSQL, MySQL, MariaDB, SQLite, SQL Server, DuckDB and more, with an MCP server for AI agents.
 Moniker: platypusdb
@@ -19,6 +19,6 @@ Tags:
   - sqlite
   - sql-client
   - mcp
-ReleaseNotesUrl: https://github.com/PaoloCisly/platypus-db/releases/tag/v@VERSION@
+ReleaseNotesUrl: https://github.com/platypus-db/platypus-db/releases/tag/v@VERSION@
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

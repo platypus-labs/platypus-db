@@ -18,7 +18,7 @@ import { closeApp, needsPostgres, psql, psqlTry, restart } from "./qa-jrn.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PLATYPUS_E2E_PORT ?? 9333);
-const REPO = "PaoloCisly/platypus-db";
+const REPO = "platypus-db/platypus-db";
 
 // Fixed ids, so the keychain entries they leave can be found and deleted.
 const PG = "00000000-0000-4000-8000-00000050e001";

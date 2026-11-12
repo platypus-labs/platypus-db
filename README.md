@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PaoloCisly/platypus-db/releases/latest"><img src="https://img.shields.io/github/v/release/PaoloCisly/platypus-db" alt="Latest release" /></a>
-  <a href="https://github.com/PaoloCisly/platypus-db/releases"><img src="https://img.shields.io/github/downloads/PaoloCisly/platypus-db/total" alt="Downloads" /></a>
+  <a href="https://github.com/platypus-db/platypus-db/releases/latest"><img src="https://img.shields.io/github/v/release/platypus-db/platypus-db" alt="Latest release" /></a>
+  <a href="https://github.com/platypus-db/platypus-db/releases"><img src="https://img.shields.io/github/downloads/platypus-db/platypus-db/total" alt="Downloads" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="License: AGPL-3.0-or-later" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platforms: Windows, macOS, Linux" />
 </p>
@@ -43,7 +43,7 @@ window ready in under half a second, and a results grid that scrolls through mil
 ## Install
 
 Download the installer for your system from the
-[releases page](https://github.com/PaoloCisly/platypus-db/releases/latest): `.exe`/`.msi` for
+[releases page](https://github.com/platypus-db/platypus-db/releases/latest): `.exe`/`.msi` for
 Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates itself.
 
 1. Open PlatypusDB and click **New connection**, or paste a connection URL
@@ -121,7 +121,7 @@ What comes next is in [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md); every document
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome: open an
-[issue](https://github.com/PaoloCisly/platypus-db/issues) first for anything larger than a small
+[issue](https://github.com/platypus-db/platypus-db/issues) first for anything larger than a small
 fix. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build, test and submit a change. Everyone
 taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 

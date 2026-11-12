@@ -76,7 +76,7 @@ npm run tauri build
 The build writes `target/release/bundle/nsis/PlatypusDB_X.Y.Z_x64-setup.exe` and
 `bundle/msi/PlatypusDB_X.Y.Z_x64_en-US.msi`, each with a `.sig`. Write `latest.json` with
 the signatures (the contents of the `.sig` files) and the download URLs
-`https://github.com/PaoloCisly/platypus-db/releases/download/vX.Y.Z/<file>`, under the keys
+`https://github.com/platypus-db/platypus-db/releases/download/vX.Y.Z/<file>`, under the keys
 `windows-x86_64` (NSIS), `windows-x86_64-nsis` and `windows-x86_64-msi`, plus `version`,
 `notes` and `pub_date`. Then:
 

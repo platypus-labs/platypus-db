@@ -20,7 +20,7 @@ Percorsi usati (dal codice):
 
 Installazione di Windows: NSIS per l'utente corrente (senza amministratore, `installMode:
 currentUser`) e MSI. Gli aggiornamenti arrivano da
-`github.com/PaoloCisly/platypus-db/releases/latest/download/latest.json` (installazione passiva).
+`github.com/platypus-db/platypus-db/releases/latest/download/latest.json` (installazione passiva).
 
 Lo script [scripts/collaudo-profile.ps1](../../scripts/collaudo-profile.ps1) copia, confronta e
 ripristina le due cartelle (non le password, che restano nella Gestione credenziali). Solo

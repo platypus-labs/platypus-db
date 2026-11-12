@@ -17,7 +17,7 @@ import { parseMarkdown, plainText } from "../apps/desktop/src/help/markdown.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const siteDir = join(root, "site");
-export const REPO = "https://github.com/PaoloCisly/platypus-db";
+export const REPO = "https://github.com/platypus-db/platypus-db";
 /** Where the guide is in the repository; its pages stay at docs/guide/ on the site. */
 const GUIDE = "docs/user/guide/";
 

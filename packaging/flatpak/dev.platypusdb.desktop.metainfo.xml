@@ -17,22 +17,22 @@
     </p>
   </description>
   <launchable type="desktop-id">dev.platypusdb.desktop.desktop</launchable>
-  <url type="homepage">https://github.com/PaoloCisly/platypus-db</url>
-  <url type="bugtracker">https://github.com/PaoloCisly/platypus-db/issues</url>
+  <url type="homepage">https://github.com/platypus-db/platypus-db</url>
+  <url type="bugtracker">https://github.com/platypus-db/platypus-db/issues</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/PaoloCisly/platypus-db/main/docs/screenshots/data-viewer.png</image>
+      <image>https://raw.githubusercontent.com/platypus-db/platypus-db/main/docs/screenshots/data-viewer.png</image>
       <caption>Browsing a table</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/PaoloCisly/platypus-db/main/docs/screenshots/explain.png</image>
+      <image>https://raw.githubusercontent.com/platypus-db/platypus-db/main/docs/screenshots/explain.png</image>
       <caption>A query plan with its heatmap</caption>
     </screenshot>
   </screenshots>
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="@VERSION@" date="@DATE@">
-      <url type="details">https://github.com/PaoloCisly/platypus-db/releases/tag/v@VERSION@</url>
+      <url type="details">https://github.com/platypus-db/platypus-db/releases/tag/v@VERSION@</url>
     </release>
   </releases>
 </component>

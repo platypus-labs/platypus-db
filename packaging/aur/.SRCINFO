@@ -2,7 +2,7 @@ pkgbase = platypusdb-bin
 	pkgdesc = Fast, lightweight SQL client
 	pkgver = @VERSION@
 	pkgrel = 1
-	url = https://github.com/PaoloCisly/platypus-db
+	url = https://github.com/platypus-db/platypus-db
 	arch = x86_64
 	license = AGPL-3.0-or-later
 	depends = webkit2gtk-4.1
@@ -13,7 +13,7 @@ pkgbase = platypusdb-bin
 	conflicts = platypusdb
 	options = !strip
 	options = !debug
-	source = PlatypusDB_@VERSION@_amd64.deb::https://github.com/PaoloCisly/platypus-db/releases/download/v@VERSION@/PlatypusDB_@VERSION@_amd64.deb
+	source = PlatypusDB_@VERSION@_amd64.deb::https://github.com/platypus-db/platypus-db/releases/download/v@VERSION@/PlatypusDB_@VERSION@_amd64.deb
 	sha256sums = @SHA256_LINUX_DEB@
 
 pkgname = platypusdb-bin

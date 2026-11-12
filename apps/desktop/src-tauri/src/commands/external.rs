@@ -57,7 +57,7 @@ mod tests {
     #[test]
     fn only_web_and_mail_addresses_open() {
         assert!(is_openable(
-            "https://github.com/PaoloCisly/platypus-db/issues"
+            "https://github.com/platypus-db/platypus-db/issues"
         ));
         assert!(is_openable("HTTP://example.org/a?b=1&c=2"));
         assert!(is_openable("mailto:someone@example.org"));

@@ -89,7 +89,7 @@ MCP server and a skill that tells the agent how to use the tools (explore first,
 `run_query`, read-only access, `propose_sql` for changes):
 
 ```bash
-claude plugin marketplace add PaoloCisly/platypus-db
+claude plugin marketplace add platypus-db/platypus-db
 claude plugin install platypus-db@platypus-db
 ```
 

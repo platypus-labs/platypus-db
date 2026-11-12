@@ -24,7 +24,7 @@ test("values hashes the installers that are there", () => {
   assert.equal(found.SHA256_WINDOWS_NSIS, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   assert.equal(
     found.URL_WINDOWS_NSIS,
-    "https://github.com/PaoloCisly/platypus-db/releases/download/v1.2.3/PlatypusDB_1.2.3_x64-setup.exe",
+    "https://github.com/platypus-db/platypus-db/releases/download/v1.2.3/PlatypusDB_1.2.3_x64-setup.exe",
   );
   assert.equal(found.SHA256_LINUX_DEB, undefined);
 });
