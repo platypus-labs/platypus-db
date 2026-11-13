@@ -17,6 +17,12 @@ All notable changes to PlatypusDB are listed here. The format follows
   of the grid's save, and Save writes them as the grid does (all or nothing on a replica set). Views are
   refused.
 
+### Security
+
+- **SSH**: russh, the SSH library behind tunnels, is updated to 0.65, which fixes unbounded memory
+  use on crafted server packets and two flaws of its agent server (RUSTSEC advisories of russh before
+  0.65).
+
 ### Fixed
 
 - **Editor**: Explain plan and Explain analyze are no longer offered on databases whose driver has no
