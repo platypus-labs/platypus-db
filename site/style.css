@@ -93,6 +93,7 @@ body {
   font: 400 16px/1.6 var(--font-ui);
   font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
 /* A warm light from the top of the page. */
@@ -2024,4 +2025,13 @@ body::after {
 /* The platypus faces the page, as on the home page. */
 .mascot img {
   scale: -1 1;
+}
+
+/* The bars of pills (Features' areas) scroll sideways without showing a scrollbar. */
+.pill-nav div {
+  scrollbar-width: none;
+}
+
+.pill-nav div::-webkit-scrollbar {
+  display: none;
 }

@@ -853,6 +853,14 @@
   margin-top: 140px;
 }
 
+/* The tour's parts that stick out (the platypus past the window's edge, the phone it throws)
+   are cut at the screen's edge instead of widening the page. */
+.show,
+.h-hero,
+.over {
+  overflow-x: clip;
+}
+
 /* ---- Without the script: the window, then every chapter, one under the other ---- */
 html:not(.js) .show {
   height: auto;
@@ -930,12 +938,20 @@ html:not(.js) .chap {
     --plat: 230px;
   }
 
-  .h-hero { padding-top: 96px; }
+  .h-hero { padding-top: 128px; }
   .lede { font-size: 16px; }
   .show { margin-top: 0; }
-  /* No room beside the head: the bubble sits on the window's title bar. */
-  .say { left: 10px; right: auto; top: 44px; max-width: calc(100% - 20px); font-size: 13px; border-radius: 14px; }
-  .say::after { display: none; }
+
+  /* The platypus, the window and the chapter as one block in the middle of the screen,
+     the chapter's text centred under the window. */
+  .home {
+    --win-top: max(calc(76px + var(--plat) * 0.58), calc((100svh - 500px + var(--plat) * 0.58) / 2));
+  }
+
+  .chapters { text-align: center; }
+
+  /* No room beside the head for the platypus's facts: none on phones. */
+  .say { display: none; }
 
   .tile,
   .tile.w6 { grid-column: span 12; min-height: 0; }
