@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { revealItem } from "../menu-sub.mjs";
 
 const SOURCE = "Shop db";
 const TARGET = "Copy db";
@@ -48,6 +49,7 @@ async function menu(page, label, item, modal) {
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  assert.ok(await revealItem(page, item), `no menu item ${item}`);
   await page.eval(
     `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(item)})).click()`,
   );
