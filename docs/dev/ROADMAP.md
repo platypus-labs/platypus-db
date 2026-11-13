@@ -1193,8 +1193,9 @@ aggiornamento (`update-banner*`, con un `latest.json` servito in locale tramite
 `PLATYPUS_UPDATE_URL`, accettato solo su HTTP verso 127.0.0.1, ::1 o localhost); Redis e
 PgBouncer spostati su 46379 e 46432, fuori dai blocchi di porte che Windows riserva;
 `scripts/bench-windows.ps1` per avvio e memoria dei client su Windows (profilo temporaneo,
-finestra stabile, memoria privata). Il benchmark con DBeaver CE 26.2.3 resta da misurare: serve
-la macchina ferma e lo schermo non toccato per una decina di minuti.
+finestra stabile, memoria privata). Il 13 novembre 2026 il benchmark con DBeaver CE 26.2.3: la finestra conta
+come stabile quando cambia al più lo 0,5% di una griglia 80×50, e DBeaver parte da un profilo
+già configurato (`-DbeaverProfile`), perché su uno nuovo mostra solo la procedura di primo avvio.
 
 | Attività | Prio |
 |---|---|
@@ -1205,7 +1206,7 @@ la macchina ferma e lo schermo non toccato per una decina di minuti.
 | ⛔ bloccato (serve acquistare o ottenere il certificato) — Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
 | ⏭ serve un Mac — Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
-| ⛔ bloccato (serve il PC libero per una ventina di minuti, con i container di Docker fermi: le misure fatte mentre lo si usa non sono valide) — Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` | P2 |
+| ✅ Benchmark affiancato con DBeaver, aggiornando `BENCHMARKS.md` (2026-11-13, Windows, cinque avvii ciascuno: PlatypusDB 0.6.1 0,72 s e 170 MB, DBeaver CE 26.2.3 5,2 s e 488 MB su un profilo già configurato; numeri nel README e nel sito) | P2 |
 | ✅ Benchmark in CI con soglie (avvio, memoria, decode) per bloccare le regressioni | P2 |
 | ✅ Crash report opt-in e log su file con rotazione | P2 |
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
@@ -1220,7 +1221,7 @@ la macchina ferma e lo schermo non toccato per una decina di minuti.
 | ✅ 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire (repository pubblico dal 2026-11-13: descrizione, topic e Discussions con le categorie e immagine di anteprima fatti, segnalazione privata delle vulnerabilità, avvisi Dependabot e secret scanning attivi, sito su GitHub Pages come *Website*; le cinque issue `good first issue` aperte il 2026-11-13 sono state tolte su richiesta; testi in [RELEASING.md](RELEASING.md), "Repository showcase") | P2 |
 | ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
 | ✅ 🆕 Le stesse GIF nel sito (`site/`) | P2 |
-| 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |
+| ✅ 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati (avvio e memoria misurati per DBeaver su Windows; per gli altri solo le dimensioni) | P2 |
 | 🆕 Lancio quando il repository diventa pubblico: Show HN, r/programming, r/rust, r/PostgreSQL, Product Hunt | P3 |
 
 ---

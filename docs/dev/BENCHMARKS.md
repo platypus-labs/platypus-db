@@ -44,6 +44,40 @@ the Parquet file is 45 MB, the CSV 374 MB.
 The GPU runs inside the WebView2 browser process (`--in-process-gpu`): one process fewer and
 about 55 MB less at rest, with the same scrolling performance as a separate GPU process.
 
+## Windows, 13 November 2026: PlatypusDB 0.6.1 and DBeaver
+
+Both clients measured back to back on the same machine (Ryzen 7 9700X, 32 GB, Windows 11 Pro),
+Docker stopped, five runs each with `scripts/bench-windows.ps1`, no connection open. PlatypusDB
+is the installed 0.6.1 release; DBeaver is Community Edition 26.2.3, the Windows zip, with the
+Java 25 runtime it bundles and its default `-Xmx1024m`.
+
+| | PlatypusDB 0.6.1 | DBeaver CE 26.2.3 | |
+|---|---|---|---|
+| Start, warm (median of runs 2-5) | 0.72 s (611-777 ms) | 5.2 s (5,151-5,475 ms) | 7.2× faster |
+| Start, first run | 0.90 s | 5.2 s | |
+| Private memory at rest (median of 5) | 170 MB (165.6-171.7) | 488 MB (485.2-498.1) | 2.9× less |
+| Processes | 6 (app + WebView2) | 7 | |
+
+How the script counts:
+
+- **Start** runs from the launch to the first frame after which the main window (the largest
+  visible one, at least 640×400) stays the same for 1 s, captured every 100 ms. "The same" allows
+  0.5 % of an 80×50 grid of the window's average brightness to change, so a blinking cursor or a
+  spinner in a corner does not keep the count running; a window that never settles stops at 60 s.
+  This replaces the exact-pixel comparison of the 0.6.0 run below, which some clients never
+  satisfied. On PlatypusDB the two methods give close numbers (an earlier exact-pixel run of 0.6.1:
+  742.5 ms, 168.7 MB).
+- **Memory** is the private bytes of the whole process tree, 5 s after the window settles. It is
+  the moment of the start, not a steady state: a JVM's heap tends to grow with use, so DBeaver's
+  number is a lower bound.
+- Each client gets a profile of its own, and the script waits for the CPU to fall under 15 %
+  before each run.
+- **DBeaver's profile is prepared once**: on a fresh profile it opens only its first-run setup
+  window and never the main one, so the setup was completed in a profile kept apart (workspace,
+  configuration, `user.home` and `APPDATA`, passed with `-DbeaverProfile`) and every run starts
+  from it, as a user who has already configured it would. Started with `-nosplash`; the splash
+  screen is not counted as the window.
+
 ## Windows, 13 November 2026 (0.6.0)
 
 Release build of PlatypusDB 0.6.0, same machine (Ryzen 7 9700X, 32 GB, Windows 11 Pro). These
@@ -204,8 +238,10 @@ expanding the connection took 0.2 s instead of 3.7 s and selecting a row 0.07 s 
 ## Side by side
 
 Sizes of the Linux downloads, measured on 29 October 2026 from the official release files.
-The start and the memory of the other clients have not been measured yet: running them was
-not possible in the test container, so they are left blank rather than guessed.
+The start and the memory in this table are Linux ones and only PlatypusDB's were measured: running
+the others was not possible in the test container, so they are left blank rather than guessed.
+DBeaver's start and memory on Windows are in "Windows, 13 November 2026: PlatypusDB 0.6.1 and
+DBeaver" above.
 
 | | PlatypusDB 0.2.0 | DBeaver CE 26.2.3 | DataGrip 2026.2.6 | TablePlus 2.2.0 | Beekeeper Studio 6.2.0 |
 |---|---|---|---|---|---|
@@ -221,10 +257,9 @@ DataGrip's size is the one JetBrains' release service gives for the Linux archiv
 `Installed-Size` of its Debian package (`deb.tableplus.com`, Ubuntu 24 repository). Both on
 29 October 2026.
 
-PlatypusDB's numbers are the Linux ones above (software rendering, no GPU); on Windows it
-starts in under 0.5 s and keeps about 130 MB. The plan's reference values for DBeaver (5–15 s
-start, 500 MB–1 GB at rest) come from its typical footprint as a JVM application and are
-indicative only, until it is measured with `scripts/bench.py`'s method:
+PlatypusDB's numbers are the Linux ones above (software rendering, no GPU); on Windows 0.6.1
+starts in 0.72 s and keeps 170 MB, against DBeaver's 5.2 s and 488 MB on the same machine. On
+Linux the other clients can be measured with `scripts/bench.py`'s method:
 `python3 scripts/bench.py other <name> <command>` starts a client five times, with a profile
 in a temporary HOME, until the screen settles (watched for up to 60 s), and reads its private
 memory at rest, without a connection. On 29 October 2026 the cloud container could not
