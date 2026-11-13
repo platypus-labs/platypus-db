@@ -62,17 +62,31 @@
   blocks.forEach(function (b) { watcher.observe(b); });
 })();
 
-// The download button names the visitor's system.
+// The download button names the visitor's system, with its logo. On Windows it downloads the
+// installer (data-windows, written by scripts/site-release.mjs); macOS and Linux have several
+// files, so it opens their list on the download page.
 (function () {
   var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
   var os = /win/i.test(p) ? "Windows" : /mac/i.test(p) ? "macOS" : /linux/i.test(p) ? "Linux" : "";
+  if (!os) return;
+  var logos = {
+    Windows: "M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 13h7.5v7L3 19zM12 13h9v8l-9-1.3z",
+    macOS: "M16.5 3c0 1.5-1.2 3-2.8 3 0-1.6 1.3-3 2.8-3zM19 16.5c-.8 1.9-2 3.9-3.6 3.9-1.4 0-1.8-.8-3.4-.8s-2.1.8-3.4.8C6.9 20.4 4 16.3 4 12.4 4 9 6.2 7.3 8.3 7.3c1.4 0 2.4.9 3.6.9 1.1 0 2.4-1 4-1 .6 0 2.6.1 3.8 2-3.3 1.8-2.7 6.4-.7 7.3z",
+    Linux: "M12 3c-2.2 0-3.5 1.8-3.5 4.5 0 2-1.5 3.5-2.5 5.5S5 17 7 18.5 10 21 12 21s3-1 5-2.5 1-3.5 0-5.5-2.5-3.5-2.5-5.5C14.5 4.8 14.2 3 12 3z"
+  };
+  var group = document.querySelector('.dl-groups [data-os="' + os + '"]');
   var button = document.getElementById("download-os");
-  if (os && button) button.textContent = "Download for " + os;
-  // On the download page, the card of that system comes first and is marked.
-  var card = os && document.querySelector('.os-cards [data-os="' + os + '"]');
-  if (card) {
-    card.classList.add("yours");
-    card.parentNode.insertBefore(card, card.parentNode.firstChild);
+  if (button) {
+    button.innerHTML = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="' + logos[os] + '"/></svg>';
+    button.appendChild(document.createTextNode("Download for " + os));
+    var windows = button.getAttribute("data-windows");
+    if (os === "Windows" && windows) button.href = windows;
+    else button.href = (group ? "" : "download.html") + "#" + os.toLowerCase();
+  }
+  // On the download page, the files of that system come first and are marked.
+  if (group) {
+    group.classList.add("yours");
+    group.parentNode.insertBefore(group, group.parentNode.firstChild);
   }
 })();
 
@@ -109,7 +123,7 @@
 // The link of the section in view is marked in the navigation and in the bar of the areas.
 (function () {
   // Only the links to sections of this page; the others open pages of their own.
-  var links = document.querySelectorAll('.nav-links a[href^="#"], .pill-nav a[href^="#"]');
+  var links = document.querySelectorAll('.nav-links a[href^="#"], .pill-nav a[href^="#"], .rail a[href^="#"]');
   if (!("IntersectionObserver" in window) || !links.length) return;
   var byId = {};
   links.forEach(function (a) {
@@ -180,27 +194,79 @@
   select(buttons[0]);
 })();
 
-// Databases: the logos filtered by a word and by kind.
+// Features: the share of the areas read so far, in the rail beside them.
 (function () {
-  var find = document.getElementById("db-find");
-  if (!find) return;
-  var items = Array.prototype.slice.call(document.querySelectorAll(".logos li"));
-  var kinds = Array.prototype.slice.call(document.querySelectorAll(".db-filter button"));
-  var kind = "";
-  function apply() {
-    var word = find.value.trim().toLowerCase();
-    items.forEach(function (li) {
-      var fits = (!kind || li.getAttribute("data-kind") === kind) && li.textContent.toLowerCase().indexOf(word) >= 0;
-      li.hidden = !fits;
-    });
+  var rail = document.querySelector(".rail");
+  var areas = document.querySelector(".areas");
+  if (!rail || !areas) return;
+  var bar = rail.querySelector(".rail-bar s");
+  var count = rail.querySelector(".rail-pct");
+  var queued = false;
+  function update() {
+    queued = false;
+    var r = areas.getBoundingClientRect();
+    // 0 % when the areas reach the middle of the window, 100 % when their end does.
+    var span = r.height;
+    var read = window.innerHeight / 2 - r.top;
+    var pct = Math.max(0, Math.min(100, Math.round((read / span) * 100)));
+    bar.style.width = pct + "%";
+    count.textContent = ("00" + pct).slice(-3) + "%";
   }
-  find.addEventListener("input", apply);
-  kinds.forEach(function (b) {
-    b.addEventListener("click", function () {
-      kind = b.getAttribute("data-kind");
-      kinds.forEach(function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
-      apply();
-    });
+  function queue() {
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(update);
+    }
+  }
+  window.addEventListener("scroll", queue, { passive: true });
+  window.addEventListener("resize", queue);
+  update();
+})();
+
+// Tooltips: an element with data-tip shows its text on hover and on focus. One box, placed by
+// the script, so a table that scrolls sideways does not cut it.
+(function () {
+  var targets = document.querySelectorAll("[data-tip]");
+  if (!targets.length) return;
+  var tip = document.createElement("div");
+  tip.className = "tip";
+  tip.setAttribute("role", "tooltip");
+  tip.id = "tip";
+  tip.hidden = true;
+  document.body.appendChild(tip);
+  var current = null;
+  function show(el) {
+    current = el;
+    tip.textContent = el.getAttribute("data-tip");
+    tip.hidden = false;
+    var r = el.getBoundingClientRect();
+    var w = tip.offsetWidth;
+    var left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+    var top = r.top - tip.offsetHeight - 8;
+    if (top < 8) top = r.bottom + 8;
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+    el.setAttribute("aria-describedby", "tip");
+  }
+  function hide(el) {
+    current = null;
+    tip.hidden = true;
+    el.removeAttribute("aria-describedby");
+  }
+  targets.forEach(function (el) {
+    el.addEventListener("mouseenter", function () { show(el); });
+    el.addEventListener("mouseleave", function () { hide(el); });
+    el.addEventListener("focus", function () { show(el); });
+    el.addEventListener("blur", function () { hide(el); });
+  });
+  // The box follows its cell when the page or the table scrolls (a focused cell scrolls into view).
+  function follow() {
+    if (current && !tip.hidden) show(current);
+  }
+  window.addEventListener("scroll", follow, { passive: true });
+  document.addEventListener("scroll", follow, { passive: true, capture: true });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") tip.hidden = true;
   });
 })();
 

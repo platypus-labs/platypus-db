@@ -38,7 +38,7 @@
   </header>
 
   <main id="main">
-  <section class="hero">
+  <section class="hero solo">
     <div class="hero-text">
       <p class="eyebrow">Compare</p>
       <h1>The same work,<br><span class="gradient">a fraction of the size.</span></h1>
@@ -48,14 +48,6 @@
         <div><dt>smaller than DataGrip</dt><dd>35×</dd></div>
         <div><dt>to a window</dt><dd>&lt; 1 s</dd></div>
       </dl>
-    </div>
-    <div class="bars hero-bars" role="img" aria-label="Linux download size: PlatypusDB 30 MiB, TablePlus 60 MiB, DBeaver CE 122 MiB, Beekeeper Studio 346 MiB, DataGrip 1,047 MiB.">
-      <div class="bars-h">Linux download</div>
-      <div class="bar me" style="--w:2.9%"><span><img class="cl-me" src="img/mark.png" alt="" width="20" height="20">PlatypusDB</span><i><s></s></i><em>30 MiB</em></div>
-      <div class="bar" style="--w:5.7%"><span><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</span><i><s></s></i><em>60 MiB</em></div>
-      <div class="bar" style="--w:11.7%"><span><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</span><i><s></s></i><em>122 MiB</em></div>
-      <div class="bar" style="--w:33%"><span><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper Studio</span><i><s></s></i><em>346 MiB</em></div>
-      <div class="bar" style="--w:100%"><span><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</span><i><s></s></i><em>1,047 MiB</em></div>
     </div>
   </section>
 
@@ -137,30 +129,30 @@
 
   <!-- Feature matrix -->
   <section class="section">
-    <header class="head"><p class="eyebrow">Features</p><h2>What each client can do.</h2><p>The free edition of each client. ● yes · ◐ partly or paid only · — no.</p></header>
+    <header class="head"><p class="eyebrow">Features</p><h2>What each client can do.</h2><p>The free edition of each client. ● yes · ◐ partly or paid only (point at it to see what) · — no.</p></header>
     <div class="table-wrap compare matrix price">
       <table class="grid">
         <thead><tr><th><span class="sr">Feature</span></th><th class="me"><img class="cl-me" src="img/mark.png" alt="" width="20" height="20">PlatypusDB</th><th><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</th><th><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</th><th><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</th><th><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper</th><th><span class="cl-logo img"><img src="img/clients/heidisql.png" alt="" width="20" height="20"></span>HeidiSQL</th><th><span class="cl-logo img"><img src="img/clients/pgadmin.png" alt="" width="20" height="20"></span>pgAdmin 4</th></tr></thead>
         <tbody>
           <tr class="grp"><th colspan="8">The basics</th></tr>
           <tr><th>Price</th><td class="me">Free</td><td>Free</td><td>Paid; free for non-commercial use</td><td>Free tier, paid license</td><td>Free for small teams; paid edition</td><td>Free</td><td>Free</td></tr>
-          <tr><th>Open source</th><td class="me y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="p">◐</td><td class="y">●</td><td class="y">●</td></tr>
+          <tr><th>Open source</th><td class="me y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="p" tabindex="0" data-tip="The Community Edition is GPLv3; the paid features are source-available, not open source."><span aria-hidden="true">◐</span><span class="sr">Partly: The Community Edition is GPLv3; the paid features are source-available, not open source.</span></td><td class="y">●</td><td class="y">●</td></tr>
           <tr><th>Windows, macOS, Linux</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td></tr>
           <tr><th>No account to use it</th><td class="me y">●</td><td class="y">●</td><td class="x">—</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td></tr>
           <tr class="grp"><th colspan="8">Databases</th></tr>
-          <tr><th>PostgreSQL, MySQL, SQL Server, SQLite</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td></tr>
-          <tr><th>Oracle</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>PostgreSQL, MySQL, SQL Server, SQLite</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="p" tabindex="0" data-tip="PostgreSQL only (and EDB Postgres Advanced Server)."><span aria-hidden="true">◐</span><span class="sr">Partly: PostgreSQL only (and EDB Postgres Advanced Server).</span></td></tr>
+          <tr><th>Oracle</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="p" tabindex="0" data-tip="Oracle is available on macOS only."><span aria-hidden="true">◐</span><span class="sr">Partly: Oracle is available on macOS only.</span></td><td class="p" tabindex="0" data-tip="Not in every edition: see Beekeeper Studio's pricing table."><span aria-hidden="true">◐</span><span class="sr">Partly: Not in every edition: see Beekeeper Studio's pricing table.</span></td><td class="x">—</td><td class="x">—</td></tr>
           <tr><th>DuckDB and data files</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td></tr>
-          <tr><th>MongoDB</th><td class="me y">●</td><td class="p">◐</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td></tr>
-          <tr><th>Snowflake, BigQuery, Trino</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>MongoDB</th><td class="me y">●</td><td class="p" tabindex="0" data-tip="MongoDB is in DBeaver PRO, not in the Community Edition."><span aria-hidden="true">◐</span><span class="sr">Partly: MongoDB is in DBeaver PRO, not in the Community Edition.</span></td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>Snowflake, BigQuery, Trino</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="p" tabindex="0" data-tip="Snowflake (macOS and Windows) and BigQuery; no Trino."><span aria-hidden="true">◐</span><span class="sr">Partly: Snowflake (macOS and Windows) and BigQuery; no Trino.</span></td><td class="p" tabindex="0" data-tip="BigQuery in the free edition; Snowflake and Trino depend on the edition."><span aria-hidden="true">◐</span><span class="sr">Partly: BigQuery in the free edition; Snowflake and Trino depend on the edition.</span></td><td class="x">—</td><td class="x">—</td></tr>
           <tr class="grp"><th colspan="8">Everyday work</th></tr>
           <tr><th>Undo script after every save</th><td class="me y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
           <tr><th>Visual query plan</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="y">●</td></tr>
           <tr><th>ER diagram</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="y">●</td></tr>
-          <tr><th>Production colors and confirmations</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>Production colors and confirmations</th><td class="me y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="p" tabindex="0" data-tip="Not all of it: check Beekeeper Studio's documentation."><span aria-hidden="true">◐</span><span class="sr">Partly: Not all of it: check Beekeeper Studio's documentation.</span></td><td class="x">—</td><td class="x">—</td></tr>
           <tr class="grp"><th colspan="8">Agents and automation</th></tr>
-          <tr><th>Built-in MCP server</th><td class="me y">●</td><td class="p">◐</td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
-          <tr><th>Command line with JSON output</th><td class="me y">●</td><td class="p">◐</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>Built-in MCP server</th><td class="me y">●</td><td class="p" tabindex="0" data-tip="Only in Team Edition and CloudBeaver Enterprise, not in the Community Edition."><span aria-hidden="true">◐</span><span class="sr">Partly: Only in Team Edition and CloudBeaver Enterprise, not in the Community Edition.</span></td><td class="y">●</td><td class="y">●</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><th>Command line with JSON output</th><td class="me y">●</td><td class="p" tabindex="0" data-tip="Runs scripts from the command line, without JSON output; tasks need PRO."><span aria-hidden="true">◐</span><span class="sr">Partly: Runs scripts from the command line, without JSON output; tasks need PRO.</span></td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td><td class="x">—</td></tr>
         </tbody>
       </table>
     </div>

@@ -62,7 +62,11 @@ Every version goes through the same steps, with or without GitHub Actions:
    one, download it and restart into it.
 6. **Package managers** (once the repository is public, their downloads must be reachable
    without a login): see "Package managers" below.
-7. **Announce** (README badge, site, discussions) once the repository is public.
+7. **Site download links.** Run `node scripts/site-release.mjs`: it points the site's
+   download buttons at the files of the release just published, with their sizes, then
+   publish the site again (`site/README.md`). Until then the buttons download the previous
+   version. Run it once every platform is in the release: it stops if a file is missing.
+8. **Announce** (README badge, site, discussions) once the repository is public.
 
 ### Local Windows release
 

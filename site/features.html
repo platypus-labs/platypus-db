@@ -42,7 +42,7 @@
   </header>
 
   <main id="main">
-  <section class="hero">
+  <section class="hero solo">
     <div class="hero-text">
       <p class="eyebrow">Features</p>
       <h1>The whole toolbox,<br><span class="gradient">none of the weight.</span></h1>
@@ -52,19 +52,10 @@
         <a class="button ghost large" href="index.html#tour">See it work</a>
       </div>
     </div>
-    <div class="mascot" aria-hidden="true">
-      <div class="ring"></div>
-      <img src="img/mark.png" alt="" width="1024" height="1024">
-      <span class="chip c1" style="--c:#7fc8db">SQL editor</span>
-      <span class="chip c2" style="--c:#ff8d28">Explain</span>
-      <span class="chip c3" style="--c:#c3a6ff">ER diagram</span>
-      <span class="chip c4" style="--c:#7ed3a0">Import / export</span>
-      <span class="chip c5" style="--c:#8fb8ff">MCP</span>
-    </div>
   </section>
 
-
-
+  <div class="areas-wrap">
+  <div class="areas">
   <section class="section first" id="editor">
     <header class="head"><p class="eyebrow">SQL editor</p><h2>Write it once, run it anywhere.</h2><p>An editor that knows your schema and remembers what you ran.</p></header>
     <ul class="bento">
@@ -143,6 +134,25 @@
       <li class="card w2"><h3>You approve the changes</h3><p>A change an agent wants to run opens a dialog in the app first.</p></li>
     </ul>
   </section>
+  </div>
+
+  <!-- On wide screens the areas are listed beside them, with how much of the page is read. -->
+  <aside class="rail">
+    <div class="rail-head"><span>Areas</span><span class="rail-pct" aria-hidden="true">000%</span></div>
+    <div class="rail-bar" aria-hidden="true"><s></s></div>
+    <nav aria-label="Areas">
+      <ol>
+        <li><a href="#editor"><span>01</span>SQL editor</a></li>
+        <li><a href="#data"><span>02</span>Data</a></li>
+        <li><a href="#schema"><span>03</span>Schema</a></li>
+        <li><a href="#perf"><span>04</span>Performance</a></li>
+        <li><a href="#safety"><span>05</span>Safety</a></li>
+        <li><a href="#move"><span>06</span>Import and export</a></li>
+        <li><a href="#agents"><span>07</span>Agents and CLI</a></li>
+      </ol>
+    </nav>
+  </aside>
+  </div>
 
   <section class="section">
     <div class="cta">
