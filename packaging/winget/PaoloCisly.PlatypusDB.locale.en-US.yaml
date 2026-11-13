@@ -8,6 +8,8 @@ PackageName: PlatypusDB
 PackageUrl: https://github.com/platypus-labs/platypus-db
 License: AGPL-3.0-or-later
 LicenseUrl: https://github.com/platypus-labs/platypus-db/blob/main/LICENSE
+Copyright: Copyright © 2026 PlatypusDB maintainers. PlatypusDB™ and the PlatypusDB logo are trademarks of the PlatypusDB maintainers.
+CopyrightUrl: https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md
 ShortDescription: Fast, lightweight SQL client
 Description: A fast, lightweight desktop SQL client for PostgreSQL, MySQL, MariaDB, SQLite, SQL Server, DuckDB and more, with an MCP server for AI agents.
 Moniker: platypusdb
