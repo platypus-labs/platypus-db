@@ -6,6 +6,11 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Agents**: the Claude Code plugin finds the installed app by itself on Windows and macOS (setting
+  `PLATYPUS_DB` is needed only for a portable copy or another folder), and has an icon.
+
 ## [0.6.1] - 2026-11-13
 
 ### Added

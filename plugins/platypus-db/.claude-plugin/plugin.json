@@ -1,7 +1,7 @@
 {
   "name": "platypus-db",
   "description": "Your PlatypusDB connections in the agent: the MCP server of the PlatypusDB app and a skill on how to use its tools",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "author": { "name": "PlatypusDB", "url": "https://github.com/platypus-labs/platypus-db" },
   "homepage": "https://github.com/platypus-labs/platypus-db",
   "repository": "https://github.com/platypus-labs/platypus-db",
