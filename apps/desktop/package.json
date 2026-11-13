@@ -2,7 +2,13 @@
   "name": "platypus-desktop",
   "private": true,
   "version": "0.6.0",
+  "description": "PlatypusDB desktop application: the React interface of the Tauri app",
   "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/platypus-db/platypus-db.git",
+    "directory": "apps/desktop"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
