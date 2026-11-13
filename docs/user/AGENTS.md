@@ -82,6 +82,14 @@ args = ["--mcp"]
 command = 'C:\Program Files\PlatypusDB\platypus-db.exe'
 ```
 
+### Claude Desktop, in one click (Windows)
+
+Each release has an MCP bundle, `platypus-db-X.Y.Z-windows-x64.mcpb`, on the
+[releases page](https://github.com/platypus-labs/platypus-db/releases/latest); PlatypusDB is also
+listed in the MCP Registry as `io.github.platypus-labs/platypus-db`. Open the bundle with Claude
+Desktop (or drag it onto Settings → Extensions) and it installs the server: it reads the
+connections you saved in the app, with the access you gave each one.
+
 ### Ready-made plugin
 
 The repository is also a plugin marketplace for Claude Code: the `platypus-db` plugin adds the

@@ -88,6 +88,24 @@ When the workflow later runs on the same tag, `tauri-action` finds the release b
 adds the macOS and Linux assets, merging them into `latest.json`; check that it did not
 create a second draft.
 
+## MCP Registry
+
+The official MCP Registry (registry.modelcontextprotocol.io) lists PlatypusDB as
+`io.github.platypus-labs/platypus-db`, with an MCP bundle (`.mcpb`) that Claude Desktop installs in
+one click. After publishing a release, run the **MCP Registry** workflow:
+
+```bash
+gh workflow run mcp-registry.yml -f version=X.Y.Z
+```
+
+It unpacks the Windows executable from the release's MSI, builds
+`platypus-db-X.Y.Z-windows-x64.mcpb` and `server.json` with `scripts/mcpb.mjs`, attaches the
+bundle to the release, and publishes `server.json` signed in with the workflow's GitHub identity
+(no token to keep). Locally, `node scripts/mcpb.mjs X.Y.Z <platypus-db.exe>` writes both to
+`target/mcpb/X.Y.Z/`; `mcp-publisher validate target/mcpb/X.Y.Z/server.json` checks it. The bundle
+is Windows only: macOS waits for a signed app (Gatekeeper refuses an unsigned executable unpacked
+from a download), Linux needs the system's WebKitGTK.
+
 ## Package managers
 
 `packaging/` holds the manifests for winget, Homebrew (cask), the AUR (`platypusdb-bin`, from
