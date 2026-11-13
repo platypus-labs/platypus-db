@@ -146,6 +146,30 @@
   select(buttons[0]);
 })();
 
+// Databases: the logos filtered by a word and by kind.
+(function () {
+  var find = document.getElementById("db-find");
+  if (!find) return;
+  var items = Array.prototype.slice.call(document.querySelectorAll(".logos li"));
+  var kinds = Array.prototype.slice.call(document.querySelectorAll(".db-filter button"));
+  var kind = "";
+  function apply() {
+    var word = find.value.trim().toLowerCase();
+    items.forEach(function (li) {
+      var fits = (!kind || li.getAttribute("data-kind") === kind) && li.textContent.toLowerCase().indexOf(word) >= 0;
+      li.hidden = !fits;
+    });
+  }
+  find.addEventListener("input", apply);
+  kinds.forEach(function (b) {
+    b.addEventListener("click", function () {
+      kind = b.getAttribute("data-kind");
+      kinds.forEach(function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
+      apply();
+    });
+  });
+})();
+
 // Features: the share of the areas read so far, in the rail beside them.
 (function () {
   var rail = document.querySelector(".area-rail");
