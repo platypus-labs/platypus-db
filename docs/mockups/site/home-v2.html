@@ -151,7 +151,7 @@
     .bottom { --z: 1.5; --d: .12s; --o: 50% 72%; --t: 3.2s;                --lift: 8;   --sq: .93; --hd: 0s; }
     .body   { --z: 2;   --d: .26s; --o: 51% 58%; --t: 3.2s;                --lift: 9.5; --sq: .96; --hd: .02s; }
     .head   { --z: 3;   --d: .42s; --o: 58% 41%; --idle: nod;  --t: 3.6s; --lift: 11;  --sq: .98; --rot: -3deg; --hd: .04s; }
-    .arm    { --z: 2.5; --d: .72s; --o: 68% 48%; --idle: wave; --t: 4.8s; --lift: 9.5; --rot: -24deg; --hd: .02s; }
+    .arm    { --z: 2.5; --d: .72s; --o: 68% 48%; --idle: none; --t: 4.8s; --lift: 9.5; --rot: -24deg; --hd: .02s; }
     /* Each disk breathes a little later than the one under it, so the stack ripples upward. */
     .body .shape { animation-delay: var(--d), calc(var(--d) + 1.15s); }
     .head .shape { animation-delay: var(--d), calc(var(--d) + 1.3s); }
@@ -214,7 +214,9 @@
     .mascot.phoning .phone { animation: phone 3.4s both cubic-bezier(.3, .8, .3, 1); }
     .mascot.phoning .head .hop { animation: phone-head 3.4s both ease-in-out; }
     .mascot.phoning .arm .hop { animation: phone-arm 3.4s both ease-in-out; }
-    .mascot.phoning .arm .shape { animation: none; }   /* no wave while it holds the phone */
+    /* The arm waves in its own layer: stopping the wave for the phone must not restart the drop. */
+    .mascot .wave { position: absolute; inset: 0; transform-origin: var(--o); animation: wave 4.8s 1.7s infinite ease-in-out; }
+    .mascot.phoning .wave { animation: none; }   /* no wave while it holds the phone */
     @keyframes phone { 0% { opacity: 0; transform: translateY(30%) rotate(60deg) scale(.7); } 12%, 66% { opacity: 1; transform: rotate(60deg); }
       70% { opacity: 1; transform: translateY(-10%) rotate(45deg); } 79% { opacity: 0; transform: translate(70%, 150%) rotate(120deg) scale(.7); } 100% { opacity: 0; } }
     @keyframes phone-head { 0%, 100% { transform: none; } 14%, 64% { transform: rotate(9deg) translateY(1%); }
@@ -338,7 +340,7 @@
             <div class="part foot-l"><div class="hop"><img class="shape" src="base/img/parts/foot-left.png" alt=""></div></div>
             <div class="part body"><div class="hop"><img class="shape" src="base/img/parts/body.png" alt=""></div></div>
             <div class="part head"><div class="hop"><div class="shape"><img src="base/img/parts/head.png" alt=""><span class="eye"><b><i></i><i></i></b></span></div></div></div>
-            <div class="part arm"><div class="hop"><div class="shape"><img src="base/img/parts/arm.png" alt=""><span class="phone"></span></div></div></div>
+            <div class="part arm"><div class="hop"><div class="shape"><div class="wave"><img src="base/img/parts/arm.png" alt=""><span class="phone"></span></div></div></div></div>
           </div>
           <div class="frame">
             <div class="bar"><i></i><i></i><i></i><b>PlatypusDB</b></div>
