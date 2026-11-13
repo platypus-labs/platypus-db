@@ -125,7 +125,7 @@ blocco cade.
 | M — Analisi dei dati | ✅ completato |
 | N — Accesso per agenti (MCP) | ✅ completato |
 | O — Collaborazione e sync | ✅ completato |
-| P — Piattaforma, qualità e release | ⛔ bloccato |
+| P — Piattaforma, qualità e release | libero |
 | Q — Documentazione e catalogo dei dati | ✅ completato |
 | R — Revisione grafica | ✅ completato |
 | S — Collaudo finale | ✅ fatto (P1 in parte: inventario, giro per aree, tutti i database, percorsi da utente, secondo giro, aggiornamento dei dati; P2: revisione di sicurezza, prestazioni) |
@@ -1201,7 +1201,7 @@ la macchina ferma e lo schermo non toccato per una decina di minuti.
 | ⛔ bloccato (serve un desktop Linux con GPU) — Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
 | ⏭ serve un Mac — Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma | P3 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0; v0.2.1 solo Windows, compilata in locale perché i minuti di Actions erano finiti) | P1 |
-| ⛔ bloccato (la 0.3.0 è pubblicata, ma il repository è privato: l'updater legge `latest.json` da GitHub senza login e riceve 404; serve il repository pubblico) — Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
+| 🆕 Sbloccato il 2026-11-13: il repository è pubblico e `latest.json` della 0.6.0 risponde senza login — Test reale dell'auto-update da una release pubblicata alla successiva | P1 |
 | ⛔ bloccato (serve acquistare o ottenere il certificato) — Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
 | ⏭ serve un Mac — Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
@@ -1217,7 +1217,7 @@ la macchina ferma e lo schermo non toccato per una decina di minuti.
 | Sito e documentazione utente | P3 |
 | ✅ 🆕 Test di scala: schemi con 10.000 tabelle, tabelle da milioni di righe, celle da decine di MB (navigator, autocomplete, griglia, export) | P2 |
 | ✅ 🆕 Pacchetto di diagnostica per le segnalazioni: log, versione, impostazioni senza segreti, in un file zip | P3 |
-| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire (pronti l'immagine `docs/brand/social-preview.png` e i testi in [RELEASING.md](RELEASING.md), "Repository showcase"; restano le impostazioni su GitHub, da fare quando il repository è pubblico) | P2 |
+| 🆕 **Vetrina del repository**: descrizione e topic su GitHub (`sql-client`, `database`, `postgresql`, `rust`, `tauri`, `mcp`, …), immagine di anteprima social (1280×640), Discussions attive, issue `good first issue` per chi vuole contribuire (repository pubblico dal 2026-11-13: descrizione, topic e Discussions con le categorie fatti, segnalazione privata delle vulnerabilità, avvisi Dependabot e secret scanning attivi; restano l'immagine di anteprima da caricare a mano, Settings › General › Social preview, e le issue `good first issue`; testi in [RELEASING.md](RELEASING.md), "Repository showcase") | P2 |
 | ✅ 🆕 **Video o GIF di 20-30 secondi** in cima al README: avvio, scroll di milioni di righe, explain con la heatmap | P2 |
 | ✅ 🆕 Le stesse GIF nel sito (`site/`) | P2 |
 | 🆕 **Confronto con DBeaver, DataGrip, TablePlus e Beekeeper Studio** nel README e nel sito (dimensione, avvio, memoria, licenza, MCP), con i numeri di `BENCHMARKS.md` aggiornati | P2 |

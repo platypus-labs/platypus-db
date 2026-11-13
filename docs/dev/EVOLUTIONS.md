@@ -57,7 +57,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 | B — Plugins and mods | ✅ completed |
 | C — Kerberos and authentication | ✅ completed |
 | D — User documentation | ✅ done (P2; P3 in part) |
-| E — Publishing and distribution | ⏸ waiting (the owner's decision on making the repository public) |
+| E — Publishing and distribution | ✅ done (P3; P1 in part) |
 
 ### Group A — Agents and MCP
 
@@ -179,7 +179,7 @@ documentation English (the README also Italian).
 
 ### Group E — Publishing and distribution
 
-**Status: to do.** Only what is not already in roadmap group P, which keeps Windows signing,
+**Status: P3 done, P1 in part** (the repository is public since 2026-11-13; package managers and the auto-update test are left). Only what is not already in roadmap group P, which keeps Windows signing,
 Linux verification with a GPU, the DBeaver benchmark, the launch and the repository showcase.
 
 **Area:** `packaging/`, `scripts/packaging.mjs`, `.github/`, `site/`, [RELEASING.md](RELEASING.md)
@@ -187,7 +187,7 @@ Linux verification with a GPU, the DBeaver benchmark, the launch and the reposit
 
 | Feature | Prio | Origin |
 |---|---|---|
-| 🆕 **Make the repository public.** **To decide (owner).** It unblocks auto-update (today `latest.json` returns 404 because the repository is private: see the blocked row of group P), package managers and unlimited Actions minutes. Before: check that no secret or personal data is in the history, licences are in order, `SECURITY.md` and `CONTRIBUTING.md` are up to date | P1 | U |
+| ✅ **Make the repository public.** Done on 2026-11-13, after the audit of the history, the licences and the trademark policy ([TRADEMARKS.md](../../TRADEMARKS.md)). It unblocks auto-update (`latest.json` now answers without a login), package managers and unlimited Actions minutes. Before: check that no secret or personal data is in the history, licences are in order, `SECURITY.md` and `CONTRIBUTING.md` are up to date | P1 | U |
 | 🆕 **Submission to package managers**, with the manifests already in `packaging/`: winget, Homebrew, AUR, Flathub; for each the steps in RELEASING.md and a check that SHA-256 and version match the release | P2 | N |
 | ✅ **GitHub Pages** for the site (`site/`), with a manually triggered workflow; domain to decide (`.github/workflows/pages.yml` is written; it has not been run and Pages is not enabled, since the repository is private; the domain is still to decide, see `site/README.md`) | P3 | U |
 | 🆕 After publishing: the "real auto-update test" row of group P can be done | P1 | U |
@@ -202,6 +202,6 @@ With 1–3 people. Each group can start when its dependency is ready.
 |---|---|---|---|
 | **1** | **A** | Give agents more of what the app knows (ER diagram, catalog, schema compare, profiles) with safer results and limits | To do |
 | **2** | **B**, **C** | Extend the app from outside (plugins) and cover enterprise networks with Kerberos | To do |
-| **3** | **D**, **E** | User documentation and distribution, once the user decides to publish | D to do, E waiting for the decision |
+| **3** | **D**, **E** | User documentation and distribution, once the user decides to publish | D in part, E in part (the repository is public) |
 
 Each group follows the Definition of Done of the roadmap.
