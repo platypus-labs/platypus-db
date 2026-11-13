@@ -5,6 +5,7 @@
 import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CTRL, SHIFT } from "../cdp.mjs";
+import { revealItem } from "../menu-sub.mjs";
 import { skip as noPostgres } from "./dev-postgres.mjs";
 import { prepare, treeRow } from "./readme-sqlite.mjs";
 
@@ -87,6 +88,7 @@ export default async function (page) {
   const r = await page.rect("#e2e-editor");
   await page.click(r.x + r.w / 2, r.y + 10, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, "Explain analyze");
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Explain analyze')).click()`);
   await page.waitFor(`${explainTab}?.querySelector('.explain-suggestion') != null`, 15_000);
   await page.sleep(300);

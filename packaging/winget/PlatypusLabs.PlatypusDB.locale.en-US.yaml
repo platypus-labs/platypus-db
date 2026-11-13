@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
-PackageIdentifier: PaoloCisly.PlatypusDB
+PackageIdentifier: PlatypusLabs.PlatypusDB
 PackageVersion: @VERSION@
 PackageLocale: en-US
-Publisher: PlatypusDB
+Publisher: Platypus Labs
 PublisherUrl: https://github.com/platypus-labs
 PackageName: PlatypusDB
 PackageUrl: https://github.com/platypus-labs/platypus-db

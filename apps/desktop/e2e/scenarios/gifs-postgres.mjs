@@ -5,6 +5,7 @@
 import { join, resolve } from "node:path";
 import { CTRL } from "../cdp.mjs";
 import { pointAndClick, pointAt, Recorder } from "../gif.mjs";
+import { revealItem } from "../menu-sub.mjs";
 import { skip as noPostgres } from "./dev-postgres.mjs";
 import { setup as localPostgres } from "./readme-postgres.mjs";
 import { prepare, setEditor, status, treeRow, visibleTab } from "./readme-sqlite.mjs";
@@ -95,6 +96,7 @@ async function explainGif(page, out) {
   const r = await page.rect("#e2e-editor");
   await pointAndClick(page, { x: Math.round(r.x + r.w / 2), y: Math.round(r.y + 20) }, { button: "right" });
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  await revealItem(page, "Explain analyze");
   const item = `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Explain analyze'))`;
   await page.eval(mark(item, "e2e-explain"));
   await pointAndClick(page, "#e2e-explain");

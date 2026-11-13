@@ -102,7 +102,7 @@ The filled manifests land in `target/packaging/X.Y.Z/<manager>/`; a manager whos
 are missing is skipped (a Windows-only release fills only winget). Then submit each one:
 
 - **winget**: a pull request to `microsoft/winget-pkgs` with the three files under
-  `manifests/p/PaoloCisly/PlatypusDB/X.Y.Z/` (or `wingetcreate submit <folder>`). Check first
+  `manifests/p/PlatypusLabs/PlatypusDB/X.Y.Z/` (or `wingetcreate submit <folder>`). Check first
   with `winget validate <folder>` and `winget install --manifest <folder>`.
 - **Homebrew**: the first version as a pull request adding `Casks/p/platypusdb.rb` to
   `Homebrew/homebrew-cask` (`brew audit --new --cask platypusdb` first); later versions are

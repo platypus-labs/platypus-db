@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/platypus-labs/platypus-db/security/advisories/new
     about: Report it privately, not in a public issue.
+  - name: Ask a question
+    url: https://github.com/platypus-labs/platypus-db/discussions/categories/q-a
+    about: Questions on how to do something go to the Q&A discussions.
