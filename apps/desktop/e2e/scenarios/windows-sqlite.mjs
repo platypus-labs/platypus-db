@@ -61,7 +61,11 @@ export default async function (page, { dir, port }) {
   await page.eval(`${row("Win db")}.querySelector('button[aria-label="Open SQL editor"]').click()`);
   await page.waitFor(`${visibleTab}?.querySelector('.cm-content') != null`, 15_000);
 
-  // The editor's height: dragged, and kept in the settings file.
+  // The editor's height: dragged, and kept in the settings file. The handle shows once there
+  // are results to share the space with.
+  await typeSql(page, SQL);
+  await page.key("Enter", "Enter", 13, CTRL);
+  await page.waitFor(`${status} === '1 row'`, 15_000);
   const before = await page.eval(`${visibleTab}.querySelector('.cm-editor').getBoundingClientRect().height`);
   await dragEditor(page, 80);
   await page.waitFor(`${visibleTab}.querySelector('.cm-editor').getBoundingClientRect().height > ${before + 40}`);

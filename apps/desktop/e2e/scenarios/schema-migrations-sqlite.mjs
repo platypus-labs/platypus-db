@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { answerSave, menu as menuAt } from "../transfer-helpers.mjs";
+import { revealItem } from "../menu-sub.mjs";
 
 const NAME = "Migrations db";
 const NAME2 = "Migrations db 2";
@@ -235,6 +236,7 @@ async function menu(page, label, title) {
   await page.clickSel("#e2e-row", { button: "right" });
   await page.eval(`document.getElementById('e2e-row')?.removeAttribute('id')`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
+  assert.ok(await revealItem(page, title), `no menu item ${title}`);
   await page.eval(
     `[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith(${JSON.stringify(title)})).click()`,
   );
