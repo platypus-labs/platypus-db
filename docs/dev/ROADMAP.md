@@ -5,7 +5,7 @@ possono portare avanti in parallelo. Ogni gruppo ha un'area di codice propria, c
 merge restano rari.
 
 Fonti: la documentazione e il confronto edizioni di DBeaver (Community, Lite, Enterprise, Ultimate),
-il backlog v0.2 di [MVP_PLAN.md](MVP_PLAN.md), le idee che DBeaver non ha e, dal 28 ottobre 2026,
+il backlog v0.2 di [MVP_PLAN.md](archive/MVP_PLAN.md), le idee che DBeaver non ha e, dal 28 ottobre 2026,
 il confronto con [Tabularis](https://tabularis.dev).
 
 **Priorità**
@@ -1380,7 +1380,7 @@ nei file delle aree toccate, in commit piccoli e separati
 
 ### Gruppo T — Revisione UX
 
-**Stato: completato** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). P2: 78 problemi medi e minori corretti (restano nel rapporto i 15 che servono il backend, un mockup o una scelta), pannelli laterali e di dettaglio ridimensionabili con la misura ricordata (editor, explain, amministrazione, grafici, agenti), menu con la stessa regola (sottomenu "Analyze" nelle tabelle e nella griglia, "Lines"/"Cursors"/"Folding" nell'editor, azioni distruttive in fondo) e un giro di spaziatura sulle classi condivise dei dialog. P3: secondo giro della scheda su tutte le sezioni (90 punti, in [UX_REVIEW.md](UX_REVIEW.md) "Secondo giro"), corretti tranne quelli che servono il backend o un mockup, elencati lì.
+**Stato: completato** Correzioni già note fatte; scheda di controllo passata su tutte le sezioni, rapporto in [UX_REVIEW.md](archive/UX_REVIEW.md) con i 14 problemi gravi corretti; un solo toast (`ui/toast.ts`) per conferme ed errori e un solo componente di attesa (`LoadingState` e `Busy` in `ui/State.tsx`). P2: 78 problemi medi e minori corretti (restano nel rapporto i 15 che servono il backend, un mockup o una scelta), pannelli laterali e di dettaglio ridimensionabili con la misura ricordata (editor, explain, amministrazione, grafici, agenti), menu con la stessa regola (sottomenu "Analyze" nelle tabelle e nella griglia, "Lines"/"Cursors"/"Folding" nell'editor, azioni distruttive in fondo) e un giro di spaziatura sulle classi condivise dei dialog. P3: secondo giro della scheda su tutte le sezioni (90 punti, in [UX_REVIEW.md](archive/UX_REVIEW.md) "Secondo giro"), corretti tranne quelli che servono il backend o un mockup, elencati lì.
 
 Il gruppo R ha reso l'app coerente nell'aspetto; questo gruppo controlla se si **usa** bene. Le
 segnalazioni dell'utente del 1° novembre 2026 mostrano problemi che nessun inventario visivo
@@ -1389,7 +1389,7 @@ non si ridimensionano, menu troppo lunghi, stati vuoti che non dicono dove andar
 
 **Metodo.** Una sezione alla volta, con l'app compilata:
 1. si passa la sezione con la **scheda di controllo** qui sotto e si scrive un rapporto
-   (`docs/dev/UX_REVIEW.md`, un paragrafo per sezione: problemi, gravità, screenshot);
+   (`docs/dev/archive/UX_REVIEW.md`, un paragrafo per sezione: problemi, gravità, screenshot);
 2. le correzioni si fanno in commit piccoli, uno per sezione; ogni correzione che si può provare
    diventa uno scenario E2E (`apps/desktop/e2e/scenarios/ux-*`);
 3. una modifica che cambia molto una schermata passa prima da un mockup approvato dall'utente,
@@ -1423,13 +1423,13 @@ impostazioni; sicurezza (blocco, mascheramento, snapshot); agenti e MCP; sync e 
 condivisi; task pianificati.
 
 **Area:** i componenti di `apps/desktop/src/` (markup, CSS, testi e logica di sola interfaccia),
-`apps/desktop/e2e/`, `docs/dev/UX_REVIEW.md`; niente modifiche a backend, driver o formati dei file
+`apps/desktop/e2e/`, `docs/dev/archive/UX_REVIEW.md`; niente modifiche a backend, driver o formati dei file
 **Dipende da:** gruppo R completato
 
 | Funzionalità | Prio | Origine |
 |---|---|---|
 | ✅ 🆕 **Correzioni già note** (segnalazioni del 1° novembre 2026): <br>• menu contestuale delle tabelle troppo lungo: raggruppare in sottomenu le voci affini (es. tutti i "Genera …") <br>• tasto destro ovunque: disattivare il menu del browser (WebView2) e mostrare quello dell'app <br>• profilo dei dati: l'istogramma non ha titolo, assi né spiegazione; nella colonna di destra le etichette minimo/massimo dei timestamp si sovrappongono e sbordano <br>• costruttore visuale di query: sidebar e riquadri delle tabelle ridimensionabili <br>• diagramma ER: caricamento visibile quando si aggiungono tabelle (e verificare che le carichi tutte), etichetta del selettore delle tabelle da riscrivere, trascinare sul vuoto sposta la visuale <br>• "Copia il nome" e tutte le azioni di copia: toast di conferma <br>• dialog di connessione: titolo della sezione in alto, il pallino accanto a "Rete" spiegato o tolto, voci del menu laterale centrate in verticale <br>• profili di trasferimento: lo stato vuoto dice dove si crea un profilo, con un'azione <br>• palette dei comandi: il campo di ricerca è schiacciato <br>• pagina iniziale non centrata <br>• dashboard: la voce "Impostazioni grafico" mostra caratteri rotti al posto dell'icona | P1 | N |
-| ✅ 🆕 **Scheda di controllo e rapporto** (`docs/dev/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
+| ✅ 🆕 **Scheda di controllo e rapporto** (`docs/dev/archive/UX_REVIEW.md`) per tutte le sezioni elencate sopra | P1 | N |
 | ✅ 🆕 **Correzione dei problemi gravi** trovati dal rapporto (azioni senza riscontro, caricamenti invisibili, testo che sborda, stati vuoti senza azione) | P1 | N |
 | ✅ 🆕 **Riscontro e attesa uniformi**: un solo componente per il toast di conferma e uno per il caricamento, usati da tutte le azioni | P1 | N |
 | ✅ 🆕 Pannelli ridimensionabili ovunque il contenuto varia, con la misura ricordata | P2 | N |
