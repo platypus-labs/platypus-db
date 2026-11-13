@@ -1,8 +1,8 @@
 name: Pages
 
 # Publishes site/ on GitHub Pages. Started by hand only (Actions tab, or `gh workflow run pages.yml`),
-# never on a push. It needs Settings > Pages > Source: GitHub Actions, which is not enabled yet;
-# see "Publish on GitHub Pages" in site/README.md.
+# never on a push. It needs Settings > Pages > Source: GitHub Actions (enabled); see "Publish on
+# GitHub Pages" in site/README.md.
 on:
   workflow_dispatch:
 
