@@ -11,7 +11,7 @@ publish.workspace = true
 [dependencies]
 async-trait.workspace = true
 platypus-core.workspace = true
-russh = { version = "0.64", default-features = false, features = ["ring", "rsa", "flate2"] }
+russh = { version = "0.65", default-features = false, features = ["ring", "rsa", "flate2"] }
 base64 = "0.22"
 tokio = { workspace = true, features = ["net", "io-util", "rt", "sync", "macros", "time", "process"] }
 
