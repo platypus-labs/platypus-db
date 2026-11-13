@@ -14,8 +14,9 @@
     1. waits for the machine to be idle (no cargo, rustc, node, tauri process and total CPU
        under 15 % for 5 s);
     2. launches the client and captures the rectangle of its main window every 100 ms;
-    3. start = launch to the first of the frames after which the window's pixels stay
-       unchanged for 1 s (60 s cap);
+    3. start = launch to the first of the frames after which the window stays the same for
+       1 s (60 s cap); "the same" allows 0.5 % of an 80x50 grid of the window to change, so a
+       blinking caret or a small spinner does not keep it from settling;
     4. memory at rest = sum of the private bytes of the process tree, 5 s after the window
        settled, with no connection open;
     5. closes the client (the process tree is killed).
@@ -32,7 +33,14 @@ param(
   [int] $SettleMs = 1000,
   [int] $CapS = 60,
   [int] $RestS = 5,
-  [switch] $SkipIdleCheck
+  [switch] $SkipIdleCheck,
+  # Prints, once a second, the window found and how much of it changed: to see why a client
+  # does not settle.
+  [switch] $Trace,
+  # A DBeaver profile prepared beforehand (its `ws` and `cfg` folders), kept after the runs.
+  # DBeaver opens a setup wizard instead of its main window until the wizard is completed once,
+  # so measuring it on an empty profile measures the wizard.
+  [string] $DbeaverProfile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +51,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 
 public static class WinCap {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
@@ -54,6 +61,7 @@ public static class WinCap {
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
   static WinCap() { SetProcessDPIAware(); }
 
   // The biggest visible top-level window of any of `pids`, at least 640x400: the main window
@@ -73,18 +81,65 @@ public static class WinCap {
     best = bestRect; return found;
   }
 
-  // Hash of the pixels on screen inside the rectangle.
-  public static string Hash(RECT r) {
+  // For -Trace when no main window is found: the biggest visible window of `pids`, any size.
+  public static string Largest(HashSet<uint> pids) {
+    string best = "none"; long bestArea = -1;
+    EnumWindows((h, p) => {
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      if (!pids.Contains(pid) || !IsWindowVisible(h)) return true;
+      RECT r; GetWindowRect(h, out r);
+      long a = (long)(r.R - r.L) * (r.B - r.T);
+      if (a > bestArea) {
+        var title = new System.Text.StringBuilder(120); GetWindowText(h, title, 120);
+        bestArea = a; best = string.Format("{0}x{1} '{2}'", r.R - r.L, r.B - r.T, title);
+      }
+      return true;
+    }, IntPtr.Zero);
+    return best;
+  }
+
+  // The window as an 80x50 grid of average brightness (one byte a cell), after its size in 4
+  // bytes. Comparing grids instead of exact pixels lets a blinking caret or a spinner in a
+  // corner count as a settled window.
+  const int GW = 80, GH = 50;
+  public static byte[] Frame(RECT r) {
     int w = r.R - r.L, h = r.B - r.T;
+    var grid = new byte[4 + GW * GH];
+    grid[0] = (byte)(w >> 8); grid[1] = (byte)w; grid[2] = (byte)(h >> 8); grid[3] = (byte)h;
     using (var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb)) {
       using (var g = Graphics.FromImage(bmp)) g.CopyFromScreen(r.L, r.T, 0, 0, new Size(w, h));
       var data = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
       try {
         var bytes = new byte[Math.Abs(data.Stride) * h];
         Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
-        return Convert.ToBase64String(MD5.Create().ComputeHash(bytes)) + ":" + w + "x" + h;
+        var sum = new long[GW * GH]; var count = new int[GW * GH];
+        for (int y = 0; y < h; y++) {
+          int row = y * Math.Abs(data.Stride), cy = y * GH / h;
+          for (int x = 0; x < w; x++) {
+            int i = row + x * 4, cell = cy * GW + x * GW / w;
+            sum[cell] += (bytes[i] * 29 + bytes[i + 1] * 150 + bytes[i + 2] * 77) >> 8;
+            count[cell]++;
+          }
+        }
+        for (int c = 0; c < GW * GH; c++) grid[4 + c] = (byte)(count[c] == 0 ? 0 : sum[c] / count[c]);
       } finally { bmp.UnlockBits(data); }
     }
+    return grid;
+  }
+
+  // The cells changed by more than a slight shade, or -1 when the size changed.
+  public static int Changed(byte[] a, byte[] b) {
+    if (a == null || b == null || a.Length != b.Length) return -1;
+    for (int i = 0; i < 4; i++) if (a[i] != b[i]) return -1;
+    int changed = 0;
+    for (int i = 4; i < a.Length; i++) if (Math.Abs(a[i] - b[i]) > 8) changed++;
+    return changed;
+  }
+
+  // Same size, and at most 0.5 % of the cells changed.
+  public static bool Same(byte[] a, byte[] b) {
+    int changed = Changed(a, b);
+    return changed >= 0 && changed <= (GW * GH) / 200;
   }
 }
 '@ -ReferencedAssemblies System.Drawing
@@ -140,8 +195,15 @@ function Stop-Tree([int] $RootPid) {
   Start-Sleep -Milliseconds 1500
 }
 
-# One profile per client under a temporary root; the user's own config is never touched.
-$root = Join-Path ([IO.Path]::GetTempPath()) ("bench-" + $Name + "-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+# One profile per client under a temporary root; the user's own config is never touched. The
+# variables changed below are put back at the end, so a second run in the same session starts
+# from the real ones; the folder name has no spaces, which a client's arguments would split on.
+$saved = @{}
+foreach ($var in 'USERPROFILE', 'HOME', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'PLATYPUS_DATA_DIR', 'WEBVIEW2_USER_DATA_FOLDER', 'IDEA_PROPERTIES') {
+  $saved[$var] = [Environment]::GetEnvironmentVariable($var)
+}
+$slug = ($Name -replace '[^A-Za-z0-9.]+', '-').Trim('-')
+$root = Join-Path ([IO.Path]::GetTempPath()) ("bench-" + $slug + "-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force "$root\home\AppData\Roaming", "$root\home\AppData\Local", "$root\ws" | Out-Null
 $env:USERPROFILE = "$root\home"
 $env:HOME = "$root\home"
@@ -157,9 +219,14 @@ switch ($Kind) {
     $env:WEBVIEW2_USER_DATA_FOLDER = "$root\webview2"
   }
   'dbeaver' {
-    # A copy of the portable install's configuration directory, so it is not written to.
-    Copy-Item (Join-Path (Split-Path $Exe) 'configuration') "$root\cfg" -Recurse
-    $launchArgs = @('-nosplash', '-data', "$root\ws", '-configuration', "$root\cfg",
+    if ($DbeaverProfile) {
+      $profileDir = (Resolve-Path $DbeaverProfile).Path
+    } else {
+      # A copy of the portable install's configuration directory, so it is not written to.
+      $profileDir = $root
+      Copy-Item (Join-Path (Split-Path $Exe) 'configuration') "$root\cfg" -Recurse
+    }
+    $launchArgs = @('-nosplash', '-data', "$profileDir\ws", '-configuration', "$profileDir\cfg",
       '-vmargs', "-Duser.home=$root\home")
   }
   'jetbrains' {
@@ -176,17 +243,26 @@ try {
     Wait-Idle
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $launchSplat = @{ FilePath = $Exe; PassThru = $true }
-    if ($launchArgs.Count) { $launchSplat.ArgumentList = $launchArgs }
+    # Windows PowerShell joins ArgumentList with spaces and no quotes: quote what has spaces.
+    if ($launchArgs.Count) { $launchSplat.ArgumentList = $launchArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } } }
     $proc = Start-Process @launchSplat
-    $last = $null; $stableSince = $null; $firstStable = $null; $settled = $false
+    $last = $null; $stableSince = $null; $firstStable = $null; $settled = $false; $tracedAt = -1
     while ($sw.Elapsed.TotalSeconds -lt $CapS) {
       $ids = Get-Tree $proc.Id
       $rect = New-Object WinCap+RECT
       $hwnd = [WinCap]::MainWindow($ids, [ref] $rect)
+      if ($hwnd -eq [IntPtr]::Zero -and $Trace -and [int]($sw.Elapsed.TotalSeconds) -ne $tracedAt) {
+        $tracedAt = [int]($sw.Elapsed.TotalSeconds)
+        Write-Host ("  {0,5:N1} s: no main window; biggest visible: {1}" -f $sw.Elapsed.TotalSeconds, [WinCap]::Largest($ids))
+      }
       if ($hwnd -ne [IntPtr]::Zero) {
         $now = $sw.Elapsed.TotalMilliseconds
-        $h = [WinCap]::Hash($rect)
-        if ($h -ne $last) { $last = $h; $firstStable = $now; $stableSince = $now }
+        $frame = [WinCap]::Frame($rect)
+        if ($Trace -and [int]($now / 1000) -ne $tracedAt) {
+          $tracedAt = [int]($now / 1000)
+          Write-Host ("  {0,5:N1} s: window {1}x{2}, {3} cells changed" -f ($now / 1000), ($rect.R - $rect.L), ($rect.B - $rect.T), [WinCap]::Changed($frame, $last))
+        }
+        if (-not [WinCap]::Same($frame, $last)) { $last = $frame; $firstStable = $now; $stableSince = $now }
         elseif (($now - $stableSince) -ge $SettleMs) { $settled = $true; break }
       }
       Start-Sleep -Milliseconds 100
@@ -201,6 +277,7 @@ try {
     Stop-Tree $proc.Id
   }
 } finally {
+  foreach ($var in $saved.Keys) { [Environment]::SetEnvironmentVariable($var, $saved[$var]) }
   Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
