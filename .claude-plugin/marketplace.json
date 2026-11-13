@@ -1,6 +1,6 @@
 {
   "name": "platypus-db",
-  "owner": { "name": "PlatypusDB", "url": "https://github.com/platypus-db/platypus-db" },
+  "owner": { "name": "PlatypusDB", "url": "https://github.com/platypus-labs/platypus-db" },
   "description": "The PlatypusDB plugin: the app's MCP server and how to use it",
   "plugins": [
     {

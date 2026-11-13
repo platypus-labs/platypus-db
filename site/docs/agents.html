@@ -29,7 +29,7 @@
         <a href="../docs.html" aria-current="page">Docs</a>
       </nav>
       <div class="nav-actions">
-        <a class="button ghost" href="https://github.com/platypus-db/platypus-db">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
         </a>
         <a class="button primary" href="../download.html">Download</a>
@@ -61,18 +61,18 @@
 <a href="plugins.html">Plugins</a>
 <a href="connections-file.html">The connections file (.platypusconn)</a>
 <h6>On GitHub</h6>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/README.md">README</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
     </details>
   </nav>
 
   <article>
     <div class="crumbs">Docs / Agents (MCP) and the CLI</div>
-<p><a href="https://github.com/platypus-db/platypus-db/blob/main/README.md">← README</a></p>
+<p><a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">← README</a></p>
 <h1 id="agents-mcp-and-the-cli">Agents (MCP) and the CLI</h1>
 <p>Claude Code, Codex, Cursor and other MCP clients use your saved connections through PlatypusDB&#39;s MCP server: the app itself, started with <code>--mcp</code>, which they start themselves (no window opens, and the app need not be open for reading).</p>
 <ul>
@@ -95,9 +95,9 @@ args = [&quot;--mcp&quot;]
 command = &#39;C:\Program Files\PlatypusDB\platypus-db.exe&#39;</code></pre>
 <h3 id="ready-made-plugin">Ready-made plugin</h3>
 <p>The repository is also a plugin marketplace for Claude Code: the <code>platypus-db</code> plugin adds the MCP server and a skill that tells the agent how to use the tools (explore first, the limits of <code>run_query</code>, read-only access, <code>propose_sql</code> for changes):</p>
-<pre><code class="language-bash">claude plugin marketplace add platypus-db/platypus-db
+<pre><code class="language-bash">claude plugin marketplace add platypus-labs/platypus-db
 claude plugin install platypus-db@platypus-db</code></pre>
-<p>The plugin starts <code>platypus-db --mcp</code>. Where the app is not on <code>PATH</code> (Windows and macOS; the Linux packages put it there), set <code>PLATYPUS_DB</code> to its full path, e.g. <code>C:\Program Files\PlatypusDB\platypus-db.exe</code>, before starting Claude Code. For Codex, <a href="https://github.com/platypus-db/platypus-db/tree/main/plugins/codex"><code>plugins/codex</code></a> has the <code>config.toml</code> entry and the same instructions as an <code>AGENTS.md</code> to copy into <code>~/.codex/AGENTS.md</code> or a project&#39;s <code>AGENTS.md</code>.</p>
+<p>The plugin starts <code>platypus-db --mcp</code>. Where the app is not on <code>PATH</code> (Windows and macOS; the Linux packages put it there), set <code>PLATYPUS_DB</code> to its full path, e.g. <code>C:\Program Files\PlatypusDB\platypus-db.exe</code>, before starting Claude Code. For Codex, <a href="https://github.com/platypus-labs/platypus-db/tree/main/plugins/codex"><code>plugins/codex</code></a> has the <code>config.toml</code> entry and the same instructions as an <code>AGENTS.md</code> to copy into <code>~/.codex/AGENTS.md</code> or a project&#39;s <code>AGENTS.md</code>.</p>
 <p>How the MCP server works</p>
 <p><code>platypus-db --mcp</code> talks MCP over stdin and stdout. It reads the connections of the app&#39;s profile, or of <code>PLATYPUS_DATA_DIR</code> when set. With a master password the saved passwords stay locked to agents: such connections answer with an error saying so, and work with a password command or <code>.pgpass</code> instead. A connection that asks for its password every time is not available to agents. The bootstrap statements of a connection in a shared project run for agents and the CLI only once you approved that exact text in the app (which asks at the first connect): until then they are left out, and the server&#39;s log (stderr) says so.</p>
 <p>Tools: <code>list_connections</code>, <code>list_schemas</code>, <code>list_objects</code>, <code>describe_table</code>, <code>get_ddl</code>, <code>get_er_diagram</code>, <code>compare_schemas</code>, <code>search_objects</code>, <code>run_query</code>, <code>sample_rows</code>, <code>profile_table</code>, <code>explain</code>, <code>propose_sql</code>, <code>propose_edits</code>, <code>list_open_sessions</code>, <code>list_scripts</code>, <code>read_script</code>, <code>search_history</code>, <code>estimate_change</code>, <code>server_activity</code>, <code>top_queries</code>, <code>next_page</code> and <code>query_across_databases</code>. <code>run_query</code> runs one statement and returns 100 rows, 32 KB and 30 s at most by default (<code>max_rows</code> up to 10,000, <code>max_bytes</code> up to 1 MB, <code>timeout_seconds</code> up to 300), as an aligned text table or JSON, saying when rows or values longer than 1,000 characters were left out. In the text table SQL <code>NULL</code> reads <code>NULL</code> and a text <code>NULL</code> reads <code>&#39;NULL&#39;</code>. <code>list_objects</code> returns 500 objects at most (<code>limit</code> up to 2,000); a larger schema comes in pages (<code>truncated</code>, <code>total</code>, <code>next_offset</code>, then <code>offset</code>). The client&#39;s <code>notifications/cancelled</code> cancels the running statement.</p>
@@ -179,18 +179,18 @@ platypus --connection &quot;Local PG&quot; query &quot;select * from demo.orders
       <nav aria-labelledby="f-project">
         <h2 id="f-project">Project</h2>
         <ul>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
         </ul>
       </nav>
       <nav aria-labelledby="f-get">
         <h2 id="f-get">Get it</h2>
         <ul>
-          <li><a href="https://github.com/platypus-db/platypus-db/releases">Releases</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db">Source code</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/issues">Issues</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
         </ul>
       </nav>
     </div>

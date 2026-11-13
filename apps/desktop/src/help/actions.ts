@@ -5,7 +5,7 @@ import { openExternal } from "./external";
 import { openGuide, openWhatsNew } from "./open";
 
 /** Where the project takes bug reports (the address the README and CONTRIBUTING give). */
-const BUG_REPORTS_URL = "https://github.com/platypus-db/platypus-db/issues";
+const BUG_REPORTS_URL = "https://github.com/platypus-labs/platypus-db/issues";
 
 registerAction({ id: "help.guide", scope: "help", title: "User guide", group: "learn", order: 10, run: () => openGuide() });
 

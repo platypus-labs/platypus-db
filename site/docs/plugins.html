@@ -29,7 +29,7 @@
         <a href="../docs.html" aria-current="page">Docs</a>
       </nav>
       <div class="nav-actions">
-        <a class="button ghost" href="https://github.com/platypus-db/platypus-db">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
         </a>
         <a class="button primary" href="../download.html">Download</a>
@@ -61,12 +61,12 @@
 <a href="plugins.html" class="on" aria-current="page">Plugins</a>
 <a href="connections-file.html">The connections file (.platypusconn)</a>
 <h6>On GitHub</h6>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
-<a href="https://github.com/platypus-db/platypus-db/blob/main/README.md">README</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
     </details>
   </nav>
 
@@ -74,7 +74,7 @@
     <div class="crumbs">Docs / Plugins</div>
 <h1 id="plugins">Plugins</h1>
 <p>PlatypusDB runs plugins written in any language that compiles to WebAssembly (Rust for <code>wasm32-unknown-unknown</code>, AssemblyScript, TinyGo, C, Zig…). A plugin can add <strong>actions</strong> (commands in the editor, the result grid and the navigator), a <strong>driver</strong> for a database that speaks HTTP, <strong>event hooks</strong>, a <strong>settings page</strong>, <strong>tabs and side panels</strong> with pages of their own, <strong>extensions of the result grid</strong> and a <strong>theme</strong>, which is the one kind with no code at all. Plugins run in a sandbox: an interpreter (<code>wasmi</code>) with no access to files, programs, sockets or the clock, only to the JSON messages the app gives them and the host functions their permissions open.</p>
-<p>The host side is the crate <code>platypus-plugins</code>; the examples are in <a href="https://github.com/platypus-db/platypus-db/tree/main/examples/plugins"><code>examples/plugins</code></a> with their built modules.</p>
+<p>The host side is the crate <code>platypus-plugins</code>; the examples are in <a href="https://github.com/platypus-labs/platypus-db/tree/main/examples/plugins"><code>examples/plugins</code></a> with their built modules.</p>
 <h2 id="package">Package</h2>
 <p>A package is a folder, or a <code>.zip</code> with the files at its root or in one folder:</p>
 <pre><code>plugin.toml    the manifest
@@ -169,7 +169,7 @@ accent = &quot;#3fc1c9&quot;</code></pre>
     }
   ]
 }</code></pre>
-<p><code>id</code>, <code>name</code>, <code>version</code>, <code>url</code> and <code>sha256</code> are required, one entry per plugin. <code>url</code> may be relative to the index. An entry that cannot be read is listed apart with its reason, and the others stay usable. Fields it does not know are ignored. <a href="https://github.com/platypus-db/platypus-db/tree/main/examples/plugins/catalog"><code>examples/plugins/catalog</code></a> has a complete one.</p>
+<p><code>id</code>, <code>name</code>, <code>version</code>, <code>url</code> and <code>sha256</code> are required, one entry per plugin. <code>url</code> may be relative to the index. An entry that cannot be read is listed apart with its reason, and the others stay usable. Fields it does not know are ignored. <a href="https://github.com/platypus-labs/platypus-db/tree/main/examples/plugins/catalog"><code>examples/plugins/catalog</code></a> has a complete one.</p>
 <h3 id="signing-a-package">Signing a package</h3>
 <p>A package is signed with <a href="https://jedisct1.github.io/minisign/">minisign</a>, by a detached signature over the bytes of the <code>.zip</code>. The signature goes in the entry, so the package itself does not change:</p>
 <pre><code class="language-bash">minisign -G -p publisher.pub -s publisher.key          # once: keep the secret key
@@ -428,18 +428,18 @@ cp target/wasm32-unknown-unknown/release/&lt;name&gt;.wasm plugin.wasm</code></p
       <nav aria-labelledby="f-project">
         <h2 id="f-project">Project</h2>
         <ul>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
         </ul>
       </nav>
       <nav aria-labelledby="f-get">
         <h2 id="f-get">Get it</h2>
         <ul>
-          <li><a href="https://github.com/platypus-db/platypus-db/releases">Releases</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db">Source code</a></li>
-          <li><a href="https://github.com/platypus-db/platypus-db/issues">Issues</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
         </ul>
       </nav>
     </div>

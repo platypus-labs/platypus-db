@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/platypus-db/platypus-db/releases/latest"><img src="https://img.shields.io/github/v/release/platypus-db/platypus-db" alt="Ultima release" /></a>
-  <a href="https://github.com/platypus-db/platypus-db/releases"><img src="https://img.shields.io/github/downloads/platypus-db/platypus-db/total" alt="Download" /></a>
+  <a href="https://github.com/platypus-labs/platypus-db/releases/latest"><img src="https://img.shields.io/github/v/release/platypus-labs/platypus-db" alt="Ultima release" /></a>
+  <a href="https://github.com/platypus-labs/platypus-db/releases"><img src="https://img.shields.io/github/downloads/platypus-labs/platypus-db/total" alt="Download" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="Licenza: AGPL-3.0-or-later" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Piattaforme: Windows, macOS, Linux" />
 </p>
@@ -47,7 +47,7 @@ milioni di righe.
 ## Installazione
 
 Scarica l'installer per il tuo sistema dalla
-[pagina delle release](https://github.com/platypus-db/platypus-db/releases/latest): `.exe`/`.msi`
+[pagina delle release](https://github.com/platypus-labs/platypus-db/releases/latest): `.exe`/`.msi`
 per Windows, `.dmg` per macOS, `.AppImage`/`.deb`/`.rpm` per Linux. L'app si aggiorna da sola.
 
 1. Apri PlatypusDB e fai clic su **New connection**, oppure incolla l'URL di una connessione
@@ -131,7 +131,7 @@ Compilazione, test, struttura del progetto e database di sviluppo:
 ## Contribuire
 
 Segnalazioni di bug, idee e pull request sono benvenute: per qualsiasi cosa più grande di una
-piccola correzione apri prima una [issue](https://github.com/platypus-db/platypus-db/issues).
+piccola correzione apri prima una [issue](https://github.com/platypus-labs/platypus-db/issues).
 [CONTRIBUTING.md](CONTRIBUTING.md) spiega come compilare, testare e proporre una modifica. Chi
 partecipa segue il [Codice di condotta](CODE_OF_CONDUCT.md).
 

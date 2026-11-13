@@ -15,7 +15,7 @@ users with the next release.
 ## Reporting a vulnerability
 
 Please do not open a public issue. Report it privately through GitHub's
-[private vulnerability reporting](https://github.com/platypus-db/platypus-db/security/advisories/new)
+[private vulnerability reporting](https://github.com/platypus-labs/platypus-db/security/advisories/new)
 (the repository's **Security** tab, then **Report a vulnerability**).
 
 Include the version, the operating system, the steps to reproduce and what an attacker gains.

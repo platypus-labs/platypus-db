@@ -27,7 +27,7 @@ modules:
     buildsystem: simple
     sources:
       - type: file
-        url: https://github.com/platypus-db/platypus-db/releases/download/v@VERSION@/PlatypusDB_@VERSION@_amd64.deb
+        url: https://github.com/platypus-labs/platypus-db/releases/download/v@VERSION@/PlatypusDB_@VERSION@_amd64.deb
         sha256: @SHA256_LINUX_DEB@
         dest-filename: platypusdb.deb
         only-arches: [x86_64]

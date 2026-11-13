@@ -6,7 +6,7 @@
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/platypus-db/platypus-db.git",
+    "url": "git+https://github.com/platypus-labs/platypus-db.git",
     "directory": "apps/desktop"
   },
   "type": "module",

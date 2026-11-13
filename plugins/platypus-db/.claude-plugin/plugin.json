@@ -2,9 +2,9 @@
   "name": "platypus-db",
   "description": "Your PlatypusDB connections in the agent: the MCP server of the PlatypusDB app and a skill on how to use its tools",
   "version": "0.2.1",
-  "author": { "name": "PlatypusDB", "url": "https://github.com/platypus-db/platypus-db" },
-  "homepage": "https://github.com/platypus-db/platypus-db",
-  "repository": "https://github.com/platypus-db/platypus-db",
+  "author": { "name": "PlatypusDB", "url": "https://github.com/platypus-labs/platypus-db" },
+  "homepage": "https://github.com/platypus-labs/platypus-db",
+  "repository": "https://github.com/platypus-labs/platypus-db",
   "license": "AGPL-3.0-or-later",
   "keywords": ["sql", "database", "mcp", "postgresql", "mysql", "sqlite"]
 }

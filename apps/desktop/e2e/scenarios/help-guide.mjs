@@ -202,7 +202,7 @@ export default async function (page) {
 
   await helpMenu(page, "Report a bug…");
   await page.waitFor(`${opened}.length === 2`);
-  assert.equal(await page.eval(`${opened}[1]`), "https://github.com/platypus-db/platypus-db/issues");
+  assert.equal(await page.eval(`${opened}[1]`), "https://github.com/platypus-labs/platypus-db/issues");
 
   await helpMenu(page, "Keyboard shortcuts");
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);

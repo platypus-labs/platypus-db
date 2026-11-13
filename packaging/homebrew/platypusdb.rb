@@ -5,10 +5,10 @@ cask "platypusdb" do
   sha256 arm:   "@SHA256_MACOS_ARM@",
          intel: "@SHA256_MACOS_INTEL@"
 
-  url "https://github.com/platypus-db/platypus-db/releases/download/v#{version}/PlatypusDB_#{version}_#{arch}.dmg"
+  url "https://github.com/platypus-labs/platypus-db/releases/download/v#{version}/PlatypusDB_#{version}_#{arch}.dmg"
   name "PlatypusDB"
   desc "Fast, lightweight SQL client"
-  homepage "https://github.com/platypus-db/platypus-db"
+  homepage "https://github.com/platypus-labs/platypus-db"
 
   livecheck do
     url :url

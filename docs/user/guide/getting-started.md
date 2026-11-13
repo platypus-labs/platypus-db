@@ -10,7 +10,7 @@ feature, area by area, is in [FEATURES.md](../FEATURES.md).
 ## Install
 
 Download the installer for your system from the
-[releases page](https://github.com/platypus-db/platypus-db/releases/latest): `.exe` or `.msi`
+[releases page](https://github.com/platypus-labs/platypus-db/releases/latest): `.exe` or `.msi`
 for Windows, `.dmg` for macOS, `.AppImage`, `.deb` or `.rpm` for Linux. The app updates itself
 (see [Updates](troubleshooting.md#updates)).
 

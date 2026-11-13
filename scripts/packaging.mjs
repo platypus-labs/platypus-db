@@ -11,7 +11,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const releases = "https://github.com/platypus-db/platypus-db/releases/download";
+const releases = "https://github.com/platypus-labs/platypus-db/releases/download";
 
 /** The installers the manifests point at, by placeholder name, as Tauri names them. */
 export function assets(version) {

@@ -38,7 +38,7 @@ test("a link between two pages becomes a link between the pages", () => {
 });
 
 test("what the site does not carry goes to GitHub, folders as trees", () => {
-  const repo = "https://github.com/platypus-db/platypus-db";
+  const repo = "https://github.com/platypus-labs/platypus-db";
   assert.equal(resolveHref("../../../README.md", "docs/user/guide/connect.md", "docs/guide/connect.html", pages), `${repo}/blob/main/README.md`);
   assert.equal(resolveHref("../../plugins/codex", "docs/user/AGENTS.md", "docs/agents.html", pages), `${repo}/tree/main/plugins/codex`);
   assert.equal(resolveHref("https://example.com/a?b=1#c", "docs/user/AGENTS.md", "docs/agents.html", pages), "https://example.com/a?b=1#c");

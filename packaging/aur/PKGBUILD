@@ -1,11 +1,11 @@
-# Maintainer: PlatypusDB <https://github.com/platypus-db/platypus-db>
+# Maintainer: PlatypusDB <https://github.com/platypus-labs/platypus-db>
 # After changing a field, change .SRCINFO too (`makepkg --printsrcinfo > .SRCINFO` on Arch).
 pkgname=platypusdb-bin
 pkgver=@VERSION@
 pkgrel=1
 pkgdesc="Fast, lightweight SQL client"
 arch=('x86_64')
-url="https://github.com/platypus-db/platypus-db"
+url="https://github.com/platypus-labs/platypus-db"
 license=('AGPL-3.0-or-later')
 depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'openssl')
 provides=('platypusdb')
