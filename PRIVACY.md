@@ -19,7 +19,7 @@ and what stays on your computer.
 ## When the app uses the network
 
 - **Your databases**: the app connects only to the servers, tunnels and proxies you configure.
-- **Update check**: once a day, and when you ask, the app downloads
+- **Update check**: each time it starts, the app downloads
   `https://github.com/platypus-labs/platypus-db/releases/latest/download/latest.json` from GitHub
   to see whether a new version is out, and downloads the new version if you install it. GitHub
   sees the request as any download (address, time). Copies installed by a package manager leave
