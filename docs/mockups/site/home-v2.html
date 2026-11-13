@@ -204,19 +204,21 @@
 
     /* WIP, optional (PHONE in the script): now and then the platypus checks its phone while a query
        runs, and puts it away at once because the query is already done. */
-    .phone { position: absolute; left: 73%; top: 41%; width: 6.2em; height: 10.5em; margin: -5.25em 0 0 -3.1em; border-radius: 1.5em;
-      border: .75em solid var(--acc); background: #0b0d0f; overflow: hidden; opacity: 0; transform: translateY(60%) rotate(-14deg) scale(.6); }
-    .phone::before { content: ""; position: absolute; inset: .9em .7em; border-radius: .3em;
+    /* The phone sits in the arm's layer, under the flipper, so it moves with the arm and the
+       flipper holds it. Canvas units: centred at (752, 505), 50 by 84. */
+    .phone { position: absolute; left: 73.4%; top: 49.3%; width: 5em; height: 8.4em; margin: -4.2em 0 0 -2.5em; border-radius: 1.2em;
+      border: .6em solid var(--acc); background: #0b0d0f; overflow: hidden; opacity: 0; transform: translateY(30%) rotate(-15deg) scale(.7); }
+    .phone::before { content: ""; position: absolute; inset: .7em .5em; border-radius: .25em;
       background: repeating-linear-gradient(180deg, rgba(255, 179, 107, .55) 0 .6em, transparent .6em 1.5em); animation: feed .9s linear infinite; }
     @keyframes feed { to { background-position: 0 -3em; } }
     .mascot.phoning .phone { animation: phone 3.4s both cubic-bezier(.3, .8, .3, 1); }
     .mascot.phoning .head .hop { animation: phone-head 3.4s both ease-in-out; }
     .mascot.phoning .arm .hop { animation: phone-arm 3.4s both ease-in-out; }
-    @keyframes phone { 0% { opacity: 0; transform: translateY(60%) rotate(-14deg) scale(.6); } 12%, 66% { opacity: 1; transform: rotate(-14deg); }
-      70% { opacity: 1; transform: translateY(-6%) rotate(-10deg); } 78% { opacity: 0; transform: translate(-40%, 160%) rotate(-70deg) scale(.7); } 100% { opacity: 0; } }
+    @keyframes phone { 0% { opacity: 0; transform: translateY(30%) rotate(-15deg) scale(.7); } 12%, 66% { opacity: 1; transform: rotate(-15deg); }
+      70% { opacity: 1; transform: translateY(-10%) rotate(-5deg); } 79% { opacity: 0; transform: translate(70%, 150%) rotate(70deg) scale(.7); } 100% { opacity: 0; } }
     @keyframes phone-head { 0%, 100% { transform: none; } 14%, 64% { transform: rotate(9deg) translateY(1%); }
       70% { transform: rotate(-6deg) translateY(-3%); } 80% { transform: rotate(2deg); } 88% { transform: none; } }
-    @keyframes phone-arm { 0%, 100% { transform: none; } 12%, 66% { transform: rotate(-38deg) translateY(-2%); } 74% { transform: rotate(10deg); } 84% { transform: none; } }
+    @keyframes phone-arm { 0%, 100% { transform: none; } 12%, 66% { transform: rotate(-16deg) translateY(-1%); } 72% { transform: rotate(14deg); } 84% { transform: none; } }
 
     /* ---- Overview: points to the other pages instead of repeating them ---- */
     .over { position: relative; max-width: var(--page); margin: 0 auto; padding: 120px var(--gutter) 40px; }
@@ -335,8 +337,7 @@
             <div class="part foot-l"><div class="hop"><img class="shape" src="base/img/parts/foot-left.png" alt=""></div></div>
             <div class="part body"><div class="hop"><img class="shape" src="base/img/parts/body.png" alt=""></div></div>
             <div class="part head"><div class="hop"><div class="shape"><img src="base/img/parts/head.png" alt=""><span class="eye"><b><i></i><i></i></b></span></div></div></div>
-            <div class="part arm"><div class="hop"><img class="shape" src="base/img/parts/arm.png" alt=""></div></div>
-            <div class="part phone-part" style="--z:3"><span class="phone"></span></div>
+            <div class="part arm"><div class="hop"><span class="phone"></span><img class="shape" src="base/img/parts/arm.png" alt=""></div></div>
           </div>
           <div class="frame">
             <div class="bar"><i></i><i></i><i></i><b>PlatypusDB</b></div>
@@ -521,10 +522,11 @@
       try { localStorage.setItem("home-title", title); } catch (e) { /* storage off: fine */ }
     }
     (function () {
-      var last = -1;
-      try { last = +localStorage.getItem("home-title"); } catch (e) { /* storage off */ }
+      var last = null;
+      try { last = localStorage.getItem("home-title"); } catch (e) { /* storage off: first visit */ }
+      if (last === null) { setTitle(0); return; }   // first visit: "Put the phone down."
       var i = Math.floor(Math.random() * (TITLES.length - 1));
-      setTitle(i >= last && last >= 0 ? i + 1 : i);
+      setTitle(i >= +last ? i + 1 : i);
     })();
     document.getElementById("b-title").addEventListener("click", function () { setTitle(title + 1); });
 
@@ -570,7 +572,7 @@
       if (still || phoning) return;
       phoning = true; hush();
       mascot.classList.add("phoning");
-      setTimeout(function () { speak("Wait, it's done already? <b>7 rows, 1 ms.</b>", "Query finished"); }, 2300);
+      setTimeout(function () { speak("Wait, done already? <b>A million rows, first page in 287 ms.</b>", "Query finished"); }, 2300);
       setTimeout(function () { mascot.classList.remove("phoning"); phoning = false; sayTimer = setTimeout(nextFact, 2500); }, 3500);
     }
     document.getElementById("b-phone").addEventListener("click", usePhone);
