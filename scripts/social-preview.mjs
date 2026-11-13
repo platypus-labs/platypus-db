@@ -5,7 +5,8 @@
 //
 //   node scripts/social-preview.mjs
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -29,7 +30,11 @@ if (!browser) {
 }
 
 const brand = join(dirname(dirname(fileURLToPath(import.meta.url))), "docs", "brand");
+// A profile of its own: with the browser already open on the user's profile, a headless run on
+// that profile exits at once without writing the screenshot.
+const profile = mkdtempSync(join(tmpdir(), "social-preview-"));
 execFileSync(browser, [
+  `--user-data-dir=${profile}`,
   "--headless",
   "--disable-gpu",
   "--hide-scrollbars",
@@ -39,4 +44,5 @@ execFileSync(browser, [
   `--screenshot=${join(brand, "social-preview.png")}`,
   pathToFileURL(join(brand, "social-preview.html")).href,
 ]);
+rmSync(profile, { recursive: true, force: true });
 console.log("Wrote docs/brand/social-preview.png");

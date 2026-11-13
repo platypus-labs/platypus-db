@@ -24,15 +24,14 @@ PlatypusDB™ is a desktop SQL client for developers, DBAs and analysts who work
 databases in a day. One small app runs queries, browses and edits data, designs tables,
 explains slow statements and documents schemas, and keeps production connections clearly apart
 from the others. A Rust core with a Tauri 2 + React interface: an installer of about 20 MB, a
-window ready in about half a second, and a results grid that scrolls through millions of rows.
+window ready in under a second, and a results grid that scrolls through millions of rows.
 
 ![A million rows opened from the navigator, scrolled and sorted from the header](docs/screenshots/hero.gif)
 
 ## Why PlatypusDB
 
-- **Light.** A 20 MB installer on Windows and about 30 MB to download on Linux, against
-  122 MB for DBeaver, 346 MB for Beekeeper Studio and about 1 GB for DataGrip; a window in
-  about half a second.
+- **Light.** A 20 MB installer on Windows and a 30 MB download on Linux, against 122 MB for
+  DBeaver, 346 MB for Beekeeper Studio and about 1 GB for DataGrip; a window in under a second.
 - **Safe with production.** Connection types color the window frame, risky statements ask
   first, production opens in manual commit, and every save of edited rows leaves an undo script.
 - **Many databases, one app.** PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse,
@@ -93,29 +92,30 @@ run opens a dialog in the app first. Setup, tools, limits and the `platypus` CLI
 
 ## Performance
 
-| | Measured | Target |
-|---|---|---|
-| Start to interactive window | 430–500 ms (0.1.0) | < 500 ms |
-| Memory at rest, 1 connection | about 170 MB (0.3.0) | < 150 MB |
-| Scrolling 1M rows | 178 fps (0.1.0) | 60 fps |
-| 5M rows to Parquet | 3.2 s, 31 MB peak (0.1.0) | streaming |
-| Windows installer | 20 MiB (0.6.0) | < 20 MB |
+PlatypusDB 0.6.0 on Windows 11 (Ryzen 7 9700X, 32 GB):
 
-| | PlatypusDB 0.2.0 | DBeaver CE | DataGrip | TablePlus | Beekeeper Studio |
+| | PlatypusDB 0.6.0 |
+|---|---|
+| Start, until the window has finished drawing | 0.7 s (0.8 s the first time) |
+| Memory at rest, the app and its web view | 170 MB |
+| A million rows from SQLite | first page in 0.3 s, the rest 0.3 s later; the window never stalls |
+| Windows installer | 20 MiB |
+
+Next to other SQL clients, by the size of their official Linux downloads:
+
+| | PlatypusDB 0.6.0 | DBeaver CE 26.2.3 | DataGrip 2026.2.6 | TablePlus 2.2.0 | Beekeeper Studio 6.2.0 |
 |---|---|---|---|---|---|
-| Runtime | Rust and the system's web view | Java, JRE bundled | Java, JetBrains Runtime bundled | Native (GTK on Linux) | Electron |
-| Linux download | 19.5 MiB | 122 MiB | 1,047 MiB | 60 MiB | 346 MiB |
-| On disk | 46 MiB | 206 MiB | not measured | 180 MiB | 1,105 MiB |
+| Runtime | Rust and the system's web view | Java, JRE bundled | Java, JetBrains Runtime bundled | Native (GTK) | Electron |
+| Download | 30 MiB (`.deb`) | 122 MiB | 1,047 MiB | 60 MiB | 346 MiB |
+| On disk | 68 MiB, plus the system's WebKitGTK | 206 MiB | not published | 180 MiB | 1,105 MiB |
 | License | AGPL-3.0 | Apache 2.0 | Proprietary | Proprietary | GPLv3 |
 
-Windows 11, Ryzen 7 9700X. Sizes of the official Linux downloads of PlatypusDB 0.2.0, DBeaver CE
-26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 and Beekeeper Studio 6.2.0; start and memory side by side are still to be measured.
-Method, scale tests and the first Linux numbers in [docs/dev/BENCHMARKS.md](docs/dev/BENCHMARKS.md).
+How each number is taken, the scale tests and the Linux measurements: [docs/dev/BENCHMARKS.md](docs/dev/BENCHMARKS.md).
 
 ## Development
 
 Build, test, project layout and the dev databases: [docs/dev/DEVELOPMENT.md](docs/dev/DEVELOPMENT.md).
-What comes next is in [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md); every document is listed in
+What comes next is in [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md) (in Italian); every document is listed in
 [docs/README.md](docs/README.md), and the changes of each release in
 [CHANGELOG.md](CHANGELOG.md).
 

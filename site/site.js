@@ -134,10 +134,10 @@
   var pick = document.querySelector(".vs-pick");
   if (!pick) return;
   var clients = {
-    dbeaver: { name: "DBeaver CE", logo: "dbeaver", color: "#c9a27a", ratio: "6×", download: "122 MiB", disk: "206 MiB", runtime: "Java, JRE bundled", license: "Apache 2.0, free", point: "Your DBeaver connections", pointText: "Import a workspace or a .dbp project export, with its folders, projects and saved user names." },
-    datagrip: { name: "DataGrip", logo: "datagrip", color: "#e6e6e6", ratio: "54×", download: "1,047 MiB", disk: "not measured", runtime: "Java, JetBrains Runtime bundled", license: "Proprietary; free for non-commercial use", point: "Your DataGrip connections", pointText: "Import them with their folders. No account and no license to renew." },
-    tableplus: { name: "TablePlus", image: "img/clients/tableplus.png", color: "#f0a14b", ratio: "3×", download: "60 MiB", disk: "180 MiB", runtime: "Native (GTK on Linux)", license: "Proprietary, free tier", point: "Open source", pointText: "AGPL-3.0: free for any use, at work too, with no license to buy." },
-    beekeeper: { name: "Beekeeper Studio", logo: "beekeeperstudio", color: "#fad83b", ratio: "18×", download: "346 MiB", disk: "1,105 MiB", runtime: "Electron", license: "GPLv3 community edition, paid edition", point: "Oracle in the free app", pointText: "Oracle comes with the free download, with PL/SQL blocks and real cancel." }
+    dbeaver: { name: "DBeaver CE", logo: "dbeaver", color: "#c9a27a", ratio: "4×", download: "122 MiB", disk: "206 MiB", runtime: "Java, JRE bundled", license: "Apache 2.0, free", point: "Your DBeaver connections", pointText: "Import a workspace or a .dbp project export, with its folders, projects and saved user names." },
+    datagrip: { name: "DataGrip", logo: "datagrip", color: "#e6e6e6", ratio: "35×", download: "1,047 MiB", disk: "not published", runtime: "Java, JetBrains Runtime bundled", license: "Proprietary; free for non-commercial use", point: "Your DataGrip connections", pointText: "Import them with their folders. No account and no license to renew." },
+    tableplus: { name: "TablePlus", image: "img/clients/tableplus.png", color: "#f0a14b", ratio: "2×", download: "60 MiB", disk: "180 MiB", runtime: "Native (GTK on Linux)", license: "Proprietary, free tier", point: "Open source", pointText: "AGPL-3.0: free for any use, at work too, with no license to buy." },
+    beekeeper: { name: "Beekeeper Studio", logo: "beekeeperstudio", color: "#fad83b", ratio: "12×", download: "346 MiB", disk: "1,105 MiB", runtime: "Electron", license: "GPLv3 community edition, paid edition", point: "Oracle in the free app", pointText: "Oracle comes with the free download, with PL/SQL blocks and real cancel." }
   };
   function show(id) {
     var c = clients[id];
