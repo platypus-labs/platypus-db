@@ -13,7 +13,7 @@ import { dialog, editConnection } from "../conn-helpers.mjs";
 import { setField } from "../plans.mjs";
 import { closeProfiles, openProfilesOf, profilesDialog } from "../profiles-helpers.mjs";
 import { sqliteConnection } from "../query.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "E2E ux small";
 const ID = "00000000-0000-4000-8000-0000000000c1";

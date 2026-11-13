@@ -9,8 +9,8 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { answerSave, fill } from "../qa-xfer.mjs";
-import { DST, ENGINES, SRC, buttonIn, compareDialog, compareUi, invoke, openPath, rowMenu, saveEngines } from "../qa3-schema.mjs";
+import { answerSave, fill } from "../transfer-helpers.mjs";
+import { DST, ENGINES, SRC, buttonIn, compareDialog, compareUi, invoke, openPath, rowMenu, saveEngines } from "../schema-compare-helpers.mjs";
 
 const SAME = "qa3s_same";
 const SAME_NAME = "QA3 SQLite same";

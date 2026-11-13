@@ -767,10 +767,10 @@ install an unsigned build.
 npm run tauri build -- --no-bundle
 npm run e2e              # all scenarios
 npm run e2e -- postgres  # file names containing "postgres"
-npm run e2e -- --skip qa-perf,oracle  # all but file names containing "qa-perf" or "oracle"
+npm run e2e -- --skip perf,oracle  # all but file names containing "perf" or "oracle"
 ```
 
-`PLATYPUS_E2E_SKIP=qa-perf,oracle` does the same as `--skip`, and the two can be combined
+`PLATYPUS_E2E_SKIP=perf,oracle` does the same as `--skip`, and the two can be combined
 with a filter (`npm run e2e -- postgres --skip arrays`).
 
 A scenario in `e2e/scenarios/` exports:

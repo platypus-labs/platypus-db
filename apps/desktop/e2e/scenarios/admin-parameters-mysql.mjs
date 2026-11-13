@@ -10,8 +10,8 @@
 // See the Parameters component in src/admin/Parameters.tsx.
 import { spawnSync } from "../proc.mjs";
 import assert from "node:assert/strict";
-import { CTRL, clearStatus, connections, idle, needs, visibleTab } from "../qa-grid.mjs";
-import { editorText } from "../qa-ana.mjs";
+import { CTRL, clearStatus, connections, idle, needs, visibleTab } from "../grid-helpers.mjs";
+import { editorText } from "../analysis-helpers.mjs";
 import {
   adminButton,
   adminTab,

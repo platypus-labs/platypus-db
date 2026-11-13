@@ -3,8 +3,8 @@
 // command) before they run; the data viewer's grid is read-only. The keys stay as they were.
 // Skipped when Redis is not running.
 import assert from "node:assert/strict";
-import { gridTsv, runStatement, treeRow, visibleTab } from "../qa-sql.mjs";
-import { openEditor, runOrGuard } from "../qa-safe-db.mjs";
+import { gridTsv, runStatement, treeRow, visibleTab } from "../editor-helpers.mjs";
+import { openEditor, runOrGuard } from "../safety-helpers.mjs";
 import { connection, redis, saveConnections, skip as skipRedis, text } from "../redis-helpers.mjs";
 
 const NAME = "E2E Redis read-only";

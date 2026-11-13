@@ -6,7 +6,7 @@
 // opens in manual commit, with Commit and Rollback shown. A read opens no transaction.
 // Skipped when the standalone server or the replica set is not running.
 import assert from "node:assert/strict";
-import { resultError, visibleTab } from "../qa-sql.mjs";
+import { resultError, visibleTab } from "../editor-helpers.mjs";
 import {
   connection,
   count,

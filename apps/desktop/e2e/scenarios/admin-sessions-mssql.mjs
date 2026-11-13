@@ -1,7 +1,7 @@
 // Group J against the dev SQL Server: Server activity shows a session waiting for another's
 // key lock, with the chain and the waited lock. SQL Server cannot cancel another session's
 // statement, so there is no Cancel statement; KILL ends the waiter, then the holder.
-import { assert, connections, needs, sh } from "../qa-grid.mjs";
+import { assert, connections, needs, sh } from "../grid-helpers.mjs";
 import { adminButton, background, checkChain, confirmDanger, field, idOf, openAdmin, rowOf, rowWith, select, waitBlocked } from "../admin.mjs";
 
 const DB = "mssql";

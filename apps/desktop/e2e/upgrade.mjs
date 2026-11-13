@@ -1,4 +1,4 @@
-// Upgrade tests: what the s-upgrade-* scenarios share. A published release (the MSI of a GitHub
+// Upgrade tests: what the update-upgrade-* scenarios share. A published release (the MSI of a GitHub
 // release, unpacked with an administrative install, so nothing is installed or registered on
 // this machine) writes a user's data on a fresh profile, is closed as a user closes it, and the
 // build under test then opens the same profile: everything must be there and work. The data is
@@ -13,8 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL, connect } from "./cdp.mjs";
-import { clearStatus, editorText, idle, status } from "./qa-grid.mjs";
-import { closeApp, needsPostgres, psql, psqlTry, restart } from "./qa-jrn.mjs";
+import { clearStatus, editorText, idle, status } from "./grid-helpers.mjs";
+import { closeApp, needsPostgres, psql, psqlTry, restart } from "./journey-helpers.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PLATYPUS_E2E_PORT ?? 9333);

@@ -8,7 +8,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { palette } from "../plans.mjs";
-import { lintDialog, openPath, rowMenu } from "../qa3-schema.mjs";
+import { lintDialog, openPath, rowMenu } from "../schema-compare-helpers.mjs";
 
 const NAME = "Ux db";
 const modalBusy = (sel) => `document.querySelector('${sel} [aria-busy]') !== null`;

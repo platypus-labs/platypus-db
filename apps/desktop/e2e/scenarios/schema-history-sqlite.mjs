@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expand, saveConnections, sqliteEntry } from "../perf.mjs";
 import { palette, setField } from "../plans.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "E2E History";
 const tab = `[...document.querySelectorAll('.schema-history')].find(t => t.style.display !== 'none')`;

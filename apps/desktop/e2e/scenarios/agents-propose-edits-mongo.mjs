@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { noMcp, startMcp } from "../mcp.mjs";
-import { editorText, status, visibleTab } from "../qa-sql.mjs";
+import { editorText, status, visibleTab } from "../editor-helpers.mjs";
 import { connection, discard, editBar, mongosh, needs, preview, save, saveConnections, saveFails } from "../mongo-grid-helpers.mjs";
 
 const NAME = "E2E Mongo propose";

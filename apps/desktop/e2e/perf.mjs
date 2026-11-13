@@ -1,4 +1,4 @@
-// What the performance scenarios (qa-perf-*) share: saved connections, the SQL editor of a
+// What the performance scenarios (perf-*) share: saved connections, the SQL editor of a
 // connection, running statements, fetching a whole result, the clipboard and the memory of the
 // app's processes.
 import { spawnSync } from "./proc.mjs";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { CTRL } from "./cdp.mjs";
 import { needsPort } from "./conn-helpers.mjs";
 import { revealItem } from "./menu-sub.mjs";
-import { status, treeRow, visibleTab } from "./qa-jrn.mjs";
+import { status, treeRow, visibleTab } from "./journey-helpers.mjs";
 
 export { status, treeRow, visibleTab };
 export const statusbar = `(${visibleTab}?.querySelector('.statusbar')?.textContent ?? '')`;

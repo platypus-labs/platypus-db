@@ -7,7 +7,7 @@
 // search, and a double click opens the documents in the grid with the document tree.
 // Skipped when Elasticsearch is not running.
 import assert from "node:assert/strict";
-import { gridTsv, runStatement, editorText, treeRow, visibleTab } from "../qa-sql.mjs";
+import { gridTsv, runStatement, editorText, treeRow, visibleTab } from "../editor-helpers.mjs";
 import { closeMenu, connection, drop, es, expandCluster, openIndex, rowMenu, saveConnections, seed, skip as skipSearch, table } from "../search-helpers.mjs";
 import { revealItem, submenuItems } from "../menu-sub.mjs";
 

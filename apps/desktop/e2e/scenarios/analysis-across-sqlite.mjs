@@ -13,9 +13,9 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expand, treeMenu } from "../qa-grid.mjs";
+import { expand, treeMenu } from "../grid-helpers.mjs";
 import { setField, palette } from "../plans.mjs";
-import { gridTsv, rerun, runQuery, saveConnections, sqliteExec, sqliteFile, status, visibleTab } from "../qa-ana.mjs";
+import { gridTsv, rerun, runQuery, saveConnections, sqliteExec, sqliteFile, status, visibleTab } from "../analysis-helpers.mjs";
 
 const SHOP = "E2E across shop";
 const CRM = "E2E across crm";

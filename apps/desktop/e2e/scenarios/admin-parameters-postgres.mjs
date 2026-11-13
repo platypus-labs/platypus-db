@@ -5,8 +5,8 @@
 // ALTER SYSTEM SET in the editor without running it, and says that a fixed setting cannot be
 // set. See the Parameters component in src/admin/Parameters.tsx.
 import assert from "node:assert/strict";
-import { connections, needs, sh } from "../qa-grid.mjs";
-import { editorText } from "../qa-ana.mjs";
+import { connections, needs, sh } from "../grid-helpers.mjs";
+import { editorText } from "../analysis-helpers.mjs";
 import {
   adminButton,
   adminTab,

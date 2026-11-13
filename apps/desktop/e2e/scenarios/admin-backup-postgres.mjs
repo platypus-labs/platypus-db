@@ -1,7 +1,7 @@
 // Group J against the dev PostgreSQL: Back up… writes a pg_dump archive of the database,
 // table by table, and Restore… brings a dropped table back from it with pg_restore, asked
 // first. Needs pg_dump and pg_restore 17 or later on the PATH (the server's version).
-import { connections, needs, sh } from "../qa-grid.mjs";
+import { connections, needs, sh } from "../grid-helpers.mjs";
 import { backupFlow, toolVersion } from "../admin.mjs";
 import { join } from "node:path";
 

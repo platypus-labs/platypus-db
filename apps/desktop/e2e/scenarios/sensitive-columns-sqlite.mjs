@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
-import { answerSave, button, fill } from "../qa-xfer.mjs";
+import { answerSave, button, fill } from "../transfer-helpers.mjs";
 
 const NAME = "Sensitive db";
 const row = (label) =>

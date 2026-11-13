@@ -1,12 +1,12 @@
-// What the analysis, development and agents journeys (s-jrn-*) share on top of journey.mjs:
+// What the analysis, development and agents journeys (journey-*) share on top of journey.mjs:
 // one `ui(page, mode)` whose actions click in the English and Italian runs and go through the
 // keyboard in the "keys" run (Tab to the element, Enter or Space, arrows in the navigator and in
 // menus, typing in fields), asserting at each stop that the focus is visible.
 import assert from "node:assert/strict";
 import { CTRL } from "./cdp.mjs";
 import { focusVisible, keys, press, screenIsItalian, space, tabStep, texts } from "./journey.mjs";
-import { status, visibleTab } from "./qa-jrn.mjs";
-import { row } from "./qa-xfer.mjs";
+import { status, visibleTab } from "./journey-helpers.mjs";
+import { row } from "./transfer-helpers.mjs";
 
 export { status, visibleTab };
 

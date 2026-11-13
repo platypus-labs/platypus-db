@@ -8,7 +8,7 @@
 // no CASCADE or grant-option-only (ClickHouse cannot) and routine grants are not offered.
 // ClickHouse has no host, connection limit or attributes: the form shows none. A read-only connection lists
 // them and changes nothing.
-import { DBS, assert, needs, sh } from "../qa-grid.mjs";
+import { DBS, assert, needs, sh } from "../grid-helpers.mjs";
 import {
   canRun,
   cancelDialog,

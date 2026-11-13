@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { connections, expand, needs, sh } from "../qa-grid.mjs";
+import { connections, expand, needs, sh } from "../grid-helpers.mjs";
 import {
   allParts,
   maintenanceFlow,

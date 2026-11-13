@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { noMcp, startMcp } from "../mcp.mjs";
-import { fill } from "../qa-xfer.mjs";
+import { fill } from "../transfer-helpers.mjs";
 import { runQuery, status, treeRow } from "../query.mjs";
 
 const PEOPLE = "00000000-0000-4000-8000-0000000000e1";

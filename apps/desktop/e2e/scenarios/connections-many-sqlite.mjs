@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
-import { restart } from "../qa-jrn.mjs";
+import { restart } from "../journey-helpers.mjs";
 
 const P = "00000000-0000-4000-9000-000000000051";
 const ID = { alpha: "a1", beta: "b1", gamma: "c1", delta: "d1" };

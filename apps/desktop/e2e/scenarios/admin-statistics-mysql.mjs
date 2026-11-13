@@ -3,7 +3,7 @@
 // TABLE from the table's details and ANALYZE from the navigator, whose dialog shows the
 // server's status rows. See statisticsFlow in e2e/admin.mjs.
 import { spawnSync } from "../proc.mjs";
-import { connections, needs, sh } from "../qa-grid.mjs";
+import { connections, needs, sh } from "../grid-helpers.mjs";
 import { statisticsFlow } from "../admin.mjs";
 
 const DB = "mysql";

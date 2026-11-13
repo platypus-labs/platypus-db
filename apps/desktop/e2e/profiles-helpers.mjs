@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { palette } from "./plans.mjs";
-import { button, fill, menu } from "./qa-xfer.mjs";
+import { button, fill, menu } from "./transfer-helpers.mjs";
 
 export const profilesDialog = `[...document.querySelectorAll('.schedules-dialog')].find(d => d.querySelector('h2')?.textContent.startsWith('Transfer profiles'))`;
 export const nameDialog = `document.querySelector('.modal.name-dialog')`;

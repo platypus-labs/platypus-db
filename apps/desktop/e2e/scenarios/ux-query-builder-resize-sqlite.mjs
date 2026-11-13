@@ -4,7 +4,7 @@
 // table box by its corner grip (wider and taller, never below the minimum, and the SQL does not
 // change).
 import assert from "node:assert/strict";
-import { expand, menu } from "../qa-xfer.mjs";
+import { expand, menu } from "../transfer-helpers.mjs";
 import { sqliteConnection } from "../query.mjs";
 
 const NAME = "Builder resize db";

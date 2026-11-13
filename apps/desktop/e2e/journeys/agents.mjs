@@ -14,7 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { keys, press, setLanguage } from "../journey.mjs";
 import { noMcp, startMcp } from "../mcp.mjs";
-import { needsPostgres, psql, psqlTry, restart } from "../qa-jrn.mjs";
+import { needsPostgres, psql, psqlTry, restart } from "../journey-helpers.mjs";
 import { ui } from "../journey-work.mjs";
 import { dialog, formField, picker } from "../conn-helpers.mjs";
 

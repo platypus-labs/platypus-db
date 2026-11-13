@@ -7,7 +7,7 @@
 // an `_id`, are refused before anything runs.
 // Skipped when Elasticsearch is not running.
 import assert from "node:assert/strict";
-import { gridTsv, runScript, editorText, status, visibleTab } from "../qa-sql.mjs";
+import { gridTsv, runScript, editorText, status, visibleTab } from "../editor-helpers.mjs";
 import {
   closePreview,
   connection,

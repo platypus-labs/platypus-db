@@ -8,8 +8,8 @@
 // and the call run to its result and messages. Then the ends: Stop (Shift+F5) while paused
 // rolls back what the call wrote, Stop while a continue runs an endless loop, and closing the
 // tab while paused; none leaves a session running.
-import { DBS, SHIFT, assert, connections, expand, needs, sh, treeMenu } from "../qa-grid.mjs";
-import { openPath } from "../qa-dbs.mjs";
+import { DBS, SHIFT, assert, connections, expand, needs, sh, treeMenu } from "../grid-helpers.mjs";
+import { openPath } from "../drivers-helpers.mjs";
 
 const DB = "pldebug";
 const NAME = "QA J PL/pgSQL debugger";

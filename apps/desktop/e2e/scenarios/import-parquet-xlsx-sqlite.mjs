@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { chooseFile, closeModal, exportResult, expand, fill, importDialog, menu, openEditor, runJob, runScript, sqliteBlock } from "../qa-xfer.mjs";
+import { chooseFile, closeModal, exportResult, expand, fill, importDialog, menu, openEditor, runJob, runScript, sqliteBlock } from "../transfer-helpers.mjs";
 import { writeXlsx } from "../xlsx.mjs";
 
 const NAME = "Files db";

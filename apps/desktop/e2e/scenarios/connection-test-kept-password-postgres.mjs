@@ -4,7 +4,7 @@
 // the server's answer; back on the saved server, the saved password works again.
 import assert from "node:assert/strict";
 import { button, dialog, editConnection, fill, fillForm, formField, menu, menuItem, newConnection, saveForm, seedSqlite, testConnection, treeRow } from "../conn-helpers.mjs";
-import { needsPostgres } from "../qa-jrn.mjs";
+import { needsPostgres } from "../journey-helpers.mjs";
 
 export const skip = needsPostgres;
 

@@ -10,7 +10,7 @@
 // error says how many commands were saved.
 // Skipped when the standalone MongoDB is not running.
 import assert from "node:assert/strict";
-import { editorText, status, treeRow } from "../qa-sql.mjs";
+import { editorText, status, treeRow } from "../editor-helpers.mjs";
 import {
   closePreview,
   connection,

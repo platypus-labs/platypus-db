@@ -6,8 +6,8 @@
 // Skipped when Elasticsearch is not running.
 import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";
-import { clearStatus, gridTsv, openEditor, runStatement, setEditor, status, waitDone } from "../qa-sql.mjs";
-import { runOrGuard } from "../qa-safe-db.mjs";
+import { clearStatus, gridTsv, openEditor, runStatement, setEditor, status, waitDone } from "../editor-helpers.mjs";
+import { runOrGuard } from "../safety-helpers.mjs";
 import { connection, countRow, drop, es, saveConnections, seed, skip as skipSearch, sources } from "../search-helpers.mjs";
 
 const NAME = "E2E ES guards";

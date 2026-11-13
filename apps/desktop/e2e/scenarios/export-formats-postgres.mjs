@@ -18,7 +18,7 @@ import { gunzipSync, zstdDecompressSync } from "node:zlib";
 import { parquetInfo } from "../parquet.mjs";
 import {
   chooseFile, closeModal, db, dbQuiet, DBS, exportResult, importDialog, menu, openEditor, runJob, runScript, saveConnections, showTable, skipUnless, zipEntry,
-} from "../qa-xfer.mjs";
+} from "../transfer-helpers.mjs";
 
 const TABLE = "qa_expo";
 const ALL = `SELECT * FROM ${TABLE} ORDER BY id`;

@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const FORMAT = "E2E text json";
 const PLAIN = "E2E text json plain";

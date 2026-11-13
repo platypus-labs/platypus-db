@@ -4,7 +4,7 @@
 // revokes privileges on a table and a schema (also only the grant option), adds it to a role
 // and takes it out, drops roles with and without what they own, shows what the server
 // refuses, and offers nothing to change on a read-only connection.
-import { DBS, assert, needs, sh } from "../qa-grid.mjs";
+import { DBS, assert, needs, sh } from "../grid-helpers.mjs";
 import {
   canRun,
   cancelDialog,

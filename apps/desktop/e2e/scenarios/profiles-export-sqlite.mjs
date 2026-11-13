@@ -23,7 +23,7 @@ import {
   saveProfile,
   savedProfiles,
 } from "../profiles-helpers.mjs";
-import { answerSave, button, closeModal, exportTablesDialog, expand, fill, menu, openEditor, runScript, sqliteBlock, saveConnections, visibleTab } from "../qa-xfer.mjs";
+import { answerSave, button, closeModal, exportTablesDialog, expand, fill, menu, openEditor, runScript, sqliteBlock, saveConnections, visibleTab } from "../transfer-helpers.mjs";
 
 const SHOP = "Profiles shop";
 const OTHER = "Profiles other";

@@ -8,7 +8,7 @@
 // server login), shows what the server refuses (a weak password, an existing name, a role that
 // does not exist) and offers nothing to change on a read-only connection. SQL Server has no
 // host, connection limit or expiry date: the form says nothing of them.
-import { DBS, assert, needs, sh } from "../qa-grid.mjs";
+import { DBS, assert, needs, sh } from "../grid-helpers.mjs";
 import {
   canRun,
   cancelDialog,

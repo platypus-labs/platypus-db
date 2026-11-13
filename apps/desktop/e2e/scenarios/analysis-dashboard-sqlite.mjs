@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setField } from "../plans.mjs";
 import { sqliteConnection } from "../query.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "E2E dashboard";
 const ID = "00000000-0000-4000-8000-000000000041";

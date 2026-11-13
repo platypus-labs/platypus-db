@@ -14,7 +14,7 @@ import {
   restartApp, fmt, journey, keys, palette, pressButton, runSql, screenIsItalian, setCheck, setSelect, tabTo, treeMenu, writeZip,
 } from "../journey-day.mjs";
 import { setLanguage } from "../journey.mjs";
-import { visibleTab } from "../qa-jrn.mjs";
+import { visibleTab } from "../journey-helpers.mjs";
 
 const PROJECT = "Journey DBeaver";
 const dialog = `document.querySelector('.import-dialog')`;

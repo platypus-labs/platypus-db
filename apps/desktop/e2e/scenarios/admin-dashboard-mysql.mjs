@@ -11,7 +11,7 @@
 // component in src/admin/Dashboard.tsx.
 import { spawnSync } from "../proc.mjs";
 import assert from "node:assert/strict";
-import { connections, needs } from "../qa-grid.mjs";
+import { connections, needs } from "../grid-helpers.mjs";
 import {
   adminTab,
   background,

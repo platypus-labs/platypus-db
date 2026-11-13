@@ -14,8 +14,8 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hasOnPath, pgFolder, withPath } from "../clients.mjs";
-import { db, dbQuiet, saveConnections, skipUnless } from "../qa-xfer.mjs";
-import { clearStatus, editorMenu, openEditor, setEditor, visibleTab, waitDone } from "../qa-sql.mjs";
+import { db, dbQuiet, saveConnections, skipUnless } from "../transfer-helpers.mjs";
+import { clearStatus, editorMenu, openEditor, setEditor, visibleTab, waitDone } from "../editor-helpers.mjs";
 
 export const skip = async () => {
   const down = await skipUnless("pg", "mysql");

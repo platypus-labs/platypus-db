@@ -40,7 +40,7 @@ ripristina le due cartelle (non le password, che restano nella Gestione credenzi
 Servono: Windows 11 pulito (VM o secondo utente), gli installer 0.2.1 dalle release di GitHub e
 quelli da provare (`.exe` NSIS e `.msi`), un database a cui connettersi.
 
-**Cosa copre `s-upgrade-*`.** Gli scenari `apps/desktop/e2e/scenarios/s-upgrade-<tag>.mjs` (e
+**Cosa copre `update-upgrade-*`.** Gli scenari `apps/desktop/e2e/scenarios/update-upgrade-<tag>.mjs` (e
 `-master`, con il master password) scaricano l'MSI di ogni release pubblicata (`gh release
 download`, in `target/e2e-releases/<tag>/`), ne estraggono l'eseguibile con `msiexec /a`
 (installazione amministrativa: copia i file, non registra nulla) e con quello scrivono su un
@@ -74,7 +74,7 @@ dal predefinito, una query eseguita (cronologia), una query salvata. Chiudere l'
 `.\scripts\collaudo-profile.ps1 -Backup -Name v021`. Per il punto 6 rifare lo stesso con il master
 password attivo (Impostazioni → Sicurezza) su un secondo profilo (`-Backup -Name v021-vault`).
 
-I dati dei punti 2, 3, 4 e 6 sono provati anche da `s-upgrade-*` (vedi sopra): qui si guarda solo
+I dati dei punti 2, 3, 4 e 6 sono provati anche da `update-upgrade-*` (vedi sopra): qui si guarda solo
 che l'installer li lasci dove sono.
 
 1. Installare la versione nuova (NSIS) sopra, senza disinstallare. Atteso: nessuna domanda sulla cartella, nessun errore; `platypus-mcp.exe` non c'è più nella cartella di installazione. - [ ]
@@ -222,19 +222,19 @@ volta da sola tastiera. Dove esiste uno scenario automatico, la lista copre solo
 prova (installer, file e database veri, sistema, giudizio sulla resa). Atteso generale: nessun
 errore in `platypus.log`, nessun testo in lingua sbagliata, il focus sempre visibile.
 
-Ogni percorso ha uno scenario completo `s-jrn-<percorso>-<en|it|keys>` (in inglese, in italiano
+Ogni percorso ha uno scenario completo `journey-<percorso>-<en|it|keys>` (in inglese, in italiano
 con il controllo che nessun testo resti in inglese o tagliato, e da sola tastiera), con un riavvio
 vero dell'app a metà; restano a mano solo le parti fuori dalla portata degli E2E.
 
 | Percorso | Scenari automatici |
 |---|---|
-| Primo avvio | `s-jrn-first-start-*`, `qa2-jrn-ok-first-day`, `qa2-jrn-ok-keyboard`, `languages-sqlite`, `qa3-url-italian` |
-| Import da DBeaver | `s-jrn-import-dbeaver-*`, `qa2-jrn-ok-import-organise`, `qa2-jrn-import-relative-sqlite` |
-| Giornata di lavoro | `s-jrn-workday-*`, `qa2-jrn-restore-table-tab`, `qa2-jrn-new-editor-focus`, `qa2-jrn-toolbar-wrap-transaction`, `qa2-jrn-prod-drop-uncommitted` |
-| Analisi | `s-jrn-analysis-*`, `qa2-jrn-ok-analyst`, `qa2-jrn-count-locale` |
-| Sviluppo | `s-jrn-development-*`, `qa2-jrn-ok-developer`, `qa3-schema-it-compare-warnings` |
-| Agenti | `s-jrn-agents-*`, `qa2-jrn-ok-agent-mcp` |
-| Italiano | `qa2-jrn-it-backend-errors`, `qa2-jrn-it-lint-messages`, `qa2-jrn-it-menu-wording`, `qa2-jrn-it-query-manager` |
+| Primo avvio | `journey-first-start-*`, `journey-ok-first-day`, `journey-ok-keyboard`, `languages-sqlite`, `connection-url-italian` |
+| Import da DBeaver | `journey-import-dbeaver-*`, `journey-ok-import-organise`, `journey-import-relative-sqlite` |
+| Giornata di lavoro | `journey-workday-*`, `journey-restore-table-tab`, `journey-new-editor-focus`, `journey-toolbar-wrap-transaction`, `journey-prod-drop-uncommitted` |
+| Analisi | `journey-analysis-*`, `journey-ok-analyst`, `journey-count-locale` |
+| Sviluppo | `journey-development-*`, `journey-ok-developer`, `schema-it-compare-warnings` |
+| Agenti | `journey-agents-*`, `journey-ok-agent-mcp` |
+| Italiano | `journey-it-backend-errors`, `journey-it-lint-messages`, `journey-it-menu-wording`, `journey-it-query-manager` |
 
 ### 5.1 Primo avvio
 

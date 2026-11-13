@@ -12,7 +12,7 @@ import {
   answerAndExit, reopenApp, restartApp, fmt, journey, keys, palette, pressButton, runSql, screenIsItalian, tabTo, treeMenu, treeOpen, typeSql, until, visibleTab, waitRows,
 } from "../journey-day.mjs";
 import { setLanguage } from "../journey.mjs";
-import { closeApp } from "../qa-jrn.mjs";
+import { closeApp } from "../journey-helpers.mjs";
 import { editorText } from "../query.mjs";
 
 

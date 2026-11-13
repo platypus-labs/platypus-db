@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expand, treeMenu, treeRow } from "../qa-grid.mjs";
+import { expand, treeMenu, treeRow } from "../grid-helpers.mjs";
 
 const SUPABASE = "QA F Supabase";
 

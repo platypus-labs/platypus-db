@@ -6,7 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { assert, CTRL, SHIFT, copied, editCell, focusCell, grid, gridMenu, rows, shotter, status, stubClipboard, treeRow, visibleTab } from "../qa-grid.mjs";
+import { assert, CTRL, SHIFT, copied, editCell, focusCell, grid, gridMenu, rows, shotter, status, stubClipboard, treeRow, visibleTab } from "../grid-helpers.mjs";
 
 const NAME = "E2E grid computed";
 const dialog = `document.querySelector('.computed-dialog')`;

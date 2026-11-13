@@ -6,7 +6,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
-import { pressF2 } from "../qa-grid.mjs";
+import { pressF2 } from "../grid-helpers.mjs";
 
 const NAME = "E2E guards";
 const visibleTab = `[...document.querySelectorAll('.query-tab')].find(t => t.style.display !== 'none')`;

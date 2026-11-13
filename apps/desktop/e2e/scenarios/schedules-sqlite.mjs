@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { palette, setField } from "../plans.mjs";
 import { saveConnections, sqliteEntry } from "../perf.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "E2E Schedules";
 const dialog = `document.querySelector('.schedules-dialog')`;

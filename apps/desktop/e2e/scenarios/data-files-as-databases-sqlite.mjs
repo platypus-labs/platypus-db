@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openQueryTab, run, treeRow } from "../conn-helpers.mjs";
-import { rows, stubClipboard } from "../qa-grid.mjs";
+import { rows, stubClipboard } from "../grid-helpers.mjs";
 import { writeXlsx } from "../xlsx.mjs";
 
 const file = (name) => name.replaceAll("\\", "/");

@@ -11,10 +11,10 @@
 // - the memory limit (512 MB): a PostgreSQL view that would hold more is cut, and the bar says
 //   which table is partial.
 import assert from "node:assert/strict";
-import { expand, needs, sh, treeMenu } from "../qa-grid.mjs";
-import { openPath } from "../qa-dbs.mjs";
+import { expand, needs, sh, treeMenu } from "../grid-helpers.mjs";
+import { openPath } from "../drivers-helpers.mjs";
 import { setField } from "../plans.mjs";
-import { gridTsv, runQuery, saveConnections, status, visibleTab } from "../qa-ana.mjs";
+import { gridTsv, runQuery, saveConnections, status, visibleTab } from "../analysis-helpers.mjs";
 
 const PG = "E2E across pg";
 const MY = "E2E across my";

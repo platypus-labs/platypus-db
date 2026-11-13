@@ -3,7 +3,7 @@
 // part, at the bottom right and away from the floating toolbar. Clicking in it scrolls the
 // canvas there, dragging follows the pointer, and zooming in keeps the frame inside it.
 import assert from "node:assert/strict";
-import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../qa3-schema.mjs";
+import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../schema-compare-helpers.mjs";
 
 const TABLES = 30;
 

@@ -47,14 +47,14 @@ about 55 MB less at rest, with the same scrolling performance as a separate GPU 
 ## Windows, 2 November 2026 (group S)
 
 Release build of PlatypusDB 0.3.0 on the same machine as above (Ryzen 7 9700X, 32 GB, Windows
-11 Pro; WebView2 is now 156). The scenarios are `apps/desktop/e2e/scenarios/s-perf-*.mjs`; each
+11 Pro; WebView2 is now 156). The scenarios are `apps/desktop/e2e/scenarios/perf-*.mjs`; each
 prints its numbers and asserts bounds with a wide margin.
 
 **Memory at rest, 1 connection open** (SQLite, 3 s after expanding it; three runs): 167-168 MB
 private (app 10 MB + WebView2 158 MB). The MVP target is < 150 MB and 0.1.0 measured 126-132 MB:
 this build is over the target. The start time was not re-measured.
 
-**Long session** (`s-perf-soak.mjs`, SQLite, no Docker): cycles of open an editor, run and scroll
+**Long session** (`perf-soak.mjs`, SQLite, no Docker): cycles of open an editor, run and scroll
 100,000 rows, chart them, open a table's data, edit a cell and discard, close every tab, open
 and close Settings. The private memory of the app and WebView2 is sampled after each cycle
 (`target/perf/soak-<time>.csv`, with the JS heap and the DOM node count).
@@ -71,7 +71,7 @@ the DOM at 260 nodes throughout. The checks: the end is at most 150 MB above the
 60 MB/hour. The app process alternates between 15 and 50 MB as a result is freed and the next
 is loaded.
 
-**Slow remote database** (`s-perf-slow-remote.mjs`, a node TCP proxy adding 150 ms per chunk each
+**Slow remote database** (`perf-slow-remote.mjs`, a node TCP proxy adding 150 ms per chunk each
 way and capping the link at 1 MB/s, PostgreSQL in Docker behind it). Two findings, both fixed:
 a server that accepts the connection and never answers made the connect hang for good (`connect_timeout`
 only bounds the TCP connect), and the `connect_timeout` option of a saved connection never reached
@@ -91,7 +91,7 @@ A Cancel clicked at once, before the statement reaches the server over this link
 statement runs to its end and Cancel stays enabled); a second click works. Not fixed: see the
 `BUG` note in the scenario.
 
-**Millions of rows** (`s-perf-millions-postgres.mjs`, `s_perf_5m`: 5,000,000 rows, 6 columns, primary
+**Millions of rows** (`perf-millions-postgres.mjs`, `s_perf_5m`: 5,000,000 rows, 6 columns, primary
 key on `id`), table data opened from the navigator and as queries; memory is the private memory of
 the app plus WebView2:
 
@@ -112,7 +112,7 @@ The 5M rows buffered cost 280 MB in the app process (the backend holds the resul
 100 blocks of 500 rows). The grid caps its scroll height at 10,000,000 px and maps it to the row,
 so the last row is reached with Ctrl+End.
 
-**Thousands of objects** (`s-perf-objects-postgres.mjs`: schema with 5,000 tables chained by
+**Thousands of objects** (`perf-objects-postgres.mjs`: schema with 5,000 tables chained by
 foreign keys, 500 views, 200 functions):
 
 | Step | Measured | Bound |

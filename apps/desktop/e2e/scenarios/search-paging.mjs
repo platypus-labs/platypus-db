@@ -7,7 +7,7 @@
 // request, a sort of the request is kept through the pages.
 // Skipped when Elasticsearch is not running.
 import assert from "node:assert/strict";
-import { gridTsv, openEditor, runStatement, status, treeRow, visibleTab } from "../qa-sql.mjs";
+import { gridTsv, openEditor, runStatement, status, treeRow, visibleTab } from "../editor-helpers.mjs";
 import { connection, drop, expandCluster, openIndex, saveConnections, seed, skip as skipSearch, table } from "../search-helpers.mjs";
 
 const NAME = "E2E ES paging";

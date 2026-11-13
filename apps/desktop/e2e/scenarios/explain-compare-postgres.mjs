@@ -3,7 +3,7 @@
 // previous run before the first refresh.
 import assert from "node:assert/strict";
 import { CTRL, SHIFT } from "../cdp.mjs";
-import { connections, editorText, needs, openEditor, visibleTab } from "../qa-grid.mjs";
+import { connections, editorText, needs, openEditor, visibleTab } from "../grid-helpers.mjs";
 import { answer, askCompare, compareWith, explainTab, operations, showView } from "../plans.mjs";
 
 const DB = "pg";

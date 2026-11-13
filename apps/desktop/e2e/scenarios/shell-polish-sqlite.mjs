@@ -152,7 +152,7 @@ export default async function (page, { dir, shots }) {
   await page.key(",", "Comma", 188, CTRL);
   await page.waitFor(`document.querySelector('.modal.settings') !== null`);
   await page.waitFor(`document.activeElement === document.querySelector('.modal.settings .modal-search input')`);
-  // Solid: the glass behind a dialog this large made its scrolling lag (s-fix-settings-scroll).
+  // Solid: the glass behind a dialog this large made its scrolling lag (ui-settings-scroll).
   assert.equal(await page.eval(`getComputedStyle(document.querySelector('.modal.settings')).backdropFilter`), "none");
   // A tab other than the first, to find it again after the search.
   await page.settingsTab("Toolbar");

@@ -10,7 +10,7 @@ import { crc32 } from "node:zlib";
 import { ALT, CTRL } from "./cdp.mjs";
 import { fill } from "./conn-helpers.mjs";
 import { focusVisible, keys, screenIsItalian, space, tabStep, texts } from "./journey.mjs";
-import { reopen, restart, status, visibleTab } from "./qa-jrn.mjs";
+import { reopen, restart, status, visibleTab } from "./journey-helpers.mjs";
 
 export { focusVisible, keys, screenIsItalian, status, visibleTab };
 
@@ -327,13 +327,13 @@ export function keepNewApp(page) {
   page.close = () => {};
 }
 
-/** `reopen` of qa-jrn.mjs for a second restart in a scenario (see `keepNewApp`). */
+/** `reopen` of journey-helpers.mjs for a second restart in a scenario (see `keepNewApp`). */
 export async function reopenApp(page, ctx, ready) {
   keepNewApp(page);
   return reopen(page, ctx, ready);
 }
 
-/** `restart` of qa-jrn.mjs, with the page's calls bounded: a call made as the app goes away
+/** `restart` of journey-helpers.mjs, with the page's calls bounded: a call made as the app goes away
  *  (closeApp reads the dialog while it exits) would never answer, and the run would end silently. */
 export async function restartApp(page, ctx, options = { ready: `document.querySelector('.tree-row') !== null` }) {
   keepNewApp(page);

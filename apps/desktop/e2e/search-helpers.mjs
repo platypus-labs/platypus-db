@@ -4,7 +4,7 @@
 // data viewer's grid editing.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { editorText, gridTsv, status, treeRow, visibleTab } from "./qa-sql.mjs";
+import { editorText, gridTsv, status, treeRow, visibleTab } from "./editor-helpers.mjs";
 
 export const PORT = 59200;
 /** The OpenSearch of the same profile (no login). */

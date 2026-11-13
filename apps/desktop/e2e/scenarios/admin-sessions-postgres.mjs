@@ -3,7 +3,7 @@
 // (in the list, in the details, in the waiting chains and in the locks), cancels the
 // waiting statement, ends the blocking session, does not let the app end its own, and
 // refreshes on demand when set to Manual.
-import { assert, connections, needs, sh } from "../qa-grid.mjs";
+import { assert, connections, needs, sh } from "../grid-helpers.mjs";
 import {
   adminButton,
   adminTab,

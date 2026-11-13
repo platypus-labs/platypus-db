@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, runEditorScript, saveEngines, queryText, visibleErd } from "../qa3-schema.mjs";
+import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, runEditorScript, saveEngines, queryText, visibleErd } from "../schema-compare-helpers.mjs";
 
 const RO = "QA3 SQLite ro";
 

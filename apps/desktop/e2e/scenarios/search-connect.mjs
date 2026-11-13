@@ -22,7 +22,7 @@ import {
   urlField,
 } from "../conn-helpers.mjs";
 import { OPENSEARCH_PORT, PASSWORD, PORT, USER, apiKey, drop, openSearchUp, seed, skip as skipSearch } from "../search-helpers.mjs";
-import { treeRow } from "../qa-sql.mjs";
+import { treeRow } from "../editor-helpers.mjs";
 
 const TILE = "Elasticsearch / OpenSearch";
 const WRONG = "e2e-WRONG-pw-4471";

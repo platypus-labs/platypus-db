@@ -4,7 +4,7 @@
 // field is a column of its own; the form refuses a sum of text and keeps its choices; a column
 // field with more than 200 values is an error, 200 are fine.
 import assert from "node:assert/strict";
-import { fieldError, fieldText, gridTsv, liteConnection, mark, newEditor, runQuery, status, visibleTab } from "../qa-ana.mjs";
+import { fieldError, fieldText, gridTsv, liteConnection, mark, newEditor, runQuery, status, visibleTab } from "../analysis-helpers.mjs";
 
 const NAME = "E2E pivot";
 

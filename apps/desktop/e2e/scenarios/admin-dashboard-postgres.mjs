@@ -6,7 +6,7 @@
 // with its reason; the databases are listed with their sizes and a development server has no
 // replication. See the Dashboard component in src/admin/Dashboard.tsx.
 import assert from "node:assert/strict";
-import { connections, needs } from "../qa-grid.mjs";
+import { connections, needs } from "../grid-helpers.mjs";
 import {
   adminTab,
   background,

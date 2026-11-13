@@ -4,8 +4,8 @@
 // run nothing); once run it says done and shows what the server answered; a table that is
 // gone gives the server's error in the dialog; a read-only connection refuses.
 import assert from "node:assert/strict";
-import { openPath, rowIn } from "./qa-dbs.mjs";
-import { treeMenu } from "./qa-grid.mjs";
+import { openPath, rowIn } from "./drivers-helpers.mjs";
+import { treeMenu } from "./grid-helpers.mjs";
 
 const LABELS = { vacuum: "Vacuum…", analyze: "Analyze…", reindex: "Reindex…", optimize: "Optimize…", check: "Check…" };
 const WORDS = { vacuum: "Vacuum", analyze: "Analyze", reindex: "Reindex", optimize: "Optimize", check: "Check" };

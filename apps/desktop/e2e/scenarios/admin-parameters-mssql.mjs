@@ -7,8 +7,8 @@
 // and is not run, marks the pending one with its configured value and the restart context,
 // and keeps the view when read again. See the Parameters component in src/admin/Parameters.tsx.
 import assert from "node:assert/strict";
-import { connections, needs, sh } from "../qa-grid.mjs";
-import { editorText } from "../qa-ana.mjs";
+import { connections, needs, sh } from "../grid-helpers.mjs";
+import { editorText } from "../analysis-helpers.mjs";
 import {
   adminButton,
   adminTab,
