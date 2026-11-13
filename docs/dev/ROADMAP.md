@@ -1211,7 +1211,7 @@ la macchina ferma e lo schermo non toccato per una decina di minuti.
 | ✅ **Un solo eseguibile anche per gli agenti**: l'app fa da server MCP con un'opzione (`platypus-db --mcp`) invece di un secondo binario `platypus-mcp` che ricontiene tutti i driver (circa 50-60 MB in meno nell'installer) | P2 |
 | ✅ **DuckDB scaricato al primo uso** invece che incluso nell'installer (circa 35 MB): chi non apre file CSV, Parquet o DuckDB non lo scarica mai | P2 |
 | ✅ Build di sviluppo più leggere: meno informazioni di debug per le dipendenze in `Cargo.toml` e pulizia periodica della cartella `target` | P3 |
-| Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; resta la pubblicazione quando il repository è pubblico, passi in [RELEASING.md](RELEASING.md)) | P3 |
+| Distribuzione: winget, Homebrew cask, Flatpak, AUR (manifest pronti in `packaging/`, riempiti da `scripts/packaging.mjs`; winget inviato il 2026-11-13, [microsoft/winget-pkgs#479678](https://github.com/microsoft/winget-pkgs/pull/479678); restano Homebrew, AUR e Flathub, vedi il gruppo E di [EVOLUTIONS.md](EVOLUTIONS.md), passi in [RELEASING.md](RELEASING.md)) | P3 |
 | ⏭ serve un Mac — Prova del cask Homebrew su macOS (il manifest è pronto in `packaging/`) | P3 |
 | ✅ Scenario E2E del banner di aggiornamento (`update-banner*.mjs`: `latest.json` finto servito in locale con `PLATYPUS_UPDATE_URL`; versione nuova, "Later", uguale, più vecchia, malformato, errore 500, irraggiungibile, senza piattaforma, gestore di pacchetti) | P3 |
 | Sito e documentazione utente | P3 |
