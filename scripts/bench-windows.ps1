@@ -5,7 +5,7 @@
 
 .EXAMPLE
   .\scripts\bench-windows.ps1 -Name PlatypusDB -Exe target\release\platypus-db.exe -Kind platypus
-  .\scripts\bench-windows.ps1 -Name DBeaver -Exe D:\Dev\Tools\dbeaver-ce\dbeaver\dbeaver.exe -Kind dbeaver
+  .\scripts\bench-windows.ps1 -Name DBeaver -Exe 'C:\Program Files\DBeaver\dbeaver.exe' -Kind dbeaver
   .\scripts\bench-windows.ps1 -Name DataGrip -Exe "C:\Program Files\JetBrains\DataGrip 2026.2.6\bin\datagrip64.exe" -Kind jetbrains
 
 .DESCRIPTION
