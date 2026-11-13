@@ -44,10 +44,10 @@ impl server::Handler for KeyServer {
     async fn auth_publickey(
         &mut self,
         user: &str,
-        key: &ssh_key::PublicKey,
+        key: server::VerifiedPublicKey<'_>,
     ) -> Result<Auth, Self::Error> {
         Ok(
-            if user == USER && key.key_data() == self.accepted.key_data() {
+            if user == USER && key.public_key.key_data() == self.accepted.key_data() {
                 Auth::Accept
             } else {
                 Auth::reject()
