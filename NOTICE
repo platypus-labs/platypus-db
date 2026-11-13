@@ -27,6 +27,7 @@ must replace them before it is distributed.
   docs/brand/logo-only-1024.png
   docs/brand/social-preview.png
   docs/brand/avatar.png
+  docs/brand/parts/   (every file in the folder: the mascot in parts)
   plugins/platypus-db/.claude-plugin/icon.png
   apps/desktop/src-tauri/icons/   (every file in the folder)
     32x32.png, 64x64.png, 128x128.png, 128x128@2x.png, icon.png, icon.ico, icon.icns,
@@ -39,11 +40,13 @@ must replace them before it is distributed.
   apps/desktop/src/assets/brand/platypus-db-on-dark.png
   site/img/mark.png
   site/img/icon.png
+  site/img/parts/   (every file in the folder)
   docs/mockups/assets/img/platypus-mark.png
   docs/mockups/assets/img/platypus-db-on-light.png
   docs/mockups/assets/img/platypus-db-on-dark.png
   docs/mockups/site/base/img/mark.png
   docs/mockups/site/base/img/icon.png
+  docs/mockups/site/base/img/parts/   (every file in the folder)
 
 The rest of those folders (the README files, docs/brand/social-preview.html and avatar.html, the site's own
 illustrations) is covered by the AGPL like the code. The logos of other products, such as

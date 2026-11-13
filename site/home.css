@@ -1,0 +1,971 @@
+/* The home page only (index.html, body.home), on top of style.css. Mock: docs/mockups/site/home-v2.html.
+   The platypus is built from the PNGs in img/parts/, each a layer of the same 1024 canvas as
+   img/mark.png; home.js moves it and runs the chapters. */
+
+.home {
+  /* The app window in the chapters grows with the screen's height, the page with it, but always
+     leaves 440px of the width to the chapter's text beside it. */
+  --win-w: clamp(600px, min(calc((100svh - 250px) * 1.26), calc(100vw - 440px)), 960px);
+  --page: clamp(1240px, calc(var(--win-w) + 480px), 1440px);
+  --plat: calc(var(--win-w) * 0.44); /* the side of the platypus's 1024 canvas */
+  /* The window's top in the pinned stage: the window and the platypus above it (0.58 of its
+     canvas) centred as one block, never under the nav. */
+  --win-top: max(calc(76px + var(--plat) * 0.58), calc((100svh - var(--win-w) * 0.6 - 34px + var(--plat) * 0.58) / 2));
+}
+
+/* The nav floats over the hero. */
+.home .nav-wrap {
+  position: fixed;
+  inset: 0 0 auto;
+}
+
+/* ---- Chapter rail on the left, as ticks (home.js) ---- */
+.rail {
+  position: fixed;
+  left: clamp(14px, 2vw, 28px);
+  top: 50%;
+  z-index: 40;
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  transform: translateY(-50%);
+}
+
+.rail a {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line-2);
+  transition: width 0.3s, background 0.3s;
+}
+
+.rail a.on {
+  width: 26px;
+  background: var(--acc);
+}
+
+.rail a span {
+  position: absolute;
+  left: 36px;
+  top: 0;
+  color: var(--mut);
+  font: 500 12px var(--font-mono);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.rail a:hover span,
+.rail a:focus-visible span {
+  opacity: 1;
+}
+
+/* ---- Hero ---- */
+.h-hero {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(112px, 14svh, 168px) var(--gutter) 0;
+  text-align: center;
+}
+
+.ease {
+  animation: rise 0.9s both cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.h-hero h1 {
+  font-size: clamp(50px, min(9vw, 14.5svh), 136px);
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.055em;
+  text-wrap: balance;
+}
+
+.h-hero h1 span {
+  display: block;
+}
+
+.h-hero h1 span + span {
+  padding-bottom: 0.06em;
+  background: linear-gradient(100deg, var(--acc-2), var(--acc) 45%, var(--acc-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lede {
+  max-width: 660px;
+  margin-top: 26px;
+  color: var(--mut);
+  font-size: clamp(17px, 1.5vw, 21px);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.lede b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.lede a {
+  color: var(--hi);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--acc);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+.hcta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 30px;
+}
+
+/* The download button: the visitor's system and its logo (site.js), or a plain arrow. */
+.dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 26px 15px 22px;
+  border-radius: 14px;
+  background: var(--acc);
+  color: var(--acc-fg);
+  font-size: 17px;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 12px 40px -8px rgba(255, 141, 40, 0.55);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.dl:hover {
+  text-decoration: none;
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2) inset, 0 18px 50px -8px rgba(255, 141, 40, 0.7);
+}
+
+.dl .os {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.dl small {
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.dl small:empty {
+  display: none;
+}
+
+.other {
+  color: var(--mut);
+  font-size: 14px;
+}
+
+.other:hover {
+  color: var(--hi);
+}
+
+.h-hero .s2 { animation-delay: 0.15s; }
+.h-hero .s3 { animation-delay: 0.27s; }
+.h-hero .s4 { animation-delay: 0.38s; }
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
+/* ---- The show: a sticky window that the chapters play in ---- */
+.show {
+  position: relative;
+  height: calc(100svh + var(--steps, 5) * 70svh);
+  margin-top: -130px;
+  pointer-events: none;
+}
+
+.show .hwin,
+.show .chap.on {
+  pointer-events: auto;
+}
+
+.stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  min-height: 680px;
+}
+
+.stage-in {
+  position: relative;
+  max-width: var(--page);
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.hwin {
+  position: absolute;
+  top: var(--win-top);
+  right: var(--gutter);
+  width: min(var(--win-w), calc(100% - 2 * var(--gutter)));
+  transform: translateX(calc(var(--shift, 0px) * (1 - var(--enter, 1))));
+}
+
+.frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: #141519;
+  box-shadow: 0 40px 120px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.03), 0 -20px 120px -40px var(--glow);
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: #111416;
+  color: var(--mut);
+  font: 500 12px var(--font-mono);
+}
+
+.titlebar i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+
+.titlebar b {
+  margin-left: 10px;
+  font-weight: 500;
+}
+
+.shots {
+  position: relative;
+  aspect-ratio: 1600 / 960;
+}
+
+.shots img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+.shots img.on {
+  opacity: 1;
+}
+
+.chapters {
+  position: absolute;
+  left: var(--gutter);
+  top: calc(var(--win-top) + 30px);
+  width: calc(100% - var(--win-w) - 3 * var(--gutter) - 24px);
+  min-width: 280px;
+  opacity: clamp(0, (var(--enter, 1) - 0.55) * 2.5, 1);
+}
+
+.chap {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.35s, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+}
+
+.chap.on {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.1s;
+}
+
+.chap .eyebrow {
+  margin: 0;
+}
+
+.chap h2 {
+  margin: 10px 0 14px;
+  font-size: clamp(30px, 2.9vw, 42px);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.chap h2 span {
+  display: block;
+  color: var(--mut);
+}
+
+.chap p {
+  margin-bottom: 18px;
+  color: var(--mut);
+  font-size: 17px;
+  text-wrap: pretty;
+}
+
+.chap ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.chap li {
+  font-size: 15px;
+}
+
+.chap li b {
+  display: block;
+  color: var(--hi);
+  font-weight: 600;
+}
+
+.chap li span {
+  color: var(--mut);
+}
+
+.chap code,
+.say code {
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--acc-2);
+  font: 500 0.9em var(--font-mono);
+}
+
+.chap .go {
+  display: inline-block;
+  margin-top: 18px;
+  border-bottom: 2px solid var(--acc);
+  color: var(--hi);
+  font-weight: 600;
+}
+
+.chap .go:hover {
+  text-decoration: none;
+}
+
+/* ---- The platypus: every part is a PNG of the full 1024 canvas, stacked. ----
+   .part follows the pointer by its depth (--z), .hop jumps on a new chapter, .shape drops in on
+   load and then idles around its pivot (--o). Mirrored so that it faces the page; 1em is 10
+   units of the canvas. */
+.plat {
+  position: absolute;
+  right: -14%;
+  top: calc(var(--plat) * -0.786 + 1px);
+  z-index: 2;
+  width: var(--plat);
+  aspect-ratio: 1;
+  font-size: calc(var(--plat) / 102.4);
+  transform: scaleX(-1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.plat .part {
+  position: absolute;
+  inset: 0;
+  transform: translate(calc(var(--mx, 0) * var(--z) * 1.5px), calc(var(--my, 0) * var(--z) * 1px));
+  transition: transform 0.3s ease-out;
+  pointer-events: none;
+}
+
+.plat .hop,
+.plat .shape,
+.plat .shape img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: var(--o);
+}
+
+.plat .shape {
+  animation: drop 0.9s var(--d) both cubic-bezier(0.3, 1.3, 0.5, 1), var(--idle, bob) var(--t, 3.2s) calc(var(--d) + 1s) infinite ease-in-out;
+}
+
+.plat.hopping .hop {
+  animation: hop 0.8s var(--hd, 0s) both cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+/* Per part: depth (--z), start of the drop (--d), pivot (--o), idle motion, and the hop: height
+   (--lift, % of the canvas), landing squash (--sq), tilt (--rot), delay (--hd). The hop stays
+   inside the overlaps of the PNGs, so no gap opens: the body rises at most 1.5% more than the
+   bottom disk (they overlap by 5%), the head 1.5% more than the body (3.5%). */
+.p-tail   { --z: -3;  --d: 0.55s; --o: 37% 68%; --idle: wag;  --t: 2.6s; --lift: 8;   --rot: 7deg;   --hd: 0.03s; }
+.p-foot-r { --z: 1;   --d: 0s;    --o: 66% 72%; --idle: tap;  --t: 5.2s; --lift: 8;   --rot: -6deg;  --hd: 0s; }
+.p-foot-l { --z: 1;   --d: 0.04s; --o: 50% 76%; --idle: none;            --lift: 8;   --hd: 0s; }
+.p-bottom { --z: 1.5; --d: 0.12s; --o: 50% 72%; --t: 3.2s;                --lift: 8;   --sq: 0.93; --hd: 0s; }
+.p-body   { --z: 2;   --d: 0.26s; --o: 51% 58%; --t: 3.2s;                --lift: 9.5; --sq: 0.96; --hd: 0.02s; }
+.p-head   { --z: 3;   --d: 0.42s; --o: 58% 41%; --idle: nod;  --t: 3.6s; --lift: 11;  --sq: 0.98; --rot: -3deg; --hd: 0.04s; }
+.p-arm    { --z: 2.5; --d: 0.72s; --o: 68% 48%; --idle: none;            --lift: 9.5; --rot: -24deg; --hd: 0.02s; }
+
+/* Each disk breathes a little later than the one under it, so the stack ripples upward. */
+.p-body .shape { animation-delay: var(--d), calc(var(--d) + 1.15s); }
+.p-head .shape { animation-delay: var(--d), calc(var(--d) + 1.3s); }
+
+/* The arm waves in its own layer: stopping the wave for the phone must not restart the drop. */
+.plat .wave {
+  position: absolute;
+  inset: 0;
+  transform-origin: var(--o);
+  animation: wave 4.8s 1.7s infinite ease-in-out;
+}
+
+@keyframes drop {
+  0% { opacity: 0; transform: translateY(-160%); }
+  8% { opacity: 1; }
+  55% { transform: translateY(0) scale(1.06, 0.9); }
+  72% { transform: translateY(-6%) scale(0.98, 1.03); }
+  88% { transform: translateY(0) scale(1.01, 0.99); }
+  100% { transform: none; }
+}
+
+@keyframes bob {
+  0%, 100% { transform: none; }
+  50% { transform: translateY(-1.1%) scale(1.01, 0.985); }
+}
+
+@keyframes nod {
+  0%, 100% { transform: none; }
+  30% { transform: translateY(-1.6%) rotate(-3deg); }
+  60% { transform: translateY(-0.6%) rotate(2deg); }
+}
+
+@keyframes wag {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(-5deg); }
+}
+
+@keyframes wave {
+  0%, 70%, 100% { transform: rotate(0); }
+  76% { transform: rotate(-18deg); }
+  82% { transform: rotate(8deg); }
+  88% { transform: rotate(-12deg); }
+}
+
+@keyframes tap {
+  0%, 80%, 100% { transform: rotate(0); }
+  85% { transform: rotate(-9deg); }
+  90% { transform: rotate(0); }
+  94% { transform: rotate(-7deg); }
+}
+
+/* The stack jumps and lands part by part. */
+@keyframes hop {
+  0% { transform: none; }
+  14% { transform: scale(calc(2 - var(--sq, 1)), var(--sq, 1)); }
+  42% { transform: translateY(calc(var(--lift) * -1%)) rotate(var(--rot, 0deg)); }
+  68% { transform: translateY(0) scale(calc(2 - var(--sq, 1)), var(--sq, 1)); }
+  84% { transform: translateY(calc(var(--lift) * -0.1%)); }
+  100% { transform: none; }
+}
+
+/* The eye: two bars that make the arrow of the logo, then a spinning plus, and a dash to blink.
+   Centred on the eye of head.png; each bar is moved and turned around its own centre. */
+.eye {
+  position: absolute;
+  left: 65.1%;
+  top: 29.4%;
+  width: 0;
+  height: 0;
+  transform: translate(calc(var(--mx, 0) * 0.7em), calc(var(--my, 0) * 0.5em));
+  transition: transform 0.2s ease-out;
+}
+
+.eye b {
+  position: absolute;
+  inset: 0;
+  animation: eye-spin 9s 2s infinite;
+}
+
+.eye i {
+  position: absolute;
+  left: -1.5em;
+  top: -0.6em;
+  width: 3em;
+  height: 1.2em;
+  border-radius: 0.3em;
+  background: var(--acc);
+  animation: 9s 2s infinite ease-in-out;
+}
+
+.eye i:first-child {
+  transform: translate(0.23em, -0.43em) rotate(59deg);
+  animation-name: eye-a;
+}
+
+.eye i:last-child {
+  transform: translate(-0.22em, 0.75em) rotate(-22deg);
+  animation-name: eye-b;
+}
+
+@keyframes eye-a {
+  0%, 27%, 33%, 58%, 82%, 87%, 93%, 100% { transform: translate(0.23em, -0.43em) rotate(59deg); }
+  30%, 90% { transform: translate(0, 0.15em) rotate(0deg) scaleX(1.15); }
+  64%, 76% { transform: translate(0, 0) rotate(0deg); }
+}
+
+@keyframes eye-b {
+  0%, 27%, 33%, 58%, 82%, 87%, 93%, 100% { transform: translate(-0.22em, 0.75em) rotate(-22deg); }
+  30%, 90% { transform: translate(0, 0.15em) rotate(0deg) scaleX(1.15); }
+  64%, 76% { transform: translate(0, 0) rotate(90deg); }
+}
+
+@keyframes eye-spin {
+  0%, 64% { transform: none; }
+  76%, 100% { transform: rotate(360deg); }
+}
+
+/* ---- The platypus talks: facts about the sample database, typed out (home.js). Outside the
+   mirrored .plat so that the text reads the right way. ---- */
+.say {
+  position: absolute;
+  right: calc(-14% + var(--plat) * 0.97);
+  top: calc(var(--plat) * -0.62);
+  z-index: 3;
+  width: max-content;
+  max-width: 300px;
+  padding: 12px 15px;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--hi);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  box-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.7);
+  opacity: 0;
+  transform: scale(0.85) translateY(8px);
+  transform-origin: 100% 100%;
+  transition: opacity 0.25s, transform 0.3s cubic-bezier(0.3, 1.4, 0.5, 1);
+  pointer-events: none;
+}
+
+.say.on {
+  opacity: 1;
+  transform: none;
+}
+
+.say::after {
+  content: "";
+  position: absolute;
+  right: -7px;
+  bottom: 6px;
+  border: 8px solid transparent;
+  border-right: 0;
+  border-left-color: var(--hi);
+}
+
+.say small {
+  display: block;
+  margin-bottom: 4px;
+  color: #b0560e;
+  font: 600 11px var(--font-mono);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.say code {
+  background: rgba(255, 141, 40, 0.16);
+  color: #8a3b00;
+  font-weight: 600;
+}
+
+.say .caret {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: -2px;
+  background: var(--acc);
+  animation: caret 0.8s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% { opacity: 0; }
+}
+
+/* Now and then the platypus checks its phone while a query runs, and puts it away at once
+   because the query is already done (PHONE in home.js). The phone is in the arm's moving layer,
+   so it follows the flipper. Canvas units: centred at (775, 522), 56 by 94, turned 60deg. */
+.phone {
+  position: absolute;
+  left: 75.7%;
+  top: 51%;
+  width: 5.6em;
+  height: 9.4em;
+  margin: -4.7em 0 0 -2.8em;
+  overflow: hidden;
+  border: 0.6em solid var(--acc);
+  border-radius: 1.3em;
+  background: #0b0d0f;
+  opacity: 0;
+  transform: translateY(30%) rotate(60deg) scale(0.7);
+}
+
+.phone::before {
+  content: "";
+  position: absolute;
+  inset: 0.7em 0.5em;
+  border-radius: 0.25em;
+  background: repeating-linear-gradient(180deg, rgba(255, 179, 107, 0.55) 0 0.6em, transparent 0.6em 1.5em);
+  animation: feed 0.9s linear infinite;
+}
+
+.plat.phoning .phone { animation: phone 3.4s both cubic-bezier(0.3, 0.8, 0.3, 1); }
+.plat.phoning .p-head .hop { animation: phone-head 3.4s both ease-in-out; }
+.plat.phoning .p-arm .hop { animation: phone-arm 3.4s both ease-in-out; }
+.plat.phoning .wave { animation: none; }
+
+@keyframes feed {
+  to { background-position: 0 -3em; }
+}
+
+@keyframes phone {
+  0% { opacity: 0; transform: translateY(30%) rotate(60deg) scale(0.7); }
+  12%, 66% { opacity: 1; transform: rotate(60deg); }
+  70% { opacity: 1; transform: translateY(-10%) rotate(45deg); }
+  79% { opacity: 0; transform: translate(70%, 150%) rotate(120deg) scale(0.7); }
+  100% { opacity: 0; }
+}
+
+@keyframes phone-head {
+  0%, 100% { transform: none; }
+  14%, 64% { transform: rotate(9deg) translateY(1%); }
+  70% { transform: rotate(-6deg) translateY(-3%); }
+  80% { transform: rotate(2deg); }
+  88% { transform: none; }
+}
+
+@keyframes phone-arm {
+  0%, 100% { transform: none; }
+  12%, 66% { transform: rotate(-16deg) translateY(-1%); }
+  72% { transform: rotate(14deg); }
+  84% { transform: none; }
+}
+
+/* ---- Overview: points to the other pages instead of repeating them ---- */
+.over {
+  position: relative;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 120px var(--gutter) 40px;
+}
+
+.over > h2,
+.final h2 {
+  margin-bottom: 40px;
+  font-size: clamp(38px, 5vw, 72px);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+}
+
+.over > h2 span,
+.final h2 span {
+  color: var(--mut);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+
+/* The cards of style.css (.card: gradient, light under the pointer), as links. */
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  grid-column: span 4;
+  color: var(--fg);
+}
+
+.tile:hover {
+  text-decoration: none;
+}
+
+.tile > * {
+  position: relative;
+}
+
+.tile.w6 {
+  grid-column: span 6;
+}
+
+.tile h3 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.tile p {
+  margin: 0;
+}
+
+.num {
+  color: var(--hi);
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.num small {
+  margin-left: 6px;
+  color: var(--mut);
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.tile .arrow {
+  margin-top: auto;
+  color: var(--acc);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.db-logos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.db-logos svg {
+  width: 26px;
+  height: 26px;
+  fill: var(--mut);
+}
+
+.mini-bars {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0;
+  color: var(--mut);
+  font: 500 12px var(--font-mono);
+}
+
+.mini-bars > span {
+  display: grid;
+  grid-template-columns: 92px 1fr 70px;
+  align-items: center;
+  gap: 10px;
+}
+
+.mini-bars i {
+  width: var(--w);
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line-2);
+}
+
+.mini-bars em {
+  font-style: normal;
+  text-align: right;
+}
+
+.mini-bars .me {
+  color: var(--hi);
+}
+
+.mini-bars .me i {
+  background: var(--acc);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips span {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card-2);
+  font-size: 13px;
+}
+
+.cli {
+  margin: 4px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0e1012;
+  color: var(--mut);
+  font: 500 12.5px/1.7 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.cli b {
+  color: var(--str);
+  font-weight: 500;
+}
+
+.cli em {
+  color: var(--acc-2);
+  font-style: normal;
+}
+
+.final {
+  position: relative;
+  padding: 140px var(--gutter) 0;
+  text-align: center;
+}
+
+.final h2 {
+  margin-bottom: 18px;
+}
+
+.final p {
+  margin-bottom: 30px;
+  color: var(--mut);
+  font-size: 18px;
+}
+
+.home .footer {
+  margin-top: 140px;
+}
+
+/* The tour's parts that stick out (the platypus past the window's edge, the phone it throws)
+   are cut at the screen's edge instead of widening the page. */
+.show,
+.h-hero,
+.over {
+  overflow-x: clip;
+}
+
+/* ---- Without the script: the window, then every chapter, one under the other ---- */
+html:not(.js) .show {
+  height: auto;
+  margin-top: 0;
+  pointer-events: auto;
+}
+
+html:not(.js) .stage {
+  position: static;
+  height: auto;
+  min-height: 0;
+}
+
+html:not(.js) .hwin {
+  position: relative;
+  top: auto;
+  right: auto;
+  margin: calc(var(--plat) * 0.6) auto 0;
+  transform: none;
+}
+
+html:not(.js) .chapters {
+  position: static;
+  width: auto;
+  max-width: var(--page);
+  margin: 48px auto 0;
+  opacity: 1;
+}
+
+html:not(.js) .chap {
+  position: static;
+  margin-bottom: 40px;
+  opacity: 1;
+  transform: none;
+}
+
+/* ---- Narrow screens: the text under the window, no side shift ---- */
+@media (max-width: 1100px) {
+  .home {
+    --win-w: 100%;
+    --plat: 300px;
+    --win-top: calc(76px + var(--plat) * 0.58);
+  }
+
+  .hwin {
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    transform: none;
+  }
+
+  .plat { right: -2%; }
+  .say { right: calc(-2% + var(--plat) * 0.97); }
+
+  .chapters {
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    top: calc(var(--win-top) + (100vw - 2 * var(--gutter)) * 0.6 + 56px);
+  }
+
+  .chap h2 { font-size: 30px; }
+  .chap p { margin-bottom: 0; font-size: 16px; }
+  .chap ul,
+  .chap .go { display: none; }
+
+  .tile,
+  .tile.w6 { grid-column: span 6; }
+
+  .rail { display: none; }
+}
+
+@media (max-width: 640px) {
+  .home {
+    --plat: 230px;
+  }
+
+  .h-hero { padding-top: 128px; }
+  .lede { font-size: 16px; }
+  .show { margin-top: 0; }
+
+  /* The platypus, the window and the chapter as one block in the middle of the screen,
+     the chapter's text centred under the window. */
+  .home {
+    --win-top: max(calc(76px + var(--plat) * 0.58), calc((100svh - 500px + var(--plat) * 0.58) / 2));
+  }
+
+  .chapters { text-align: center; }
+
+  /* No room beside the head for the platypus's facts: none on phones. */
+  .say { display: none; }
+
+  .tile,
+  .tile.w6 { grid-column: span 12; min-height: 0; }
+
+  .num { font-size: 52px; }
+  .final { padding-top: 100px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home *,
+  .home *::before,
+  .home *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

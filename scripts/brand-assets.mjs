@@ -6,13 +6,15 @@
 //   docs/brand/logo-only-1024.png         the mascot, the full platypus (1024×1024)
 //   docs/brand/platypus-db-on-light.png   mark and wordmark for light backgrounds (1600×400)
 //   docs/brand/platypus-db-on-dark.png    mark and wordmark for dark backgrounds (1600×400)
+//   docs/brand/parts/*.png                the mascot in parts, layers of the same 1024 canvas: the
+//                                         animated platypus of the site's home page
 //
 //   node scripts/brand-assets.mjs
 //
 // It needs the desktop app's npm packages (npm --prefix apps/desktop ci) for `tauri icon`.
 // The avatar and the social preview are rendered from HTML by scripts/social-preview.mjs.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +53,11 @@ try {
   copy("apps/desktop/src/assets/brand/platypus-mark.png", "docs/mockups/assets/img/platypus-mark.png");
 } finally {
   rmSync(scratch, { recursive: true, force: true });
+}
+
+// The mascot in parts: the home page of the site and its mock.
+for (const part of readdirSync(at("docs/brand/parts")).filter((name) => name.endsWith(".png"))) {
+  copy(`docs/brand/parts/${part}`, `site/img/parts/${part}`, `docs/mockups/site/base/img/parts/${part}`);
 }
 
 // The banners: the welcome screen and the mockups.
