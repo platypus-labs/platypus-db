@@ -29,7 +29,7 @@ export interface Widget {
 }
 
 /** What a dashboard keeps, in a tab and in its file. */
-export interface DashboardContent {
+interface DashboardContent {
   widgets: Widget[];
   /** Minutes between two refreshes while the tab is shown; 0 is off. */
   refresh: number;
@@ -37,7 +37,7 @@ export interface DashboardContent {
   connection: string | null;
 }
 
-export const VIEWS: readonly WidgetView[] = ["table", "chart", "value"];
+const VIEWS: readonly WidgetView[] = ["table", "chart", "value"];
 /** Auto-refresh choices, in minutes. */
 export const REFRESH_CHOICES: readonly number[] = [0, 1, 5, 15, 60];
 export const DEFAULT_ROWS = 100;
@@ -104,7 +104,7 @@ export function moveWidget(widgets: readonly Widget[], id: string, by: -1 | 1): 
 }
 
 /** What a statement shows the checks: the part of `StatementSpan` they read. */
-export interface StatementFacts {
+interface StatementFacts {
   read_only: boolean;
   kind: string;
   parameters: readonly unknown[];
@@ -137,7 +137,7 @@ export function dashboardFile(title: string, content: DashboardContent): string 
 const text = (v: unknown) => (typeof v === "string" ? v : null);
 
 /** Reads a chart's configuration (`parseConfig`), `null` for one that is not valid. */
-export type ChartReader = (v: unknown) => ChartConfig | null;
+type ChartReader = (v: unknown) => ChartConfig | null;
 
 function readWidget(v: unknown, chart: ChartReader): Widget | null {
   if (!v || typeof v !== "object") return null;

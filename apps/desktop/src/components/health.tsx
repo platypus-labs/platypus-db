@@ -5,7 +5,7 @@ import { api, toCommandError } from "../api";
 import { defineSetting, useSetting } from "../settings";
 import { t } from "../i18n";
 
-export const keepAliveSeconds = defineSetting({
+const keepAliveSeconds = defineSetting({
   key: "connections.keepalive_seconds",
   section: "Connections",
   label: "Check idle connections every (seconds)",
@@ -14,7 +14,7 @@ export const keepAliveSeconds = defineSetting({
   control: { type: "number", min: 0, step: 10 },
 });
 
-export type Health =
+type Health =
   | { state: "ok"; latencyMs: number; reconnected: boolean }
   | { state: "lost"; message: string };
 

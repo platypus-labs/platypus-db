@@ -17,7 +17,7 @@ export function luminance(r: number, g: number, b: number): number {
   return 0.2126 * lr! + 0.7152 * lg! + 0.0722 * lb!;
 }
 
-export interface ThemeVariantsOf {
+interface ThemeVariantsOf {
   name: string;
   light?: Record<string, string>;
   dark?: Record<string, string>;

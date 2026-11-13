@@ -1,6 +1,6 @@
 // What the catalog page offers for an entry. Kept apart from the page, so that a test can run it.
 
-export interface EntryState {
+interface EntryState {
   status: "new" | "update" | "current" | "older";
 }
 

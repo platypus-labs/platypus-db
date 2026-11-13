@@ -1,6 +1,6 @@
 import { type PointerEvent, type RefObject, useEffect, useState } from "react";
 
-export interface MinimapRect {
+interface MinimapRect {
   name: string;
   x: number;
   y: number;

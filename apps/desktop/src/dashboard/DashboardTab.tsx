@@ -13,7 +13,7 @@ import { idle, runWidget, type WidgetRun, WidgetSessions } from "./run";
 import { EmptyState } from "../ui/State";
 import { Icon } from "../ui/Icon";
 
-export interface DashboardTabModel extends TabBase {
+interface DashboardTabModel extends TabBase {
   kind: "dashboard";
   widgets: Widget[];
   /** Minutes between two refreshes while the tab is shown; 0 is off. */

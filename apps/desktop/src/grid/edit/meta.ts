@@ -56,7 +56,7 @@ function byName(details: TableDetails): (name: string) => ColumnMeta | undefined
 
 /** An index column as the catalog names it: PostgreSQL writes the names that need quoting
  *  quoted (`"Order ID"`), as in its index definitions. */
-export function unquoted(name: string): string {
+function unquoted(name: string): string {
   return /^"(?:[^"]|"")*"$/.test(name) ? name.slice(1, -1).replace(/""/g, '"') : name;
 }
 

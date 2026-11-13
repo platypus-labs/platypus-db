@@ -15,7 +15,7 @@ import { LoadingState } from "../ui/State";
 export type { TableEditorSection };
 
 /** The graphical table editor: a new table, or an existing one altered. */
-export interface TableEditorTabModel extends TabBase {
+interface TableEditorTabModel extends TabBase {
   kind: "table-editor";
   schema: string;
   /** The table edited; `null` for a new one until it is saved. */

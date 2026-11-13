@@ -2,7 +2,7 @@ import { toCommandError } from "../api";
 import { t } from "../i18n";
 import { workbench } from "../workbench";
 
-export type InitChoice = "run" | "skip";
+type InitChoice = "run" | "skip";
 
 /** How long an answer is shared with sessions opened right after it (a tab and its navigator
  *  connect together). */

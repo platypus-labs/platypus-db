@@ -117,7 +117,7 @@ export interface SnapshotMeta {
   taken_at: number;
 }
 
-export type SnapshotOutcome =
+type SnapshotOutcome =
   | { kind: "taken"; snapshot: SnapshotMeta }
   | { kind: "unsupported" }
   | { kind: "too_many"; limit: number }
@@ -145,7 +145,7 @@ export interface CellFile {
 }
 
 /** What saving a run of files did. */
-export interface SavedFiles {
+interface SavedFiles {
   written: number;
   /** Cells that held no file. */
   skipped: number;
@@ -251,7 +251,7 @@ export type SshSecrets = Record<string, PasswordInput>;
 export type ImportSource = "platypus" | "dbeaver" | "datagrip" | "pgadmin" | "pg_service";
 
 /** What `exportConnections` writes to a `.platypusconn` file. */
-export interface ExportRequest {
+interface ExportRequest {
   /** Ids of the connections. */
   connections: string[];
   /** Keeps the projects and folders the connections are in. */
@@ -530,14 +530,14 @@ export type BackupEvent =
 /** PostgreSQL's custom archive or SQL; MySQL writes SQL either way. */
 export type BackupFormat = "custom" | "plain";
 
-export interface BackupRequest {
+interface BackupRequest {
   path: string;
   format: BackupFormat;
   schema?: string | null;
   structure_only: boolean;
 }
 
-export interface RestoreRequest {
+interface RestoreRequest {
   path: string;
   /** Drops the archive's objects before creating them again (`pg_restore --clean`). */
   clean: boolean;
@@ -576,7 +576,7 @@ export interface SchemaSnapshot {
 }
 
 /** What `takeSchemaSnapshot` did: `unchanged` when the schema is as in the latest snapshot, which is returned. */
-export interface SnapshotTaken {
+interface SnapshotTaken {
   unchanged: boolean;
   snapshot: SchemaSnapshot;
 }
@@ -608,7 +608,7 @@ export interface SchemaChange {
 }
 
 /** What a snapshot is compared with: another snapshot, or the schema now through a session. */
-export type SnapshotDiffTarget = { kind: "snapshot"; id: number } | { kind: "live"; session_id: number };
+type SnapshotDiffTarget = { kind: "snapshot"; id: number } | { kind: "live"; session_id: number };
 
 /** The changes from one state of a schema to another and the script that makes them. */
 export interface SchemaDiff {
@@ -897,13 +897,13 @@ export interface DriverUpdateCheck {
 }
 
 /** What a connection answered to the compatibility probe after a driver changed version. */
-export interface ConnectionProbe {
+interface ConnectionProbe {
   product: string;
   version: string;
   schemas: number;
 }
 
-export type DriverInstallEvent = { kind: "progress"; done: number; total: number | null };
+type DriverInstallEvent = { kind: "progress"; done: number; total: number | null };
 
 /** The databases whose driver is downloaded when needed (ADBC). */
 export const DOWNLOADED_DRIVERS: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino"];
@@ -939,7 +939,7 @@ export interface VendorStatus {
   ready: boolean;
 }
 
-export type VendorInstallEvent = { kind: "progress"; done: number; total: number | null } | { kind: "registering" };
+type VendorInstallEvent = { kind: "progress"; done: number; total: number | null } | { kind: "registering" };
 
 /** The ODBC drivers and data sources (DSNs) of the system. */
 export interface OdbcSystem {
@@ -1006,7 +1006,7 @@ export interface ParameterSpan {
 }
 
 /** What the linter found in the editor's SQL; offsets in UTF-16 units. */
-export interface SqlLint {
+interface SqlLint {
   issues: { kind: "select_star" | "join_without_condition"; from: number; to: number }[];
   statements: {
     /** `name` is `null` for subqueries, functions and common table expressions. */
@@ -1053,7 +1053,7 @@ export type GitPullOutcome =
   | { kind: "up_to_date" | "fast_forwarded" | "merged" | "diverged" }
   | { kind: "conflicts"; files: string[] };
 
-export interface GitDiffLine {
+interface GitDiffLine {
   kind: "context" | "added" | "removed";
   old_no: number | null;
   new_no: number | null;
@@ -1153,7 +1153,7 @@ export interface AgentLimits {
   max_plan_cost?: number;
 }
 
-export interface OpenedShared {
+interface OpenedShared {
   workspace: Workspace;
   project: string;
 }
@@ -1170,7 +1170,7 @@ export interface DashboardEntry {
   modified: number;
 }
 
-export interface CliOutput {
+interface CliOutput {
   command: string;
   status: number | null;
   output: string;
@@ -1224,7 +1224,7 @@ export interface AgentSession {
 
 /** The figures of a group of calls in the agent report; a figure is null when the calls were
  *  made before the log recorded it. */
-export interface AgentReportFigures {
+interface AgentReportFigures {
   first_at: number;
   last_at: number;
   calls: number;
@@ -1278,14 +1278,14 @@ export interface AgentProposal {
 
 /** A proposal of rows, checked against the table, with the statement that shows the rows to
  *  change; the backend wrote it from the table's catalog. */
-export interface ProposedViewer {
+interface ProposedViewer {
   sql: string;
   /** The table, qualified and quoted. */
   table: string;
   edits: ProposedEdits;
 }
 
-export interface InstalledClient {
+interface InstalledClient {
   path: string;
   backup: string | null;
 }
@@ -1331,12 +1331,12 @@ export type ObjectKind =
   | "package";
 
 /** A table of one side of a data comparison. */
-export interface TableRef {
+interface TableRef {
   schema: string;
   name: string;
 }
 
-export interface CompareOptions {
+interface CompareOptions {
   /** A condition both tables are read with. */
   filter: string | null;
   /** Whether the rows only in the target are deleted. */
@@ -1766,7 +1766,7 @@ export type SourceItem = { kind: "all" } | { kind: "column"; name: string } | { 
 
 /** The one table a query reads; `schema` is `null` when left to the session. `items` is `null`
  *  when the result's columns are the table's, matched by name (a MongoDB projection). */
-export interface QuerySource {
+interface QuerySource {
   schema: string | null;
   name: string;
   items: SourceItem[] | null;
@@ -1856,7 +1856,7 @@ export interface GroupCounts {
 /** Clipboard formats of `copyRows`. */
 export type CopyFormat = "tsv" | "csv" | "json" | "markdown" | "html" | "insert" | "in_list";
 
-export interface SearchResult {
+interface SearchResult {
   /** `[row, column]` of the matching cells, row by row. */
   matches: [number, number][];
   /** More cells matched than were reported. */
@@ -2036,7 +2036,7 @@ export interface CatalogEntry {
   tags: string[];
 }
 
-export interface TagCount {
+interface TagCount {
   tag: string;
   count: number;
 }
@@ -2084,7 +2084,7 @@ export interface DocsRequest {
   path: string;
 }
 
-export type DocsEvent =
+type DocsEvent =
   | { kind: "progress"; done: number; total: number }
   | { kind: "finished"; path: string }
   | { kind: "failed"; message: string };
@@ -2181,13 +2181,13 @@ export interface Workspace {
 }
 
 /** The sample database, opened: its connection and the first of its scripts. */
-export interface SampleDatabase {
+interface SampleDatabase {
   workspace: Workspace;
   connection: string;
   script: string;
 }
 
-export interface AppInfo {
+interface AppInfo {
   name: string;
   version: string;
   /** The commit and date the app is built from, e.g. "82678c0 · 2026-10-27 16:52". */
@@ -2331,7 +2331,7 @@ export interface ResultTable {
 export type ResultPartial = "memory_limit" | "stopped";
 
 /** The temporary DuckDB connection of "Query with SQL"; `partial` when a table lacks rows. */
-export interface OpenedResultDb {
+interface OpenedResultDb {
   connection: SavedConnection;
   partial: ResultPartial | null;
   /** The time zones the results' timestamps name, when more than one: SQL shows their
@@ -2353,14 +2353,14 @@ export interface AcrossSource {
 }
 
 /** A table of the DuckDB, as loaded; `cut` when the memory limit stopped the reading. */
-export interface AcrossTable {
+interface AcrossTable {
   name: string;
   columns: string[];
   rows: number;
   cut: boolean;
 }
 
-export interface OpenedAcross {
+interface OpenedAcross {
   connection: SavedConnection;
   tables: AcrossTable[];
   /** As `OpenedResultDb.zones`. */
@@ -2392,7 +2392,7 @@ export interface SavedResult {
 }
 
 /** What the page tells about a result it saves. */
-export interface SavedResultOrigin {
+interface SavedResultOrigin {
   name: string;
   sql: string;
   connection: string;
@@ -2401,7 +2401,7 @@ export interface SavedResultOrigin {
 }
 
 /** A saved result read into the temporary DuckDB connection that holds it as `result`. */
-export interface OpenedSavedResult {
+interface OpenedSavedResult {
   connection: SavedConnection;
   result: SavedResult;
 }

@@ -4,7 +4,7 @@ import type { TabModel } from "../tabs/registry";
 import { workbench } from "../workbench";
 
 /** An object of a connection's database, as the tabs that show it name it. */
-export interface ObjectPlace {
+interface ObjectPlace {
   database: string | null | undefined;
   schema: string;
   name: string;
@@ -51,7 +51,7 @@ export function openObjectTab(
 }
 
 /** Whether `tab` is the data viewer of `table` (its qualified name) on the connection. */
-export const showsData = (tab: TabModel, connectionId: string, database: string | null | undefined, table: string) =>
+const showsData = (tab: TabModel, connectionId: string, database: string | null | undefined, table: string) =>
   tab.kind === "query" && tab.connectionId === connectionId && sameDatabase(tab, database) && tab.table === table;
 
 /** The hidden key (CockroachDB's `rowid`) a table is edited by: `SELECT *` leaves it out, so the

@@ -29,7 +29,7 @@ export const typeText = (type: string) => truncate(type, 24);
 export const fkColumns = (table: Shape) => new Set(table.foreign_keys.flatMap((f) => f.columns));
 
 /** The width of a table's box; `tag` is the room (in characters) of the label edits put in its head. */
-export const boxWidth = (table: Shape, tag = 0) => {
+const boxWidth = (table: Shape, tag = 0) => {
   const fks = fkColumns(table);
   const both = table.columns.some((c) => c.primary_key && fks.has(c.name));
   const longest = Math.max(table.name.length + 2 + tag, ...table.columns.map((c) => c.name.length + c.data_type.length + 3));

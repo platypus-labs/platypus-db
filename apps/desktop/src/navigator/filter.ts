@@ -1,6 +1,6 @@
 /** The navigator's text filter, which reads `schema.object` as well as a bare name. */
 
-export interface TextFilter {
+interface TextFilter {
   /** Whether the filter names the schema as a whole: all of its objects show. */
   wholeSchema: (schema: string) => boolean;
   /** Whether an object of `schema` shows. */

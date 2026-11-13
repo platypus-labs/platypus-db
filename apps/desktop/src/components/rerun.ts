@@ -6,7 +6,7 @@
  * only read run again: a change was confirmed for the run it was asked for, not for the next.
  */
 
-export interface Rerunnable {
+interface Rerunnable {
   readOnly: boolean;
 }
 

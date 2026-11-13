@@ -27,7 +27,7 @@ export interface WidgetRun {
 export const idle: WidgetRun = { running: false, error: null, result: null, value: null, at: null };
 
 /** What went wrong, as the widget says it. */
-export const reason = (e: unknown) => (e instanceof Error ? e.message : toCommandError(e).message);
+const reason = (e: unknown) => (e instanceof Error ? e.message : toCommandError(e).message);
 
 const REFUSALS: Record<Refusal, string> = {
   empty: msg("The script has no statement."),
@@ -91,7 +91,7 @@ function runStatement(sid: number, sql: string, limit: number, update: (result: 
 }
 
 /** Everything a run needs from the dashboard around the widget. */
-export interface RunContext {
+interface RunContext {
   project: string | null;
   /** The dashboard's own connection. */
   connection: string | null;

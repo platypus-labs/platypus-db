@@ -12,7 +12,7 @@ export function svgText(svg: SVGSVGElement): string {
 }
 
 /** The chart drawn on a canvas at `scale` times its size, as PNG bytes. */
-export async function pngBytes(svg: SVGSVGElement, scale = 2): Promise<Uint8Array> {
+async function pngBytes(svg: SVGSVGElement, scale = 2): Promise<Uint8Array> {
   const width = svg.width.baseVal.value;
   const height = svg.height.baseVal.value;
   const image = new Image();

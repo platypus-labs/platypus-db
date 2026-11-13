@@ -20,7 +20,7 @@ export interface DiagramRequest {
 export type DiagramAnswer = { answer: "svg"; svg: string } | { answer: "failed"; message: string };
 
 /** The SVG for `request`, or why it could not be drawn. */
-export function drawDiagram(request: DiagramRequest): DiagramAnswer {
+function drawDiagram(request: DiagramRequest): DiagramAnswer {
   try {
     // The model names the table a key goes to; the drawing wants it as the app's own tables have it.
     const tables: Shape[] = request.tables.map((t) => ({

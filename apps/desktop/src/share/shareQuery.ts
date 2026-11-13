@@ -4,11 +4,11 @@
 // token, so that sharing cannot leak a secret.
 
 /** The `format` member of the file. */
-export const SHARE_FORMAT = "platypus-query";
+const SHARE_FORMAT = "platypus-query";
 /** The file layout this code reads and writes; other versions are refused, not guessed at. */
 export const SHARE_VERSION = 1;
 /** The largest file or link text read, so a hostile file cannot make the app allocate freely. */
-export const MAX_SHARE_BYTES = 1024 * 1024;
+const MAX_SHARE_BYTES = 1024 * 1024;
 /** The longest link offered: past it, chat and mail clients start to cut links, so the file is
  *  offered instead. */
 export const MAX_LINK_CHARS = 8 * 1024;
@@ -42,7 +42,7 @@ export interface SharedQuery {
   target: ShareTarget;
 }
 
-export type ShareErrorCode = "format" | "version" | "too_large" | "shape" | "link" | "unsupported";
+type ShareErrorCode = "format" | "version" | "too_large" | "shape" | "link" | "unsupported";
 
 /** Why a file or link was refused; the UI turns the code into a message in the user's language. */
 export class ShareError extends Error {
@@ -106,7 +106,7 @@ function parameters(v: unknown): Record<string, string> {
 }
 
 /** Checks a parsed document and builds the query from it. */
-export function validate(doc: unknown): SharedQuery {
+function validate(doc: unknown): SharedQuery {
   if (!isObject(doc) || doc.format !== SHARE_FORMAT) throw new ShareError("format");
   if (doc.version !== SHARE_VERSION) throw new ShareError("version", String(doc.version));
   return {

@@ -55,7 +55,7 @@ export const analyzeKnown = (objects: ObjectStatistics[]) => objects.some((o) =>
 export const tableOf = (o: ObjectStatistics) => o.table ?? o.name;
 
 /** Whether `filter` is in the schema, name or table of `o`, ignoring case. */
-export function objectMatches(o: ObjectStatistics, filter: string): boolean {
+function objectMatches(o: ObjectStatistics, filter: string): boolean {
   const needle = filter.trim().toLowerCase();
   return !needle || [o.schema, o.name, o.table].some((f) => f?.toLowerCase().includes(needle));
 }

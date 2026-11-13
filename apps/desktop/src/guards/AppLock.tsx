@@ -8,7 +8,7 @@ import { defineSetting, useSetting } from "../settings";
 import mark from "../assets/brand/platypus-mark.png";
 import { t } from "../i18n";
 
-export const lockSetting = defineSetting<number>({
+const lockSetting = defineSetting<number>({
   key: "safety.lock_minutes",
   section: "Safety",
   label: "Lock the app after this many idle minutes",

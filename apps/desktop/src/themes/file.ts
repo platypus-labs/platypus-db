@@ -9,7 +9,7 @@
  */
 
 /** The format's version; a newer file is refused rather than half read. */
-export const THEME_FORMAT = 1;
+const THEME_FORMAT = 1;
 
 /** Longest theme name kept. */
 const NAME_CHARS = 60;

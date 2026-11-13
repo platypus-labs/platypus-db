@@ -10,7 +10,7 @@ const ENABLED_KEY = "agents.bridge";
 const PORT_KEY = "agents.bridge_port";
 
 /** `claude mcp add` for the bridge's HTTP endpoint, with its token. */
-export function claudeHttpCommand(url: string, token: string): string {
+function claudeHttpCommand(url: string, token: string): string {
   return `claude mcp add --transport http platypus ${url} --header "Authorization: Bearer ${token}"`;
 }
 

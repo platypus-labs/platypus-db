@@ -32,7 +32,7 @@ interface Run {
 }
 
 /** What a field shows. */
-export interface FieldState {
+interface FieldState {
   text: string;
   /** The query running, until it has started or failed. */
   pending: Run | null;
@@ -255,7 +255,7 @@ function free(copy: Copy) {
 }
 
 /** What the tab shows for its result: the output of the field's query in its place. */
-export interface ResultSqlView {
+interface ResultSqlView {
   /** The output to show in place of the shown result; `null` shows the result. */
   output: Result | null;
   /** The copy's read-only connection, for the grid's actions, and its session, where Export

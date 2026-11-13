@@ -68,8 +68,8 @@ export function estimatedRows(rows: number | null): number | null {
 export type StatementPart = { text: string } | { gap: "lines" | "spaces"; count: number } | { invisible: string };
 
 /** Blank lines in a row, and spaces in a row inside a line, from which they are collapsed. */
-export const GAP_LINES = 2;
-export const GAP_SPACES = 16;
+const GAP_LINES = 2;
+const GAP_SPACES = 16;
 
 /** Line breaks, whatever the platform or the Unicode separator. */
 const BREAKS = new RegExp("\\r\\n|[\\n\\r\\u000b\\u000c\\u0085\\u2028\\u2029]");

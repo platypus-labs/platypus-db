@@ -5,7 +5,7 @@
  */
 
 /** Where the guide lives in the repository; page keys are the paths below it, without `.md`. */
-export const GUIDE_DIR = "docs/user/guide/";
+const GUIDE_DIR = "docs/user/guide/";
 
 /** The page the guide opens on, and the one of the databases' own index. */
 export const START_PAGE = "README";
@@ -26,7 +26,7 @@ const ORDER = [
 ];
 
 /** The repository path of page `key`; a key that already is a path (a file outside the guide) stays as it is. */
-export const pagePath = (key: string) => (key.endsWith(".md") ? key : `${GUIDE_DIR}${key}.md`);
+const pagePath = (key: string) => (key.endsWith(".md") ? key : `${GUIDE_DIR}${key}.md`);
 
 /** `path` made of its `.` and `..` parts, from the repository root; `null` when it climbs out of it. */
 function normalize(path: string): string | null {
@@ -41,7 +41,7 @@ function normalize(path: string): string | null {
 }
 
 /** The repository path `href` names when written in the file `from`; `null` if it leaves the repository. */
-export function resolvePath(from: string, href: string): string | null {
+function resolvePath(from: string, href: string): string | null {
   const dir = from.includes("/") ? from.slice(0, from.lastIndexOf("/") + 1) : "";
   const trailing = href.endsWith("/") ? "/" : "";
   const path = normalize(href.startsWith("/") ? href : dir + href);
@@ -67,7 +67,7 @@ export type LinkTarget =
 const SCHEME = /^([a-z][a-z0-9+.-]*):/i;
 
 /** `text` percent-decoded; as it is when it is not valid. */
-export const decode = (text: string) => {
+const decode = (text: string) => {
   try {
     return decodeURIComponent(text);
   } catch {
@@ -107,7 +107,7 @@ export function imagePath(from: string, src: string): string | null {
 }
 
 /** The anchor GitHub gives a heading: lower case, punctuation dropped, spaces as hyphens. */
-export function slugOf(text: string): string {
+function slugOf(text: string): string {
   return text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, "")
@@ -143,7 +143,7 @@ export function titleOf(source: string, key: string): string {
   return match?.[1]?.replace(/[`*_]/g, "") ?? (name === START_PAGE ? "Guide" : name);
 }
 
-export interface ChangelogSection {
+interface ChangelogSection {
   /** The heading as written: `[0.4.1] - 2026-11-04`. */
   heading: string;
   body: string;

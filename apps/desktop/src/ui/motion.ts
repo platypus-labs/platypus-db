@@ -6,7 +6,7 @@
 import { defineSetting, getSetting, onSettingsChanged } from "../settings";
 import { msg } from "../i18n";
 
-export const animationsSetting = defineSetting<string>({
+const animationsSetting = defineSetting<string>({
   key: "appearance.animations",
   section: msg("Appearance"),
   label: "Animations",

@@ -5,7 +5,7 @@
 
 /** The figures of a group of calls; a figure is null when the calls were made before the log
  *  recorded it. */
-export interface ReportFigures {
+interface ReportFigures {
   first_at: number;
   last_at: number;
   calls: number;
@@ -17,11 +17,11 @@ export interface ReportFigures {
   errors: number;
 }
 
-export interface ReportSession extends ReportFigures {
+interface ReportSession extends ReportFigures {
   session: string;
 }
 
-export interface ReportAgent extends ReportFigures {
+interface ReportAgent extends ReportFigures {
   agent: string;
   sessions: ReportSession[];
 }

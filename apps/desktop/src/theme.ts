@@ -124,7 +124,7 @@ function paletteOf(p: Preset): Palette {
   return { ...derive(p.colors, p.dark), ...p.colors };
 }
 
-export const PRESETS = {
+const PRESETS = {
   platypus_dark: {
     label: "Platypus Dark",
     dark: true,
@@ -408,8 +408,8 @@ export const PRESETS = {
   },
 } satisfies Record<string, Preset>;
 
-export type PresetName = keyof typeof PRESETS;
-export type ThemeName = "system" | typeof CUSTOM | PresetName | `plugin:${string}`;
+type PresetName = keyof typeof PRESETS;
+type ThemeName = "system" | typeof CUSTOM | PresetName | `plugin:${string}`;
 
 /** The start of the theme setting's value for the theme of a plugin, the plugin's id after it. */
 const PLUGIN_THEME = "plugin:";
@@ -444,10 +444,10 @@ export const themeSetting = defineSetting<string>({
 const color = (key: string, label: string, description: string) =>
   defineSetting<string>({ key, section: SECTION, label, description, default: "", control: { type: "color" } });
 
-export const accentSetting = color("appearance.accent", msg("Accent color"), msg("Buttons, selection and focus."));
-export const backgroundSetting = color("appearance.background", msg("Background"), msg("Editor and results; Reset keeps the theme's."));
-export const sidebarSetting = color("appearance.sidebar", msg("Sidebar and panels"), msg("The connections tree and menus."));
-export const textSetting = color("appearance.text", msg("Text"), msg("Muted text follows it."));
+const accentSetting = color("appearance.accent", msg("Accent color"), msg("Buttons, selection and focus."));
+const backgroundSetting = color("appearance.background", msg("Background"), msg("Editor and results; Reset keeps the theme's."));
+const sidebarSetting = color("appearance.sidebar", msg("Sidebar and panels"), msg("The connections tree and menus."));
+const textSetting = color("appearance.text", msg("Text"), msg("Muted text follows it."));
 
 /** Read by the backend too, to open the window with or without the system's bar (lib.rs). */
 export const titleBarSetting = defineSetting<string>({
@@ -467,7 +467,7 @@ export const titleBarSetting = defineSetting<string>({
 
 const ZOOM_STEPS = ["80", "90", "100", "110", "125", "150"];
 
-export const zoomSetting = defineSetting<string>({
+const zoomSetting = defineSetting<string>({
   key: "appearance.zoom",
   section: SECTION,
   label: "Interface size",
@@ -486,7 +486,7 @@ export function stepZoom(step: -1 | 0 | 1) {
   void setSetting(zoomSetting, next);
 }
 
-export const densitySetting = defineSetting<string>({
+const densitySetting = defineSetting<string>({
   key: "appearance.density",
   section: SECTION,
   label: "Grid rows",
@@ -501,7 +501,7 @@ export const densitySetting = defineSetting<string>({
   },
 });
 
-export const radiusSetting = defineSetting<string>({
+const radiusSetting = defineSetting<string>({
   key: "appearance.radius",
   section: SECTION,
   label: "Corners",
@@ -516,7 +516,7 @@ export const radiusSetting = defineSetting<string>({
   },
 });
 
-export const editorFontSetting = defineSetting<number>({
+const editorFontSetting = defineSetting<number>({
   key: "appearance.editor_font_size",
   section: SECTION,
   label: "SQL editor font size",
@@ -524,7 +524,7 @@ export const editorFontSetting = defineSetting<number>({
   control: { type: "number", min: 9, max: 28, step: 1 },
 });
 
-export const gridFontSetting = defineSetting<number>({
+const gridFontSetting = defineSetting<number>({
   key: "appearance.grid_font_size",
   section: SECTION,
   label: "Result grid font size",
@@ -752,7 +752,7 @@ function syncThemeFonts() {
 }
 
 /** Applies the appearance settings, and keeps them for the next start. */
-export function applyAppearance() {
+function applyAppearance() {
   const scale = Number(getSetting(zoomSetting)) / 100;
   if (scale > 0 && scale !== zoom) {
     zoom = scale;

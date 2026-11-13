@@ -27,7 +27,7 @@ export const REPEATING: Kind[] = ["integer", "decimal", "bool", "choice", "date"
 export const isJson = (type: string) => /^jsonb?$/.test(type);
 
 /** Whether a column has a default of its own: MariaDB writes no default as the text `NULL`. */
-export const hasDefault = (column: ColumnMeta) => column.default !== null && !/^null$/i.test(column.default.trim());
+const hasDefault = (column: ColumnMeta) => column.default !== null && !/^null$/i.test(column.default.trim());
 
 /** Whether a type holds text, which the name, city and word generators fill (Oracle's
  *  `LONG` is text). */

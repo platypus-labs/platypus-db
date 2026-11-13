@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import type { Capabilities, Project, ProjectFolder, SavedConnection, Workspace } from "./api";
 import type { TabInit, TabKindName, TabModel } from "./tabs/registry";
 
-export interface Workbench {
+interface Workbench {
   connections(): SavedConnection[];
   /** The active tab's connection or, with none open, the first of the project shown. */
   currentConnection(): string | null;

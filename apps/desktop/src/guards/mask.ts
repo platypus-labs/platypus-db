@@ -21,7 +21,7 @@ export const maskSetting = defineSetting<boolean>({
   control: { type: "boolean" },
 });
 
-export const maskNamesSetting = defineSetting<string>({
+const maskNamesSetting = defineSetting<string>({
   key: "safety.mask_names",
   section: "Safety",
   label: "Sensitive columns, by name",
@@ -30,7 +30,7 @@ export const maskNamesSetting = defineSetting<string>({
   control: { type: "text", multiline: true },
 });
 
-export const maskTypesSetting = defineSetting<string>({
+const maskTypesSetting = defineSetting<string>({
   key: "safety.mask_types",
   section: "Safety",
   label: "Sensitive columns, by type",
@@ -41,7 +41,7 @@ export const maskTypesSetting = defineSetting<string>({
 
 /** The table the columns shown below belong to, when known (a data viewer, a table's profile):
  *  the user's marks on its columns count over the rules. */
-export interface TableScope {
+interface TableScope {
   connectionId: string;
   database: string | null | undefined;
   schema: string;

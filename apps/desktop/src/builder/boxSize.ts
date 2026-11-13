@@ -4,7 +4,7 @@ export const BOX_MIN_W = 140;
 export const BOX_MIN_H = 80;
 
 /** A box's own size; missing means the default width and a height that follows the columns. */
-export interface Sized {
+interface Sized {
   w?: number;
   h?: number;
 }

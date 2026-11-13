@@ -1,7 +1,7 @@
 /** The transaction log of a tab's session: what ran, when, and in which transaction, with
  *  how each transaction ended. Kept in memory for the tab, the newest last. */
 
-export type LogKind = "query" | "dml" | "ddl" | "other";
+type LogKind = "query" | "dml" | "ddl" | "other";
 
 export interface LogEntry {
   at: number;

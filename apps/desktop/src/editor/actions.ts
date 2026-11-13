@@ -179,7 +179,7 @@ const CLIENTS: Partial<Record<DriverKind, string>> = {
 };
 
 /** What the editor's owner does on its commands. */
-export interface EditorCommands {
+interface EditorCommands {
   run?: (mode: RunMode) => void;
   save?: () => void;
   open?: () => void;

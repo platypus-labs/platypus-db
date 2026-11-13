@@ -1,6 +1,6 @@
 /** Where a popup editor goes over a cell. */
 
-export interface Size {
+interface Size {
   width: number;
   height: number;
 }

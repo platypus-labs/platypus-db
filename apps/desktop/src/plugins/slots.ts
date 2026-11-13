@@ -37,7 +37,7 @@ declare module "../grid/DataGrid" {
   }
 }
 
-export interface PluginSlots {
+interface PluginSlots {
   panels: ComponentType<{ connection: SavedConnection | null }> | null;
   grid: ((input: GridPluginInput) => GridPluginView | null) | null;
 }

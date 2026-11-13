@@ -1,5 +1,5 @@
 /** Heights of a histogram's bars and its y axis (pure, so it is unit-tested). */
-export interface Bin {
+interface Bin {
   from: string;
   to: string;
   count: number;

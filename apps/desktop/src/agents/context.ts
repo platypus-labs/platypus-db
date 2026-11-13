@@ -77,7 +77,7 @@ export interface TabSnapshot {
 }
 
 /** A tab whose work can be shared: the SQL editors register themselves. */
-export interface ContextHost {
+interface ContextHost {
   tabKey: number;
   /** Reads the tab now. */
   snapshot(): Promise<TabSnapshot>;
@@ -189,7 +189,7 @@ export function summarize(parts: readonly ContextPart[], snapshot: TabSnapshot |
 }
 
 /** Why a tab on a connection closed to agents is refused; the agent reads it. */
-export const CLOSED_REASON = "the active tab is on a connection closed to agents";
+const CLOSED_REASON = "the active tab is on a connection closed to agents";
 
 /** The answer that shares `snapshot` (what the user was shown, or the tab as it is now): a
  *  refusal for a tab on a connection closed to agents, whatever was allowed before. */

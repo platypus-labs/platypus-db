@@ -25,7 +25,7 @@ export interface SavedChart {
 }
 
 /** A result column as the chart sees it (`ColumnInfo` fits). */
-export interface ChartColumn {
+interface ChartColumn {
   name: string;
   numeric: boolean;
   db_type: string;
@@ -37,10 +37,10 @@ const AGGREGATES: readonly string[] = ["sum", "count", "avg", "min", "max"];
 const KEPT = 20;
 
 /** The statement a chart belongs to, whatever the spacing around it (as the viewer's sorts). */
-export const chartKey = (sql: string) => sql.trim().replace(/;$/, "");
+const chartKey = (sql: string) => sql.trim().replace(/;$/, "");
 
 /** Dates and timestamps, by the database's type name. */
-export const isTime = (c: ChartColumn) => !c.numeric && /date|timestamp/i.test(c.db_type);
+const isTime = (c: ChartColumn) => !c.numeric && /date|timestamp/i.test(c.db_type);
 
 /** The first chart of a result: the first text or date column across, the first number columns
  *  (three at most) up; bars over text, lines over dates and numbers. */

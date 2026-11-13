@@ -75,7 +75,7 @@ export function splitSqlServerHost(text: string): { host: string; port: number }
  *  (`DriverKind::needs_host`, whose test checks this list): the ADBC databases find theirs in
  *  their options, Oracle in a net service name or connect descriptor, ODBC in a data source
  *  or connection string, a plugin in its manifest. */
-export const HOST_OPTIONAL: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino", "adbc", "oracle", "odbc", "plugin"];
+const HOST_OPTIONAL: readonly DriverKind[] = ["snowflake", "bigquery", "databricks", "trino", "adbc", "oracle", "odbc", "plugin"];
 
 /** Whether the server connection of `driver` can be tried without a host. */
 export const hostOptional = (driver: DriverKind) => HOST_OPTIONAL.includes(driver);

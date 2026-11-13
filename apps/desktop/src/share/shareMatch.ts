@@ -3,7 +3,7 @@
 import type { ShareTarget } from "./shareQuery";
 
 /** The fields of a saved connection the descriptor is made of or compared with. */
-export interface TargetFields {
+interface TargetFields {
   name: string;
   driver: string;
   host: string;
@@ -33,7 +33,7 @@ const samePort = (a: number | null, b: number | null) => (a || 0) === (b || 0);
 const sameDatabase = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** Saved connections that fit a descriptor. */
-export interface TargetMatches<C> {
+interface TargetMatches<C> {
   /** Same driver, host, port and database. */
   exact: C[];
   /** Same driver but not the same place, the likeliest first: the same database, then the

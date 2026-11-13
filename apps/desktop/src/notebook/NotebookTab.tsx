@@ -41,7 +41,7 @@ import { EmptyState } from "../ui/State";
 import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
 
-export interface NotebookTabModel extends TabBase {
+interface NotebookTabModel extends TabBase {
   kind: "notebook";
   cells: NotebookCell[];
   /** The values of the parameters (`:name`, `?`, `${name}`) the cells share. */

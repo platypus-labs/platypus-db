@@ -57,7 +57,7 @@ export interface Skip {
   problem?: Problem;
 }
 
-export interface Proposal {
+interface Proposal {
   state: EditState;
   /** Proposed rows now pending (rows that already hold the proposed values are not). */
   applied: number;

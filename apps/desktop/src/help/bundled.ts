@@ -9,7 +9,7 @@ import changelogText from "../../../../CHANGELOG.md?raw";
 import { pageKeyOf } from "./pages";
 import { replacedPages } from "./replaced";
 
-export interface Guide {
+interface Guide {
   /** The Markdown of each page, by key (`connect`, `databases/postgres`), and of each file
    *  outside the guide, by its path (`docs/user/FEATURES.md`). */
   pages: Record<string, string>;

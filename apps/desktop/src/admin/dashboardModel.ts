@@ -10,7 +10,7 @@ export interface Sample {
 }
 
 /** How many samples the dashboard keeps: the sparklines show the last of them. */
-export const MAX_SAMPLES = 60;
+const MAX_SAMPLES = 60;
 
 /** `samples` with `next` last, the oldest dropped beyond `max`. */
 export function pushSample(samples: Sample[], next: Sample, max = MAX_SAMPLES): Sample[] {
@@ -21,7 +21,7 @@ export function pushSample(samples: Sample[], next: Sample, max = MAX_SAMPLES): 
 }
 
 /** Which counter of a snapshot. */
-export type Pick = (m: ServerMetrics) => Metric;
+type Pick = (m: ServerMetrics) => Metric;
 
 /** The change per second of the counter `pick` between two samples; `null` when either has
  *  none, no time passed, or the counter went back (the server restarted or reset it). */

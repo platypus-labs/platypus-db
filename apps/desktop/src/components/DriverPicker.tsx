@@ -31,7 +31,7 @@ import { t, msg } from "../i18n";
 import { pluginDrivers, usePlugins } from "../plugins/store";
 
 /** What a profile fills in beyond the driver's defaults. */
-export type Preset = Partial<Pick<SavedConnection, "host" | "port" | "user" | "database" | "ssl_mode" | "options">>;
+type Preset = Partial<Pick<SavedConnection, "host" | "port" | "user" | "database" | "ssl_mode" | "options">>;
 
 /** A generic database cylinder, for SQL Server, YugabyteDB, Oracle, Db2 and ODBC, which
  *  simple-icons lacks. */

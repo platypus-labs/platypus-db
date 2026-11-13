@@ -72,7 +72,7 @@ export function parseNumber(text: string): number | null {
 }
 
 /** Reads a value of a column as a number, or `null`. */
-export type NumberOf = (text: string) => number | null;
+type NumberOf = (text: string) => number | null;
 
 /** The lowest and highest number of a column, for its color scales. */
 export type Ranges = Map<number, [number, number]>;
@@ -112,7 +112,7 @@ function sameText(value: string, wanted: string, number: NumberOf): boolean {
 }
 
 /** Rules resolved against a result: each with the result column it reads, and how. */
-export interface ResolvedRule {
+interface ResolvedRule {
   rule: FormatRule;
   col: number;
   number: NumberOf;

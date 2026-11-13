@@ -4,7 +4,7 @@ import { SshFields, newSsh } from "./SshFields";
 import { t, msg } from "../i18n";
 
 /** The SSH tunnel and SSL settings of a connection or of a network profile. */
-export interface NetworkSettings {
+interface NetworkSettings {
   ssh?: SavedSsh | null;
   ssl_mode: SslMode;
   ssl_root_cert: string | null;
@@ -12,7 +12,7 @@ export interface NetworkSettings {
   ssl_client_key?: string | null;
 }
 
-export const SSL_MODES: { value: SslMode; label: string }[] = [
+const SSL_MODES: { value: SslMode; label: string }[] = [
   { value: "disable", label: msg("disable — plaintext") },
   { value: "prefer", label: msg("prefer — TLS if available, unverified") },
   { value: "require", label: msg("require — TLS, unverified") },

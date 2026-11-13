@@ -7,7 +7,7 @@ import { api, type SavedConnection, type StatementSpan } from "../api";
 import { isProduction } from "../connections";
 import { defineSetting, getSetting } from "../settings";
 
-export const unfilteredSetting = defineSetting<string>({
+const unfilteredSetting = defineSetting<string>({
   key: "safety.unfiltered",
   section: "Safety",
   label: "UPDATE or DELETE without WHERE",
@@ -23,7 +23,7 @@ export const unfilteredSetting = defineSetting<string>({
   },
 });
 
-export const productionSetting = defineSetting<boolean>({
+const productionSetting = defineSetting<boolean>({
   key: "safety.confirm_production",
   section: "Safety",
   label: "Ask before changes on production connections",

@@ -9,7 +9,7 @@ const HEIGHT = 32;
 const PAD = 3;
 
 /** The runs of consecutive readings of `values`, as lists of `[index, value]`. */
-export function runs(values: (number | null)[]): [number, number][][] {
+function runs(values: (number | null)[]): [number, number][][] {
   const out: [number, number][][] = [];
   let run: [number, number][] = [];
   values.forEach((v, i) => {

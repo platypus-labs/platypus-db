@@ -41,7 +41,7 @@ export type ObjectSection =
 const NO_COMMENTS: DriverKind[] = ["sqlite", "libsql", "mongo", "redis", "elasticsearch", "cassandra"];
 
 /** Details of one database object: properties, structure and DDL. */
-export interface ObjectTabModel extends TabBase {
+interface ObjectTabModel extends TabBase {
   kind: "object";
   schema: string;
   /** Whether `schema` is the session's current one: names are then left unqualified. */

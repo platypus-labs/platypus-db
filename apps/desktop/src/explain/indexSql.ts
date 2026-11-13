@@ -11,7 +11,7 @@ const COMPARED = /(?<![\w$:."\]`])(?:(?:[A-Za-z_][\w$]*|"(?:[^"]|"")+"|`[^`]+`)\
 
 /** A part of the key an index is suggested on: a column, or an expression (`lower(email)`)
  *  that a condition compares, which only an index on the same expression serves. */
-export type IndexKey = string | { expression: string };
+type IndexKey = string | { expression: string };
 
 /** Comparison operators and keywords, the places where an operand ends. */
 const OPERATORS = /<>|!=|<=|>=|=|<|>|!~~\*?|~~\*?|~\*?|\bnot\s+like\b|\blike\b|\bilike\b|\bin\b|\bis\b|\bbetween\b/gi;

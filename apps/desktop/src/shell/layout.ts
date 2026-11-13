@@ -12,7 +12,7 @@ const SECTION = msg("Appearance");
 
 const nav = (row: string): WindowPart => ({ part: "nav", row });
 
-export const navigatorSideSetting = defineSetting<string>({
+const navigatorSideSetting = defineSetting<string>({
   key: "layout.navigator_side",
   section: SECTION,
   label: "Navigator",
@@ -27,7 +27,7 @@ export const navigatorSideSetting = defineSetting<string>({
   },
 });
 
-export const resultsPositionSetting = defineSetting<string>({
+const resultsPositionSetting = defineSetting<string>({
   key: "layout.results_position",
   section: SECTION,
   label: "Results",
@@ -54,7 +54,7 @@ export const resultsPositionSetting = defineSetting<string>({
   },
 });
 
-export const tabBarPositionSetting = defineSetting<string>({
+const tabBarPositionSetting = defineSetting<string>({
   key: "layout.tab_bar_position",
   section: SECTION,
   label: "Tab bar",
@@ -69,7 +69,7 @@ export const tabBarPositionSetting = defineSetting<string>({
   },
 });
 
-export const sidePanelsSideSetting = defineSetting<string>({
+const sidePanelsSideSetting = defineSetting<string>({
   key: "layout.side_panels_side",
   section: SECTION,
   label: "Side panels",

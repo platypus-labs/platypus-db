@@ -16,7 +16,7 @@ export function sameKey(key: string): string {
 }
 
 /** A key press, as the functions below read it (`KeyboardEvent` has all of it). */
-export interface KeyPress {
+interface KeyPress {
   key: string;
   ctrlKey: boolean;
   altKey: boolean;
@@ -95,7 +95,7 @@ export function labelParts(shortcut: string, name: (key: string) => string = (k)
 }
 
 /** A CodeMirror key binding, as far as `withoutKeys` reads it. */
-export interface Binding {
+interface Binding {
   key?: string;
   mac?: string;
   win?: string;

@@ -1,9 +1,9 @@
 /** The pooler mode of a PostgreSQL connection (`options.pooler`), and the one its host
  *  suggests: Supabase's pooler is in transaction mode on 6543 and in session mode on 5432,
  *  Neon's (`-pooler.` in the host) in transaction mode. */
-export type PoolerMode = "session" | "transaction";
+type PoolerMode = "session" | "transaction";
 
-export interface PoolerSuggestion {
+interface PoolerSuggestion {
   mode: PoolerMode;
   service: string;
 }

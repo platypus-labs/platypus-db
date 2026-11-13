@@ -29,7 +29,7 @@ const savedTime = (iso: string) => new Date(iso).toLocaleString(locale(), { date
 
 /** Saves the rows of result `jobId` of `host`, after asking a name: the rows are loaded in
  *  full first, up to the memory limit (the file is marked partial when they stop there). */
-export async function saveResult(host: ResultHost, jobId: number, sql: string) {
+async function saveResult(host: ResultHost, jobId: number, sql: string) {
   if (!(await loadAll([jobId]))) return;
   const initial = defaultName(sql, t("Result"));
   askName(t("Save result"), initial, async (name) => {
@@ -46,7 +46,7 @@ export async function saveResult(host: ResultHost, jobId: number, sql: string) {
 }
 
 /** Opens a saved result in a SQL tab on a temporary in-memory DuckDB. */
-export async function openSavedResult(saved: SavedResult) {
+async function openSavedResult(saved: SavedResult) {
   try {
     // DuckDB holds the rows: downloaded first if it is not yet.
     const opened = await withDriver(() => api.openSavedResult(saved.id, t("Saved result: {name}", { name: saved.name })));

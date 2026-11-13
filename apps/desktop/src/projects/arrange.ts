@@ -18,7 +18,7 @@ export interface DragItem {
 export type DropZone = "before" | "into" | "after";
 
 /** What the list arranges: a project, or All connections (no folders, nothing placed). */
-export type Layout = Pick<Project, "connections" | "folders" | "placement">;
+type Layout = Pick<Project, "connections" | "folders" | "placement">;
 
 export type Arrange =
   /** Into `folder` (`null`: the root), just before the connection `before`, or last. */

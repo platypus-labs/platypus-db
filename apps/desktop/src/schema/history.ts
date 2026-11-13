@@ -24,7 +24,7 @@ export function pair(picks: Pick[]): [number, Pick] | null {
 }
 
 /** The changes of one table. */
-export interface TableChanges {
+interface TableChanges {
   table: string;
   changes: SchemaChange[];
 }

@@ -34,7 +34,7 @@ export function edgeZone(offset: number, size: number, edge = 0.25): "before" | 
 }
 
 /** What `markedTarget` reads of an element. */
-export interface ElementLike {
+interface ElementLike {
   getAttribute(name: string): string | null;
   readonly parentElement: ElementLike | null;
 }
@@ -50,7 +50,7 @@ export function markedTarget<E extends ElementLike>(el: E | null, attr: string):
 }
 
 /** What `startsDrag` reads of an element. */
-export interface PressedLike extends ElementLike {
+interface PressedLike extends ElementLike {
   readonly tagName: string;
   readonly parentElement: PressedLike | null;
 }

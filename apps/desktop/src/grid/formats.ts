@@ -4,7 +4,7 @@
  */
 import { defineSetting, getSetting, useFormatsStored, useSetting } from "../settings";
 
-export const dateFormat = defineSetting({
+const dateFormat = defineSetting({
   key: "results.date_format",
   section: "Results",
   label: "Date format",
@@ -13,7 +13,7 @@ export const dateFormat = defineSetting({
   control: { type: "text", placeholder: "%Y-%m-%d" },
 });
 
-export const timestampFormat = defineSetting({
+const timestampFormat = defineSetting({
   key: "results.timestamp_format",
   section: "Results",
   label: "Timestamp format",
@@ -22,7 +22,7 @@ export const timestampFormat = defineSetting({
   control: { type: "text", placeholder: "%Y-%m-%d %H:%M:%S%.f" },
 });
 
-export const timeZone = defineSetting({
+const timeZone = defineSetting({
   key: "results.time_zone",
   section: "Results",
   label: "Time zone of timestamps with a zone",
@@ -37,7 +37,7 @@ export const timeZone = defineSetting({
   },
 });
 
-export const numberFormat = defineSetting({
+const numberFormat = defineSetting({
   key: "results.number_format",
   section: "Results",
   label: "Numbers",
@@ -54,7 +54,7 @@ export const numberFormat = defineSetting({
   },
 });
 
-export const relativeTime = defineSetting({
+const relativeTime = defineSetting({
   key: "results.relative_time",
   section: "Results",
   label: "Show timestamps as relative time (3 hours ago)",

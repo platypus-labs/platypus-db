@@ -7,7 +7,7 @@ import type { GridActionContext } from "../DataGrid";
 import { filterOperand } from "./filterOperand";
 
 /** The data viewer's filter, for the actions; set by the query tab for a query it can rewrite. */
-export interface ViewerFilter {
+interface ViewerFilter {
   /** Adds the condition to the shown statement's WHERE, in the editor, and runs it. */
   addCondition(condition: string): void;
   /** What a condition on each result column names (see `api.sqlFilterColumns`): `undefined`

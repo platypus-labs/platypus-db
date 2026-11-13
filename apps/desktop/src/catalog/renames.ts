@@ -1,7 +1,7 @@
 // Which catalog entries move when the app renames an object or edits a table. Pure, so it can be
 // tested without the backend.
 
-export interface CatalogMove {
+interface CatalogMove {
   from: { object: string; column: string };
   to: { object: string; column: string };
 }

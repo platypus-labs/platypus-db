@@ -1,7 +1,7 @@
 // Tasks that must not overlap per key, e.g. the writes to the catalog of one connection. Pure, so
 // it can be tested without the backend.
 
-export interface KeyedQueue {
+interface KeyedQueue {
   /** Runs `task` once the earlier ones of `key` are done, whether they succeeded or not. */
   run<T>(key: string, task: () => Promise<T>): Promise<T>;
   /** Forgets `key`; tasks already queued still run. */
