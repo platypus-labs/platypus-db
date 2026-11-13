@@ -220,14 +220,20 @@ switch ($Kind) {
   }
   'dbeaver' {
     if ($DbeaverProfile) {
+      # DBeaver keeps its first-run state (the setup wizard's answers) in
+      # %APPDATA%\DBeaverData\settings\product-config.json: the prepared profile has its own
+      # APPDATA and user.home, so the real ones are never read or written.
       $profileDir = (Resolve-Path $DbeaverProfile).Path
+      $dbeaverHome = "$profileDir\home"
+      $env:APPDATA = "$profileDir\appdata"
     } else {
       # A copy of the portable install's configuration directory, so it is not written to.
       $profileDir = $root
+      $dbeaverHome = "$root\home"
       Copy-Item (Join-Path (Split-Path $Exe) 'configuration') "$root\cfg" -Recurse
     }
     $launchArgs = @('-nosplash', '-data', "$profileDir\ws", '-configuration', "$profileDir\cfg",
-      '-vmargs', "-Duser.home=$root\home")
+      '-vmargs', "-Duser.home=$dbeaverHome")
   }
   'jetbrains' {
     $env:IDEA_PROPERTIES = "$root\idea.properties"
