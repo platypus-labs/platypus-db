@@ -1,46 +1,56 @@
 <!doctype html>
 <!-- Source of social-preview.png, the repository's social preview (GitHub › Settings › Social
-     preview, 1280×640). Render it again with: node scripts/social-preview.mjs -->
-<html lang="en">
+     preview, 1280×640). It reuses the site's stylesheet, so it looks like the site's hero.
+     Render it again with: node scripts/social-preview.mjs -->
+<html lang="en" class="js">
 <head>
 <meta charset="utf-8">
 <title>PlatypusDB social preview</title>
+<link rel="stylesheet" href="../../site/style.css">
 <style>
-  @font-face { font-family: "Inter"; font-weight: 100 900; src: url("../../site/fonts/inter-latin-wght-normal.woff2") format("woff2"); }
-  @font-face { font-family: "JetBrains Mono"; font-weight: 100 800; src: url("../../site/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); }
-  :root { --bg: #141519; --line: #2a2d35; --hi: #f2f3f5; --fg: #c9ccd2; --mut: #80868f; --acc: #ff8d28; }
-  * { box-sizing: border-box; margin: 0; }
   html, body { width: 1280px; height: 640px; overflow: hidden; }
-  body { position: relative; background: var(--bg); color: var(--fg); font-family: "Inter", sans-serif; }
-  .text { position: absolute; left: 72px; top: 72px; bottom: 64px; width: 548px; display: flex; flex-direction: column; }
-  .brand { display: flex; align-items: center; gap: 18px; }
-  .brand img { width: 64px; height: 64px; }
-  .brand b { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; color: var(--hi); }
-  .brand b span { color: var(--acc); }
-  h1 {
-    margin-top: 56px;
-    font-size: 48px; line-height: 1.1; font-weight: 700; letter-spacing: -0.03em; color: var(--hi);
+  body::before { height: 640px; }
+  *, *::before, *::after { animation: none !important; }
+  .brand-row { position: absolute; left: 72px; top: 48px; display: flex; align-items: center; gap: 12px; }
+  .brand-row img { width: 40px; height: 40px; }
+  .brand-row span { color: var(--hi); font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+  .hero {
+    position: absolute; inset: 0; max-width: none; margin: 0;
+    grid-template-columns: 640px 1fr; gap: 0; padding: 40px 48px 0 72px;
   }
-  p { margin-top: 22px; font-size: 21px; line-height: 1.5; color: var(--fg); }
-  .dbs {
-    margin-top: auto;
-    font: 400 15px/1.7 "JetBrains Mono", monospace; color: var(--mut);
-    border-top: 1px solid var(--line); padding-top: 18px;
-  }
-  .shot {
-    position: absolute; left: 668px; top: 72px; width: 760px; height: 496px;
-    border: 1px solid var(--line); border-right: 0; border-radius: 8px 0 0 8px; overflow: hidden;
-  }
-  .shot img { display: block; width: 100%; }
+  .hero h1 { font-size: 78px; }
+  .lead { font-size: 20px; max-width: 580px; margin-top: 24px; }
+  .meta { margin-top: 32px; }
+  .mascot { max-width: 470px; }
+  .c1 { top: 6%; left: 10%; }
+  .c2 { top: 20%; right: -2%; }
+  .c3 { bottom: 26%; left: -4%; }
+  .c4 { bottom: 8%; right: 6%; }
+  .c5 { top: 46%; right: -8%; }
 </style>
 </head>
 <body>
-  <div class="text">
-    <div class="brand"><img src="platypus-mark.svg" alt=""><b>Platypus<span>DB</span></b></div>
-    <h1>A fast, small SQL client for many databases.</h1>
-    <p>Rust core, Tauri interface. Opens in half a second, scrolls millions of rows. Open source.</p>
-    <div class="dbs">PostgreSQL · MySQL · SQL Server · Oracle · SQLite · and more</div>
-  </div>
-  <div class="shot"><img src="../screenshots/data-viewer.png" alt=""></div>
+  <div class="brand-row"><img src="platypus-mark.svg" alt=""><span>PlatypusDB</span></div>
+  <section class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">Open source SQL client</p>
+      <h1>Small app.<br><span class="gradient">Every database.</span></h1>
+      <p class="lead">Queries, browses and edits PostgreSQL, MySQL, SQL Server, Oracle, SQLite, DuckDB and a dozen more, from a window that opens in half a second.</p>
+      <dl class="meta">
+        <div><dt>to a window</dt><dd>&lt; 0.5 s</dd></div>
+        <div><dt>Windows, macOS, Linux</dt><dd>Desktop</dd></div>
+        <div><dt>no account</dt><dd>AGPL-3.0</dd></div>
+      </dl>
+    </div>
+    <div class="mascot" aria-hidden="true">
+      <div class="ring"></div>
+      <img src="../../site/img/mark.png" alt="" width="1024" height="1024">
+      <span class="chip c1" style="--c:#4169E1">PostgreSQL</span>
+      <span class="chip c2" style="--c:#FFF000">DuckDB</span>
+      <span class="chip c3" style="--c:#cc2927">SQL Server</span>
+      <span class="chip c4" style="--c:#47A248">MongoDB</span>
+      <span class="chip c5" style="--c:#29B5E8">Snowflake</span>
+    </div>
+  </section>
 </body>
 </html>
