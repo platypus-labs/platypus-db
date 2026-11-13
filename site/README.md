@@ -7,7 +7,7 @@ blocks and the name of the visitor's system on the download button. The pages un
 No build tool, nothing loaded from other sites.
 
 ```
-index.html      the home page
+index.html      the home page, with home.css and home.js (the hero, the tour, the platypus)
 features.html   every feature, area by area
 databases.html  the supported databases and how each connects
 compare.html    size, license and features next to other SQL clients
@@ -18,7 +18,13 @@ docs/           the user guide (guide/, with databases/), features, shortcuts, a
 404.html        the page GitHub Pages shows for a missing address, at any depth: its links
                 resolve from the site's root (a <base> set by a line of script)
 style.css       styles; dark only, colors from apps/desktop/src/theme.ts (Platypus Dark)
-site.js         tour as tabs (without it every screenshot shows, one under the other)
+site.js         tour as tabs on the other pages, the visitor's system on the download buttons, the
+                navigation's background, the light under the pointer on the cards
+home.css        the home page only, on top of style.css
+home.js         the home page only: the hero title (the speed one on a first visit, then another
+                at random), the chapters of the tour following the scroll, the rail, and the
+                platypus built from img/parts/ (hop, eye, facts about the sample database, and
+                a rare phone animation, PHONE in the script)
 fonts/          Inter and JetBrains Mono, copied from apps/desktop/src/assets/fonts
 img/            icon (icon.png, from docs/brand/app-icon.png), the platypus (mark.png, from
                 docs/brand/logo-only-1024.png; both written by scripts/brand-assets.mjs), database
@@ -38,9 +44,12 @@ serve the folder instead, for example:
 python -m http.server -d site 8000   # then http://localhost:8000
 ```
 
-The page is dark only. The window at the top is drawn in HTML and CSS: its query types itself
-and the result appears, all in CSS animations. When the system asks for less motion the query is
-already typed; the GIFs of the tour play anyway, since they are what the tour shows.
+The pages are dark only. On the home page the app window stays in place while the tour's
+chapters change with the scroll, and the platypus sits on it: its layers drop in, it hops on each
+chapter, follows the pointer and tells facts about the sample database (`samples/wildlife.sql`;
+keep them true if that file changes). The mock it was built from is
+`docs/mockups/site/home-v2.html`. When the system asks for less motion nothing moves; the GIFs of
+the tour play anyway, since they are what the tour shows.
 
 ## Update
 

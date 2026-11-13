@@ -258,7 +258,7 @@ function layout({ out, title, description, body, toc, menuHtml, extra }) {
   <header class="nav-wrap">
     <div class="nav">
       <a class="brand" href="${up}index.html" aria-label="PlatypusDB, home">
-        <img src="${up}img/mark.png" alt="" width="26" height="26">
+        <img src="${up}img/icon.png" alt="" width="28" height="28">
         <span>PlatypusDB</span>
       </a>
       <nav class="nav-links" aria-label="Sections">

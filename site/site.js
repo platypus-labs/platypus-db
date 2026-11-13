@@ -1,50 +1,3 @@
-// The tour as tabs: one window at a time; the arrows and Home/End move between them.
-// Without this script every screenshot shows, one under the other.
-(function () {
-  var list = document.querySelector(".tour [role=tablist]");
-  if (!list) return;
-  var tabs = Array.prototype.slice.call(list.querySelectorAll("[role=tab]"));
-
-  function select(index, focus) {
-    tabs.forEach(function (tab, i) {
-      var on = i === index;
-      tab.setAttribute("aria-selected", on ? "true" : "false");
-      tab.tabIndex = on ? 0 : -1;
-      document.getElementById(tab.getAttribute("aria-controls")).hidden = !on;
-    });
-    if (focus) {
-      tabs[index].focus();
-      tabs[index].scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
-  }
-
-  tabs.forEach(function (tab, i) {
-    tab.addEventListener("click", function () {
-      select(i, false);
-    });
-  });
-
-  list.addEventListener("keydown", function (e) {
-    var at = tabs.indexOf(document.activeElement);
-    if (at < 0) return;
-    var next = { ArrowRight: at + 1, ArrowDown: at + 1, ArrowLeft: at - 1, ArrowUp: at - 1, Home: 0, End: tabs.length - 1 }[e.key];
-    if (next === undefined) return;
-    e.preventDefault();
-    select((next + tabs.length) % tabs.length, true);
-  });
-
-  // A column beside the shots on wide screens, a row above them on narrow ones (style.css).
-  var narrow = window.matchMedia("(max-width: 1000px)");
-  function orient() {
-    list.setAttribute("aria-orientation", narrow.matches ? "horizontal" : "vertical");
-  }
-  if (narrow.addEventListener) narrow.addEventListener("change", orient);
-  orient();
-
-  list.hidden = false;
-  select(0, false);
-})();
-
 // Blocks marked `reveal` fade in the first time they come into view.
 (function () {
   var blocks = document.querySelectorAll(".reveal");
@@ -67,46 +20,45 @@
 // files, so it opens their list on the download page.
 (function () {
   var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
-  var os = /win/i.test(p) ? "Windows" : /mac/i.test(p) ? "macOS" : /linux/i.test(p) ? "Linux" : "";
+  // A phone or a tablet (Android reports Linux, an iPad reports a Mac) gets no system: there is no
+  // installer for it.
+  var touch = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || (/mac/i.test(p) && navigator.maxTouchPoints > 1);
+  var os = touch ? "" : /win/i.test(p) ? "Windows" : /mac/i.test(p) ? "macOS" : /linux/i.test(p) ? "Linux" : "";
   if (!os) return;
+  var group = document.querySelector('.dl-groups [data-os="' + os + '"]');
+  // Where a button for this system leads: the installer itself on Windows, the system's list of
+  // files elsewhere (on this page when it has one).
+  function target(link) {
+    var windows = link.getAttribute("data-windows");
+    if (os === "Windows" && windows) return windows;
+    return (group ? "" : "download.html") + "#" + os.toLowerCase();
+  }
+  // The home page's buttons have the system's logo before the text, and the size of the download.
+  var sizes = { Windows: "20 MiB", Linux: "30 MiB", macOS: "" };
+  document.querySelectorAll("#download-os .os, [data-os-button] .os").forEach(function (icon) {
+    var link = icon.parentNode;
+    icon.querySelector("use").setAttribute("href", "#os-" + os.toLowerCase());
+    link.querySelector("span").textContent = "Download for " + os;
+    link.querySelector("small").textContent = sizes[os];
+    link.href = target(link);
+  });
+  // The other pages' button gets the logo here.
   var logos = {
     Windows: "M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 13h7.5v7L3 19zM12 13h9v8l-9-1.3z",
     macOS: "M16.5 3c0 1.5-1.2 3-2.8 3 0-1.6 1.3-3 2.8-3zM19 16.5c-.8 1.9-2 3.9-3.6 3.9-1.4 0-1.8-.8-3.4-.8s-2.1.8-3.4.8C6.9 20.4 4 16.3 4 12.4 4 9 6.2 7.3 8.3 7.3c1.4 0 2.4.9 3.6.9 1.1 0 2.4-1 4-1 .6 0 2.6.1 3.8 2-3.3 1.8-2.7 6.4-.7 7.3z",
     Linux: "M12 3c-2.2 0-3.5 1.8-3.5 4.5 0 2-1.5 3.5-2.5 5.5S5 17 7 18.5 10 21 12 21s3-1 5-2.5 1-3.5 0-5.5-2.5-3.5-2.5-5.5C14.5 4.8 14.2 3 12 3z"
   };
-  var group = document.querySelector('.dl-groups [data-os="' + os + '"]');
   var button = document.getElementById("download-os");
-  if (button) {
+  if (button && !button.querySelector(".os")) {
     button.innerHTML = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="' + logos[os] + '"/></svg>';
     button.appendChild(document.createTextNode("Download for " + os));
-    var windows = button.getAttribute("data-windows");
-    if (os === "Windows" && windows) button.href = windows;
-    else button.href = (group ? "" : "download.html") + "#" + os.toLowerCase();
+    button.href = target(button);
   }
   // On the download page, the files of that system come first and are marked.
   if (group) {
     group.classList.add("yours");
     group.parentNode.insertBefore(group, group.parentNode.firstChild);
   }
-})();
-
-// The app window types its query again every few seconds while it is in view.
-(function () {
-  var app = document.querySelector(".app");
-  if (!app || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  var visible = true;
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver(function (entries) {
-      visible = entries[0].isIntersecting;
-    }).observe(app);
-  }
-  setInterval(function () {
-    if (!visible || document.hidden) return;
-    // Restarting a CSS animation: take the class off, force a layout, put it back.
-    app.classList.remove("play");
-    void app.offsetWidth;
-    app.classList.add("play");
-  }, 14000);
 })();
 
 // A soft light follows the pointer over the cards.
@@ -123,7 +75,7 @@
 // The link of the section in view is marked in the navigation and in the bar of the areas.
 (function () {
   // Only the links to sections of this page; the others open pages of their own.
-  var links = document.querySelectorAll('.nav-links a[href^="#"], .pill-nav a[href^="#"], .rail a[href^="#"]');
+  var links = document.querySelectorAll('.nav-links a[href^="#"], .pill-nav a[href^="#"], .area-rail a[href^="#"]');
   if (!("IntersectionObserver" in window) || !links.length) return;
   var byId = {};
   links.forEach(function (a) {
@@ -196,11 +148,11 @@
 
 // Features: the share of the areas read so far, in the rail beside them.
 (function () {
-  var rail = document.querySelector(".rail");
+  var rail = document.querySelector(".area-rail");
   var areas = document.querySelector(".areas");
   if (!rail || !areas) return;
-  var bar = rail.querySelector(".rail-bar s");
-  var count = rail.querySelector(".rail-pct");
+  var bar = rail.querySelector(".area-rail-bar s");
+  var count = rail.querySelector(".area-rail-pct");
   var queued = false;
   function update() {
     queued = false;
@@ -274,4 +226,21 @@
 (function () {
   var menu = document.querySelector(".docs-nav");
   if (menu && window.matchMedia("(max-width: 900px)").matches) menu.removeAttribute("open");
+})();
+
+// The navigation gets its background once the page scrolls.
+(function () {
+  var nav = document.querySelector(".nav-wrap");
+  if (!nav) return;
+  var ticking = false;
+  function update() {
+    ticking = false;
+    nav.classList.toggle("solid", window.scrollY > 40);
+  }
+  window.addEventListener("scroll", function () {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(update);
+  }, { passive: true });
+  update();
 })();

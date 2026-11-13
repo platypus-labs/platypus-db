@@ -7,6 +7,7 @@
 | [platypus-db-on-light.png](platypus-db-on-light.png) | Mark and wordmark for light backgrounds, 1600×400 (the README header, the welcome screen) |
 | [platypus-db-on-dark.png](platypus-db-on-dark.png) | Mark and wordmark for dark backgrounds, 1600×400 |
 | [logo-only-1024.png](logo-only-1024.png) | The mascot, the full platypus, 1024×1024: the site's hero and the app's lock screen |
+| [parts/](parts/) | The mascot in parts, for the animated platypus of the site's home page: `head`, `body` (the upper disk), `bottom` (the lower disk), `tail`, `arm`, `foot-left`, `foot-right`, each a PNG of the same 1024×1024 canvas as logo-only-1024.png with the part where it sits, so the layers stacked make the mascot |
 | [avatar.png](avatar.png) | The organization's picture on GitHub, 512×512: the mark on the dark background, rendered from [avatar.html](avatar.html) |
 | [social-preview.png](social-preview.png) | The repository's social preview, 1280×640, rendered from [social-preview.html](social-preview.html) by `node scripts/social-preview.mjs` (which renders the avatar too) |
 

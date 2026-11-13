@@ -111,6 +111,14 @@ PlatypusDB 0.6.0 su Windows 11 (Ryzen 7 9700X, 32 GB):
 | Un milione di righe da SQLite | prima pagina in 0,3 s, il resto 0,3 s dopo; la finestra non si blocca mai |
 | Installer per Windows | 20 MiB |
 
+Accanto a DBeaver sullo stesso computer, entrambi avviati cinque volte senza connessioni, DBeaver
+su un profilo già configurato:
+
+| | PlatypusDB 0.6.1 | DBeaver CE 26.2.3 |
+|---|---|---|
+| Avvio, finché la finestra ha finito di disegnarsi | 0,7 s | 5,2 s |
+| Memoria a riposo | 170 MB | 488 MB |
+
 Accanto ad altri client SQL, per la dimensione dei download ufficiali per Linux:
 
 | | PlatypusDB 0.6.0 | DBeaver CE 26.2.3 | DataGrip 2026.2.6 | TablePlus 2.2.0 | Beekeeper Studio 6.2.0 |

@@ -1,0 +1,80 @@
+name: MCP Registry
+
+# Builds the MCP bundle (.mcpb) of a published release, attaches it to the release and lists it
+# in the official MCP Registry as io.github.platypus-labs/platypus-db. Started by hand after a
+# release is published (Actions tab, or `gh workflow run mcp-registry.yml -f version=X.Y.Z`).
+# See "MCP Registry" in docs/dev/RELEASING.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v (e.g. 0.6.1)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Build and attach the bundle
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # The executable comes from the release's MSI: an administrative install only unpacks it.
+      - name: Unpack the release's executable
+        shell: pwsh
+        run: |
+          gh release download "v$env:VERSION" -p "PlatypusDB_${env:VERSION}_x64_en-US.msi" -D msi
+          $p = Start-Process msiexec.exe -ArgumentList "/a `"$PWD\msi\PlatypusDB_${env:VERSION}_x64_en-US.msi`" /qn TARGETDIR=`"$PWD\msi\out`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "msiexec /a failed: $($p.ExitCode)" }
+      - name: Build the bundle and server.json
+        shell: pwsh
+        run: node scripts/mcpb.mjs $env:VERSION msi\out\PFiles\PlatypusDB\platypus-db.exe target\mcpb
+      - name: Attach the bundle to the release
+        shell: pwsh
+        run: gh release upload "v$env:VERSION" "target\mcpb\platypus-db-${env:VERSION}-windows-x64.mcpb" --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-json
+          path: target/mcpb/server.json
+
+  publish:
+    name: Publish to the MCP Registry
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.1
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-json
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+      - name: Sign in with the repository's identity
+        run: ./mcp-publisher login github-oidc
+      - name: Publish
+        run: ./mcp-publisher publish server.json

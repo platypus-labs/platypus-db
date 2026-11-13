@@ -82,6 +82,14 @@ args = ["--mcp"]
 command = 'C:\Program Files\PlatypusDB\platypus-db.exe'
 ```
 
+### Claude Desktop, in one click (Windows)
+
+Each release has an MCP bundle, `platypus-db-X.Y.Z-windows-x64.mcpb`, on the
+[releases page](https://github.com/platypus-labs/platypus-db/releases/latest); PlatypusDB is also
+listed in the MCP Registry as `io.github.platypus-labs/platypus-db`. Open the bundle with Claude
+Desktop (or drag it onto Settings → Extensions) and it installs the server: it reads the
+connections you saved in the app, with the access you gave each one.
+
 ### Ready-made plugin
 
 The repository is also a plugin marketplace for Claude Code: the `platypus-db` plugin adds the
@@ -93,9 +101,11 @@ claude plugin marketplace add platypus-labs/platypus-db
 claude plugin install platypus-db@platypus-db
 ```
 
-The plugin starts `platypus-db --mcp`. Where the app is not on `PATH` (Windows and macOS; the
-Linux packages put it there), set `PLATYPUS_DB` to its full path, e.g.
-`C:\Program Files\PlatypusDB\platypus-db.exe`, before starting Claude Code. For Codex,
+The plugin starts the app with `--mcp` through a small Node script (Claude Code needs Node on
+`PATH` for it). It finds the app where the installers put it: `%LOCALAPPDATA%\PlatypusDB` or
+`C:\Program Files\PlatypusDB` on Windows, `/Applications` or `~/Applications` on macOS, and `PATH`
+on Linux. For a portable copy or another place, set `PLATYPUS_DB` to the executable's full path
+before starting Claude Code. For Codex,
 [`plugins/codex`](../../plugins/codex) has the `config.toml` entry and the same instructions as an
 `AGENTS.md` to copy into `~/.codex/AGENTS.md` or a project's `AGENTS.md`.
 
