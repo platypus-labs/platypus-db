@@ -20,7 +20,7 @@
   <a href="README.md">English</a> · <b>Italiano</b>
 </p>
 
-PlatypusDB è un client SQL desktop per sviluppatori, DBA e analisti che in una giornata
+PlatypusDB™ è un client SQL desktop per sviluppatori, DBA e analisti che in una giornata
 lavorano con più database. Una sola app piccola esegue query, mostra e modifica i dati,
 progetta tabelle, spiega le query lente e documenta gli schemi, e tiene le connessioni di
 produzione ben distinte dalle altre. Un core in Rust con interfaccia Tauri 2 + React: un
@@ -146,3 +146,10 @@ PlatypusDB è distribuito con la [GNU Affero General Public License v3.0 o succe
 distribuisci, o offri a terzi una versione modificata come servizio, devi rilasciare il tuo
 codice sorgente con la stessa licenza. Il codice e le risorse di terzi mantengono le proprie
 licenze: vedi [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+Il nome e il logo non fanno parte di quella licenza. PlatypusDB™ e il logo di PlatypusDB sono
+marchi dei maintainer di PlatypusDB: come consente la sezione 7(e) dell'AGPL, non viene concesso
+alcun diritto sui marchi, e i file di logo e icone elencati in [NOTICE](NOTICE) sono © 2026
+PlatypusDB maintainers, tutti i diritti riservati. Puoi citare il progetto, linkarlo e
+ridistribuire le build ufficiali senza modifiche; un fork va distribuito con un nome e icone
+propri. I dettagli (in inglese) sono in [TRADEMARKS.md](TRADEMARKS.md).
