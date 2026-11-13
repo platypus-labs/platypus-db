@@ -108,7 +108,7 @@ are missing is skipped (a Windows-only release fills only winget). Then submit e
   `Homebrew/homebrew-cask` (`brew audit --new --cask platypusdb` first); later versions are
   bumped by Homebrew's autobump, or with `brew bump-cask-pr platypusdb --version X.Y.Z`.
   Homebrew wants a notable, signed and notarized app: until macOS signing is done, a tap
-  of our own (`PaoloCisly/homebrew-tap`) is the alternative.
+  of our own (`platypus-db/homebrew-tap`) is the alternative.
 - **AUR**: push `PKGBUILD` and `.SRCINFO` to `ssh://aur@aur.archlinux.org/platypusdb-bin.git`
   (an AUR account with an SSH key); check with `makepkg -si` on Arch first.
 - **Flathub**: the first time, a pull request to `flathub/flathub` (branch `new-pr`) with
