@@ -112,10 +112,13 @@ are missing is skipped (a Windows-only release fills only winget). Then submit e
 - **AUR**: push `PKGBUILD` and `.SRCINFO` to `ssh://aur@aur.archlinux.org/platypusdb-bin.git`
   (an AUR account with an SSH key); check with `makepkg -si` on Arch first.
 - **Flathub**: the first time, a pull request to `flathub/flathub` (branch `new-pr`) with
-  `dev.platypusdb.desktop.yml`; Flathub then creates the `flathub/dev.platypusdb.desktop`
-  repository, where later versions go. The metainfo file goes with it. Check with
-  `flatpak-builder --user --install --force-clean build dev.platypusdb.desktop.yml` and
-  `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest dev.platypusdb.desktop.yml`.
+  `io.github.platypus_labs.platypus-db.yml`; Flathub then creates the
+  `flathub/io.github.platypus_labs.platypus-db` repository, where later versions go. The Flatpak
+  ID is under `io.github.platypus_labs` because Flathub verifies the ID's owner, here through the
+  GitHub organization (no `platypusdb.dev` domain is registered); the app's own identifier and
+  its data folders stay `dev.platypusdb.desktop`. The metainfo file goes with it. Check with
+  `flatpak-builder --user --install --force-clean build io.github.platypus_labs.platypus-db.yml` and
+  `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest io.github.platypus_labs.platypus-db.yml`.
 
 The AUR and Flatpak packages install `share/platypusdb/package-manager` next to the
 executable: the app then announces a new version but leaves the update to the package

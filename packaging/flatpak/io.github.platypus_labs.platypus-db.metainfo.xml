@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>dev.platypusdb.desktop</id>
+  <id>io.github.platypus_labs.platypus-db</id>
   <name>PlatypusDB</name>
   <summary>Fast, lightweight SQL client</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>AGPL-3.0-or-later</project_license>
-  <developer id="com.github.paolocisly">
-    <name>PlatypusDB</name>
+  <developer id="io.github.platypus_labs">
+    <name>PlatypusDB maintainers</name>
   </developer>
   <description>
     <p>
@@ -16,7 +16,7 @@
       through its MCP server, within the limits you set.
     </p>
   </description>
-  <launchable type="desktop-id">dev.platypusdb.desktop.desktop</launchable>
+  <launchable type="desktop-id">io.github.platypus_labs.platypus-db.desktop</launchable>
   <url type="homepage">https://github.com/platypus-labs/platypus-db</url>
   <url type="bugtracker">https://github.com/platypus-labs/platypus-db/issues</url>
   <screenshots>

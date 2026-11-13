@@ -1,9 +1,11 @@
-# Repackages the Linux .deb of a release. Build and try it:
-#   flatpak-builder --user --install --force-clean build dev.platypusdb.desktop.yml
-#   flatpak run dev.platypusdb.desktop
-id: dev.platypusdb.desktop
+# Repackages the Linux .deb of a release. The Flatpak ID is under io.github.platypus_labs, which
+# Flathub verifies through the GitHub organization; the app's own identifier, and so its data
+# folders, stay dev.platypusdb.desktop. Build and try it:
+#   flatpak-builder --user --install --force-clean build io.github.platypus_labs.platypus-db.yml
+#   flatpak run io.github.platypus_labs.platypus-db
+id: io.github.platypus_labs.platypus-db
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 command: platypus-db
 finish-args:
@@ -32,18 +34,18 @@ modules:
         dest-filename: platypusdb.deb
         only-arches: [x86_64]
       - type: file
-        path: dev.platypusdb.desktop.metainfo.xml
+        path: io.github.platypus_labs.platypus-db.metainfo.xml
     build-commands:
       - ar -x platypusdb.deb
       - tar -xf data.tar.gz
       - install -Dm755 usr/bin/platypus-db /app/bin/platypus-db
-      - install -Dm644 usr/share/applications/PlatypusDB.desktop /app/share/applications/dev.platypusdb.desktop.desktop
-      - desktop-file-edit --set-icon=dev.platypusdb.desktop /app/share/applications/dev.platypusdb.desktop.desktop
+      - install -Dm644 usr/share/applications/PlatypusDB.desktop /app/share/applications/io.github.platypus_labs.platypus-db.desktop
+      - desktop-file-edit --set-icon=io.github.platypus_labs.platypus-db /app/share/applications/io.github.platypus_labs.platypus-db.desktop
       - |
         for icon in usr/share/icons/hicolor/*/apps/platypus-db.png; do
           size=$(basename "$(dirname "$(dirname "$icon")")")
-          install -Dm644 "$icon" "/app/share/icons/hicolor/$size/apps/dev.platypusdb.desktop.png"
+          install -Dm644 "$icon" "/app/share/icons/hicolor/$size/apps/io.github.platypus_labs.platypus-db.png"
         done
-      - install -Dm644 dev.platypusdb.desktop.metainfo.xml /app/share/metainfo/dev.platypusdb.desktop.metainfo.xml
+      - install -Dm644 io.github.platypus_labs.platypus-db.metainfo.xml /app/share/metainfo/io.github.platypus_labs.platypus-db.metainfo.xml
       # Updates come from Flathub: the app then only says a new version is out.
       - install -d /app/share/platypusdb && echo Flatpak > /app/share/platypusdb/package-manager
