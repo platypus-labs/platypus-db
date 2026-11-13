@@ -2400,3 +2400,132 @@ svg.i.sm {
     font-size: 34px;
   }
 }
+
+/* ---------- The look of the home page on every page (home.css has the rest of the home page) ---------- */
+/* Film grain over everything. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+/* Navigation: a thin bar across the page, solid once the page scrolls (site.js). */
+.nav-wrap {
+  padding: 0;
+  transition: background 0.3s ease;
+}
+
+.nav-wrap.solid {
+  background: rgba(11, 13, 15, 0.72);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.nav {
+  max-width: none;
+  height: 64px;
+  padding: 0 clamp(16px, 3vw, 36px);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.nav .brand {
+  margin-right: auto;
+  font-size: 15px;
+}
+
+.nav .brand img {
+  border-radius: 7px;
+}
+
+.nav-links {
+  gap: 6px;
+}
+
+.nav-links a {
+  padding: 6px 8px;
+}
+
+.nav-links a:hover,
+.nav-links a[aria-current] {
+  background: none;
+  color: var(--hi);
+}
+
+.nav-actions {
+  align-items: center;
+  gap: 16px;
+  margin-left: 12px;
+}
+
+.nav-actions .button.ghost {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mut);
+}
+
+.nav-actions .button.ghost:hover {
+  color: var(--hi);
+  transform: none;
+}
+
+.nav-actions .button.primary {
+  height: 34px;
+  padding: 0 15px;
+  border-color: var(--hi);
+  border-radius: 999px;
+  background: var(--hi);
+  color: var(--bg);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.nav-actions .button.primary:hover {
+  border-color: #fff;
+  background: #fff;
+}
+
+/* Headings: heavier and tighter, as the home page. */
+.hero h1,
+.head h2,
+.cta h2 {
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.98;
+}
+
+/* Small labels: the mono line of the home page's chapters. */
+.eyebrow {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* The large orange button: the download button of the home page. */
+.button.large {
+  height: 54px;
+  border-radius: 14px;
+  font-size: 16px;
+}
+
+.button.primary.large {
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 12px 40px -8px rgba(255, 141, 40, 0.55);
+}
+
+/* The platypus faces the page, as on the home page. */
+.mascot img {
+  scale: -1 1;
+}
