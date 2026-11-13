@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "platypus": {
-      "command": "${PLATYPUS_DB:-platypus-db}",
-      "args": ["--mcp"]
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/platypus-mcp.mjs"]
     }
   }
 }
