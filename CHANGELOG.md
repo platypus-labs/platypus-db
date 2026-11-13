@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-13
+
 ### Added
 
 - **Trademarks**: [TRADEMARKS.md](TRADEMARKS.md) says what anyone may do with the PlatypusDB name and
@@ -478,7 +480,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/platypus-labs/platypus-db/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/platypus-labs/platypus-db/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/platypus-labs/platypus-db/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/platypus-labs/platypus-db/compare/v0.4.1...v0.4.2
