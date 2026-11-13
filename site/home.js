@@ -111,6 +111,11 @@
     plat.classList.add("hopping");
   }
   plat.addEventListener("click", hop);
+  plat.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    hop();
+  });
 
   // ---- The phone: now and then, while the window is pinned.
   var phoning = false;
@@ -120,7 +125,8 @@
     hush();
     plat.classList.add("phoning");
     setTimeout(function () {
-      speak("Wait, done already? <b>A million rows, first page in 287 ms.</b>", "Query finished");
+      // Not if the visitor has left the tour meanwhile: nothing would take the bubble away.
+      if (pinned) speak("Wait, done already? <b>A million rows, first page in 287 ms.</b>", "Query finished");
     }, 2300);
     setTimeout(function () {
       plat.classList.remove("phoning");
@@ -130,9 +136,13 @@
       }, 2500);
     }, 3500);
   }
-  if (PHONE && !still) {
-    setInterval(function () {
-      if (pinned && !phoning && Math.random() < 0.12) usePhone();
+  // The chance comes every 6 s, only while the window is pinned.
+  var phoneTimer = 0;
+  function phoneChances(on) {
+    clearInterval(phoneTimer);
+    if (!on || !PHONE || still) return;
+    phoneTimer = setInterval(function () {
+      if (!phoning && !document.hidden && Math.random() < 0.12) usePhone();
     }, 6000);
   }
 
@@ -170,19 +180,26 @@
   // ---- Scroll: the window sliding in, the chapter, the rail.
   function update() {
     ticking = false;
+    // Every measure first, then every change: no layout forced in between.
     var y = window.scrollY;
     var top = showTop();
-    // 0 at the top of the page, 1 once the stage is pinned: the window slides from the centre to the right.
-    var enter = Math.min(1, Math.max(0, y / Math.max(1, top)));
     var stageIn = win.parentNode;
     var shift = window.innerWidth > 1100 ? -(stageIn.clientWidth - win.offsetWidth) / 2 + 24 : 0;
+    var showEnd = top + show.offsetHeight;
+    var half = window.innerHeight * 0.5;
+    var past = marks.filter(function (el) {
+      return chaps.indexOf(el) < 0 && el.getBoundingClientRect().top < half;
+    });
+    // 0 at the top of the page, 1 once the stage is pinned: the window slides from the centre to the right.
+    var enter = Math.min(1, Math.max(0, y / Math.max(1, top)));
     stageIn.style.setProperty("--shift", shift + "px");
     stageIn.style.setProperty("--enter", enter.toFixed(3));
 
     var s = Math.min(chaps.length - 1, Math.max(0, Math.floor((y - top) / chapterLength())));
-    var nowPinned = y >= top - 1 && y < top + show.offsetHeight - window.innerHeight * 0.6;
+    var nowPinned = y >= top - 1 && y < showEnd - window.innerHeight * 0.6;
     if (nowPinned !== pinned) {
       pinned = nowPinned;
+      phoneChances(pinned);
       if (!pinned) hush();
       else if (!phoning) nextFact();
     }
@@ -198,11 +215,7 @@
     }
 
     // The chapter while the stage is pinned, otherwise the last section past the middle of the screen.
-    var current = pinned
-      ? chaps[step]
-      : marks.filter(function (el) {
-          return chaps.indexOf(el) < 0 && el.getBoundingClientRect().top < window.innerHeight * 0.5;
-        }).pop() || marks[0];
+    var current = pinned ? chaps[step] : past.pop() || marks[0];
     marks.forEach(function (el) {
       el.railTick.classList.toggle("on", el === current);
     });

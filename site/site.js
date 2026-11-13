@@ -1,50 +1,3 @@
-// The tour as tabs: one window at a time; the arrows and Home/End move between them.
-// Without this script every screenshot shows, one under the other.
-(function () {
-  var list = document.querySelector(".tour [role=tablist]");
-  if (!list) return;
-  var tabs = Array.prototype.slice.call(list.querySelectorAll("[role=tab]"));
-
-  function select(index, focus) {
-    tabs.forEach(function (tab, i) {
-      var on = i === index;
-      tab.setAttribute("aria-selected", on ? "true" : "false");
-      tab.tabIndex = on ? 0 : -1;
-      document.getElementById(tab.getAttribute("aria-controls")).hidden = !on;
-    });
-    if (focus) {
-      tabs[index].focus();
-      tabs[index].scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
-  }
-
-  tabs.forEach(function (tab, i) {
-    tab.addEventListener("click", function () {
-      select(i, false);
-    });
-  });
-
-  list.addEventListener("keydown", function (e) {
-    var at = tabs.indexOf(document.activeElement);
-    if (at < 0) return;
-    var next = { ArrowRight: at + 1, ArrowDown: at + 1, ArrowLeft: at - 1, ArrowUp: at - 1, Home: 0, End: tabs.length - 1 }[e.key];
-    if (next === undefined) return;
-    e.preventDefault();
-    select((next + tabs.length) % tabs.length, true);
-  });
-
-  // A column beside the shots on wide screens, a row above them on narrow ones (style.css).
-  var narrow = window.matchMedia("(max-width: 1000px)");
-  function orient() {
-    list.setAttribute("aria-orientation", narrow.matches ? "horizontal" : "vertical");
-  }
-  if (narrow.addEventListener) narrow.addEventListener("change", orient);
-  orient();
-
-  list.hidden = false;
-  select(0, false);
-})();
-
 // Blocks marked `reveal` fade in the first time they come into view.
 (function () {
   var blocks = document.querySelectorAll(".reveal");
@@ -65,7 +18,10 @@
 // The download button names the visitor's system.
 (function () {
   var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
-  var os = /win/i.test(p) ? "Windows" : /mac/i.test(p) ? "macOS" : /linux/i.test(p) ? "Linux" : "";
+  // A phone or a tablet (Android reports Linux, an iPad reports a Mac) gets no system: there is no
+  // installer for it.
+  var touch = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || (/mac/i.test(p) && navigator.maxTouchPoints > 1);
+  var os = touch ? "" : /win/i.test(p) ? "Windows" : /mac/i.test(p) ? "macOS" : /linux/i.test(p) ? "Linux" : "";
   var button = document.getElementById("download-os");
   // The home page's buttons have the system's logo before the text, and the size of the download.
   var sizes = { Windows: "20 MiB", Linux: "30 MiB", macOS: "" };
@@ -83,25 +39,6 @@
     card.classList.add("yours");
     card.parentNode.insertBefore(card, card.parentNode.firstChild);
   }
-})();
-
-// The app window types its query again every few seconds while it is in view.
-(function () {
-  var app = document.querySelector(".app");
-  if (!app || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  var visible = true;
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver(function (entries) {
-      visible = entries[0].isIntersecting;
-    }).observe(app);
-  }
-  setInterval(function () {
-    if (!visible || document.hidden) return;
-    // Restarting a CSS animation: take the class off, force a layout, put it back.
-    app.classList.remove("play");
-    void app.offsetWidth;
-    app.classList.add("play");
-  }, 14000);
 })();
 
 // A soft light follows the pointer over the cards.

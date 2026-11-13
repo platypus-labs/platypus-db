@@ -12,15 +12,6 @@
   --win-top: max(calc(76px + var(--plat) * 0.58), calc((100svh - var(--win-w) * 0.6 - 34px + var(--plat) * 0.58) / 2));
 }
 
-/* clip, not hidden: hidden would make a scroll container and break the sticky stage. */
-html:has(body.home) {
-  overflow-x: clip;
-}
-
-body.home {
-  overflow-x: visible;
-}
-
 /* The nav floats over the hero. */
 .home .nav-wrap {
   position: fixed;
