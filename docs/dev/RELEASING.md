@@ -135,7 +135,8 @@ Set once, when the repository becomes public (GitHub › the repository's About 
   `desktop-app`, `dbeaver-alternative`.
 - **Social preview**: `docs/brand/social-preview.png` (1280×640). Its source is
   `docs/brand/social-preview.html`; after changing it, or the screenshot it shows, run
-  `node scripts/social-preview.mjs`.
+  `node scripts/social-preview.mjs` (it needs Chrome, Edge or Chromium), then upload the PNG
+  in Settings › General › Social preview.
 - **Discussions**: on, with the categories Announcements (releases), Q&A, Ideas and Show
   and tell; then add a "Ask a question" link to Q&A in `.github/ISSUE_TEMPLATE/config.yml`.
 - **`good first issue`**: label small, self-contained tasks with a pointer to the files to

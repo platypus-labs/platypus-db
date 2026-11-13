@@ -31,7 +31,7 @@
 
 | Folder | What it holds |
 |---|---|
-| [brand/](brand/) | Logos and wordmarks for light and dark backgrounds |
+| [brand/](brand/README.md) | The mark, the wordmarks for light and dark backgrounds and the social preview |
 | [mockups/](mockups/) | The approved mockups of the app and the site from the redesign (open `index.html`) |
 | [screenshots/](screenshots/) | The screenshots and GIFs of the README and the guide, made by the end-to-end `readme` and `gifs` scenarios |
 
