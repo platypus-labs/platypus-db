@@ -149,3 +149,8 @@ steps above before merging, even when a change does not touch the UI or the driv
 
 PlatypusDB is licensed under the [GNU AGPL v3.0 or later](LICENSE). By submitting a
 contribution you agree that it is licensed under the same terms.
+
+The name and the logo are not: PlatypusDB™ and the PlatypusDB logo are trademarks of the
+PlatypusDB maintainers, and the logo and icon files listed in [NOTICE](NOTICE) stay reserved.
+Contributing does not grant any right to use the marks; what anyone may do with them is in
+[TRADEMARKS.md](TRADEMARKS.md).
