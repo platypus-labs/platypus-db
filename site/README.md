@@ -15,6 +15,8 @@ download.html   installers per system and building from source
 docs.html       getting started and the index of the docs; generated
 docs/           the user guide (guide/, with databases/), features, shortcuts, agents, plugins and
                 the connections file as pages; generated, do not edit by hand
+404.html        the page GitHub Pages shows for a missing address, at any depth: its links
+                resolve from the site's root (a <base> set by a line of script)
 style.css       styles; dark only, colors from apps/desktop/src/theme.ts (Platypus Dark)
 site.js         tour as tabs on the other pages, the visitor's system on the download buttons, the
                 navigation's background, the light under the pointer on the cards
@@ -53,6 +55,11 @@ the tour play anyway, since they are what the tour shows.
 
 The text follows the README and [docs/user/FEATURES.md](../docs/user/FEATURES.md), the source of truth for features. When the screenshots or GIFs in
 `docs/screenshots/` change, run `node scripts/copy-site-screenshots.mjs`: it copies the ones the pages show into `img/screenshots/`.
+
+The download buttons link straight to the files of the latest release, with their sizes. Those
+addresses are written into the pages (the site loads nothing from other sites): after a release,
+run `node scripts/site-release.mjs`, which reads the release from the GitHub API and rewrites
+every `data-asset`, `data-size`, `data-release` and `data-windows` attribute.
 
 The docs pages come from `docs/user/guide/**/*.md`, FEATURES.md, SHORTCUTS.md, AGENTS.md, PLUGINS.md
 and CONNECTIONS_FILE.md. After changing any of them, run, from the root:

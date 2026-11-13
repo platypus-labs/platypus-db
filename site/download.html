@@ -43,34 +43,38 @@
       <img src="img/mark.png" alt="" width="88" height="88">
       <h2>Free and open source.<br>No trial, no account.</h2>
       <p>Download the installer for your system. The app updates itself.</p>
-      <ul class="platforms">
-        <li><b>Windows</b><code>.exe</code><code>.msi</code></li>
-        <li><b>macOS</b><code>.dmg</code></li>
-        <li><b>Linux</b><code>.AppImage</code><code>.deb</code><code>.rpm</code></li>
-      </ul>
       <div class="actions center">
-        <a class="button primary large" id="download-os" href="https://github.com/platypus-labs/platypus-db/releases">Go to the releases page</a>
-        <a class="button ghost large" href="#other">Every system</a>
+        <a class="button primary large" id="download-os" href="#files" data-windows="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB_0.6.1_x64-setup.exe">Download</a>
+        <a class="button ghost large" href="#files">Every system</a>
       </div>
     </div>
   </section>
 
-  <section class="section deep" id="other">
-    <header class="head"><p class="eyebrow">Every system</p><h2>Pick your file.</h2><p>All installers are on the releases page.</p></header>
-    <div class="os-cards">
-      <div class="card" data-os="Windows">
-        <h3><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 13h7.5v7L3 19zM12 13h9v8l-9-1.3z"/></svg>Windows</h3>
-        <div class="files"><a href="https://github.com/platypus-labs/platypus-db/releases">Installer (.exe)</a><a href="https://github.com/platypus-labs/platypus-db/releases">MSI package (.msi)</a></div>
-      </div>
-      <div class="card" data-os="macOS">
-        <h3><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 3c0 1.5-1.2 3-2.8 3 0-1.6 1.3-3 2.8-3zM19 16.5c-.8 1.9-2 3.9-3.6 3.9-1.4 0-1.8-.8-3.4-.8s-2.1.8-3.4.8C6.9 20.4 4 16.3 4 12.4 4 9 6.2 7.3 8.3 7.3c1.4 0 2.4.9 3.6.9 1.1 0 2.4-1 4-1 .6 0 2.6.1 3.8 2-3.3 1.8-2.7 6.4-.7 7.3z"/></svg>macOS</h3>
-        <div class="files"><a href="https://github.com/platypus-labs/platypus-db/releases">Disk image (.dmg)</a></div>
-      </div>
-      <div class="card" data-os="Linux">
-        <h3><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c-2.2 0-3.5 1.8-3.5 4.5 0 2-1.5 3.5-2.5 5.5S5 17 7 18.5 10 21 12 21s3-1 5-2.5 1-3.5 0-5.5-2.5-3.5-2.5-5.5C14.5 4.8 14.2 3 12 3z"/></svg>Linux</h3>
-        <div class="files"><a href="https://github.com/platypus-labs/platypus-db/releases">AppImage</a><a href="https://github.com/platypus-labs/platypus-db/releases">Debian package (.deb)</a><a href="https://github.com/platypus-labs/platypus-db/releases">RPM package (.rpm)</a></div>
-        <p class="note">Linux download 30 MiB</p>
-      </div>
+  <section class="section deep" id="files">
+    <header class="head"><p class="eyebrow">Every system</p><h2>Pick your file.</h2><p>PlatypusDB <span data-release="version">0.6.1</span>, the latest release.</p></header>
+    <div class="dl-groups">
+      <section class="dl-os" data-os="Windows" id="windows" aria-labelledby="dl-windows">
+        <h3 id="dl-windows"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10.5 4.5v7H3zM12 4.3 21 3v8.5h-9zM3 13h7.5v7L3 19zM12 13h9v8l-9-1.3z"/></svg>Windows</h3>
+        <ul class="dl-list">
+          <li><span class="dl-name">Installer<small>.exe · x64</small></span><span class="dl-size" data-size="exe">20 MiB</span><a class="button" data-asset="exe" href="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB_0.6.1_x64-setup.exe">Download</a></li>
+          <li><span class="dl-name">MSI package<small>.msi · x64, for managed installs</small></span><span class="dl-size" data-size="msi">27 MiB</span><a class="button" data-asset="msi" href="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB_0.6.1_x64_en-US.msi">Download</a></li>
+        </ul>
+      </section>
+      <section class="dl-os" data-os="macOS" id="macos" aria-labelledby="dl-macos">
+        <h3 id="dl-macos"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 3c0 1.5-1.2 3-2.8 3 0-1.6 1.3-3 2.8-3zM19 16.5c-.8 1.9-2 3.9-3.6 3.9-1.4 0-1.8-.8-3.4-.8s-2.1.8-3.4.8C6.9 20.4 4 16.3 4 12.4 4 9 6.2 7.3 8.3 7.3c1.4 0 2.4.9 3.6.9 1.1 0 2.4-1 4-1 .6 0 2.6.1 3.8 2-3.3 1.8-2.7 6.4-.7 7.3z"/></svg>macOS</h3>
+        <ul class="dl-list">
+          <li><span class="dl-name">Apple silicon<small>.dmg · M1 and later</small></span><span class="dl-size" data-size="dmg-arm">25 MiB</span><a class="button" data-asset="dmg-arm" href="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB_0.6.1_aarch64.dmg">Download</a></li>
+          <li><span class="dl-name">Intel<small>.dmg · x64</small></span><span class="dl-size" data-size="dmg-intel">27 MiB</span><a class="button" data-asset="dmg-intel" href="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB_0.6.1_x64.dmg">Download</a></li>
+        </ul>
+      </section>
+      <section class="dl-os" data-os="Linux" id="linux" aria-labelledby="dl-linux">
+        <h3 id="dl-linux"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c-2.2 0-3.5 1.8-3.5 4.5 0 2-1.5 3.5-2.5 5.5S5 17 7 18.5 10 21 12 21s3-1 5-2.5 1-3.5 0-5.5-2.5-3.5-2.5-5.5C14.5 4.8 14.2 3 12 3z"/></svg>Linux</h3>
+        <ul class="dl-list">
+          <li><span class="dl-name">Debian package<small>.deb · Debian, Ubuntu</small></span><span class="dl-size" data-size="deb">30 MiB</span><a class="button" data-asset="deb" href="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB_0.6.1_amd64.deb">Download</a></li>
+          <li><span class="dl-name">RPM package<small>.rpm · Fedora, openSUSE</small></span><span class="dl-size" data-size="rpm">30 MiB</span><a class="button" data-asset="rpm" href="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB-0.6.1-1.x86_64.rpm">Download</a></li>
+          <li><span class="dl-name">AppImage<small>.AppImage · any distribution, nothing to install</small></span><span class="dl-size" data-size="appimage">102 MiB</span><a class="button" data-asset="appimage" href="https://github.com/platypus-labs/platypus-db/releases/download/v0.6.1/PlatypusDB_0.6.1_amd64.AppImage">Download</a></li>
+        </ul>
+      </section>
     </div>
     <p class="note">Prefer no installer? Put the executable in a folder with an empty <code>data</code> folder beside it: connections, settings, history and scripts then live there, and the folder can move to another machine or a USB stick. <a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/user/FEATURES.md#portable-copy">Portable copy</a> · <a href="https://github.com/platypus-labs/platypus-db/releases">All releases</a></p>
   </section>

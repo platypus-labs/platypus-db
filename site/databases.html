@@ -38,10 +38,10 @@
   </header>
 
   <main id="main">
-  <section class="hero">
+  <section class="hero solo">
     <div class="hero-text">
       <p class="eyebrow">Databases</p>
-      <h1>Twenty databases,<br><span class="gradient">one client.</span></h1>
+      <h1>20+ databases,<br><span class="gradient">one client.</span></h1>
       <p class="lead">Native drivers in Rust, plus ADBC and ODBC for the rest. Large drivers download on first use, checked against their SHA-256.</p>
       <dl class="meta">
         <div><dt>databases and variants</dt><dd>20+</dd></div>
@@ -49,57 +49,9 @@
         <div><dt>plus any</dt><dd>ADBC · ODBC</dd></div>
       </dl>
     </div>
-    <div class="mascot" aria-hidden="true">
-      <div class="ring"></div>
-      <img src="img/mark.png" alt="" width="1024" height="1024">
-      <span class="chip c1" style="--c:#4169E1">PostgreSQL</span>
-      <span class="chip c2" style="--c:#FFF000">DuckDB</span>
-      <span class="chip c3" style="--c:#cc2927">SQL Server</span>
-      <span class="chip c4" style="--c:#47A248">MongoDB</span>
-      <span class="chip c5" style="--c:#29B5E8">Snowflake</span>
-    </div>
   </section>
 
-  <section class="section" style="padding-top:110px">
-    <header class="head"><p class="eyebrow">Supported</p><h2>Pick yours.</h2><p>Hover a database to see its color; each connects the way the table below says.</p></header>
-    <div class="db-filter" role="search">
-      <input type="search" id="db-find" placeholder="Find a database" aria-label="Find a database">
-      <div class="seg-pills kind-pick" role="group" aria-label="Kind">
-        <button type="button" aria-selected="true" data-kind="">All</button>
-        <button type="button" aria-selected="false" data-kind="relational">Relational</button>
-        <button type="button" aria-selected="false" data-kind="analytical">Analytical</button>
-        <button type="button" aria-selected="false" data-kind="documents">Documents</button>
-        <button type="button" aria-selected="false" data-kind="pgwire">PostgreSQL-compatible</button>
-        <button type="button" aria-selected="false" data-kind="generic">Generic</button>
-      </div>
-    </div>
-    <ul class="logos">
-      <li data-kind="relational" style="--c:#4169E1"><svg aria-hidden="true"><use href="img/databases.svg#postgresql"/></svg>PostgreSQL</li>
-      <li data-kind="relational" style="--c:#4479A1"><svg aria-hidden="true"><use href="img/databases.svg#mysql"/></svg>MySQL</li>
-      <li data-kind="relational" style="--c:#c0765a"><svg aria-hidden="true"><use href="img/databases.svg#mariadb"/></svg>MariaDB</li>
-      <li data-kind="relational" style="--c:#cc2927"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>SQL Server</li>
-      <li data-kind="relational" style="--c:#c74634"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>Oracle</li>
-      <li data-kind="analytical" style="--c:#FFCC01"><svg aria-hidden="true"><use href="img/databases.svg#clickhouse"/></svg>ClickHouse</li>
-      <li data-kind="relational" style="--c:#3d8fc6"><svg aria-hidden="true"><use href="img/databases.svg#sqlite"/></svg>SQLite</li>
-      <li data-kind="analytical" style="--c:#FFF000"><svg aria-hidden="true"><use href="img/databases.svg#duckdb"/></svg>DuckDB</li>
-      <li data-kind="relational" style="--c:#4FF8D2"><svg aria-hidden="true"><use href="img/databases.svg#turso"/></svg>Turso / libSQL</li>
-      <li data-kind="documents" style="--c:#47A248"><svg aria-hidden="true"><use href="img/databases.svg#mongodb"/></svg>MongoDB</li>
-      <li data-kind="analytical" style="--c:#29B5E8"><svg aria-hidden="true"><use href="img/databases.svg#snowflake"/></svg>Snowflake</li>
-      <li data-kind="analytical" style="--c:#669DF6"><svg aria-hidden="true"><use href="img/databases.svg#bigquery"/></svg>BigQuery</li>
-      <li data-kind="analytical" style="--c:#FF3621"><svg aria-hidden="true"><use href="img/databases.svg#databricks"/></svg>Databricks</li>
-      <li data-kind="analytical" style="--c:#DD00A1"><svg aria-hidden="true"><use href="img/databases.svg#trino"/></svg>Trino</li>
-      <li data-kind="pgwire" style="--c:#8f6bff"><svg aria-hidden="true"><use href="img/databases.svg#cockroachdb"/></svg>CockroachDB</li>
-      <li data-kind="pgwire" style="--c:#ff5f3b"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>YugabyteDB</li>
-      <li data-kind="pgwire" style="--c:#FDB515"><svg aria-hidden="true"><use href="img/databases.svg#timescale"/></svg>TimescaleDB</li>
-      <li data-kind="pgwire" style="--c:#3FCF8E"><svg aria-hidden="true"><use href="img/databases.svg#supabase"/></svg>Supabase</li>
-      <li data-kind="pgwire" style="--c:#34D59A"><svg aria-hidden="true"><use href="img/databases.svg#neon"/></svg>Neon</li>
-      <li data-kind="relational" style="--c:#0f62fe"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>IBM Db2</li>
-      <li data-kind="generic" style="--c:#e8e8e8"><svg aria-hidden="true"><use href="img/databases.svg#arrow"/></svg>ADBC drivers</li>
-      <li data-kind="generic" style="--c:#a0a8ae"><svg aria-hidden="true"><use href="img/databases.svg#database"/></svg>ODBC sources</li>
-    </ul>
-  </section>
-
-  <section class="section">
+  <section class="section first">
     <header class="head"><p class="eyebrow">How they connect</p><h2>What each one needs.</h2><p>Every database gets the editor, the grid and the navigator. The notes say what differs; the oldest server versions are in <a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/user/FEATURES.md#databases">FEATURES.md</a>.</p></header>
     <div class="table-wrap" role="region" aria-label="How each database connects" tabindex="0">
       <table class="grid">
