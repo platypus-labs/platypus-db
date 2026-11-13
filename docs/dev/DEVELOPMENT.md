@@ -5,7 +5,7 @@
 What comes next is planned in [ROADMAP.md](ROADMAP.md), and the working rules are in
 [CONTRIBUTING.md](../../CONTRIBUTING.md). [EXTENDING.md](EXTENDING.md) explains how features
 plug in (actions, tab kinds, settings, driver capabilities); [RELEASING.md](RELEASING.md)
-how releases are made, and [MVP_PLAN.md](MVP_PLAN.md) the scope of the first release.
+how releases are made, and [archive/MVP_PLAN.md](archive/MVP_PLAN.md) the scope of the first release.
 All the documents are listed in [the documentation index](../README.md), and the changes of each
 release in [CHANGELOG.md](../../CHANGELOG.md).
 

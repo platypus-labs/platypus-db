@@ -1,8 +1,8 @@
 # Revisione UX (gruppo T)
 
-Primo giro della scheda di controllo del gruppo T ([ROADMAP.md](ROADMAP.md), "Gruppo T — Revisione UX")
+Primo giro della scheda di controllo del gruppo T ([ROADMAP.md](../ROADMAP.md), "Gruppo T — Revisione UX")
 su tutte le sezioni dell'app, il 1° novembre 2026. Le schermate vengono dall'inventario visivo
-([INVENTORY.md](INVENTORY.md)), tema scuro, inglese, a 1280×720 e 2560×1440
+([INVENTORY.md](../INVENTORY.md)), tema scuro, inglese, a 1280×720 e 2560×1440
 (PLATYPUS_INVENTORY_SIZE); riscontro, attesa e tastiera, che una foto non mostra, sono stati
 controllati anche sul codice. Qui sono copiate solo le schermate che mostrano un problema.
 

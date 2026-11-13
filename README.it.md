@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/platypus-db-on-dark.png" />
-    <img src="docs/brand/platypus-db-on-light.png" alt="PlatypusDB" width="640" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/platypus-db-on-dark.svg" />
+    <img src="docs/brand/platypus-db-on-light.svg" alt="PlatypusDB" width="640" />
   </picture>
 </h1>
 
@@ -24,16 +24,16 @@ PlatypusDB è un client SQL desktop per sviluppatori, DBA e analisti che in una 
 lavorano con più database. Una sola app piccola esegue query, mostra e modifica i dati,
 progetta tabelle, spiega le query lente e documenta gli schemi, e tiene le connessioni di
 produzione ben distinte dalle altre. Un core in Rust con interfaccia Tauri 2 + React: un
-installer di circa 5 MB, una finestra pronta in meno di mezzo secondo e una griglia che scorre
+installer di circa 20 MB, una finestra pronta in circa mezzo secondo e una griglia che scorre
 milioni di righe.
 
 ![Un milione di righe aperte dal navigator, scorse e ordinate dall'intestazione](docs/screenshots/hero.gif)
 
 ## Perché PlatypusDB
 
-- **Leggero.** Circa 20 MB da scaricare su Linux, contro i 122 MB di DBeaver, i 346 MB di
-  Beekeeper Studio e circa 1 GB di DataGrip; una finestra in meno di 500 ms e circa 130 MB di memoria con una
-  connessione.
+- **Leggero.** Un installer di 20 MB su Windows e circa 30 MB da scaricare su Linux, contro
+  i 122 MB di DBeaver, i 346 MB di Beekeeper Studio e circa 1 GB di DataGrip; una finestra in
+  circa mezzo secondo.
 - **Sicuro in produzione.** Il tipo di connessione colora la cornice della finestra, le
   istruzioni rischiose chiedono conferma, la produzione si apre con il commit manuale e ogni
   salvataggio di righe modificate lascia uno script per annullarlo.
@@ -102,15 +102,15 @@ Configurazione, strumenti, limiti e la CLI `platypus`: [docs/user/AGENTS.md](doc
 
 ## Prestazioni
 
-| | PlatypusDB 0.1.0 | Obiettivo |
+| | Misurato | Obiettivo |
 |---|---|---|
-| Dall'avvio alla finestra pronta | 430–500 ms | < 500 ms |
-| Memoria a riposo, 1 connessione | circa 130 MB | < 150 MB |
-| Scorrimento di 1M di righe | 178 fps | 60 fps |
-| 5M di righe in Parquet | 3,2 s, picco di 31 MB | in streaming |
-| Installer | 5,4 MB | < 20 MB |
+| Dall'avvio alla finestra pronta | 430–500 ms (0.1.0) | < 500 ms |
+| Memoria a riposo, 1 connessione | circa 170 MB (0.3.0) | < 150 MB |
+| Scorrimento di 1M di righe | 178 fps (0.1.0) | 60 fps |
+| 5M di righe in Parquet | 3,2 s, picco di 31 MB (0.1.0) | in streaming |
+| Installer per Windows | 20 MiB (0.6.0) | < 20 MB |
 
-| | PlatypusDB | DBeaver CE | DataGrip | TablePlus | Beekeeper Studio |
+| | PlatypusDB 0.2.0 | DBeaver CE | DataGrip | TablePlus | Beekeeper Studio |
 |---|---|---|---|---|---|
 | Runtime | Rust e la web view del sistema | Java, JRE incluso | Java, JetBrains Runtime incluso | Nativo (GTK su Linux) | Electron |
 | Download per Linux | 19,5 MiB | 122 MiB | 1.047 MiB | 60 MiB | 346 MiB |

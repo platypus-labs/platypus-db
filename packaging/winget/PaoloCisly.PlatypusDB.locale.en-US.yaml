@@ -3,7 +3,7 @@ PackageIdentifier: PaoloCisly.PlatypusDB
 PackageVersion: @VERSION@
 PackageLocale: en-US
 Publisher: PlatypusDB
-PublisherUrl: https://github.com/PaoloCisly
+PublisherUrl: https://github.com/platypus-db
 PackageName: PlatypusDB
 PackageUrl: https://github.com/platypus-db/platypus-db
 License: AGPL-3.0-or-later

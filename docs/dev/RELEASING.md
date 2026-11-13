@@ -108,7 +108,7 @@ are missing is skipped (a Windows-only release fills only winget). Then submit e
   `Homebrew/homebrew-cask` (`brew audit --new --cask platypusdb` first); later versions are
   bumped by Homebrew's autobump, or with `brew bump-cask-pr platypusdb --version X.Y.Z`.
   Homebrew wants a notable, signed and notarized app: until macOS signing is done, a tap
-  of our own (`PaoloCisly/homebrew-tap`) is the alternative.
+  of our own (`platypus-db/homebrew-tap`) is the alternative.
 - **AUR**: push `PKGBUILD` and `.SRCINFO` to `ssh://aur@aur.archlinux.org/platypusdb-bin.git`
   (an AUR account with an SSH key); check with `makepkg -si` on Arch first.
 - **Flathub**: the first time, a pull request to `flathub/flathub` (branch `new-pr`) with
@@ -135,7 +135,8 @@ Set once, when the repository becomes public (GitHub › the repository's About 
   `desktop-app`, `dbeaver-alternative`.
 - **Social preview**: `docs/brand/social-preview.png` (1280×640). Its source is
   `docs/brand/social-preview.html`; after changing it, or the screenshot it shows, run
-  `node scripts/social-preview.mjs`.
+  `node scripts/social-preview.mjs` (it needs Chrome, Edge or Chromium), then upload the PNG
+  in Settings › General › Social preview.
 - **Discussions**: on, with the categories Announcements (releases), Q&A, Ideas and Show
   and tell; then add a "Ask a question" link to Q&A in `.github/ISSUE_TEMPLATE/config.yml`.
 - **`good first issue`**: label small, self-contained tasks with a pointer to the files to

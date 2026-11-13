@@ -24,14 +24,13 @@
 | [COVERAGE.md](dev/COVERAGE.md) | For every user-facing feature, the test that covers it, and the bugs found in the final testing (Italian) |
 | [COLLAUDO.md](dev/COLLAUDO.md) | Manual test checklists for what the end-to-end tests cannot drive: installers, the operating system, real windows (Italian) |
 | [INVENTORY.md](dev/INVENTORY.md) | A screenshot of every screen and dialog, dark and light, English and Italian, and how to make them (Italian) |
-| [UX_REVIEW.md](dev/UX_REVIEW.md) | The review of the interface, with its screenshots in [ux-review/](dev/ux-review/) (Italian) |
-| [MVP_PLAN.md](dev/MVP_PLAN.md) | The plan and scope of the first release, 0.1.0 (Italian) |
+| [archive/](dev/archive/) | Finished documents kept for the record: [MVP_PLAN.md](dev/archive/MVP_PLAN.md), the plan and scope of 0.1.0, and [UX_REVIEW.md](dev/archive/UX_REVIEW.md), the review of the interface with its screenshots (Italian) |
 
 ## Pictures
 
 | Folder | What it holds |
 |---|---|
-| [brand/](brand/) | Logos and wordmarks for light and dark backgrounds |
+| [brand/](brand/README.md) | The mark, the wordmarks for light and dark backgrounds and the social preview |
 | [mockups/](mockups/) | The approved mockups of the app and the site from the redesign (open `index.html`) |
 | [screenshots/](screenshots/) | The screenshots and GIFs of the README and the guide, made by the end-to-end `readme` and `gifs` scenarios |
 
