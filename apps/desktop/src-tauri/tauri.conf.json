@@ -38,6 +38,7 @@
     ],
     "createUpdaterArtifacts": true,
     "publisher": "PlatypusDB",
+    "copyright": "Copyright © 2026 PlatypusDB maintainers. PlatypusDB™ and the PlatypusDB logo are trademarks of the PlatypusDB maintainers.",
     "shortDescription": "Fast, lightweight SQL client",
     "category": "DeveloperTool",
     "fileAssociations": [

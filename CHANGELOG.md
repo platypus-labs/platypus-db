@@ -8,6 +8,9 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Added
 
+- **Trademarks**: [TRADEMARKS.md](TRADEMARKS.md) says what anyone may do with the PlatypusDB name and
+  logo, and [NOTICE](NOTICE) lists the logo and icon files, which stay outside the AGPL. The code's
+  license does not change.
 - **Agents**: `propose_edits` works on MongoDB collections. The agent names documents by `_id` (an
   `ObjectId` as its 24 hexadecimal digits, read by the type of the collection's `_id`); the collection
   opens in its data viewer with a `find` of those `_id`s and the changes pending, checked by the rules

@@ -20,7 +20,7 @@
   <b>English</b> · <a href="README.it.md">Italiano</a>
 </p>
 
-PlatypusDB is a desktop SQL client for developers, DBAs and analysts who work with several
+PlatypusDB™ is a desktop SQL client for developers, DBAs and analysts who work with several
 databases in a day. One small app runs queries, browses and edits data, designs tables,
 explains slow statements and documents schemas, and keeps production connections clearly apart
 from the others. A Rust core with a Tauri 2 + React interface: an installer of about 20 MB, a
@@ -137,3 +137,10 @@ PlatypusDB is licensed under the [GNU Affero General Public License v3.0 or late
 run a changed version as a service for others, you must release your source code under the
 same license. Third-party code and assets keep their own licenses:
 see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+The name and the logo are not part of that license. PlatypusDB™ and the PlatypusDB logo are
+trademarks of the PlatypusDB maintainers: as AGPL section 7(e) allows, no rights are granted
+under trademark law, and the logo and icon files listed in [NOTICE](NOTICE) are © 2026
+PlatypusDB maintainers, all rights reserved. You can name the project, link to it and
+redistribute the official builds unchanged; a fork must ship under its own name and icons. The
+details are in [TRADEMARKS.md](TRADEMARKS.md).
