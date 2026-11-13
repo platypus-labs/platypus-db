@@ -20,9 +20,10 @@ Copyright (C) 2026 PlatypusDB maintainers, all rights reserved. They may be copi
 TRADEMARKS.md allows, for example inside unmodified official builds. A fork or a modified build
 must replace them before it is distributed.
 
-  docs/brand/platypus-mark.svg
-  docs/brand/platypus-db-on-light.svg
-  docs/brand/platypus-db-on-dark.svg
+  docs/brand/app-icon.png
+  docs/brand/platypus-mark.png
+  docs/brand/platypus-db-on-light.png
+  docs/brand/platypus-db-on-dark.png
   docs/brand/logo-only-1024.png
   docs/brand/social-preview.png
   docs/brand/avatar.png
@@ -37,13 +38,9 @@ must replace them before it is distributed.
   apps/desktop/src/assets/brand/platypus-db-on-dark.png
   site/img/mark.png
   site/img/icon.png
-  site/img/wordmark-light.png
-  site/img/wordmark-dark.png
   docs/mockups/assets/img/platypus-mark.png
   docs/mockups/assets/img/platypus-db-on-light.png
   docs/mockups/assets/img/platypus-db-on-dark.png
-  docs/mockups/assets/img/wordmark-light.png
-  docs/mockups/assets/img/wordmark-dark.png
   docs/mockups/site/base/img/mark.png
   docs/mockups/site/base/img/icon.png
 
