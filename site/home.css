@@ -93,8 +93,11 @@
   display: block;
 }
 
+/* The gradient is painted only inside the box: room below for the descenders (y, j, p, q),
+   taken back with the margin so the spacing stays the same. */
 .h-hero h1 span + span {
-  padding-bottom: 0.06em;
+  margin-bottom: -0.16em;
+  padding-bottom: 0.22em;
   background: linear-gradient(100deg, var(--acc-2), var(--acc) 45%, var(--acc-3));
   -webkit-background-clip: text;
   background-clip: text;
