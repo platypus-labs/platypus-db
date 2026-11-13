@@ -68,12 +68,12 @@ repository is public. The menu of a page and the index in `docs.html` list the p
 out of step with the documents or has a broken link is not published. Its permissions are
 `contents: read` for the check and `pages: write` and `id-token: write` for the deploy job only.
 
-Not done yet, and not done by the workflow: *Settings › Pages › Build and deployment › Source*
-must be set to *GitHub Actions*, once. Pages on a private repository needs a paid GitHub plan, and
-the published site is public even when the repository is not; the repository is private today, so
-the workflow has not been run.
+*Settings › Pages › Build and deployment › Source* is set to *GitHub Actions* (done once, on
+2026-11-13, when the repository became public). Run the workflow again after changing the site.
 
-**Domain: to be decided.** Until then the site is at `https://<owner>.github.io/platypus-db/`.
+**Domain: to be decided.** Until then the site is at
+[platypus-labs.github.io/platypus-db](https://platypus-labs.github.io/platypus-db/), also the
+repository's *Website*.
 The pages use relative addresses, so they work under that path and under a domain of their own.
 A custom domain needs a `CNAME` file in `site/` (or the domain set in the Pages settings), a DNS
 record, and the addresses in the repository's *Website* field and in the README updated.

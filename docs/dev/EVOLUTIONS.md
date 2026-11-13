@@ -189,7 +189,7 @@ Linux verification with a GPU, the DBeaver benchmark, the launch and the reposit
 |---|---|---|
 | ✅ **Make the repository public.** Done on 2026-11-13, after the audit of the history, the licences and the trademark policy ([TRADEMARKS.md](../../TRADEMARKS.md)). It unblocks auto-update (`latest.json` now answers without a login), package managers and unlimited Actions minutes. Before: check that no secret or personal data is in the history, licences are in order, `SECURITY.md` and `CONTRIBUTING.md` are up to date | P1 | U |
 | 🆕 **Submission to package managers**, with the manifests already in `packaging/`: winget, Homebrew, AUR, Flathub; for each the steps in RELEASING.md and a check that SHA-256 and version match the release | P2 | N |
-| ✅ **GitHub Pages** for the site (`site/`), with a manually triggered workflow; domain to decide (`.github/workflows/pages.yml` is written; it has not been run and Pages is not enabled, since the repository is private; the domain is still to decide, see `site/README.md`) | P3 | U |
+| ✅ **GitHub Pages** for the site (`site/`), with a manually triggered workflow; domain to decide (published on 2026-11-13 at [platypus-labs.github.io/platypus-db](https://platypus-labs.github.io/platypus-db/) by `.github/workflows/pages.yml`; the domain is still to decide, see `site/README.md`) | P3 | U |
 | 🆕 After publishing: the "real auto-update test" row of group P can be done | P1 | U |
 
 ---
