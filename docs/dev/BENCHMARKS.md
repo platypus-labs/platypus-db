@@ -44,6 +44,25 @@ the Parquet file is 45 MB, the CSV 374 MB.
 The GPU runs inside the WebView2 browser process (`--in-process-gpu`): one process fewer and
 about 55 MB less at rest, with the same scrolling performance as a separate GPU process.
 
+## Windows, 13 November 2026 (0.6.0)
+
+Release build of PlatypusDB 0.6.0, same machine (Ryzen 7 9700X, 32 GB, Windows 11 Pro). These
+are the numbers the README and the site show.
+
+- **Start and memory at rest** (`scripts/bench-windows.ps1 -Kind platypus`, five runs, no
+  connection open): start until the window has finished drawing (its pixels unchanged for 1 s)
+  707-739 ms warm, median 723 ms, 834 ms on the first start; private memory of the app and
+  WebView2 164-171 MB, median 170 MB. This method counts until the window stops changing, so it
+  is not comparable with the 430-500 ms of 0.1.0 above, taken when the connection tree was
+  rendered.
+- **A million rows** (`perf-ok-1m-rows-sqlite.mjs`, three runs): first page 274-287 ms, every
+  row loaded 326-331 ms later with the page never lagging more than 1 ms, copy with headers of
+  all of them 2.8 s (72 MB).
+- **Sizes**: Windows installer 20.1 MiB (NSIS), Linux `.deb` 29.7 MiB, 68 MiB installed
+  (`Installed-Size` 69,502 KiB, plus the system's WebKitGTK).
+
+The memory is still over the MVP target of < 150 MB, as in 0.3.0 below.
+
 ## Windows, 2 November 2026 (group S)
 
 Release build of PlatypusDB 0.3.0 on the same machine as above (Ryzen 7 9700X, 32 GB, Windows
