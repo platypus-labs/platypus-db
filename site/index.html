@@ -43,7 +43,7 @@
       <div class="hero-text">
         <p class="eyebrow">Open source SQL client</p>
         <h1 id="hero-title">Small app.<br><span class="gradient">Every database.</span></h1>
-        <p class="lead">PlatypusDB™ queries, browses and edits PostgreSQL, MySQL, SQL Server, Oracle, SQLite, DuckDB and a dozen more, from a window that opens in half a second.</p>
+        <p class="lead">PlatypusDB™ queries, browses and edits PostgreSQL, MySQL, SQL Server, Oracle, SQLite, DuckDB and a dozen more, from a window that opens in under a second.</p>
         <div class="actions">
           <a class="button primary large" id="download-os" href="download.html">Download for free</a>
           <a class="button ghost large" href="https://github.com/platypus-labs/platypus-db">
@@ -51,8 +51,8 @@
           </a>
         </div>
         <dl class="meta">
-          <div><dt>to a window</dt><dd>&lt; 0.5 s</dd></div>
-          <div><dt>Linux download</dt><dd>19.5 MiB</dd></div>
+          <div><dt>to a window</dt><dd>&lt; 1 s</dd></div>
+          <div><dt>Linux download</dt><dd>30 MiB</dd></div>
           <div><dt>no account</dt><dd>AGPL-3.0</dd></div>
         </dl>
       </div>
@@ -287,13 +287,13 @@
       <div class="perf-text">
         <p class="eyebrow">Performance</p>
         <h2 id="perf-title">Light enough to leave open all day.</h2>
-        <p>Rust and the system's web view: no JVM, no bundled browser. Measured on Windows 11, Ryzen 7 9700X; method in <a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
+        <p>Rust and the system's web view: no JVM, no bundled browser. PlatypusDB 0.6.0 on Windows 11, Ryzen 7 9700X; method in <a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
       </div>
       <dl class="numbers reveal">
-        <div><dt>from start to an interactive window</dt><dd>430<small>ms</small></dd></div>
-        <div><dt>memory at rest with one connection</dt><dd>130<small>MB</small></dd></div>
-        <div><dt>scrolling a million rows</dt><dd>178<small>fps</small></dd></div>
-        <div><dt>5 million rows to Parquet, 31 MB peak</dt><dd>3.2<small>s</small></dd></div>
+        <div><dt>from start to a finished window</dt><dd>0.7<small>s</small></dd></div>
+        <div><dt>memory at rest, with its web view</dt><dd>170<small>MB</small></dd></div>
+        <div><dt>first page of a million SQLite rows</dt><dd>0.3<small>s</small></dd></div>
+        <div><dt>the Windows installer</dt><dd>20<small>MiB</small></dd></div>
       </dl>
     </section>
 
@@ -304,8 +304,8 @@
         <h2 id="compare-title">A fraction of the size.</h2>
         <p>Official Linux downloads, measured on 29 October 2026.</p>
       </header>
-      <div class="bars reveal" role="img" aria-label="Linux download size: PlatypusDB 19.5 MiB, TablePlus 60 MiB, DBeaver CE 122 MiB, Beekeeper Studio 346 MiB, DataGrip 1,047 MiB.">
-        <div class="bar me" style="--w:1.9%"><span>PlatypusDB</span><i><s></s></i><em>19.5 MiB</em></div>
+      <div class="bars reveal" role="img" aria-label="Linux download size: PlatypusDB 30 MiB, TablePlus 60 MiB, DBeaver CE 122 MiB, Beekeeper Studio 346 MiB, DataGrip 1,047 MiB.">
+        <div class="bar me" style="--w:2.9%"><span>PlatypusDB</span><i><s></s></i><em>30 MiB</em></div>
         <div class="bar" style="--w:5.7%"><span>TablePlus</span><i><s></s></i><em>60 MiB</em></div>
         <div class="bar" style="--w:11.7%"><span>DBeaver CE</span><i><s></s></i><em>122 MiB</em></div>
         <div class="bar" style="--w:33%"><span>Beekeeper Studio</span><i><s></s></i><em>346 MiB</em></div>
@@ -318,13 +318,13 @@
           </thead>
           <tbody>
             <tr><th scope="row">Runtime</th><td class="me">Rust, the system's web view</td><td>Java, JRE bundled</td><td>Java, JetBrains Runtime bundled</td><td>Native (GTK on Linux)</td><td>Electron</td></tr>
-            <tr><th scope="row">Linux download</th><td class="me n">19.5 MiB</td><td class="n">122 MiB</td><td class="n">1,047 MiB</td><td class="n">60 MiB</td><td class="n">346 MiB</td></tr>
-            <tr><th scope="row">On disk</th><td class="me n">46 MiB</td><td class="n">206 MiB</td><td class="n muted">not measured</td><td class="n">180 MiB</td><td class="n">1,105 MiB</td></tr>
+            <tr><th scope="row">Linux download</th><td class="me n">30 MiB</td><td class="n">122 MiB</td><td class="n">1,047 MiB</td><td class="n">60 MiB</td><td class="n">346 MiB</td></tr>
+            <tr><th scope="row">On disk</th><td class="me n">68 MiB</td><td class="n">206 MiB</td><td class="n muted">not published</td><td class="n">180 MiB</td><td class="n">1,105 MiB</td></tr>
             <tr><th scope="row">License</th><td class="me">AGPL-3.0</td><td>Apache 2.0</td><td>Proprietary</td><td>Proprietary</td><td>GPLv3</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="note">PlatypusDB 0.2.0, DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0, Beekeeper Studio 6.2.0. Start and memory side by side are still to be measured.</p>
+      <p class="note">Official Linux downloads of PlatypusDB 0.6.0, DBeaver CE 26.2.3, DataGrip 2026.2.6, TablePlus 2.2.0 and Beekeeper Studio 6.2.0. On disk: PlatypusDB uses the system's WebKitGTK.</p>
       <p class="more-link"><a class="button ghost large" href="compare.html">Full comparison: features, prices, start and memory</a></p>
     </section>
 
