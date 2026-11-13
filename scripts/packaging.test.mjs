@@ -41,7 +41,7 @@ test("generate fills every manifest when every installer is there, and skips the
   assert.match(cask, /version "1\.2\.3"/);
   assert.ok(cask.includes(all.SHA256_MACOS_ARM) && cask.includes(all.SHA256_MACOS_INTEL));
   assert.ok(readFileSync(join(out, "aur", ".SRCINFO"), "utf8").includes(all.SHA256_LINUX_DEB));
-  assert.ok(!/@[A-Z0-9_]+@/.test(readFileSync(join(out, "flatpak", "dev.platypusdb.desktop.yml"), "utf8")));
+  assert.ok(!/@[A-Z0-9_]+@/.test(readFileSync(join(out, "flatpak", "io.github.platypus_labs.platypus-db.yml"), "utf8")));
 
   const windowsOnly = values("1.2.3", "2026-11-01", mkdtempSync(join(tmpdir(), "packaging-")));
   const skipped = generate(templates, mkdtempSync(join(tmpdir(), "packaging-out-")), windowsOnly);

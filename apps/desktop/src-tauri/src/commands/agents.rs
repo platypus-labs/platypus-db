@@ -480,8 +480,8 @@ mod tests {
             r#"claude mcp add -s user platypus -e "PLATYPUS_DATA_DIR=/tmp/profile" -- "/opt/p/platypus-db" --mcp"#
         );
         assert_eq!(
-            claude_command(&Launch::flatpak("dev.platypusdb.desktop"), None),
-            r#"claude mcp add -s user platypus -- "flatpak" run --command=platypus-db dev.platypusdb.desktop --mcp"#
+            claude_command(&Launch::flatpak("io.github.platypus_labs.platypus-db"), None),
+            r#"claude mcp add -s user platypus -- "flatpak" run --command=platypus-db io.github.platypus_labs.platypus-db --mcp"#
         );
         let setup = setup(&Launch::app(path), Some(r"D:\profile"));
         let parsed: toml::Table = toml::from_str(&setup.codex_config).unwrap();
