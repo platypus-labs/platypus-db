@@ -1,0 +1,51 @@
+PlatypusDB
+Copyright (C) 2026 PlatypusDB maintainers
+
+The source code of PlatypusDB is licensed under the GNU Affero General Public License,
+version 3 or (at your option) any later version: see LICENSE. Third-party code and assets keep
+their own licenses: see THIRD-PARTY-NOTICES.md.
+
+Trademarks
+----------
+
+"PlatypusDB", the platypus logo and its variants are trademarks of the PlatypusDB maintainers
+(the platypus-labs organization). As the AGPL allows in section 7(e), no rights are granted
+under trademark law for the use of these names and logos. See TRADEMARKS.md for what is allowed.
+
+Brand assets
+------------
+
+The files below are the PlatypusDB logos and icons. They are not covered by the AGPL:
+Copyright (C) 2026 PlatypusDB maintainers, all rights reserved. They may be copied only as
+TRADEMARKS.md allows, for example inside unmodified official builds. A fork or a modified build
+must replace them before it is distributed.
+
+  docs/brand/platypus-mark.svg
+  docs/brand/platypus-db-on-light.svg
+  docs/brand/platypus-db-on-dark.svg
+  docs/brand/logo-only-1024.png
+  docs/brand/social-preview.png
+  apps/desktop/src-tauri/icons/   (every file in the folder)
+    32x32.png, 64x64.png, 128x128.png, 128x128@2x.png, icon.png, icon.ico, icon.icns,
+    Square30x30Logo.png, Square44x44Logo.png, Square71x71Logo.png, Square89x89Logo.png,
+    Square107x107Logo.png, Square142x142Logo.png, Square150x150Logo.png,
+    Square284x284Logo.png, Square310x310Logo.png, StoreLogo.png
+  apps/desktop/src/assets/brand/platypus-mark.png
+  apps/desktop/src/assets/brand/platypus-icon.png
+  apps/desktop/src/assets/brand/platypus-db-on-light.png
+  apps/desktop/src/assets/brand/platypus-db-on-dark.png
+  site/img/mark.png
+  site/img/icon.png
+  site/img/wordmark-light.png
+  site/img/wordmark-dark.png
+  docs/mockups/assets/img/platypus-mark.png
+  docs/mockups/assets/img/platypus-db-on-light.png
+  docs/mockups/assets/img/platypus-db-on-dark.png
+  docs/mockups/assets/img/wordmark-light.png
+  docs/mockups/assets/img/wordmark-dark.png
+  docs/mockups/site/base/img/mark.png
+  docs/mockups/site/base/img/icon.png
+
+The rest of those folders (the README files, docs/brand/social-preview.html, the site's own
+illustrations) is covered by the AGPL like the code. The logos of other products, such as
+those in site/img/clients/, belong to their owners.

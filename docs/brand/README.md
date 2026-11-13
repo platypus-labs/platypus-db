@@ -14,3 +14,11 @@ installed. Colors: orange `#ff8d28` (`#e8721a` for text on white), ink `#1d1f24`
 
 The social preview is uploaded by hand in the repository settings (Settings › General ›
 Social preview).
+
+## License
+
+These logos are not covered by the AGPL that covers the code: © 2026 PlatypusDB maintainers,
+all rights reserved. "PlatypusDB" and the platypus logo are trademarks of the maintainers. What
+you may do with them (refer to the project, link to it, redistribute the official builds) is in
+[TRADEMARKS.md](../../TRADEMARKS.md); every reserved file is listed in [NOTICE](../../NOTICE).
+`social-preview.html` and this README are covered by the AGPL like the code.
