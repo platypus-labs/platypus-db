@@ -3,8 +3,9 @@
    img/mark.png; home.js moves it and runs the chapters. */
 
 .home {
-  /* The app window in the chapters grows with the screen's height, the page with it. */
-  --win-w: clamp(760px, calc((100svh - 250px) * 1.26), 960px);
+  /* The app window in the chapters grows with the screen's height, the page with it, but always
+     leaves 440px of the width to the chapter's text beside it. */
+  --win-w: clamp(600px, min(calc((100svh - 250px) * 1.26), calc(100vw - 440px)), 960px);
   --page: clamp(1240px, calc(var(--win-w) + 480px), 1440px);
   --plat: calc(var(--win-w) * 0.44); /* the side of the platypus's 1024 canvas */
   /* The window's top in the pinned stage: the window and the platypus above it (0.58 of its
