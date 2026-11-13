@@ -20,6 +20,13 @@ cask "platypusdb" do
 
   app "PlatypusDB.app"
 
+  # Until the app is signed and notarized by Apple, Gatekeeper refuses to open it at first.
+  caveats <<~EOS
+    PlatypusDB is not signed by Apple yet. The first time, open it from Finder with
+    right-click > Open, or remove the quarantine flag:
+      xattr -dr com.apple.quarantine "#{appdir}/PlatypusDB.app"
+  EOS
+
   zap trash: [
     "~/Library/Application Support/dev.platypusdb.desktop",
     "~/Library/Caches/dev.platypusdb.desktop",
