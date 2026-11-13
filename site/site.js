@@ -67,7 +67,16 @@
   var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
   var os = /win/i.test(p) ? "Windows" : /mac/i.test(p) ? "macOS" : /linux/i.test(p) ? "Linux" : "";
   var button = document.getElementById("download-os");
-  if (os && button) button.textContent = "Download for " + os;
+  // The home page's buttons have the system's logo before the text, and the size of the download.
+  var sizes = { Windows: "20 MiB", Linux: "30 MiB", macOS: "" };
+  document.querySelectorAll("#download-os .os, [data-os-button] .os").forEach(function (icon) {
+    if (!os) return;
+    var link = icon.parentNode;
+    icon.querySelector("use").setAttribute("href", "#os-" + os.toLowerCase());
+    link.querySelector("span").textContent = "Download for " + os;
+    link.querySelector("small").textContent = sizes[os];
+  });
+  if (os && button && !button.querySelector(".os")) button.textContent = "Download for " + os;
   // On the download page, the card of that system comes first and is marked.
   var card = os && document.querySelector('.os-cards [data-os="' + os + '"]');
   if (card) {
@@ -208,4 +217,21 @@
 (function () {
   var menu = document.querySelector(".docs-nav");
   if (menu && window.matchMedia("(max-width: 900px)").matches) menu.removeAttribute("open");
+})();
+
+// The navigation gets its background once the page scrolls.
+(function () {
+  var nav = document.querySelector(".nav-wrap");
+  if (!nav) return;
+  var ticking = false;
+  function update() {
+    ticking = false;
+    nav.classList.toggle("solid", window.scrollY > 40);
+  }
+  window.addEventListener("scroll", function () {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(update);
+  }, { passive: true });
+  update();
 })();
