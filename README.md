@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/platypus-db-on-dark.svg" />
-    <img src="docs/brand/platypus-db-on-light.svg" alt="PlatypusDB" width="640" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/platypus-db-on-dark.png" />
+    <img src="docs/brand/platypus-db-on-light.png" alt="PlatypusDB" width="640" />
   </picture>
 </h1>
 

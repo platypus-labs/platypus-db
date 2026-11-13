@@ -2,16 +2,29 @@
 
 | File | What it is |
 |---|---|
-| [platypus-mark.svg](platypus-mark.svg) | The mark: the platypus head, for small sizes and square spaces |
-| [platypus-db-on-light.svg](platypus-db-on-light.svg) | Mark and wordmark for light backgrounds (the README header) |
-| [platypus-db-on-dark.svg](platypus-db-on-dark.svg) | Mark and wordmark for dark backgrounds |
-| [logo-only-1024.png](logo-only-1024.png) | The full platypus, 1024×1024: the source of the app icons and of the site's mascot |
+| [app-icon.png](app-icon.png) | The app icon, 1024×1024: the source of the installers' icons, the app's top bar and the site's favicon |
+| [platypus-mark.png](platypus-mark.png) | The mark: the platypus head, 1024×1024, for small sizes and square spaces |
+| [platypus-db-on-light.png](platypus-db-on-light.png) | Mark and wordmark for light backgrounds, 1600×400 (the README header, the welcome screen) |
+| [platypus-db-on-dark.png](platypus-db-on-dark.png) | Mark and wordmark for dark backgrounds, 1600×400 |
+| [logo-only-1024.png](logo-only-1024.png) | The mascot, the full platypus, 1024×1024: the site's hero and the app's lock screen |
 | [avatar.png](avatar.png) | The organization's picture on GitHub, 512×512: the mark on the dark background, rendered from [avatar.html](avatar.html) |
 | [social-preview.png](social-preview.png) | The repository's social preview, 1280×640, rendered from [social-preview.html](social-preview.html) by `node scripts/social-preview.mjs` (which renders the avatar too) |
 
-The wordmark is Inter Bold, converted to outlines so it looks the same without the font
-installed. Colors: orange `#ff8d28` (`#e8721a` for text on white), ink `#1d1f24`, light
-`#f2f3f5`, dark background `#141519`.
+The logos are PNG only, on purpose: there are no vector sources in the repository. The white
+parts of the mark and the mascot (eyes, bill, belly) are transparent. Colors: orange `#ff8d28`
+(`#e8721a` for text on white), ink `#1d1f24`, light `#f2f3f5`, dark background `#141519`.
+
+## Changing a logo
+
+The files above are the masters: every other copy (the app icons in
+`apps/desktop/src-tauri/icons/`, `apps/desktop/src/assets/brand/`, `site/img/`, the mockups) is
+generated from them. To change one:
+
+1. Replace the master here, same name and size (the app icon: a square PNG with transparency,
+   at least 1024×1024).
+2. Run `node scripts/brand-assets.mjs` (it needs `npm --prefix apps/desktop ci` for `tauri icon`).
+3. If the mark or the mascot changed, run `node scripts/social-preview.mjs` too, then upload the
+   social preview and the avatar to GitHub ([RELEASING.md](../dev/RELEASING.md)).
 
 The social preview is uploaded by hand in the repository settings (Settings › General ›
 Social preview).

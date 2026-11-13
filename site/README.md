@@ -18,7 +18,8 @@ docs/           the user guide (guide/, with databases/), features, shortcuts, a
 style.css       styles; dark only, colors from apps/desktop/src/theme.ts (Platypus Dark)
 site.js         tour as tabs (without it every screenshot shows, one under the other)
 fonts/          Inter and JetBrains Mono, copied from apps/desktop/src/assets/fonts
-img/            icon, the platypus (mark.png, from docs/brand/logo-only-1024.png), database
+img/            icon (icon.png, from docs/brand/app-icon.png), the platypus (mark.png, from
+                docs/brand/logo-only-1024.png; both written by scripts/brand-assets.mjs), database
                 logos (databases.svg, from simple-icons as in the app's DriverPicker) and
                 the logos of other SQL clients for Compare (clients.svg, from simple-icons; the
                 app icons in clients/ from tableplus.com, heidisql.com and the pgAdmin repository) and
