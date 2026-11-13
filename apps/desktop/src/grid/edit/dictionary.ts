@@ -10,7 +10,7 @@ import type { EditMeta } from "./meta";
 /** Values looked up per request. */
 const BATCH = 500;
 /** Rows offered by the editor's list. */
-export const OPTION_LIMIT = 1000;
+const OPTION_LIMIT = 1000;
 
 /** The single-column foreign keys of `meta`: the result column, the key and its referenced column. */
 export function foreignKeyColumns(meta: EditMeta): { col: number; fk: ForeignKeyMeta; key: string }[] {

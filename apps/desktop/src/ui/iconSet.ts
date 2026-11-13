@@ -12,7 +12,7 @@ const ABOUT: Record<IconSet, string> = {
   phosphor: msg("Rounder shapes, easy to tell apart when small."),
 };
 
-export const iconSetSetting = defineSetting<string>({
+defineSetting<string>({
   key: "appearance.icon_set",
   section: msg("Appearance"),
   label: "Icon set",

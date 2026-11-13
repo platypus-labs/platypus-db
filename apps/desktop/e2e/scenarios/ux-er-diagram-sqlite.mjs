@@ -4,7 +4,7 @@
 // shown; picking them all again shows the 40; dragging on the empty canvas scrolls the view
 // (and does not move a table), dragging a table still moves the table only.
 import assert from "node:assert/strict";
-import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../qa3-schema.mjs";
+import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../schema-compare-helpers.mjs";
 
 const TABLES = 40;
 const PICKED = ["t3", "t7", "t11", "t19", "t33"];

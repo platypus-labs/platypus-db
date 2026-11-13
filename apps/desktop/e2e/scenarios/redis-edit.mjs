@@ -5,7 +5,7 @@
 // refused with a message.
 // Skipped when Redis is not running.
 import assert from "node:assert/strict";
-import { treeRow, visibleTab, status, editorText } from "../qa-sql.mjs";
+import { treeRow, visibleTab, status, editorText } from "../editor-helpers.mjs";
 import { connection, redis, saveConnections, skip as skipRedis, text } from "../redis-helpers.mjs";
 
 const NAME = "E2E Redis edit";

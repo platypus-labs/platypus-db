@@ -22,7 +22,7 @@ import { EmptyState } from "../../ui/State";
 import { Icon } from "../../ui/Icon";
 
 /** Foreign keys of a result's table, for grid actions in `source.references`. */
-export interface GridReferences {
+interface GridReferences {
   /** The foreign key `col` belongs to, when all its columns are in the result. */
   foreignKey(col: number): ForeignKeyMeta | null;
   /** Opens the row a cell's foreign key points to; `cell.row` is a result row. */
@@ -39,7 +39,7 @@ declare module "../DataGrid" {
 
 /** Opens a data viewer tab on `schema.table` of `database` (`null`: the connection's own),
  *  filtered. */
-export async function openTable(
+async function openTable(
   connection: SavedConnection,
   database: string | null | undefined,
   schema: string,

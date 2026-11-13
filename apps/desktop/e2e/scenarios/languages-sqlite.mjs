@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CTRL } from "../cdp.mjs";
-import { restart } from "../qa-jrn.mjs";
+import { restart } from "../journey-helpers.mjs";
 import { sqliteConnection } from "../query.mjs";
 
 const NAME = "E2E languages";

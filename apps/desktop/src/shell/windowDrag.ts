@@ -13,7 +13,7 @@ export const DRAG_ATTR = "data-window-drag";
 const SLOP = 3;
 
 /** What the handlers need of the window. */
-export interface DragWindow {
+interface DragWindow {
   startDragging(): Promise<void>;
   toggleMaximize(): Promise<void>;
 }

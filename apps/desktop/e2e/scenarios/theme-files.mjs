@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
-import { answerSave } from "../qa-xfer.mjs";
+import { answerSave } from "../transfer-helpers.mjs";
 
 const SEA = "#0b1d26";
 const SAND = "#f5ecd7";

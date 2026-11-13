@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { menu } from "../qa-xfer.mjs";
+import { menu } from "../transfer-helpers.mjs";
 
 const lock = `document.querySelector('.lock-screen')`;
 const row = (label) =>

@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { setField } from "../plans.mjs";
 import { saveConnections } from "../perf.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "E2E Notebook";
 const LOCKED = "E2E Notebook (read-only)";

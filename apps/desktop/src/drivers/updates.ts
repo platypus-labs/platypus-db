@@ -12,7 +12,7 @@ import { compatTargets } from "./compat";
 
 const SECTION = msg("Driver updates");
 
-export const checkUpdatesSetting = defineSetting<boolean>({
+const checkUpdatesSetting = defineSetting<boolean>({
   key: "drivers.check_updates",
   section: SECTION,
   label: "Look for driver updates at startup",
@@ -21,7 +21,7 @@ export const checkUpdatesSetting = defineSetting<boolean>({
   control: { type: "boolean" },
 });
 
-export const autoUpdateSetting = defineSetting<boolean>({
+const autoUpdateSetting = defineSetting<boolean>({
   key: "drivers.auto_update",
   section: SECTION,
   label: "Install driver updates by itself",

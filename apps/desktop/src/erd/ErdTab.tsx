@@ -48,7 +48,7 @@ export interface ErdNote {
  *  from the foreign keys, with notes. All of it is kept with the tab. In edit mode the
  *  diagram is also where the schema is drawn: tables added, changed and dropped, foreign
  *  keys dragged, the edits kept with the tab until they become a script. */
-export interface ErdTabModel extends TabBase {
+interface ErdTabModel extends TabBase {
   kind: "erd";
   schema: string;
   currentSchema: boolean;
@@ -69,7 +69,7 @@ declare module "../tabs/registry" {
 }
 
 /** Above this many tables, a diagram of a whole schema asks which ones to show first. */
-export const ERD_LIMIT = 100;
+const ERD_LIMIT = 100;
 
 const NOTE_WIDTH = 200;
 const NOTE_CHARS = 28;

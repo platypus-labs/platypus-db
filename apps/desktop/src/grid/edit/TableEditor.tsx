@@ -66,7 +66,7 @@ export interface TableEditTarget {
 }
 
 /** The data editor as grid actions see it, in `source.edit`. */
-export interface TableEdit {
+interface TableEdit {
   editable: boolean;
   /** The table's columns are still being read: editing is neither possible nor refused yet. */
   loading: boolean;
@@ -134,7 +134,7 @@ interface Options {
 }
 
 /** What the editor adds to a result grid. */
-export interface TableEditorHost {
+interface TableEditorHost {
   /** Given to grid actions as `source.edit`; `undefined` when the result is not a table's. */
   edit: TableEdit | undefined;
   /** The table behind the result and its column per result column, once loaded. */

@@ -6,7 +6,7 @@
 // so.
 // Skipped when the replica set is not running.
 import assert from "node:assert/strict";
-import { visibleTab } from "../qa-sql.mjs";
+import { visibleTab } from "../editor-helpers.mjs";
 import {
   connection,
   count,

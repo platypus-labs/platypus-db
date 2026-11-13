@@ -6,9 +6,9 @@
 //
 //   npm run e2e                 every scenario in e2e/scenarios
 //   npm run e2e -- grid         scenarios whose file name contains "grid"
-//   npm run e2e -- --skip qa-perf,oracle
+//   npm run e2e -- --skip perf,oracle
 //                               every scenario but those whose file name contains one of
-//                               these words (also PLATYPUS_E2E_SKIP=qa-perf,oracle)
+//                               these words (also PLATYPUS_E2E_SKIP=perf,oracle)
 //
 // Build first with `npm run tauri build -- --no-bundle`. Each scenario gets a fresh
 // profile (PLATYPUS_DATA_DIR and its own WebView2 folder), so the user's connections,

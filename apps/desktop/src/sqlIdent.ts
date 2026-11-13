@@ -76,7 +76,7 @@ export const MYSQL_RESERVED = new Set(
 
 /** The reserved words of CQL (`cql::quote_ident` in `crates/platypus-driver-cassandra`), in lower
  *  case: they cannot name a column or a table bare. */
-export const CQL_RESERVED = new Set(
+const CQL_RESERVED = new Set(
   (
     "add allow alter and apply asc authorize batch begin by columnfamily create delete desc describe " +
     "drop entries execute from full grant if in index infinity insert into is keyspace limit " +

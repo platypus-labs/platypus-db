@@ -9,7 +9,7 @@ import { api, type CompletionCatalog, type DriverKind } from "../api";
 import { defineSetting, getSetting } from "../settings";
 import { t } from "../i18n";
 
-export const lintSetting = defineSetting<boolean>({
+const lintSetting = defineSetting<boolean>({
   key: "editor.lint",
   section: "SQL editor",
   label: "Check the SQL while typing",
@@ -18,7 +18,7 @@ export const lintSetting = defineSetting<boolean>({
   control: { type: "boolean" },
 });
 
-export interface LintContext {
+interface LintContext {
   driver: DriverKind;
   catalog: CompletionCatalog | null | undefined;
   production: boolean;

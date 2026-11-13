@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { answerSave, menu as menuAt } from "../qa-xfer.mjs";
+import { answerSave, menu as menuAt } from "../transfer-helpers.mjs";
 
 const NAME = "Migrations db";
 const NAME2 = "Migrations db 2";

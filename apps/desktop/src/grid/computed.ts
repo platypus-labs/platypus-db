@@ -20,7 +20,7 @@ export interface ComputedColumn {
 type Value = string | number | boolean | null;
 
 /** Works out a row's value from its cells' text; `undefined` while a cell is not loaded. */
-export type Evaluate = ((cell: (col: number) => string | null | undefined) => string | null | undefined) & {
+type Evaluate = ((cell: (col: number) => string | null | undefined) => string | null | undefined) & {
   /** The result columns the expression reads. */
   uses: number[];
 };

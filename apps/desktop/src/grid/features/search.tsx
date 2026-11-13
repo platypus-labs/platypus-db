@@ -8,7 +8,7 @@ const MATCH: CellDecoration = { background: "rgba(255, 212, 59, 0.45)" };
 const CURRENT: CellDecoration = { background: "rgba(255, 146, 43, 0.75)" };
 const DEBOUNCE_MS = 150;
 
-export interface GridSearch {
+interface GridSearch {
   /** Opens the search box, or focuses it when open. */
   open(): void;
   /** The search box, placed over the grid's top right corner. */

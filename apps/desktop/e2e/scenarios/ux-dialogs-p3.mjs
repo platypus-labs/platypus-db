@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { CTRL } from "../cdp.mjs";
 import { dialog, editConnection } from "../conn-helpers.mjs";
 import { closeProfiles, openProfilesOf, profilesDialog } from "../profiles-helpers.mjs";
-import { ENGINES, SRC, DST, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../qa3-schema.mjs";
+import { ENGINES, SRC, DST, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../schema-compare-helpers.mjs";
 
 const NAME = "QA3 SQLite src";
 

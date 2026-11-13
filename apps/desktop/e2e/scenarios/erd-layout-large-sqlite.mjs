@@ -8,7 +8,7 @@
 // others. A screenshot of the whole diagram, in full screen at 50%, is kept with the shots.
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../qa3-schema.mjs";
+import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../schema-compare-helpers.mjs";
 
 const MODULES = 8;
 const DETAILS = 5;

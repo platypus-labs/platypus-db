@@ -7,7 +7,7 @@ import { msg } from "../i18n";
 const show = (key: string, label: string) =>
   defineSetting<boolean>({ key: `toolbar.${key}`, section: "Toolbar", label, default: true, control: { type: "boolean" } });
 
-export const toolbarSettings = {
+const toolbarSettings = {
   script: show("show_script", msg("Run script button")),
   cancel: show("show_cancel", msg("Cancel button")),
   transactions: show("show_transactions", msg("Auto-commit, Commit and Rollback")),
@@ -17,7 +17,7 @@ export const toolbarSettings = {
   panels: show("show_panels", msg("Variables, Outline and Terminal")),
 };
 
-export const toolbarLabels = defineSetting<string>({
+const toolbarLabels = defineSetting<string>({
   key: "toolbar.labels",
   section: "Toolbar",
   label: "Buttons",

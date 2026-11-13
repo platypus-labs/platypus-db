@@ -64,7 +64,7 @@ export async function pool<T>(items: readonly T[], limit: number, work: (item: T
 
 /** What a script sends, statement by statement (a Transact-SQL batch up to `GO` as one, as
  *  many times as `GO n` says), and whether any of them may change something. */
-export interface ScriptPlan {
+interface ScriptPlan {
   statements: string[];
   writes: boolean;
 }

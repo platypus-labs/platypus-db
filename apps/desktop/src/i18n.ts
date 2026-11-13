@@ -10,7 +10,7 @@ import { Fragment, type ReactNode, createElement } from "react";
 import { defineSetting, getSetting } from "./settings";
 import it from "./i18n/it";
 
-export type Language = "en" | "it" | "es" | "de" | "fr" | "pt" | "zh";
+type Language = "en" | "it" | "es" | "de" | "fr" | "pt" | "zh";
 
 /** The languages, by their code, with the locale their numbers and plurals follow. */
 const LOCALES: Record<Language, string> = {

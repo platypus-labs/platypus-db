@@ -40,7 +40,7 @@ export function saveActiveProject(id: string | null) {
   }
 }
 
-export type RailItem = { kind: "project"; project: Project } | { kind: "folder"; folder: ProjectFolder; projects: Project[] };
+type RailItem = { kind: "project"; project: Project } | { kind: "folder"; folder: ProjectFolder; projects: Project[] };
 
 /** What the rail shows, in order: a folder stands where its first project is, and holds its
  *  projects in the folder's order. */

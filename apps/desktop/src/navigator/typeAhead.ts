@@ -2,7 +2,7 @@
 // whose label starts with them. Pure, so it can be tested without the DOM.
 
 /** Milliseconds without typing after which the typed text starts over. */
-export const TYPE_AHEAD_RESET_MS = 1000;
+const TYPE_AHEAD_RESET_MS = 1000;
 
 /** Whether `e` is a plain printable key: no Ctrl/Alt/Meta, one character. */
 export function isTypeAheadKey(e: { key: string; ctrlKey: boolean; altKey: boolean; metaKey: boolean }): boolean {

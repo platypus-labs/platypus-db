@@ -25,7 +25,7 @@ import { ObjectsView, TopQueries } from "./Statistics";
 import { Users } from "./Users";
 import { EmptyState, LoadingState } from "../ui/State";
 
-export type AdminView = "sessions" | "locks" | "statements" | "objects" | "parameters" | "dashboard" | "users";
+type AdminView = "sessions" | "locks" | "statements" | "objects" | "parameters" | "dashboard" | "users";
 
 /** Views read on demand, not every few seconds: the server sums their numbers over hours, or
  *  they do not change while the tab is open. */
@@ -50,7 +50,7 @@ const VIEW_LABELS: Record<AdminView, string> = {
 
 /** The views `caps` offers, in the order of the tab's buttons: a database without sessions
  *  (SQLite, DuckDB) still lists its parameters. */
-export function availableViews(caps: Capabilities): AdminView[] {
+function availableViews(caps: Capabilities): AdminView[] {
   const views: AdminView[] = [];
   if (caps.server_sessions) views.push("sessions", "locks");
   if (caps.server_metrics) views.push("dashboard");
@@ -62,7 +62,7 @@ export function availableViews(caps: Capabilities): AdminView[] {
 
 /** The server's sessions and locks, read again every few seconds; its costliest statements
  *  and the use of its tables and indexes. */
-export interface AdminTabModel extends TabBase {
+interface AdminTabModel extends TabBase {
   kind: "admin";
   view?: AdminView;
   /** Seconds between refreshes; 0 refreshes only on demand. */
@@ -75,7 +75,7 @@ declare module "../tabs/registry" {
   }
 }
 
-export const INTERVALS: [number, string][] = [
+const INTERVALS: [number, string][] = [
   [0, msg("Manual")],
   [2, msg("Every 2 s")],
   [5, msg("Every 5 s")],

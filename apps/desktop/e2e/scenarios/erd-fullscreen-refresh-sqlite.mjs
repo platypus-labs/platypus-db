@@ -5,7 +5,7 @@
 // screen covers the window, from the button and left with it or with Escape; Escape in the
 // note dialog closes only the dialog.
 import assert from "node:assert/strict";
-import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../qa3-schema.mjs";
+import { DST, ENGINES, SRC, buttonIn, openPath, rowMenu, saveEngines, visibleErd } from "../schema-compare-helpers.mjs";
 
 export function setup({ dir }) {
   ENGINES.sqlite.seed(dir, SRC, `CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT NOT NULL);

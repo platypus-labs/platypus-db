@@ -68,7 +68,7 @@ export function usePlugins(): InstalledPlugin[] {
   return useSyncExternalStore(onPluginsChanged, () => plugins);
 }
 
-export interface PluginDriver {
+interface PluginDriver {
   /** The plugin's id, the connection's `plugin` option. */
   id: string;
   name: string;

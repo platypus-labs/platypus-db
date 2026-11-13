@@ -4,7 +4,7 @@
 
 export type ManagerId = "1password" | "bitwarden" | "vault" | "aws";
 
-export interface CredentialManager {
+interface CredentialManager {
   id: ManagerId;
   /** The product's name. */
   name: string;

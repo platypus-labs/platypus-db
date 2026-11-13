@@ -5,7 +5,7 @@
 // server (also only the grant option), adds an account to a role and takes it out, drops
 // accounts and roles, shows what the server refuses, and offers nothing to change on a
 // read-only connection. The app's user is given the rights for the run and loses them after.
-import { DBS, assert, needs } from "../qa-grid.mjs";
+import { DBS, assert, needs } from "../grid-helpers.mjs";
 import {
   canRun,
   cancelDialog,

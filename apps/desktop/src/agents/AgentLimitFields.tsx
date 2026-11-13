@@ -14,7 +14,7 @@ const FIELDS: { key: keyof AgentLimits; label: string; cap?: string }[] = [
 
 /** The positive whole number `text` holds, `undefined` for an empty one (no limit), `null`
  *  for anything else. */
-export function parseLimit(text: string): number | undefined | null {
+function parseLimit(text: string): number | undefined | null {
   const trimmed = text.trim();
   if (trimmed === "") return undefined;
   const n = Number(trimmed);

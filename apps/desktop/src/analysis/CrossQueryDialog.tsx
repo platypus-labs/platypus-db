@@ -27,7 +27,7 @@ import { Busy } from "../ui/State";
 const READABLE: ObjectKind[] = ["table", "view", "materialized_view", "foreign_table"];
 
 /** A table the dialog was opened with. */
-export interface AcrossStart {
+interface AcrossStart {
   connection: SavedConnection;
   database: string | null;
   schema: string;

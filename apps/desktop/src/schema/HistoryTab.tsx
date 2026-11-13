@@ -13,7 +13,7 @@ import { EmptyState } from "../ui/State";
 
 /** The history of a schema's structure: the snapshots taken, by hand or by a scheduled task,
  *  and what changed between two of them, or between one and the schema now. */
-export interface HistoryTabModel extends TabBase {
+interface HistoryTabModel extends TabBase {
   kind: "schema-history";
   schema: string;
 }

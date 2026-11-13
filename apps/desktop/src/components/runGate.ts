@@ -3,7 +3,7 @@
 import type { ResultStatus } from "./ResultPanel";
 
 /** Whether `status` ends the statement's run. */
-export function isTerminal(status: ResultStatus, limited: boolean): boolean {
+function isTerminal(status: ResultStatus, limited: boolean): boolean {
   switch (status.kind) {
     case "affected":
     case "error":

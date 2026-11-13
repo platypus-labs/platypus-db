@@ -17,8 +17,8 @@ import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { button, dialog, editConnection, fill, formField, menu, menuItem, newConnection, picker, saveForm, testConnection, urlField } from "../conn-helpers.mjs";
 import { CTRL } from "../cdp.mjs";
-import { clearStatus, editorText, gridTsv, openEditor, resultError, runScript, runStatement, setEditor, status, treeRow, visibleTab } from "../qa-sql.mjs";
-import { runOrGuard } from "../qa-safe-db.mjs";
+import { clearStatus, editorText, gridTsv, openEditor, resultError, runScript, runStatement, setEditor, status, treeRow, visibleTab } from "../editor-helpers.mjs";
+import { runOrGuard } from "../safety-helpers.mjs";
 import { closePreview, deleteRow, discard, editBar, editCell, insertRow, preview, save, shownError, table } from "../search-helpers.mjs";
 
 const PORT = 59042;

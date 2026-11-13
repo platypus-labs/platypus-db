@@ -1,6 +1,6 @@
 /** Values typed into the Settings, checked before they are saved. */
 
-export interface NumberBounds {
+interface NumberBounds {
   min?: number;
   max?: number;
   /** A whole step takes whole numbers only: the backend reads such settings as integers. */

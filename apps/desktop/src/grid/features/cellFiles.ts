@@ -71,7 +71,7 @@ function tooLong(ctx: GridActionContext): boolean {
 }
 
 /** The result column that names the files: `id`, else the first one ending in `_id`. */
-export function keyColumn(columns: Pick<ColumnInfo, "name">[], except: number): number | null {
+function keyColumn(columns: Pick<ColumnInfo, "name">[], except: number): number | null {
   const at = (test: (name: string) => boolean) => columns.findIndex((c, i) => i !== except && test(c.name));
   const found = [at((n) => /^id$/i.test(n)), at((n) => /[_ ]id$/i.test(n))].find((i) => i >= 0);
   return found ?? null;

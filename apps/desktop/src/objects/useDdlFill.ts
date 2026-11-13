@@ -3,7 +3,7 @@ import { api, toCommandError, type ObjectTarget } from "../api";
 import { blockSize, ddlText } from "./ddlBlocks";
 
 /** How far the DDL of a "Generate DDL" tab has been read. */
-export interface DdlProgress {
+interface DdlProgress {
   done: number;
   total: number;
 }

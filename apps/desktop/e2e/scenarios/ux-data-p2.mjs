@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { CTRL, SHIFT } from "../cdp.mjs";
 import { sqliteConnection } from "../query.mjs";
-import { openData, openEditor, run, stubClipboard, treeMenu, visibleTab } from "../qa-grid.mjs";
+import { openData, openEditor, run, stubClipboard, treeMenu, visibleTab } from "../grid-helpers.mjs";
 
 const NAME = "E2E ux data";
 const explainTab = `[...document.querySelectorAll('.explain-tab')].find(t => t.style.display !== 'none')`;
@@ -48,7 +48,7 @@ async function editor(page) {
   assert.ok(!/^\d+:/.test(await page.eval(`${visibleTab}.querySelector('.result-error .state-title').textContent`)), "an error code is named, not a bare number");
 
   // The auto-refresh selector says what it is when it is off: its icon and name, with a short
-  // "Off" that keeps the toolbar on one line (qa2-jrn-toolbar-wrap-transaction).
+  // "Off" that keeps the toolbar on one line (journey-toolbar-wrap-transaction).
   assert.equal(await page.eval(`${visibleTab}.querySelector('.auto-refresh select').getAttribute('aria-label')`), "Auto-refresh");
   assert.ok(await page.eval(`${visibleTab}.querySelector('.auto-refresh svg') !== null`), "the auto-refresh selector has its icon");
   assert.equal(await page.eval(`${visibleTab}.querySelector('.auto-refresh select option').textContent`), "Off");

@@ -5,9 +5,9 @@
 // - a pie of nine categories gives nine different colours, the chart's Export buttons come
 //   after its options; the Pivot button says why it is off, and the status says the pivot.
 import assert from "node:assert/strict";
-import { choose, liteConnection, mark, newEditor, runQuery, status, toggle, visibleTab } from "../qa-ana.mjs";
-import { expand, menu } from "../qa-xfer.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { choose, liteConnection, mark, newEditor, runQuery, status, toggle, visibleTab } from "../analysis-helpers.mjs";
+import { expand, menu } from "../transfer-helpers.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "UX analysis p3";
 const builder = `document.querySelector('.builder-tab:not([style*="none"])')`;

@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { CTRL, SHIFT } from "../cdp.mjs";
 import { explainTab, operations } from "../plans.mjs";
-import { DB, clearStatus, gridTsv, openEditor, resultError, runStatement, saveConnections, setEditor, skipUnless } from "../qa-sql.mjs";
+import { DB, clearStatus, gridTsv, openEditor, resultError, runStatement, saveConnections, setEditor, skipUnless } from "../editor-helpers.mjs";
 
 const C = "qa_mongo_surface";
 

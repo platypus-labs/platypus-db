@@ -5,9 +5,9 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { menu, row, saveConnections } from "../qa-nav-helpers.mjs";
-import { openPath } from "../qa3-schema.mjs";
-import { editor } from "../qa-nav-table-editor.mjs";
+import { menu, row, saveConnections } from "../navigator-helpers.mjs";
+import { openPath } from "../schema-compare-helpers.mjs";
+import { editor } from "../table-editor-helpers.mjs";
 
 const NAME = "Fix Lite";
 const objectTab = `[...document.querySelectorAll('.object-tab:not(.table-editor)')].find(t => t.style.display !== 'none')`;

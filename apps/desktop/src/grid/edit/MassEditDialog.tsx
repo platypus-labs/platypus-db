@@ -149,7 +149,7 @@ const framed = ({ names, onApply, onClose }: Props) => ({ names, onApply, onClos
 
 type SetMode = "value" | "null" | "default";
 
-export function SetValueDialog(props: Props) {
+function SetValueDialog(props: Props) {
   const { cells, rules } = props;
   const [mode, setMode] = useState<SetMode>("value");
   const [text, setText] = useState("");
@@ -242,7 +242,7 @@ function replacedHeadline(result: Replaced | null): string {
   });
 }
 
-export function ReplaceDialog(props: Props) {
+function ReplaceDialog(props: Props) {
   const { cells, rules } = props;
   const [find, setFind] = useState("");
   const [replacement, setReplacement] = useState("");
@@ -300,7 +300,7 @@ export function ReplaceDialog(props: Props) {
   );
 }
 
-export function SequenceDialog(props: Props) {
+function SequenceDialog(props: Props) {
   const { cells, rules } = props;
   const [start, setStart] = useState("1");
   const [step, setStep] = useState("1");

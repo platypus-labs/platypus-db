@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ALT, CTRL, SHIFT } from "../cdp.mjs";
-import { answerSave } from "../qa-xfer.mjs";
+import { answerSave } from "../transfer-helpers.mjs";
 import { openTable, treeRow, visibleTab } from "../query.mjs";
 
 const NAME = "Cell files";

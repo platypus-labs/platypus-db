@@ -5,7 +5,7 @@
  * gone clears the selection rather than land on another row, where Delete would mark it.
  */
 
-export interface RowCell {
+interface RowCell {
   row: number;
   col: number;
 }

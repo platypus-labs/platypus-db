@@ -4,7 +4,7 @@
 import { spawnSync } from "./proc.mjs";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { assert } from "./qa-grid.mjs";
+import { assert } from "./grid-helpers.mjs";
 import { adminTab, openAdmin, showSection } from "./admin.mjs";
 
 export const usersView = `${adminTab}.querySelector('[data-view="users"]')`;

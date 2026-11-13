@@ -21,7 +21,7 @@ export interface NotebookCell {
 }
 
 /** What a notebook keeps: its cells and parameter values. */
-export interface NotebookContent {
+interface NotebookContent {
   cells: NotebookCell[];
   params: Record<string, string>;
 }

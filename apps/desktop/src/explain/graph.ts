@@ -1,14 +1,14 @@
 import type { PlanNode } from "../api";
 
 /** A step placed in the graph: its box's top left corner, and its path in the tree. */
-export interface Placed {
+interface Placed {
   node: PlanNode;
   path: string;
   x: number;
   y: number;
 }
 
-export interface Layout {
+interface Layout {
   boxes: Placed[];
   /** From a step to each of its children, by path. */
   edges: [string, string][];

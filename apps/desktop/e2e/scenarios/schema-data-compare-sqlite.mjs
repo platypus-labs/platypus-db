@@ -3,7 +3,7 @@
 // without the DELETE of the rows missing from the source, a filter, a bad filter, identical
 // tables, tables without a key, and the script opened in the editor of the target.
 import assert from "node:assert/strict";
-import { DST, ENGINES, SRC, buttonIn, openPath, queryText, rowMenu, saveEngines } from "../qa3-schema.mjs";
+import { DST, ENGINES, SRC, buttonIn, openPath, queryText, rowMenu, saveEngines } from "../schema-compare-helpers.mjs";
 
 const SOURCE = "QA3 SQLite src";
 const TARGET = "QA3 SQLite dst";

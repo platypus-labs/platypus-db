@@ -119,7 +119,7 @@ export function registerAction<S extends ActionScope>(action: Action<S>): () => 
 }
 
 /** Called whenever actions are added or removed, e.g. by the command palette. */
-export function onActionsChanged(listener: () => void): () => void {
+function onActionsChanged(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
@@ -190,7 +190,7 @@ export function shortcutOf(e: KeyboardEvent): string | null {
 /** The action of `scope` whose shortcut is `e`, if any applies to `arg`: one written with the
  *  keys pressed, else one whose character needed Shift on this keyboard (`Mod+/` pressed as
  *  Ctrl+Shift+7 on an Italian one). */
-export function actionForKey<S extends ActionScope>(
+function actionForKey<S extends ActionScope>(
   scope: S,
   arg: ActionScopes[S],
   e: KeyboardEvent,
@@ -286,7 +286,7 @@ const KEY_LABELS: Record<string, Record<string, string>> = {
 };
 
 /** One shortcut as shown: `Ctrl+Shift+T`, or `⌘⇧T` on macOS. */
-export function shortcutText(shortcut: string): string {
+function shortcutText(shortcut: string): string {
   const names = KEY_LABELS[language()] ?? {};
   if (!isMac) return labelParts(shortcut, (k) => names[k] ?? k).join("+");
   const symbols: Record<string, string> = { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃", Comma: ",", Plus: "+" };

@@ -16,7 +16,7 @@ import { equalsCondition, matchingColumns, outlierCondition } from "./tableProfi
 import { EmptyState } from "../ui/State";
 import { copyText } from "../ui/copy";
 
-export interface TableProfileTabModel extends TabBase {
+interface TableProfileTabModel extends TabBase {
   kind: "table-profile";
   schema: string;
   /** Whether `schema` is the session's current one: names are then left unqualified. */

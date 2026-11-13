@@ -25,7 +25,7 @@ export interface PivotSettings {
 }
 
 /** A result column as the pivot sees it (`ColumnInfo` fits). */
-export interface PivotColumn {
+interface PivotColumn {
   name: string;
   numeric: boolean;
 }
@@ -41,7 +41,7 @@ const NULL_LABEL = "NULL";
 const TOTAL = "__total__";
 
 /** Every aggregate, in the order the form lists them. */
-export const AGGREGATES: readonly PivotAggregate[] = ["count", "count_distinct", "sum", "avg", "min", "max"];
+const AGGREGATES: readonly PivotAggregate[] = ["count", "count_distinct", "sum", "avg", "min", "max"];
 
 /** Aggregates that add up numbers. */
 const NUMERIC_ONLY: readonly PivotAggregate[] = ["sum", "avg"];

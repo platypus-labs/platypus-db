@@ -1,10 +1,10 @@
-// What the complete user journeys (s-jrn-*) share. Each journey runs three times: in English,
+// What the complete user journeys (journey-*) share. Each journey runs three times: in English,
 // in Italian and with the keyboard only. `mode` is "en", "it" or "keys" (the keyboard run is in
 // English); `t` gives the text the interface shows for an English label in the run's language.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { italian, pageTexts } from "./qa-jrn.mjs";
+import { italian, pageTexts } from "./journey-helpers.mjs";
 
 /** The interface language of a run. */
 export const languageOf = (mode) => (mode === "it" ? "it" : "en");

@@ -1,9 +1,9 @@
 /** The toasts of the app: a module-level store, so any code (a React component or an action
  *  module) can call `toast(message, kind)`; `<Toaster />` shows them. The message is already
  *  translated. "ok" and "info" go by themselves; an "error" stays until it is clicked. */
-export type ToastKind = "ok" | "info" | "error";
+type ToastKind = "ok" | "info" | "error";
 
-export interface ToastItem {
+interface ToastItem {
   id: number;
   message: string;
   kind: ToastKind;

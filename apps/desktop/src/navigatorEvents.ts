@@ -5,7 +5,7 @@
  */
 const EVENT = "platypus:navigator-refresh";
 
-export interface NavigatorRefresh {
+interface NavigatorRefresh {
   connectionId: string;
   /** `null` or missing: the saved database. */
   database?: string | null;

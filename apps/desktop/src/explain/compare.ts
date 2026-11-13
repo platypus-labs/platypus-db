@@ -1,7 +1,7 @@
 import type { Explain, PlanNode } from "../api";
 
 /** A step of either plan, side by side: the same step in both, or one only. */
-export interface Pair {
+interface Pair {
   depth: number;
   before: PlanNode | null;
   after: PlanNode | null;

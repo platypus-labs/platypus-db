@@ -1,7 +1,7 @@
 import type { DriverKind, InstalledDriver, VendorStatus } from "../api";
 
 /** What the check reads, all of it on this machine: nothing goes to the network. */
-export interface DriverLookups {
+interface DriverLookups {
   /** The databases whose driver is downloaded from the registry (ADBC). */
   downloaded: readonly DriverKind[];
   /** The databases whose vendor library the app installs. */

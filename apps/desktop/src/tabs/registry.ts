@@ -60,7 +60,7 @@ export interface TabProps<T> {
   onError: (message: string) => void;
 }
 
-export interface TabKind<K extends TabKindName> {
+interface TabKind<K extends TabKindName> {
   kind: K;
   component: ComponentType<TabProps<TabKinds[K]>>;
   /** Fills the kind's fields from what the opener passed. */

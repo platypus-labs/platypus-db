@@ -18,7 +18,7 @@ import {
   runStatement,
   setEditor,
   status,
-} from "../qa-sql.mjs";
+} from "../editor-helpers.mjs";
 import { connection, redis, saveConnections, skip as skipRedis, text } from "../redis-helpers.mjs";
 
 const NAME = "E2E Redis editor";

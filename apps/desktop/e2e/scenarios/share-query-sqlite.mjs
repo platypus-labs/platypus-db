@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
 import { button, fill, formField, saveForm } from "../conn-helpers.mjs";
 import { palette } from "../plans.mjs";
-import { editorText, newEditor, saveConnections, sqliteFile, status, visibleTab } from "../qa-ana.mjs";
+import { editorText, newEditor, saveConnections, sqliteFile, status, visibleTab } from "../analysis-helpers.mjs";
 import { SHARE_VERSION, decodeFile, decodeLink, encodeFile, encodeLink } from "../../src/share/shareQuery.ts";
 
 const MAIN = "Share main";

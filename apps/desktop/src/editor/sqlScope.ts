@@ -17,7 +17,7 @@ interface Token {
 }
 
 /** What the statement reads, under the name its columns are qualified with. */
-export interface Source {
+interface Source {
   /** The alias, or the table's name as written. */
   name: string;
   /** The same name with its quotes as written, to qualify a column with. */
@@ -51,7 +51,7 @@ export interface NameOptions {
   items: NameItem[];
 }
 
-export interface ScopeOptions {
+interface ScopeOptions {
   /** `[name]` quotes names (Transact-SQL). */
   brackets?: boolean;
   /** A backslash escapes the next character in strings and quoted names. */

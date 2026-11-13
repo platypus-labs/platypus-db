@@ -2,7 +2,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 import { defineSetting, getSetting } from "../settings";
 import { formatCount, t } from "../i18n";
 
-export const notifySetting = defineSetting<number>({
+const notifySetting = defineSetting<number>({
   key: "editor.notify_after_seconds",
   section: "SQL editor",
   label: "Notify when a run ends after (seconds)",

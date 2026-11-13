@@ -6,7 +6,7 @@
 // Skipped when Redis is not running.
 import assert from "node:assert/strict";
 import { submenuItems } from "../menu-sub.mjs";
-import { gridTsv, openEditor, resultError, runStatement, status, treeRow, visibleTab, editorText } from "../qa-sql.mjs";
+import { gridTsv, openEditor, resultError, runStatement, status, treeRow, visibleTab, editorText } from "../editor-helpers.mjs";
 import { connection, redis, saveConnections, skip as skipRedis } from "../redis-helpers.mjs";
 
 const NAME = "E2E Redis";

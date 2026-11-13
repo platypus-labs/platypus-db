@@ -9,11 +9,11 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { keys, press, setLanguage } from "../journey.mjs";
-import { restart } from "../qa-jrn.mjs";
+import { restart } from "../journey-helpers.mjs";
 import { ui, status, visibleTab } from "../journey-work.mjs";
-import { chart, compareButton, diffTab, field, fieldError, fieldText, mark, profileOf } from "../qa-ana.mjs";
+import { chart, compareButton, diffTab, field, fieldError, fieldText, mark, profileOf } from "../analysis-helpers.mjs";
 import { parquetInfo } from "../parquet.mjs";
-import { answerSave, sqliteBlock, zipEntry } from "../qa-xfer.mjs";
+import { answerSave, sqliteBlock, zipEntry } from "../transfer-helpers.mjs";
 import { writeXlsx } from "../xlsx.mjs";
 
 const NAME = "S jrn analysis";

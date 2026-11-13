@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import { Icon } from "../ui/Icon";
 
 /** A change of the tags, applied to the stored ones when it is saved. */
-export type TagsUpdate = (tags: string[]) => string[];
+type TagsUpdate = (tags: string[]) => string[];
 
 interface Props {
   tags: string[];

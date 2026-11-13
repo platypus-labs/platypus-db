@@ -17,7 +17,7 @@ export interface ColumnLayout {
 export const EMPTY_LAYOUT: ColumnLayout = { order: [], hidden: [], pinned: [], widths: {} };
 
 /** A layout applied to a result: the result columns shown, left to right. */
-export interface ResolvedLayout {
+interface ResolvedLayout {
   /** Result column of each display position. */
   view: number[];
   /** Display position of each result column; `-1` when hidden. */

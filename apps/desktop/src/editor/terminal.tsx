@@ -25,7 +25,7 @@ function cell(v: string | null) {
 }
 
 /** Rows as a psql-style table, with a line counting them. */
-export function textTable(columns: string[], rows: (string | null)[][], more: boolean): string {
+function textTable(columns: string[], rows: (string | null)[][], more: boolean): string {
   const cells = rows.map((r) => r.map(cell));
   const widths = columns.map((c, i) => Math.max(c.length, ...cells.map((r) => r[i]!.length)));
   const line = (values: string[]) => ` ${values.map((v, i) => v.padEnd(widths[i]!)).join(" | ")}`.trimEnd();

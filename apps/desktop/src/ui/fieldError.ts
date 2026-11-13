@@ -2,7 +2,7 @@
  *  from the interface so it can be tested alone. */
 
 /** The part of a field `fieldError` reads. */
-export interface Field {
+interface Field {
   type?: string;
   min?: string;
   max?: string;

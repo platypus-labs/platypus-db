@@ -14,7 +14,7 @@ export interface PersistedTab {
   [field: string]: unknown;
 }
 
-export interface Workspace {
+interface Workspace {
   tabs: PersistedTab[];
   /** The active tab of each project, as an index into `tabs`, by `projectKey`. */
   active: Record<string, number>;

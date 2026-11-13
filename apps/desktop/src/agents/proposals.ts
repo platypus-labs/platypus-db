@@ -18,7 +18,7 @@ const POLL_MS = 2000;
 let recent: number[] = [];
 
 /** The SQL as the tab opens it: a comment saying who proposed it, then the SQL. */
-export function proposalSql(p: AgentProposal): string {
+function proposalSql(p: AgentProposal): string {
   const note = t("Proposed by {agent}: review it, then run it yourself.", { agent: p.agent });
   return `-- ${note}\n${p.sql}\n`;
 }

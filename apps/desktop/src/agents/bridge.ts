@@ -13,7 +13,7 @@ import type { DiagramRequest } from "./diagram";
 import { enqueue, settle, type Verdict, type Waiting, type WriteRequest } from "./writes";
 
 /** Read by the `--mcp` server and the CLI (`Agent::confirms_changes`). */
-export const confirmWritesSetting = defineSetting<boolean>({
+defineSetting<boolean>({
   key: "agents.confirm_writes",
   section: "Safety",
   label: msg("Ask before agents change data"),

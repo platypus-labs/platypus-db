@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { noMcp, startMcp } from "../mcp.mjs";
-import { answerSave } from "../qa-xfer.mjs";
+import { answerSave } from "../transfer-helpers.mjs";
 
 const RO = "00000000-0000-4000-8000-0000000000c1";
 const RW = "00000000-0000-4000-8000-0000000000c2";

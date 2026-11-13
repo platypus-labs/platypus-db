@@ -3,7 +3,7 @@
 // container.
 import { spawn, spawnSync } from "./proc.mjs";
 import { existsSync, readFileSync } from "node:fs";
-import { DBS, assert, expand, treeMenu } from "./qa-grid.mjs";
+import { DBS, assert, expand, treeMenu } from "./grid-helpers.mjs";
 
 export const adminTab = `[...document.querySelectorAll('.admin-tab')].find(t => t.style.display !== 'none')`;
 
@@ -170,7 +170,7 @@ export async function statisticsFlow(page, { db, name, table, slow, path, operat
   }
 
   // From the navigator: Maintenance › the first operation, in a dialog that shows the output.
-  const { openPath } = await import("./qa-dbs.mjs");
+  const { openPath } = await import("./drivers-helpers.mjs");
   await openPath(page, path);
   await treeMenu(page, table, "Maintenance");
   const label = { vacuum: "Vacuum…", analyze: "Analyze…", check: "Check…", optimize: "Optimize…", reindex: "Reindex…" }[operations[0]];
@@ -194,7 +194,7 @@ export async function statisticsFlow(page, { db, name, table, slow, path, operat
  * pg_restore stops at the first error, and the archive's CREATE SCHEMA fails on a schema that is there.
  */
 export async function backupFlow(page, { db, name, file, table, count, dropTable, clean = false }) {
-  const { answerSave } = await import("./qa-xfer.mjs");
+  const { answerSave } = await import("./transfer-helpers.mjs");
   const dialog = `document.querySelector('.backup-dialog')`;
   const result = `${dialog}?.querySelector('[data-field="result"]')`;
   await expand(page, name, db);

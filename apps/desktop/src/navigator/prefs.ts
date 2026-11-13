@@ -17,7 +17,7 @@ export interface Bookmark {
 }
 
 /** Comma-separated name patterns to hide; `*` matches any text, case is ignored. */
-export interface NavigatorFilter {
+interface NavigatorFilter {
   schemas: string;
   objects: string;
 }

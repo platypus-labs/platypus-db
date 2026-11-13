@@ -54,7 +54,7 @@ export function uniqueName(base: string, taken: Set<string>): string {
 }
 
 /** A row of the dialog as far as naming goes. */
-export interface NamedRow {
+interface NamedRow {
   connectionName: string;
   table: string;
   /** The user typed the name: it stays as typed. */

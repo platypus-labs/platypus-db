@@ -23,7 +23,7 @@ import {
   setEditor,
   status,
   visibleTab,
-} from "../qa-sql.mjs";
+} from "../editor-helpers.mjs";
 import { connection, countRow, drop, es, saveConnections, seed, skip as skipSearch, sources, table } from "../search-helpers.mjs";
 
 const NAME = "E2E ES editor";

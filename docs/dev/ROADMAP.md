@@ -1331,11 +1331,11 @@ due giri di tester, uno per area (scenari `qa4-*`, 83 bug) e uno con tester nuov
 revisione di sicurezza (17 correzioni, SR1-SR17); la verifica finale tutta verde: `cargo fmt`,
 clippy, tutti i test, la conformance su ogni database raggiungibile (Oracle compreso) e i circa 680
 scenari E2E. Le liste del collaudo a mano sono in [COLLAUDO.md](COLLAUDO.md). Poi (novembre 2026):
-i sei percorsi da utente come scenari completi `s-jrn-*`, ognuno in inglese, in italiano e da sola
+i sei percorsi da utente come scenari completi `journey-*`, ognuno in inglese, in italiano e da sola
 tastiera con un riavvio vero a metà (6 bug trovati e corretti, tra cui la rinomina di uno script che
-non aggiornava la scheda aperta); l'aggiornamento da ogni release pubblicata (`s-upgrade-*`: l'eseguibile
+non aggiornava la scheda aperta); l'aggiornamento da ogni release pubblicata (`update-upgrade-*`: l'eseguibile
 di 0.2.1 e 0.3.0, estratto dall'MSI senza installarlo, scrive i dati di un utente, anche con il
-master password, e la build nuova li ritrova); le prestazioni (`s-perf-*`: 5 milioni di righe, 5.000
+master password, e la build nuova li ritrova); le prestazioni (`perf-*`: 5 milioni di righe, 5.000
 tabelle, un'ora di lavoro senza crescita di memoria, database remoto lento dietro un proxy), con i
 numeri in [BENCHMARKS.md](BENCHMARKS.md) e due correzioni del driver PostgreSQL (connect che non
 finiva con un server muto, opzione `connect_timeout` ignorata).
@@ -1369,7 +1369,7 @@ nei file delle aree toccate, in commit piccoli e separati
 | ✅ 🆕 **Giro per aree** con un tester ciascuna (connessioni, navigator, editor, griglia e modifica, analisi, import/export, impostazioni e tab, sicurezza e MCP, schema, amministrazione) sui casi normali, i casi limite e gli errori | P1 | N |
 | ✅ 🆕 **Tutti i database** con tutte le funzioni che li riguardano: PostgreSQL e varianti, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, SQLite, DuckDB, libSQL, MongoDB, Trino, ODBC/ADBC | P1 | N |
 | ✅ 🆕 **Percorsi completi da utente** (primo avvio, import da DBeaver, giornata di lavoro, analisi, sviluppo, agenti) con riavvio dell'app nel mezzo, in italiano e in inglese, anche da sola tastiera | P1 | N |
-| 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano — fatto per i dati (`s-upgrade-*`); resta la meccanica degli installer a mano su una VM | P1 | N |
+| 🆕 **Installer e aggiornamento** da ogni versione pubblicata, con i dati dell'utente (connessioni, password, script, impostazioni) che restano — fatto per i dati (`update-upgrade-*`); resta la meccanica degli installer a mano su una VM | P1 | N |
 | ⛔ 🆕 **Linux**: gli scenari E2E anche fuori da Windows, o un collaudo a mano con una lista scritta | P2 | N |
 | ⏭ serve un Mac — 🆕 **macOS**: gli scenari E2E o un collaudo a mano con la stessa lista | P2 | N |
 | ✅ 🆕 **Prestazioni e memoria**: tabelle da milioni di righe, schemi con migliaia di oggetti, una sessione di ore senza che la memoria cresca, database remoto lento; i numeri in BENCHMARKS.md | P2 | N |

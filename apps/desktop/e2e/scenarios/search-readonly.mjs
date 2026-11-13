@@ -5,8 +5,8 @@
 // documents and indices stay as they were.
 // Skipped when Elasticsearch is not running.
 import assert from "node:assert/strict";
-import { gridTsv, runStatement, treeRow, visibleTab } from "../qa-sql.mjs";
-import { openEditor, runOrGuard } from "../qa-safe-db.mjs";
+import { gridTsv, runStatement, treeRow, visibleTab } from "../editor-helpers.mjs";
+import { openEditor, runOrGuard } from "../safety-helpers.mjs";
 import { connection, countRow, drop, editBar, es, saveConnections, seed, skip as skipSearch, sources } from "../search-helpers.mjs";
 
 const NAME = "E2E ES read-only";

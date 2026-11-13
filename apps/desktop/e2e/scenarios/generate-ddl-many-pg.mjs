@@ -3,7 +3,7 @@
 // in the order of the selection, a table dropped meanwhile becomes a comment saying why, and
 // Stop leaves what was read with a note of how far it went.
 import assert from "node:assert/strict";
-import { ENGINES, SRC, needsEngines, openPath, psql, queryText, saveEngines, visibleQuery } from "../qa3-schema.mjs";
+import { ENGINES, SRC, needsEngines, openPath, psql, queryText, saveEngines, visibleQuery } from "../schema-compare-helpers.mjs";
 import { SHIFT } from "../cdp.mjs";
 import { revealItem } from "../menu-sub.mjs";
 

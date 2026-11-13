@@ -1,4 +1,4 @@
-// What the connection scenarios (qa-conn-*) share: the connection dialog, the driver picker,
+// What the connection scenarios (connection-*) share: the connection dialog, the driver picker,
 // the navigator's connection rows and a check that a database container is up.
 import { writeFileSync } from "node:fs";
 import { connect as tcp } from "node:net";

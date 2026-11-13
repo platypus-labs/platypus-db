@@ -37,7 +37,7 @@ import { useColumnProfile } from "../analysis/ColumnProfile";
 import { type ColumnLayout, EMPTY_LAYOUT, loadLayout, saveLayout } from "./layout";
 import type { RowCache, Rows } from "./RowCache";
 
-export const valuePanelSetting = defineSetting({
+const valuePanelSetting = defineSetting({
   key: "grid.value_panel",
   section: "Results",
   label: "Show the value panel next to results",
@@ -47,7 +47,7 @@ export const valuePanelSetting = defineSetting({
 });
 
 /** Read-only grid features for actions, in `source.features`. */
-export interface GridFeatures {
+interface GridFeatures {
   /** Opens the search box (Ctrl+F). */
   find(): void;
   valuePanelOpen: boolean;

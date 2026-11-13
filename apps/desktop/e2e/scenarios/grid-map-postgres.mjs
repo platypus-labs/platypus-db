@@ -15,7 +15,7 @@
 // Needs PostgreSQL and MySQL from docker/compose.yml.
 import assert from "node:assert/strict";
 import { CTRL, SHIFT } from "../cdp.mjs";
-import { db, dbQuiet, DBS, openEditor, runScript, saveConnections, skipUnless, visibleTab } from "../qa-xfer.mjs";
+import { db, dbQuiet, DBS, openEditor, runScript, saveConnections, skipUnless, visibleTab } from "../transfer-helpers.mjs";
 
 export const skip = () => skipUnless("pg", "mysql");
 

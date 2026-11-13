@@ -127,7 +127,7 @@ export function pieParts(values: readonly (number | null)[]): { drawn: number[];
 }
 
 /** Slices a pie keeps before it gathers the smallest ones in one. */
-export const PIE_MAX_SLICES = 8;
+const PIE_MAX_SLICES = 8;
 
 /** The slices of a pie with the positive ones past the `max` largest summed into one `other`
  *  slice (the last category too, when `hasOther`: it already gathers the rest); the others keep

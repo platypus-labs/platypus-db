@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { saveConnections } from "../perf.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "E2E UX Notebook";
 const tab = `[...document.querySelectorAll('.notebook-tab')].find(t => t.style.display !== 'none')`;

@@ -21,7 +21,7 @@ interface Props {
   onClose: () => void;
 }
 
-export function TestConnectionsDialog({ scope, connections, onClose }: Props) {
+function TestConnectionsDialog({ scope, connections, onClose }: Props) {
   const [outcomes, setOutcomes] = useState<Map<string, TestOutcome>>(new Map());
   const [running, setRunning] = useState(false);
   /** The dialog went: the tests still queued are not started. */

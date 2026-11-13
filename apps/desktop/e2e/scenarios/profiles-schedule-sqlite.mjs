@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { palette, setField } from "../plans.mjs";
 import { closeProfiles, deleteProfile, listed, openProfiles, rowAction, savedProfiles } from "../profiles-helpers.mjs";
-import { button, saveConnections, sqliteBlock } from "../qa-xfer.mjs";
+import { button, saveConnections, sqliteBlock } from "../transfer-helpers.mjs";
 
 const CONNECTION = "Profiles schedule";
 const CONNECTION_ID = "00000000-0000-4000-8000-0000000000c1";

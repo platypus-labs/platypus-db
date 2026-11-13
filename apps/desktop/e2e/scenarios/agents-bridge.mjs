@@ -16,7 +16,7 @@ import { DatabaseSync } from "node:sqlite";
 import { noMcp, startMcp } from "../mcp.mjs";
 import { setField } from "../plans.mjs";
 import { openQueryTab, run } from "../conn-helpers.mjs";
-import { expand } from "../qa-nav-helpers.mjs";
+import { expand } from "../navigator-helpers.mjs";
 
 const RO = "00000000-0000-4000-8000-000000000041";
 const RW = "00000000-0000-4000-8000-000000000042";

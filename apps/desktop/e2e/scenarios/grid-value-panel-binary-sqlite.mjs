@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { deflateSync } from "node:zlib";
 import { CTRL } from "../cdp.mjs";
-import { answerSave } from "../qa-xfer.mjs";
+import { answerSave } from "../transfer-helpers.mjs";
 import { openTable, sqliteConnection, visibleTab } from "../query.mjs";
 import { crc32 } from "../xlsx.mjs";
 

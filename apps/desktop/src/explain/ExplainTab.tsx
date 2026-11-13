@@ -13,11 +13,11 @@ import { createIndexSql, filterKeys } from "./indexSql";
 import { copyText } from "../ui/copy";
 import { PanelResizer, useStoredSize } from "../shell/PanelResizer";
 
-export type ExplainView = "tree" | "graph" | "text" | "table" | "compare";
+type ExplainView = "tree" | "graph" | "text" | "table" | "compare";
 
 /** The plan of one statement, as a tree, a graph, text or a table; or a plan read from a
  *  document. */
-export interface ExplainTabModel extends TabBase {
+interface ExplainTabModel extends TabBase {
   kind: "explain";
   sql: string;
   /** The statement runs (its changes rolled back) for actual rows and times. */
@@ -48,7 +48,7 @@ const VIEWS: [ExplainView, string][] = [
 let plans = 0;
 
 /** Asks for a plan to paste or open, and hands it to `onRead`. */
-export function askPlan(title: string, onRead: (plan: Explain, name: string, source: PlanSource) => void) {
+function askPlan(title: string, onRead: (plan: Explain, name: string, source: PlanSource) => void) {
   workbench().openDialog((close) =>
     createElement(PlanDialog, { title, onClose: close, onRead: (read, name) => onRead(read.explain, name, read.source) }),
   );

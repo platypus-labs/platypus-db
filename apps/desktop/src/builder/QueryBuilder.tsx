@@ -29,7 +29,7 @@ export interface BuilderTable {
   columns: string[];
 }
 
-export interface BuilderTabModel extends TabBase {
+interface BuilderTabModel extends TabBase {
   kind: "builder";
   schema: string | null;
   tables: BuilderTable[];
@@ -45,7 +45,7 @@ declare module "../tabs/registry" {
 }
 
 /** A join between a table and one placed before it, on a foreign key of either. */
-export interface BuilderJoin {
+interface BuilderJoin {
   key: string;
   /** The table placed earlier, and the later one that joins it. */
   left: BuilderTable;
@@ -64,7 +64,7 @@ function referenced(columns: string[], target: TableDetails | undefined): string
 
 /** The joins of `tables`: each one after the first, joined to the first earlier table one
  *  of their foreign keys links. */
-export function joinsOf(tables: BuilderTable[], details: Map<string, TableDetails>): BuilderJoin[] {
+function joinsOf(tables: BuilderTable[], details: Map<string, TableDetails>): BuilderJoin[] {
   const joins: BuilderJoin[] = [];
   tables.forEach((right, i) => {
     const rd = details.get(detailsKey(right));
@@ -89,7 +89,7 @@ export function joinsOf(tables: BuilderTable[], details: Map<string, TableDetail
 }
 
 /** The SELECT the canvas describes; `current` is the session's schema, left unqualified. */
-export function builderSql(
+function builderSql(
   driver: DriverKind,
   model: Pick<BuilderTabModel, "tables" | "leftJoins" | "where">,
   joins: BuilderJoin[],
@@ -127,7 +127,7 @@ function aliasFor(name: string, taken: string[]): string {
 const BOX_GAP = 80;
 
 /** `x` moved right of any box on the same row that would sit closer than `BOX_GAP`. */
-export function spacedX(x: number, y: number, placed: Pick<BuilderTable, "x" | "y" | "w" | "h">[]): number {
+function spacedX(x: number, y: number, placed: Pick<BuilderTable, "x" | "y" | "w" | "h">[]): number {
   let out = x;
   for (const b of [...placed].sort((a, c) => a.x - c.x)) {
     const sameRow = Math.abs(b.y - y) < (b.h ?? 260);

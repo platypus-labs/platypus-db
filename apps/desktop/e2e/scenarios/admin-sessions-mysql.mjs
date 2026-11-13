@@ -1,7 +1,7 @@
 // Group J against the dev MySQL (and MariaDB, admin-sessions-mariadb.mjs): Server activity
 // shows a session waiting for another's row lock, with the chain and the waited lock;
 // KILL QUERY cancels the waiting statement, KILL ends the holder and rolls back its update.
-import { assert, connections, needs, sh } from "../qa-grid.mjs";
+import { assert, connections, needs, sh } from "../grid-helpers.mjs";
 import { adminButton, background, checkChain, confirmDanger, idOf, openAdmin, rowWith, select, waitBlocked } from "../admin.mjs";
 
 const DB = "mysql";

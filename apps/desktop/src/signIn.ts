@@ -7,7 +7,7 @@ import type { DriverKind, SavedConnection } from "./api";
 
 export type SignInId = "aws_iam" | "gcp_iam" | "entra_id" | "windows" | "kerberos";
 
-export interface SignIn {
+interface SignIn {
   id: SignInId;
   /** The product's name. */
   name: string;

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { CTRL } from "../cdp.mjs";
-import { chart, gridTsv, inField, liteConnection, markTitles, newEditor, profileOf, runQuery, showChart, status, toggle, treeRow, visibleTab } from "../qa-ana.mjs";
+import { chart, gridTsv, inField, liteConnection, markTitles, newEditor, profileOf, runQuery, showChart, status, toggle, treeRow, visibleTab } from "../analysis-helpers.mjs";
 
 const NAME = "E2E saved results";
 const QUERY = "SELECT region, amount, note FROM sales ORDER BY id";

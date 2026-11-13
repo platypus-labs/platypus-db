@@ -39,7 +39,7 @@ export function connectionsUnder(folder: FolderView): SavedConnection[] {
   return [...folder.connections, ...folder.folders.flatMap(connectionsUnder)];
 }
 
-export type Check = "on" | "off" | "mixed";
+type Check = "on" | "off" | "mixed";
 
 export function checkState(ids: string[], picked: ReadonlySet<string>): Check {
   const on = ids.filter((id) => picked.has(id)).length;

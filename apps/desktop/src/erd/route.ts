@@ -6,7 +6,7 @@
 
 import type { Point } from "./layout";
 
-export interface Rect {
+interface Rect {
   x: number;
   y: number;
   width: number;
@@ -15,7 +15,7 @@ export interface Rect {
 
 /** A line from the row at `fromRow` (from the top of the box) of `from` to the row at `toRow`
  *  of `to`. */
-export interface Wire {
+interface Wire {
   from: string;
   fromRow: number;
   to: string;

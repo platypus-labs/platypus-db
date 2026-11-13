@@ -27,7 +27,7 @@ export type FrameRequestName = (typeof FRAME_REQUESTS)[number];
  *  `broken`: not one of the app's messages at all. `refused`: a request to say no to, and with
  *  `strike` one no page of good faith sends: asking for a request this version does not have is
  *  not that, but parameters past the limit are. */
-export type FrameMessage =
+type FrameMessage =
   | { kind: "pong"; n: number }
   | { kind: "request"; id: number; name: FrameRequestName; params: unknown }
   | { kind: "refused"; id: number; reason: string; strike: boolean }
@@ -64,7 +64,7 @@ export function refusedBy(name: FrameRequestName, approved: PluginPermissions): 
 }
 
 /** What to do with a message that came in. */
-export type Admission = "serve" | "drop" | "stop";
+type Admission = "serve" | "drop" | "stop";
 
 /** Holds a frame to its rate and stops one that keeps breaking the rules. */
 export class FrameGuard {
@@ -105,7 +105,7 @@ export class FrameGuard {
 }
 
 /** How many pings a frame may leave unanswered before it counts as hung. */
-export const MAX_MISSED_PINGS = 3;
+const MAX_MISSED_PINGS = 3;
 
 /** Whether a frame that has answered up to `answered`, having been pinged up to `sent`, is hung. */
 export const hung = (sent: number, answered: number) => sent - answered > MAX_MISSED_PINGS;

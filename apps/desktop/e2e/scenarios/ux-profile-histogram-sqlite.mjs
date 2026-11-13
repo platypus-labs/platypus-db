@@ -2,7 +2,7 @@
 // scale, the first and last bound under the bars and a tooltip per bar; the bounds and the
 // min/max of a timestamp column never overlap and stay inside their card.
 import assert from "node:assert/strict";
-import { liteConnection, treeRow } from "../qa-ana.mjs";
+import { liteConnection, treeRow } from "../analysis-helpers.mjs";
 
 const NAME = "UX profile histogram";
 const tab = `[...document.querySelectorAll('.table-profile-tab')].find(t => t.style.display !== 'none')`;

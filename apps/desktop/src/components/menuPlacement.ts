@@ -1,5 +1,5 @@
 /** Where a submenu goes, relative to its anchor row, so it stays inside the window. */
-export interface Placement {
+interface Placement {
   left: number;
   top: number;
   /** Set when the submenu is taller than the window: it scrolls. */

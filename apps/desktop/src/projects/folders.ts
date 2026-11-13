@@ -44,7 +44,7 @@ export function folderTree(project: Project, connections: SavedConnection[]): { 
 }
 
 /** Every folder of the project with its path, for menus: `Prod › Replica`. */
-export function folderPaths(project: Project): { id: string; label: string }[] {
+function folderPaths(project: Project): { id: string; label: string }[] {
   const out: { id: string; label: string }[] = [];
   const walk = (nodes: FolderNode[], prefix: string) => {
     for (const n of nodes) {
@@ -66,7 +66,7 @@ function renameFolder(project: Project, folder: ConnectionFolder) {
 
 /** Makes a change of `arrange.ts` in the store: in `project`, or (`null`) in the list All
  *  connections shows. A new folder of two connections is offered for renaming at once. */
-export async function applyArrange(project: Project | null, change: Arrange) {
+async function applyArrange(project: Project | null, change: Arrange) {
   if (!project) {
     if (change.kind === "connection") workbench().setWorkspace(await api.reorderConnection(change.id, change.before));
     return;

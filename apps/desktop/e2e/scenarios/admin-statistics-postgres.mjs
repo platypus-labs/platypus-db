@@ -2,7 +2,7 @@
 // pg_stat_statements, preloaded by docker/compose.yml) and tables and indexes, with
 // VACUUM, ANALYZE and REINDEX from the table's details and VACUUM from the navigator,
 // whose dialog shows VACUUM VERBOSE's output. See statisticsFlow in e2e/admin.mjs.
-import { connections, needs, sh } from "../qa-grid.mjs";
+import { connections, needs, sh } from "../grid-helpers.mjs";
 import { statisticsFlow } from "../admin.mjs";
 
 const DB = "pg";

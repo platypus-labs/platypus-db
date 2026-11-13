@@ -4,7 +4,7 @@
 // and saved; a query in a new editor, exported to CSV; the app restarted (the connections connect
 // without asking, the tabs are back); the language changed in the Settings and the app restarted
 // again (the interface is in the chosen language). Run in English, in Italian and keyboard only.
-import { pressF2 } from "../qa-grid.mjs";
+import { pressF2 } from "../grid-helpers.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,8 +16,8 @@ import {
   tabTo, testConnection, treeOpen, until, visibleTab, waitRows,
 } from "../journey-day.mjs";
 import { setLanguage } from "../journey.mjs";
-import { psql } from "../qa-jrn.mjs";
-import { answerSave } from "../qa-xfer.mjs";
+import { psql } from "../journey-helpers.mjs";
+import { answerSave } from "../transfer-helpers.mjs";
 
 const PG = "Journey PG";
 const LITE = "Journey SQLite";

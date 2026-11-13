@@ -1,7 +1,7 @@
 // Group J against the dev MySQL: Back up… writes a mysqldump file of the database, table by
 // table, and Restore… runs it through mysql, asked first, bringing a dropped table back.
 // Needs mysqldump and mysql on the PATH.
-import { connections, needs, sh } from "../qa-grid.mjs";
+import { connections, needs, sh } from "../grid-helpers.mjs";
 import { backupFlow, toolVersion } from "../admin.mjs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";

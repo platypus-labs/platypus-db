@@ -7,9 +7,9 @@
 // - the database picker has a close button; the connection dialog keeps the long labels short
 //   with the explanation below, and the two commands are one under the other.
 import assert from "node:assert/strict";
-import { expand, menu } from "../qa-xfer.mjs";
+import { expand, menu } from "../transfer-helpers.mjs";
 import { sqliteConnection } from "../query.mjs";
-import { treeMenu } from "../qa-grid.mjs";
+import { treeMenu } from "../grid-helpers.mjs";
 
 const NAME = "UX tools db";
 const builder = `document.querySelector('.builder-tab:not([style*="none"])')`;

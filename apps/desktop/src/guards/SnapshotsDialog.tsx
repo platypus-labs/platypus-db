@@ -11,7 +11,7 @@ import { preview } from "./GuardDialog";
 import { t, plural } from "../i18n";
 import { EmptyState, LoadingState } from "../ui/State";
 
-export const snapshotSetting = defineSetting<boolean>({
+const snapshotSetting = defineSetting<boolean>({
   key: "safety.snapshots",
   section: "Safety",
   label: "Keep the rows an UPDATE or DELETE changes, to put them back",
@@ -51,7 +51,7 @@ export async function openRestore(connectionId: string, database: string | null,
 const time = (at: number) => new Date(at).toLocaleString();
 
 /** The snapshots kept, newest first, each with its restore script. */
-export function SnapshotsDialog({ onClose }: { onClose: () => void }) {
+function SnapshotsDialog({ onClose }: { onClose: () => void }) {
   const [list, setList] = useState<SnapshotMeta[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** The snapshot whose restore script is being read. */

@@ -27,7 +27,7 @@ export function parameterName(p: DebugParameter, i: number): string {
 }
 
 /** The key of a breakpoint: a line of a routine. */
-export const breakpointKey = (routine: string, line: number) => `${routine}:${line}`;
+const breakpointKey = (routine: string, line: number) => `${routine}:${line}`;
 
 /** The lines of `routine` that have a breakpoint in `breakpoints`. */
 export function breakpointLines(breakpoints: ReadonlySet<string>, routine: string): Set<number> {

@@ -18,7 +18,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mysqlFolder, pgFolder, withPath } from "../clients.mjs";
 import { palette, setField } from "../plans.mjs";
-import { button, db, dbQuiet, skipUnless } from "../qa-xfer.mjs";
+import { button, db, dbQuiet, skipUnless } from "../transfer-helpers.mjs";
 
 const PG_ID = "00000000-0000-4000-8000-0000000b0001";
 const FLAKY_PG_ID = "00000000-0000-4000-8000-0000000b0002";

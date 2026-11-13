@@ -8,7 +8,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { openProfiles, rowAction, runProfile, saveProfile, savedProfiles } from "../profiles-helpers.mjs";
-import { button, chooseFile, closeModal, copyTarget, importDialog, menu, migrateDialog, saveConnections, showTable, sqliteBlock } from "../qa-xfer.mjs";
+import { button, chooseFile, closeModal, copyTarget, importDialog, menu, migrateDialog, saveConnections, showTable, sqliteBlock } from "../transfer-helpers.mjs";
 
 const SRC = "Profiles source";
 const MIG = "Profiles migrated";

@@ -179,7 +179,7 @@ export function mongoLanguage(catalog: CompletionCatalog | null | undefined) {
 }
 
 /** A mongosh string literal. */
-export const shellString = (s: string) => JSON.stringify(s);
+const shellString = (s: string) => JSON.stringify(s);
 
 /** A collection in mongosh: `db.name`, or `db.getCollection("name")` for other names, with
  *  `getSiblingDB` first when `schema` is not the session's database. Mirrors

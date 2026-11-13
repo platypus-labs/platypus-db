@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { saveConnections, sqliteEntry, status, visibleTab } from "../perf.mjs";
-import { answerSave } from "../qa-xfer.mjs";
+import { answerSave } from "../transfer-helpers.mjs";
 
 const NAME = "E2E Vim";
 const content = `${visibleTab}.querySelector('.cm-content')`;

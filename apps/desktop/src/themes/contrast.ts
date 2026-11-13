@@ -40,7 +40,7 @@ const PAIRS: { fg: string; bg: string; min: number }[] = [
   { fg: "syn-string", bg: "bg", min: 3 },
 ];
 
-export interface LowContrast {
+interface LowContrast {
   fg: string;
   bg: string;
   ratio: number;

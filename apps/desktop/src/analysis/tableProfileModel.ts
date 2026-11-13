@@ -4,7 +4,7 @@
 import type { DriverKind, TableColumnProfile } from "../api";
 
 /** Rows to read, as the Sample select offers them; `null` reads the whole table. */
-export const SAMPLES: (number | null)[] = [10_000, 100_000, 1_000_000, null];
+const SAMPLES: (number | null)[] = [10_000, 100_000, 1_000_000, null];
 /** What the select starts with, and what a tab saved by another version falls back to. */
 export const DEFAULT_SAMPLE = 100_000;
 

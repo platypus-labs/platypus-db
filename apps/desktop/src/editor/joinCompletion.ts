@@ -42,7 +42,7 @@ function parseRef(name: string, alias: string | undefined): TableRef {
 }
 
 /** Tables named after FROM, JOIN, UPDATE and INTO, in order. */
-export function tableRefs(sql: string): TableRef[] {
+function tableRefs(sql: string): TableRef[] {
   const re = new RegExp(`\\b(?:FROM|JOIN|UPDATE|INTO)\\s+(${NAME})${ALIAS}`, "gi");
   return [...sql.matchAll(re)].map((m) => parseRef(m[1]!, m[2]));
 }

@@ -22,7 +22,7 @@ import { SourceView } from "./SourceView";
 import { LoadingState } from "../ui/State";
 
 /** Not kept for the next start: the call ends with the app. */
-export interface DebuggerTabModel extends TabBase {
+interface DebuggerTabModel extends TabBase {
   kind: "debugger";
   started?: DebugStarted;
 }

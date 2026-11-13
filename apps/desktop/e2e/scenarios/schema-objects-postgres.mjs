@@ -3,7 +3,7 @@
 // running. What the database holds is read with psql in the container.
 import assert from "node:assert/strict";
 import { ALT, CTRL } from "../cdp.mjs";
-import { psql } from "../qa3-schema.mjs";
+import { psql } from "../schema-compare-helpers.mjs";
 import {
   choose,
   create,

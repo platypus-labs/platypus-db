@@ -1,6 +1,6 @@
 // Group J against the dev MariaDB, with performance_schema on (docker/compose.yml): as
 // admin-statistics-mysql.mjs, without the sample of a statement's run MySQL 8 keeps.
-import { connections, needs, sh } from "../qa-grid.mjs";
+import { connections, needs, sh } from "../grid-helpers.mjs";
 import { mysqlFlow, mysqlSetup } from "./admin-statistics-mysql.mjs";
 
 const DB = "mariadb";

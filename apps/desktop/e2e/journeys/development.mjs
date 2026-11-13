@@ -11,9 +11,9 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
 import { focusVisible, keys, setLanguage } from "../journey.mjs";
-import { restart } from "../qa-jrn.mjs";
+import { restart } from "../journey-helpers.mjs";
 import { ui, status, visibleTab } from "../journey-work.mjs";
-import { answerSave, sqliteBlock } from "../qa-xfer.mjs";
+import { answerSave, sqliteBlock } from "../transfer-helpers.mjs";
 
 const NAME = "S jrn dev";
 const COPY = "S jrn dev copy";

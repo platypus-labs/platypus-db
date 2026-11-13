@@ -1,6 +1,6 @@
 // The scripts opened or saved last, for the welcome page. Kept in this browser profile.
 
-export interface RecentScript {
+interface RecentScript {
   /** The script file, absolute. */
   path: string;
   /** The connection it was opened or saved on. */

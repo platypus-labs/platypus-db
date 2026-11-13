@@ -8,8 +8,8 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { rows, stubClipboard } from "../qa-grid.mjs";
-import { expand, fill, menu } from "../qa-xfer.mjs";
+import { rows, stubClipboard } from "../grid-helpers.mjs";
+import { expand, fill, menu } from "../transfer-helpers.mjs";
 import { editorText, sqliteConnection, status, visibleTab } from "../query.mjs";
 
 const NAME = "Builder db";

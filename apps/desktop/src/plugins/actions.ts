@@ -15,10 +15,10 @@ import { installedPlugins, onPluginsChanged, reloadPlugins } from "./store";
 import { copyText } from "../ui/copy";
 
 /** The grid rows sent to a plugin at most, as the backend caps them too. */
-export const MAX_GRID_ROWS = 1000;
+const MAX_GRID_ROWS = 1000;
 
 /** Where an outcome goes besides the clipboard and messages. */
-export interface Target {
+interface Target {
   /** Puts the text in the editor. */
   replace?: (text: string) => void;
   /** Opens a new SQL tab with the text. */

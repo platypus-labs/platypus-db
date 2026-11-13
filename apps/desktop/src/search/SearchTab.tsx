@@ -10,7 +10,7 @@ import { t, plural } from "../i18n";
 export type SearchMode = "metadata" | "data";
 
 /** Searches a database: object names, columns and sources, or the text of table rows. */
-export interface SearchTabModel extends TabBase {
+interface SearchTabModel extends TabBase {
   kind: "search";
   mode: SearchMode;
   query: string;

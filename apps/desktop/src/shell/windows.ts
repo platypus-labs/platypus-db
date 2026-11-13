@@ -45,7 +45,7 @@ export function takeLeftWindowTabs(): PersistedTab[] {
   return left;
 }
 
-export interface WindowEvents {
+interface WindowEvents {
   openTab: (request: { kind: TabKindName; connectionId: string; init?: Record<string, unknown> }) => void;
   attach: (saved: PersistedTab) => void;
   closed: (saved: PersistedTab) => void;
@@ -68,7 +68,7 @@ export function useWindowEvents(handlers: WindowEvents) {
   }, []);
 }
 
-export const traySetting = defineSetting<boolean>({
+const traySetting = defineSetting<boolean>({
   key: "appearance.tray",
   section: "Appearance",
   label: "Show an icon in the system tray, for a quick query",

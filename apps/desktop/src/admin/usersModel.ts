@@ -69,7 +69,7 @@ export interface PrivilegeGroup {
 const KIND_ORDER: GrantKind[] = ["server", "database", "schema", "table", "routine", "column"];
 
 /** The object a grant is on, written as its name. */
-export function objectLabel(g: PrivilegeGrant): string {
+function objectLabel(g: PrivilegeGrant): string {
   switch (g.kind) {
     case "server":
       return "*.*";
@@ -104,7 +104,7 @@ export function groupPrivileges(grants: PrivilegeGrant[]): PrivilegeGroup[] {
 }
 
 /** The kinds of object a privilege can be on, in the order to offer them. */
-export const TARGET_ORDER: TargetClass[] = ["server", "database", "schema", "table", "all_tables", "all_routines"];
+const TARGET_ORDER: TargetClass[] = ["server", "database", "schema", "table", "all_tables", "all_routines"];
 
 /** The kinds of object the database has privileges for, in the order to offer them. */
 export function offeredTargets(options: SecurityOptions): TargetClass[] {

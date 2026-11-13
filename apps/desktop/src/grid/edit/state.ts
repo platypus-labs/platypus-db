@@ -21,7 +21,7 @@ export interface EditState {
 export const EMPTY: EditState = { updates: new Map(), inserts: [], deletes: new Set() };
 
 /** A grid row: one of the new rows, or a row of the result. */
-export type RowRef = { insert: number } | { row: number };
+type RowRef = { insert: number } | { row: number };
 
 export function rowRef(state: EditState, gridRow: number): RowRef {
   const n = state.inserts.length;

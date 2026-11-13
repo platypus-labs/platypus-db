@@ -27,7 +27,7 @@ const MAX_CACHED = 20_000;
 export const MAX_VALUE = 16 << 10;
 
 /** What a view needs of the app. */
-export interface GridBackend {
+interface GridBackend {
   /** What a masked value shows. */
   mask: string;
   column(plugin: string, extension: string, columns: PluginGridColumn[], rows: (string | null)[][]): Promise<PluginGridValue[]>;

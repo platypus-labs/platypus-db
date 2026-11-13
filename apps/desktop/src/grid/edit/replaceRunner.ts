@@ -25,7 +25,7 @@ export interface ReplaceRun {
 }
 
 /** A worker silent for this long is stuck on one text. */
-export const STALL_MS = 2000;
+const STALL_MS = 2000;
 
 /** Starts `job` in a worker from `createWorker`; `onProgress` gets the texts done so far. */
 export function runReplace(

@@ -16,7 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { CTRL } from "../cdp.mjs";
-import { pressF2 } from "../qa-grid.mjs";
+import { pressF2 } from "../grid-helpers.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const EXAMPLES = resolve(here, "../../../../examples/plugins");

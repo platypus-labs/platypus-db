@@ -9,13 +9,13 @@ import { connect as tcp } from "node:net";
 import { join } from "node:path";
 import { spawnSync } from "./proc.mjs";
 import { CTRL } from "./cdp.mjs";
-import { editorText, gridTsv, runScript, status, treeRow, visibleTab } from "./qa-sql.mjs";
-import { openData } from "./qa-grid.mjs";
+import { editorText, gridTsv, runScript, status, treeRow, visibleTab } from "./editor-helpers.mjs";
+import { openData } from "./grid-helpers.mjs";
 import { editBar, shownError, table } from "./search-helpers.mjs";
 
 export { deleteRow, discard, dismissError, editBar, editCell, insertRow, save, shownError, table } from "./search-helpers.mjs";
-export { openEditor, runScript, runStatement } from "./qa-sql.mjs";
-export { expand, openData, treeMenu } from "./qa-grid.mjs";
+export { openEditor, runScript, runStatement } from "./editor-helpers.mjs";
+export { expand, openData, treeMenu } from "./grid-helpers.mjs";
 
 export const SERVERS = {
   standalone: {
