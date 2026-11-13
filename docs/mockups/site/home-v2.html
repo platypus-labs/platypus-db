@@ -205,17 +205,17 @@
     /* WIP, optional (PHONE in the script): now and then the platypus checks its phone while a query
        runs, and puts it away at once because the query is already done. */
     /* The phone sits in the arm's layer, under the flipper, so it moves with the arm and the
-       flipper holds it. Canvas units: centred at (752, 505), 50 by 84. */
-    .phone { position: absolute; left: 73.4%; top: 49.3%; width: 5em; height: 8.4em; margin: -4.2em 0 0 -2.5em; border-radius: 1.2em;
-      border: .6em solid var(--acc); background: #0b0d0f; overflow: hidden; opacity: 0; transform: translateY(30%) rotate(-15deg) scale(.7); }
+       flipper holds it. Canvas units: centred at (752, 548), 50 by 84. */
+    .phone { position: absolute; left: 73.4%; top: 53.5%; width: 5em; height: 8.4em; margin: -4.2em 0 0 -2.5em; border-radius: 1.2em;
+      border: .6em solid var(--acc); background: #0b0d0f; overflow: hidden; opacity: 0; transform: translateY(30%) rotate(15deg) scale(.7); }
     .phone::before { content: ""; position: absolute; inset: .7em .5em; border-radius: .25em;
       background: repeating-linear-gradient(180deg, rgba(255, 179, 107, .55) 0 .6em, transparent .6em 1.5em); animation: feed .9s linear infinite; }
     @keyframes feed { to { background-position: 0 -3em; } }
     .mascot.phoning .phone { animation: phone 3.4s both cubic-bezier(.3, .8, .3, 1); }
     .mascot.phoning .head .hop { animation: phone-head 3.4s both ease-in-out; }
     .mascot.phoning .arm .hop { animation: phone-arm 3.4s both ease-in-out; }
-    @keyframes phone { 0% { opacity: 0; transform: translateY(30%) rotate(-15deg) scale(.7); } 12%, 66% { opacity: 1; transform: rotate(-15deg); }
-      70% { opacity: 1; transform: translateY(-10%) rotate(-5deg); } 79% { opacity: 0; transform: translate(70%, 150%) rotate(70deg) scale(.7); } 100% { opacity: 0; } }
+    @keyframes phone { 0% { opacity: 0; transform: translateY(30%) rotate(15deg) scale(.7); } 12%, 66% { opacity: 1; transform: rotate(15deg); }
+      70% { opacity: 1; transform: translateY(-10%) rotate(5deg); } 79% { opacity: 0; transform: translate(70%, 150%) rotate(70deg) scale(.7); } 100% { opacity: 0; } }
     @keyframes phone-head { 0%, 100% { transform: none; } 14%, 64% { transform: rotate(9deg) translateY(1%); }
       70% { transform: rotate(-6deg) translateY(-3%); } 80% { transform: rotate(2deg); } 88% { transform: none; } }
     @keyframes phone-arm { 0%, 100% { transform: none; } 12%, 66% { transform: rotate(-16deg) translateY(-1%); } 72% { transform: rotate(14deg); } 84% { transform: none; } }
