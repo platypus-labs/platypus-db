@@ -72,11 +72,6 @@
     .h-hero { position: relative; z-index: 1; display: flex; flex-direction: column;
       align-items: center; text-align: center; padding: clamp(112px, 14svh, 168px) var(--gutter) 0; }
     .ease { animation: rise .9s both cubic-bezier(.2, .8, .2, 1); }
-    /* The app's status bar, as a pill: the query is done before the page is. */
-    .status { display: inline-flex; align-items: center; gap: 10px; margin: 0 0 26px; padding: 6px 14px 6px 10px; border-radius: 999px;
-      background: var(--card); border: 1px solid var(--line-2); font: 500 13px var(--font-mono); color: var(--mut); }
-    .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(126, 211, 160, .15); }
-    .status b { color: var(--hi); font-weight: 600; }
     .h-hero h1 { margin: 0; color: var(--hi); font-weight: 800; letter-spacing: -.055em; line-height: .92;
       font-size: clamp(50px, min(9vw, 14.5svh), 136px); text-wrap: balance; }
     .h-hero h1 span { display: block; }
@@ -95,7 +90,7 @@
     .dl small { font-weight: 500; opacity: .7; font-size: 14px; }
     .other { color: var(--mut); font-size: 14px; text-decoration: none; }
     .other:hover { color: var(--hi); }
-    .h-hero .s1 { animation-delay: .05s; } .h-hero .s2 { animation-delay: .15s; } .h-hero .s3 { animation-delay: .27s; } .h-hero .s4 { animation-delay: .38s; }
+    .h-hero .s2 { animation-delay: .15s; } .h-hero .s3 { animation-delay: .27s; } .h-hero .s4 { animation-delay: .38s; }
     @keyframes rise { from { opacity: 0; transform: translateY(28px); } }
 
     /* ---- The show: a sticky window that the chapters play in ---- */
@@ -193,14 +188,52 @@
       64%, 76% { transform: translate(0, 0) rotate(90deg); } }
     @keyframes eye-spin { 0%, 64% { transform: none; } 76%, 100% { transform: rotate(360deg); } }
 
+    /* ---- The platypus talks: facts about the sample database, typed out. Outside the mirrored
+       .mascot so that the text reads the right way. ---- */
+    .say { position: absolute; z-index: 3; right: calc(-14% + var(--mascot) * .97); top: calc(var(--mascot) * -0.62);
+      width: max-content; max-width: 300px; padding: 12px 15px; border-radius: 16px 16px 4px 16px;
+      background: var(--hi); color: var(--bg); font-size: 14px; line-height: 1.45; font-weight: 500;
+      box-shadow: 0 14px 40px -10px rgba(0, 0, 0, .7); transform-origin: 100% 100%;
+      opacity: 0; transform: scale(.85) translateY(8px); transition: opacity .25s, transform .3s cubic-bezier(.3, 1.4, .5, 1); pointer-events: none; }
+    .say.on { opacity: 1; transform: none; }
+    .say::after { content: ""; position: absolute; right: -7px; bottom: 6px; border: 8px solid transparent; border-left-color: var(--hi); border-right: 0; }
+    .say small { display: block; margin-bottom: 4px; font: 600 11px var(--font-mono); color: #b0560e; letter-spacing: .03em; text-transform: uppercase; }
+    .say code { font: 600 12.5px var(--font-mono); color: #8a3b00; background: rgba(255, 141, 40, .16); padding: 0 4px; border-radius: 4px; }
+    .say .caret { display: inline-block; width: 7px; height: 1em; margin-left: 1px; vertical-align: -2px; background: var(--acc); animation: caret .8s steps(1) infinite; }
+    @keyframes caret { 50% { opacity: 0; } }
+
+    /* WIP, optional (PHONE in the script): now and then the platypus checks its phone while a query
+       runs, and puts it away at once because the query is already done. */
+    .phone { position: absolute; left: 73%; top: 41%; width: 6.2em; height: 10.5em; margin: -5.25em 0 0 -3.1em; border-radius: 1.5em;
+      border: .75em solid var(--acc); background: #0b0d0f; overflow: hidden; opacity: 0; transform: translateY(60%) rotate(-14deg) scale(.6); }
+    .phone::before { content: ""; position: absolute; inset: .9em .7em; border-radius: .3em;
+      background: repeating-linear-gradient(180deg, rgba(255, 179, 107, .55) 0 .6em, transparent .6em 1.5em); animation: feed .9s linear infinite; }
+    @keyframes feed { to { background-position: 0 -3em; } }
+    .mascot.phoning .phone { animation: phone 3.4s both cubic-bezier(.3, .8, .3, 1); }
+    .mascot.phoning .head .hop { animation: phone-head 3.4s both ease-in-out; }
+    .mascot.phoning .arm .hop { animation: phone-arm 3.4s both ease-in-out; }
+    @keyframes phone { 0% { opacity: 0; transform: translateY(60%) rotate(-14deg) scale(.6); } 12%, 66% { opacity: 1; transform: rotate(-14deg); }
+      70% { opacity: 1; transform: translateY(-6%) rotate(-10deg); } 78% { opacity: 0; transform: translate(-40%, 160%) rotate(-70deg) scale(.7); } 100% { opacity: 0; } }
+    @keyframes phone-head { 0%, 100% { transform: none; } 14%, 64% { transform: rotate(9deg) translateY(1%); }
+      70% { transform: rotate(-6deg) translateY(-3%); } 80% { transform: rotate(2deg); } 88% { transform: none; } }
+    @keyframes phone-arm { 0%, 100% { transform: none; } 12%, 66% { transform: rotate(-38deg) translateY(-2%); } 74% { transform: rotate(10deg); } 84% { transform: none; } }
+
     /* ---- Overview: points to the other pages instead of repeating them ---- */
     .over { position: relative; max-width: var(--page); margin: 0 auto; padding: 120px var(--gutter) 40px; }
     .over > h2, .final h2 { margin: 0 0 40px; color: var(--hi); font-size: clamp(38px, 5vw, 72px); letter-spacing: -.045em; line-height: .98; font-weight: 800; }
     .over > h2 span, .final h2 span { color: var(--mut); }
     .tiles { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+    /* The cards of the current site: a gradient, a warm light in the corner and one under the pointer. */
     .tile { grid-column: span 4; position: relative; display: flex; flex-direction: column; gap: 10px; padding: 28px; min-height: 250px;
-      border-radius: 20px; background: var(--card); border: 1px solid var(--line); text-decoration: none; overflow: hidden; transition: border-color .2s, transform .2s; }
+      border-radius: 20px; border: 1px solid var(--line); background: linear-gradient(180deg, var(--card-2), var(--card) 60%);
+      text-decoration: none; overflow: hidden; transition: border-color .25s ease, transform .25s ease; }
+    .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+      background: radial-gradient(400px 200px at 20% 0%, rgba(255, 141, 40, .07), transparent 70%); }
+    .tile::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s ease;
+      background: radial-gradient(320px circle at var(--x, 50%) var(--y, 50%), rgba(255, 141, 40, .1), transparent 60%); }
+    .tile:hover::before { opacity: 1; }
     .tile:hover { border-color: var(--line-2); transform: translateY(-3px); }
+    .tile > * { position: relative; }
     .tile.w6 { grid-column: span 6; }
     .tile .big { color: var(--hi); font-size: 64px; font-weight: 800; letter-spacing: -.05em; line-height: 1; }
     .tile .big small { font-size: 22px; color: var(--mut); margin-left: 6px; letter-spacing: -.02em; }
@@ -222,10 +255,18 @@
     .final { position: relative; text-align: center; padding: 140px var(--gutter) 120px; }
     .final h2 { margin-bottom: 18px; }
     .final p { margin: 0 0 30px; color: var(--mut); font-size: 18px; }
-    .h-foot { max-width: var(--page); margin: 0 auto; padding: 28px var(--gutter) 40px; border-top: 1px solid var(--line);
-      display: flex; flex-wrap: wrap; gap: 10px 26px; font-size: 14px; color: var(--dim); }
+    .h-foot { border-top: 1px solid var(--line); font-size: 14px; color: var(--mut); }
+    .h-foot .grid { max-width: var(--page); margin: 0 auto; padding: 56px var(--gutter) 40px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; }
+    .h-foot .brand { display: flex; align-items: center; gap: 10px; color: var(--hi); font-weight: 650; text-decoration: none; font-size: 16px; }
+    .h-foot .brand img { width: 26px; height: 26px; }
+    .h-foot p { margin: 12px 0 0; max-width: 300px; }
+    .h-foot h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--hi); letter-spacing: .02em; }
+    .h-foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
     .h-foot a { color: var(--mut); text-decoration: none; } .h-foot a:hover { color: var(--hi); }
-    .h-foot span { margin-right: auto; }
+    .h-foot .bottom { max-width: var(--page); margin: 0 auto; padding: 20px var(--gutter) 40px; border-top: 1px solid var(--line);
+      display: grid; gap: 6px; font-size: 13px; color: var(--dim); }
+    .h-foot .bottom a { color: var(--mut); text-decoration: underline; text-underline-offset: 3px; }
+    @media (max-width: 760px) { .h-foot .grid { grid-template-columns: 1fr 1fr; } .h-foot .grid > div:first-child { grid-column: 1 / -1; } }
 
     /* ---- Mock controls ---- */
     .mockbar { position: fixed; right: 14px; bottom: 14px; z-index: 200; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px;
@@ -273,8 +314,8 @@
 
   <main id="main">
     <section class="h-hero" id="top" aria-labelledby="hero-title" data-rail="Home">
-      <p class="status ease s1"><i></i><span><b>7 rows</b> · took 1 ms</span></p>
-      <h1 id="hero-title" class="ease s2"><span>Sorry, Instagram.</span><span>The query's done.</span></h1>
+      <!-- The script picks one of the titles in TITLES at each load; this one is shown without it. -->
+      <h1 id="hero-title" class="ease s2"><span>Put the phone down.</span><span>The query's done.</span></h1>
       <p class="sub ease s3">PlatypusDB opens in <b>0.7 seconds</b>, weighs <b>20 MiB</b> and talks to <b>twenty databases</b>. No time left to check your phone. <a href="download.html">Free and open source</a>, no account.</p>
       <div class="cta ease s4">
         <a class="dl" id="download-os" href="download.html"><svg class="os" viewBox="0 0 24 24" aria-hidden="true"><use href="#os-windows"/></svg><span>Download for Windows</span><small>20 MiB</small></a>
@@ -285,6 +326,7 @@
     <section class="show" id="show" aria-label="PlatypusDB at work" style="--steps:5">
       <div class="stage"><div class="stage-in">
         <div class="win" id="win">
+          <p class="say" id="say" aria-live="polite"></p>
           <div class="mascot" id="mascot" role="img" aria-label="The PlatypusDB platypus, a stack of database disks, sitting on the window">
             <img class="ref" src="base/img/mark.png" alt="">
             <div class="part tail"><div class="hop"><img class="shape" src="base/img/parts/tail.png" alt=""></div></div>
@@ -294,6 +336,7 @@
             <div class="part body"><div class="hop"><img class="shape" src="base/img/parts/body.png" alt=""></div></div>
             <div class="part head"><div class="hop"><div class="shape"><img src="base/img/parts/head.png" alt=""><span class="eye"><b><i></i><i></i></b></span></div></div></div>
             <div class="part arm"><div class="hop"><img class="shape" src="base/img/parts/arm.png" alt=""></div></div>
+            <div class="part phone-part" style="--z:3"><span class="phone"></span></div>
           </div>
           <div class="frame">
             <div class="bar"><i></i><i></i><i></i><b>PlatypusDB</b></div>
@@ -394,8 +437,42 @@
   </main>
 
   <footer class="h-foot">
-    <span>PlatypusDB · AGPL-3.0</span>
-    <a href="features.html">Features</a><a href="databases.html">Databases</a><a href="compare.html">Compare</a><a href="docs.html">Docs</a><a href="download.html">Download</a>
+    <div class="grid">
+      <div>
+        <a class="brand" href="#top"><img src="base/img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db#readme">README</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/user/FEATURES.md">Features</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/user/SHORTCUTS.md">Shortcuts</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/user/AGENTS.md">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="base/fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
   </footer>
 
   <div class="mockbar" aria-label="Mock controls">
@@ -404,6 +481,9 @@
     <button type="button" data-os="Linux">Linux</button>
     <button type="button" id="b-ref" aria-pressed="false">mark.png</button>
     <button type="button" id="b-hop">hop</button>
+    <button type="button" id="b-title">next title</button>
+    <button type="button" id="b-fact">fact</button>
+    <button type="button" id="b-phone">phone (WIP)</button>
   </div>
 
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -421,7 +501,80 @@
     var chaps = [].slice.call(document.querySelectorAll(".chap")), shots = [].slice.call(document.querySelectorAll("#shots img"));
     var mascot = document.getElementById("mascot"), rail = document.getElementById("rail");
     var still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    var step = -1, ticking = false;
+    var step = -1, ticking = false, pinned = false;
+    var PHONE = true;   // WIP: the rare phone animation; false turns it off.
+
+    // Hero titles: one per load, never the same twice in a row (remembered in this browser only).
+    var TITLES = [
+      ["Put the phone down.", "The query's done."],           // speed of queries
+      ["Blink once.", "It's already open."],                   // 0.7 s to a window
+      ["Twenty databases.", "One tiny window."],               // database support
+      ["20 MiB.", "Not a typo."],                              // download size
+      ["Scroll a million rows", "like it's ten."],             // the grid
+      ["Edit production.", "Keep your job."]                   // safety
+    ];
+    var h1 = document.getElementById("hero-title"), title = 0;
+    function setTitle(i) {
+      title = (i + TITLES.length) % TITLES.length;
+      h1.children[0].textContent = TITLES[title][0];
+      h1.children[1].textContent = TITLES[title][1];
+      try { localStorage.setItem("home-title", title); } catch (e) { /* storage off: fine */ }
+    }
+    (function () {
+      var last = -1;
+      try { last = +localStorage.getItem("home-title"); } catch (e) { /* storage off */ }
+      var i = Math.floor(Math.random() * (TITLES.length - 1));
+      setTitle(i >= last && last >= 0 ? i + 1 : i);
+    })();
+    document.getElementById("b-title").addEventListener("click", function () { setTitle(title + 1); });
+
+    // The platypus talks about the sample database the app offers on its welcome screen
+    // (samples/wildlife.sql): every fact is true of that data.
+    var FACTS = [
+      "Psst. The app ships a <b>sample database</b> about us. Welcome screen, <i>Try the sample database</i>.",
+      "The sample database tags <b>300</b> of us, <code>PT-0001</code> to <code>PT-0300</code>. I'm not in it. I'm the logo.",
+      "<b>15,000</b> sightings in the sample data. Nobody asked for our consent.",
+      "One sighting in six has <code>platypus_id IS NULL</code>. Some of us value our privacy.",
+      "A quarter of us have no nickname. <code>WHERE nickname IS NULL</code>. Ouch.",
+      "Longest river in the sample: the Snowy, <b>352 km</b>. <code>SELECT max(length_km) FROM rivers</code>",
+      "Males weigh 1.5 to 2.2 kg in <code>measurements</code>. I'm not heavy, I'm disk-shaped.",
+      "Five behaviours on record: foraging, swimming, resting, burrowing, grooming. Querying? Working on it.",
+      "12 researchers, <b>2,000</b> surveys. They still haven't found my burrow.",
+      "Run <code>Most seen platypuses.sql</code> on the sample to see who's famous. Spoiler: not me.",
+      "Bills from 50 to 61.9 mm in the sample. Mine is a perfect 61.9."
+    ];
+    var say = document.getElementById("say"), fact = 0, typing = 0, sayTimer = 0;
+    function speak(html, label) {
+      clearInterval(typing); clearTimeout(sayTimer);
+      // Type the text out, tags kept whole.
+      var parts = html.match(/<[^>]+>|[^<]/g), n = 0, head = label ? "<small>" + label + "</small>" : "";
+      say.classList.add("on");
+      if (still) { say.innerHTML = head + html; return; }
+      typing = setInterval(function () {
+        n += 2; while (n < parts.length && parts[n - 1] && parts[n - 1][0] === "<") n++;
+        say.innerHTML = head + parts.slice(0, n).join("") + (n < parts.length ? '<span class="caret"></span>' : "");
+        if (n >= parts.length) clearInterval(typing);
+      }, 24);
+    }
+    function nextFact() {
+      speak(FACTS[fact], "Platypus fact #" + (fact + 1));
+      fact = (fact + 1) % FACTS.length;
+      sayTimer = setTimeout(function () { if (pinned) nextFact(); }, 9000);
+    }
+    function hush() { clearInterval(typing); clearTimeout(sayTimer); say.classList.remove("on"); }
+    document.getElementById("b-fact").addEventListener("click", nextFact);
+
+    // WIP: the phone. Rarely, while the chapters are pinned, or from the mock bar.
+    var phoning = false;
+    function usePhone() {
+      if (still || phoning) return;
+      phoning = true; hush();
+      mascot.classList.add("phoning");
+      setTimeout(function () { speak("Wait, it's done already? <b>7 rows, 1 ms.</b>", "Query finished"); }, 2300);
+      setTimeout(function () { mascot.classList.remove("phoning"); phoning = false; sayTimer = setTimeout(nextFact, 2500); }, 3500);
+    }
+    document.getElementById("b-phone").addEventListener("click", usePhone);
+    if (PHONE) setInterval(function () { if (pinned && !phoning && Math.random() < 0.12) usePhone(); }, 6000);
 
     // Rail: one tick per section and per chapter.
     var marks = [].slice.call(document.querySelectorAll("[data-rail]"));
@@ -456,6 +609,8 @@
       win.parentNode.style.setProperty("--shift", shift + "px");
       win.parentNode.style.setProperty("--enter", enter.toFixed(3));
       var s = Math.min(chaps.length - 1, Math.max(0, Math.floor((y - top) / len)));
+      var nowPinned = y >= top - 1 && y < top + show.offsetHeight - innerHeight * 0.6;
+      if (nowPinned !== pinned) { pinned = nowPinned; if (pinned) { if (!phoning) nextFact(); } else hush(); }
       if (s !== step) {
         if (step >= 0) hop();
         step = s;
@@ -463,7 +618,6 @@
         shots.forEach(function (im, i) { im.classList.toggle("on", i === s); });
       }
       // Rail: the chapter while the stage is pinned, otherwise the last section whose top is past mid-screen.
-      var pinned = y >= top - 1 && y < top + show.offsetHeight - innerHeight;
       var cur = pinned ? chaps[step] : marks.filter(function (el) {
         return chaps.indexOf(el) < 0 && el.getBoundingClientRect().top < innerHeight * 0.5;
       }).pop() || marks[0];
@@ -481,6 +635,14 @@
       // The platypus is mirrored: a move to the right is a move to its left.
       mascot.style.setProperty("--mx", (-Math.max(-1, Math.min(1, mx))).toFixed(3));
       mascot.style.setProperty("--my", Math.max(-1, Math.min(1, my)).toFixed(3));
+    });
+
+    [].slice.call(document.querySelectorAll(".tile")).forEach(function (card) {
+      card.addEventListener("pointermove", function (e) {
+        var r = card.getBoundingClientRect();
+        card.style.setProperty("--x", e.clientX - r.left + "px");
+        card.style.setProperty("--y", e.clientY - r.top + "px");
+      });
     });
 
     // Mock controls.
