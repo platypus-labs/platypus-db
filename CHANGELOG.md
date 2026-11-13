@@ -22,6 +22,10 @@ All notable changes to PlatypusDB are listed here. The format follows
 - **SSH**: russh, the SSH library behind tunnels, is updated to 0.65, which fixes unbounded memory
   use on crafted server packets and two flaws of its agent server (RUSTSEC advisories of russh before
   0.65).
+- **SQL Server**: TLS goes through rustls 0.23, like the other drivers, instead of rustls 0.21 and
+  webpki 0.101, which had security advisories. Trusting the server certificate works as before.
+- **Updates**: the updater plugin no longer pulls zip 4, and the Pageant client (SSH keys from
+  PuTTY's agent) no longer buffers frames without bound.
 
 ### Fixed
 
