@@ -10,11 +10,20 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 - **Agents**: an MCP bundle for Claude Desktop on Windows (`.mcpb`, one click to install) with each
   release, listed in the official MCP Registry as `io.github.platypus-labs/platypus-db`.
+- **Start**: a loading screen while the app starts, in the colors of the last theme, instead of a
+  blank white window: the platypus head turns, dizzy, and comes to. The animation is also in
+  `docs/brand/loading/`, as CSS for web pages and as an animated PNG.
 
 ### Changed
 
 - **Agents**: the Claude Code plugin finds the installed app by itself on Windows and macOS (setting
   `PLATYPUS_DB` is needed only for a portable copy or another folder), and has an icon.
+
+### Fixed
+
+- **Object details**: the section tabs (Columns, Indexes, Foreign keys…) have room on both sides of
+  the label, so the hover background no longer touches the text. Link-style buttons underline on
+  hover instead of showing a tight background.
 
 ## [0.6.1] - 2026-11-13
 
