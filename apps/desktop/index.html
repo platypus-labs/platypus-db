@@ -4,9 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PlatypusDB</title>
+    <!-- Painted before the scripts load, so the window never shows blank white; React replaces
+         #root's content. The animation is docs/brand/loading/platypus-loader.css, copied into public/.
+         No inline style or script elements here: see splash.css. -->
+    <link rel="stylesheet" href="/splash.css" />
+    <link rel="stylesheet" href="/platypus-loader.css" />
+    <script src="/splash.js"></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="splash" role="status" aria-label="Loading PlatypusDB">
+        <div class="platypus-loader">
+          <div class="ghost g4"><img src="/src/assets/brand/loading-head.png" alt="" /></div>
+          <div class="ghost g3"><img src="/src/assets/brand/loading-head.png" alt="" /></div>
+          <div class="ghost g2"><img src="/src/assets/brand/loading-head.png" alt="" /></div>
+          <div class="ghost g1"><img src="/src/assets/brand/loading-head.png" alt="" /></div>
+          <div class="face">
+            <img src="/src/assets/brand/loading-head.png" alt="" />
+            <img class="pupils" src="/src/assets/brand/loading-eyes.png" alt="" />
+            <div class="dizzy left"><img src="/src/assets/brand/loading-rolling-eyes.png" alt="" /></div>
+            <div class="dizzy right"><img src="/src/assets/brand/loading-rolling-eyes.png" alt="" /></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

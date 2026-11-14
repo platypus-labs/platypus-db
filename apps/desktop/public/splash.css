@@ -1,0 +1,7 @@
+/* The page under the loading screen, painted before the scripts load (splash.js sets --bg to the
+   last theme's). A file, not a <style> in index.html: Tauri adds a hash of each <style> of the page
+   to the content security policy, which turns off the 'unsafe-inline' that CodeMirror's own style
+   tags need, and the SQL editor loses its styles. */
+html { background: var(--bg, #ffffff); color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { html { background: var(--bg, #16191b); } }
+#splash { position: fixed; inset: 0; display: grid; place-items: center; }

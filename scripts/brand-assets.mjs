@@ -8,6 +8,8 @@
 //   docs/brand/platypus-db-on-dark.png    mark and wordmark for dark backgrounds (1600×400)
 //   docs/brand/parts/*.png                the mascot in parts, layers of the same 1024 canvas: the
 //                                         animated platypus of the site's home page
+//   docs/brand/loading/*.png              the mark in layers (head, eyes, dizzy eyes), same 1024
+//                                         canvas: the app's loading screen
 //
 //   node scripts/brand-assets.mjs
 //
@@ -54,6 +56,18 @@ try {
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }
+
+// The loading screen's layers (head, eyes, dizzy eyes): 192 px, three times their size on screen.
+const loading = mkdtempSync(join(tmpdir(), "brand-assets-"));
+try {
+  for (const layer of ["head", "eyes", "rolling-eyes"]) {
+    tauriIcon(`docs/brand/loading/${layer}.png`, loading, [192]);
+    copyFileSync(join(loading, "192x192.png"), at(`apps/desktop/src/assets/brand/loading-${layer}.png`));
+  }
+} finally {
+  rmSync(loading, { recursive: true, force: true });
+}
+copy("docs/brand/loading/platypus-loader.css", "apps/desktop/public/platypus-loader.css");
 
 // The mascot in parts: the home page of the site and its mock.
 for (const part of readdirSync(at("docs/brand/parts")).filter((name) => name.endsWith(".png"))) {

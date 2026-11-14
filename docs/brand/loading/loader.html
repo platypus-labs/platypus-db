@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- The loading animation, to copy into a page: link platypus-loader.css and paste the
+     .platypus-loader block, with the image paths of that page. Opened as it is, this file shows it
+     on a light and a dark background.
+     scripts/loading-animation.mjs renders it frame by frame with ?t=<ms>&size=<px>: the animation
+     stopped at that time, on a transparent background. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlatypusDB loading animation</title>
+    <link rel="stylesheet" href="platypus-loader.css" />
+    <style>
+      html, body { margin: 0; height: 100%; }
+      body { display: grid; grid-template-columns: 1fr 1fr; }
+      body > div { display: grid; place-items: center; }
+      .light { background: #ffffff; }
+      .dark { background: #16191b; }
+      html.render, html.render body { background: transparent; }
+      /* At the top left: a headless window is wider than the frame, which is cropped from it. */
+      html.render .platypus-loader { position: fixed; left: 12px; top: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="light">
+      <div class="platypus-loader" role="img" aria-label="PlatypusDB is loading">
+        <div class="ghost g4"><img src="head.png" alt="" /></div>
+        <div class="ghost g3"><img src="head.png" alt="" /></div>
+        <div class="ghost g2"><img src="head.png" alt="" /></div>
+        <div class="ghost g1"><img src="head.png" alt="" /></div>
+        <div class="face">
+          <img src="head.png" alt="" />
+          <img class="pupils" src="eyes.png" alt="" />
+          <div class="dizzy left"><img src="rolling-eyes.png" alt="" /></div>
+          <div class="dizzy right"><img src="rolling-eyes.png" alt="" /></div>
+        </div>
+      </div>
+    </div>
+    <div class="dark"></div>
+    <script>
+      const loader = document.querySelector(".platypus-loader");
+      const params = new URLSearchParams(location.search);
+      if (params.has("t")) {
+        // Render mode: one loader, stopped at t, on a transparent background.
+        document.documentElement.classList.add("render");
+        document.querySelector(".dark").remove();
+        document.querySelector(".light").replaceWith(loader);
+        loader.style.setProperty("--platypus-loader-size", `${params.get("size") ?? 232}px`);
+        const t = Number(params.get("t"));
+        for (const animation of document.getAnimations()) {
+          animation.pause();
+          animation.currentTime = t;
+        }
+      } else {
+        document.querySelector(".dark").append(loader.cloneNode(true));
+      }
+    </script>
+  </body>
+</html>

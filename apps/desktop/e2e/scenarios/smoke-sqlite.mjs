@@ -78,6 +78,11 @@ export default async function (page, { dir }) {
   // Double-click opens an editor.
   await page.clickSel("#e2e-connection", { clickCount: 2 });
   await page.waitFor(`${visibleTab} !== undefined`);
+  // CodeMirror's styles are style tags it adds: a hash in the CSP (an inline <style> in
+  // index.html) blocks them, and the gutter falls above the text.
+  await page.waitFor(`${visibleTab}.querySelector('.cm-gutters') !== null`);
+  assert.equal(await page.eval(`getComputedStyle(${visibleTab}.querySelector('.cm-gutters')).display`), "flex", "the editor has its styles");
+  assert.equal(await page.eval(`document.getElementById('splash')`), null, "the loading screen is gone");
 
   await setEditor(page, "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);\nINSERT INTO t VALUES (1, 'a'), (2, NULL);");
   await page.eval(`[...${visibleTab}.querySelectorAll('.toolbar button')].find(b => b.getAttribute('aria-label') === 'Script').click()`);
