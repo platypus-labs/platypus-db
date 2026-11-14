@@ -64,6 +64,9 @@ async function openUsage(page) {
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
   await page.eval(`[...document.querySelectorAll('.context-menu button')].find(b => b.textContent.startsWith('Open details')).click()`);
   await page.waitFor(`${objectTab} !== undefined`, 10_000);
+  // The section tabs have room inside, so the hover background does not sit on the label.
+  const sides = await page.eval(`(() => { const s = getComputedStyle(${objectTab}.querySelector('.object-sections button')); return [s.paddingLeft, s.paddingRight]; })()`);
+  assert.deepEqual(sides, ["8px", "8px"], "the section tabs have side padding");
   await page.eval(`[...${objectTab}.querySelectorAll('.object-sections button')].find(b => b.textContent.startsWith('Used by')).click()`);
 }
 

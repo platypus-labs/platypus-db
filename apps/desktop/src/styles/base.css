@@ -216,6 +216,12 @@ button.link {
   color: var(--accent);
 }
 
+/* A link underlines on hover, without the button background that would sit tight on the text. */
+button.link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+
 input,
 select,
 textarea {

@@ -123,8 +123,10 @@
   padding: var(--space-6) 0;
 }
 
+/* Flush with the dialog's content: the first label lines up with it, not its tab's padding. */
 .modal.design-dialog .object-sections {
   padding: 0;
+  margin-inline: calc(-1 * var(--space-8));
 }
 
 .erd-table,
