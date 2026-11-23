@@ -480,7 +480,10 @@ mod tests {
             r#"claude mcp add -s user platypus -e "PLATYPUS_DATA_DIR=/tmp/profile" -- "/opt/p/platypus-db" --mcp"#
         );
         assert_eq!(
-            claude_command(&Launch::flatpak("io.github.platypus_labs.platypus-db"), None),
+            claude_command(
+                &Launch::flatpak("io.github.platypus_labs.platypus-db"),
+                None
+            ),
             r#"claude mcp add -s user platypus -- "flatpak" run --command=platypus-db io.github.platypus_labs.platypus-db --mcp"#
         );
         let setup = setup(&Launch::app(path), Some(r"D:\profile"));
