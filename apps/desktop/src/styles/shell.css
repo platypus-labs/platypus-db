@@ -419,16 +419,30 @@
   gap: var(--space-16);
 }
 
-/* The banner art is 4:1 with its own margins: the h1 moves it left by them, so that the
-   platypus lines up with the text below. One version per background. */
-.welcome h1 {
-  margin: 0 0 0 -76px;
+/* The whole platypus, then the wordmark. The mascot's art has its own margins: the h1 moves it
+   left by them, so that the platypus lines up with the text below. */
+.welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0 0 0 -14px;
 }
 
-.welcome .banner {
+.welcome-mascot {
   display: block;
-  width: min(560px, 100%);
-  height: auto;
+  width: 128px;
+  height: 128px;
+}
+
+/* shortcut: the wordmark is cut out of the 1600×400 banner (x 500–1400, y 120–300) shown at
+   35%; a wordmark master of its own would replace these numbers. */
+.welcome .wordmark {
+  display: block;
+  width: 315px;
+  height: 63px;
+  background-size: 560px 140px;
+  background-position: -175px -42px;
+  background-repeat: no-repeat;
 }
 
 :root[data-theme="dark"] .welcome .banner-on-light,

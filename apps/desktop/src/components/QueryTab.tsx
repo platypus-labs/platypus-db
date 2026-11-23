@@ -79,6 +79,7 @@ import { useToolbar } from "./toolbar";
 import { isSlow, slowQuerySeconds } from "../querylog/slow";
 import { ask } from "../ui/ask";
 import { Icon } from "../ui/Icon";
+import { flyInto } from "../ui/fly";
 import { scrollSideways } from "../ui/scroll";
 import { notifyRunEnded } from "../shell/notify";
 import { type Result, ResultPanel, type ResultStatus, describe, fetchAll, fmt, formatMs } from "./ResultPanel";
@@ -2332,7 +2333,9 @@ export function QueryTab({
         <HistoryPanel
           connectionId={connection.id}
           refresh={historyVersion}
-          onInsert={(sql) => editor.current?.insert(sql)}
+          onInsert={(sql, from) =>
+            flyInto(from, main.current?.querySelector(".cm-cursor-primary, .cm-content") ?? null, () => editor.current?.insert(sql))
+          }
           onClose={() => setPanel(null)}
         />
       )}

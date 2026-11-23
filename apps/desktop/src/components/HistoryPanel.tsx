@@ -11,7 +11,8 @@ interface Props {
   connectionId: string;
   /** Bumped after each run so the list picks up new entries. */
   refresh: number;
-  onInsert: (sql: string) => void;
+  /** `from`: the entry, which flies into the editor. */
+  onInsert: (sql: string, from: Element | null) => void;
   onClose: () => void;
 }
 
@@ -92,7 +93,7 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
             key={e.id}
             className={`history-entry ${e.status}`}
             title={e.error ?? t("Double-click to insert into the editor")}
-            onDoubleClick={() => onInsert(e.sql)}
+            onDoubleClick={(ev) => onInsert(e.sql, ev.currentTarget)}
           >
             <pre>{e.sql}</pre>
             <div className="history-meta">
@@ -106,7 +107,7 @@ export function HistoryPanel({ connectionId, refresh, onInsert, onClose }: Props
                 </span>
               )}
               <span className="spacer" />
-              <button className="icon" title={t("Insert into editor")} aria-label={t("Insert into editor")} onClick={() => onInsert(e.sql)}>
+              <button className="icon" title={t("Insert into editor")} aria-label={t("Insert into editor")} onClick={(ev) => onInsert(e.sql, ev.currentTarget.closest(".history-entry"))}>
                 <Icon name="insert" />
               </button>
               <button className="icon" title={t("Delete")} aria-label={t("Delete")} onClick={() => void remove(e.id)}>

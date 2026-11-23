@@ -283,6 +283,70 @@ input[type="radio"]:disabled {
   cursor: default;
 }
 
+/* A yes/no option beside its label reads as a switch: a track whose knob slides to the
+   accent side when on, halfway for a list that is partly chosen. */
+label > input[type="checkbox"],
+.setting input[type="checkbox"] {
+  appearance: none;
+  position: relative;
+  width: 30px;
+  height: 17px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  vertical-align: middle;
+  transition: background-color 0.15s;
+}
+
+label > input[type="checkbox"]::before,
+.setting input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  transition: transform 0.15s;
+}
+
+label > input[type="checkbox"]:checked,
+.setting input[type="checkbox"]:checked {
+  background: var(--accent);
+}
+
+label > input[type="checkbox"]:checked::before,
+.setting input[type="checkbox"]:checked::before {
+  transform: translateX(13px);
+}
+
+label > input[type="checkbox"]:indeterminate::before,
+.setting input[type="checkbox"]:indeterminate::before {
+  transform: translateX(6.5px);
+}
+
+label > input[type="checkbox"]:disabled,
+.setting input[type="checkbox"]:disabled {
+  opacity: 0.5;
+}
+
+label > input[type="checkbox"]:focus-visible,
+.setting input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  label > input[type="checkbox"],
+  label > input[type="checkbox"]::before,
+  .setting input[type="checkbox"],
+  .setting input[type="checkbox"]::before {
+    transition: none;
+  }
+}
+
 input:focus,
 select:focus,
 textarea:focus,

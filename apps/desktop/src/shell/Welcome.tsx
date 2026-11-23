@@ -6,6 +6,7 @@ import { DriverIcon } from "../components/DriverPicker";
 import { typeBadge } from "../connections";
 import bannerOnDark from "../assets/brand/platypus-db-on-dark.png";
 import bannerOnLight from "../assets/brand/platypus-db-on-light.png";
+import mascot from "../assets/brand/platypus-mascot.png";
 import { Icon } from "../ui/Icon";
 import { language, t } from "../i18n";
 import { openScriptFile } from "../scripts/scripts";
@@ -120,9 +121,11 @@ export function Welcome({ empty, version, onNew, onImport, onExport, onOpenFile,
   return (
     <div className="welcome">
       <div className="welcome-intro">
-        <h1>
-          <img className="banner banner-on-light" src={bannerOnLight} alt="PlatypusDB" />
-          <img className="banner banner-on-dark" src={bannerOnDark} alt="PlatypusDB" />
+        <h1 className="welcome-brand">
+          <img className="welcome-mascot" src={mascot} alt="" />
+          {/* The wordmark of the banner, without its head: the whole platypus stands beside it. */}
+          <span className="wordmark banner-on-light" role="img" aria-label="PlatypusDB" style={{ backgroundImage: `url(${bannerOnLight})` }} />
+          <span className="wordmark banner-on-dark" role="img" aria-label="PlatypusDB" style={{ backgroundImage: `url(${bannerOnDark})` }} />
         </h1>
         {empty !== null && (
           <p className="welcome-lead">

@@ -46,12 +46,13 @@ for (const mobile of ["android", "ios"]) rmSync(at(`${icons}/${mobile}`), { recu
 copy(`${icons}/64x64.png`, "apps/desktop/src/assets/brand/platypus-icon.png");
 copy(`${icons}/128x128.png`, "site/img/icon.png", "docs/mockups/site/base/img/icon.png");
 
-// The mascot: full size on the site, 64 px on the app's lock screen.
+// The mascot: full size on the site, 64 px on the app's lock screen, 256 px on its welcome screen.
 copy("docs/brand/logo-only-1024.png", "site/img/mark.png", "docs/mockups/site/base/img/mark.png");
 const scratch = mkdtempSync(join(tmpdir(), "brand-assets-"));
 try {
-  tauriIcon("docs/brand/logo-only-1024.png", scratch, [64]);
+  tauriIcon("docs/brand/logo-only-1024.png", scratch, [64, 256]);
   copyFileSync(join(scratch, "64x64.png"), at("apps/desktop/src/assets/brand/platypus-mark.png"));
+  copyFileSync(join(scratch, "256x256.png"), at("apps/desktop/src/assets/brand/platypus-mascot.png"));
   copy("apps/desktop/src/assets/brand/platypus-mark.png", "docs/mockups/assets/img/platypus-mark.png");
 } finally {
   rmSync(scratch, { recursive: true, force: true });
