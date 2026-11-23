@@ -25,6 +25,10 @@ toml.workspace = true
 uuid.workspace = true
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
+[target.'cfg(windows)'.dependencies]
+# The elevated PowerShell's script (`-EncodedCommand`).
+base64 = "0.22"
+
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }

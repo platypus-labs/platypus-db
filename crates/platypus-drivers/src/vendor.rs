@@ -53,6 +53,10 @@ pub struct VendorPackage {
     /// the app loads itself.
     pub register: Option<Program>,
     pub unregister: Option<Program>,
+    /// A short name the registered ODBC driver gets too. IBM's program names it after its
+    /// folder, which makes names past what Windows' driver manager opens: it lists them,
+    /// but connections fail with `IM002`.
+    pub odbc_alias: Option<String>,
 }
 
 impl VendorPackage {
@@ -135,6 +139,7 @@ fn oracle() -> Option<VendorPackage> {
         library_only: false,
         register: None,
         unregister: None,
+        odbc_alias: None,
     })
 }
 
@@ -163,6 +168,7 @@ fn db2() -> Option<VendorPackage> {
             "clidriver/bin/db2cli.exe",
             &["install", "-cleanup"],
         )),
+        odbc_alias: Some("IBM DB2 ODBC DRIVER - PLATYPUSDB".to_owned()),
     })
 }
 
@@ -220,6 +226,7 @@ fn duckdb() -> Option<VendorPackage> {
         library_only: true,
         register: None,
         unregister: None,
+        odbc_alias: None,
     })
 }
 
@@ -420,19 +427,27 @@ fn package_dir(installed: &Installed, package: &VendorPackage) -> Option<PathBuf
 /// vendor's program. On Windows it runs as administrator: Windows asks the user first
 /// (UAC). Nothing to do for a library the app loads itself.
 pub async fn register(installed: &Installed, package: &VendorPackage) -> Result<(), DriverError> {
-    run_program(installed, package, package.register.as_ref()).await
+    run_program(installed, package, package.register.as_ref(), add_alias).await
 }
 
 /// Unregisters the driver, as administrator like [`register`].
 pub async fn unregister(installed: &Installed, package: &VendorPackage) -> Result<(), DriverError> {
-    run_program(installed, package, package.unregister.as_ref()).await
+    run_program(
+        installed,
+        package,
+        package.unregister.as_ref(),
+        remove_alias,
+    )
+    .await
 }
 
-/// Runs `program` of the installed package as administrator; nothing without one.
+/// Runs `program` of the installed package as administrator, then `alias` on the package's
+/// [`VendorPackage::odbc_alias`]; nothing without a program.
 async fn run_program(
     installed: &Installed,
     package: &VendorPackage,
     program: Option<&Program>,
+    alias: fn(&str, &Path) -> String,
 ) -> Result<(), DriverError> {
     let Some(program) = program else {
         return Ok(());
@@ -440,8 +455,11 @@ async fn run_program(
     let dir = package_dir(installed, package)
         .ok_or_else(|| DriverError::Format("the installed driver has no folder".to_owned()))?;
     let path = dir.join(&program.path);
-    let args = program.args.clone();
-    tokio::task::spawn_blocking(move || run_elevated(&path, &args))
+    let mut script = run_script(&path, &program.args);
+    if let Some(name) = &package.odbc_alias {
+        script.push_str(&alias(name, &dir));
+    }
+    tokio::task::spawn_blocking(move || run_elevated(&path, &script))
         .await
         .map_err(|e| DriverError::Register(e.to_string()))?
 }
@@ -450,30 +468,86 @@ async fn run_program(
 #[cfg(windows)]
 const DECLINED: i32 = 1223;
 
+/// The system's ODBC drivers, in the registry.
+const ODBCINST: &str = r"HKLM:\SOFTWARE\ODBC\ODBCINST.INI";
+
+/// The exit code of a registration that left no driver entry in the package's folder.
+const NO_ENTRY: i32 = 3;
+
 /// `s` as a PowerShell string literal.
-#[cfg(windows)]
 fn ps_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-/// The PowerShell script that runs `program` as administrator from its folder, waits for
-/// it and exits with its code, or with [`DECLINED`] when the UAC prompt is declined.
-#[cfg(windows)]
-fn elevation_script(program: &Path, args: &[String]) -> String {
+/// `path` with Windows separators: package paths join `/`-separated relative ones.
+fn windows_path(path: &Path) -> String {
+    path.to_string_lossy().replace('/', "\\")
+}
+
+/// The PowerShell commands that run `program` from its folder and keep its exit code in
+/// `$code`, which the script exits with.
+fn run_script(program: &Path, args: &[String]) -> String {
     let dir = program.parent().unwrap_or(program);
-    let mut start = format!(
-        "Start-Process -FilePath {} -WorkingDirectory {} -Verb RunAs -Wait -PassThru \
-         -WindowStyle Hidden -ErrorAction Stop",
-        ps_quote(&program.to_string_lossy()),
-        ps_quote(&dir.to_string_lossy())
-    );
-    if !args.is_empty() {
-        let list: Vec<String> = args.iter().map(|a| ps_quote(a)).collect();
-        start.push_str(" -ArgumentList ");
-        start.push_str(&list.join(","));
-    }
+    let args: Vec<String> = args.iter().map(|a| ps_quote(a)).collect();
     format!(
-        "try {{ $p = {start} }} catch {{ $e = $_.Exception; \
+        "$ErrorActionPreference = 'Stop'\nSet-Location -LiteralPath {}\n& {} {}\n\
+         $code = $LASTEXITCODE\n",
+        ps_quote(&windows_path(dir)),
+        ps_quote(&windows_path(program)),
+        args.join(" ")
+    )
+}
+
+/// Registers the driver of the package in `dir` under `name` too: a copy of its entry. Done
+/// even when the vendor's program failed, which a second registration may do; fails (exit
+/// code [`NO_ENTRY`] unless the program's) when no entry points into `dir`.
+fn add_alias(name: &str, dir: &Path) -> String {
+    let dir = format!("{}\\", windows_path(dir).trim_end_matches('\\'));
+    format!(
+        "$base = {base}; $alias = {name}\n\
+         $from = Get-ChildItem -LiteralPath $base | Where-Object {{ $_.PSChildName -ne $alias -and \
+         \"$($_.GetValue('Driver'))\".StartsWith({dir}, [StringComparison]::OrdinalIgnoreCase) }} \
+         | Select-Object -First 1\n\
+         if ($from) {{\n\
+         if (Test-Path -LiteralPath \"$base\\$alias\") {{ Remove-Item -LiteralPath \"$base\\$alias\" -Recurse }}\n\
+         New-Item -Path \"$base\\$alias\" | Out-Null\n\
+         foreach ($v in $from.GetValueNames()) {{ New-ItemProperty -LiteralPath \"$base\\$alias\" \
+         -Name $v -PropertyType $from.GetValueKind($v) \
+         -Value $from.GetValue($v, $null, 'DoNotExpandEnvironmentNames') | Out-Null }}\n\
+         Set-ItemProperty -LiteralPath \"$base\\ODBC Drivers\" -Name $alias -Value 'Installed'\n\
+         $code = 0\n}} elseif (-not $code) {{ $code = {NO_ENTRY} }}\n",
+        base = ps_quote(ODBCINST),
+        name = ps_quote(name),
+        dir = ps_quote(&dir),
+    )
+}
+
+/// Removes the entry [`add_alias`] made.
+fn remove_alias(name: &str, _dir: &Path) -> String {
+    format!(
+        "$base = {base}; $alias = {name}\n\
+         Remove-Item -LiteralPath \"$base\\$alias\" -Recurse -ErrorAction SilentlyContinue\n\
+         Remove-ItemProperty -LiteralPath \"$base\\ODBC Drivers\" -Name $alias -ErrorAction SilentlyContinue\n",
+        base = ps_quote(ODBCINST),
+        name = ps_quote(name),
+    )
+}
+
+/// The PowerShell script that runs `script` in a PowerShell as administrator, waits for it
+/// and exits with its code, or with [`DECLINED`] when the UAC prompt is declined.
+#[cfg(windows)]
+fn elevation_script(script: &str) -> String {
+    use base64::Engine as _;
+    let utf16: Vec<u8> = format!("{script}exit $code\n")
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
+    format!(
+        "try {{ $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru \
+         -WindowStyle Hidden -ErrorAction Stop -ArgumentList \
+         '-NoProfile','-NonInteractive','-EncodedCommand','{encoded}' }} \
+         catch {{ $e = $_.Exception; \
          while ($e.InnerException) {{ $e = $e.InnerException }}; \
          if ($e.NativeErrorCode -eq {DECLINED}) {{ exit {DECLINED} }}; \
          [Console]::Error.WriteLine($_); exit 1 }}; exit $p.ExitCode"
@@ -481,7 +555,7 @@ fn elevation_script(program: &Path, args: &[String]) -> String {
 }
 
 #[cfg(windows)]
-fn run_elevated(program: &Path, args: &[String]) -> Result<(), DriverError> {
+fn run_elevated(program: &Path, script: &str) -> Result<(), DriverError> {
     use std::os::windows::process::CommandExt as _;
     /// No console window for PowerShell.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -493,13 +567,17 @@ fn run_elevated(program: &Path, args: &[String]) -> Result<(), DriverError> {
     }
     let output = std::process::Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command"])
-        .arg(elevation_script(program, args))
+        .arg(elevation_script(script))
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| DriverError::Register(format!("cannot start PowerShell: {e}")))?;
     match output.status.code() {
         Some(0) => Ok(()),
         Some(DECLINED) => Err(DriverError::ElevationDeclined),
+        Some(NO_ENTRY) => Err(DriverError::Register(
+            "the system has no ODBC driver entry pointing into the installed client's folder"
+                .to_owned(),
+        )),
         code => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let name = program
@@ -517,7 +595,7 @@ fn run_elevated(program: &Path, args: &[String]) -> Result<(), DriverError> {
 }
 
 #[cfg(not(windows))]
-fn run_elevated(_program: &Path, _args: &[String]) -> Result<(), DriverError> {
+fn run_elevated(_program: &Path, _script: &str) -> Result<(), DriverError> {
     Err(DriverError::Register(
         "ODBC drivers are registered on Windows only for now".to_owned(),
     ))
@@ -585,6 +663,7 @@ mod tests {
             library_only: false,
             register: register.then(|| program("ic/install.exe", &[])),
             unregister: None,
+            odbc_alias: None,
         }
     }
 
@@ -770,15 +849,25 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn elevation_script_quotes_and_waits() {
-        let script = elevation_script(
-            Path::new(r"C:\Users\O'Brien\drivers\ic\db2cli.exe"),
+        let run = run_script(
+            Path::new(r"C:\Users\O'Brien\drivers\db2/clidriver/bin/db2cli.exe"),
             &["install".to_owned(), "-setup".to_owned()],
         );
-        assert!(script.contains(r"-FilePath 'C:\Users\O''Brien\drivers\ic\db2cli.exe'"));
-        assert!(script.contains(r"-WorkingDirectory 'C:\Users\O''Brien\drivers\ic'"));
+        assert!(
+            run.contains(
+                r"Set-Location -LiteralPath 'C:\Users\O''Brien\drivers\db2\clidriver\bin'"
+            )
+        );
+        assert!(run.contains(
+            r"& 'C:\Users\O''Brien\drivers\db2\clidriver\bin\db2cli.exe' 'install' '-setup'"
+        ));
+        assert!(run.contains("$code = $LASTEXITCODE"));
+        let alias = add_alias("IBM DB2 ODBC DRIVER - PLATYPUSDB", Path::new(r"C:\d\db2"));
+        assert!(alias.contains(r".StartsWith('C:\d\db2\',"), "{alias}");
+        assert!(alias.contains("$alias = 'IBM DB2 ODBC DRIVER - PLATYPUSDB'"));
+        let script = elevation_script(&run);
         assert!(script.contains("-Verb RunAs -Wait"));
-        assert!(script.contains("-ArgumentList 'install','-setup'"));
+        assert!(script.contains("-EncodedCommand"));
         assert!(script.contains("exit 1223"));
-        assert!(!elevation_script(Path::new("C:/a.exe"), &[]).contains("-ArgumentList"));
     }
 }

@@ -218,6 +218,10 @@ fn key_value(s: &str, key: &str) -> Option<String> {
     })
 }
 
+/// The longest driver name taken as one Windows' driver manager opens: it lists longer ones,
+/// but connecting through them fails with `IM002` (65 characters opened, 80 did not).
+pub const MAX_DRIVER_NAME: usize = 64;
+
 /// Why the driver manager found neither the driver nor the data source the connection string
 /// `s` names (ODBC's `IM002`), given the drivers and DSNs the system has.
 #[must_use]
@@ -232,6 +236,14 @@ pub fn not_found_hint(s: &str, drivers: &[&str], dsns: &[&str]) -> String {
     let bits = "PlatypusDB is 64-bit: it sees only the drivers and data sources of the 64-bit \
                 ODBC Data Sources tool, not those set up in the 32-bit one";
     if let Some(driver) = key_value(s, "DRIVER") {
+        if driver.len() > MAX_DRIVER_NAME && drivers.contains(&driver.as_str()) {
+            return format!(
+                "the ODBC driver \"{driver}\" is installed, but its name is too long for \
+                 Windows to open it ({} characters; up to {MAX_DRIVER_NAME} are safe): \
+                 register it under a shorter name",
+                driver.len()
+            );
+        }
         format!(
             "no ODBC driver is named \"{driver}\". Installed drivers: {}. {bits}",
             listed(drivers)
@@ -323,6 +335,9 @@ mod tests {
             "{hint}"
         );
         assert!(not_found_hint("Server=h;", &drivers, &[]).contains("no DRIVER or DSN"));
+        let long = format!("IBM DB2 ODBC DRIVER - {}", "x".repeat(60));
+        let hint = not_found_hint(&format!("DRIVER={long};"), &[&long], &[]);
+        assert!(hint.contains("too long for Windows"), "{hint}");
     }
 
     #[test]

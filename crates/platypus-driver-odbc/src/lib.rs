@@ -47,25 +47,23 @@ pub fn vendor_driver_installed(kind: DriverKind) -> Result<Option<String>> {
     ))
 }
 
-/// The drivers whose library is on disk: an entry left behind by a removed client is still
-/// listed, but the driver manager cannot open it (`IM002`). All of them when no entry names
-/// its library.
+/// The drivers the driver manager can open (else `IM002`): not those left behind by a removed
+/// client, whose library is gone (all are kept when no entry names its library), nor those
+/// whose name is too long, like IBM's when registered from a deep folder.
 fn usable_drivers(system: &system::SystemOdbc) -> Vec<&str> {
-    let on_disk: Vec<&str> = system
+    let paths_known = system.drivers.iter().any(|d| d.path.is_some());
+    system
         .drivers
         .iter()
+        .filter(|d| d.name.len() <= profile::MAX_DRIVER_NAME)
         .filter(|d| {
-            d.path
-                .as_deref()
-                .is_some_and(|p| std::path::Path::new(p).is_file())
+            !paths_known
+                || d.path
+                    .as_deref()
+                    .is_some_and(|p| std::path::Path::new(p).is_file())
         })
         .map(|d| d.name.as_str())
-        .collect();
-    if on_disk.is_empty() && system.drivers.iter().all(|d| d.path.is_none()) {
-        system.driver_names().collect()
-    } else {
-        on_disk
-    }
+        .collect()
 }
 
 #[async_trait]
@@ -112,6 +110,10 @@ mod tests {
                 ),
                 driver("IBM DB2 ODBC DRIVER - IBMDBCL1", Some(&here)),
                 driver("IBM DB2 ODBC DRIVER - OLD", None),
+                driver(
+                    "IBM DB2 ODBC DRIVER - C_Users_p.cislaghi_AppData_Roaming_dev.platypusdb.desktop_drivers_vendor_db2_12.1.4_clidriver",
+                    Some(&here),
+                ),
             ],
             data_sources: Vec::new(),
         };
