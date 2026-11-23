@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-11-23
+
 ### Added
 
 - **Db2**: a Platform choice in the connection form: Db2 for Linux, UNIX and Windows, Db2 for z/OS
