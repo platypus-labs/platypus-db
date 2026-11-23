@@ -18,6 +18,17 @@ in-app updater reads.
    can no longer be updated automatically; a new key means a new public key in the config
    and a manual reinstall for existing users.
 
+   The public key's id is `FC25BBE7A87D6BED`. From 0.6.1 to 0.6.4 the secret held another key
+   (`D1BAB5D0AF84D32E`), so every update failed with "the signature was created with a
+   different key"; 0.6.4's signatures were redone with the right key by hand on 2026-11-23,
+   and the secret replaced. From PowerShell, set the secret with
+   `Get-Content "$env:USERPROFILE\.tauri\platypusdb.key" -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY`
+   (PowerShell has no `<`). After each release, check that a `.sig` was made with that key:
+
+   ```bash
+   gh release download vX.Y.Z -p 'PlatypusDB_X.Y.Z_x64-setup.exe.sig' -O - | python -c "import sys,base64; t=base64.b64decode(sys.stdin.read()).decode().splitlines(); print(base64.b64decode(t[1])[2:10][::-1].hex().upper())"
+   ```
+
 2. **Code signing (optional, recommended).** Without it Windows SmartScreen and macOS
    Gatekeeper warn on first launch.
    - Windows: `WINDOWS_CERTIFICATE` (the `.pfx`, base64) and `WINDOWS_CERTIFICATE_PASSWORD`.
