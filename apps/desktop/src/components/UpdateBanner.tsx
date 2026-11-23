@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { type Update, check } from "@tauri-apps/plugin-updater";
 import { t } from "../i18n";
+import { workbench } from "../workbench";
+
+const CHECK_NOW = "platypus:check-for-updates";
+
+/** Looks for a newer release now (Help › Check for updates): the banner offers it, or a note
+ *  says there is none. */
+export function checkForUpdates() {
+  window.dispatchEvent(new Event(CHECK_NOW));
+}
 
 /** Looks for a newer release once at startup and offers to install it; a portable copy, or
  *  one a package manager installed, only says so, as the installer would not update it. */
@@ -13,6 +22,16 @@ export function UpdateBanner({ portable, packageManager }: { portable: boolean; 
     if (import.meta.env.DEV) return;
     // Offline, or no release published yet: nothing to offer.
     check().then(setUpdate, (e: unknown) => console.info("update check:", e));
+  }, []);
+
+  useEffect(() => {
+    const now = () =>
+      check().then(
+        (found) => (found ? setUpdate(found) : workbench().notify(t("Already up to date"))),
+        (e: unknown) => workbench().notify(t("Update failed: {message}", { message: String(e) })),
+      );
+    window.addEventListener(CHECK_NOW, now);
+    return () => window.removeEventListener(CHECK_NOW, now);
   }, []);
 
   if (!update) return null;

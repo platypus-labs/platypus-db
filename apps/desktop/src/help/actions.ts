@@ -1,4 +1,5 @@
 import { registerAction } from "../actions";
+import { checkForUpdates } from "../components/UpdateBanner";
 import { setStored } from "../settings";
 import { workbench } from "../workbench";
 import { openExternal } from "./external";
@@ -25,3 +26,5 @@ registerAction({
 registerAction({ id: "help.whats_new", scope: "help", title: "What's new", group: "learn", order: 30, run: () => openWhatsNew() });
 
 registerAction({ id: "help.report_bug", scope: "help", title: "Report a bug…", group: "report", order: 40, run: () => openExternal(BUG_REPORTS_URL) });
+
+registerAction({ id: "help.check_updates", scope: "help", title: "Check for updates", group: "report", order: 50, run: () => checkForUpdates() });

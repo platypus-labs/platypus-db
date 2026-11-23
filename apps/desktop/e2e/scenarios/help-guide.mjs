@@ -111,7 +111,7 @@ export default async function (page) {
   // The palette finds the guide by "help" and by its name.
   await openPalette(page, "help");
   const entries = await page.eval(`[...document.querySelectorAll('.palette [role=option] .palette-label')].map(l => l.textContent)`);
-  for (const wanted of ["Help: User guide", "Help: Keyboard shortcuts", "Help: What's new", "Help: Report a bug…"]) {
+  for (const wanted of ["Help: User guide", "Help: Keyboard shortcuts", "Help: What's new", "Help: Report a bug…", "Help: Check for updates"]) {
     assert.ok(entries.includes(wanted), `${wanted} in the palette: ${entries}`);
   }
   await page.key("Escape", "Escape", 27);
@@ -196,7 +196,7 @@ export default async function (page) {
   // The "?" menu of the top bar: the same commands, and what they do.
   await page.eval(`document.querySelector('.help-button').click()`);
   await page.waitFor(`document.querySelector('.context-menu') !== null`);
-  assert.deepEqual(await page.eval(menuEntries), ["User guide", "Keyboard shortcuts", "What's new", "Report a bug…"]);
+  assert.deepEqual(await page.eval(menuEntries), ["User guide", "Keyboard shortcuts", "What's new", "Report a bug…", "Check for updates"]);
   await page.key("Escape", "Escape", 27);
   await page.waitFor(`document.querySelector('.context-menu') === null`);
 
