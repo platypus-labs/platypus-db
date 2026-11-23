@@ -328,6 +328,8 @@ struct JsonObject {
 
 struct JsonMember {
     key: String,
+    /// Where the member's key starts in the text.
+    key_start: usize,
     /// Where the member's value is in the text.
     value: std::ops::Range<usize>,
 }
@@ -422,6 +424,7 @@ fn object_at(text: &str, open: usize) -> Result<JsonObject, String> {
                 skip_value(b, &mut at)?;
                 members.push(JsonMember {
                     key,
+                    key_start: start,
                     value: from..at,
                 });
             }
@@ -567,15 +570,21 @@ pub fn install(
             ),
         )
     })?;
-    let backup = if old.is_some() {
-        // Two installs within a second must not write over the first backup.
-        let mut backup = backup_path(&path, stamp);
+    write(&path, old.is_some(), &new, stamp)
+}
+
+/// Writes `new` over `path`, after a copy of the file as it was (`existed`, named with
+/// `stamp`), else creating its folder.
+fn write(path: &Path, existed: bool, new: &str, stamp: &str) -> CommandResult<Installed> {
+    let backup = if existed {
+        // Two writes within a second must not write over the first backup.
+        let mut backup = backup_path(path, stamp);
         let mut n = 1;
         while backup.exists() {
             n += 1;
-            backup = backup_path(&path, &format!("{stamp}-{n}"));
+            backup = backup_path(path, &format!("{stamp}-{n}"));
         }
-        std::fs::copy(&path, &backup).map_err(|e| io_error(&backup, &e))?;
+        std::fs::copy(path, &backup).map_err(|e| io_error(&backup, &e))?;
         Some(backup.display().to_string())
     } else {
         if let Some(dir) = path.parent() {
@@ -584,13 +593,93 @@ pub fn install(
         None
     };
     // Written beside the file, then moved over it: a crash leaves the old file or the new.
-    let temp = backup_path(&path, "tmp");
+    let temp = backup_path(path, "tmp");
     std::fs::write(&temp, new).map_err(|e| io_error(&temp, &e))?;
-    std::fs::rename(&temp, &path).map_err(|e| io_error(&path, &e))?;
+    std::fs::rename(&temp, path).map_err(|e| io_error(path, &e))?;
     Ok(Installed {
         path: path.display().to_string(),
         backup,
     })
+}
+
+/// `text` without the `platypus` server, everything else as it was (a JSON file byte for
+/// byte, its byte-order mark too); `None` when it has none.
+pub fn without_entry(format: ConfigFormat, text: &str) -> Result<Option<String>, String> {
+    let (bom, body) = split_bom(text);
+    let edited = match format {
+        ConfigFormat::Json => {
+            parse_json(body)?;
+            if body.trim().is_empty() {
+                return Ok(None);
+            }
+            let top = object_at(body, body.len() - body.trim_start().len())?;
+            let Some(servers) = top.members.iter().rev().find(|m| m.key == "mcpServers") else {
+                return Ok(None);
+            };
+            let servers = object_at(body, servers.value.start)?;
+            let Some(at) = servers.members.iter().rposition(|m| m.key == SERVER_NAME) else {
+                return Ok(None);
+            };
+            let m = &servers.members;
+            // The member with the comma before it, else the one after it, else the whole inside.
+            let range = if at > 0 {
+                m[at - 1].value.end..m[at].value.end
+            } else if let Some(next) = m.get(1) {
+                m[0].key_start..next.key_start
+            } else {
+                servers.open + 1..servers.close
+            };
+            let edited = format!("{}{}", &body[..range.start], &body[range.end..]);
+            // Written only as JSON that reads back.
+            serde_json::from_str::<Value>(&edited).map_err(|e| e.to_string())?;
+            edited
+        }
+        ConfigFormat::Toml => {
+            let mut doc: toml_edit::DocumentMut = body.parse().map_err(|e| format!("{e}"))?;
+            let Some(servers) = doc
+                .get_mut("mcp_servers")
+                .and_then(toml_edit::Item::as_table_like_mut)
+            else {
+                return Ok(None);
+            };
+            if servers.remove(SERVER_NAME).is_none() {
+                return Ok(None);
+            }
+            if servers.is_empty() {
+                doc.remove("mcp_servers");
+            }
+            doc.to_string()
+        }
+    };
+    Ok(Some(format!("{bom}{edited}")))
+}
+
+/// Takes PlatypusDB out of client `id`'s file, after a copy of the file as it was (named
+/// with `stamp`). A file that does not read as its format is left alone.
+pub fn remove(id: &str, home: &Path, config: &Path, stamp: &str) -> CommandResult<Installed> {
+    let kind = CLIENTS
+        .iter()
+        .find(|k| k.id == id)
+        .ok_or_else(|| CommandError::new("invalid", format!("unknown agent client `{id}`")))?;
+    let path = (kind.path)(home, config);
+    let old = std::fs::read_to_string(&path).map_err(|e| io_error(&path, &e))?;
+    let new = without_entry(kind.format, &old)
+        .map_err(|e| {
+            CommandError::new(
+                "invalid",
+                format!(
+                    "{} cannot be read, so it was left as it is: {e}",
+                    path.display()
+                ),
+            )
+        })?
+        .ok_or_else(|| {
+            CommandError::new(
+                "not_found",
+                format!("{} has no PlatypusDB server", path.display()),
+            )
+        })?;
+    write(&path, true, &new, stamp)
 }
 
 #[cfg(test)]
@@ -766,6 +855,70 @@ mod tests {
         let codex = listed.iter().find(|c| c.id == "codex").unwrap();
         assert!(!codex.exists);
         assert_eq!(codex.state, InstallState::Missing);
+    }
+
+    #[test]
+    fn removing_keeps_everything_else_as_it_was() {
+        let json = ConfigFormat::Json;
+        // Last of several: the comma before it goes with it.
+        let text = "{\n  \"mcpServers\": {\n    \"git\": {\"command\": \"g\"},\n    \"platypus\": {\"command\": \"p\"}\n  },\n  \"n\": 1E5\n}\n";
+        assert_eq!(
+            without_entry(json, text).unwrap().unwrap(),
+            "{\n  \"mcpServers\": {\n    \"git\": {\"command\": \"g\"}\n  },\n  \"n\": 1E5\n}\n"
+        );
+        // First of several: the comma after it goes.
+        let text = "{\"mcpServers\": {\"platypus\": {\"command\": \"p\"}, \"git\": {}}}";
+        assert_eq!(
+            without_entry(json, text).unwrap().unwrap(),
+            "{\"mcpServers\": {\"git\": {}}}"
+        );
+        // The only one: the object is left empty.
+        let text = "\u{feff}{\"mcpServers\": {\n  \"platypus\": {\"command\": \"p\"}\n}}";
+        assert_eq!(
+            without_entry(json, text).unwrap().unwrap(),
+            "\u{feff}{\"mcpServers\": {}}"
+        );
+        assert_eq!(without_entry(json, "{\"mcpServers\": {}}").unwrap(), None);
+        assert_eq!(without_entry(json, "").unwrap(), None);
+        assert!(without_entry(json, "{broken").is_err());
+
+        let toml = "# mine\n[mcp_servers.git]\ncommand = \"g\"\n\n[mcp_servers.platypus]\ncommand = \"p\"\n";
+        let out = without_entry(ConfigFormat::Toml, toml).unwrap().unwrap();
+        assert_eq!(out, "# mine\n[mcp_servers.git]\ncommand = \"g\"\n");
+        let only = "model = \"x\"\n\n[mcp_servers.platypus]\ncommand = \"p\"\n";
+        let out = without_entry(ConfigFormat::Toml, only).unwrap().unwrap();
+        assert!(
+            !out.contains("mcp_servers") && out.contains("model = \"x\""),
+            "{out}"
+        );
+        assert_eq!(
+            without_entry(ConfigFormat::Toml, "model = 1\n").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn removes_with_a_backup() {
+        let home = tempfile::tempdir().unwrap();
+        let config = home.path().join("config");
+        let cursor = home.path().join(".cursor").join("mcp.json");
+        assert!(
+            remove("cursor", home.path(), &config, "0").is_err(),
+            "no file"
+        );
+        install("cursor", home.path(), &config, &entry(), "1").unwrap();
+        let done = remove("cursor", home.path(), &config, "2").unwrap();
+        assert!(done.backup.unwrap().ends_with("mcp.json.platypus-backup-2"));
+        let listed = list(home.path(), &config, &entry());
+        let state = listed.iter().find(|c| c.id == "cursor").unwrap().state;
+        assert_eq!(state, InstallState::Missing);
+        assert!(
+            remove("cursor", home.path(), &config, "3").is_err(),
+            "nothing left to remove"
+        );
+        std::fs::write(&cursor, "{broken").unwrap();
+        assert!(remove("cursor", home.path(), &config, "4").is_err());
+        assert_eq!(std::fs::read_to_string(&cursor).unwrap(), "{broken");
     }
 
     /// Notepad and Windows PowerShell 5.1 start a UTF-8 file with a byte-order mark.

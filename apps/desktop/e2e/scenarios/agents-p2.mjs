@@ -210,10 +210,22 @@ async function clients(page, dir, shots) {
   const backups = readdirSync(join(home(dir), ".cursor")).filter((f) => f.startsWith("mcp.json.platypus-backup-"));
   assert.equal(backups.length, 1, backups.join());
   assert.equal(readFileSync(join(home(dir), ".cursor", backups[0]), "utf8"), before);
-  assert.equal(await page.eval(`document.querySelector('[data-install="cursor"]').disabled`), true);
+  assert.equal(await page.eval(`document.querySelector('[data-install="cursor"]')`), null, "installed: Remove instead of Install");
 
   await install(page, "codex", true);
   await page.waitFor(`${client("codex")}.dataset.state === 'installed'`);
+
+  // Remove takes the server out after another backup; the client's other servers stay.
+  await page.eval(`document.querySelector('[data-remove="cursor"]').click()`);
+  await page.waitFor(`document.querySelector('#confirm-message') !== null`);
+  assert.match(await page.eval(`document.querySelector('#confirm-message').textContent`), /out of .*mcp\.json\? A copy of the file/);
+  await page.eval(`[...document.querySelectorAll('.modal.confirm button')].find(b => b.textContent === 'Remove').click()`);
+  await page.waitFor(`${client("cursor")}.dataset.state === 'missing'`);
+  const removed = JSON.parse(readFileSync(cursorFile(dir), "utf8"));
+  assert.equal(removed.mcpServers.platypus, undefined);
+  assert.equal(removed.mcpServers.other.command, "npx", "other servers kept");
+  assert.equal(readdirSync(join(home(dir), ".cursor")).filter((f) => f.startsWith("mcp.json.platypus-backup-")).length, 2);
+  assert.equal(await page.eval(`document.querySelector('[data-install="cursor"]').disabled`), false, "installable again");
   const codex = readFileSync(codexFile(dir), "utf8");
   assert.ok(codex.startsWith('# my Codex settings\nmodel = "o3"\n'), codex);
   assert.match(codex, /\[mcp_servers\.platypus\]/);

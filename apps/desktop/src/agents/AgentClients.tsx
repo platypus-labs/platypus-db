@@ -3,7 +3,6 @@ import { api, toCommandError, type AgentClient, type AgentInstallState, type Age
 import { ask } from "../ui/ask";
 import { toast } from "../ui/toast";
 import { msg, t, tNodes } from "../i18n";
-import { Icon } from "../ui/Icon";
 import { ClientLogo } from "./clientLogos";
 import { CopyBlock } from "./CopyBlock";
 
@@ -107,6 +106,27 @@ export function AgentClients() {
     }
   };
 
+  const remove = async (client: AgentClient) => {
+    const message = t("Take the PlatypusDB server out of {path}? A copy of the file as it is now is saved beside it first.", {
+      path: client.path,
+    });
+    if (!(await ask(message, { confirm: t("Remove"), danger: true }))) return;
+    setInstalling(client.id);
+    try {
+      await api.removeAgentClient(client.id);
+      setError(null);
+      setNotice(t("PlatypusDB is out of {client}: restart it to drop the server.", { client: client.name }));
+      toast(t("PlatypusDB is out of {client}: restart it to drop the server.", { client: client.name }));
+      await load();
+    } catch (e) {
+      setNotice(null);
+      setError(toCommandError(e).message);
+      toast(toCommandError(e).message, "error");
+    } finally {
+      setInstalling(null);
+    }
+  };
+
   const shown = clients.find((c) => c.id === chosen);
   const manual = shown && manualText(shown, setup);
   return (
@@ -145,18 +165,32 @@ export function AgentClients() {
                   <span className={`agent-dot ${stateDot(c.state)}`} aria-hidden />
                   {stateLabel(c.state)}
                 </span>
-                <button
-                  type="button"
-                  data-install={c.id}
-                  disabled={done || c.state === "unreadable" || installing !== null}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void install(c);
-                  }}
-                >
-                  {done && <Icon name="commit" size={12} />}
-                  {installing === c.id ? t("Installing…") : done ? t("Done") : c.state === "different" ? t("Update") : t("Install")}
-                </button>
+                {done ? (
+                  <button
+                    type="button"
+                    data-remove={c.id}
+                    disabled={installing !== null}
+                    title={t("Take the PlatypusDB server out of this client's file")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void remove(c);
+                    }}
+                  >
+                    {t("Remove")}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-install={c.id}
+                    disabled={c.state === "unreadable" || installing !== null}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void install(c);
+                    }}
+                  >
+                    {installing === c.id ? t("Installing…") : c.state === "different" ? t("Update") : t("Install")}
+                  </button>
+                )}
               </div>
             </div>
           );

@@ -303,6 +303,16 @@ pub async fn install_agent_client(id: String) -> CommandResult<clients::Installe
     .map_err(|e| CommandError::new("other", e.to_string()))?
 }
 
+/// Takes the server out of client `id`'s file, after a backup of it.
+#[tauri::command]
+pub async fn remove_agent_client(id: String) -> CommandResult<clients::Installed> {
+    let (home, config) = client_dirs()?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    tauri::async_runtime::spawn_blocking(move || clients::remove(&id, &home, &config, &stamp))
+        .await
+        .map_err(|e| CommandError::new("other", e.to_string()))?
+}
+
 /// Calls a page of the Activity view shows at most.
 const CALL_PAGE: usize = 500;
 

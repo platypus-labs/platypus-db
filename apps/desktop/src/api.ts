@@ -2461,6 +2461,7 @@ export const api = {
   staleAgentRegistrations: () => invoke<StaleRegistration[]>("stale_agent_registrations"),
   agentClients: () => invoke<AgentClient[]>("agent_clients"),
   installAgentClient: (id: string) => invoke<InstalledClient>("install_agent_client", { id }),
+  removeAgentClient: (id: string) => invoke<InstalledClient>("remove_agent_client", { id }),
   agentCalls: (query: AgentCallQuery) => invoke<AgentCall[]>("agent_calls", { query }),
   agentSessions: (limit: number) => invoke<AgentSession[]>("agent_sessions", { limit }),
   agentReport: (query: AgentCallQuery) => invoke<AgentReportAgent[]>("agent_report", { query }),

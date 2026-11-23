@@ -58,7 +58,8 @@ PlatypusDB's MCP server: the app itself, started with `--mcp`, which they start 
 Settings → Agents → Setup lists Claude Desktop, Claude Code, Codex, Cursor, Windsurf,
 Antigravity and Gemini CLI with their configuration file and whether PlatypusDB is in it:
 **Install** writes the server there, after asking and after a copy of the file
-(`<file>.platypus-backup-<date>`), keeping the rest of the file as it was. The same entry is
+(`<file>.platypus-backup-<date>`), keeping the rest of the file as it was; once installed,
+**Remove** takes the server out again the same way. The same entry is
 shown to copy by hand, and so are the commands that register the server. Security lists the
 access of each connection. Agents
 registered with `platypus-mcp.exe` by version 0.2 need registering again with these commands:

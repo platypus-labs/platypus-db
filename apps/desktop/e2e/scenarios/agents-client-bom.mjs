@@ -14,7 +14,8 @@ import { CTRL } from "../cdp.mjs";
 import { noMcp } from "../mcp.mjs";
 
 export const skip = noMcp;
-export const ready = "document.querySelector('.topbar-agents') !== null || document.querySelector('.tree-row') !== null || document.body.textContent.length > 50";
+// The shell, not the loading screen: a key pressed before it has nothing to reach.
+export const ready = "document.querySelector('.welcome, .tree-row') !== null";
 
 const home = (dir) => join(dir, "home");
 const cursorFile = (dir) => join(home(dir), ".cursor", "mcp.json");
