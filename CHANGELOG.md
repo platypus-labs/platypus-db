@@ -6,6 +6,15 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-11-23
+
+### Fixed
+
+- **Db2**: connections still failed with `IM002` when the user's folder made the name IBM gives
+  its driver long: Windows lists ODBC drivers with long names (80 characters and more) but cannot
+  open them. The client is now registered under the short name `IBM DB2 ODBC DRIVER - PLATYPUSDB` as
+  well. A client registered by an earlier version is offered again at the next connection.
+
 ## [0.6.5] - 2026-11-23
 
 ### Fixed
@@ -546,7 +555,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/platypus-labs/platypus-db/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/platypus-labs/platypus-db/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/platypus-labs/platypus-db/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/platypus-labs/platypus-db/compare/v0.6.2...v0.6.3
