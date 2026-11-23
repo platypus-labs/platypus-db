@@ -30,7 +30,7 @@ pub fn connection_string(config: &ConnectionConfig) -> Result<String> {
     let found = if config.options.contains_key(profile::DRIVER) {
         None
     } else if profile::is_ibm_i(config) {
-        profile::ibm_i_driver(system::list()?.driver_names())
+        profile::ibm_i_driver(usable_drivers(&system::list()?))
     } else if config.driver.vendor_package().is_some() {
         vendor_driver_installed(config.driver)?
     } else {
@@ -41,7 +41,31 @@ pub fn connection_string(config: &ConnectionConfig) -> Result<String> {
 
 /// Whether the vendor driver `kind` needs is installed in the system.
 pub fn vendor_driver_installed(kind: DriverKind) -> Result<Option<String>> {
-    Ok(profile::vendor_driver(kind, system::list()?.driver_names()))
+    Ok(profile::vendor_driver(
+        kind,
+        usable_drivers(&system::list()?),
+    ))
+}
+
+/// The drivers whose library is on disk: an entry left behind by a removed client is still
+/// listed, but the driver manager cannot open it (`IM002`). All of them when no entry names
+/// its library.
+fn usable_drivers(system: &system::SystemOdbc) -> Vec<&str> {
+    let on_disk: Vec<&str> = system
+        .drivers
+        .iter()
+        .filter(|d| {
+            d.path
+                .as_deref()
+                .is_some_and(|p| std::path::Path::new(p).is_file())
+        })
+        .map(|d| d.name.as_str())
+        .collect();
+    if on_disk.is_empty() && system.drivers.iter().all(|d| d.path.is_none()) {
+        system.driver_names().collect()
+    } else {
+        on_disk
+    }
 }
 
 #[async_trait]
@@ -69,6 +93,35 @@ impl Driver for OdbcDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drivers_left_behind_without_their_library_are_skipped() {
+        let here = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let driver = |name: &str, path: Option<&str>| system::SystemDriver {
+            name: name.to_owned(),
+            path: path.map(str::to_owned),
+        };
+        let system = system::SystemOdbc {
+            drivers: vec![
+                driver(
+                    "IBM DB2 ODBC DRIVER - DB2COPY1",
+                    Some(r"C:\gone\db2cli64.dll"),
+                ),
+                driver("IBM DB2 ODBC DRIVER - IBMDBCL1", Some(&here)),
+                driver("IBM DB2 ODBC DRIVER - OLD", None),
+            ],
+            data_sources: Vec::new(),
+        };
+        assert_eq!(usable_drivers(&system), ["IBM DB2 ODBC DRIVER - IBMDBCL1"]);
+        let unknown = system::SystemOdbc {
+            drivers: vec![driver("A", None), driver("B", None)],
+            data_sources: Vec::new(),
+        };
+        assert_eq!(usable_drivers(&unknown), ["A", "B"]);
+    }
 
     #[test]
     fn generic_connection_string_needs_no_system_lookup() {

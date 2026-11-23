@@ -145,6 +145,20 @@ fn open(
     let connection = environment
         .connect_with_connection_string(connection_string, options)
         .map_err(|e| match odbc_error(e) {
+            // The driver manager's text does not say which name it missed, nor what it has.
+            Error::Database(db) if db.code.as_deref() == Some("IM002") => {
+                let system = crate::system::list().unwrap_or_default();
+                let drivers: Vec<&str> = system.driver_names().collect();
+                let dsns: Vec<&str> = system
+                    .data_sources
+                    .iter()
+                    .map(|d| d.name.as_str())
+                    .collect();
+                Error::Connect(format!(
+                    "{db}: {}",
+                    crate::profile::not_found_hint(connection_string, &drivers, &dsns)
+                ))
+            }
             Error::Database(db) => Error::Connect(db.to_string()),
             other => Error::Connect(other.to_string()),
         })?;

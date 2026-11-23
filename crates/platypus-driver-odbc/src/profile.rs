@@ -205,6 +205,48 @@ fn ibm_i(out: &mut String, config: &ConnectionConfig) -> Result<()> {
     Ok(())
 }
 
+/// The value of `key` in the connection string `s`, without its braces.
+fn key_value(s: &str, key: &str) -> Option<String> {
+    s.split(';').find_map(|pair| {
+        let (k, v) = pair.split_once('=')?;
+        let v = v.trim();
+        let v = v
+            .strip_prefix('{')
+            .and_then(|v| v.strip_suffix('}'))
+            .map_or_else(|| v.to_owned(), |v| v.replace("}}", "}"));
+        (k.trim().eq_ignore_ascii_case(key) && !v.is_empty()).then_some(v)
+    })
+}
+
+/// Why the driver manager found neither the driver nor the data source the connection string
+/// `s` names (ODBC's `IM002`), given the drivers and DSNs the system has.
+#[must_use]
+pub fn not_found_hint(s: &str, drivers: &[&str], dsns: &[&str]) -> String {
+    let listed = |names: &[&str]| {
+        if names.is_empty() {
+            "none".to_owned()
+        } else {
+            names.join(", ")
+        }
+    };
+    let bits = "PlatypusDB is 64-bit: it sees only the drivers and data sources of the 64-bit \
+                ODBC Data Sources tool, not those set up in the 32-bit one";
+    if let Some(driver) = key_value(s, "DRIVER") {
+        format!(
+            "no ODBC driver is named \"{driver}\". Installed drivers: {}. {bits}",
+            listed(drivers)
+        )
+    } else if let Some(dsn) = key_value(s, "DSN") {
+        format!(
+            "no data source is named \"{dsn}\". Data sources: {}. {bits}",
+            listed(dsns)
+        )
+    } else {
+        "the connection string names no DRIVER or DSN: choose one, or write DRIVER={…} in it"
+            .to_owned()
+    }
+}
+
 /// A connection string written by the user (after `DRIVER` when a driver is chosen), or a
 /// DSN; the user and password are added unless already there.
 fn generic(out: &mut String, config: &ConnectionConfig) -> Result<()> {
@@ -264,6 +306,23 @@ mod tests {
         assert!(s.contains("HOSTNAME=127.0.0.1;PORT=40002;"), "{s}");
         c.database.clear();
         assert!(connection_string(&c, Some("x")).is_err());
+    }
+
+    #[test]
+    fn not_found_names_what_is_missing_and_what_is_there() {
+        let drivers = ["IBM DB2 ODBC DRIVER", "SQL Server"];
+        let hint = not_found_hint("DRIVER={DB2 for z/OS};HOSTNAME=h;", &drivers, &[]);
+        assert!(
+            hint.starts_with("no ODBC driver is named \"DB2 for z/OS\""),
+            "{hint}"
+        );
+        assert!(hint.contains("IBM DB2 ODBC DRIVER, SQL Server"), "{hint}");
+        let hint = not_found_hint("dsn=AS400;UID=u;", &drivers, &[]);
+        assert!(
+            hint.starts_with("no data source is named \"AS400\". Data sources: none."),
+            "{hint}"
+        );
+        assert!(not_found_hint("Server=h;", &drivers, &[]).contains("no DRIVER or DSN"));
     }
 
     #[test]

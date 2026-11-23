@@ -6,6 +6,13 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Db2**: connections failed with `IM002` ("Data source name not found") on systems where an
+  older Db2 client had left its ODBC entry behind: only drivers whose library is on disk are used.
+- **ODBC**: an `IM002` error now names the driver or data source that was not found and lists the
+  ones the system has, noting that 32-bit ones are not seen.
+
 ## [0.6.4] - 2026-11-23
 
 ### Added
