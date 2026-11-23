@@ -180,6 +180,53 @@ struct Target<'a> {
     /// Quoted and qualified.
     table: String,
     columns: Vec<Column<'a>>,
+    /// Whether `=` on each column finds the value written in it (see [`compares_exactly`]).
+    exact: Vec<bool>,
+}
+
+/// Whether `column = literal` finds a value just written as that literal: not for JSON, XML,
+/// large objects, arrays or maps, which have no `=` (PostgreSQL's `json`, Oracle's `CLOB`, SQL
+/// Server's `text`) or compare otherwise than written, nor for single-precision floats, which
+/// store 0.1 as another number than the literal reads.
+fn compares_exactly(kind: ValueKind, declared: Option<&str>, dialect: Dialect) -> bool {
+    match kind {
+        ValueKind::Bool
+        | ValueKind::Integer
+        | ValueKind::Decimal
+        | ValueKind::Float
+        | ValueKind::Date
+        | ValueKind::Time
+        | ValueKind::Timestamp { .. } => true,
+        ValueKind::Real | ValueKind::Binary | ValueKind::Map => false,
+        ValueKind::Text => {
+            let declared = declared.unwrap_or_default().to_ascii_lowercase();
+            declared.contains("char")
+                || declared.contains("uuid")
+                || declared == "string"
+                || (declared == "text" && !matches!(dialect, Dialect::SqlServer | Dialect::Oracle))
+        }
+    }
+}
+
+/// The key that finds an updated row for its undo, with the values the update wrote: the undo
+/// then changes the row only while it still holds them, and a change made since is left alone.
+/// Columns set to their default, or that do not compare exactly, are not checked.
+fn undo_guard<'v>(
+    mut key: Vec<(usize, Option<&'v str>)>,
+    set: &[(usize, Value<'v>)],
+    exact: &[bool],
+) -> Vec<(usize, Option<&'v str>)> {
+    for &(c, value) in set {
+        if key.iter().any(|&(k, _)| k == c) || !exact.get(c).copied().unwrap_or(false) {
+            continue;
+        }
+        match value {
+            Value::Text(t) => key.push((c, Some(t))),
+            Value::Null => key.push((c, None)),
+            Value::Default => {}
+        }
+    }
+    key
 }
 
 impl Target<'_> {
@@ -231,6 +278,7 @@ fn delete_statements(
         dialect,
         ref table,
         ref columns,
+        ..
     } = *target;
     let texts = changes
         .deletes
@@ -273,6 +321,7 @@ fn update_statements(
         dialect,
         ref table,
         ref columns,
+        ref exact,
     } = *target;
     let mut statements = Vec::with_capacity(changes.updates.len());
     let mut undo = Vec::with_capacity(changes.updates.len());
@@ -294,7 +343,10 @@ fn update_statements(
             .collect();
         let back: Vec<_> = set.iter().map(|&(c, _)| (c, loaded(&text, c))).collect();
         undo.push(match saved_key {
-            Some(k) => dml::update(dialect, table, columns, &back, &k).map_err(invalid)?,
+            Some(k) => {
+                let guard = undo_guard(k, &set, exact);
+                dml::update(dialect, table, columns, &back, &guard).map_err(invalid)?
+            }
             None => format!(
                 "-- Row {}: its key was set to its default, restore the row by hand",
                 update.row + 1
@@ -313,6 +365,7 @@ fn insert_statements(
         dialect,
         ref table,
         ref columns,
+        ..
     } = *target;
     let rows: Vec<_> = changes.inserts.iter().map(|v| pairs(v)).collect();
     let statements = dml::inserts(dialect, table, columns, &rows).map_err(invalid)?;
@@ -352,12 +405,31 @@ fn script(state: &AppState, job: &Job, changes: &Changes) -> CommandResult<Scrip
                 default: changes.defaults.get(i).and_then(Option::as_deref),
             })
             .collect(),
+        exact: schema
+            .fields()
+            .iter()
+            .map(|f| {
+                let declared = f.metadata().get(platypus_core::META_DB_TYPE);
+                compares_exactly(
+                    ValueKind::of_field(f, dialect),
+                    declared.map(String::as_str),
+                    dialect,
+                )
+            })
+            .collect(),
     };
     let (mut statements, undo_deletes) = delete_statements(&target, job, changes)?;
     let (updates, undo_updates) = update_statements(&target, job, changes)?;
     let (inserts, mut undo) = insert_statements(&target, changes)?;
     statements.extend(updates);
     statements.extend(inserts);
+    if !undo_updates.is_empty() {
+        undo.push(
+            "-- Each UPDATE puts a row back only if it still holds what was saved: \
+             0 rows means it was changed since, and that change is kept"
+                .to_owned(),
+        );
+    }
     undo.extend(undo_updates);
     undo.extend(undo_deletes);
     Ok(Script { statements, undo })
@@ -898,6 +970,73 @@ mod tests {
         );
         assert_eq!(mongo_saved(&ran(&[1, 1, 0], None)), 2);
         assert_eq!(mongo_saved(&ran(&[0], None)), 0);
+    }
+
+    #[test]
+    fn the_undo_of_an_update_matches_the_row_only_while_it_holds_the_saved_values() {
+        use platypus_sql::dml::Value;
+
+        use super::undo_guard;
+        // Column 0 is the key, 1 and 2 compare exactly, 3 is JSON.
+        let exact = [true, true, true, false];
+        let set = [
+            (1, Value::Text("Asti")),
+            (2, Value::Null),
+            (3, Value::Text("{}")),
+        ];
+        assert_eq!(
+            undo_guard(vec![(0, Some("2"))], &set, &exact),
+            [(0, Some("2")), (1, Some("Asti")), (2, None)]
+        );
+        // A key column the update changed is in the key already, with its saved value; a
+        // column set to its default has no known value to check.
+        let set = [(0, Value::Text("7")), (1, Value::Default)];
+        assert_eq!(
+            undo_guard(vec![(0, Some("7"))], &set, &exact),
+            [(0, Some("7"))]
+        );
+    }
+
+    #[test]
+    fn only_columns_whose_equality_finds_the_written_value_are_checked() {
+        use platypus_sql::Dialect;
+        use platypus_sql::dml::ValueKind;
+
+        use super::compares_exactly;
+        let pg = Dialect::Postgres;
+        assert!(compares_exactly(ValueKind::Integer, Some("int4"), pg));
+        assert!(compares_exactly(
+            ValueKind::Timestamp { zoned: true },
+            None,
+            pg
+        ));
+        assert!(compares_exactly(
+            ValueKind::Text,
+            Some("character varying"),
+            pg
+        ));
+        assert!(compares_exactly(ValueKind::Text, Some("text"), pg));
+        assert!(compares_exactly(ValueKind::Text, Some("uuid"), pg));
+        assert!(!compares_exactly(ValueKind::Text, Some("json"), pg));
+        assert!(!compares_exactly(ValueKind::Text, Some("integer[]"), pg));
+        assert!(!compares_exactly(ValueKind::Real, Some("float4"), pg));
+        assert!(!compares_exactly(ValueKind::Binary, Some("bytea"), pg));
+        assert!(!compares_exactly(
+            ValueKind::Text,
+            Some("text"),
+            Dialect::SqlServer
+        ));
+        assert!(compares_exactly(
+            ValueKind::Text,
+            Some("nvarchar"),
+            Dialect::SqlServer
+        ));
+        assert!(!compares_exactly(
+            ValueKind::Text,
+            Some("CLOB"),
+            Dialect::Oracle
+        ));
+        assert!(!compares_exactly(ValueKind::Text, None, Dialect::Sqlite));
     }
 
     #[test]

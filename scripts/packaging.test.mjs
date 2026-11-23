@@ -35,7 +35,8 @@ test("generate fills every manifest when every installer is there, and skips the
   const all = values("1.2.3", "2026-11-01", dir);
   const out = mkdtempSync(join(tmpdir(), "packaging-out-"));
   const done = generate(templates, out, all);
-  assert.deepEqual(done.map((d) => d.manager).sort(), ["aur", "flatpak", "homebrew", "winget"]);
+  assert.deepEqual(done.map((d) => d.manager).sort(), ["aur", "flatpak", "homebrew", "mcp", "winget"]);
+  assert.ok(readFileSync(join(out, "mcp", "Dockerfile"), "utf8").includes(all.URL_LINUX_DEB));
   assert.ok(done.every((d) => !d.missing), JSON.stringify(done));
   const cask = readFileSync(join(out, "homebrew", "platypusdb.rb"), "utf8");
   assert.match(cask, /version "1\.2\.3"/);

@@ -1805,6 +1805,18 @@ export function QueryTab({
   /** The shown result's rows still come from the server, slowly: Cancel stops them. */
   const readingRows = shown?.status.kind === "rows" && !shown.status.finished && shown.fetching && shown.jobId !== null;
   const exportBusy = exporting !== null && exporting.done === null;
+  // Export sits on the result's own bar, where the eye is, not in the status bar.
+  const exportButton = rowsResult && !exportBusy && !keepsDataIn(saved) && (
+    <button type="button" onClick={() => setExportOpen(true)}>
+      {t("Export…")}
+    </button>
+  );
+  const resultBar = (resultSql.bar || exportButton) && (
+    <>
+      {resultSql.bar}
+      {exportButton}
+    </>
+  );
   // The sensitive columns of the result to export: the viewer's marks, else the rules.
   const sensitiveIn = useSensitive(rowsResult ? notesScope(rowsResult) : null);
   const exportSensitive = rowsResult?.columns?.filter(sensitiveIn).map((c) => c.name) ?? [];
@@ -1845,7 +1857,8 @@ export function QueryTab({
                 gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(0, 1fr) auto`,
                 gridTemplateColumns: `minmax(120px, ${editorWidth}px) 6px minmax(240px, 1fr)`,
               }
-            : { gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px 1fr auto` }
+            : // The results keep room for their bar, the column names and a few rows, whatever the editor's height.
+              { gridTemplateRows: `auto ${viewerBar ? "auto " : ""}minmax(60px, ${editorHeight}px) 6px minmax(140px, 1fr) auto` }
         }
       >
         <div className="toolbar">
@@ -2105,7 +2118,8 @@ export function QueryTab({
             size={editorHeight}
             fallback={200}
             min={60}
-            max={() => window.innerHeight - 200}
+            // The tab's own height, not the window's: the results keep their 140 px and the bars.
+            max={() => (main.current?.clientHeight ?? window.innerHeight) - 240}
             direction="row"
             onResize={setEditorHeight}
             label={t("Resize the editor")}
@@ -2188,7 +2202,7 @@ export function QueryTab({
                 result={view}
                 source={{ connection: resultSql.connection ?? connection, sql: view.sql, jobId: view.jobId, table: null }}
                 chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
-                toolbar={resultSql.bar}
+                toolbar={resultBar}
               />
             )}
             {!tab.terminal && shown && !resultSql.output && (
@@ -2215,7 +2229,7 @@ export function QueryTab({
                 errorAt={errorAt && { line: errorAt.line, column: errorAt.column, goTo: () => editor.current?.setError(errorAt) }}
                 notes={notesScope(shown)}
                 chart={shownChart?.shown ? { config: shownChart.config, onConfig: (config) => setChart({ config }) } : null}
-                toolbar={resultSql.bar}
+                toolbar={resultBar}
               />
             )}
           </div>
@@ -2249,11 +2263,6 @@ export function QueryTab({
               {view.status.kind === "rows" && !view.status.finished && (
                 <button className="link" onClick={() => fetchAll(view)}>
                   {t("Fetch all")}
-                </button>
-              )}
-              {rowsResult && !exportBusy && !keepsDataIn(saved) && (
-                <button className="link" onClick={() => setExportOpen(true)}>
-                  {t("Export…")}
                 </button>
               )}
               {compare.kept(view) && (

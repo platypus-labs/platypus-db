@@ -58,7 +58,7 @@ export default async function (page, { dir }) {
   // A query export, as JSON, saved from the export dialog of a result.
   await openEditor(page, SHOP);
   assert.match(await runScript(page, "SELECT id, name FROM customers ORDER BY id"), /2 rows/);
-  await page.eval(`[...${visibleTab}.querySelectorAll('button.link')].find(b => b.textContent === 'Export…').click()`);
+  await page.eval(`[...${visibleTab}.querySelectorAll('button')].find(b => b.textContent === 'Export…').click()`);
   const exporting = exportDialog("Export result");
   await page.waitFor(`${exporting} !== null`);
   await page.eval(fill(`${exporting}.querySelector('select')`, "json"));

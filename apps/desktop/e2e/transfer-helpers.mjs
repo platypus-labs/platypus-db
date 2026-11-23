@@ -374,7 +374,7 @@ export async function answerSave(page, path, command = "plugin:dialog|save") {
 /** Exports the visible tab's result to `path` through the Export dialog. `options`: format
  *  value, delimiter, header, table, source ("query" or "loaded"). Returns the status text. */
 export async function exportResult(page, path, { format = "csv", delimiter, header, table, source = "query", compression } = {}) {
-  await page.eval(`[...${visibleTab}.querySelectorAll('button.link')].find(b => b.textContent === 'Export…').click()`);
+  await page.eval(`[...${visibleTab}.querySelectorAll('button')].find(b => b.textContent === 'Export…').click()`);
   const dialog = `[...document.querySelectorAll('.modal')].find(m => m.querySelector('h2')?.textContent === 'Export result')`;
   await page.waitFor(`${dialog} !== undefined`);
   await page.eval(fill(`${dialog}.querySelector('select')`, format));

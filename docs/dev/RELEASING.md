@@ -112,8 +112,9 @@ from a download), Linux needs the system's WebKitGTK.
 
 Glama (glama.ai/mcp/servers), which the awesome-mcp-servers list requires, checks a server by
 starting it in a container: `packaging/mcp/Dockerfile` installs the release's `.deb` and runs
-`platypus-db --mcp`, which works without a display. Bump its `VERSION` with each release and paste
-it in the server's Dockerfile settings on Glama. Check it locally with an `initialize` and a
+`platypus-db --mcp`, which works without a display. It is a template like the package managers'
+manifests: `node scripts/packaging.mjs` writes it with the release's `.deb`; paste the new URL
+in the server's Dockerfile settings on Glama. Check it locally with an `initialize` and a
 `tools/list` request on stdin to `docker run -i --rm platypusdb-mcp`.
 
 ## Package managers

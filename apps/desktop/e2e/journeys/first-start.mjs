@@ -191,7 +191,7 @@ export async function exportCsv(j, path) {
   const { page } = j;
   await answerSave(page, path);
   const title = j.t("Export result");
-  const button = `[...${visibleTab}.querySelectorAll('button.link')].find(b => b.textContent === ${JSON.stringify(j.t("Export…"))})`;
+  const button = `[...${visibleTab}.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(j.t("Export…"))})`;
   if (j.kb) await tabTo(j, `el.tagName === 'BUTTON' && el.textContent === ${JSON.stringify(j.t("Export…"))}`, 120);
   else await page.eval(`${button}.click()`);
   if (j.kb) await keys.enter(page);

@@ -59,7 +59,7 @@ async function focusCell(page, col) {
 
 /** Exports the data viewer's loaded rows to `path`, the sensitive columns as `choice`. */
 async function exportAs(page, path, choice) {
-  await page.eval(`[...${dataTab}.querySelectorAll('button.link')].find(b => b.textContent === 'Export…').click()`);
+  await page.eval(`[...${dataTab}.querySelectorAll('button')].find(b => b.textContent === 'Export…').click()`);
   await page.waitFor(`${exportDialog} !== undefined`);
   const field = `${exportDialog}.querySelector('[data-field="sensitive"]')`;
   await page.waitFor(`${field} != null`, 5000);

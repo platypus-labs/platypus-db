@@ -396,7 +396,8 @@ to the package manager.
 - Change cells in place (double-click, `F2` or just type), set NULL or the default, add,
   duplicate and delete rows. Changes stay highlighted until you save.
 - **Preview the SQL** and save it all or nothing; in manual-commit mode the changes join the
-  open transaction. Every save leaves an undo script that puts the rows back.
+  open transaction. Every save leaves an undo script that puts the rows back; its `UPDATE`s
+  change a row only while it still holds the saved values, so a change made since is kept.
 - Tables need a primary key or a unique key on non-null columns, or a virtual key you pick;
   otherwise the grid says why it is read-only. Results of a query that reads one table edit
   the same way, with computed columns read-only.
