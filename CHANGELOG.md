@@ -6,6 +6,21 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-11-23
+
+### Changed
+
+- **Results**: Export… is a button on the result's bar, next to Pivot…, instead of a link in the
+  status bar.
+
+### Fixed
+
+- **Data editing**: the undo script of a save puts a row back only while it still holds the saved
+  values; a row someone changed since is left as it is (the `UPDATE` changes 0 rows). Reported on
+  Reddit.
+- **Editor**: dragging the editor's handle all the way down no longer pushes the results under the
+  status bar; they keep room for their bar, the column names and a few rows.
+
 ## [0.6.2] - 2026-11-14
 
 ### Added
