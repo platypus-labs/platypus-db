@@ -51,7 +51,7 @@ const bucketFields = (bucket = {}) => ({
 /** Opens Export…, picks the format and compression, "To a bucket" with `fields`, and exports to
  *  `path`. Returns the status text (the outcome) once it shows. */
 async function exportToBucket(page, path, { format = "csv", compression, fields = bucketFields(), keepForm = false } = {}) {
-  await page.eval(`[...${visibleTab}.querySelectorAll('button.link')].find(b => b.textContent === 'Export…').click()`);
+  await page.eval(`[...${visibleTab}.querySelectorAll('button')].find(b => b.textContent === 'Export…').click()`);
   await page.waitFor(`${dialog} !== undefined`);
   await page.eval(fill(`${dialog}.querySelector('select')`, format));
   if (compression) await page.eval(fill(field("Compression"), compression));

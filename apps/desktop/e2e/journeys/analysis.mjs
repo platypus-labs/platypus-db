@@ -52,7 +52,7 @@ export function setup({ dir }, mode) {
 /** Picks the Export dialog's format and exports the visible tab's loaded rows to `path`. */
 async function exportTo(page, u, format, path) {
   const t = u.t;
-  await u.tap(`[...${visibleTab}.querySelectorAll('button.link')].find(b => b.textContent === ${JSON.stringify(t("Export…"))})`);
+  await u.tap(`[...${visibleTab}.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(t("Export…"))})`);
   const dialog = `document.querySelector('.modal.export-result')`;
   await page.waitFor(`${dialog} !== null`);
   await u.italian("Export dialog");

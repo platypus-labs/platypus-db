@@ -55,6 +55,20 @@ export default async function (page) {
   await page.waitFor(`${tab}.querySelector('.statusbar span')?.textContent.includes('1 row')`, 20_000);
   assert.equal(await page.eval(resultTabs), 0);
 
+  // Report of 23 November: Export… sits on the result's bar, and the editor dragged as far down
+  // as it goes leaves the results their room above the status bar instead of running under it.
+  assert.equal(await page.eval(`[...${tab}.querySelectorAll('.edit-bar button')].some(b => b.textContent === 'Export…')`), true, "Export… on the result's bar");
+  assert.equal(await page.eval(`[...${tab}.querySelectorAll('.statusbar button')].some(b => b.textContent === 'Export…')`), false, "not in the status bar");
+  const handle = await page.rect(`.query-tab:not([style*='none']) .panel-resizer.row`);
+  const [hx, hy] = [handle.x + handle.w / 2, handle.y + handle.h / 2];
+  await page.mouse("mouseMoved", hx, hy);
+  await page.mouse("mousePressed", hx, hy);
+  for (let i = 1; i <= 5; i++) await page.mouse("mouseMoved", hx, hy + i * 400);
+  await page.mouse("mouseReleased", hx, hy + 2000);
+  const room = await page.eval(`(() => { const r = ${tab}.querySelector('.results').getBoundingClientRect(); const s = ${tab}.querySelector('.statusbar').getBoundingClientRect(); return { height: Math.round(r.height), overlap: Math.round(r.bottom - s.top) }; })()`);
+  assert.ok(room.overlap <= 1, `the results end above the status bar: ${JSON.stringify(room)}`);
+  assert.ok(room.height >= 139, `the results keep their room: ${JSON.stringify(room)}`);
+
   // The connection dialog: Appearance, Safety and Projects are on one page.
   await editConnection(page, NAME);
   await page.eval(`[...document.querySelectorAll('.connection-dialog .dialog-tabs [role=tab]')].find(t => t.textContent === 'Appearance and safety').click()`);

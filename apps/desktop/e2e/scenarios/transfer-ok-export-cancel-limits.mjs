@@ -26,7 +26,7 @@ export default async function (page, { dir }) {
   assert.deepEqual(readdirSync(out), ["vars.csv"]);
 
   await runScript(page, "SELECT g, md5(g::text) AS h, repeat('x', 200) AS pad FROM generate_series(1, 3000000) g");
-  await page.eval(`[...${visibleTab}.querySelectorAll('button.link')].find(b => b.textContent === 'Export…').click()`);
+  await page.eval(`[...${visibleTab}.querySelectorAll('button')].find(b => b.textContent === 'Export…').click()`);
   const dialog = `[...document.querySelectorAll('.modal')].find(m => m.querySelector('h2')?.textContent === 'Export result')`;
   await page.waitFor(`${dialog} !== undefined`);
   await answerSave(page, join(out, "long.csv"));
