@@ -1863,6 +1863,7 @@ const de: Record<string, string> = {
   "In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.": "Im Transaktionsmodus kann jede Transaktion eine andere Serversitzung erhalten: Anweisungen laufen unbenannt, wie es PgBouncer, Supavisor und der Pooler von Neon benötigen.",
   "None or session mode": "Keiner oder Sitzungsmodus",
   "Transaction mode (PgBouncer, Supavisor, Neon)": "Transaktionsmodus (PgBouncer, Supavisor, Neon)",
+  "Platform": "Plattform",
   "This is {service}'s pooler in transaction mode.": "Dies ist der Pooler von {service} im Transaktionsmodus.",
   "Use transaction mode": "Transaktionsmodus verwenden",
   // Grid: conditional formatting (group B)

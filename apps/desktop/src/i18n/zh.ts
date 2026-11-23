@@ -1863,6 +1863,7 @@ const zh: Record<string, string> = {
   "In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.": "在事务模式下，每个事务可能使用不同的服务器会话：语句以未命名方式运行，这是 PgBouncer、Supavisor 和 Neon 连接池所要求的。",
   "None or session mode": "无或会话模式",
   "Transaction mode (PgBouncer, Supavisor, Neon)": "事务模式（PgBouncer、Supavisor、Neon）",
+  "Platform": "平台",
   "This is {service}'s pooler in transaction mode.": "这是 {service} 的事务模式连接池。",
   "Use transaction mode": "使用事务模式",
   // Grid: conditional formatting (group B)

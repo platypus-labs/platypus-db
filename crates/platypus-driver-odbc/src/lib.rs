@@ -24,12 +24,14 @@ pub use connection::OdbcConnection;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OdbcDriver;
 
-/// The connection string that opens `config`, with Db2's vendor driver found among the
-/// system's drivers unless the connection names one.
+/// The connection string that opens `config`, with Db2's vendor driver (IBM i Access's for
+/// Db2 for IBM i) found among the system's drivers unless the connection names one.
 pub fn connection_string(config: &ConnectionConfig) -> Result<String> {
-    let found = if config.driver.vendor_package().is_some()
-        && !config.options.contains_key(profile::DRIVER)
-    {
+    let found = if config.options.contains_key(profile::DRIVER) {
+        None
+    } else if profile::is_ibm_i(config) {
+        profile::ibm_i_driver(system::list()?.driver_names())
+    } else if config.driver.vendor_package().is_some() {
         vendor_driver_installed(config.driver)?
     } else {
         None
