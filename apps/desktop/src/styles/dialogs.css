@@ -1854,6 +1854,8 @@ button.primary.danger:hover:not(:disabled) {
 .client-foot {
   grid-column: 1 / -1;
   display: flex;
+  /* A long state ("Installed, with another command") goes above the button, not under it. */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-8);
   margin-top: var(--space-10);
@@ -3034,4 +3036,72 @@ label.multi-run-row:hover {
 .palette li > svg {
   flex: none;
   color: var(--fg-muted);
+}
+
+/* Pivot: the row fields as chips to switch on, the rest two a row. */
+.pivot-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.pivot-rows {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.pivot-rows legend {
+  margin-bottom: var(--space-6);
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--fg-strong);
+}
+
+.pivot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  max-height: 160px;
+  overflow: auto;
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+}
+
+.pivot-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-10);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pivot-chip:hover {
+  border-color: var(--accent);
+}
+
+.pivot-chip:has(> input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--fg-strong);
+}
+
+.pivot-chip:has(> input:focus-visible) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* The chip is the switch: its box stays for the keyboard and screen readers only. */
+.pivot-chip > input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }

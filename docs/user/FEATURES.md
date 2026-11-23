@@ -872,7 +872,8 @@ through the MCP server.
 - **Help**: the *?* in the top bar (and the command palette, typing "help") opens the user guide,
   which comes with the app and works offline, with an index, links between its pages and the
   screenshots; the keyboard shortcuts; *What's new*, the changelog of the running version; and
-  *Report a bug*, which opens the issue page in the browser. A small *?* in the connection form,
+  *Report a bug*, which opens the issue page in the browser; *Check for updates* looks for a newer
+  version at once (it is also checked at each start). A small *?* in the connection form,
   Settings › Agents and Settings › Safety opens the guide at the page about it. The guide is in
   English.
 - **Settings** (`Ctrl+,`) show one section at a time, in tabs, and open again on the last one.

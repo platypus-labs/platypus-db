@@ -1710,6 +1710,9 @@ const de: Record<string, string> = {
   "Not installed": "Nicht installiert",
   "Write the PlatypusDB server in {path}? A copy of the file as it is now is saved beside it first.": "Den PlatypusDB-Server in {path} eintragen? Zuvor wird daneben eine Kopie der Datei im aktuellen Zustand gespeichert.",
   "Create {path} with the PlatypusDB server?": "{path} mit dem PlatypusDB-Server erstellen?",
+  "Take the PlatypusDB server out of {path}? A copy of the file as it is now is saved beside it first.": "Den PlatypusDB-Server aus {path} entfernen? Vorher wird daneben eine Kopie der Datei in ihrem jetzigen Zustand gespeichert.",
+  "PlatypusDB is out of {client}: restart it to drop the server.": "PlatypusDB ist aus {client} entfernt: Starte es neu, damit der Server wegfällt.",
+  "Take the PlatypusDB server out of this client's file": "Den PlatypusDB-Server aus der Datei dieses Clients entfernen",
   "PlatypusDB is in {client}: restart it to load the server. Backup: {backup}": "PlatypusDB ist in {client}: neu starten, um den Server zu laden. Sicherung: {backup}",
   "PlatypusDB is in {client}: restart it to load the server.": "PlatypusDB ist in {client}: neu starten, um den Server zu laden.",
   "Configuration file": "Konfigurationsdatei",
@@ -1863,6 +1866,7 @@ const de: Record<string, string> = {
   "In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.": "Im Transaktionsmodus kann jede Transaktion eine andere Serversitzung erhalten: Anweisungen laufen unbenannt, wie es PgBouncer, Supavisor und der Pooler von Neon benötigen.",
   "None or session mode": "Keiner oder Sitzungsmodus",
   "Transaction mode (PgBouncer, Supavisor, Neon)": "Transaktionsmodus (PgBouncer, Supavisor, Neon)",
+  "Platform": "Plattform",
   "This is {service}'s pooler in transaction mode.": "Dies ist der Pooler von {service} im Transaktionsmodus.",
   "Use transaction mode": "Transaktionsmodus verwenden",
   // Grid: conditional formatting (group B)

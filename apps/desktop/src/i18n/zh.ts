@@ -1710,6 +1710,9 @@ const zh: Record<string, string> = {
   "Not installed": "未安装",
   "Write the PlatypusDB server in {path}? A copy of the file as it is now is saved beside it first.": "将 PlatypusDB 服务器写入 {path}？会先在旁边保存一份该文件当前状态的副本。",
   "Create {path} with the PlatypusDB server?": "创建包含 PlatypusDB 服务器的 {path}？",
+  "Take the PlatypusDB server out of {path}? A copy of the file as it is now is saved beside it first.": "要从 {path} 中移除 PlatypusDB 服务器吗？会先在旁边保存一份该文件当前内容的副本。",
+  "PlatypusDB is out of {client}: restart it to drop the server.": "PlatypusDB 已从 {client} 中移除：重启它以卸载该服务器。",
+  "Take the PlatypusDB server out of this client's file": "从此客户端的文件中移除 PlatypusDB 服务器",
   "PlatypusDB is in {client}: restart it to load the server. Backup: {backup}": "PlatypusDB 已添加到 {client}：请重启以加载服务器。备份：{backup}",
   "PlatypusDB is in {client}: restart it to load the server.": "PlatypusDB 已添加到 {client}：请重启以加载服务器。",
   "Configuration file": "配置文件",
@@ -1863,6 +1866,7 @@ const zh: Record<string, string> = {
   "In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.": "在事务模式下，每个事务可能使用不同的服务器会话：语句以未命名方式运行，这是 PgBouncer、Supavisor 和 Neon 连接池所要求的。",
   "None or session mode": "无或会话模式",
   "Transaction mode (PgBouncer, Supavisor, Neon)": "事务模式（PgBouncer、Supavisor、Neon）",
+  "Platform": "平台",
   "This is {service}'s pooler in transaction mode.": "这是 {service} 的事务模式连接池。",
   "Use transaction mode": "使用事务模式",
   // Grid: conditional formatting (group B)

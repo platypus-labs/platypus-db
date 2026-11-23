@@ -1710,6 +1710,9 @@ const pt: Record<string, string> = {
   "Not installed": "Não instalado",
   "Write the PlatypusDB server in {path}? A copy of the file as it is now is saved beside it first.": "Gravar o servidor do PlatypusDB em {path}? Antes, uma cópia do arquivo como está agora é salva ao lado dele.",
   "Create {path} with the PlatypusDB server?": "Criar {path} com o servidor do PlatypusDB?",
+  "Take the PlatypusDB server out of {path}? A copy of the file as it is now is saved beside it first.": "Retirar o servidor do PlatypusDB de {path}? Antes, uma cópia do arquivo como está agora é salva ao lado.",
+  "PlatypusDB is out of {client}: restart it to drop the server.": "O PlatypusDB saiu de {client}: reinicie-o para que deixe de carregar o servidor.",
+  "Take the PlatypusDB server out of this client's file": "Retirar o servidor do PlatypusDB do arquivo deste cliente",
   "PlatypusDB is in {client}: restart it to load the server. Backup: {backup}": "O PlatypusDB está no {client}: reinicie-o para carregar o servidor. Backup: {backup}",
   "PlatypusDB is in {client}: restart it to load the server.": "O PlatypusDB está no {client}: reinicie-o para carregar o servidor.",
   "Configuration file": "Arquivo de configuração",
@@ -1863,6 +1866,7 @@ const pt: Record<string, string> = {
   "In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.": "No transaction mode, cada transação pode receber outra sessão do servidor: as instruções são executadas sem nome, como o PgBouncer, o Supavisor e o pooler do Neon exigem.",
   "None or session mode": "Nenhum ou session mode",
   "Transaction mode (PgBouncer, Supavisor, Neon)": "Transaction mode (PgBouncer, Supavisor, Neon)",
+  "Platform": "Plataforma",
   "This is {service}'s pooler in transaction mode.": "Este é o pooler do {service} em transaction mode.",
   "Use transaction mode": "Usar transaction mode",
   // Grid: conditional formatting (group B)

@@ -6,6 +6,25 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Db2**: a Platform choice in the connection form: Db2 for Linux, UNIX and Windows, Db2 for z/OS
+  (port 446, the location as the database) and Db2 for IBM i (through IBM i Access's ODBC driver).
+- **Agents**: Remove takes PlatypusDB out of a client it was installed in (Claude, Codex, Cursor…),
+  after a copy of its file, as Install does.
+- **Help**: Check for updates, which offers a newer version or says there is none.
+
+### Changed
+
+- **Look**: yes/no options are switches instead of check boxes.
+- **Welcome screen**: the whole platypus stands beside the name, instead of its head.
+- **Pivot**: a tidier form: the row fields as chips to switch on, the other choices two a row.
+- **History**: Insert into editor carries the statement into the editor with a short animation.
+
+### Fixed
+
+- **Agents**: a long install state no longer runs into the button on a client's card.
+
 ## [0.6.3] - 2026-11-23
 
 ### Changed

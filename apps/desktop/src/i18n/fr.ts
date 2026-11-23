@@ -1710,6 +1710,9 @@ const fr: Record<string, string> = {
   "Not installed": "Non installé",
   "Write the PlatypusDB server in {path}? A copy of the file as it is now is saved beside it first.": "Écrire le serveur PlatypusDB dans {path} ? Une copie du fichier dans son état actuel est d'abord enregistrée à côté.",
   "Create {path} with the PlatypusDB server?": "Créer {path} avec le serveur PlatypusDB ?",
+  "Take the PlatypusDB server out of {path}? A copy of the file as it is now is saved beside it first.": "Retirer le serveur PlatypusDB de {path} ? Une copie du fichier dans son état actuel est d'abord enregistrée à côté.",
+  "PlatypusDB is out of {client}: restart it to drop the server.": "PlatypusDB est retiré de {client} : redémarrez-le pour qu'il ne charge plus le serveur.",
+  "Take the PlatypusDB server out of this client's file": "Retirer le serveur PlatypusDB du fichier de ce client",
   "PlatypusDB is in {client}: restart it to load the server. Backup: {backup}": "PlatypusDB est dans {client} : redémarrez-le pour charger le serveur. Sauvegarde : {backup}",
   "PlatypusDB is in {client}: restart it to load the server.": "PlatypusDB est dans {client} : redémarrez-le pour charger le serveur.",
   "Configuration file": "Fichier de configuration",
@@ -1863,6 +1866,7 @@ const fr: Record<string, string> = {
   "In transaction mode each transaction may get another server session: statements run unnamed, as PgBouncer, Supavisor and Neon's pooler need.": "En transaction mode, chaque transaction peut obtenir une autre session du serveur : les instructions s'exécutent sans nom, comme l'exigent PgBouncer, Supavisor et le pooler de Neon.",
   "None or session mode": "Aucun ou session mode",
   "Transaction mode (PgBouncer, Supavisor, Neon)": "Transaction mode (PgBouncer, Supavisor, Neon)",
+  "Platform": "Plateforme",
   "This is {service}'s pooler in transaction mode.": "C'est le pooler de {service} en transaction mode.",
   "Use transaction mode": "Utiliser le transaction mode",
   // Grid: conditional formatting (group B)

@@ -10,6 +10,15 @@ pub const DRIVER: &str = "driver";
 pub const DSN: &str = "dsn";
 /// The `options` key of a connection string written by the user, used as it is.
 pub const CONNECTION_STRING: &str = "connection_string";
+/// The `options` key of the platform a Db2 server runs on: `zos`, `ibmi`, or Db2 for Linux,
+/// Unix and Windows (LUW) when absent.
+pub const DB2_PLATFORM: &str = "db2_platform";
+
+/// Whether `config` is Db2 for IBM i, which IBM i Access's own ODBC driver reaches.
+#[must_use]
+pub fn is_ibm_i(config: &ConnectionConfig) -> bool {
+    config.driver == DriverKind::Db2 && option(config, DB2_PLATFORM) == Some("ibmi")
+}
 
 fn option<'a>(config: &'a ConnectionConfig, key: &str) -> Option<&'a str> {
     config
@@ -78,11 +87,42 @@ pub fn vendor_driver<'a>(
         .map(str::to_owned)
 }
 
+/// IBM i Access's ODBC driver among the system's (`installed`): its current name first, then
+/// the older iSeries Access and Client Access ones.
+#[must_use]
+pub fn ibm_i_driver<'a>(installed: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let installed: Vec<&str> = installed.into_iter().collect();
+    [
+        "IBM I ACCESS ODBC",
+        "ISERIES ACCESS ODBC",
+        "CLIENT ACCESS ODBC",
+    ]
+    .iter()
+    .find_map(|p| {
+        installed
+            .iter()
+            .find(|n| n.to_ascii_uppercase().starts_with(p))
+    })
+    .map(|n| (*n).to_owned())
+}
+
 /// The connection string that opens `config`. `driver` is the ODBC driver to name for Db2,
 /// found in the system unless the connection names one.
 pub fn connection_string(config: &ConnectionConfig, driver: Option<&str>) -> Result<String> {
     let mut out = String::new();
     match config.driver {
+        DriverKind::Db2 if is_ibm_i(config) => {
+            let driver = option(config, DRIVER).or(driver).ok_or_else(|| {
+                Error::Config(
+                    "Db2 for IBM i needs IBM's \"IBM i Access ODBC Driver\" (IBM i Access Client \
+                     Solutions): install it, or name the driver in the connection's options"
+                        .to_owned(),
+                )
+            })?;
+            push(&mut out, "DRIVER", driver);
+            ibm_i(&mut out, config)?;
+            push_login(&mut out, config);
+        }
         DriverKind::Db2 => {
             let driver = option(config, DRIVER)
                 .or(driver)
@@ -119,8 +159,14 @@ fn db2(out: &mut String, config: &ConnectionConfig) -> Result<()> {
         push(out, "HOSTNAME", &addr.ip().to_string());
         push(out, "PORT", &addr.port().to_string());
     } else {
+        // Db2 for z/OS listens on DRDA's port; `DATABASE` is then its location name.
+        let port = if option(config, DB2_PLATFORM) == Some("zos") {
+            446
+        } else {
+            50000
+        };
         push(out, "HOSTNAME", host);
-        push(out, "PORT", &config.port.unwrap_or(50000).to_string());
+        push(out, "PORT", &config.port.unwrap_or(port).to_string());
     }
     push(out, "PROTOCOL", "TCPIP");
     if !matches!(config.ssl_mode, SslMode::Disable | SslMode::Prefer) {
@@ -128,6 +174,33 @@ fn db2(out: &mut String, config: &ConnectionConfig) -> Result<()> {
         if let Some(ca) = &config.ssl_root_cert {
             push(out, "SSLServerCertificate", &ca.to_string_lossy());
         }
+    }
+    Ok(())
+}
+
+/// Db2 for IBM i: the system's name, the database as the default library, TLS unless disabled
+/// or merely preferred. The driver opens several of the server's ports, which one SSH tunnel
+/// does not carry.
+fn ibm_i(out: &mut String, config: &ConnectionConfig) -> Result<()> {
+    if config.connect_addr.is_some() {
+        return Err(Error::Config(
+            "Db2 for IBM i cannot go through an SSH tunnel: its driver opens several of the \
+             server's ports"
+                .to_owned(),
+        ));
+    }
+    let host = config.host.trim();
+    if host.is_empty() {
+        return Err(Error::Config(
+            "the IBM i system name is required".to_owned(),
+        ));
+    }
+    push(out, "SYSTEM", host);
+    if !config.database.trim().is_empty() {
+        push(out, "DBQ", config.database.trim());
+    }
+    if !matches!(config.ssl_mode, SslMode::Disable | SslMode::Prefer) {
+        push(out, "SSL", "1");
     }
     Ok(())
 }
@@ -252,6 +325,76 @@ mod tests {
             vendor_driver(DriverKind::Db2, installed[..2].iter().copied()),
             None
         );
+    }
+
+    #[test]
+    fn db2_for_zos_defaults_to_the_drda_port() {
+        let mut c = config(DriverKind::Db2);
+        c.host = "mainframe".to_owned();
+        c.database = "DSNLOC1".to_owned();
+        c.ssl_mode = SslMode::Disable;
+        c.port = None;
+        c.options.insert(DB2_PLATFORM.to_owned(), "zos".to_owned());
+        let s = connection_string(&c, Some("IBM DB2 ODBC DRIVER")).unwrap();
+        assert!(
+            s.contains("DATABASE=DSNLOC1;HOSTNAME=mainframe;PORT=446;"),
+            "{s}"
+        );
+        c.port = Some(5021);
+        let s = connection_string(&c, Some("IBM DB2 ODBC DRIVER")).unwrap();
+        assert!(s.contains("PORT=5021;"), "{s}");
+        assert!(!is_ibm_i(&c));
+    }
+
+    #[test]
+    fn db2_for_ibm_i_uses_ibm_i_access() {
+        let mut c = config(DriverKind::Db2);
+        c.password = Some(Secret::new("pw"));
+        c.host = "as400.local".to_owned();
+        c.ssl_mode = SslMode::Prefer;
+        c.options.insert(DB2_PLATFORM.to_owned(), "ibmi".to_owned());
+        assert!(is_ibm_i(&c));
+        // The IBM CLI driver found for Db2 LUW does not open IBM i.
+        assert!(connection_string(&c, None).is_err());
+        assert_eq!(
+            connection_string(&c, Some("IBM i Access ODBC Driver")).unwrap(),
+            "DRIVER=IBM i Access ODBC Driver;SYSTEM=as400.local;UID=scott;PWD=pw;"
+        );
+        c.database = "MYLIB".to_owned();
+        c.ssl_mode = SslMode::Require;
+        let s = connection_string(&c, Some("IBM i Access ODBC Driver")).unwrap();
+        assert!(s.contains("SYSTEM=as400.local;DBQ=MYLIB;SSL=1;"), "{s}");
+        // A driver named in the options wins.
+        c.options
+            .insert(DRIVER.to_owned(), "iSeries Access ODBC Driver".to_owned());
+        let s = connection_string(&c, Some("IBM i Access ODBC Driver")).unwrap();
+        assert!(s.starts_with("DRIVER=iSeries Access ODBC Driver;"), "{s}");
+        c.connect_addr = Some("127.0.0.1:40002".parse().unwrap());
+        assert!(connection_string(&c, None).is_err(), "no SSH tunnel");
+        c.connect_addr = None;
+        c.host.clear();
+        assert!(connection_string(&c, None).is_err());
+        // The platform is Db2's only.
+        c.driver = DriverKind::Odbc;
+        assert!(!is_ibm_i(&c));
+    }
+
+    #[test]
+    fn finds_ibm_i_access_drivers() {
+        let installed = [
+            "IBM DB2 ODBC DRIVER - IBMDBCL1",
+            "iSeries Access ODBC Driver",
+            "IBM i Access ODBC Driver",
+        ];
+        assert_eq!(
+            ibm_i_driver(installed).as_deref(),
+            Some("IBM i Access ODBC Driver")
+        );
+        assert_eq!(
+            ibm_i_driver(["Client Access ODBC Driver (32-bit)"]).as_deref(),
+            Some("Client Access ODBC Driver (32-bit)")
+        );
+        assert_eq!(ibm_i_driver(installed[..1].iter().copied()), None);
     }
 
     #[test]

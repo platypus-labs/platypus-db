@@ -65,71 +65,75 @@ export function PivotDialog({
         <p className="muted small">
           {t("Groups the loaded rows by the row fields, with the values of the column field across, and writes the query in the SQL field, where it can be edited.")}
         </p>
-        <fieldset aria-label={t("Row fields")}>
+        <fieldset className="pivot-rows" aria-label={t("Row fields")}>
           <legend>{t("Row fields")}</legend>
-          {columns.map((c, i) =>
-            c.name === settings.column ? null : (
-              <label key={i} className="check">
-                <input
-                  type="checkbox"
-                  checked={settings.rows.includes(c.name)}
-                  onChange={(e) => set({ rows: e.target.checked ? [...settings.rows, c.name] : settings.rows.filter((n) => n !== c.name) })}
-                />
-                {c.name}
-              </label>
-            ),
-          )}
+          <div className="pivot-chips">
+            {columns.map((c, i) =>
+              c.name === settings.column ? null : (
+                <label key={i} className="pivot-chip">
+                  <input
+                    type="checkbox"
+                    checked={settings.rows.includes(c.name)}
+                    onChange={(e) => set({ rows: e.target.checked ? [...settings.rows, c.name] : settings.rows.filter((n) => n !== c.name) })}
+                  />
+                  {c.name}
+                </label>
+              ),
+            )}
+          </div>
         </fieldset>
-        <label>
-          {t("Column field")}
-          <select
-            aria-label={t("Column field")}
-            value={settings.column ?? ""}
-            // A field is down or across, not both.
-            onChange={(e) => set({ column: e.target.value || null, rows: settings.rows.filter((n) => n !== e.target.value) })}
-          >
-            <option value="">{t("(none)")}</option>
-            {columns.map((c, i) => (
-              <option key={i} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {t("Value")}
-          <select aria-label={t("Value")} value={settings.value ?? ""} onChange={(e) => set({ value: e.target.value || null })}>
-            <option value="">{t("(count the rows)")}</option>
-            {columns.map((c, i) => (
-              <option key={i} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {t("Aggregate")}
-          <select aria-label={t("Aggregate")} disabled={!settings.value} title={settings.value ? undefined : t("Counting the rows needs no aggregate")} value={settings.aggregate} onChange={(e) => set({ aggregate: e.target.value as PivotAggregate })}>
-            {aggregatesFor(value).map((a) => (
-              <option key={a} value={a}>
-                {t(AGGREGATE_LABELS[a])}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="field-grid">
+          <label className="field">
+            <span>{t("Column field")}</span>
+            <select
+              aria-label={t("Column field")}
+              value={settings.column ?? ""}
+              // A field is down or across, not both.
+              onChange={(e) => set({ column: e.target.value || null, rows: settings.rows.filter((n) => n !== e.target.value) })}
+            >
+              <option value="">{t("(none)")}</option>
+              {columns.map((c, i) => (
+                <option key={i} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>{t("Sort")}</span>
+            <select aria-label={t("Sort")} value={byValue ? settings.sort : settings.sort.startsWith("value") ? "keys" : settings.sort} onChange={(e) => set({ sort: e.target.value as PivotSort })}>
+              {(Object.keys(SORT_LABELS) as PivotSort[]).map((k) => (
+                <option key={k} value={k} disabled={k.startsWith("value") && !byValue}>
+                  {t(SORT_LABELS[k])}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>{t("Value")}</span>
+            <select aria-label={t("Value")} value={settings.value ?? ""} onChange={(e) => set({ value: e.target.value || null })}>
+              <option value="">{t("(count the rows)")}</option>
+              {columns.map((c, i) => (
+                <option key={i} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>{t("Aggregate")}</span>
+            <select aria-label={t("Aggregate")} disabled={!settings.value} title={settings.value ? undefined : t("Counting the rows needs no aggregate")} value={settings.aggregate} onChange={(e) => set({ aggregate: e.target.value as PivotAggregate })}>
+              {aggregatesFor(value).map((a) => (
+                <option key={a} value={a}>
+                  {t(AGGREGATE_LABELS[a])}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <label className="check">
           <input type="checkbox" checked={settings.totals} onChange={(e) => set({ totals: e.target.checked })} />
           {t("Totals")}
-        </label>
-        <label>
-          {t("Sort")}
-          <select aria-label={t("Sort")} value={byValue ? settings.sort : settings.sort.startsWith("value") ? "keys" : settings.sort} onChange={(e) => set({ sort: e.target.value as PivotSort })}>
-            {(Object.keys(SORT_LABELS) as PivotSort[]).map((k) => (
-              <option key={k} value={k} disabled={k.startsWith("value") && !byValue}>
-                {t(SORT_LABELS[k])}
-              </option>
-            ))}
-          </select>
         </label>
         <div className="actions">
           <span className="spacer" />

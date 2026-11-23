@@ -975,6 +975,31 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       </select>
                     </label>
                   )}
+                  {conn.driver === "db2" && (
+                    <label className="field">
+                      <span>{t("Platform")}</span>
+                      <select
+                        value={conn.options?.db2_platform ?? ""}
+                        data-field="db2_platform"
+                        onChange={(e) => {
+                          const platform = e.target.value;
+                          // z/OS listens on DRDA's 446; IBM i's driver picks its own ports.
+                          const portOf = (p: string) => (p === "zos" ? 446 : p === "ibmi" ? null : DEFAULT_PORTS.db2);
+                          setConn((c) => {
+                            const options = { ...c.options };
+                            if (platform) options.db2_platform = platform;
+                            else delete options.db2_platform;
+                            const was = portOf(c.options?.db2_platform ?? "");
+                            return { ...c, options, port: c.port === was || c.port === null ? portOf(platform) : c.port };
+                          });
+                        }}
+                      >
+                        <option value="">Db2 for Linux, UNIX and Windows (LUW)</option>
+                        <option value="zos">Db2 for z/OS</option>
+                        <option value="ibmi">Db2 for IBM i</option>
+                      </select>
+                    </label>
+                  )}
                 </div>
                 )}
                 {conn.driver === "postgres" && poolerHint && (

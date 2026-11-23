@@ -30,6 +30,17 @@ user and password. The app builds the connection string itself (`DATABASE`, `HOS
 servers listen for TLS on another port than the plain one, so set the port. Through an SSH tunnel
 the tunnel's local end is used.
 
+**Platform** picks the kind of Db2 server:
+
+- *Db2 for Linux, UNIX and Windows (LUW)*, the default, also for old 8.x servers.
+- *Db2 for z/OS*: the same IBM driver, port 446 by default, and the **database** is the location
+  name. IBM's driver reaches z/OS only with a Db2 Connect license on this machine.
+- *Db2 for IBM i* (AS/400): IBM's own *IBM i Access ODBC Driver* (IBM i Access Client Solutions,
+  installed from IBM, not by the app; the older iSeries Access driver works too). The host is the
+  system's name, the database is optional and sets the default library, there is no port, and TLS
+  adds `SSL=1`. It does not go through an SSH tunnel, as the driver opens several of the server's
+  ports.
+
 **Other ODBC driver** (the generic choice): give one of
 
 - a **data source (DSN)** the system knows, typed or taken from the suggestions;
