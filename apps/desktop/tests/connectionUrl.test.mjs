@@ -84,7 +84,8 @@ test("only drivers with a URL scheme are copied as URL", () => {
   assert.equal(hasUrl("mongo"), true);
   assert.equal(hasUrl("sqlite"), true);
   assert.equal(hasUrl("snowflake"), false);
-  assert.equal(hasUrl("oracle"), false);
+  assert.equal(hasUrl("oracle"), true);
+  assert.equal(hasUrl("db2"), true);
   assert.equal(hasUrl("odbc"), false);
 });
 
@@ -108,8 +109,8 @@ test("ports are 1 to 65535, or none", () => {
 });
 
 test("the URL mode is for the drivers with a server and a URL", () => {
-  for (const d of ["postgres", "mysql", "sqlserver", "clickhouse", "libsql", "mongo"]) assert.equal(urlModeDriver(d), true, d);
-  for (const d of ["sqlite", "duckdb", "oracle", "snowflake", "odbc"]) assert.equal(urlModeDriver(d), false, d);
+  for (const d of ["postgres", "mysql", "sqlserver", "clickhouse", "libsql", "mongo", "db2", "oracle"]) assert.equal(urlModeDriver(d), true, d);
+  for (const d of ["sqlite", "duckdb", "snowflake", "odbc"]) assert.equal(urlModeDriver(d), false, d);
 });
 
 test("a URL edit updates the settings but keeps the name and the driver", () => {

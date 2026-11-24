@@ -28,6 +28,8 @@ const URL_DRIVERS: ReadonlySet<DriverKind> = new Set([
   "redis",
   "elasticsearch",
   "cassandra",
+  "db2",
+  "oracle",
   "sqlite",
   "duckdb",
 ]);

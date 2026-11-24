@@ -27,13 +27,15 @@ impl ConnectionConfig {
     /// The URL of the connection without its password (nor a token, for libSQL):
     /// `postgres://user@host:5432/db?sslmode=require`, `sqlite:///C:/data/app.db`,
     /// `mongodb+srv://user@cluster/db?…`. `None` for the drivers that have no URL scheme
-    /// (the ADBC and ODBC ones, Oracle).
+    /// (the ADBC and ODBC ones).
     #[must_use]
     pub fn to_url(&self) -> Option<String> {
         let scheme = match self.driver {
             DriverKind::Postgres => "postgres",
             DriverKind::MySql => "mysql",
             DriverKind::SqlServer => "sqlserver",
+            DriverKind::Db2 => "db2",
+            DriverKind::Oracle => "oracle",
             DriverKind::ClickHouse => "clickhouse",
             DriverKind::Libsql => "libsql",
             DriverKind::Sqlite => "sqlite",
@@ -78,6 +80,11 @@ impl ConnectionConfig {
             if let Some(path) = path {
                 params.push(format!("{key}={}", encode_path(path)));
             }
+        }
+        if self.driver == DriverKind::Db2
+            && let Some(platform) = self.options.get(super::DB2_PLATFORM)
+        {
+            params.push(format!("platform={platform}"));
         }
         if self.driver == DriverKind::Postgres
             && self
@@ -372,7 +379,7 @@ mod tests {
         config.password = Some(Secret::new("hunter2"));
         config.driver = DriverKind::Libsql;
         assert!(!config.to_url().unwrap().contains("hunter2"));
-        config.driver = DriverKind::Oracle;
+        config.driver = DriverKind::Odbc;
         assert_eq!(config.to_url(), None);
         let mut sqlite = ConnectionConfig::new(DriverKind::Sqlite);
         sqlite.database = r"C:\data\app.db".to_owned();

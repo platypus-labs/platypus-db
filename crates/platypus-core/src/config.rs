@@ -353,6 +353,10 @@ pub struct ConnectionConfig {
 /// mode: `transaction` (statements run unnamed: see the driver) or `session`.
 pub const POOLER: &str = "pooler";
 
+/// The option that says which Db2 a connection is for: `zos`, `ibmi`, or none for Linux, Unix and
+/// Windows. The ODBC and JDBC drivers read it for the port and the driver.
+pub const DB2_PLATFORM: &str = "db2_platform";
+
 /// The option that remembers a connection came from an `opensearch://` URL, so that it
 /// writes one back. The driver itself asks the server which product it is.
 const FLAVOR: &str = "flavor";
@@ -551,6 +555,8 @@ impl ConnectionConfig {
             "sqlite" => DriverKind::Sqlite,
             "duckdb" => DriverKind::DuckDb,
             "sqlserver" | "mssql" => DriverKind::SqlServer,
+            "db2" => DriverKind::Db2,
+            "oracle" => DriverKind::Oracle,
             "clickhouse" => DriverKind::ClickHouse,
             "redis" | "rediss" => DriverKind::Redis,
             "elasticsearch" | "elasticsearchs" | "opensearch" | "opensearchs" => {
@@ -667,6 +673,19 @@ impl ConnectionConfig {
                 }
                 k if sqlserver && k.eq_ignore_ascii_case("trustServerCertificate") => {
                     trust = jdbc::sqlserver_flag(&value) == Some(true);
+                }
+                // Db2 for z/OS and IBM i have their own ports and drivers.
+                "platform" if self.driver == DriverKind::Db2 => {
+                    match value.to_ascii_lowercase().as_str() {
+                        "zos" | "ibmi" => {
+                            self.options
+                                .insert(DB2_PLATFORM.to_owned(), value.to_ascii_lowercase());
+                        }
+                        "luw" => {
+                            self.options.remove(DB2_PLATFORM);
+                        }
+                        _ => return Err(Error::Config(format!("invalid platform `{value}`"))),
+                    }
                 }
                 other => unknown.push(other.to_owned()),
             }
@@ -1117,6 +1136,29 @@ mod tests {
     }
 
     #[test]
+    fn reads_and_writes_db2_and_oracle_urls() {
+        let url = "db2://u0o4094@db2m.example.com:446/CAR_DB2M?platform=zos";
+        let c = ConnectionConfig::from_url(url).unwrap();
+        assert_eq!(c.driver, DriverKind::Db2);
+        assert_eq!((c.host.as_str(), c.port), ("db2m.example.com", Some(446)));
+        assert_eq!(c.database, "CAR_DB2M");
+        assert_eq!(c.user, "u0o4094");
+        assert_eq!(c.options.get(DB2_PLATFORM).map(String::as_str), Some("zos"));
+        assert_eq!(c.to_url().as_deref(), Some(url));
+        let luw = ConnectionConfig::from_url("db2://h:50000/SAMPLE?platform=luw").unwrap();
+        assert_eq!(luw.options.get(DB2_PLATFORM), None);
+        assert_eq!(luw.to_url().as_deref(), Some("db2://h:50000/SAMPLE"));
+        assert!(ConnectionConfig::from_url("db2://h/db?platform=vax").is_err());
+        assert!(ConnectionConfig::from_url("mysql://h/db?platform=zos").is_err());
+
+        let url = "oracle://scott@dbhost:1521/ORCLPDB1";
+        let c = ConnectionConfig::from_url(url).unwrap();
+        assert_eq!(c.driver, DriverKind::Oracle);
+        assert_eq!(c.database, "ORCLPDB1");
+        assert_eq!(c.to_url().as_deref(), Some(url));
+    }
+
+    #[test]
     fn reads_and_writes_the_pooler_flag() {
         let url =
             "postgres://postgres.abc@aws-0-eu.pooler.supabase.com:6543/postgres?pgbouncer=true";
@@ -1337,7 +1379,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_scheme_and_params() {
-        assert!(ConnectionConfig::from_url("oracle://x/y").is_err());
+        assert!(ConnectionConfig::from_url("ftp://x/y").is_err());
         assert!(ConnectionConfig::from_url("postgres://x/y?foo=1").is_err());
         assert!(ConnectionConfig::from_url("postgres://x/y?sslmode=nope").is_err());
     }
