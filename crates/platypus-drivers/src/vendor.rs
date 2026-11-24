@@ -447,7 +447,7 @@ async fn run_program(
     installed: &Installed,
     package: &VendorPackage,
     program: Option<&Program>,
-    alias: fn(&str, &Path) -> String,
+    alias: fn(&str, &Path, &Path) -> String,
 ) -> Result<(), DriverError> {
     let Some(program) = program else {
         return Ok(());
@@ -457,7 +457,7 @@ async fn run_program(
     let path = dir.join(&program.path);
     let mut script = run_script(&path, &program.args);
     if let Some(name) = &package.odbc_alias {
-        script.push_str(&alias(name, &dir));
+        script.push_str(&alias(name, &dir, &dir.join(&package.library)));
     }
     tokio::task::spawn_blocking(move || run_elevated(&path, &script))
         .await
@@ -500,8 +500,11 @@ fn run_script(program: &Path, args: &[String]) -> String {
 
 /// Registers the driver of the package in `dir` under `name` too: a copy of its entry. Done
 /// even when the vendor's program failed, which a second registration may do; fails (exit
-/// code [`NO_ENTRY`] unless the program's) when no entry points into `dir`.
-fn add_alias(name: &str, dir: &Path) -> String {
+/// code [`NO_ENTRY`] unless the program's) when no entry points into `dir`. The copy's `Driver`
+/// and `Setup` that name a file the package lacks (IBM's 12.1.4 program registers
+/// `db2clio.dll`, which the package does not hold: the driver manager then fails with "the
+/// specified module could not be found") are set to `library`, the package's own driver.
+fn add_alias(name: &str, dir: &Path, library: &Path) -> String {
     let dir = format!("{}\\", windows_path(dir).trim_end_matches('\\'));
     format!(
         "$base = {base}; $alias = {name}\n\
@@ -514,16 +517,20 @@ fn add_alias(name: &str, dir: &Path) -> String {
          foreach ($v in $from.GetValueNames()) {{ New-ItemProperty -LiteralPath \"$base\\$alias\" \
          -Name $v -PropertyType $from.GetValueKind($v) \
          -Value $from.GetValue($v, $null, 'DoNotExpandEnvironmentNames') | Out-Null }}\n\
+         foreach ($k in 'Driver', 'Setup') {{ $file = \"$($from.GetValue($k))\"\n\
+         if ($file -and -not (Test-Path -LiteralPath $file -PathType Leaf)) {{ \
+         Set-ItemProperty -LiteralPath \"$base\\$alias\" -Name $k -Value {library} }} }}\n\
          Set-ItemProperty -LiteralPath \"$base\\ODBC Drivers\" -Name $alias -Value 'Installed'\n\
          $code = 0\n}} elseif (-not $code) {{ $code = {NO_ENTRY} }}\n",
         base = ps_quote(ODBCINST),
         name = ps_quote(name),
         dir = ps_quote(&dir),
+        library = ps_quote(&windows_path(library)),
     )
 }
 
 /// Removes the entry [`add_alias`] made.
-fn remove_alias(name: &str, _dir: &Path) -> String {
+fn remove_alias(name: &str, _dir: &Path, _library: &Path) -> String {
     format!(
         "$base = {base}; $alias = {name}\n\
          Remove-Item -LiteralPath \"$base\\$alias\" -Recurse -ErrorAction SilentlyContinue\n\
@@ -862,9 +869,23 @@ mod tests {
             r"& 'C:\Users\O''Brien\drivers\db2\clidriver\bin\db2cli.exe' 'install' '-setup'"
         ));
         assert!(run.contains("$code = $LASTEXITCODE"));
-        let alias = add_alias("IBM DB2 ODBC DRIVER - PLATYPUSDB", Path::new(r"C:\d\db2"));
+        let alias = add_alias(
+            "IBM DB2 ODBC DRIVER - PLATYPUSDB",
+            Path::new(r"C:\d\db2"),
+            Path::new(r"C:\d\db2/clidriver/bin/db2app64.dll"),
+        );
         assert!(alias.contains(r".StartsWith('C:\d\db2\',"), "{alias}");
         assert!(alias.contains("$alias = 'IBM DB2 ODBC DRIVER - PLATYPUSDB'"));
+        // A registered library the package lacks (db2clio.dll) is replaced by the package's own.
+        assert!(
+            alias.contains("foreach ($k in 'Driver', 'Setup')"),
+            "{alias}"
+        );
+        assert!(alias.contains("-not (Test-Path -LiteralPath $file -PathType Leaf)"));
+        assert!(
+            alias.contains(r"-Name $k -Value 'C:\d\db2\clidriver\bin\db2app64.dll'"),
+            "{alias}"
+        );
         let script = elevation_script(&run);
         assert!(script.contains("-Verb RunAs -Wait"));
         assert!(script.contains("-EncodedCommand"));
