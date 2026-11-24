@@ -4,6 +4,7 @@ import { askDriver } from "./DriverPopup";
 import { DRIVER_NAMES } from "./names";
 import { usePopupFocus } from "./popupFocus";
 import { t, msg, tNodes } from "../i18n";
+import { PlatypusProgress } from "../components/PlatypusProgress";
 
 const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
 
@@ -90,7 +91,7 @@ export function VendorPopup({ driver, beforeConnecting, onDone }: Props) {
         {phase === "download" && (
           <>
             <h2>{pkg?.title ? t("Downloading {name}…", { name: pkg.title }) : t("Downloading the {name} client…", { name })}</h2>
-            <progress max={progress.total ?? undefined} value={progress.total ? progress.done : undefined} />
+            <PlatypusProgress max={progress.total} value={progress.done} label={t("Downloading…")} />
             <p className="muted small">
               {progress.total ? t("{done} of {total}", { done: megabytes(progress.done), total: megabytes(progress.total) }) : megabytes(progress.done)}
             </p>

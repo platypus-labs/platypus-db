@@ -4,6 +4,7 @@ import { api, type DocsFormat, type DocsRequest, type SavedConnection, toCommand
 import { answerFor } from "../testAnswers";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
+import { PlatypusProgress } from "../components/PlatypusProgress";
 
 interface Props {
   connection: SavedConnection;
@@ -161,7 +162,7 @@ function DocsDialog({ connection, database, schemas, initial, onClose }: Props) 
         </div>
         {status.state === "running" && (
           <div className="docs-progress">
-            <progress max={status.total || undefined} value={status.total ? status.done : undefined} />
+            <PlatypusProgress max={status.total || null} value={status.done} label={t("Loading…")} />
             <p className="muted small">
               {status.total ? t("{done} of {total}", { done: status.done, total: status.total }) : t("Reading the tables…")}
             </p>

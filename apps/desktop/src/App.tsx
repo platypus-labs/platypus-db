@@ -501,6 +501,21 @@ export function App() {
     });
   }
 
+  /** The navigator's Disconnect: closes the navigator sessions and those of the connection's
+   *  tabs too (their next statement opens another), else the connection stays marked as open.
+   *  A tab with an open transaction is asked about; if it stays, so does its session. */
+  async function disconnectConnection(connection: SavedConnection) {
+    disconnectNavigator(connection);
+    const own = tabs.filter((tab) => tab.connectionId === connection.id && sessions.current.has(tab.key));
+    for (const tab of own) {
+      if (tab.txOpen) {
+        if (!(await endOpenTransaction(tab))) continue;
+        patchTab(tab.key, { txOpen: false });
+      }
+      dropSession(tab.key);
+    }
+  }
+
   /** Sessions opened before an edit of `connection` that changed how they connect (another
    *  database, a production type now in manual commit…) are reopened with the saved
    *  settings on their next use. A tab with an open transaction is asked about: now, rolling
@@ -1178,7 +1193,7 @@ export function App() {
           onOpenTab={(c, init) => addTab(createTab("query", c.id, init))}
           session={navigatorSession}
           capabilities={(sessionId) => capabilities.current.get(sessionId)}
-          disconnect={disconnectNavigator}
+          disconnect={(c) => void disconnectConnection(c)}
           active={activeConnections}
           onRefresh={(c, database) => {
             void api.noteSchemaChange(c.id);

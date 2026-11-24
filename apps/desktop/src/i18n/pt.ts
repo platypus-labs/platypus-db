@@ -3380,6 +3380,18 @@ const pt: Record<string, string> = {
   "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "O alias Db2 {alias} não tem host: informe host, porta e banco de dados antes de conectar.",
   "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} propôs alterações nos dados, mas não foi possível conectar a {name}, então elas não foram abertas.",
   "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} propôs alterações em {table}, mas não foi possível conectar a {name}, então elas não foram abertas.",
+  "Drivers are downloaded once and shared by every connection of that database.": "Os drivers são baixados uma só vez e servem a todas as conexões desse banco de dados.",
+  "The command palette finds any action by its name.": "A paleta de comandos encontra qualquer ação pelo nome.",
+  "Ctrl+Enter runs the statement under the cursor.": "Ctrl+Enter executa a instrução sob o cursor.",
+  "Production connections commit by hand, so nothing is saved by accident.": "As conexões de produção confirmam à mão, então nada é salvo por acidente.",
+  "Saved passwords go to the system keychain.": "As senhas salvas vão para o chaveiro do sistema.",
+  "Idle connections are checked every minute and reopened if the server dropped them.": "As conexões inativas são verificadas a cada minuto e reabertas se o servidor as encerrou.",
+  "♪ La la la… I walk as fast as the network lets me.": "♪ La la la… ando tão rápido quanto a rede deixa.",
+  "Almost there. Probably.": "Quase lá. Talvez.",
+  "Fun fact: a platypus hunts with its eyes shut, feeling for electric signals with its bill.": "Curiosidade: o ornitorrinco caça de olhos fechados, sentindo sinais elétricos com o bico.",
+  "Have a sip of water while you wait.": "Tome um gole de água enquanto espera.",
+  "A long query. The server is thinking, I'm just keeping you company.": "Uma consulta longa. O servidor está pensando, eu só te faço companhia.",
+  "Too slow? Cancel stops the statement.": "Muito lenta? Cancelar interrompe a instrução.",
 };
 
 export default pt;

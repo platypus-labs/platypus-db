@@ -3380,6 +3380,18 @@ const fr: Record<string, string> = {
   "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "L'alias Db2 {alias} n'a pas d'hôte : renseignez l'hôte, le port et la base avant de vous connecter.",
   "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} a proposé des modifications de données, mais {name} n'a pas pu être connectée : elles n'ont pas été ouvertes.",
   "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} a proposé des modifications de {table}, mais {name} n'a pas pu être connectée : elles n'ont pas été ouvertes.",
+  "Drivers are downloaded once and shared by every connection of that database.": "Les pilotes ne se téléchargent qu'une fois et servent à toutes les connexions de cette base.",
+  "The command palette finds any action by its name.": "La palette de commandes trouve n'importe quelle action par son nom.",
+  "Ctrl+Enter runs the statement under the cursor.": "Ctrl+Entrée exécute l'instruction sous le curseur.",
+  "Production connections commit by hand, so nothing is saved by accident.": "Les connexions de production valident à la main : rien n'est enregistré par accident.",
+  "Saved passwords go to the system keychain.": "Les mots de passe enregistrés vont dans le trousseau du système.",
+  "Idle connections are checked every minute and reopened if the server dropped them.": "Les connexions inactives sont vérifiées chaque minute et rouvertes si le serveur les a fermées.",
+  "♪ La la la… I walk as fast as the network lets me.": "♪ La la la… je marche aussi vite que le réseau me le permet.",
+  "Almost there. Probably.": "On y est presque. Peut-être.",
+  "Fun fact: a platypus hunts with its eyes shut, feeling for electric signals with its bill.": "Le saviez-vous ? L'ornithorynque chasse les yeux fermés, en détectant les signaux électriques avec son bec.",
+  "Have a sip of water while you wait.": "Bois une gorgée d'eau en attendant.",
+  "A long query. The server is thinking, I'm just keeping you company.": "Une longue requête. Le serveur réfléchit, moi je te tiens compagnie.",
+  "Too slow? Cancel stops the statement.": "Trop lent ? Annuler arrête l'instruction.",
 };
 
 export default fr;

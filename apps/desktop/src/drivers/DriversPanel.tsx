@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { api, type DriverKind, type DriverUpdate, type InstalledDriver, toCommandError } from "../api";
 import { t } from "../i18n";
+import { PlatypusProgress } from "../components/PlatypusProgress";
 import { checkCompatibility, installVersion, kindOf, refreshUpdates, useDriverUpdates } from "./updates";
 import { VendorDriversSection } from "./VendorDrivers";
 import { DriverVersionsList } from "./DriverVersionsList";
@@ -129,7 +130,7 @@ function DriverRow({ driver, update, onChanged, onRemove, onError }: RowProps) {
         </div>
         <span className="spacer" />
         {progress && (
-          <progress max={progress.total ?? undefined} value={progress.total ? progress.done : undefined} aria-label={t("Downloading…")} />
+          <PlatypusProgress compact max={progress.total} value={progress.done} label={t("Downloading…")} />
         )}
         {update && kind && (
           <button type="button" className="primary" data-action="update" disabled={!!progress} onClick={() => void applyUpdate(update)}>

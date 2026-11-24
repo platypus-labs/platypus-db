@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type DriverKind, type DriverVersions, toCommandError } from "../api";
 import { t } from "../i18n";
+import { PlatypusProgress } from "../components/PlatypusProgress";
 import { mergeVersions } from "./compat";
 import { checkCompatibility, installVersion } from "./updates";
 
@@ -87,7 +88,7 @@ export function DriverVersionsList({ driver, onChanged, onError }: Props) {
             {have?.active && <span className="update-badge active">{t("In use")}</span>}
             {have && !have.active && <span className="muted small">{t("Installed")}</span>}
             <span className="spacer" />
-            {busy === version && <progress aria-label={t("Downloading…")} />}
+            {busy === version && <PlatypusProgress compact label={t("Downloading…")} />}
             {!have && available && (
               <button type="button" data-action="install" disabled={busy !== null} onClick={() => void install(version)}>
                 {t("Install")}

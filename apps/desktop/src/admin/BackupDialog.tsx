@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { api, type BackupEvent, type BackupFormat, type SavedConnection, toCommandError } from "../api";
 import { datedFileName, formatBytes } from "../format";
 import { formatCount, t } from "../i18n";
+import { PlatypusProgress } from "../components/PlatypusProgress";
 import { answerFor } from "../testAnswers";
 import { ask } from "../ui/ask";
 import { workbench } from "../workbench";
@@ -192,7 +193,7 @@ export function BackupDialog({ mode, connection, database, schema, onClose }: Pr
         )}
         {status.state === "running" && (
           <div className="docs-progress" data-field="progress">
-            <progress max={status.total || undefined} value={status.total ? status.done : undefined} />
+            <PlatypusProgress max={status.total || null} value={status.done} label={t("Loading…")} />
             <p className="muted small">{progressText(status)}</p>
           </div>
         )}

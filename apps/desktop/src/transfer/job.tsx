@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { api, type ExportEvent, toCommandError } from "../api";
 import { t } from "../i18n";
+import { PlatypusProgress } from "../components/PlatypusProgress";
 import { afterEvent, type JobStatus } from "./jobStatus";
 
 export type { JobStatus };
@@ -52,7 +53,11 @@ export function JobFooter(props: {
       {status.state === "running" && (
         <div className="notice small">
           {t(messages[0], { n: status.rows.toLocaleString() })}
-          {status.bytes && <progress className="job-progress" max={status.bytes[1] || 1} value={status.bytes[0]} />}
+          {status.bytes && (
+            <div className="job-progress">
+              <PlatypusProgress compact max={status.bytes[1] || 1} value={status.bytes[0]} label={t("Loading…")} />
+            </div>
+          )}
         </div>
       )}
       {status.state === "done" && (
