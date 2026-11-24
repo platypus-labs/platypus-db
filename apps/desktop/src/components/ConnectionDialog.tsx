@@ -1000,6 +1000,43 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                       </select>
                     </label>
                   )}
+                  {conn.driver === "db2" && conn.options?.db2_platform !== "ibmi" && (
+                    <>
+                      <label className="field">
+                        <span>{t("JDBC driver files")}</span>
+                        <div className="row tight">
+                          <input
+                            value={conn.options?.["jdbc.jars"] ?? ""}
+                            onChange={(e) => setOption("jdbc.jars", e.target.value)}
+                            placeholder={t("None: the ODBC driver is used")}
+                            data-field="jdbc_jars"
+                            title={t("The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.")}
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const picked = await open({ multiple: true, directory: false, filters: [{ name: "JAR", extensions: ["jar"] }] });
+                              if (Array.isArray(picked) && picked.length > 0) setOption("jdbc.jars", picked.join(";"));
+                            }}
+                          >
+                            {t("Browse…")}
+                          </button>
+                        </div>
+                      </label>
+                      {conn.options?.["jdbc.jars"]?.trim() && (
+                        <label className="field">
+                          <span>{t("Java")}</span>
+                          <input
+                            value={conn.options?.["jdbc.java"] ?? ""}
+                            onChange={(e) => setOption("jdbc.java", e.target.value)}
+                            placeholder={t("Found by itself (JAVA_HOME, the PATH, DBeaver's)")}
+                            data-field="jdbc_java"
+                            title={t("The java program, or the folder of a Java 11 or later.")}
+                          />
+                        </label>
+                      )}
+                    </>
+                  )}
                 </div>
                 )}
                 {conn.driver === "postgres" && poolerHint && (
@@ -1012,7 +1049,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     </button>
                   </div>
                 )}
-                {VENDOR_DRIVERS.includes(conn.driver) ? <VendorDriverState driver={conn.driver} /> : null}
+                {VENDOR_DRIVERS.includes(conn.driver) && !conn.options?.["jdbc.jars"]?.trim() ? <VendorDriverState driver={conn.driver} /> : null}
                 </section>
 
                 <section className="form-section">

@@ -3392,6 +3392,12 @@ const pt: Record<string, string> = {
   "Have a sip of water while you wait.": "Tome um gole de água enquanto espera.",
   "A long query. The server is thinking, I'm just keeping you company.": "Uma consulta longa. O servidor está pensando, eu só te faço companhia.",
   "Too slow? Cancel stops the statement.": "Muito lenta? Cancelar interrompe a instrução.",
+  "JDBC driver files": "Arquivos do driver JDBC",
+  "None: the ODBC driver is used": "Nenhum: usa-se o driver ODBC",
+  "The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.": "Os jars do driver JDBC da IBM (db2jcc4.jar e, para Db2 for z/OS, o jar de licença), separados por ;. Com eles a conexão passa pelo JDBC, que precisa de Java.",
+  "Java": "Java",
+  "Found by itself (JAVA_HOME, the PATH, DBeaver's)": "Encontrado sozinho (JAVA_HOME, o PATH, o do DBeaver)",
+  "The java program, or the folder of a Java 11 or later.": "O programa java, ou a pasta de um Java 11 ou superior.",
 };
 
 export default pt;

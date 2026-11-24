@@ -3392,6 +3392,12 @@ const zh: Record<string, string> = {
   "Have a sip of water while you wait.": "等待的时候喝口水吧。",
   "A long query. The server is thinking, I'm just keeping you company.": "这条查询比较久。服务器在思考，我只是陪着你。",
   "Too slow? Cancel stops the statement.": "太慢了？点击“取消”即可停止该语句。",
+  "JDBC driver files": "JDBC 驱动文件",
+  "None: the ODBC driver is used": "无：使用 ODBC 驱动",
+  "The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.": "IBM JDBC 驱动的 jar 文件（db2jcc4.jar，对于 Db2 for z/OS 还有许可证 jar），以 ; 分隔。设置后连接将通过 JDBC，需要 Java。",
+  "Java": "Java",
+  "Found by itself (JAVA_HOME, the PATH, DBeaver's)": "自动查找（JAVA_HOME、PATH、DBeaver 自带的）",
+  "The java program, or the folder of a Java 11 or later.": "java 程序，或 Java 11 及以上版本的文件夹。",
 };
 
 export default zh;
