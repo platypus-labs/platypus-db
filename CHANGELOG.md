@@ -6,6 +6,20 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **JDBC bridge**: a connection can go through a JDBC driver instead of ODBC, with a small Java
+  program started by the app (Java 11 or later: `JAVA_HOME`, the `PATH` or DBeaver's own runtime).
+  For Db2 the connection form takes the jars of IBM's JDBC driver (and, for Db2 for z/OS, its
+  license jar); any other database with a JDBC driver is reached through the `jdbc.url` and
+  `jdbc.jars` options. Queries, results, the navigator and manual commit work; cancelling a running
+  statement does not yet.
+
+### Fixed
+
+- **Progress bars**: a full bar is full to its end, and the platypus's speech bubble has room
+  above its head.
+
 ## [0.6.7] - 2026-11-24
 
 ### Added

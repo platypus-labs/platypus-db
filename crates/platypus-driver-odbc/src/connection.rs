@@ -1,5 +1,5 @@
-//! A session on a database through an ODBC driver: the async side of the thread that owns
-//! the ODBC connection (`session`).
+//! A session on a database through an ODBC driver or a JDBC bridge: the async side of the
+//! thread that owns the ODBC connection (`session`) or the bridge process (`jdbc`).
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc as std_mpsc;
@@ -15,8 +15,8 @@ use platypus_core::{
 };
 use tokio::sync::{Notify, oneshot};
 
+use crate::command::{CatalogRequest, CatalogRows, Command, Opened, Started};
 use crate::meta;
-use crate::session::{self, CatalogRequest, CatalogRows, Command, Started};
 
 /// The queries that read the server's version and the session's schema, where the
 /// database is known (Db2).
@@ -40,11 +40,7 @@ pub struct OdbcConnection {
 
 impl OdbcConnection {
     pub async fn open(config: &ConnectionConfig) -> Result<Self> {
-        let connection_string = crate::connection_string(config)?;
-        let timeout = config
-            .connect_timeout
-            .map(|t| u32::try_from(t.as_secs()).unwrap_or(u32::MAX));
-        let (commands, opened) = session::spawn(connection_string, timeout)?;
+        let (commands, opened) = spawn_worker(config)?;
         let opened = opened.await.map_err(|_| Error::Closed)??;
         let mut conn = Self {
             commands: Mutex::new(commands),
@@ -123,6 +119,29 @@ impl OdbcConnection {
         self.tx.set_open(false);
         Ok(())
     }
+}
+
+/// The thread that owns the session: the JDBC bridge's when the connection names a JDBC
+/// driver, else the ODBC driver manager's.
+fn spawn_worker(
+    config: &ConnectionConfig,
+) -> Result<(std_mpsc::Sender<Command>, oneshot::Receiver<Result<Opened>>)> {
+    if crate::jdbc::enabled(config) {
+        return crate::jdbc::spawn(config);
+    }
+    #[cfg(windows)]
+    {
+        let connection_string = crate::connection_string(config)?;
+        let timeout = config
+            .connect_timeout
+            .map(|t| u32::try_from(t.as_secs()).unwrap_or(u32::MAX));
+        crate::session::spawn(connection_string, timeout)
+    }
+    #[cfg(not(windows))]
+    Err(Error::Unsupported(format!(
+        "{} through ODBC on this system: ODBC drivers are reached on Windows only for now          (a JDBC driver is reached everywhere)",
+        config.driver.name()
+    )))
 }
 
 fn unexpected() -> Error {
