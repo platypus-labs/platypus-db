@@ -75,7 +75,7 @@ export function PlatypusProgress({ value, max, label, compact = false, says = []
   const all = compact ? [] : tips(says);
   return (
     <div
-      className={`platypus-progress${compact ? " compact" : ""}${known ? "" : " indeterminate"}`}
+      className={`platypus-progress${compact ? " compact" : ""}${known ? "" : " indeterminate"}${known && fraction >= 1 ? " done" : ""}`}
       role="progressbar"
       aria-label={label}
       aria-valuemin={known ? 0 : undefined}
@@ -91,6 +91,8 @@ export function PlatypusProgress({ value, max, label, compact = false, says = []
       <div className="platypus-track">
         <div className="platypus-fill" />
         <div className="platypus-walker">
+          <span className="platypus-puff" aria-hidden="true" />
+          <span className="platypus-puff" aria-hidden="true" />
           <span className="platypus-notes" aria-hidden="true">
             ♪ ♫
           </span>
