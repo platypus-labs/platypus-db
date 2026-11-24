@@ -6,6 +6,20 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-11-24
+
+### Changed
+
+- **Progress bars**: the platypus walks like a waddling duck, the feet swinging forward and sliding
+  back, the body rocking with each step, with dust behind it; its speech bubble pops out with each
+  new line and a full bar ends with a hop and a wave.
+
+### Fixed
+
+- **Db2**: choosing Db2 no longer offers to download IBM's ODBC client at once, which a connection
+  through IBM's JDBC driver does not need; the offer comes when a connection that goes through ODBC
+  finds no driver, and says that the JDBC driver needs no client.
+
 ## [0.6.8] - 2026-11-24
 
 ### Added
