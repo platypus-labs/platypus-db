@@ -6,14 +6,25 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-11-24
+
 ### Added
 
-- **Db2 through JDBC, by itself**: the connection form has a box "Connect through IBM's JDBC driver
-  (no client needed)": the app finds IBM's driver on the machine (DBeaver's, an IBM client's, or the
-  one it downloaded) and, when there is none, downloads it from Maven Central, checked with its
-  SHA-256. Nothing to install and no administrator rights.
+- **Db2 through JDBC, without a client**: a Db2 connection chooses what it goes through, as a driver
+  of DBeaver's: the ODBC client, a version of IBM's JDBC driver (11.5.9.0 to 12.1.5.0), or JDBC files
+  of its own. A version is downloaded from Maven Central when a connection first uses it, checked with
+  its SHA-256, and the connection keeps the version, not a path. Nothing to install and no
+  administrator rights; the app finds the Java it needs (`JAVA_HOME`, the `PATH`, DBeaver's runtime)
+  and shows it as it is.
 - **URL mode for Db2 and Oracle**: like the other databases that have a URL, they can be entered as
   `db2://user@host:446/LOCATION?platform=zos` or `oracle://user@host:1521/SERVICE`.
+- **Progress bars**: the platypus walks on the bar, which stays orange behind it; now and then a
+  fedora drops onto its head, and it takes it off with a bow and a sparkle.
+
+### Changed
+
+- **Switches**: the knob is bigger in proportion to its track.
+- **Progress bars**: the speech bubble sits higher and the dust is softer.
 
 ## [0.6.9] - 2026-11-24
 
