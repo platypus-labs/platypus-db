@@ -387,6 +387,7 @@ fn handlers() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
         commands::vendor::install_vendor_driver,
         commands::vendor::jdbc_status,
         commands::vendor::install_jdbc_driver,
+        commands::vendor::remove_jdbc_driver,
         commands::vendor::cancel_jdbc_install,
         commands::vendor::cancel_vendor_install,
         commands::vendor::remove_vendor_driver,

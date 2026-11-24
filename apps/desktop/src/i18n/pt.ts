@@ -3399,9 +3399,12 @@ const pt: Record<string, string> = {
   "The java program, or the folder of a Java 11 or later.": "O programa java, ou a pasta de um Java 11 ou superior.",
   "No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).": "Com o driver JDBC da IBM não é preciso nenhum cliente: escolha os jars dele na conexão (precisa de Java).",
   "IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.": "O driver JDBC da IBM conecta diretamente: sem cliente para instalar, sem permissão de administrador. Precisa de Java.",
-  "Connect through IBM's JDBC driver (no client needed)": "Conectar com o driver JDBC da IBM (sem cliente)",
-  "Found: {path}": "Encontrado: {path}",
-  "Downloaded once from Maven Central: {title} {version}, {size} MB. License: {license}.": "Baixado uma vez do Maven Central: {title} {version}, {size} MB. Licença: {license}.",
+  "Connect through": "Conectar por",
+  "ODBC driver (IBM client)": "Driver ODBC (cliente IBM)",
+  "IBM JDBC {version}": "IBM JDBC {version}",
+  "IBM JDBC {version} (to download)": "IBM JDBC {version} (para baixar)",
+  "JDBC driver files…": "Arquivos do driver JDBC…",
+  "More jars (a license jar, if you have one)": "Outros jars (um jar de licença, se você tiver)",
 };
 
 export default pt;

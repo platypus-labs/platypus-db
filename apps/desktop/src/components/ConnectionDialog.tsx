@@ -304,7 +304,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   // The pooler the host is, when its mode is not set to it yet.
   const suggested = suggestedPooler(conn.host, conn.port);
   const poolerHint = suggested?.mode === "transaction" && conn.options?.pooler !== "transaction" ? suggested : null;
-  const jdbcOn = !!conn.options?.["jdbc.jars"]?.trim();
+  const jdbcOn = !!conn.options?.["jdbc.driver"]?.trim() || !!conn.options?.["jdbc.jars"]?.trim();
+  /** What the connection goes through: ODBC, a version of IBM's JDBC driver, or JDBC files. */
+  const jdbcChoice = conn.options?.["jdbc.driver"]?.trim() ? `v:${conn.options["jdbc.driver"].trim()}` : jdbcOn ? "files" : "odbc";
   /** Sets several driver options at once; an empty value removes one. */
   const setOptions = (patch: Record<string, string>) =>
     setConn((c) => {
@@ -315,29 +317,36 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
       }
       return { ...c, options };
     });
-  /** Turns the connection through IBM's JDBC driver on, with the jars found or downloaded, or off. */
-  const useJdbcDriver = async (on: boolean) => {
+  /** Picks what the connection goes through; a version not downloaded yet is downloaded now. */
+  const chooseJdbc = async (choice: string) => {
     setJdbcError(null);
-    if (!on) {
-      setOptions({ "jdbc.jars": "", "jdbc.java": "" });
-      return;
-    }
-    let status = jdbc;
-    if (!status?.driver) {
-      setJdbcProgress({ done: 0, total: null });
-      try {
-        status = await api.installJdbcDriver((e) => {
-          if (e.kind === "progress") setJdbcProgress({ done: e.done, total: e.total });
-        });
-        setJdbc(status);
-      } catch (e) {
-        setJdbcError(toCommandError(e).message);
+    if (choice === "odbc") {
+      setOptions({ "jdbc.driver": "", "jdbc.jars": "", "jdbc.java": "" });
+    } else if (choice === "files") {
+      const found = [jdbc?.found_driver, jdbc?.found_license].filter(Boolean).join(";");
+      if (found) {
+        setOptions({ "jdbc.driver": "", "jdbc.jars": found });
         return;
-      } finally {
-        setJdbcProgress(null);
       }
+      const picked = await open({ multiple: true, directory: false, filters: [{ name: "JAR", extensions: ["jar"] }] });
+      if (Array.isArray(picked) && picked.length > 0) setOptions({ "jdbc.driver": "", "jdbc.jars": picked.join(";") });
+    } else {
+      const version = choice.slice(2);
+      if (!jdbc?.versions.find((v) => v.package.version === version)?.installed) {
+        setJdbcProgress({ done: 0, total: null });
+        try {
+          setJdbc(await api.installJdbcDriver(version, (e) => {
+            if (e.kind === "progress") setJdbcProgress({ done: e.done, total: e.total });
+          }));
+        } catch (e) {
+          setJdbcError(toCommandError(e).message);
+          return;
+        } finally {
+          setJdbcProgress(null);
+        }
+      }
+      setOptions({ "jdbc.driver": version });
     }
-    if (status?.driver) setOptions({ "jdbc.jars": [status.driver, status.license].filter(Boolean).join(";") });
   };
   /** Sets a driver option; an empty value removes it. */
   const setOption = (key: string, value: string) => {
@@ -1047,39 +1056,35 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   )}
                   {conn.driver === "db2" && conn.options?.db2_platform !== "ibmi" && (
                     <>
-                      <div className="field jdbc-field">
-                        <label className="check" title={t("IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.")}>
-                          <input
-                            type="checkbox"
-                            data-field="jdbc"
-                            checked={jdbcOn}
-                            disabled={jdbcProgress !== null}
-                            onChange={(e) => void useJdbcDriver(e.target.checked)}
-                          />
-                          {t("Connect through IBM's JDBC driver (no client needed)")}
-                        </label>
-                        {jdbcProgress && (
-                          <PlatypusProgress compact max={jdbcProgress.total} value={jdbcProgress.done} label={t("Downloading…")} />
-                        )}
-                        {jdbcError && <small className="notice error">{jdbcError}</small>}
-                        {!jdbcOn && !jdbcProgress && jdbc?.driver && (
-                          <small className="muted">{t("Found: {path}", { path: jdbc.driver })}</small>
-                        )}
-                        {!jdbcOn && !jdbcProgress && jdbc && !jdbc.driver && jdbc.package && (
-                          <small className="muted">
-                            {t("Downloaded once from Maven Central: {title} {version}, {size} MB. License: {license}.", {
-                              title: jdbc.package.title,
-                              version: jdbc.package.version,
-                              size: (jdbc.package.size / 1048576).toFixed(1),
-                              license: jdbc.package.license,
-                            })}
-                          </small>
-                        )}
-                      </div>
+                      <label className="field jdbc-field">
+                        <span>{t("Connect through")}</span>
+                        <select
+                          value={jdbcChoice}
+                          disabled={jdbcProgress !== null}
+                          data-field="jdbc_driver"
+                          onChange={(e) => void chooseJdbc(e.target.value)}
+                          title={t("IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.")}
+                        >
+                          <option value="odbc">{t("ODBC driver (IBM client)")}</option>
+                          {(jdbc?.versions ?? []).map((v) => (
+                            <option key={v.package.version} value={`v:${v.package.version}`}>
+                              {t(v.installed ? "IBM JDBC {version}" : "IBM JDBC {version} (to download)", { version: v.package.version })}
+                            </option>
+                          ))}
+                          {jdbcChoice.startsWith("v:") && !jdbc?.versions.some((v) => `v:${v.package.version}` === jdbcChoice) && (
+                            <option value={jdbcChoice}>{t("IBM JDBC {version}", { version: jdbcChoice.slice(2) })}</option>
+                          )}
+                          <option value="files">{t("JDBC driver files…")}</option>
+                        </select>
+                      </label>
+                      {jdbcProgress && (
+                        <PlatypusProgress compact max={jdbcProgress.total} value={jdbcProgress.done} label={t("Downloading…")} />
+                      )}
+                      {jdbcError && <small className="notice error">{jdbcError}</small>}
                       {jdbcOn && (
                         <>
                           <label className="field">
-                            <span>{t("JDBC driver files")}</span>
+                            <span>{conn.options?.["jdbc.driver"]?.trim() ? t("More jars (a license jar, if you have one)") : t("JDBC driver files")}</span>
                             <div className="row tight">
                               <input
                                 value={conn.options?.["jdbc.jars"] ?? ""}

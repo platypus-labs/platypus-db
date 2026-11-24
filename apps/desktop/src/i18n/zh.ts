@@ -3399,9 +3399,12 @@ const zh: Record<string, string> = {
   "The java program, or the folder of a Java 11 or later.": "java 程序，或 Java 11 及以上版本的文件夹。",
   "No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).": "使用 IBM 的 JDBC 驱动无需客户端：请在连接中选择其 jar 文件（需要 Java）。",
   "IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.": "IBM 的 JDBC 驱动直接连接：无需安装客户端，也无需管理员权限。需要 Java。",
-  "Connect through IBM's JDBC driver (no client needed)": "通过 IBM 的 JDBC 驱动连接（无需客户端）",
-  "Found: {path}": "已找到：{path}",
-  "Downloaded once from Maven Central: {title} {version}, {size} MB. License: {license}.": "从 Maven Central 下载一次：{title} {version}，{size} MB。许可证：{license}。",
+  "Connect through": "连接方式",
+  "ODBC driver (IBM client)": "ODBC 驱动（IBM 客户端）",
+  "IBM JDBC {version}": "IBM JDBC {version}",
+  "IBM JDBC {version} (to download)": "IBM JDBC {version}（需下载）",
+  "JDBC driver files…": "JDBC 驱动文件…",
+  "More jars (a license jar, if you have one)": "其他 jar（如有，许可证 jar）",
 };
 
 export default zh;

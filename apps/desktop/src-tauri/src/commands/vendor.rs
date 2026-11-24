@@ -133,33 +133,57 @@ pub async fn install_vendor_driver(
     vendor_driver_status(driver)
 }
 
-/// IBM's JDBC driver for Db2: what the app can download, and the jars already on the machine
-/// (DBeaver's, IBM's own client's, the app's download).
+/// A version of IBM's JDBC driver for Db2 the app can download, and whether it has.
+#[derive(Debug, Serialize)]
+pub struct JdbcVersion {
+    package: platypus_drivers::JdbcDriver,
+    installed: bool,
+}
+
+/// IBM's JDBC driver for Db2: the versions the app can download, and the jars found on the
+/// machine (DBeaver's, an IBM client's) that a connection can use as they are.
 #[derive(Debug, Serialize)]
 pub struct JdbcStatus {
-    package: Option<platypus_drivers::JdbcDriver>,
-    /// IBM's driver jar, when one is found.
-    driver: Option<String>,
+    versions: Vec<JdbcVersion>,
+    found_driver: Option<String>,
     /// A license jar, when one is found: most Db2 for z/OS servers need none.
-    license: Option<String>,
+    found_license: Option<String>,
 }
 
 #[tauri::command]
 pub fn jdbc_status() -> CommandResult<JdbcStatus> {
-    let found = platypus_driver_odbc::find_jdbc_jars(&[platypus_drivers::jdbc_dir(data_dir()?)]);
+    let dir = data_dir()?;
+    let found = platypus_driver_odbc::find_jdbc_jars(&[]);
     let text = |p: std::path::PathBuf| p.to_string_lossy().into_owned();
     Ok(JdbcStatus {
-        package: platypus_drivers::jdbc_driver("db2jcc"),
-        driver: found.driver.map(text),
-        license: found.license.map(text),
+        versions: platypus_drivers::jdbc_versions("db2jcc")
+            .into_iter()
+            .map(|package| JdbcVersion {
+                installed: platypus_drivers::installed_jdbc(dir, &package).is_some(),
+                package,
+            })
+            .collect(),
+        found_driver: found.driver.map(text),
+        found_license: found.license.map(text),
     })
 }
 
-/// Downloads IBM's JDBC driver for Db2 from Maven Central, checked with its SHA-256.
+fn jdbc_version(version: &str) -> CommandResult<platypus_drivers::JdbcDriver> {
+    platypus_drivers::jdbc_driver("db2jcc", Some(version)).ok_or_else(|| {
+        CommandError::new(
+            "drivers",
+            format!("there is no IBM JDBC driver version {version}"),
+        )
+    })
+}
+
+/// Downloads a version of IBM's JDBC driver for Db2 from Maven Central, checked with its SHA-256.
 #[tauri::command]
-pub async fn install_jdbc_driver(on_event: Channel<VendorEvent>) -> CommandResult<JdbcStatus> {
-    let driver = platypus_drivers::jdbc_driver("db2jcc")
-        .ok_or_else(|| CommandError::new("drivers", "there is no JDBC driver to download"))?;
+pub async fn install_jdbc_driver(
+    version: String,
+    on_event: Channel<VendorEvent>,
+) -> CommandResult<JdbcStatus> {
+    let driver = jdbc_version(&version)?;
     let (cancel, _guard) = super::drivers::start_install("db2jcc");
     let progress = |done, total| {
         let _ = on_event.send(VendorEvent::Progress { done, total });
@@ -167,6 +191,13 @@ pub async fn install_jdbc_driver(on_event: Channel<VendorEvent>) -> CommandResul
     platypus_drivers::install_jdbc(data_dir()?, &driver, progress, &cancel)
         .await
         .map_err(driver_error)?;
+    jdbc_status()
+}
+
+/// Deletes a downloaded version of the JDBC driver.
+#[tauri::command]
+pub fn remove_jdbc_driver(version: String) -> CommandResult<JdbcStatus> {
+    platypus_drivers::remove_jdbc(data_dir()?, &jdbc_version(&version)?).map_err(driver_error)?;
     jdbc_status()
 }
 

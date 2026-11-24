@@ -930,7 +930,7 @@ export interface VendorPackage {
   unregister: { path: string; args: string[] } | null;
 }
 
-/** IBM's JDBC driver for Db2, which the app can download. */
+/** A version of IBM's JDBC driver for Db2, which the app can download. */
 export interface JdbcPackage {
   name: string;
   title: string;
@@ -941,11 +941,16 @@ export interface JdbcPackage {
   size: number;
 }
 
-/** The JDBC jars on the machine (DBeaver's, IBM's, the app's download) and what can be downloaded. */
+export interface JdbcVersion {
+  package: JdbcPackage;
+  installed: boolean;
+}
+
+/** The versions of IBM's JDBC driver, and the jars found on the machine (DBeaver's, IBM's). */
 export interface JdbcStatus {
-  package: JdbcPackage | null;
-  driver: string | null;
-  license: string | null;
+  versions: JdbcVersion[];
+  found_driver: string | null;
+  found_license: string | null;
 }
 
 export interface VendorStatus {
@@ -2812,12 +2817,13 @@ export const api = {
   /** Connects with the password the connection keeps, lists its schemas and runs `SELECT 1`. */
   probeConnection: (connection: SavedConnection) => invoke<ConnectionProbe>("probe_connection", { connection }),
   jdbcStatus: () => invoke<JdbcStatus>("jdbc_status"),
-  /** Downloads IBM's JDBC driver for Db2 (Maven Central, checked with its SHA-256). */
-  installJdbcDriver: (onEvent: (e: VendorInstallEvent) => void) => {
+  /** Downloads a version of IBM's JDBC driver for Db2 (Maven Central, checked with its SHA-256). */
+  installJdbcDriver: (version: string, onEvent: (e: VendorInstallEvent) => void) => {
     const channel = new Channel<VendorInstallEvent>();
     channel.onmessage = onEvent;
-    return invoke<JdbcStatus>("install_jdbc_driver", { onEvent: channel });
+    return invoke<JdbcStatus>("install_jdbc_driver", { version, onEvent: channel });
   },
+  removeJdbcDriver: (version: string) => invoke<JdbcStatus>("remove_jdbc_driver", { version }),
   cancelJdbcInstall: () => invoke<void>("cancel_jdbc_install"),
   vendorDriverStatus: (driver: DriverKind) => invoke<VendorStatus>("vendor_driver_status", { driver }),
   /** Downloads the vendor's client of `driver` and registers it where needed (UAC on Windows). */
