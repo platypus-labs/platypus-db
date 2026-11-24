@@ -282,8 +282,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [jdbc, setJdbc] = useState<JdbcStatus | null>(null);
   const [jdbcProgress, setJdbcProgress] = useState<{ done: number; total: number | null } | null>(null);
   const [jdbcError, setJdbcError] = useState<string | null>(null);
+  // The Java the app finds by itself: shown as it is, not to be edited.
+  const [javaFound, setJavaFound] = useState<string | null>(null);
   useEffect(() => {
-    if (conn.driver === "db2") api.jdbcStatus().then(setJdbc, () => setJdbc(null));
+    if (conn.driver !== "db2") return;
+    api.jdbcStatus().then(setJdbc, () => setJdbc(null));
+    api.javaProgram().then(setJavaFound, () => setJavaFound(null));
   }, [conn.driver]);
   const [result, setResult] = useState<
     { ok: true; server: ServerInfo } | { ok: false; message: string } | null
@@ -1106,11 +1110,12 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                           <label className="field">
                             <span>{t("Java")}</span>
                             <input
-                              value={conn.options?.["jdbc.java"] ?? ""}
+                              value={javaFound ?? conn.options?.["jdbc.java"] ?? ""}
+                              disabled={javaFound !== null}
                               onChange={(e) => setOption("jdbc.java", e.target.value)}
-                              placeholder={t("Found by itself (JAVA_HOME, the PATH, DBeaver's)")}
+                              placeholder={t("Not found: the java program, or the folder of a Java 11 or later")}
                               data-field="jdbc_java"
-                              title={t("The java program, or the folder of a Java 11 or later.")}
+                              title={javaFound !== null ? t("Found by itself (JAVA_HOME, the PATH, DBeaver's)") : t("The java program, or the folder of a Java 11 or later.")}
                             />
                           </label>
                         </>

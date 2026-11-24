@@ -44,7 +44,7 @@ function useHat(enabled: boolean): Hat {
       off: () => [between(8000, 20000), "drop"],
       drop: () => [1100, "on"],
       on: () => [between(3500, 7000), "doff"],
-      doff: () => [1100, "off"],
+      doff: () => [1700, "off"],
     };
     const run = (state: Hat) => {
       setHat(state);
@@ -72,11 +72,12 @@ function Platypus() {
           {layer("body", body)}
           <span className="platypus-headwrap">
             {layer("head", head)}
-            <svg className="platypus-hat" viewBox="0 0 60 36" aria-hidden="true" focusable="false">
-              <ellipse className="hat-brim" cx="30" cy="28" rx="29" ry="7" />
-              <path className="hat-crown" d="M12 28 C12 12 18 4 30 4 C42 4 48 12 48 28 Z" />
-              <path className="hat-dent" d="M21 8 Q30 13 39 8" />
-              <rect className="hat-band" x="12" y="21" width="36" height="5" />
+            <svg className="platypus-hat" viewBox="0 0 64 44" aria-hidden="true" focusable="false">
+              <ellipse className="hat-brim" cx="32" cy="36" rx="31" ry="6.5" />
+              <path className="hat-crown" d="M13 36 C11.5 23 14 12 21 8.5 C26 6 38 6 43 8.5 C50 12 52.5 23 51 36 Z" />
+              <path className="hat-band" d="M12.4 31 Q32 37.5 51.6 31 L51.2 36 Q32 41.5 12.8 36 Z" />
+              <path className="hat-dent" d="M22 9.5 Q32 14.5 42 9.5" />
+              <path className="hat-light" d="M17.5 30 C16.5 22 18 14 22.5 11" />
             </svg>
           </span>
           {layer("arm", arm)}
@@ -131,6 +132,9 @@ export function PlatypusProgress({ value, max, label, compact = false, says = []
         <div className="platypus-walker">
           <span className="platypus-puff" aria-hidden="true" />
           <span className="platypus-puff" aria-hidden="true" />
+          <span className="platypus-spark" aria-hidden="true">
+            ✦
+          </span>
           <span className="platypus-notes" aria-hidden="true">
             ♪ ♫
           </span>

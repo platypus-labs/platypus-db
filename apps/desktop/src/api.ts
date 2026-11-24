@@ -2816,6 +2816,8 @@ export const api = {
   checkDriverUpdates: (force: boolean) => invoke<DriverUpdateCheck>("check_driver_updates", { force }),
   /** Connects with the password the connection keeps, lists its schemas and runs `SELECT 1`. */
   probeConnection: (connection: SavedConnection) => invoke<ConnectionProbe>("probe_connection", { connection }),
+  /** The `java` the JDBC bridge finds by itself (JAVA_HOME, the PATH, DBeaver's), or `null`. */
+  javaProgram: () => invoke<string | null>("java_program"),
   jdbcStatus: () => invoke<JdbcStatus>("jdbc_status"),
   /** Downloads a version of IBM's JDBC driver for Db2 (Maven Central, checked with its SHA-256). */
   installJdbcDriver: (version: string, onEvent: (e: VendorInstallEvent) => void) => {

@@ -133,6 +133,12 @@ pub async fn install_vendor_driver(
     vendor_driver_status(driver)
 }
 
+/// The `java` the JDBC bridge finds by itself, if any.
+#[tauri::command]
+pub fn java_program() -> Option<String> {
+    platypus_driver_odbc::java_program().map(|p| p.to_string_lossy().into_owned())
+}
+
 /// A version of IBM's JDBC driver for Db2 the app can download, and whether it has.
 #[derive(Debug, Serialize)]
 pub struct JdbcVersion {

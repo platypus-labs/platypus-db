@@ -50,6 +50,13 @@ pub const PROPERTIES: &str = "jdbc.properties";
 /// How many rows of a result wait for the app, in batches.
 const BATCHES_AHEAD: usize = 4;
 
+/// The `java` program the bridge would run when the connection names none (`JAVA_HOME`, the
+/// `PATH`, DBeaver's runtime), or `None` when there is none.
+#[must_use]
+pub fn java_program() -> Option<std::path::PathBuf> {
+    java::find(None).ok()
+}
+
 /// Whether the connection goes through a JDBC driver.
 #[must_use]
 pub fn enabled(config: &ConnectionConfig) -> bool {

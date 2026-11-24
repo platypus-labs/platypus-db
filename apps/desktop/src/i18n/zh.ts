@@ -3405,6 +3405,7 @@ const zh: Record<string, string> = {
   "IBM JDBC {version} (to download)": "IBM JDBC {version}（需下载）",
   "JDBC driver files…": "JDBC 驱动文件…",
   "More jars (a license jar, if you have one)": "其他 jar（如有，许可证 jar）",
+  "Not found: the java program, or the folder of a Java 11 or later": "未找到：java 程序，或 Java 11 及以上版本的文件夹",
 };
 
 export default zh;

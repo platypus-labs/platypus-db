@@ -3405,6 +3405,7 @@ const pt: Record<string, string> = {
   "IBM JDBC {version} (to download)": "IBM JDBC {version} (para baixar)",
   "JDBC driver files…": "Arquivos do driver JDBC…",
   "More jars (a license jar, if you have one)": "Outros jars (um jar de licença, se você tiver)",
+  "Not found: the java program, or the folder of a Java 11 or later": "Não encontrado: o programa java, ou a pasta de um Java 11 ou superior",
 };
 
 export default pt;
