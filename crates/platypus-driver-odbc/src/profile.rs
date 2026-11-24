@@ -20,7 +20,7 @@ pub fn is_ibm_i(config: &ConnectionConfig) -> bool {
     config.driver == DriverKind::Db2 && option(config, DB2_PLATFORM) == Some("ibmi")
 }
 
-fn option<'a>(config: &'a ConnectionConfig, key: &str) -> Option<&'a str> {
+pub(crate) fn option<'a>(config: &'a ConnectionConfig, key: &str) -> Option<&'a str> {
     config
         .options
         .get(key)

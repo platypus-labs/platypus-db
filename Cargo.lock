@@ -6067,9 +6067,11 @@ dependencies = [
  "arrow-odbc",
  "arrow-schema 60.0.0",
  "async-trait",
+ "base64 0.22.1",
  "futures",
  "platypus-core",
  "serde",
+ "serde_json",
  "tokio",
 ]
 

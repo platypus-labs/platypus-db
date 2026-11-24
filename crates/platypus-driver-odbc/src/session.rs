@@ -3,15 +3,15 @@
 
 use std::sync::mpsc as std_mpsc;
 
-use arrow_array::RecordBatch;
 use arrow_odbc::OdbcReaderBuilder;
 use arrow_odbc::odbc_api::{
     self, Connection as OdbcConnection, ConnectionOptions, ResultSetMetadata as _,
 };
-use arrow_schema::{ArrowError, SchemaRef};
+use arrow_schema::ArrowError;
 use platypus_core::{DbError, Error, Result, TxControl};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::command::{CatalogRequest, CatalogRows, Command, Opened, Started};
 use crate::meta::{ColumnRow, ForeignKeyRow, KeyRow, TableRow};
 
 /// Text and binary values longer than this are an error rather than a huge buffer: columns
@@ -19,73 +19,6 @@ use crate::meta::{ColumnRow, ForeignKeyRow, KeyRow, TableRow};
 const MAX_VALUE: usize = 64 << 10;
 /// The memory a batch's buffers may take; batches of wide rows have fewer rows.
 const MAX_BATCH: usize = 256 << 20;
-
-pub enum Command {
-    Execute {
-        sql: String,
-        batch_size: usize,
-        reply: oneshot::Sender<Result<Started>>,
-    },
-    Catalog {
-        request: CatalogRequest,
-        reply: oneshot::Sender<Result<CatalogRows>>,
-    },
-    Autocommit {
-        on: bool,
-        reply: oneshot::Sender<Result<()>>,
-    },
-    End {
-        commit: bool,
-        reply: oneshot::Sender<Result<()>>,
-    },
-}
-
-pub enum Started {
-    Affected(u64),
-    Rows(SchemaRef, mpsc::Receiver<Result<RecordBatch>>),
-}
-
-/// What to read with the catalog functions. Names are matched exactly.
-pub enum CatalogRequest {
-    Schemas,
-    /// The tables and views of a schema, or of every schema.
-    Tables {
-        schema: Option<String>,
-    },
-    /// The columns of a table, or of every table of a schema.
-    Columns {
-        schema: String,
-        table: Option<String>,
-    },
-    PrimaryKey {
-        schema: String,
-        table: String,
-    },
-    /// The table's foreign keys.
-    ForeignKeys {
-        schema: String,
-        table: String,
-    },
-    /// The foreign keys of other tables that point at the table.
-    Referencing {
-        schema: String,
-        table: String,
-    },
-}
-
-pub enum CatalogRows {
-    Schemas(Vec<String>),
-    Tables(Vec<TableRow>),
-    Columns(Vec<ColumnRow>),
-    Keys(Vec<KeyRow>),
-    ForeignKeys(Vec<ForeignKeyRow>),
-}
-
-/// What the thread reports once the connection is open.
-pub struct Opened {
-    /// `SQL_DBMS_NAME`: `Oracle`, `DB2/NT64`, `Microsoft SQL Server`.
-    pub dbms: Option<String>,
-}
 
 /// The message of an ODBC diagnostic, without the `[vendor][driver]` prefixes.
 fn message(text: &str) -> String {

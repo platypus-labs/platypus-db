@@ -9,15 +9,15 @@
 use async_trait::async_trait;
 use platypus_core::{Connection, ConnectionConfig, Driver, DriverKind, Result};
 
-#[cfg(windows)]
+mod command;
 mod connection;
+mod jdbc;
 pub mod meta;
 pub mod profile;
 #[cfg(windows)]
 mod session;
 pub mod system;
 
-#[cfg(windows)]
 pub use connection::OdbcConnection;
 
 /// Opens connections through the system's ODBC drivers.
@@ -72,19 +72,10 @@ impl Driver for OdbcDriver {
         DriverKind::Odbc
     }
 
-    #[cfg(windows)]
     async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
         let conn: Box<dyn Connection> = Box::new(OdbcConnection::open(config).await?);
         platypus_core::run_init(&*conn, &config.init, config.driver).await?;
         Ok(conn)
-    }
-
-    #[cfg(not(windows))]
-    async fn connect(&self, config: &ConnectionConfig) -> Result<Box<dyn Connection>> {
-        Err(platypus_core::Error::Unsupported(format!(
-            "{} through ODBC on this system: ODBC drivers are reached on Windows only for now",
-            config.driver.name()
-        )))
     }
 }
 
