@@ -6,6 +6,24 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-11-24
+
+### Added
+
+- **Progress bars**: the platypus walks along them, humming, and says something useful in a
+  speech bubble: the driver downloads, backup, docs, file jobs, and statements that run for more
+  than a second and a half.
+
+### Fixed
+
+- **Db2**: connections failed with `IM003` ("the specified module could not be found", system error
+  126): IBM's 12.1.4 setup registers a driver library the package does not hold, and the client is
+  now registered on the package's own. A client registered by an earlier version is offered again
+  at the next connection.
+- **Navigator**: Disconnect now closes the sessions of the connection's tabs too; the connected
+  mark stayed on while a tab of the connection was open. A tab with an open transaction is asked
+  about first.
+
 ## [0.6.6] - 2026-11-23
 
 ### Fixed
