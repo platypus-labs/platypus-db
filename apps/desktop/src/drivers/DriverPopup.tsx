@@ -5,6 +5,7 @@ import { usePopupFocus } from "./popupFocus";
 import { DRIVER_NAMES } from "./names";
 import { workbench } from "../workbench";
 import { t } from "../i18n";
+import { PlatypusProgress } from "../components/PlatypusProgress";
 import { VendorPopup } from "./VendorDrivers";
 
 interface Props {
@@ -50,7 +51,7 @@ function DriverPopup({ driver, beforeConnecting, onDone }: Props) {
         {progress ? (
           <>
             <h2>{t("Downloading the {name} driver…", { name })}</h2>
-            <progress max={progress.total ?? undefined} value={progress.total ? progress.done : undefined} />
+            <PlatypusProgress max={progress.total} value={progress.done} label={t("Downloading…")} />
             <p className="muted small">
               {progress.total ? t("{done} of {total}", { done: megabytes(progress.done), total: megabytes(progress.total) }) : megabytes(progress.done)}
             </p>

@@ -3380,6 +3380,18 @@ const de: Record<string, string> = {
   "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "Der Db2-Alias {alias} hat keinen Host: Trage Host, Port und Datenbank ein, bevor du dich verbindest.",
   "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} hat Änderungen an Daten vorgeschlagen, aber {name} ließ sich nicht verbinden; sie wurden nicht geöffnet.",
   "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} hat Änderungen an {table} vorgeschlagen, aber {name} ließ sich nicht verbinden; sie wurden nicht geöffnet.",
+  "Drivers are downloaded once and shared by every connection of that database.": "Treiber werden nur einmal heruntergeladen und von allen Verbindungen dieser Datenbank genutzt.",
+  "The command palette finds any action by its name.": "Die Befehlspalette findet jede Aktion anhand ihres Namens.",
+  "Ctrl+Enter runs the statement under the cursor.": "Strg+Eingabe führt die Anweisung unter dem Cursor aus.",
+  "Production connections commit by hand, so nothing is saved by accident.": "Produktionsverbindungen committen von Hand, damit nichts versehentlich gespeichert wird.",
+  "Saved passwords go to the system keychain.": "Gespeicherte Passwörter landen im Schlüsselbund des Systems.",
+  "Idle connections are checked every minute and reopened if the server dropped them.": "Inaktive Verbindungen werden jede Minute geprüft und neu geöffnet, wenn der Server sie getrennt hat.",
+  "♪ La la la… I walk as fast as the network lets me.": "♪ La la la… ich laufe so schnell, wie das Netzwerk es erlaubt.",
+  "Almost there. Probably.": "Gleich geschafft. Vielleicht.",
+  "Fun fact: a platypus hunts with its eyes shut, feeling for electric signals with its bill.": "Wusstest du? Ein Schnabeltier jagt mit geschlossenen Augen und spürt elektrische Signale mit dem Schnabel.",
+  "Have a sip of water while you wait.": "Trink doch einen Schluck Wasser, während du wartest.",
+  "A long query. The server is thinking, I'm just keeping you company.": "Eine lange Abfrage. Der Server denkt nach, ich leiste dir nur Gesellschaft.",
+  "Too slow? Cancel stops the statement.": "Zu langsam? Abbrechen stoppt die Anweisung.",
 };
 
 export default de;

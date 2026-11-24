@@ -111,6 +111,3 @@ select.cell-input {
   gap: var(--space-4);
 }
 
-.docs-progress progress {
-  width: 100%;
-}

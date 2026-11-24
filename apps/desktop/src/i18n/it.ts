@@ -3380,6 +3380,18 @@ const it: Record<string, string> = {
   "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "L'alias Db2 {alias} non ha un host: inserisci host, porta e database prima di connetterti.",
   "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} ha proposto modifiche ai dati, ma non è stato possibile connettersi a {name}: non sono state aperte.",
   "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} ha proposto modifiche a {table}, ma non è stato possibile connettersi a {name}: non sono state aperte.",
+  "Drivers are downloaded once and shared by every connection of that database.": "I driver si scaricano una volta sola e servono a tutte le connessioni di quel database.",
+  "The command palette finds any action by its name.": "La palette dei comandi trova qualsiasi azione dal nome.",
+  "Ctrl+Enter runs the statement under the cursor.": "Ctrl+Invio esegue l'istruzione sotto il cursore.",
+  "Production connections commit by hand, so nothing is saved by accident.": "Le connessioni di produzione fanno il commit a mano: niente si salva per sbaglio.",
+  "Saved passwords go to the system keychain.": "Le password salvate vanno nel portachiavi del sistema.",
+  "Idle connections are checked every minute and reopened if the server dropped them.": "Le connessioni inattive si controllano ogni minuto e si riaprono se il server le ha chiuse.",
+  "♪ La la la… I walk as fast as the network lets me.": "♪ La la la… cammino veloce quanto la rete mi lascia.",
+  "Almost there. Probably.": "Quasi arrivati. Forse.",
+  "Fun fact: a platypus hunts with its eyes shut, feeling for electric signals with its bill.": "Curiosità: l'ornitorinco caccia a occhi chiusi, sentendo i segnali elettrici con il becco.",
+  "Have a sip of water while you wait.": "Intanto bevi un sorso d'acqua.",
+  "A long query. The server is thinking, I'm just keeping you company.": "Una query lunga. Il server sta pensando, io ti faccio solo compagnia.",
+  "Too slow? Cancel stops the statement.": "Troppo lenta? Annulla ferma l'istruzione.",
 };
 
 export default it;

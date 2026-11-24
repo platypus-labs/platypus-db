@@ -2192,10 +2192,6 @@ button.primary.danger:hover:not(:disabled) {
   outline: none;
 }
 
-.driver-popup progress {
-  width: 100%;
-}
-
 .driver-package {
   margin: var(--space-8) 0;
   padding: var(--space-10);

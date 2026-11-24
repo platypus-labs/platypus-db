@@ -3380,6 +3380,18 @@ const es: Record<string, string> = {
   "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "El alias de Db2 {alias} no tiene host: indica host, puerto y base de datos antes de conectar.",
   "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} propuso cambios en los datos, pero no se pudo conectar con {name}, así que no se abrieron.",
   "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} propuso cambios en {table}, pero no se pudo conectar con {name}, así que no se abrieron.",
+  "Drivers are downloaded once and shared by every connection of that database.": "Los controladores se descargan una sola vez y los usan todas las conexiones de esa base de datos.",
+  "The command palette finds any action by its name.": "La paleta de comandos encuentra cualquier acción por su nombre.",
+  "Ctrl+Enter runs the statement under the cursor.": "Ctrl+Intro ejecuta la sentencia bajo el cursor.",
+  "Production connections commit by hand, so nothing is saved by accident.": "Las conexiones de producción confirman a mano, así que nada se guarda por accidente.",
+  "Saved passwords go to the system keychain.": "Las contraseñas guardadas van al llavero del sistema.",
+  "Idle connections are checked every minute and reopened if the server dropped them.": "Las conexiones inactivas se comprueban cada minuto y se reabren si el servidor las cerró.",
+  "♪ La la la… I walk as fast as the network lets me.": "♪ La la la… camino tan rápido como me deja la red.",
+  "Almost there. Probably.": "Ya casi. Quizás.",
+  "Fun fact: a platypus hunts with its eyes shut, feeling for electric signals with its bill.": "Dato curioso: el ornitorrinco caza con los ojos cerrados, notando señales eléctricas con el pico.",
+  "Have a sip of water while you wait.": "Toma un sorbo de agua mientras esperas.",
+  "A long query. The server is thinking, I'm just keeping you company.": "Una consulta larga. El servidor está pensando, yo solo te hago compañía.",
+  "Too slow? Cancel stops the statement.": "¿Muy lenta? Cancelar detiene la sentencia.",
 };
 
 export default es;

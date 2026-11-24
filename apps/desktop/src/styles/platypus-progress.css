@@ -1,0 +1,287 @@
+/* The progress bar with the walking mascot (components/PlatypusProgress.tsx). Walking and
+   humming only with full motion (motion.css); otherwise it stands where the work is. The parts
+   are the layers of docs/brand/parts on a 1024 canvas, cropped here to the mascot (x 92-932,
+   y 217-807); their pivots are those of the site's home page (site/home.css). */
+
+.platypus-progress {
+  --platypus-w: 60px;
+  /* The air between the feet and the bar. */
+  --platypus-gap: 8px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.platypus-progress.compact {
+  --platypus-w: 40px;
+  --platypus-gap: 6px;
+  min-width: 120px;
+}
+
+.platypus-track {
+  position: relative;
+  /* The mascot's height (840:590), the air under it and room for the step. */
+  height: calc(var(--platypus-w) * 0.7024 + var(--platypus-gap) + 2px);
+  border-bottom: 3px solid var(--border);
+  border-radius: 2px;
+}
+
+/* The path walked so far. */
+.platypus-fill {
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  height: 3px;
+  width: calc((100% - var(--platypus-w)) * var(--platypus-fill) + var(--platypus-w) / 2);
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s linear;
+}
+
+.indeterminate .platypus-fill {
+  display: none;
+}
+
+.platypus-walker {
+  position: absolute;
+  bottom: var(--platypus-gap);
+  left: calc((100% - var(--platypus-w)) * var(--platypus-fill));
+  width: var(--platypus-w);
+  transition: left 0.3s linear;
+}
+
+.indeterminate .platypus-walker {
+  left: 0;
+  transition: none;
+}
+
+.platypus-sprite {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 840 / 590;
+}
+
+.platypus-canvas {
+  position: absolute;
+  width: calc(1024 / 840 * 100%);
+  aspect-ratio: 1;
+  left: calc(-92 / 840 * 100%);
+  top: calc(-217 / 590 * 100%);
+}
+
+.platypus-bob {
+  position: absolute;
+  inset: 0;
+}
+
+.platypus-part {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  pointer-events: none;
+}
+
+.platypus-notes {
+  position: absolute;
+  bottom: 100%;
+  left: 45%;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  white-space: nowrap;
+  opacity: 0;
+}
+
+.compact .platypus-notes {
+  display: none;
+}
+
+/* What the platypus says: a bubble whose tail points at it as it walks. */
+.platypus-tip {
+  position: relative;
+  min-height: 2.6em;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-input);
+  color: var(--fg);
+}
+
+.platypus-tip::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: calc((100% - var(--platypus-w)) * var(--platypus-fill) + var(--platypus-w) / 2 - 5px);
+  width: 9px;
+  height: 9px;
+  background: var(--bg-input);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+  transition: left 0.3s linear;
+}
+
+.indeterminate .platypus-tip::after {
+  left: calc(var(--platypus-w) / 2 - 5px);
+  transition: none;
+}
+
+:root[data-motion="full"] .indeterminate .platypus-tip::after {
+  animation: platypus-tail-pace 6s linear infinite;
+}
+
+:root:not([data-motion="full"]) .indeterminate .platypus-tip::after {
+  left: calc(50% - 5px);
+}
+
+/* The bubble's tail goes where the platypus goes (platypus-pace). */
+@keyframes platypus-tail-pace {
+  0% {
+    left: calc(var(--platypus-w) / 2 - 5px);
+  }
+  50% {
+    left: calc(100% - var(--platypus-w) / 2 - 5px);
+  }
+  100% {
+    left: calc(var(--platypus-w) / 2 - 5px);
+  }
+}
+
+/* Walking, bobbing and humming: only with full motion. */
+:root[data-motion="full"] .platypus-foot-r,
+:root[data-motion="full"] .platypus-foot-l {
+  animation: platypus-step 0.6s ease-in-out infinite;
+}
+
+:root[data-motion="full"] .platypus-foot-r {
+  transform-origin: 66% 72%;
+}
+
+:root[data-motion="full"] .platypus-foot-l {
+  transform-origin: 50% 76%;
+  animation-delay: -0.3s;
+}
+
+:root[data-motion="full"] .platypus-bob {
+  animation: platypus-bob 0.3s ease-in-out infinite alternate;
+}
+
+:root[data-motion="full"] .platypus-tail {
+  transform-origin: 37% 68%;
+  animation: platypus-wag 0.6s ease-in-out infinite alternate;
+}
+
+:root[data-motion="full"] .platypus-head {
+  transform-origin: 58% 41%;
+  animation: platypus-nod 0.6s ease-in-out infinite alternate;
+}
+
+:root[data-motion="full"] .platypus-arm {
+  transform-origin: 68% 48%;
+  animation: platypus-swing 0.6s ease-in-out infinite alternate;
+}
+
+:root[data-motion="full"] .platypus-notes {
+  animation: platypus-hum 2.4s ease-out infinite;
+}
+
+:root[data-motion="full"] .platypus-tip {
+  animation: motion-fade 0.4s ease-out;
+}
+
+:root[data-motion="full"] .indeterminate .platypus-walker {
+  animation: platypus-pace 6s linear infinite;
+}
+
+/* A foot lifts and swings forward, then goes back down. */
+@keyframes platypus-step {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(1.5%, -3.5%) rotate(-10deg);
+  }
+}
+
+@keyframes platypus-bob {
+  to {
+    transform: translateY(-1.2%);
+  }
+}
+
+@keyframes platypus-wag {
+  from {
+    transform: rotate(-4deg);
+  }
+  to {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes platypus-nod {
+  from {
+    transform: rotate(-2deg);
+  }
+  to {
+    transform: rotate(2deg);
+  }
+}
+
+@keyframes platypus-swing {
+  from {
+    transform: rotate(14deg);
+  }
+  to {
+    transform: rotate(-14deg);
+  }
+}
+
+@keyframes platypus-hum {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}
+
+/* Back and forth along the track, turning at each end. */
+@keyframes platypus-pace {
+  0% {
+    left: 0;
+    transform: scaleX(1);
+  }
+  48% {
+    left: calc(100% - var(--platypus-w));
+    transform: scaleX(1);
+  }
+  50% {
+    left: calc(100% - var(--platypus-w));
+    transform: scaleX(-1);
+  }
+  98% {
+    left: 0;
+    transform: scaleX(-1);
+  }
+  100% {
+    left: 0;
+    transform: scaleX(1);
+  }
+}
+
+/* With reduced or no motion an unknown wait is a platypus in the middle. */
+:root:not([data-motion="full"]) .indeterminate .platypus-walker {
+  left: calc(50% - var(--platypus-w) / 2);
+}

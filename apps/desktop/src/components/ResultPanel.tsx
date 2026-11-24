@@ -10,8 +10,33 @@ import type { TableEditTarget } from "../grid/edit/TableEditor";
 import { formatCount, t, plural } from "../i18n";
 import { Icon } from "../ui/Icon";
 import { ErrorState } from "../ui/State";
+import { PlatypusProgress } from "./PlatypusProgress";
 import { sortPosition } from "./viewerSort";
 import { copyText } from "../ui/copy";
+
+/** How long a statement runs before the platypus walks out to keep company: a quick one
+ *  never shows it. */
+const LONG_RUN_MS = 1500;
+
+/** "Executing…", and once the statement is long, the platypus with words for the wait. */
+function ExecutingNotice() {
+  const [long, setLong] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setLong(true), LONG_RUN_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <div className="notice muted result-running">
+      <div>{t("Executing…")}</div>
+      {long && (
+        <PlatypusProgress
+          label={t("Executing…")}
+          says={[t("A long query. The server is thinking, I'm just keeping you company."), t("Too slow? Cancel stops the statement.")]}
+        />
+      )}
+    </div>
+  );
+}
 
 export type ResultStatus =
   | { kind: "pending" }
@@ -196,7 +221,7 @@ function ResultBody({ result, sort, onHeaderClick, headerHint, source, edit, not
     return status.kind === "running" ? (
       <>
         {bar}
-        <div className="notice muted result-running">{t("Executing…")}</div>
+        <ExecutingNotice />
       </>
     ) : null;
   }

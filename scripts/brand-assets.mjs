@@ -10,6 +10,7 @@
 //                                         animated platypus of the site's home page
 //   docs/brand/loading/*.png              the mark in layers (head, eyes, dizzy eyes), same 1024
 //                                         canvas: the app's loading screen
+//                                         (the parts also walk along the app's progress bars)
 //
 //   node scripts/brand-assets.mjs
 //
@@ -69,6 +70,17 @@ try {
   rmSync(loading, { recursive: true, force: true });
 }
 copy("docs/brand/loading/platypus-loader.css", "apps/desktop/public/platypus-loader.css");
+
+// The mascot in parts for the app's progress bar, where it walks: 256 px, shown at about 60.
+const walking = mkdtempSync(join(tmpdir(), "brand-assets-"));
+try {
+  for (const part of readdirSync(at("docs/brand/parts")).filter((name) => name.endsWith(".png"))) {
+    tauriIcon(`docs/brand/parts/${part}`, walking, [256]);
+    copyFileSync(join(walking, "256x256.png"), at(`apps/desktop/src/assets/brand/parts/${part}`));
+  }
+} finally {
+  rmSync(walking, { recursive: true, force: true });
+}
 
 // The mascot in parts: the home page of the site and its mock.
 for (const part of readdirSync(at("docs/brand/parts")).filter((name) => name.endsWith(".png"))) {

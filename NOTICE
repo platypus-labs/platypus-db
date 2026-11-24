@@ -43,6 +43,7 @@ must replace them before it is distributed.
   apps/desktop/src/assets/brand/loading-head.png
   apps/desktop/src/assets/brand/loading-eyes.png
   apps/desktop/src/assets/brand/loading-rolling-eyes.png
+  apps/desktop/src/assets/brand/parts/   (every file in the folder)
   site/img/mark.png
   site/img/icon.png
   site/img/parts/   (every file in the folder)

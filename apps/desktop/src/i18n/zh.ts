@@ -3380,6 +3380,18 @@ const zh: Record<string, string> = {
   "Db2 alias {alias} has no host: fill in the host, port and database before connecting.": "Db2 别名 {alias} 没有主机：连接前请填写主机、端口和数据库。",
   "{agent} proposed changes to data, but {name} could not be connected, so they were not opened.": "{agent} 提议修改数据，但无法连接 {name}，因此没有打开。",
   "{agent} proposed changes to {table}, but {name} could not be connected, so they were not opened.": "{agent} 提议修改 {table}，但无法连接 {name}，因此没有打开。",
+  "Drivers are downloaded once and shared by every connection of that database.": "驱动只需下载一次，该数据库的所有连接都会共用。",
+  "The command palette finds any action by its name.": "命令面板可按名称找到任何操作。",
+  "Ctrl+Enter runs the statement under the cursor.": "Ctrl+Enter 执行光标所在的语句。",
+  "Production connections commit by hand, so nothing is saved by accident.": "生产连接需手动提交，因此不会意外保存。",
+  "Saved passwords go to the system keychain.": "保存的密码存放在系统钥匙串中。",
+  "Idle connections are checked every minute and reopened if the server dropped them.": "空闲连接每分钟检查一次，若服务器已断开则自动重新打开。",
+  "♪ La la la… I walk as fast as the network lets me.": "♪ 啦啦啦……网络让我多快，我就走多快。",
+  "Almost there. Probably.": "快到了。大概吧。",
+  "Fun fact: a platypus hunts with its eyes shut, feeling for electric signals with its bill.": "小知识：鸭嘴兽闭着眼睛捕猎，用嘴感知电信号。",
+  "Have a sip of water while you wait.": "等待的时候喝口水吧。",
+  "A long query. The server is thinking, I'm just keeping you company.": "这条查询比较久。服务器在思考，我只是陪着你。",
+  "Too slow? Cancel stops the statement.": "太慢了？点击“取消”即可停止该语句。",
 };
 
 export default zh;
