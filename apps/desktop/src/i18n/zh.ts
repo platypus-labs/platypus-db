@@ -3393,12 +3393,15 @@ const zh: Record<string, string> = {
   "A long query. The server is thinking, I'm just keeping you company.": "这条查询比较久。服务器在思考，我只是陪着你。",
   "Too slow? Cancel stops the statement.": "太慢了？点击“取消”即可停止该语句。",
   "JDBC driver files": "JDBC 驱动文件",
-  "None: the ODBC driver is used": "无：使用 ODBC 驱动",
   "The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.": "IBM JDBC 驱动的 jar 文件（db2jcc4.jar，对于 Db2 for z/OS 还有许可证 jar），以 ; 分隔。设置后连接将通过 JDBC，需要 Java。",
   "Java": "Java",
   "Found by itself (JAVA_HOME, the PATH, DBeaver's)": "自动查找（JAVA_HOME、PATH、DBeaver 自带的）",
   "The java program, or the folder of a Java 11 or later.": "java 程序，或 Java 11 及以上版本的文件夹。",
   "No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).": "使用 IBM 的 JDBC 驱动无需客户端：请在连接中选择其 jar 文件（需要 Java）。",
+  "IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.": "IBM 的 JDBC 驱动直接连接：无需安装客户端，也无需管理员权限。需要 Java。",
+  "Connect through IBM's JDBC driver (no client needed)": "通过 IBM 的 JDBC 驱动连接（无需客户端）",
+  "Found: {path}": "已找到：{path}",
+  "Downloaded once from Maven Central: {title} {version}, {size} MB. License: {license}.": "从 Maven Central 下载一次：{title} {version}，{size} MB。许可证：{license}。",
 };
 
 export default zh;

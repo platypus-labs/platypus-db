@@ -18,6 +18,7 @@
 //! Any request may be answered with `{error: {code, vendor, message}}` instead.
 
 mod bridge;
+pub mod discover;
 mod java;
 mod rows;
 

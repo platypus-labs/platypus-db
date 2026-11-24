@@ -3393,12 +3393,15 @@ const pt: Record<string, string> = {
   "A long query. The server is thinking, I'm just keeping you company.": "Uma consulta longa. O servidor está pensando, eu só te faço companhia.",
   "Too slow? Cancel stops the statement.": "Muito lenta? Cancelar interrompe a instrução.",
   "JDBC driver files": "Arquivos do driver JDBC",
-  "None: the ODBC driver is used": "Nenhum: usa-se o driver ODBC",
   "The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.": "Os jars do driver JDBC da IBM (db2jcc4.jar e, para Db2 for z/OS, o jar de licença), separados por ;. Com eles a conexão passa pelo JDBC, que precisa de Java.",
   "Java": "Java",
   "Found by itself (JAVA_HOME, the PATH, DBeaver's)": "Encontrado sozinho (JAVA_HOME, o PATH, o do DBeaver)",
   "The java program, or the folder of a Java 11 or later.": "O programa java, ou a pasta de um Java 11 ou superior.",
   "No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).": "Com o driver JDBC da IBM não é preciso nenhum cliente: escolha os jars dele na conexão (precisa de Java).",
+  "IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.": "O driver JDBC da IBM conecta diretamente: sem cliente para instalar, sem permissão de administrador. Precisa de Java.",
+  "Connect through IBM's JDBC driver (no client needed)": "Conectar com o driver JDBC da IBM (sem cliente)",
+  "Found: {path}": "Encontrado: {path}",
+  "Downloaded once from Maven Central: {title} {version}, {size} MB. License: {license}.": "Baixado uma vez do Maven Central: {title} {version}, {size} MB. Licença: {license}.",
 };
 
 export default pt;

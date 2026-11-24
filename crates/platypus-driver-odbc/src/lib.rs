@@ -19,6 +19,7 @@ mod session;
 pub mod system;
 
 pub use connection::OdbcConnection;
+pub use jdbc::discover::{FoundJars, find as find_jdbc_jars};
 
 /// Opens connections through the system's ODBC drivers.
 #[derive(Debug, Clone, Copy, Default)]

@@ -133,6 +133,49 @@ pub async fn install_vendor_driver(
     vendor_driver_status(driver)
 }
 
+/// IBM's JDBC driver for Db2: what the app can download, and the jars already on the machine
+/// (DBeaver's, IBM's own client's, the app's download).
+#[derive(Debug, Serialize)]
+pub struct JdbcStatus {
+    package: Option<platypus_drivers::JdbcDriver>,
+    /// IBM's driver jar, when one is found.
+    driver: Option<String>,
+    /// A license jar, when one is found: most Db2 for z/OS servers need none.
+    license: Option<String>,
+}
+
+#[tauri::command]
+pub fn jdbc_status() -> CommandResult<JdbcStatus> {
+    let found = platypus_driver_odbc::find_jdbc_jars(&[platypus_drivers::jdbc_dir(data_dir()?)]);
+    let text = |p: std::path::PathBuf| p.to_string_lossy().into_owned();
+    Ok(JdbcStatus {
+        package: platypus_drivers::jdbc_driver("db2jcc"),
+        driver: found.driver.map(text),
+        license: found.license.map(text),
+    })
+}
+
+/// Downloads IBM's JDBC driver for Db2 from Maven Central, checked with its SHA-256.
+#[tauri::command]
+pub async fn install_jdbc_driver(on_event: Channel<VendorEvent>) -> CommandResult<JdbcStatus> {
+    let driver = platypus_drivers::jdbc_driver("db2jcc")
+        .ok_or_else(|| CommandError::new("drivers", "there is no JDBC driver to download"))?;
+    let (cancel, _guard) = super::drivers::start_install("db2jcc");
+    let progress = |done, total| {
+        let _ = on_event.send(VendorEvent::Progress { done, total });
+    };
+    platypus_drivers::install_jdbc(data_dir()?, &driver, progress, &cancel)
+        .await
+        .map_err(driver_error)?;
+    jdbc_status()
+}
+
+/// Stops the download of the JDBC driver, if one is running.
+#[tauri::command]
+pub fn cancel_jdbc_install() {
+    super::drivers::cancel_install("db2jcc");
+}
+
 /// Stops the download of `driver`'s client, if one is running.
 #[tauri::command]
 pub fn cancel_vendor_install(driver: DriverKind) {

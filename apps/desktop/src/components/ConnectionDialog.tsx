@@ -12,6 +12,7 @@ import {
   toCommandError,
   type ConnectionType,
   type DriverKind,
+  type JdbcStatus,
   type NetworkProfile,
   type ParseNote,
   type ParsedConnection,
@@ -41,6 +42,7 @@ import { Busy } from "../ui/State";
 import { type ManagerId, MANAGERS, managerById, managerOf } from "../credentialManagers";
 import { SIGN_INS, type SignInId, signInOf, signInsFor, withSignIn } from "../signIn";
 import { suggestedPooler } from "./pooler";
+import { PlatypusProgress } from "./PlatypusProgress";
 import { HelpLink } from "../help/HelpLink";
 
 interface Props {
@@ -275,6 +277,14 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [busy, setBusy] = useState(false);
   /** A password is saved for this connection, for the "(saved)" placeholder. */
   const [passwordSaved, setPasswordSaved] = useState(false);
+  // IBM's JDBC driver for Db2: the jars found on the machine (DBeaver's among them), and the
+  // download when there are none.
+  const [jdbc, setJdbc] = useState<JdbcStatus | null>(null);
+  const [jdbcProgress, setJdbcProgress] = useState<{ done: number; total: number | null } | null>(null);
+  const [jdbcError, setJdbcError] = useState<string | null>(null);
+  useEffect(() => {
+    if (conn.driver === "db2") api.jdbcStatus().then(setJdbc, () => setJdbc(null));
+  }, [conn.driver]);
   const [result, setResult] = useState<
     { ok: true; server: ServerInfo } | { ok: false; message: string } | null
   >(null);
@@ -294,6 +304,41 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   // The pooler the host is, when its mode is not set to it yet.
   const suggested = suggestedPooler(conn.host, conn.port);
   const poolerHint = suggested?.mode === "transaction" && conn.options?.pooler !== "transaction" ? suggested : null;
+  const jdbcOn = !!conn.options?.["jdbc.jars"]?.trim();
+  /** Sets several driver options at once; an empty value removes one. */
+  const setOptions = (patch: Record<string, string>) =>
+    setConn((c) => {
+      const options = { ...c.options };
+      for (const [key, value] of Object.entries(patch)) {
+        if (value.trim()) options[key] = value;
+        else delete options[key];
+      }
+      return { ...c, options };
+    });
+  /** Turns the connection through IBM's JDBC driver on, with the jars found or downloaded, or off. */
+  const useJdbcDriver = async (on: boolean) => {
+    setJdbcError(null);
+    if (!on) {
+      setOptions({ "jdbc.jars": "", "jdbc.java": "" });
+      return;
+    }
+    let status = jdbc;
+    if (!status?.driver) {
+      setJdbcProgress({ done: 0, total: null });
+      try {
+        status = await api.installJdbcDriver((e) => {
+          if (e.kind === "progress") setJdbcProgress({ done: e.done, total: e.total });
+        });
+        setJdbc(status);
+      } catch (e) {
+        setJdbcError(toCommandError(e).message);
+        return;
+      } finally {
+        setJdbcProgress(null);
+      }
+    }
+    if (status?.driver) setOptions({ "jdbc.jars": [status.driver, status.license].filter(Boolean).join(";") });
+  };
   /** Sets a driver option; an empty value removes it. */
   const setOption = (key: string, value: string) => {
     const options = { ...conn.options };
@@ -1002,38 +1047,68 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   )}
                   {conn.driver === "db2" && conn.options?.db2_platform !== "ibmi" && (
                     <>
-                      <label className="field">
-                        <span>{t("JDBC driver files")}</span>
-                        <div className="row tight">
+                      <div className="field jdbc-field">
+                        <label className="check" title={t("IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.")}>
                           <input
-                            value={conn.options?.["jdbc.jars"] ?? ""}
-                            onChange={(e) => setOption("jdbc.jars", e.target.value)}
-                            placeholder={t("None: the ODBC driver is used")}
-                            data-field="jdbc_jars"
-                            title={t("The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.")}
+                            type="checkbox"
+                            data-field="jdbc"
+                            checked={jdbcOn}
+                            disabled={jdbcProgress !== null}
+                            onChange={(e) => void useJdbcDriver(e.target.checked)}
                           />
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const picked = await open({ multiple: true, directory: false, filters: [{ name: "JAR", extensions: ["jar"] }] });
-                              if (Array.isArray(picked) && picked.length > 0) setOption("jdbc.jars", picked.join(";"));
-                            }}
-                          >
-                            {t("Browse…")}
-                          </button>
-                        </div>
-                      </label>
-                      {conn.options?.["jdbc.jars"]?.trim() && (
-                        <label className="field">
-                          <span>{t("Java")}</span>
-                          <input
-                            value={conn.options?.["jdbc.java"] ?? ""}
-                            onChange={(e) => setOption("jdbc.java", e.target.value)}
-                            placeholder={t("Found by itself (JAVA_HOME, the PATH, DBeaver's)")}
-                            data-field="jdbc_java"
-                            title={t("The java program, or the folder of a Java 11 or later.")}
-                          />
+                          {t("Connect through IBM's JDBC driver (no client needed)")}
                         </label>
+                        {jdbcProgress && (
+                          <PlatypusProgress compact max={jdbcProgress.total} value={jdbcProgress.done} label={t("Downloading…")} />
+                        )}
+                        {jdbcError && <small className="notice error">{jdbcError}</small>}
+                        {!jdbcOn && !jdbcProgress && jdbc?.driver && (
+                          <small className="muted">{t("Found: {path}", { path: jdbc.driver })}</small>
+                        )}
+                        {!jdbcOn && !jdbcProgress && jdbc && !jdbc.driver && jdbc.package && (
+                          <small className="muted">
+                            {t("Downloaded once from Maven Central: {title} {version}, {size} MB. License: {license}.", {
+                              title: jdbc.package.title,
+                              version: jdbc.package.version,
+                              size: (jdbc.package.size / 1048576).toFixed(1),
+                              license: jdbc.package.license,
+                            })}
+                          </small>
+                        )}
+                      </div>
+                      {jdbcOn && (
+                        <>
+                          <label className="field">
+                            <span>{t("JDBC driver files")}</span>
+                            <div className="row tight">
+                              <input
+                                value={conn.options?.["jdbc.jars"] ?? ""}
+                                onChange={(e) => setOption("jdbc.jars", e.target.value)}
+                                data-field="jdbc_jars"
+                                title={t("The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.")}
+                              />
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const picked = await open({ multiple: true, directory: false, filters: [{ name: "JAR", extensions: ["jar"] }] });
+                                  if (Array.isArray(picked) && picked.length > 0) setOption("jdbc.jars", picked.join(";"));
+                                }}
+                              >
+                                {t("Browse…")}
+                              </button>
+                            </div>
+                          </label>
+                          <label className="field">
+                            <span>{t("Java")}</span>
+                            <input
+                              value={conn.options?.["jdbc.java"] ?? ""}
+                              onChange={(e) => setOption("jdbc.java", e.target.value)}
+                              placeholder={t("Found by itself (JAVA_HOME, the PATH, DBeaver's)")}
+                              data-field="jdbc_java"
+                              title={t("The java program, or the folder of a Java 11 or later.")}
+                            />
+                          </label>
+                        </>
                       )}
                     </>
                   )}

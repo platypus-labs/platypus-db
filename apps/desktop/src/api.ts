@@ -930,6 +930,24 @@ export interface VendorPackage {
   unregister: { path: string; args: string[] } | null;
 }
 
+/** IBM's JDBC driver for Db2, which the app can download. */
+export interface JdbcPackage {
+  name: string;
+  title: string;
+  version: string;
+  license: string;
+  license_url: string;
+  vendor_url: string;
+  size: number;
+}
+
+/** The JDBC jars on the machine (DBeaver's, IBM's, the app's download) and what can be downloaded. */
+export interface JdbcStatus {
+  package: JdbcPackage | null;
+  driver: string | null;
+  license: string | null;
+}
+
 export interface VendorStatus {
   /** `null` where the app installs nothing on this system. */
   package: VendorPackage | null;
@@ -2793,6 +2811,14 @@ export const api = {
   checkDriverUpdates: (force: boolean) => invoke<DriverUpdateCheck>("check_driver_updates", { force }),
   /** Connects with the password the connection keeps, lists its schemas and runs `SELECT 1`. */
   probeConnection: (connection: SavedConnection) => invoke<ConnectionProbe>("probe_connection", { connection }),
+  jdbcStatus: () => invoke<JdbcStatus>("jdbc_status"),
+  /** Downloads IBM's JDBC driver for Db2 (Maven Central, checked with its SHA-256). */
+  installJdbcDriver: (onEvent: (e: VendorInstallEvent) => void) => {
+    const channel = new Channel<VendorInstallEvent>();
+    channel.onmessage = onEvent;
+    return invoke<JdbcStatus>("install_jdbc_driver", { onEvent: channel });
+  },
+  cancelJdbcInstall: () => invoke<void>("cancel_jdbc_install"),
   vendorDriverStatus: (driver: DriverKind) => invoke<VendorStatus>("vendor_driver_status", { driver }),
   /** Downloads the vendor's client of `driver` and registers it where needed (UAC on Windows). */
   installVendorDriver: (driver: DriverKind, onEvent: (e: VendorInstallEvent) => void) => {

@@ -12,7 +12,7 @@ async fn connect() -> Option<Box<dyn Connection>> {
     let java = std::env::var("PLATYPUS_TEST_JAVA").ok()?;
     let jars = std::env::var("PLATYPUS_TEST_JARS").ok()?;
     let mut config = ConnectionConfig::new(DriverKind::Odbc);
-    config.user = "sa".to_owned();
+    "sa".clone_into(&mut config.user);
     for (key, value) in [
         ("jdbc.java", java.as_str()),
         ("jdbc.jars", jars.as_str()),
@@ -20,7 +20,12 @@ async fn connect() -> Option<Box<dyn Connection>> {
     ] {
         config.options.insert(key.to_owned(), value.to_owned());
     }
-    Some(OdbcDriver.connect(&config).await.expect("connects through the bridge"))
+    Some(
+        OdbcDriver
+            .connect(&config)
+            .await
+            .expect("connects through the bridge"),
+    )
 }
 
 async fn rows(conn: &dyn Connection, sql: &str) -> Vec<RecordBatch> {
@@ -46,19 +51,41 @@ async fn runs_statements_and_reads_the_catalog() {
         return;
     };
     assert_eq!(conn.server_info().product, "H2");
-    run(&*conn, "create table t(a int primary key, b varchar(20), c double)").await;
-    assert_eq!(run(&*conn, "insert into t values (1, 'one \"q\" \\ x', 1.5), (2, null, null)").await, 2);
+    run(
+        &*conn,
+        "create table t(a int primary key, b varchar(20), c double)",
+    )
+    .await;
+    assert_eq!(
+        run(
+            &*conn,
+            "insert into t values (1, 'one \"q\" \\ x', 1.5), (2, null, null)"
+        )
+        .await,
+        2
+    );
 
     let batches = rows(&*conn, "select a, b from t order by a").await;
     let batch = &batches[0];
-    let a = batch.column(0).as_any().downcast_ref::<Int64Array>().unwrap();
-    let b = batch.column(1).as_any().downcast_ref::<StringArray>().unwrap();
+    let a = batch
+        .column(0)
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap();
+    let b = batch
+        .column(1)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
     assert_eq!((a.value(0), a.value(1)), (1, 2));
     assert_eq!(b.value(0), "one \"q\" \\ x");
     assert!(b.is_null(1));
 
     // A database error keeps its SQLSTATE.
-    match conn.execute("select * from nonexistent", &ExecOptions::default()).await {
+    match conn
+        .execute("select * from nonexistent", &ExecOptions::default())
+        .await
+    {
         Err(Error::Database(e)) => assert_eq!(e.code.as_deref(), Some("42S02")),
         other => panic!("expected a database error, got {:?}", other.map(|_| ())),
     }
@@ -91,7 +118,11 @@ async fn a_dropped_result_leaves_the_session_usable() {
     assert_eq!(stream.try_next().await.unwrap().unwrap().num_rows(), 10);
     drop(stream);
     let batches = rows(&*conn, "select 42").await;
-    let n = batches[0].column(0).as_any().downcast_ref::<Int64Array>().unwrap();
+    let n = batches[0]
+        .column(0)
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap();
     assert_eq!(n.value(0), 42);
 }
 
@@ -107,6 +138,10 @@ async fn commit_and_rollback_end_a_manual_transaction() {
     run(&*conn, "insert into tx values (2)").await;
     conn.commit().await.unwrap();
     let batches = rows(&*conn, "select count(*) from tx").await;
-    let n = batches[0].column(0).as_any().downcast_ref::<Int64Array>().unwrap();
+    let n = batches[0]
+        .column(0)
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap();
     assert_eq!(n.value(0), 1);
 }
