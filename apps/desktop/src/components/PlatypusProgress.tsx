@@ -1,6 +1,6 @@
 // The app's progress bar: the platypus mascot walks along the track, humming, and says
 // something useful while the wait lasts. Without `value` and `max` it walks back and forth.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
 import arm from "../assets/brand/parts/arm.png";
 import body from "../assets/brand/parts/body.png";
@@ -29,6 +29,34 @@ function tips(says: string[]): string[] {
   ];
 }
 
+/** A hat now and then drops onto its head, stays a while and is taken off, like Agent P's. */
+type Hat = "off" | "drop" | "on" | "doff";
+
+const between = (min: number, max: number) => min + Math.random() * (max - min);
+
+function useHat(enabled: boolean): Hat {
+  const [hat, setHat] = useState<Hat>("off");
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    if (!enabled) return;
+    // Each step says how long it lasts and what comes next.
+    const steps: Record<Hat, () => [number, Hat]> = {
+      off: () => [between(8000, 20000), "drop"],
+      drop: () => [1100, "on"],
+      on: () => [between(3500, 7000), "doff"],
+      doff: () => [1700, "off"],
+    };
+    const run = (state: Hat) => {
+      setHat(state);
+      const [wait, next] = steps[state]();
+      timer.current = setTimeout(() => run(next), wait);
+    };
+    run("off");
+    return () => clearTimeout(timer.current);
+  }, [enabled]);
+  return hat;
+}
+
 /** The mascot in the parts of docs/brand/parts, stacked back to front on one canvas: the
  *  feet step, the rest bobs, the tail wags and the arm swings (platypus-progress.css). */
 function Platypus() {
@@ -42,7 +70,16 @@ function Platypus() {
           {layer("tail", tail)}
           {layer("bottom", bottom)}
           {layer("body", body)}
-          {layer("head", head)}
+          <span className="platypus-headwrap">
+            {layer("head", head)}
+            <svg className="platypus-hat" viewBox="0 0 64 44" aria-hidden="true" focusable="false">
+              <ellipse className="hat-brim" cx="32" cy="36" rx="31" ry="6.5" />
+              <path className="hat-crown" d="M13 36 C11.5 23 14 12 21 8.5 C26 6 38 6 43 8.5 C50 12 52.5 23 51 36 Z" />
+              <path className="hat-band" d="M12.4 31 Q32 37.5 51.6 31 L51.2 36 Q32 41.5 12.8 36 Z" />
+              <path className="hat-dent" d="M22 9.5 Q32 14.5 42 9.5" />
+              <path className="hat-light" d="M17.5 30 C16.5 22 18 14 22.5 11" />
+            </svg>
+          </span>
           {layer("arm", arm)}
         </span>
       </span>
@@ -65,6 +102,7 @@ export function PlatypusProgress({ value, max, label, compact = false, says = []
   const known = max != null && max > 0 && value !== undefined;
   const fraction = known ? Math.min(1, Math.max(0, value / max)) : 0;
   const [tip, setTip] = useState(0);
+  const hat = useHat(!compact);
 
   useEffect(() => {
     if (compact) return;
@@ -81,6 +119,7 @@ export function PlatypusProgress({ value, max, label, compact = false, says = []
       aria-valuemin={known ? 0 : undefined}
       aria-valuemax={known ? max : undefined}
       aria-valuenow={known ? value : undefined}
+      data-hat={hat}
       style={{ "--platypus-fill": fraction } as React.CSSProperties}
     >
       {!compact && all.length > 0 && (
@@ -93,6 +132,9 @@ export function PlatypusProgress({ value, max, label, compact = false, says = []
         <div className="platypus-walker">
           <span className="platypus-puff" aria-hidden="true" />
           <span className="platypus-puff" aria-hidden="true" />
+          <span className="platypus-spark" aria-hidden="true">
+            ✦
+          </span>
           <span className="platypus-notes" aria-hidden="true">
             ♪ ♫
           </span>

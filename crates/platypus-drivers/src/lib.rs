@@ -10,10 +10,15 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 mod install;
+mod jdbc;
 mod registry;
 mod vendor;
 mod versions;
 
+pub use jdbc::{
+    JDBC_DRIVERS, JdbcDriver, install_jdbc, installed_jdbc, jdbc_dir, jdbc_driver, jdbc_versions,
+    remove_jdbc,
+};
 pub use registry::{Package, Registry};
 pub use tokio_util::sync::CancellationToken;
 pub use vendor::{

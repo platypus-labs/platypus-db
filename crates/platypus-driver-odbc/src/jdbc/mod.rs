@@ -18,6 +18,7 @@
 //! Any request may be answered with `{error: {code, vendor, message}}` instead.
 
 mod bridge;
+pub mod discover;
 mod java;
 mod rows;
 
@@ -33,7 +34,11 @@ use crate::meta::{ColumnRow, ForeignKeyRow, KeyRow, TableRow};
 use crate::profile;
 use bridge::{Bridge, error_of};
 
-/// The jars of the JDBC driver (its license jar too), one path per line or separated by `;`.
+/// The version of the JDBC driver the app downloads (IBM's, for Db2) that the connection uses,
+/// chosen in the form like a driver of DBeaver's; downloaded when a connection first needs it.
+pub const DRIVER: &str = "jdbc.driver";
+/// More jars of the JDBC driver (a license jar, or the files of a driver the app does not
+/// download), one path per line or separated by `;`. Without `jdbc.driver`, all of them.
 pub const JARS: &str = "jdbc.jars";
 /// The JDBC URL, for a database other than Db2 (Db2's is made from the host and database).
 pub const URL: &str = "jdbc.url";
@@ -45,10 +50,40 @@ pub const PROPERTIES: &str = "jdbc.properties";
 /// How many rows of a result wait for the app, in batches.
 const BATCHES_AHEAD: usize = 4;
 
+/// The `java` program the bridge would run when the connection names none (`JAVA_HOME`, the
+/// `PATH`, DBeaver's runtime), or `None` when there is none.
+#[must_use]
+pub fn java_program() -> Option<std::path::PathBuf> {
+    java::find(None).ok()
+}
+
 /// Whether the connection goes through a JDBC driver.
 #[must_use]
 pub fn enabled(config: &ConnectionConfig) -> bool {
-    profile::option(config, JARS).is_some_and(|jars| !jars.trim().is_empty())
+    [DRIVER, JARS]
+        .iter()
+        .any(|key| profile::option(config, key).is_some_and(|v| !v.trim().is_empty()))
+}
+
+/// The jar of the version of IBM's driver the connection names, which must be downloaded.
+fn chosen_driver(config: &ConnectionConfig) -> Result<Option<String>> {
+    let Some(version) = profile::option(config, DRIVER)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    else {
+        return Ok(None);
+    };
+    let driver = platypus_drivers::jdbc_driver("db2jcc", Some(version))
+        .ok_or_else(|| Error::Config(format!("there is no IBM JDBC driver version `{version}`")))?;
+    let dir = platypus_drivers::data_dir()
+        .ok_or_else(|| Error::Config("the app's drivers folder is not set".to_owned()))?;
+    platypus_drivers::installed_jdbc(dir, &driver)
+        .map(|p| Some(p.to_string_lossy().into_owned()))
+        .ok_or_else(|| {
+            Error::Config(format!(
+                "the IBM JDBC driver {version} is not downloaded: choose it in the connection to                  download it"
+            ))
+        })
 }
 
 /// What a bridge needs to connect.
@@ -64,12 +99,15 @@ struct Settings {
 
 impl Settings {
     fn new(config: &ConnectionConfig) -> Result<Self> {
-        let jars: Vec<&str> = profile::option(config, JARS)
-            .unwrap_or_default()
-            .split([';', '\n'])
-            .map(str::trim)
-            .filter(|j| !j.is_empty())
-            .collect();
+        let chosen = chosen_driver(config)?;
+        let mut jars: Vec<&str> = chosen.as_deref().into_iter().collect();
+        jars.extend(
+            profile::option(config, JARS)
+                .unwrap_or_default()
+                .split([';', '\n'])
+                .map(str::trim)
+                .filter(|j| !j.is_empty()),
+        );
         for jar in &jars {
             if !std::path::Path::new(jar).is_file() {
                 return Err(Error::Config(format!(

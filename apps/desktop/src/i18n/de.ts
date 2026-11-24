@@ -3393,12 +3393,19 @@ const de: Record<string, string> = {
   "A long query. The server is thinking, I'm just keeping you company.": "Eine lange Abfrage. Der Server denkt nach, ich leiste dir nur Gesellschaft.",
   "Too slow? Cancel stops the statement.": "Zu langsam? Abbrechen stoppt die Anweisung.",
   "JDBC driver files": "JDBC-Treiberdateien",
-  "None: the ODBC driver is used": "Keine: der ODBC-Treiber wird verwendet",
   "The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.": "Die Jars des JDBC-Treibers von IBM (db2jcc4.jar und, für Db2 for z/OS, das Lizenz-Jar), durch ; getrennt. Damit läuft die Verbindung über JDBC, wofür Java nötig ist.",
   "Java": "Java",
   "Found by itself (JAVA_HOME, the PATH, DBeaver's)": "Wird selbst gefunden (JAVA_HOME, PATH, das von DBeaver)",
   "The java program, or the folder of a Java 11 or later.": "Das Programm java oder der Ordner eines Java 11 oder höher.",
   "No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).": "Mit IBMs JDBC-Treiber ist kein Client nötig: Wähle seine Jars in der Verbindung (Java wird benötigt).",
+  "IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.": "IBMs JDBC-Treiber verbindet direkt: kein Client zu installieren, keine Administratorrechte. Er braucht Java.",
+  "Connect through": "Verbinden über",
+  "ODBC driver (IBM client)": "ODBC-Treiber (IBM-Client)",
+  "IBM JDBC {version}": "IBM JDBC {version}",
+  "IBM JDBC {version} (to download)": "IBM JDBC {version} (herunterladen)",
+  "JDBC driver files…": "JDBC-Treiberdateien…",
+  "More jars (a license jar, if you have one)": "Weitere Jars (ein Lizenz-Jar, falls vorhanden)",
+  "Not found: the java program, or the folder of a Java 11 or later": "Nicht gefunden: das Programm java oder der Ordner eines Java 11 oder höher",
 };
 
 export default de;

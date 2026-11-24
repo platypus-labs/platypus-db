@@ -6,6 +6,15 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Db2 through JDBC, by itself**: the connection form has a box "Connect through IBM's JDBC driver
+  (no client needed)": the app finds IBM's driver on the machine (DBeaver's, an IBM client's, or the
+  one it downloaded) and, when there is none, downloads it from Maven Central, checked with its
+  SHA-256. Nothing to install and no administrator rights.
+- **URL mode for Db2 and Oracle**: like the other databases that have a URL, they can be entered as
+  `db2://user@host:446/LOCATION?platform=zos` or `oracle://user@host:1521/SERVICE`.
+
 ## [0.6.9] - 2026-11-24
 
 ### Changed
