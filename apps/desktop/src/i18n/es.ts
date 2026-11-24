@@ -3398,6 +3398,7 @@ const es: Record<string, string> = {
   "Java": "Java",
   "Found by itself (JAVA_HOME, the PATH, DBeaver's)": "Lo encuentra solo (JAVA_HOME, el PATH, el de DBeaver)",
   "The java program, or the folder of a Java 11 or later.": "El programa java, o la carpeta de un Java 11 o posterior.",
+  "No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).": "Con el controlador JDBC de IBM no hace falta ningún cliente: elige sus jar en la conexión (necesita Java).",
 };
 
 export default es;

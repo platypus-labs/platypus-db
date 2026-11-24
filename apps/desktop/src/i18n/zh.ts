@@ -3398,6 +3398,7 @@ const zh: Record<string, string> = {
   "Java": "Java",
   "Found by itself (JAVA_HOME, the PATH, DBeaver's)": "自动查找（JAVA_HOME、PATH、DBeaver 自带的）",
   "The java program, or the folder of a Java 11 or later.": "java 程序，或 Java 11 及以上版本的文件夹。",
+  "No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).": "使用 IBM 的 JDBC 驱动无需客户端：请在连接中选择其 jar 文件（需要 Java）。",
 };
 
 export default zh;

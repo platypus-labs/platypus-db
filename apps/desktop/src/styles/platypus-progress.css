@@ -153,7 +153,30 @@
   }
 }
 
-/* Walking, bobbing and humming: only with full motion. */
+/* Dust behind the feet. */
+.platypus-puff {
+  position: absolute;
+  bottom: 2px;
+  left: 4%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.platypus-puff + .platypus-puff {
+  left: 12%;
+}
+
+.compact .platypus-puff {
+  display: none;
+}
+
+/* Walking, bobbing and humming: only with full motion. One step is 0.3 s, a stride 0.6 s: the
+   body rocks and bobs with each step, the feet swing forward and slide back, and the tail, head
+   and arm follow a little later. */
 :root[data-motion="full"] .platypus-foot-r,
 :root[data-motion="full"] .platypus-foot-l {
   animation: platypus-step 0.6s ease-in-out infinite;
@@ -168,18 +191,23 @@
   animation-delay: -0.3s;
 }
 
+:root[data-motion="full"] .platypus-sprite {
+  transform-origin: 52% 100%;
+  animation: platypus-rock 0.3s ease-in-out infinite alternate;
+}
+
 :root[data-motion="full"] .platypus-bob {
   animation: platypus-bob 0.3s ease-in-out infinite alternate;
 }
 
 :root[data-motion="full"] .platypus-tail {
   transform-origin: 37% 68%;
-  animation: platypus-wag 0.6s ease-in-out infinite alternate;
+  animation: platypus-wag 0.3s ease-in-out 0.06s infinite alternate;
 }
 
 :root[data-motion="full"] .platypus-head {
   transform-origin: 58% 41%;
-  animation: platypus-nod 0.6s ease-in-out infinite alternate;
+  animation: platypus-nod 0.3s ease-in-out 0.05s infinite alternate;
 }
 
 :root[data-motion="full"] .platypus-arm {
@@ -187,59 +215,138 @@
   animation: platypus-swing 0.6s ease-in-out infinite alternate;
 }
 
+:root[data-motion="full"] .platypus-puff {
+  animation: platypus-puff 0.6s ease-out infinite;
+}
+
+:root[data-motion="full"] .platypus-puff + .platypus-puff {
+  animation-delay: -0.3s;
+}
+
 :root[data-motion="full"] .platypus-notes {
   animation: platypus-hum 2.4s ease-out infinite;
 }
 
+/* The bubble pops out of the platypus's side each time it says something new. */
 :root[data-motion="full"] .platypus-tip {
-  animation: motion-fade 0.4s ease-out;
+  transform-origin: 20% 100%;
+  animation: platypus-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 :root[data-motion="full"] .indeterminate .platypus-walker {
   animation: platypus-pace 6s linear infinite;
 }
 
-/* A foot lifts and swings forward, then goes back down. */
+/* At the end of the road it hops with joy, waving. */
+:root[data-motion="full"] .platypus-progress.done .platypus-canvas {
+  animation: platypus-cheer 0.7s ease-out 2;
+}
+
+:root[data-motion="full"] .platypus-progress.done .platypus-arm {
+  animation: platypus-wave 0.25s ease-in-out infinite alternate;
+}
+
+/* A foot swings forward in the air for half a stride, then slides back on the ground. */
 @keyframes platypus-step {
-  0%,
-  100% {
-    transform: translate(0, 0) rotate(0deg);
+  0% {
+    transform: translate(-5%, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(0, -6.5%) rotate(-14deg);
   }
   50% {
-    transform: translate(1.5%, -3.5%) rotate(-10deg);
+    transform: translate(5%, 0) rotate(0deg);
+  }
+  100% {
+    transform: translate(-5%, 0) rotate(0deg);
+  }
+}
+
+@keyframes platypus-rock {
+  from {
+    transform: rotate(-3deg);
+  }
+  to {
+    transform: rotate(3deg);
   }
 }
 
 @keyframes platypus-bob {
+  from {
+    transform: translateY(0) scaleY(0.985);
+  }
   to {
-    transform: translateY(-1.2%);
+    transform: translateY(-2.6%) scaleY(1);
   }
 }
 
 @keyframes platypus-wag {
   from {
-    transform: rotate(-4deg);
+    transform: rotate(-7deg);
   }
   to {
-    transform: rotate(5deg);
+    transform: rotate(7deg);
   }
 }
 
 @keyframes platypus-nod {
   from {
-    transform: rotate(-2deg);
+    transform: rotate(-3deg);
   }
   to {
-    transform: rotate(2deg);
+    transform: rotate(3deg);
   }
 }
 
 @keyframes platypus-swing {
   from {
-    transform: rotate(14deg);
+    transform: rotate(16deg);
   }
   to {
-    transform: rotate(-14deg);
+    transform: rotate(-16deg);
+  }
+}
+
+@keyframes platypus-wave {
+  from {
+    transform: rotate(-35deg);
+  }
+  to {
+    transform: rotate(-70deg);
+  }
+}
+
+@keyframes platypus-cheer {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  15% {
+    transform: translateY(0) scale(1.05, 0.93);
+  }
+  50% {
+    transform: translateY(-16%) scale(0.97, 1.05);
+  }
+}
+
+@keyframes platypus-puff {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  15% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -4px) scale(1.5);
+  }
+}
+
+@keyframes platypus-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
   }
 }
 
