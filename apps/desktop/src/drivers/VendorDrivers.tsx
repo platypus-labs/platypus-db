@@ -138,6 +138,11 @@ export function VendorPopup({ driver, beforeConnecting, onDone }: Props) {
                 {t("Windows will ask for administrator permission (User Account Control) to register the driver with the system's ODBC driver manager.")}
               </div>
             )}
+            {driver === "db2" && (
+              <div className="notice small" data-notice="jdbc">
+                {t("No client needed with IBM's JDBC driver: choose its jars in the connection (it needs Java).")}
+              </div>
+            )}
             {status && !pkg && <div className="notice small">{ELSEWHERE[driver] && t(ELSEWHERE[driver])}</div>}
             {!status && !error && <p className="muted small">{t("Looking up the client…")}</p>}
             {error && <div className="notice error small">{error}</div>}

@@ -122,6 +122,9 @@ export function askDriver(driver: DriverKind, options: { beforeConnecting?: bool
 /** A database was picked for a new connection: offers its driver at once when it needs one
  *  that is not installed. The form stays usable either way; the answer changes nothing. */
 export async function offerDriver(driver: DriverKind): Promise<void> {
+  // Db2 may go through IBM's JDBC driver, which needs no client: the offer waits for a connection
+  // that has none of its jars and cannot find the ODBC driver (`withDriver`).
+  if (driver === "db2") return;
   const missing = await driverToDownload(driver, {
     downloaded: DOWNLOADED_DRIVERS,
     vendor: VENDOR_DRIVERS,
