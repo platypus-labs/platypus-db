@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-11-24
+
 ### Added
 
 - **JDBC bridge**: a connection can go through a JDBC driver instead of ODBC, with a small Java
