@@ -930,25 +930,32 @@ export interface VendorPackage {
   unregister: { path: string; args: string[] } | null;
 }
 
-/** A version of IBM's JDBC driver for Db2, which the app can download. */
-export interface JdbcPackage {
-  name: string;
-  title: string;
-  version: string;
-  license: string;
-  license_url: string;
-  vendor_url: string;
-  size: number;
-}
-
+/** A version of a JDBC driver the app can download, and whether it has. */
 export interface JdbcVersion {
-  package: JdbcPackage;
+  version: string;
+  /** The bytes to download, all the jars of the version together. */
+  size: number;
   installed: boolean;
 }
 
-/** The versions of IBM's JDBC driver, and the jars found on the machine (DBeaver's, IBM's). */
-export interface JdbcStatus {
+/** A JDBC driver of the app's catalog (`db2jcc`, `h2`, `firebird`…) with its versions. */
+export interface JdbcCatalogDriver {
+  name: string;
+  title: string;
+  license: string;
+  license_url: string;
+  /** Otherwise its license is shown before the download. */
+  open_source: boolean;
+  vendor_url: string;
+  /** The JDBC URL with `{host}`, `{port}` and `{database}` where the fields go. */
+  url_template: string;
+  default_port: number | null;
   versions: JdbcVersion[];
+}
+
+/** The catalog of JDBC drivers, and the jars of IBM's driver found on the machine (DBeaver's, IBM's). */
+export interface JdbcStatus {
+  drivers: JdbcCatalogDriver[];
   found_driver: string | null;
   found_license: string | null;
 }
@@ -2819,14 +2826,14 @@ export const api = {
   /** The `java` the JDBC bridge finds by itself (JAVA_HOME, the PATH, DBeaver's), or `null`. */
   javaProgram: () => invoke<string | null>("java_program"),
   jdbcStatus: () => invoke<JdbcStatus>("jdbc_status"),
-  /** Downloads a version of IBM's JDBC driver for Db2 (Maven Central, checked with its SHA-256). */
-  installJdbcDriver: (version: string, onEvent: (e: VendorInstallEvent) => void) => {
+  /** Downloads a version of a JDBC driver of the catalog (Maven Central, checked with its SHA-256). */
+  installJdbcDriver: (name: string, version: string, onEvent: (e: VendorInstallEvent) => void) => {
     const channel = new Channel<VendorInstallEvent>();
     channel.onmessage = onEvent;
-    return invoke<JdbcStatus>("install_jdbc_driver", { version, onEvent: channel });
+    return invoke<JdbcStatus>("install_jdbc_driver", { name, version, onEvent: channel });
   },
-  removeJdbcDriver: (version: string) => invoke<JdbcStatus>("remove_jdbc_driver", { version }),
-  cancelJdbcInstall: () => invoke<void>("cancel_jdbc_install"),
+  removeJdbcDriver: (name: string, version: string) => invoke<JdbcStatus>("remove_jdbc_driver", { name, version }),
+  cancelJdbcInstall: (name: string) => invoke<void>("cancel_jdbc_install", { name }),
   vendorDriverStatus: (driver: DriverKind) => invoke<VendorStatus>("vendor_driver_status", { driver }),
   /** Downloads the vendor's client of `driver` and registers it where needed (UAC on Windows). */
   installVendorDriver: (driver: DriverKind, onEvent: (e: VendorInstallEvent) => void) => {

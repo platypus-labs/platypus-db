@@ -12,7 +12,6 @@ import {
   toCommandError,
   type ConnectionType,
   type DriverKind,
-  type JdbcStatus,
   type NetworkProfile,
   type ParseNote,
   type ParsedConnection,
@@ -42,7 +41,8 @@ import { Busy } from "../ui/State";
 import { type ManagerId, MANAGERS, managerById, managerOf } from "../credentialManagers";
 import { SIGN_INS, type SignInId, signInOf, signInsFor, withSignIn } from "../signIn";
 import { suggestedPooler } from "./pooler";
-import { PlatypusProgress } from "./PlatypusProgress";
+import { JdbcFields } from "../drivers/JdbcFields";
+import { JDBC_START, jdbcOn } from "../jdbcUrl";
 import { HelpLink } from "../help/HelpLink";
 
 interface Props {
@@ -277,18 +277,6 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [busy, setBusy] = useState(false);
   /** A password is saved for this connection, for the "(saved)" placeholder. */
   const [passwordSaved, setPasswordSaved] = useState(false);
-  // IBM's JDBC driver for Db2: the jars found on the machine (DBeaver's among them), and the
-  // download when there are none.
-  const [jdbc, setJdbc] = useState<JdbcStatus | null>(null);
-  const [jdbcProgress, setJdbcProgress] = useState<{ done: number; total: number | null } | null>(null);
-  const [jdbcError, setJdbcError] = useState<string | null>(null);
-  // The Java the app finds by itself: the field's placeholder, used unless the connection names one.
-  const [javaFound, setJavaFound] = useState<string | null>(null);
-  useEffect(() => {
-    if (conn.driver !== "db2") return;
-    api.jdbcStatus().then(setJdbc, () => setJdbc(null));
-    api.javaProgram().then(setJavaFound, () => setJavaFound(null));
-  }, [conn.driver]);
   const [result, setResult] = useState<
     { ok: true; server: ServerInfo } | { ok: false; message: string } | null
   >(null);
@@ -308,50 +296,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   // The pooler the host is, when its mode is not set to it yet.
   const suggested = suggestedPooler(conn.host, conn.port);
   const poolerHint = suggested?.mode === "transaction" && conn.options?.pooler !== "transaction" ? suggested : null;
-  const jdbcOn = !!conn.options?.["jdbc.driver"]?.trim() || !!conn.options?.["jdbc.jars"]?.trim();
-  /** What the connection goes through: ODBC, a version of IBM's JDBC driver, or JDBC files. */
-  const jdbcChoice = conn.options?.["jdbc.driver"]?.trim() ? `v:${conn.options["jdbc.driver"].trim()}` : jdbcOn ? "files" : "odbc";
-  /** Sets several driver options at once; an empty value removes one. */
-  const setOptions = (patch: Record<string, string>) =>
-    setConn((c) => {
-      const options = { ...c.options };
-      for (const [key, value] of Object.entries(patch)) {
-        if (value.trim()) options[key] = value;
-        else delete options[key];
-      }
-      return { ...c, options };
-    });
-  /** Picks what the connection goes through; a version not downloaded yet is downloaded now. */
-  const chooseJdbc = async (choice: string) => {
-    setJdbcError(null);
-    if (choice === "odbc") {
-      setOptions({ "jdbc.driver": "", "jdbc.jars": "", "jdbc.java": "" });
-    } else if (choice === "files") {
-      const found = [jdbc?.found_driver, jdbc?.found_license].filter(Boolean).join(";");
-      if (found) {
-        setOptions({ "jdbc.driver": "", "jdbc.jars": found });
-        return;
-      }
-      const picked = await open({ multiple: true, directory: false, filters: [{ name: "JAR", extensions: ["jar"] }] });
-      if (Array.isArray(picked) && picked.length > 0) setOptions({ "jdbc.driver": "", "jdbc.jars": picked.join(";") });
-    } else {
-      const version = choice.slice(2);
-      if (!jdbc?.versions.find((v) => v.package.version === version)?.installed) {
-        setJdbcProgress({ done: 0, total: null });
-        try {
-          setJdbc(await api.installJdbcDriver(version, (e) => {
-            if (e.kind === "progress") setJdbcProgress({ done: e.done, total: e.total });
-          }));
-        } catch (e) {
-          setJdbcError(toCommandError(e).message);
-          return;
-        } finally {
-          setJdbcProgress(null);
-        }
-      }
-      setOptions({ "jdbc.driver": version });
-    }
-  };
+  const viaJdbc = jdbcOn(conn.options);
+  /** A connection that is JDBC all the way (the "JDBC driver" of the picker), not Db2's choice. */
+  const jdbcGeneric = conn.driver === "odbc" && viaJdbc;
   /** Sets a driver option; an empty value removes it. */
   const setOption = (key: string, value: string) => {
     const options = { ...conn.options };
@@ -388,7 +335,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   /** A libSQL server has no database or user to choose: the token picks the database. */
   const libsql = conn.driver === "libsql";
   /** The fields of a database reached through an ADBC driver. */
-  const adbcProfile = PROFILES[conn.driver];
+  const adbcProfile = jdbcGeneric ? undefined : PROFILES[conn.driver];
   /** The address is a URL field instead of the host, port and database ones. */
   const urlMode = connectBy === "url" && server && !adbcProfile && urlModeDriver(conn.driver);
 
@@ -593,6 +540,23 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
     if (isEmbedded(driver) && page === "network") setPage("general");
   }
 
+  /** The Driver select of a saved connection: a database, or "JDBC driver", which is the ODBC
+   *  kind with the JDBC options. Leaving JDBC drops them. */
+  function chooseKind(value: string) {
+    if (value === "jdbc") {
+      changeDriver("odbc");
+      setConn((c) => ({ ...c, port: c.port ?? JDBC_START.port, options: { ...c.options, ...JDBC_START.options } }));
+      return;
+    }
+    if (jdbcGeneric) {
+      setConn((c) => ({
+        ...c,
+        options: Object.fromEntries(Object.entries(c.options ?? {}).filter(([key]) => !key.startsWith("jdbc."))),
+      }));
+    }
+    changeDriver(value as DriverKind);
+  }
+
   async function browseFile() {
     const path = await open({
       multiple: false,
@@ -757,7 +721,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
           }}
         >
           <div className="dialog-header">
-            <DriverIcon driver={conn.driver} label={tile} />
+            <DriverIcon driver={conn.driver} label={jdbcGeneric ? "JDBC driver" : tile} />
             <h2>{t(existing ? "Edit connection" : "New connection")}</h2>
             <HelpLink page="connect" />
             {!existing && (
@@ -800,7 +764,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
               {existing && (
                 <label className="field">
                   <span>{t("Driver")}</span>
-                  <select value={conn.driver} onChange={(e) => changeDriver(e.target.value as DriverKind)}>
+                  <select value={jdbcGeneric ? "jdbc" : conn.driver} onChange={(e) => chooseKind(e.target.value)}>
                     <option value="postgres">PostgreSQL</option>
                     <option value="mysql">MySQL / MariaDB</option>
                     <option value="sqlite">SQLite</option>
@@ -820,6 +784,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     <option value="oracle">Oracle</option>
                     <option value="db2">IBM Db2</option>
                     <option value="odbc">{t("Other ODBC driver")}</option>
+                    <option value="jdbc">{t("JDBC driver")}</option>
                     <option value="plugin">{t("Plugin driver")}</option>
                   </select>
                 </label>
@@ -877,6 +842,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     onChange={(plugin) => setConn((c) => ({ ...c, options: { ...c.options, plugin } }))}
                   />
                 )}
+                {jdbcGeneric && <JdbcFields conn={conn} setConn={setConn} />}
                 {server && urlModeDriver(conn.driver) && (
                   <div className="connect-by" role="radiogroup" aria-label={t("Connect by")} onKeyDown={connectByKey}>
                     <span>{t("Connect by")}</span>
@@ -926,7 +892,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                   </div>
                 )}
 
-                {!urlMode && (
+                {!urlMode && !jdbcGeneric && (
                 <div className="row">
                   <label className="field grow">
                     <span>{t("Host")}</span>
@@ -953,7 +919,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                 </div>
                 )}
 
-                {!urlMode && (
+                {!urlMode && !jdbcGeneric && (
                 <div className="field-grid">
                   {!libsql && (
                     <label className="field">
@@ -1059,67 +1025,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     </label>
                   )}
                   {conn.driver === "db2" && conn.options?.db2_platform !== "ibmi" && (
-                    <>
-                      <label className="field jdbc-field">
-                        <span>{t("Connect through")}</span>
-                        <select
-                          value={jdbcChoice}
-                          disabled={jdbcProgress !== null}
-                          data-field="jdbc_driver"
-                          onChange={(e) => void chooseJdbc(e.target.value)}
-                          title={t("IBM's JDBC driver connects directly: no client to install, no administrator rights. It needs Java.")}
-                        >
-                          <option value="odbc">{t("ODBC driver (IBM client)")}</option>
-                          {(jdbc?.versions ?? []).map((v) => (
-                            <option key={v.package.version} value={`v:${v.package.version}`}>
-                              {t(v.installed ? "IBM JDBC {version}" : "IBM JDBC {version} (to download)", { version: v.package.version })}
-                            </option>
-                          ))}
-                          {jdbcChoice.startsWith("v:") && !jdbc?.versions.some((v) => `v:${v.package.version}` === jdbcChoice) && (
-                            <option value={jdbcChoice}>{t("IBM JDBC {version}", { version: jdbcChoice.slice(2) })}</option>
-                          )}
-                          <option value="files">{t("JDBC driver files…")}</option>
-                        </select>
-                      </label>
-                      {jdbcProgress && (
-                        <PlatypusProgress compact max={jdbcProgress.total} value={jdbcProgress.done} label={t("Downloading…")} />
-                      )}
-                      {jdbcError && <small className="notice error">{jdbcError}</small>}
-                      {jdbcOn && (
-                        <>
-                          <label className="field">
-                            <span>{conn.options?.["jdbc.driver"]?.trim() ? t("More jars (a license jar, if you have one)") : t("JDBC driver files")}</span>
-                            <div className="row tight">
-                              <input
-                                value={conn.options?.["jdbc.jars"] ?? ""}
-                                onChange={(e) => setOption("jdbc.jars", e.target.value)}
-                                data-field="jdbc_jars"
-                                title={t("The jars of IBM's JDBC driver (db2jcc4.jar and, for Db2 for z/OS, its license jar), separated by ;. With them the connection goes through JDBC, which needs Java.")}
-                              />
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const picked = await open({ multiple: true, directory: false, filters: [{ name: "JAR", extensions: ["jar"] }] });
-                                  if (Array.isArray(picked) && picked.length > 0) setOption("jdbc.jars", picked.join(";"));
-                                }}
-                              >
-                                {t("Browse…")}
-                              </button>
-                            </div>
-                          </label>
-                          <label className="field">
-                            <span>{t("Java")}</span>
-                            <input
-                              value={conn.options?.["jdbc.java"] ?? ""}
-                              onChange={(e) => setOption("jdbc.java", e.target.value)}
-                              placeholder={javaFound ?? t("Not found: the java program, or the folder of a Java 11 or later")}
-                              data-field="jdbc_java"
-                              title={javaFound !== null ? t("Found by itself (JAVA_HOME, the PATH, DBeaver's)") : t("The java program, or the folder of a Java 11 or later.")}
-                            />
-                          </label>
-                        </>
-                      )}
-                    </>
+                    <JdbcFields conn={conn} setConn={setConn} db2 />
                   )}
                 </div>
                 )}
@@ -1133,7 +1039,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     </button>
                   </div>
                 )}
-                {VENDOR_DRIVERS.includes(conn.driver) && !jdbcOn ? <VendorDriverState driver={conn.driver} /> : null}
+                {VENDOR_DRIVERS.includes(conn.driver) && !viaJdbc ? <VendorDriverState driver={conn.driver} /> : null}
                 </section>
 
                 <section className="form-section">

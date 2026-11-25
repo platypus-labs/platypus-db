@@ -8,8 +8,20 @@ use platypus_core::{
 };
 use platypus_driver_odbc::OdbcDriver;
 
+/// The app's data folder, set once for every test of this file: the bridge's jar is kept in it.
+fn data_dir() -> &'static std::path::Path {
+    static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("platypus-jdbc-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(platypus_drivers::jdbc_dir(&dir)).unwrap();
+        platypus_drivers::set_data_dir(&dir);
+        dir
+    })
+}
+
 async fn connect() -> Option<Box<dyn Connection>> {
     let java = std::env::var("PLATYPUS_TEST_JAVA").ok()?;
+    data_dir();
     let jars = std::env::var("PLATYPUS_TEST_JARS").ok()?;
     let mut config = ConnectionConfig::new(DriverKind::Odbc);
     "sa".clone_into(&mut config.user);
@@ -41,6 +53,61 @@ async fn run(conn: &dyn Connection, sql: &str) -> u64 {
         Ok(ExecResult::Affected { rows }) => rows,
         Ok(ExecResult::Rows(_)) => panic!("{sql}: rows"),
         Err(e) => panic!("{sql}: {e}"),
+    }
+}
+
+/// Catalog drivers end to end: the newest H2 and HSQLDB jars are downloaded into a drivers
+/// folder, checked with their SHA-256, and the connection names each by `jdbc.package` only
+/// (the version in `jdbc.driver`). Skipped without Java (`PLATYPUS_TEST_JAVA`) or without the
+/// network.
+#[tokio::test]
+async fn downloaded_catalog_drivers_open_a_database() {
+    let Ok(java) = std::env::var("PLATYPUS_TEST_JAVA") else {
+        eprintln!("skipping: PLATYPUS_TEST_JAVA is not set");
+        return;
+    };
+    let dir = data_dir().to_owned();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    for (name, url, product) in [
+        ("h2", "jdbc:h2:mem:catalog;DB_CLOSE_DELAY=-1", "H2"),
+        ("hsqldb", "jdbc:hsqldb:mem:catalog", "HSQL Database Engine"),
+    ] {
+        let driver = platypus_drivers::jdbc_driver(name, None).unwrap();
+        match platypus_drivers::install_jdbc(&dir, &driver, |_, _| {}, &cancel).await {
+            Ok(_) => {}
+            Err(
+                e @ (platypus_drivers::DriverError::Download(_)
+                | platypus_drivers::DriverError::Network(_)),
+            ) => {
+                eprintln!("skipping: no network to download {name} ({e})");
+                return;
+            }
+            Err(e) => panic!("{name} does not install: {e}"),
+        }
+        let mut config = ConnectionConfig::new(DriverKind::Odbc);
+        "sa".clone_into(&mut config.user);
+        for (key, value) in [
+            ("jdbc.java", java.as_str()),
+            ("jdbc.package", name),
+            ("jdbc.driver", driver.version.as_str()),
+            ("jdbc.url", url),
+        ] {
+            config.options.insert(key.to_owned(), value.to_owned());
+        }
+        let conn = OdbcDriver
+            .connect(&config)
+            .await
+            .unwrap_or_else(|e| panic!("{name} connects through the bridge: {e}"));
+        assert_eq!(conn.server_info().product, product);
+        let batches = rows(&*conn, "values (41 + 1)").await;
+        let answer = batches[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
+        assert_eq!(answer.value(0), 42, "{name}");
+        drop(conn);
+        let _ = platypus_drivers::remove_jdbc(&dir, &driver);
     }
 }
 

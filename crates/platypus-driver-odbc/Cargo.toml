@@ -27,6 +27,7 @@ arrow-odbc = "26"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio-util.workspace = true
 
 [lints]
 workspace = true

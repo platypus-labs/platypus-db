@@ -34,9 +34,13 @@ use crate::meta::{ColumnRow, ForeignKeyRow, KeyRow, TableRow};
 use crate::profile;
 use bridge::{Bridge, error_of};
 
-/// The version of the JDBC driver the app downloads (IBM's, for Db2) that the connection uses,
-/// chosen in the form like a driver of DBeaver's; downloaded when a connection first needs it.
+/// The version of the JDBC driver the app downloads that the connection uses, chosen in the form
+/// like a driver of DBeaver's; downloaded when a connection first needs it.
 pub const DRIVER: &str = "jdbc.driver";
+/// The JDBC driver the app downloads (`h2`, `firebird`… as in the catalog of
+/// `platypus_drivers::jdbc_versions`). Without it, `jdbc.driver` is a version of IBM's Db2
+/// driver, as in the connections saved before the catalog.
+pub const PACKAGE: &str = "jdbc.package";
 /// More jars of the JDBC driver (a license jar, or the files of a driver the app does not
 /// download), one path per line or separated by `;`. Without `jdbc.driver`, all of them.
 pub const JARS: &str = "jdbc.jars";
@@ -60,29 +64,51 @@ pub fn java_program() -> Option<std::path::PathBuf> {
 /// Whether the connection goes through a JDBC driver.
 #[must_use]
 pub fn enabled(config: &ConnectionConfig) -> bool {
-    [DRIVER, JARS]
+    [DRIVER, JARS, PACKAGE]
         .iter()
         .any(|key| profile::option(config, key).is_some_and(|v| !v.trim().is_empty()))
 }
 
-/// The jar of the version of IBM's driver the connection names, which must be downloaded.
-fn chosen_driver(config: &ConnectionConfig) -> Result<Option<String>> {
-    let Some(version) = profile::option(config, DRIVER)
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    else {
-        return Ok(None);
+/// The jars of the version of the catalog's driver the connection names, which must be
+/// downloaded. Without `jdbc.package` the driver is IBM's, which `jdbc.driver` always named.
+fn chosen_driver(config: &ConnectionConfig) -> Result<Vec<String>> {
+    let package = profile::option(config, PACKAGE);
+    let Some(version) = profile::option(config, DRIVER) else {
+        return match package {
+            Some(name) => Err(Error::Config(format!(
+                "choose a version of the {name} JDBC driver in the connection"
+            ))),
+            None => Ok(Vec::new()),
+        };
     };
-    let driver = platypus_drivers::jdbc_driver("db2jcc", Some(version))
-        .ok_or_else(|| Error::Config(format!("there is no IBM JDBC driver version `{version}`")))?;
+    let name = package.unwrap_or("db2jcc");
+    let driver = platypus_drivers::jdbc_driver(name, Some(version)).ok_or_else(|| {
+        Error::Config(format!(
+            "there is no {name} JDBC driver version `{version}`"
+        ))
+    })?;
     let dir = platypus_drivers::data_dir()
         .ok_or_else(|| Error::Config("the app's drivers folder is not set".to_owned()))?;
-    platypus_drivers::installed_jdbc(dir, &driver)
-        .map(|p| Some(p.to_string_lossy().into_owned()))
+    chosen_files(dir, &driver)
+}
+
+/// Every jar of `driver` in `dir`, or the error that says to download it.
+fn chosen_files(
+    dir: &std::path::Path,
+    driver: &platypus_drivers::JdbcDriver,
+) -> Result<Vec<String>> {
+    platypus_drivers::installed_jdbc(dir, driver)
+        .map(|paths| {
+            paths
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect()
+        })
         .ok_or_else(|| {
             Error::Config(format!(
-                "the IBM JDBC driver {version} is not downloaded: choose it in the connection to \
-                 download it"
+                "the {} JDBC driver {} is not downloaded: choose it in the connection to \
+                 download it",
+                driver.title, driver.version
             ))
         })
 }
@@ -101,7 +127,7 @@ struct Settings {
 impl Settings {
     fn new(config: &ConnectionConfig) -> Result<Self> {
         let chosen = chosen_driver(config)?;
-        let mut jars: Vec<&str> = chosen.as_deref().into_iter().collect();
+        let mut jars: Vec<&str> = chosen.iter().map(String::as_str).collect();
         jars.extend(
             profile::option(config, JARS)
                 .unwrap_or_default()
@@ -117,7 +143,7 @@ impl Settings {
             }
         }
         let (url, mut properties) = match (profile::option(config, URL), config.driver) {
-            (Some(url), _) if !url.trim().is_empty() => (url.trim().to_owned(), String::new()),
+            (Some(url), _) => (through_tunnel(config, url)?, String::new()),
             (_, DriverKind::Db2) => db2_url(config)?,
             _ => {
                 return Err(Error::Config(
@@ -146,6 +172,26 @@ impl Settings {
                 .connect_timeout
                 .map_or_else(String::new, |t| t.as_secs().to_string()),
         })
+    }
+}
+
+/// `url` through the SSH tunnel, when there is one: the connection's `host:port` in it becomes
+/// the tunnel's local end. A URL that does not name them would bypass the tunnel, so it is refused.
+fn through_tunnel(config: &ConnectionConfig, url: &str) -> Result<String> {
+    let Some(addr) = config.connect_addr else {
+        return Ok(url.to_owned());
+    };
+    let server = config
+        .port
+        .map(|port| format!("{}:{port}", config.host.trim()));
+    match server {
+        Some(server) if !config.host.trim().is_empty() && url.contains(&server) => {
+            Ok(url.replacen(&server, &addr.to_string(), 1))
+        }
+        _ => Err(Error::Config(
+            "through an SSH tunnel the JDBC URL must name the connection's host and port"
+                .to_owned(),
+        )),
     }
 }
 
@@ -487,6 +533,82 @@ mod tests {
         let (url, properties) = db2_url(&c).unwrap();
         assert!(url.ends_with(":50443/CAR_DB2M"));
         assert!(properties.contains("sslConnection=true"));
+    }
+
+    fn with(options: &[(&str, &str)]) -> ConnectionConfig {
+        let mut c = config(DriverKind::Odbc);
+        for (k, v) in options {
+            c.options.insert((*k).to_owned(), (*v).to_owned());
+        }
+        c
+    }
+
+    #[test]
+    fn a_package_alone_turns_the_bridge_on_and_asks_for_a_version() {
+        let c = with(&[(PACKAGE, "h2")]);
+        assert!(enabled(&c));
+        let e = chosen_driver(&c).unwrap_err().to_string();
+        assert!(e.contains("choose a version of the h2 JDBC driver"), "{e}");
+        assert_eq!(chosen_driver(&with(&[])).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_url_goes_through_the_tunnel_or_is_refused() {
+        let mut c = with(&[]);
+        "db.internal".clone_into(&mut c.host);
+        c.port = Some(9092);
+        let url = "jdbc:h2:tcp://db.internal:9092/test";
+        assert_eq!(through_tunnel(&c, url).unwrap(), url);
+        c.connect_addr = Some("127.0.0.1:40000".parse().unwrap());
+        assert_eq!(
+            through_tunnel(&c, url).unwrap(),
+            "jdbc:h2:tcp://127.0.0.1:40000/test"
+        );
+        c.connect_addr = Some("[::1]:40000".parse().unwrap());
+        assert_eq!(
+            through_tunnel(&c, url).unwrap(),
+            "jdbc:h2:tcp://[::1]:40000/test"
+        );
+        assert!(through_tunnel(&c, "jdbc:h2:tcp://other:9092/test").is_err());
+    }
+
+    #[test]
+    fn a_version_the_catalog_lacks_is_refused() {
+        let e = chosen_driver(&with(&[(PACKAGE, "h2"), (DRIVER, "1.0")])).unwrap_err();
+        assert!(
+            e.to_string().contains("no h2 JDBC driver version `1.0`"),
+            "{e}"
+        );
+        let e = chosen_driver(&with(&[(PACKAGE, "nothing"), (DRIVER, "1")])).unwrap_err();
+        assert!(e.to_string().contains("no nothing JDBC driver"), "{e}");
+    }
+
+    #[test]
+    fn the_old_db2_option_and_a_catalog_driver_list_all_their_jars() {
+        let dir = std::env::temp_dir().join(format!("platypus-jdbc-mod-{}", std::process::id()));
+        platypus_drivers::set_data_dir(&dir);
+        // The folder is set once per process: use the one that is.
+        let dir = platypus_drivers::data_dir().unwrap().to_owned();
+        let jars = platypus_drivers::jdbc_dir(&dir);
+        std::fs::create_dir_all(&jars).unwrap();
+        let wanted =
+            |name: &str, version: &str| platypus_drivers::jdbc_driver(name, Some(version)).unwrap();
+        let db2 = wanted("db2jcc", "12.1.5.0");
+        let derby = wanted("derby", "10.16.1.1");
+        let e = chosen_files(&dir, &derby).unwrap_err().to_string();
+        assert!(e.contains("is not downloaded"), "{e}");
+        for f in db2.files.iter().chain(&derby.files) {
+            std::fs::write(jars.join(&f.file), b"PK").unwrap();
+        }
+        // Saved by 0.6.8 to 0.6.12: `jdbc.driver` only, a version of IBM's driver.
+        let old = chosen_driver(&with(&[(DRIVER, "12.1.5.0")])).unwrap();
+        assert_eq!(old.len(), 1);
+        assert!(old[0].ends_with("jcc-12.1.5.0.jar"), "{old:?}");
+        let new = chosen_driver(&with(&[(PACKAGE, "derby"), (DRIVER, "10.16.1.1")])).unwrap();
+        assert_eq!(new.len(), 2);
+        assert!(new[0].ends_with("derbyclient-10.16.1.1.jar"));
+        assert!(new[1].ends_with("derbyshared-10.16.1.1.jar"));
+        std::fs::remove_dir_all(&jars).unwrap();
     }
 
     #[test]
