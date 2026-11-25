@@ -57,7 +57,7 @@ has expired. `✅ completed` and `✅ done (…)` work as in the roadmap.
 | B — Plugins and mods | ✅ completed |
 | C — Kerberos and authentication | ✅ completed |
 | D — User documentation | ✅ done (P2; P3 in part) |
-| E — Publishing and distribution | ✅ done (P3; P1 in part) |
+| E — Publishing and distribution | ✅ done (P1, P3) |
 
 ### Group A — Agents and MCP
 
@@ -179,7 +179,7 @@ documentation English (the README also Italian).
 
 ### Group E — Publishing and distribution
 
-**Status: P3 done, P1 in part** (the repository is public since 2026-11-13; package managers and the auto-update test are left). Only what is not already in roadmap group P, which keeps Windows signing,
+**Status: done (P1, P3)** (the repository is public since 2026-11-13, the auto-update test passed on 2026-11-25; package managers are left). Only what is not already in roadmap group P, which keeps Windows signing,
 Linux verification with a GPU, the DBeaver benchmark, the launch and the repository showcase.
 
 **Area:** `packaging/`, `scripts/packaging.mjs`, `.github/`, `site/`, [RELEASING.md](RELEASING.md)
@@ -190,7 +190,7 @@ Linux verification with a GPU, the DBeaver benchmark, the launch and the reposit
 | ✅ **Make the repository public.** Done on 2026-11-13, after the audit of the history, the licences and the trademark policy ([TRADEMARKS.md](../../TRADEMARKS.md)). It unblocks auto-update (`latest.json` now answers without a login), package managers and unlimited Actions minutes. Before: check that no secret or personal data is in the history, licences are in order, `SECURITY.md` and `CONTRIBUTING.md` are up to date | P1 | U |
 | 🆕 **Submission to package managers**, with the manifests already in `packaging/`: winget, Homebrew, AUR, Flathub; winget submitted on 2026-11-13 ([microsoft/winget-pkgs#480168](https://github.com/microsoft/winget-pkgs/pull/480168), 0.6.1, validated with `winget validate`); Flathub not submittable as it is (checked 2026-11-15): Flathub wants source-available apps built entirely from source, so the manifest that repackages the `.deb` would be refused, and its generative AI policy wants the manifest, the pull request and its replies written by a person, so a maintainer has to write and submit them by hand (ID `io.github.platypus_labs.platypus-db`); Homebrew through our own tap since 2026-11-25 ([platypus-labs/homebrew-tap](https://github.com/platypus-labs/homebrew-tap), 0.6.12; the official cask needs macOS signing); the AUR left out by the user's choice on 2026-11-25 (it needs the user's own account with an SSH key; PKGBUILD and .SRCINFO are filled by `scripts/packaging.mjs` should it be taken up); for each the steps in RELEASING.md and a check that SHA-256 and version match the release | P2 | N |
 | ✅ **GitHub Pages** for the site (`site/`), with a manually triggered workflow; domain to decide (published on 2026-11-13 at [platypus-labs.github.io/platypus-db](https://platypus-labs.github.io/platypus-db/) by `.github/workflows/pages.yml`; the domain is still to decide, see `site/README.md`) | P3 | U |
-| 🆕 After publishing: the "real auto-update test" row of group P can be done | P1 | U |
+| ✅ After publishing: the "real auto-update test" row of group P (done on 2026-11-25 on Windows, from 0.6.1 to 0.6.13) | P1 | U |
 
 ---
 

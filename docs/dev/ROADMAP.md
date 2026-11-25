@@ -1175,8 +1175,7 @@ TablePlus 2.2.0 nel confronto delle dimensioni (BENCHMARKS.md, README e una tabe
 sezione Performance del sito); il piano di pubblicazione è in RELEASING.md. Il sito (`site/`) è stato ridisegnato: solo scuro,
 l'ornitorinco con i database intorno, una finestra dell'app disegnata in HTML dove una query si
 scrive da sola, il tour con le GIF, una griglia di funzionalità, i loghi dei database, le
-prestazioni e il confronto. Restano la verifica su un desktop Linux con GPU, il test reale
-dell'auto-update, la firma Windows, avvio e memoria di DBeaver accanto ai nostri (li misura
+prestazioni e il confronto. Restano la verifica su un desktop Linux con GPU, la firma Windows, avvio e memoria di DBeaver accanto ai nostri (li misura
 `scripts/bench.py other`; dal container cloud i download degli altri client sono bloccati) e la
 distribuzione;
 la verifica e la firma su macOS sono P3 (servono un Mac e l'Apple Developer Program) e sono
@@ -1202,7 +1201,7 @@ già configurato (`-DbeaverProfile`), perché su uno nuovo mostra solo la proced
 | ⛔ bloccato (serve un desktop Linux con GPU) — Verifica su Linux: build, avvio, memoria, scroll; correzioni di piattaforma (fatta senza GPU, vedi BENCHMARKS.md; resta un desktop con GPU) | P1 |
 | ⏭ serve un Mac — Verifica su macOS: build, avvio, memoria, scroll; correzioni di piattaforma | P3 |
 | ✅ Prima release su GitHub (v0.1.0, poi v0.2.0; v0.2.1 solo Windows, compilata in locale perché i minuti di Actions erano finiti) | P1 |
-| ⛔ bloccato fino alla release dopo la 0.6.1 — Test reale dell'auto-update da una release pubblicata alla successiva. Provato il 2026-11-13 dalla 0.3.0 alla 0.6.1: le versioni fino alla 0.6.0 cercano `latest.json` sul vecchio repository `PaoloCisly/platypus-db`, che è privato e risponde 404, quindi non vedono mai un aggiornamento; la 0.6.1 è la prima che legge `platypus-labs/platypus-db`. Il test si fa dalla 0.6.1 alla release successiva | P1 |
+| ✅ Test reale dell'auto-update da una release pubblicata alla successiva: riuscito il 2026-11-25 su Windows dalla 0.6.1 alla 0.6.13 (banner, installazione, riavvio sulla nuova versione). Le versioni fino alla 0.6.0 cercano `latest.json` sul vecchio repository `PaoloCisly/platypus-db`, che è privato e risponde 404, quindi non vedono mai un aggiornamento: chi le ha installate reinstalla una volta a mano | P1 |
 | ⛔ bloccato (serve acquistare o ottenere il certificato) — Firma del codice Windows (Authenticode), per l'avviso di SmartScreen: certificato **Certum Open Source Code Signing** (~30-60 €/anno, anche per singoli nell'UE, chiave su smart card o cloud SimplySign, firma con `bundle.windows.signCommand` di Tauri); alternative SignPath Foundation (gratis per l'open source, firma in CI) o Azure Trusted Signing (verificare se disponibile in Italia). La reputazione di SmartScreen cresce con i download anche con la firma. Piano in [RELEASING.md](RELEASING.md) | P2 |
 | ⏭ serve un Mac — Firma e notarizzazione macOS (Apple Developer Program, 99 $/anno) | P3 |
 | ✅ 🆕 **Piano di pubblicazione** di ogni versione, anche senza CI: build Windows in locale, release bozza con `latest.json`, macOS e Linux aggiunti dal workflow quando ci sono i minuti; passi in [RELEASING.md](RELEASING.md) | P1 |
