@@ -91,7 +91,7 @@
 
   <!-- Sizes -->
   <section class="section">
-    <header class="head"><p class="eyebrow">Size</p><h2>Measured the same way.</h2><p>Official Linux downloads and the installed size, measured on 29 October 2026.</p></header>
+    <header class="head"><p class="eyebrow">Size</p><h2>Measured the same way.</h2><p>Official Linux downloads and the installed size: the other clients on 29 October 2026, PlatypusDB 0.6.13 on 25 November 2026.</p></header>
     <div class="size-two">
       <div class="bars">
         <div class="bars-h">Download</div>
@@ -127,6 +127,28 @@
     </dl>
   </section>
 
+  <!-- Start and memory, side by side -->
+  <section class="section">
+    <header class="head"><p class="eyebrow">Side by side</p><h2>Same machine, same stopwatch.</h2><p>PlatypusDB 0.6.1 and DBeaver CE 26.2.3 on Windows 11, Ryzen 7 9700X, 32 GB, five runs each with <code>scripts/bench-windows.ps1</code>, no connection open, measured on 13 November 2026. Clients we have not timed yet stay blank rather than guessed.</p></header>
+    <div class="size-two">
+      <div class="bars">
+        <div class="bars-h">Start, until the window has finished drawing</div>
+        <div class="bar me" style="--w:13.8%"><span><img class="cl-me" src="img/icon.png" alt="" width="20" height="20">PlatypusDB</span><i><s></s></i><em>0.72 s</em></div>
+        <div class="bar" style="--w:100%"><span><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</span><i><s></s></i><em>5.2 s</em></div>
+        <div class="bar todo"><span><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</span><i><s></s></i><em>not measured</em></div>
+        <div class="bar todo"><span><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</span><i><s></s></i><em>not measured</em></div>
+        <div class="bar todo"><span><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper Studio</span><i><s></s></i><em>not measured</em></div>
+      </div>
+      <div class="bars">
+        <div class="bars-h">Memory at rest</div>
+        <div class="bar me" style="--w:34.8%"><span><img class="cl-me" src="img/icon.png" alt="" width="20" height="20">PlatypusDB</span><i><s></s></i><em>170 MB</em></div>
+        <div class="bar" style="--w:100%"><span><span class="cl-logo" style="--c:#c9a27a"><svg aria-hidden="true"><use href="img/clients.svg#dbeaver"/></svg></span>DBeaver CE</span><i><s></s></i><em>488 MB</em></div>
+        <div class="bar todo"><span><span class="cl-logo" style="--c:#e6e6e6"><svg aria-hidden="true"><use href="img/clients.svg#datagrip"/></svg></span>DataGrip</span><i><s></s></i><em>not measured</em></div>
+        <div class="bar todo"><span><span class="cl-logo img"><img src="img/clients/tableplus.png" alt="" width="20" height="20"></span>TablePlus</span><i><s></s></i><em>not measured</em></div>
+        <div class="bar todo"><span><span class="cl-logo" style="--c:#fad83b"><svg aria-hidden="true"><use href="img/clients.svg#beekeeperstudio"/></svg></span>Beekeeper Studio</span><i><s></s></i><em>not measured</em></div>
+      </div>
+    </div>
+  </section>
   <!-- Feature matrix -->
   <section class="section">
     <header class="head"><p class="eyebrow">Features</p><h2>What each client can do.</h2><p>The free edition of each client. ● yes · ◐ partly or paid only (point at it to see what) · — no.</p></header>

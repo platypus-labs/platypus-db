@@ -237,19 +237,20 @@ expanding the connection took 0.2 s instead of 3.7 s and selecting a row 0.07 s 
 
 ## Side by side
 
-Sizes of the Linux downloads, measured on 29 October 2026 from the official release files.
+Sizes of the Linux downloads, measured on 29 October 2026 from the official release files;
+PlatypusDB's measured again on 25 November 2026 on the 0.6.13 release.
 The start and the memory in this table are Linux ones and only PlatypusDB's were measured: running
 the others was not possible in the test container, so they are left blank rather than guessed.
 DBeaver's start and memory on Windows are in "Windows, 13 November 2026: PlatypusDB 0.6.1 and
 DBeaver" above.
 
-| | PlatypusDB 0.2.0 | DBeaver CE 26.2.3 | DataGrip 2026.2.6 | TablePlus 2.2.0 | Beekeeper Studio 6.2.0 |
+| | PlatypusDB 0.6.13 | DBeaver CE 26.2.3 | DataGrip 2026.2.6 | TablePlus 2.2.0 | Beekeeper Studio 6.2.0 |
 |---|---|---|---|---|---|
 | Runtime | Rust, the system's web view | Java (Eclipse RCP), JRE bundled | Java (IntelliJ platform), JetBrains Runtime bundled | Native, GTK 3 | Electron (Chromium and Node bundled) |
-| Download | 19.5 MiB (`.deb`) | 122 MiB (`.tar.gz`) | 1,047 MiB (`.tar.gz`) | 60 MiB (`.deb`) | 346 MiB (`.AppImage`) |
-| On disk | 46 MiB (+ WebKitGTK, shared with the system) | 206 MiB, of which the JRE 106 MiB | not measured | 180 MiB (`Installed-Size` of the `.deb`, + GTK libraries) | 1,105 MiB |
-| Start to interactive window | 1.4 s (Xvfb, no GPU) | not measured | not measured | not measured | not measured |
-| Memory at rest, 1 connection | 310 MB private (Xvfb, no GPU) | not measured; heap up to 1 GB (`-Xmx1024m` in `dbeaver.ini`) | not measured | not measured | not measured |
+| Download | 29.9 MiB (`.deb`) | 122 MiB (`.tar.gz`) | 1,047 MiB (`.tar.gz`) | 60 MiB (`.deb`) | 346 MiB (`.AppImage`) |
+| On disk | 68 MiB (`Installed-Size` 69,684 KiB, + WebKitGTK, shared with the system) | 206 MiB, of which the JRE 106 MiB | not measured | 180 MiB (`Installed-Size` of the `.deb`, + GTK libraries) | 1,105 MiB |
+| Start to interactive window | 1.4 s (0.2.0, Xvfb, no GPU) | not measured | not measured | not measured | not measured |
+| Memory at rest, 1 connection | 310 MB private (0.2.0, Xvfb, no GPU) | not measured; heap up to 1 GB (`-Xmx1024m` in `dbeaver.ini`) | not measured | not measured | not measured |
 | License | AGPL-3.0 | Apache 2.0 | Proprietary | Proprietary | GPLv3 (Community Edition) |
 
 DataGrip's size is the one JetBrains' release service gives for the Linux archive
