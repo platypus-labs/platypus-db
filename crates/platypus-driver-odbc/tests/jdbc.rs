@@ -8,8 +8,20 @@ use platypus_core::{
 };
 use platypus_driver_odbc::OdbcDriver;
 
+/// The app's data folder, set once for every test of this file: the bridge's jar is kept in it.
+fn data_dir() -> &'static std::path::Path {
+    static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("platypus-jdbc-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(platypus_drivers::jdbc_dir(&dir)).unwrap();
+        platypus_drivers::set_data_dir(&dir);
+        dir
+    })
+}
+
 async fn connect() -> Option<Box<dyn Connection>> {
     let java = std::env::var("PLATYPUS_TEST_JAVA").ok()?;
+    data_dir();
     let jars = std::env::var("PLATYPUS_TEST_JARS").ok()?;
     let mut config = ConnectionConfig::new(DriverKind::Odbc);
     "sa".clone_into(&mut config.user);
@@ -54,9 +66,7 @@ async fn downloaded_catalog_drivers_open_a_database() {
         eprintln!("skipping: PLATYPUS_TEST_JAVA is not set");
         return;
     };
-    let dir = std::env::temp_dir().join(format!("platypus-jdbc-e2e-{}", std::process::id()));
-    platypus_drivers::set_data_dir(&dir);
-    let dir = platypus_drivers::data_dir().unwrap().to_owned();
+    let dir = data_dir().to_owned();
     let cancel = tokio_util::sync::CancellationToken::new();
     for (name, url, product) in [
         ("h2", "jdbc:h2:mem:catalog;DB_CLOSE_DELAY=-1", "H2"),
