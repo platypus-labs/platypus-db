@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-11-25
+
 ### Fixed
 
 - **Db2 through JDBC**: Cancel stops the statement in the JDBC bridge, also before its first rows;
@@ -636,7 +638,12 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.6...HEAD
+[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.11...HEAD
+[0.6.11]: https://github.com/platypus-labs/platypus-db/compare/v0.6.10...v0.6.11
+[0.6.10]: https://github.com/platypus-labs/platypus-db/compare/v0.6.9...v0.6.10
+[0.6.9]: https://github.com/platypus-labs/platypus-db/compare/v0.6.8...v0.6.9
+[0.6.8]: https://github.com/platypus-labs/platypus-db/compare/v0.6.7...v0.6.8
+[0.6.7]: https://github.com/platypus-labs/platypus-db/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/platypus-labs/platypus-db/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/platypus-labs/platypus-db/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/platypus-labs/platypus-db/compare/v0.6.3...v0.6.4
