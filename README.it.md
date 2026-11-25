@@ -65,7 +65,7 @@ L'interfaccia è disponibile anche in italiano: Settings › Appearance › Lang
 Connessioni, impostazioni, cronologia e script stanno allora in `data`, e la cartella si può
 spostare su un altro computer o su una chiavetta USB ([dettagli](docs/user/FEATURES.md#portable-copy)).
 
-La [guida utente](docs/user/guide/README.md) (in inglese su GitHub; nell'app e sul sito anche in italiano) continua da qui, un compito alla volta:
+La [guida utente](docs/user/guide/README.md) (in inglese su GitHub; nell'app e sul sito anche in italiano, tedesco, spagnolo, francese, portoghese e cinese) continua da qui, un compito alla volta:
 [primi passi](docs/user/guide/getting-started.md), connessioni, query, sicurezza, problemi comuni.
 
 ## Database
