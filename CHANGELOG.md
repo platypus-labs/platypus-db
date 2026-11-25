@@ -15,7 +15,7 @@ All notable changes to PlatypusDB are listed here. The format follows
   every jar checked with its SHA-256 (Jaybird and Derby's client come with the jars they depend on).
   Host, port and database fill the driver's URL, which can be written by hand; a driver that is not
   open source (SAP HANA, Exasol, Vertica, and IBM's for Db2) shows its license before it is
-  downloaded, and downloads only on its button. Needs Java 11 or later. Db2 and the new form share
+  downloaded, and downloads only on its button. Needs Java 11 or later (Jaybird 6, 17). Db2 and the new form share
   one component; connections saved by 0.6.8 to 0.6.12 open unchanged (a new `jdbc.package` option
   names the driver, `db2jcc` when it is absent).
 

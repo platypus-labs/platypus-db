@@ -106,7 +106,8 @@ fn chosen_files(
         })
         .ok_or_else(|| {
             Error::Config(format!(
-                "the {} JDBC driver {} is not downloaded: choose it in the connection to                  download it",
+                "the {} JDBC driver {} is not downloaded: choose it in the connection to \
+                 download it",
                 driver.title, driver.version
             ))
         })
@@ -142,7 +143,7 @@ impl Settings {
             }
         }
         let (url, mut properties) = match (profile::option(config, URL), config.driver) {
-            (Some(url), _) if !url.trim().is_empty() => (url.trim().to_owned(), String::new()),
+            (Some(url), _) => (through_tunnel(config, url)?, String::new()),
             (_, DriverKind::Db2) => db2_url(config)?,
             _ => {
                 return Err(Error::Config(
@@ -171,6 +172,26 @@ impl Settings {
                 .connect_timeout
                 .map_or_else(String::new, |t| t.as_secs().to_string()),
         })
+    }
+}
+
+/// `url` through the SSH tunnel, when there is one: the connection's `host:port` in it becomes
+/// the tunnel's local end. A URL that does not name them would bypass the tunnel, so it is refused.
+fn through_tunnel(config: &ConnectionConfig, url: &str) -> Result<String> {
+    let Some(addr) = config.connect_addr else {
+        return Ok(url.to_owned());
+    };
+    let server = config
+        .port
+        .map(|port| format!("{}:{port}", config.host.trim()));
+    match server {
+        Some(server) if !config.host.trim().is_empty() && url.contains(&server) => {
+            Ok(url.replacen(&server, &addr.to_string(), 1))
+        }
+        _ => Err(Error::Config(
+            "through an SSH tunnel the JDBC URL must name the connection's host and port"
+                .to_owned(),
+        )),
     }
 }
 
@@ -529,6 +550,26 @@ mod tests {
         let e = chosen_driver(&c).unwrap_err().to_string();
         assert!(e.contains("choose a version of the h2 JDBC driver"), "{e}");
         assert_eq!(chosen_driver(&with(&[])).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_url_goes_through_the_tunnel_or_is_refused() {
+        let mut c = with(&[]);
+        "db.internal".clone_into(&mut c.host);
+        c.port = Some(9092);
+        let url = "jdbc:h2:tcp://db.internal:9092/test";
+        assert_eq!(through_tunnel(&c, url).unwrap(), url);
+        c.connect_addr = Some("127.0.0.1:40000".parse().unwrap());
+        assert_eq!(
+            through_tunnel(&c, url).unwrap(),
+            "jdbc:h2:tcp://127.0.0.1:40000/test"
+        );
+        c.connect_addr = Some("[::1]:40000".parse().unwrap());
+        assert_eq!(
+            through_tunnel(&c, url).unwrap(),
+            "jdbc:h2:tcp://[::1]:40000/test"
+        );
+        assert!(through_tunnel(&c, "jdbc:h2:tcp://other:9092/test").is_err());
     }
 
     #[test]

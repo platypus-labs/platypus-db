@@ -57,7 +57,6 @@ export function setup({ dir }) {
 const choose = (page, name, value) => page.eval(fill(field(name), value));
 
 /** Waits for the select `name` to hold `value`. */
-const waitSelect = (page, name, value, ms = 20_000) => page.waitFor(`${field(name)}?.value === ${JSON.stringify(value)}`, ms);
 
 export default async function (page) {
   await newConnection(page, "JDBC driver");
@@ -117,8 +116,9 @@ export default async function (page) {
 
   // A version is downloaded when it is chosen, checked with its SHA-256.
   await choose(page, "jdbc_version", "2.3.232");
-  await waitSelect(page, "jdbc_version", "2.3.232", 120_000);
-  assert.equal(await page.eval(`${field("jdbc_package")}.disabled`), false);
+  // The value is the chosen one as soon as it is picked: the end of the download is the
+  // Driver select enabled again with the version chosen.
+  await page.waitFor(`${field("jdbc_package")}.disabled === false && ${field("jdbc_version")}.value === "2.3.232"`, 120_000);
   const installed = await page.eval(`[...${field("jdbc_version")}.options].map(o => o.textContent)`);
   assert.ok(installed.includes("2.3.232"), installed.join("|"));
   // A URL written by hand is kept when the host changes.
