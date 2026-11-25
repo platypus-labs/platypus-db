@@ -123,7 +123,7 @@
 <li><strong>在表格中编辑文档</strong>（见<a href="#在表格中编辑文档">在表格中编辑文档</a>）。</li>
 <li>集合的定义以 DDL 形式提供。</li>
 <li><strong>生成数据…</strong>会用假文档填充集合。</li>
-<li>同样的细节见 <a href="../../../features.html#mongodb">FEATURES.md</a>。</li>
+<li>同样的细节见 <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#mongodb">FEATURES.md</a>。</li>
 </ul>
 <h2 id="不可用功能">不可用功能</h2>
 <ul>
@@ -165,7 +165,7 @@
 <p><strong>服务器何时结束事务。</strong> MongoDB 会中止保持打开时间超过 <code>transactionLifetimeLimitSeconds</code>（默认 60 秒）的事务。它也会因某些错误而中止事务：重复键、与另一个会话的写入冲突、它拒绝在事务中运行的语句、达到时间限制（<code>maxTimeMS</code>）。其他错误，例如未知的管道阶段，会让它保持打开。出错之后，PlatypusDB 会询问服务器事务是否仍然存在。如果不存在，语句或提交的错误会说明服务器结束了事务，其更改已被丢弃（原因是时间限制时会说明时间限制），事务显示为已关闭，下一条语句会打开新的事务。取消事务中的语句会回滚该事务：服务器会结束其操作被终止的事务，而该语句做了什么是未知的。</p>
 <h2 id="代理">代理</h2>
 <p><code>run_query</code>、<code>sample_rows</code>（<code>find({}).limit(n)</code>）和其余工具可用于 mongosh 语句；不是普通查询的语句会先询问。在 MongoDB 上被拒绝的有：<code>explain</code>、<code>get_er_diagram</code> 和 <code>query_across_databases</code>；<code>estimate_change</code> 会以一条说明作答。</p>
-<p><code>propose_edits</code> 提议要在集合（不是视图）中插入、更新或删除的文档：集合会在其数据查看器中打开，带有针对所提议的 <code>_id</code> 的 <code>find</code>，更改处于待保存状态，你可以像保存自己的编辑一样保存或丢弃它们。文档只用 <code>_id</code> 指明；<code>ObjectId</code> 类型的 <code>_id</code> 以其 24 位十六进制数字发送，并因为集合的 <code>_id</code> 就是 <code>ObjectId</code> 而被读作 <code>ObjectId</code>。值会按表格保存的规则（见上文）在打开任何内容之前检查。敏感列只按顶层字段遮蔽：文档内部的敏感字段无法区分。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p><code>propose_edits</code> 提议要在集合（不是视图）中插入、更新或删除的文档：集合会在其数据查看器中打开，带有针对所提议的 <code>_id</code> 的 <code>find</code>，更改处于待保存状态，你可以像保存自己的编辑一样保存或丢弃它们。文档只用 <code>_id</code> 指明；<code>ObjectId</code> 类型的 <code>_id</code> 以其 24 位十六进制数字发送，并因为集合的 <code>_id</code> 就是 <code>ObjectId</code> 而被读作 <code>ObjectId</code>。值会按表格保存的规则（见上文）在打开任何内容之前检查。敏感列只按顶层字段遮蔽：文档内部的敏感字段无法区分。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>低于 5.0：它会连接，并警告某些功能可能无法工作。</li>

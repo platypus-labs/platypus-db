@@ -115,7 +115,7 @@
 <li><strong>A grade edita documentos</strong>: uma célula alterada é um <code>_update</code> por <code>_id</code>, uma nova linha é um <code>_create</code> (um <code>_id</code> que existe é recusado pelo servidor) ou um documento gerado, uma linha excluída é um <code>DELETE</code>. A visualização mostra as requisições, que rodam uma após a outra; uma que o servidor recusa interrompe as demais, e as anteriores permanecem. O <em>Script para desfazer</em> devolve o <code>_source</code> antigo (um documento com <code>_id</code> gerado precisa ser excluído à mão).</li>
 <li><code>_delete_by_query</code> e <code>_update_by_query</code> sem uma query (ou <code>match_all</code>), e <code>DELETE /_all</code>, perguntam antes como um <code>DELETE</code> sem <code>WHERE</code>. Conexões somente leitura executam apenas as requisições e o SQL que leem.</li>
 <li>Cancelar interrompe uma busca no servidor. O DDL de objeto de um índice é a requisição que o cria de novo.</li>
-<li>Os detalhes estão em <a href="../../../features.html#elasticsearch-and-opensearch">FEATURES.md</a>.</li>
+<li>Os detalhes estão em <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#elasticsearch-and-opensearch">FEATURES.md</a>.</li>
 </ul>
 <h2 id="o-que-não-funciona">O que não funciona</h2>
 <ul>
@@ -124,7 +124,7 @@
 <li>O visualizador de dados não tem barra de filtro e ordenação.</li>
 </ul>
 <h2 id="agentes">Agentes</h2>
-<p><code>run_query</code> e <code>sample_rows</code> funcionam com requisições do console e SQL, e uma requisição que altera dados é perguntada antes. Recusados no Elasticsearch e no OpenSearch: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> e <code>query_across_databases</code>. Veja <a href="../../../agents.html">Agentes e a CLI</a>.</p>
+<p><code>run_query</code> e <code>sample_rows</code> funcionam com requisições do console e SQL, e uma requisição que altera dados é perguntada antes. Recusados no Elasticsearch e no OpenSearch: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> e <code>query_across_databases</code>. Veja <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agentes e a CLI</a>.</p>
 <h2 id="limites-conhecidos">Limites conhecidos</h2>
 <ul>
 <li>O app recusa o Elasticsearch anterior ao 7.10 e o OpenSearch anterior ao 1.0: ao contrário dos outros bancos de dados, a conexão falha com &quot;older than … the oldest version supported&quot;.</li>

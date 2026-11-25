@@ -148,7 +148,7 @@ e log nella sua cartella dei dati, entrambe chiamate `dev.platypusdb.desktop`:
 Una copia portabile tiene tutto nella sua cartella `data`, e la variabile d'ambiente
 `PLATYPUS_DATA_DIR` mette tutto nella cartella che indica.
 
-![Impostazioni, la pagina Diagnostica](../../screenshots/guide/diagnostics.png)
+![Impostazioni, la pagina Diagnostica](../../../../screenshots/guide/diagnostics.png)
 
 Il log è `logs/platypus.log` nella cartella dei dati: una riga per ogni avvio, errore e crash, con
 rotazione a 1 MB e due file più vecchi (`platypus.1.log`, `platypus.2.log`). Impostazioni ›
@@ -177,5 +177,5 @@ richiedono la rete.
 **Dove segnalo un bug?** Sul [tracker delle issue](https://github.com/platypus-labs/platypus-db/issues),
 con il pacchetto diagnostico se puoi.
 
-**Dove sono le scorciatoie?** [SHORTCUTS.md](../SHORTCUTS.md), e Impostazioni › Scorciatoie da
+**Dove sono le scorciatoie?** [SHORTCUTS.md](../../../SHORTCUTS.md), e Impostazioni › Scorciatoie da
 tastiera per cambiarle.

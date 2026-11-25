@@ -51,7 +51,7 @@ Il n'y a pas d'onglets d'administration.
   connexions en lecture seule n'exécutent que les commandes qui lisent.
 - Annuler arrête une commande bloquante (`BLPOP`, `XREAD BLOCK`).
 - Le mode terminal exécute `redis-cli` s'il est dans le PATH, avec le mot de passe dans son environnement.
-- Toutes les commandes et tous les types de clés sont décrits dans [FEATURES.md](../../FEATURES.md#redis).
+- Toutes les commandes et tous les types de clés sont décrits dans [FEATURES.md](../../../../FEATURES.md#redis).
 
 ## Ce qui ne fonctionne pas
 
@@ -67,7 +67,7 @@ Il n'y a pas d'onglets d'administration.
 d'abord l'objet d'une question. Les commandes qui montrent les identifiants du serveur (`ACL GETUSER`,
 `ACL LIST`, et un `CONFIG GET` dont le motif correspond à un réglage de mot de passe) sont refusées aux agents
 en lecture seule. Refusés sur Redis : `explain`, `get_er_diagram`, `propose_edits` et
-`query_across_databases`. Voir [Agents et la CLI](../../AGENTS.md).
+`query_across_databases`. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

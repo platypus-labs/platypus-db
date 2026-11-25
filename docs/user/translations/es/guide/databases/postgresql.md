@@ -136,7 +136,7 @@ Los agentes de solo lectura y las conexiones de solo lectura abren la sesión co
 `default_transaction_read_only` (PostgreSQL, CockroachDB y YugabyteDB), así que el propio servidor
 rechaza las escrituras; detrás de un pooler en transaction mode solo cuenta la comprobación de la
 sentencia. `server_activity` y `top_queries` funcionan en PostgreSQL propiamente dicho, no en
-CockroachDB ni en YugabyteDB. Consulta [Agentes y la CLI](../../AGENTS.md).
+CockroachDB ni en YugabyteDB. Consulta [Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

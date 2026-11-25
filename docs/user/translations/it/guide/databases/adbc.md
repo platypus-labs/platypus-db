@@ -79,7 +79,7 @@ colonne con la chiamata dei metadati di ADBC.
 `run_query`, `sample_rows` e gli altri strumenti funzionano, nei limiti dei controlli. Senza una
 sessione in sola lettura lato server, gli agenti in sola lettura si affidano al solo controllo delle
 istruzioni. Le istruzioni che agiscono al di fuori di esso vengono chieste prima di girare: `query()`
-di Trino e le funzioni `SYSTEM$` di Snowflake. Vedi [Agenti e la CLI](../../AGENTS.md).
+di Trino e le funzioni `SYSTEM$` di Snowflake. Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

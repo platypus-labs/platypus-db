@@ -66,7 +66,7 @@ abbandona la sessione (la sua transazione viene annullata e si apre una nuova co
 
 Gli agenti in sola lettura si affidano solo al controllo delle istruzioni: qui Oracle non ha una
 sessione in sola lettura lato server. Un'istruzione che chiama un package Oracle, come `UTL_HTTP`,
-viene chiesta prima dell'esecuzione, come una modifica. Vedi [Agenti e la CLI](../../AGENTS.md).
+viene chiesta prima dell'esecuzione, come una modifica. Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

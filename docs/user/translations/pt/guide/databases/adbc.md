@@ -76,7 +76,7 @@ com a chamada de metadados do ADBC.
 `run_query`, `sample_rows` e as outras ferramentas funcionam, dentro das verificações. Sem uma sessão
 somente leitura no servidor, os agentes somente leitura dependem só da verificação da instrução. As
 instruções que agem fora dela são perguntadas antes de executar: o `query()` do Trino e as funções
-`SYSTEM$` do Snowflake. Veja [Agentes e a CLI](../../AGENTS.md).
+`SYSTEM$` do Snowflake. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

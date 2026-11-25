@@ -118,7 +118,7 @@
 <li>导入通过 DuckDB 的 appender 进行，在会话的事务中。</li>
 </ul>
 <h2 id="代理">代理</h2>
-<p>只读代理和只读连接以只读方式打开数据库文件，前提是应用的其他会话没有已经打开它；内存数据库或数据文件永远不是只读的，那里由语句检查来阻止写入。代理的 DuckDB 会话无法读取或写入其他文件，也无法加载扩展，并在每次调用之后关闭文件，以便应用可以打开它。<code>query_across_databases</code> 在它自己的 DuckDB 中运行，应用会像这个一样下载它。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p>只读代理和只读连接以只读方式打开数据库文件，前提是应用的其他会话没有已经打开它；内存数据库或数据文件永远不是只读的，那里由语句检查来阻止写入。代理的 DuckDB 会话无法读取或写入其他文件，也无法加载扩展，并在每次调用之后关闭文件，以便应用可以打开它。<code>query_across_databases</code> 在它自己的 DuckDB 中运行，应用会像这个一样下载它。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>Excel 文件由应用自己的读取器读取，而不是 DuckDB 的 Excel 扩展。</li>

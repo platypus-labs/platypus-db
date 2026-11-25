@@ -125,7 +125,7 @@
 <li>O modo terminal não está disponível.</li>
 </ul>
 <h2 id="agentes">Agentes</h2>
-<p><code>run_query</code>, <code>sample_rows</code> e as outras ferramentas funcionam, dentro das verificações. Sem uma sessão somente leitura no servidor, os agentes somente leitura dependem só da verificação da instrução. As instruções que agem fora dela são perguntadas antes de executar: o <code>query()</code> do Trino e as funções <code>SYSTEM$</code> do Snowflake. Veja <a href="../../../agents.html">Agentes e a CLI</a>.</p>
+<p><code>run_query</code>, <code>sample_rows</code> e as outras ferramentas funcionam, dentro das verificações. Sem uma sessão somente leitura no servidor, os agentes somente leitura dependem só da verificação da instrução. As instruções que agem fora dela são perguntadas antes de executar: o <code>query()</code> do Trino e as funções <code>SYSTEM$</code> do Snowflake. Veja <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agentes e a CLI</a>.</p>
 <h2 id="limites-conhecidos">Limites conhecidos</h2>
 <ul>
 <li>Um login de data warehouse em nuvem diferente dos campos acima (par de chaves, single sign-on) não está no formulário; o driver genérico aceita as opções do próprio driver.</li>

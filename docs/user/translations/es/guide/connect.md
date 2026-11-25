@@ -3,7 +3,7 @@
 
 # Conectar a una base de datos
 
-![Elegir la base de datos para una conexión nueva](../../screenshots/connections.png)
+![Elegir la base de datos para una conexión nueva](../../../../screenshots/connections.png)
 
 ## Desde una URL
 
@@ -87,7 +87,7 @@ cliente (PEM)** y la **Clave de cliente (PEM)** (PostgreSQL y MySQL).
 
 ## Túnel SSH
 
-![Un túnel SSH en la página Red](../../screenshots/guide/connect-network.png)
+![Un túnel SSH en la página Red](../../../../screenshots/guide/connect-network.png)
 
 1. En la página **Red**, marca **Conectar a través de un túnel SSH**.
 2. Rellena **Host SSH**, el puerto y **Usuario SSH**.
@@ -110,5 +110,5 @@ o el proxy.
 
 Los detalles de cada base de datos: [Bases de datos](databases/README.md). El inicio de sesión en la
 nube, los poolers, las importaciones desde DBeaver, DataGrip y pgAdmin (conexiones de Db2 incluidas)
-y la exportación de conexiones están en [FEATURES.md](../FEATURES.md#connections). Si no conecta,
+y la exportación de conexiones están en [FEATURES.md](../../../FEATURES.md#connections). Si no conecta,
 consulta [Solución de problemas](troubleshooting.md#errores-de-conexión).

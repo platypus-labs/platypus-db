@@ -75,7 +75,7 @@
     <nav class="crumbs" aria-label="Languages"><a href="../../guide/connect.html" lang="en" hreflang="en">English</a> · <span lang="de">Deutsch</span> · <a href="../../es/guide/connect.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/connect.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/connect.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/connect.html" lang="pt" hreflang="pt">Português</a> · <a href="../../zh/guide/connect.html" lang="zh" hreflang="zh">中文</a></nav>
 <p><a href="index.html">← Benutzerhandbuch</a></p>
 <h1 id="mit-einer-datenbank-verbinden">Mit einer Datenbank verbinden</h1>
-<p><img src="../../../img/screenshots/connections.png" alt="Die Datenbank für eine neue Verbindung wählen" loading="lazy"></p>
+<p>Die Datenbank für eine neue Verbindung wählen</p>
 <h2 id="über-eine-url">Über eine URL</h2>
 <ol>
 <li>Klicke auf <strong>Neue Verbindung</strong> (oder auf das <code>+</code> des Navigators).</li>
@@ -113,7 +113,7 @@
 <h2 id="tls">TLS</h2>
 <p>Auf der Seite <strong>Netzwerk</strong> nimmt <strong>SSL-Modus</strong> die libpq-Werte: <code>disable</code>, <code>prefer</code>, <code>require</code>, <code>verify-ca</code> und <code>verify-full</code>. <code>prefer</code> und <code>require</code> verschlüsseln, ohne das Zertifikat zu prüfen; <code>verify-ca</code> und <code>verify-full</code> prüfen es, daher kann ein <strong>CA-Zertifikat (PEM)</strong> nötig sein. Für Server, die Clients per Zertifikat authentifizieren, gib das <strong>Client-Zertifikat (PEM)</strong> und den <strong>Client-Schlüssel (PEM)</strong> an (PostgreSQL und MySQL).</p>
 <h2 id="ssh-tunnel">SSH-Tunnel</h2>
-<p><img src="../../../img/screenshots/guide/connect-network.png" alt="Ein SSH-Tunnel auf der Seite Netzwerk" loading="lazy"></p>
+<p>Ein SSH-Tunnel auf der Seite Netzwerk</p>
 <ol>
 <li>Hake auf der Seite <strong>Netzwerk</strong> <strong>Über einen SSH-Tunnel verbinden</strong> an.</li>
 <li>Fülle <strong>SSH-Host</strong>, den Port und <strong>SSH-Benutzer</strong> aus.</li>
@@ -124,7 +124,7 @@
 <h2 id="proxy-und-portweiterleitung">Proxy und Portweiterleitung</h2>
 <p>Ebenfalls unter <strong>Netzwerk</strong>: ein SOCKS5- oder HTTP-Proxy (<code>socks5://user:password@host:1080</code>, <code>http://host:3128</code>) oder eine Portweiterleitung über <code>kubectl</code> oder eine AWS-Systems-Manager-Sitzung (das CLI muss installiert und angemeldet sein). Eine Portweiterleitung steht allein: Entferne den SSH-Tunnel oder den Proxy.</p>
 <h2 id="weiter">Weiter</h2>
-<p>Details zu jeder Datenbank: <a href="databases/index.html">Datenbanken</a>. Cloud-Anmeldung, Pooler, Importe aus DBeaver, DataGrip und pgAdmin (Db2-Verbindungen eingeschlossen) und das Exportieren von Verbindungen stehen in <a href="../../features.html#connections">FEATURES.md</a>. Wenn die Verbindung nicht klappt, siehe <a href="troubleshooting.html#verbindungsfehler">Fehlerbehebung</a>.</p>
+<p>Details zu jeder Datenbank: <a href="databases/index.html">Datenbanken</a>. Cloud-Anmeldung, Pooler, Importe aus DBeaver, DataGrip und pgAdmin (Db2-Verbindungen eingeschlossen) und das Exportieren von Verbindungen stehen in <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#connections">FEATURES.md</a>. Wenn die Verbindung nicht klappt, siehe <a href="troubleshooting.html#verbindungsfehler">Fehlerbehebung</a>.</p>
   </article>
 
   <aside class="toc-r">

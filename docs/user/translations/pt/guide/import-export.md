@@ -5,11 +5,11 @@
 
 As ações abaixo estão no menu do botão direito do navegador e na paleta de comandos (`Ctrl+K`). A
 lista completa de formatos e opções está em
-[FEATURES.md](../FEATURES.md#import-export-and-transfer).
+[FEATURES.md](../../../FEATURES.md#import-export-and-transfer).
 
 ## Importar um arquivo em uma tabela
 
-![A visualização de um arquivo a importar](../../screenshots/guide/import-preview.png)
+![A visualização de um arquivo a importar](../../../../screenshots/guide/import-preview.png)
 
 1. Clique com o botão direito na tabela, no navegador, depois em **Dados** › **Importar dados…**.
 2. Escolha o arquivo: CSV, TSV, JSON, NDJSON, Parquet ou Excel.

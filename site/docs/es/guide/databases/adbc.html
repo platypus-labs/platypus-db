@@ -125,7 +125,7 @@
 <li>El modo terminal no está disponible.</li>
 </ul>
 <h2 id="agentes">Agentes</h2>
-<p><code>run_query</code>, <code>sample_rows</code> y las demás herramientas funcionan, dentro de las comprobaciones. Sin una sesión de solo lectura en el servidor, los agentes de solo lectura dependen solo de la comprobación de la sentencia. Las sentencias que actúan fuera de ella se preguntan antes de ejecutarse: <code>query()</code> de Trino y las funciones <code>SYSTEM$</code> de Snowflake. Consulta <a href="../../../agents.html">Agentes y la CLI</a>.</p>
+<p><code>run_query</code>, <code>sample_rows</code> y las demás herramientas funcionan, dentro de las comprobaciones. Sin una sesión de solo lectura en el servidor, los agentes de solo lectura dependen solo de la comprobación de la sentencia. Las sentencias que actúan fuera de ella se preguntan antes de ejecutarse: <code>query()</code> de Trino y las funciones <code>SYSTEM$</code> de Snowflake. Consulta <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agentes y la CLI</a>.</p>
 <h2 id="límites-conocidos">Límites conocidos</h2>
 <ul>
 <li>Un inicio de sesión en un almacén en la nube distinto de los campos de arriba (par de claves, inicio de sesión único) no está en el formulario; el driver genérico acepta las opciones propias del driver.</li>

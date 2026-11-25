@@ -51,7 +51,7 @@ navegador lee `INFO` y, para cada tipo de clave, ejecuta `SCAN … TYPE`; navega
   el DDL. Las conexiones de solo lectura solo ejecutan comandos que leen.
 - Cancelar detiene un comando bloqueante (`BLPOP`, `XREAD BLOCK`).
 - El modo terminal ejecuta `redis-cli` si está en el PATH, con la contraseña en su entorno.
-- Todos los comandos y tipos de clave se describen en [FEATURES.md](../../FEATURES.md#redis).
+- Todos los comandos y tipos de clave se describen en [FEATURES.md](../../../../FEATURES.md#redis).
 
 ## Qué no funciona
 
@@ -66,7 +66,7 @@ navegador lee `INFO` y, para cada tipo de clave, ejecuta `SCAN … TYPE`; navega
 pregunta antes. Los comandos que muestran las credenciales del servidor (`ACL GETUSER`, `ACL LIST`, y
 un `CONFIG GET` cuyo patrón coincide con un ajuste de contraseña) se rechazan a los agentes de solo
 lectura. Rechazados en Redis: `explain`, `get_er_diagram`, `propose_edits` y
-`query_across_databases`. Consulta [Agentes y la CLI](../../AGENTS.md).
+`query_across_databases`. Consulta [Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

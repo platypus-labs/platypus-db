@@ -115,7 +115,7 @@
 <li><strong>Das Raster bearbeitet Dokumente</strong>: Eine geänderte Zelle ist ein <code>_update</code> über <code>_id</code>, eine neue Zeile ein <code>_create</code> (eine <code>_id</code>, die existiert, wird vom Server abgelehnt) oder ein generiertes Dokument, eine gelöschte Zeile ein <code>DELETE</code>. Die Vorschau zeigt die Anfragen, die nacheinander laufen; eine, die der Server ablehnt, stoppt den Rest, und die früheren bleiben. <em>Rückgängig-Skript</em> stellt die alte <code>_source</code> wieder her (ein Dokument mit einer generierten <code>_id</code> muss von Hand gelöscht werden).</li>
 <li><code>_delete_by_query</code> und <code>_update_by_query</code> ohne Abfrage (oder <code>match_all</code>) und <code>DELETE /_all</code> fragen zuerst nach, wie ein <code>DELETE</code> ohne <code>WHERE</code>. Schreibgeschützte Verbindungen führen nur die Anfragen und das SQL aus, die lesen.</li>
 <li>Abbrechen stoppt eine Suche auf dem Server. Die Objekt-DDL eines Index ist die Anfrage, die ihn neu anlegt.</li>
-<li>Die Details stehen in <a href="../../../features.html#elasticsearch-and-opensearch">FEATURES.md</a>.</li>
+<li>Die Details stehen in <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#elasticsearch-and-opensearch">FEATURES.md</a>.</li>
 </ul>
 <h2 id="was-nicht">Was nicht</h2>
 <ul>
@@ -124,7 +124,7 @@
 <li>Der Datenviewer hat keine Filter- und Sortierleiste.</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p><code>run_query</code> und <code>sample_rows</code> funktionieren mit Konsolenanfragen und SQL, und bei einer Anfrage, die Daten ändert, wird zuerst nachgefragt. Bei Elasticsearch und OpenSearch abgelehnt: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> und <code>query_across_databases</code>. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<p><code>run_query</code> und <code>sample_rows</code> funktionieren mit Konsolenanfragen und SQL, und bei einer Anfrage, die Daten ändert, wird zuerst nachgefragt. Bei Elasticsearch und OpenSearch abgelehnt: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> und <code>query_across_databases</code>. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Die App lehnt Elasticsearch älter als 7.10 und OpenSearch älter als 1.0 ab: Anders als bei den anderen Datenbanken schlägt die Verbindung mit „older than … the oldest version supported“ fehl.</li>

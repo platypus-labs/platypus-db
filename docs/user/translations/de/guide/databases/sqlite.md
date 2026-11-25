@@ -50,7 +50,7 @@ das Journal) beschreiben dürfen. Auf eine belegte Datei wird gewartet, bevor ei
 
 Schreibgeschützte Agenten und schreibgeschützte Verbindungen öffnen die Datei nur lesend und führen ihre
 Abfragen mit `query_only` aus. `estimate_change` hat bei SQLite keine Zeilenschätzung zu bieten. Siehe
-[Agenten und die CLI](../../AGENTS.md).
+[Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

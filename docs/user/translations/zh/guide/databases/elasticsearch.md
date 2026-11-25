@@ -31,7 +31,7 @@
 - **表格可以编辑文档**：修改过的单元格是按 `_id` 的 `_update`，新行是 `_create`（已存在的 `_id` 会被服务器拒绝）或生成的文档，删除的行是 `DELETE`。预览显示这些请求，它们依次运行；服务器拒绝其中一个时，其余的会停止，之前的保持不变。*撤销脚本*会恢复旧的 `_source`（带生成的 `_id` 的文档必须手动删除）。
 - 不带查询（或 `match_all`）的 `_delete_by_query` 和 `_update_by_query`，以及 `DELETE /_all`，会像不带 `WHERE` 的 `DELETE` 一样先询问。只读连接只运行读取的请求和 SQL。
 - 取消会在服务器上停止搜索。索引的对象 DDL 是重新创建它的请求。
-- 详细信息见 [FEATURES.md](../../FEATURES.md#elasticsearch-and-opensearch)。
+- 详细信息见 [FEATURES.md](../../../../FEATURES.md#elasticsearch-and-opensearch)。
 
 ## 不可用功能
 
@@ -41,7 +41,7 @@
 
 ## 代理
 
-`run_query` 和 `sample_rows` 可用于控制台请求和 SQL，修改数据的请求会先询问。在 Elasticsearch 和 OpenSearch 上被拒绝的有：`explain`、`get_er_diagram`、`propose_edits` 和 `query_across_databases`。见[代理和 CLI](../../AGENTS.md)。
+`run_query` 和 `sample_rows` 可用于控制台请求和 SQL，修改数据的请求会先询问。在 Elasticsearch 和 OpenSearch 上被拒绝的有：`explain`、`get_er_diagram`、`propose_edits` 和 `query_across_databases`。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

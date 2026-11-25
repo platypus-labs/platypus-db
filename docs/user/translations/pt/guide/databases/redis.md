@@ -50,7 +50,7 @@ nunca `KEYS`. Não há abas de administração.
   leitura executam apenas comandos que leem.
 - Cancelar interrompe um comando bloqueante (`BLPOP`, `XREAD BLOCK`).
 - O modo terminal executa o `redis-cli` se ele estiver no PATH, com a senha no ambiente dele.
-- Todos os comandos e tipos de chave estão descritos em [FEATURES.md](../../FEATURES.md#redis).
+- Todos os comandos e tipos de chave estão descritos em [FEATURES.md](../../../../FEATURES.md#redis).
 
 ## O que não funciona
 
@@ -65,7 +65,7 @@ nunca `KEYS`. Não há abas de administração.
 perguntado antes. Os comandos que mostram as credenciais do servidor (`ACL GETUSER`, `ACL LIST` e um
 `CONFIG GET` cujo padrão corresponde a uma configuração de senha) são recusados para agentes
 somente leitura. Recusados no Redis: `explain`, `get_er_diagram`, `propose_edits` e
-`query_across_databases`. Veja [Agentes e a CLI](../../AGENTS.md).
+`query_across_databases`. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

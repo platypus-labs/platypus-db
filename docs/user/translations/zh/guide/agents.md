@@ -3,7 +3,7 @@
 
 # 通过代理使用 PlatypusDB
 
-Claude Code、Codex、Cursor 和其他 MCP 客户端可以通过 PlatypusDB 的 MCP 服务器使用你已保存的连接。本页是简短的路径；每个工具、限制和设置都在参考文档 [AGENTS.md](../AGENTS.md) 中。
+Claude Code、Codex、Cursor 和其他 MCP 客户端可以通过 PlatypusDB 的 MCP 服务器使用你已保存的连接。本页是简短的路径；每个工具、限制和设置都在参考文档 [AGENTS.md](../../../AGENTS.md) 中。
 
 ## 连接代理
 
@@ -13,7 +13,7 @@ Claude Code、Codex、Cursor 和其他 MCP 客户端可以通过 PlatypusDB 的 
 
 ## 选择每个连接允许什么
 
-![设置，代理，安全页面](../../screenshots/guide/agents-security.png)
+![设置，代理，安全页面](../../../../screenshots/guide/agents-security.png)
 
 1. 设置 › **代理** › **安全**列出你的连接。连接自己的表单在其**外观与安全**页面的**代理**下有同样的选择。
 2. 选择**关闭**、**只读**（默认）或**读写**。

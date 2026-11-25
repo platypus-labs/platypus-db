@@ -71,7 +71,7 @@ Zum Durchsuchen reicht, was die Anmeldung sehen kann. Die Verwaltungs-Tabs lesen
 Schreibgeschützte Agenten und schreibgeschützte Verbindungen führen `SET SESSION TRANSACTION READ ONLY`
 aus, und ihre Abfragen laufen in einer schreibgeschützten Transaktion. `server_activity` und
 `top_queries` funktionieren. Eine `@variable`, temporäre Tabelle oder ein `SET` von MySQL oder MariaDB,
-das ein Agent-Aufruf gemacht hat, ist im nächsten noch da. Siehe [Agenten und die CLI](../../AGENTS.md).
+das ein Agent-Aufruf gemacht hat, ist im nächsten noch da. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

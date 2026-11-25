@@ -3,7 +3,7 @@
 
 # Modifier les données
 
-![Modifications en attente dans l'éditeur de données](../../screenshots/data-editor.png)
+![Modifications en attente dans l'éditeur de données](../../../../screenshots/data-editor.png)
 
 ## Modifier des lignes dans la grille
 
@@ -63,5 +63,5 @@ enregistrez pas ; abandonnez-les pour refuser. Voir [Agents](agents.md).
 ## Pour aller plus loin
 
 Les clés étrangères, les tableaux, l'éditeur de table (colonnes, clés, index) et les fausses données sont
-dans [FEATURES.md](../FEATURES.md#data-editor). Les connexions de production confirment d'abord chaque
+dans [FEATURES.md](../../../FEATURES.md#data-editor). Les connexions de production confirment d'abord chaque
 modification : voir [Sécurité](safety.md).

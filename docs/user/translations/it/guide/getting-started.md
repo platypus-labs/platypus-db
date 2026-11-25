@@ -4,9 +4,9 @@
 # Per iniziare
 
 Installa PlatypusDB, apri una connessione e impara i pochi tasti che fanno la maggior parte del
-lavoro. Tutte le funzioni, area per area, sono in [FEATURES.md](../FEATURES.md).
+lavoro. Tutte le funzioni, area per area, sono in [FEATURES.md](../../../FEATURES.md).
 
-![La schermata di benvenuto](../../screenshots/guide/welcome.png)
+![La schermata di benvenuto](../../../../screenshots/guide/welcome.png)
 
 ## Installazione
 
@@ -51,7 +51,7 @@ Ogni azione, connessione e tabella è a poche lettere di distanza nella palette 
 | `Ctrl+T` | Nuova scheda |
 
 Su macOS usa `Cmd` al posto di `Ctrl`. Ogni scorciatoia si può cambiare in Impostazioni ›
-Scorciatoie da tastiera; l'elenco completo è in [SHORTCUTS.md](../SHORTCUTS.md).
+Scorciatoie da tastiera; l'elenco completo è in [SHORTCUTS.md](../../../SHORTCUTS.md).
 
 ## Passi successivi
 

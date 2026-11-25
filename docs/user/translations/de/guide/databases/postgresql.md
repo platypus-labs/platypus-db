@@ -135,7 +135,7 @@ Schreibgeschützte Agenten und schreibgeschützte Verbindungen öffnen die Sitzu
 `default_transaction_read_only` (PostgreSQL, CockroachDB und YugabyteDB), sodass der Server selbst
 Schreibzugriffe ablehnt; hinter einem Pooler im Transaktionsmodus tut es nur die Prüfung der Anweisung.
 `server_activity` und `top_queries` funktionieren bei PostgreSQL selbst, nicht bei CockroachDB oder
-YugabyteDB. Siehe [Agenten und die CLI](../../AGENTS.md).
+YugabyteDB. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

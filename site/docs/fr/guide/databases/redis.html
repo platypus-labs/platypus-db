@@ -112,7 +112,7 @@
 <li><code>FLUSHDB</code> et <code>FLUSHALL</code> demandent d&#39;abord, comme un <code>UPDATE</code> sans <code>WHERE</code> ; sur les connexions de production, les commandes qui modifient le serveur (<code>CONFIG SET</code>, <code>SHUTDOWN</code>) demandent comme le fait le DDL. Les connexions en lecture seule n&#39;exécutent que les commandes qui lisent.</li>
 <li>Annuler arrête une commande bloquante (<code>BLPOP</code>, <code>XREAD BLOCK</code>).</li>
 <li>Le mode terminal exécute <code>redis-cli</code> s&#39;il est dans le PATH, avec le mot de passe dans son environnement.</li>
-<li>Toutes les commandes et tous les types de clés sont décrits dans <a href="../../../features.html#redis">FEATURES.md</a>.</li>
+<li>Toutes les commandes et tous les types de clés sont décrits dans <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#redis">FEATURES.md</a>.</li>
 </ul>
 <h2 id="ce-qui-ne-fonctionne-pas">Ce qui ne fonctionne pas</h2>
 <ul>
@@ -121,7 +121,7 @@
 <li>Pas d&#39;explain, pas de DDL d&#39;objet, pas d&#39;outils SQL (éditeur de tables, diagramme ER, comparaison de schémas, constructeur de requêtes, import SQL), pas d&#39;instantanés avant modifications.</li>
 </ul>
 <h2 id="agents">Agents</h2>
-<p><code>run_query</code> et <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) fonctionnent ; toute commande qui n&#39;est pas une lecture fait d&#39;abord l&#39;objet d&#39;une question. Les commandes qui montrent les identifiants du serveur (<code>ACL GETUSER</code>, <code>ACL LIST</code>, et un <code>CONFIG GET</code> dont le motif correspond à un réglage de mot de passe) sont refusées aux agents en lecture seule. Refusés sur Redis : <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> et <code>query_across_databases</code>. Voir <a href="../../../agents.html">Agents et la CLI</a>.</p>
+<p><code>run_query</code> et <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) fonctionnent ; toute commande qui n&#39;est pas une lecture fait d&#39;abord l&#39;objet d&#39;une question. Les commandes qui montrent les identifiants du serveur (<code>ACL GETUSER</code>, <code>ACL LIST</code>, et un <code>CONFIG GET</code> dont le motif correspond à un réglage de mot de passe) sont refusées aux agents en lecture seule. Refusés sur Redis : <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> et <code>query_across_databases</code>. Voir <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agents et la CLI</a>.</p>
 <h2 id="limites-connues">Limites connues</h2>
 <ul>
 <li>Plus ancien que 6.0 : il se connecte avec un avertissement disant que certaines fonctionnalités peuvent ne pas marcher.</li>

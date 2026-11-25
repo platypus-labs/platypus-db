@@ -1,7 +1,7 @@
 <!-- source: c5a23b4f7aee -->
 # Benutzerhandbuch
 
-Kurze Seiten, jede eine Aufgabe, die du Schritt für Schritt nachvollziehst. [FEATURES.md](../FEATURES.md)
+Kurze Seiten, jede eine Aufgabe, die du Schritt für Schritt nachvollziehst. [FEATURES.md](../../../FEATURES.md)
 bleibt die Referenz, Bereich für Bereich; diese Seiten verweisen für die Details darauf.
 
 | Ich möchte | Seite |
@@ -17,4 +17,4 @@ bleibt die Referenz, Bereich für Bereich; diese Seiten verweisen für die Detai
 | Claude Code, Codex oder einen anderen Agenten meine Verbindungen nutzen lassen | [Agenten](agents.md) |
 | Eine Verbindung, einen Treiber-Download, einen Agenten oder ein Update reparieren | [Fehlerbehebung und FAQ](troubleshooting.md) |
 
-Die Tastenkürzel stehen in [SHORTCUTS.md](../SHORTCUTS.md); auf macOS nimmst du `Cmd` statt `Ctrl`.
+Die Tastenkürzel stehen in [SHORTCUTS.md](../../../SHORTCUTS.md); auf macOS nimmst du `Cmd` statt `Ctrl`.

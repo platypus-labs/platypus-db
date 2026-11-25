@@ -118,7 +118,7 @@
 <li>As importações passam pelo appender do DuckDB, na transação da sessão.</li>
 </ul>
 <h2 id="agentes">Agentes</h2>
-<p>Um agente somente leitura, e uma conexão somente leitura, abrem o arquivo do banco de dados somente para leitura, quando nenhuma outra sessão do app já o mantém aberto; um banco de dados em memória ou um arquivo de dados nunca é somente leitura, e a verificação da instrução impede gravações ali. As sessões do DuckDB dos agentes não podem ler nem gravar outros arquivos nem carregar extensões, e fecham o arquivo depois de cada chamada para que o app possa abri-lo. <code>query_across_databases</code> roda em um DuckDB próprio, que o app baixa como este. Veja <a href="../../../agents.html">Agentes e a CLI</a>.</p>
+<p>Um agente somente leitura, e uma conexão somente leitura, abrem o arquivo do banco de dados somente para leitura, quando nenhuma outra sessão do app já o mantém aberto; um banco de dados em memória ou um arquivo de dados nunca é somente leitura, e a verificação da instrução impede gravações ali. As sessões do DuckDB dos agentes não podem ler nem gravar outros arquivos nem carregar extensões, e fecham o arquivo depois de cada chamada para que o app possa abri-lo. <code>query_across_databases</code> roda em um DuckDB próprio, que o app baixa como este. Veja <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agentes e a CLI</a>.</p>
 <h2 id="limites-conhecidos">Limites conhecidos</h2>
 <ul>
 <li>Os arquivos Excel são lidos com o leitor próprio do app, não com a extensão Excel do DuckDB.</li>

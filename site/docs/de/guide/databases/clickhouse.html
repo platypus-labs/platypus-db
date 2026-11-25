@@ -125,7 +125,7 @@
 <li>Keine Fremdschlüssel oder Unique-Constraints (der Primärschlüssel ordnet die Daten nur).</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p>Ein schreibgeschützter Agent und eine schreibgeschützte Verbindung senden jede Anweisung außer <code>SET</code> mit <code>readonly = 1</code>, sodass der Server Schreibzugriffe und die Tabellenfunktionen ablehnt, die andere Server oder seine Dateien erreichen (<code>url</code>, <code>s3</code>, <code>remote</code>, <code>file</code> und ähnliche). Die Anweisung eines Agenten wird außerdem gegen eine Liste von Tabellenfunktionen geprüft, die nur lokale Daten lesen. Siehe <a href="../../../agents.html">Agenten und die CLI</a>. Der Terminalmodus ist nicht verfügbar: <code>clickhouse-client</code> nutzt den nativen Port.</p>
+<p>Ein schreibgeschützter Agent und eine schreibgeschützte Verbindung senden jede Anweisung außer <code>SET</code> mit <code>readonly = 1</code>, sodass der Server Schreibzugriffe und die Tabellenfunktionen ablehnt, die andere Server oder seine Dateien erreichen (<code>url</code>, <code>s3</code>, <code>remote</code>, <code>file</code> und ähnliche). Die Anweisung eines Agenten wird außerdem gegen eine Liste von Tabellenfunktionen geprüft, die nur lokale Daten lesen. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>. Der Terminalmodus ist nicht verfügbar: <code>clickhouse-client</code> nutzt den nativen Port.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Einfaches HTTP, außer der Modus ist <code>require</code> oder stärker: Das standardmäßige <code>prefer</code> verschlüsselt nicht.</li>

@@ -6,7 +6,7 @@
 Une page par base de données : comment s'y connecter, ce que demande la connexion, ce qui fonctionne et ce
 qui ne fonctionne pas, et sur quelles versions tourne la suite de tests. [Se connecter](../connect.md)
 explique ce que toutes les bases de données ont en commun (SSH, proxy, trousseau, projets),
-[Dépannage](../troubleshooting.md) les erreurs, et [FEATURES.md](../../FEATURES.md) est la référence par
+[Dépannage](../troubleshooting.md) les erreurs, et [FEATURES.md](../../../../FEATURES.md) est la référence par
 fonctionnalité.
 
 | Page | Bases de données |
@@ -114,7 +114,7 @@ Databricks et IBM Db2.
 
 ## Agents
 
-[Agents et la CLI](../../AGENTS.md) fonctionne sur toutes les bases de données ci-dessus. Les différences
+[Agents et la CLI](../../../../AGENTS.md) fonctionne sur toutes les bases de données ci-dessus. Les différences
 sont sur chaque page : comment une session en lecture seule est créée (le serveur refuse les écritures sur
 PostgreSQL, CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB et ClickHouse ; partout ailleurs, seule
 la vérification de l'instruction s'applique), et ce qui est refusé (`explain` sur MongoDB, Redis,

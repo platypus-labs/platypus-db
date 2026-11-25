@@ -3,9 +3,9 @@
 
 # Trabalhar com segurança: produção, somente leitura, confirmações, mascaramento
 
-Tudo o que está aqui também está em [FEATURES.md](../FEATURES.md#transactions-and-safety).
+Tudo o que está aqui também está em [FEATURES.md](../../../FEATURES.md#transactions-and-safety).
 
-![Configurações, a página Segurança](../../screenshots/guide/safety.png)
+![Configurações, a página Segurança](../../../../screenshots/guide/safety.png)
 
 ## Marcar uma conexão como produção
 

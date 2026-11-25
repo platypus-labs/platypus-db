@@ -112,7 +112,7 @@
 <li><code>FLUSHDB</code> e <code>FLUSHALL</code> perguntam antes, como um <code>UPDATE</code> sem <code>WHERE</code>; em conexões de produção, os comandos que alteram o servidor (<code>CONFIG SET</code>, <code>SHUTDOWN</code>) perguntam como o DDL. Conexões somente leitura executam apenas comandos que leem.</li>
 <li>Cancelar interrompe um comando bloqueante (<code>BLPOP</code>, <code>XREAD BLOCK</code>).</li>
 <li>O modo terminal executa o <code>redis-cli</code> se ele estiver no PATH, com a senha no ambiente dele.</li>
-<li>Todos os comandos e tipos de chave estão descritos em <a href="../../../features.html#redis">FEATURES.md</a>.</li>
+<li>Todos os comandos e tipos de chave estão descritos em <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#redis">FEATURES.md</a>.</li>
 </ul>
 <h2 id="o-que-não-funciona">O que não funciona</h2>
 <ul>
@@ -121,7 +121,7 @@
 <li>Sem explain, sem DDL de objetos, sem ferramentas SQL (editor de tabelas, diagrama ER, comparação de schemas, query builder, importação de SQL), sem snapshots antes de alterações.</li>
 </ul>
 <h2 id="agentes">Agentes</h2>
-<p><code>run_query</code> e <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) funcionam; qualquer comando que não seja leitura é perguntado antes. Os comandos que mostram as credenciais do servidor (<code>ACL GETUSER</code>, <code>ACL LIST</code> e um <code>CONFIG GET</code> cujo padrão corresponde a uma configuração de senha) são recusados para agentes somente leitura. Recusados no Redis: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> e <code>query_across_databases</code>. Veja <a href="../../../agents.html">Agentes e a CLI</a>.</p>
+<p><code>run_query</code> e <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) funcionam; qualquer comando que não seja leitura é perguntado antes. Os comandos que mostram as credenciais do servidor (<code>ACL GETUSER</code>, <code>ACL LIST</code> e um <code>CONFIG GET</code> cujo padrão corresponde a uma configuração de senha) são recusados para agentes somente leitura. Recusados no Redis: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> e <code>query_across_databases</code>. Veja <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agentes e a CLI</a>.</p>
 <h2 id="limites-conhecidos">Limites conhecidos</h2>
 <ul>
 <li>Anterior ao 6.0: ele conecta com um aviso de que alguns recursos podem não funcionar.</li>

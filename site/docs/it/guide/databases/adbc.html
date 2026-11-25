@@ -125,7 +125,7 @@
 <li>La modalità terminale non è disponibile.</li>
 </ul>
 <h2 id="agenti">Agenti</h2>
-<p><code>run_query</code>, <code>sample_rows</code> e gli altri strumenti funzionano, nei limiti dei controlli. Senza una sessione in sola lettura lato server, gli agenti in sola lettura si affidano al solo controllo delle istruzioni. Le istruzioni che agiscono al di fuori di esso vengono chieste prima di girare: <code>query()</code> di Trino e le funzioni <code>SYSTEM$</code> di Snowflake. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
+<p><code>run_query</code>, <code>sample_rows</code> e gli altri strumenti funzionano, nei limiti dei controlli. Senza una sessione in sola lettura lato server, gli agenti in sola lettura si affidano al solo controllo delle istruzioni. Le istruzioni che agiscono al di fuori di esso vengono chieste prima di girare: <code>query()</code> di Trino e le funzioni <code>SYSTEM$</code> di Snowflake. Vedi <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenti e la CLI</a>.</p>
 <h2 id="limiti-noti">Limiti noti</h2>
 <ul>
 <li>Un accesso a un warehouse cloud diverso dai campi qui sopra (coppia di chiavi, single sign-on) non è nel modulo; il driver generico accetta le opzioni proprie del driver.</li>

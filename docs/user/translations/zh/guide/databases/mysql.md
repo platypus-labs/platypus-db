@@ -46,7 +46,7 @@
 
 ## 代理
 
-只读代理和只读连接运行 `SET SESSION TRANSACTION READ ONLY`，它们的查询在只读事务中运行。`server_activity` 和 `top_queries` 可用。一次代理调用设置的 MySQL 或 MariaDB `@variable`、临时表或 `SET`，在下一次调用中仍然存在。见[代理和 CLI](../../AGENTS.md)。
+只读代理和只读连接运行 `SET SESSION TRANSACTION READ ONLY`，它们的查询在只读事务中运行。`server_activity` 和 `top_queries` 可用。一次代理调用设置的 MySQL 或 MariaDB `@variable`、临时表或 `SET`，在下一次调用中仍然存在。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

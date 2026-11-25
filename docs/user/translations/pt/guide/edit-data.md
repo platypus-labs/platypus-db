@@ -3,7 +3,7 @@
 
 # Editar dados
 
-![Alterações pendentes no editor de dados](../../screenshots/data-editor.png)
+![Alterações pendentes no editor de dados](../../../../screenshots/data-editor.png)
 
 ## Alterar linhas na grade
 
@@ -60,5 +60,5 @@ descarte-as para recusar. Veja [Agentes](agents.md).
 ## Mais
 
 Chaves estrangeiras, arrays, o editor de tabelas (colunas, chaves, índices) e dados falsos estão em
-[FEATURES.md](../FEATURES.md#data-editor). Conexões de produção confirmam cada alteração antes:
+[FEATURES.md](../../../FEATURES.md#data-editor). Conexões de produção confirmam cada alteração antes:
 veja [Segurança](safety.md).

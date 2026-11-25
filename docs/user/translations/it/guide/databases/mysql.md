@@ -73,7 +73,7 @@ Gli agenti di sola lettura e le connessioni di sola lettura eseguono
 `SET SESSION TRANSACTION READ ONLY`, e le loro query girano in una transazione di sola lettura.
 `server_activity` e `top_queries` funzionano. Una `@variabile`, una tabella temporanea o un `SET`
 fatti da una chiamata di un agente ci sono ancora nella successiva, in MySQL e MariaDB. Vedi
-[Agenti e la CLI](../../AGENTS.md).
+[Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

@@ -50,7 +50,7 @@ Es gibt keine Verwaltungs-Tabs.
   Verbindungen führen nur lesende Befehle aus.
 - Abbrechen stoppt einen blockierenden Befehl (`BLPOP`, `XREAD BLOCK`).
 - Der Terminalmodus führt `redis-cli` aus, falls es im PATH liegt, mit dem Passwort in seiner Umgebung.
-- Alle Befehle und Schlüsseltypen sind in [FEATURES.md](../../FEATURES.md#redis) beschrieben.
+- Alle Befehle und Schlüsseltypen sind in [FEATURES.md](../../../../FEATURES.md#redis) beschrieben.
 
 ## Was nicht
 
@@ -66,7 +66,7 @@ Es gibt keine Verwaltungs-Tabs.
 zuerst nachgefragt. Die Befehle, die die Zugangsdaten des Servers zeigen (`ACL GETUSER`, `ACL LIST` und ein
 `CONFIG GET`, dessen Muster auf eine Passwort-Einstellung passt), werden schreibgeschützten Agenten verweigert.
 Bei Redis abgelehnt: `explain`, `get_er_diagram`, `propose_edits` und `query_across_databases`. Siehe
-[Agenten und die CLI](../../AGENTS.md).
+[Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

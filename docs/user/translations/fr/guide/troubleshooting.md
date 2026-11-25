@@ -146,7 +146,7 @@ scripts, les pilotes téléchargés et les journaux dans son dossier de données
 Une copie portable garde tout dans son dossier `data`, et la variable d'environnement
 `PLATYPUS_DATA_DIR` met tout dans le dossier qu'elle désigne.
 
-![Paramètres, la page Diagnostic](../../screenshots/guide/diagnostics.png)
+![Paramètres, la page Diagnostic](../../../../screenshots/guide/diagnostics.png)
 
 Le journal est `logs/platypus.log` dans le dossier de données : une ligne par démarrage, erreur et plantage,
 avec rotation à 1 Mo et deux anciens fichiers (`platypus.1.log`, `platypus.2.log`). Paramètres ›
@@ -174,5 +174,5 @@ serveur ou une table. Après un plantage, le démarrage suivant propose le même
 **Où signaler un bug ?** Sur le [suivi des tickets](https://github.com/platypus-labs/platypus-db/issues),
 avec le paquet de diagnostic si possible.
 
-**Où sont les raccourcis ?** [SHORTCUTS.md](../SHORTCUTS.md), et Paramètres › Raccourcis clavier pour les
+**Où sont les raccourcis ?** [SHORTCUTS.md](../../../SHORTCUTS.md), et Paramètres › Raccourcis clavier pour les
 modifier.

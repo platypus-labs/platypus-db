@@ -75,7 +75,7 @@
     <nav class="crumbs" aria-label="Languages"><a href="../../guide/connect.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/connect.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/connect.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/connect.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/connect.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/connect.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
 <p><a href="index.html">← 用户指南</a></p>
 <h1 id="连接数据库">连接数据库</h1>
-<p><img src="../../../img/screenshots/connections.png" alt="为新连接选择数据库" loading="lazy"></p>
+<p>为新连接选择数据库</p>
 <h2 id="通过-url">通过 URL</h2>
 <ol>
 <li>点击<strong>新建连接</strong>（或导航器的 <code>+</code>）。</li>
@@ -113,7 +113,7 @@
 <h2 id="tls">TLS</h2>
 <p>在<strong>网络</strong>页面，<strong>SSL 模式</strong>取 libpq 的值：<code>disable</code>、<code>prefer</code>、<code>require</code>、<code>verify-ca</code> 和 <code>verify-full</code>。<code>prefer</code> 和 <code>require</code> 只加密而不检查证书；<code>verify-ca</code> 和 <code>verify-full</code> 会检查证书，因此可能需要 <strong>CA 证书 (PEM)</strong>。对于通过证书验证客户端的服务器，请提供<strong>客户端证书 (PEM)</strong> 和<strong>客户端密钥（PEM）</strong>（PostgreSQL 和 MySQL）。</p>
 <h2 id="ssh-隧道">SSH 隧道</h2>
-<p><img src="../../../img/screenshots/guide/connect-network.png" alt="网络页面上的 SSH 隧道" loading="lazy"></p>
+<p>网络页面上的 SSH 隧道</p>
 <ol>
 <li>在<strong>网络</strong>页面，勾选<strong>通过 SSH 隧道连接</strong>。</li>
 <li>填写 <strong>SSH 主机</strong>、端口和 <strong>SSH 用户</strong>。</li>
@@ -124,7 +124,7 @@
 <h2 id="代理和端口转发">代理和端口转发</h2>
 <p>同样在<strong>网络</strong>页面：SOCKS5 或 HTTP 代理（<code>socks5://user:password@host:1080</code>、<code>http://host:3128</code>），或通过 <code>kubectl</code> 或 AWS Systems Manager 会话进行端口转发（必须已安装并登录相应的 CLI）。端口转发要单独使用：请移除 SSH 隧道或代理。</p>
 <h2 id="下一步">下一步</h2>
-<p>各数据库的详细信息：<a href="databases/index.html">数据库</a>。云登录、连接池、从 DBeaver、DataGrip 和 pgAdmin 导入（包括 Db2 连接）以及导出连接，见 <a href="../../features.html#connections">FEATURES.md</a>。如果无法连接，见<a href="troubleshooting.html#连接错误">故障排除</a>。</p>
+<p>各数据库的详细信息：<a href="databases/index.html">数据库</a>。云登录、连接池、从 DBeaver、DataGrip 和 pgAdmin 导入（包括 Db2 连接）以及导出连接，见 <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#connections">FEATURES.md</a>。如果无法连接，见<a href="troubleshooting.html#连接错误">故障排除</a>。</p>
   </article>
 
   <aside class="toc-r">

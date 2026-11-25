@@ -73,7 +73,7 @@ lettura, quando nessun'altra sessione dell'app lo tiene già aperto; un database
 di dati non è mai in sola lettura, e il controllo delle istruzioni blocca lì le scritture. Le sessioni
 DuckDB degli agenti non possono leggere né scrivere altri file né caricare estensioni, e chiudono il
 file dopo ogni chiamata così che l'app lo possa aprire. `query_across_databases` gira in un DuckDB
-tutto suo che l'app scarica come questo. Vedi [Agenti e la CLI](../../AGENTS.md).
+tutto suo che l'app scarica come questo. Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

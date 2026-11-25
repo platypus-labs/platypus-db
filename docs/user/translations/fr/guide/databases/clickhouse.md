@@ -66,7 +66,7 @@ Un agent en lecture seule, et une connexion en lecture seule, envoient chaque in
 `readonly = 1`, si bien que le serveur refuse les écritures et les fonctions de table qui atteignent d'autres
 serveurs ou ses fichiers (`url`, `s3`, `remote`, `file` et les semblables). L'instruction d'un agent est aussi
 comparée à une liste de fonctions de table qui ne lisent que des données locales. Voir
-[Agents et la CLI](../../AGENTS.md). Le mode terminal n'est pas disponible : `clickhouse-client` utilise le
+[Agents et la CLI](../../../../AGENTS.md). Le mode terminal n'est pas disponible : `clickhouse-client` utilise le
 port natif.
 
 ## Limites connues

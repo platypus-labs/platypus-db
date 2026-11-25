@@ -115,7 +115,7 @@
 <li><strong>表格可以编辑文档</strong>：修改过的单元格是按 <code>_id</code> 的 <code>_update</code>，新行是 <code>_create</code>（已存在的 <code>_id</code> 会被服务器拒绝）或生成的文档，删除的行是 <code>DELETE</code>。预览显示这些请求，它们依次运行；服务器拒绝其中一个时，其余的会停止，之前的保持不变。<em>撤销脚本</em>会恢复旧的 <code>_source</code>（带生成的 <code>_id</code> 的文档必须手动删除）。</li>
 <li>不带查询（或 <code>match_all</code>）的 <code>_delete_by_query</code> 和 <code>_update_by_query</code>，以及 <code>DELETE /_all</code>，会像不带 <code>WHERE</code> 的 <code>DELETE</code> 一样先询问。只读连接只运行读取的请求和 SQL。</li>
 <li>取消会在服务器上停止搜索。索引的对象 DDL 是重新创建它的请求。</li>
-<li>详细信息见 <a href="../../../features.html#elasticsearch-and-opensearch">FEATURES.md</a>。</li>
+<li>详细信息见 <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#elasticsearch-and-opensearch">FEATURES.md</a>。</li>
 </ul>
 <h2 id="不可用功能">不可用功能</h2>
 <ul>
@@ -124,7 +124,7 @@
 <li>数据查看器没有过滤和排序栏。</li>
 </ul>
 <h2 id="代理">代理</h2>
-<p><code>run_query</code> 和 <code>sample_rows</code> 可用于控制台请求和 SQL，修改数据的请求会先询问。在 Elasticsearch 和 OpenSearch 上被拒绝的有：<code>explain</code>、<code>get_er_diagram</code>、<code>propose_edits</code> 和 <code>query_across_databases</code>。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p><code>run_query</code> 和 <code>sample_rows</code> 可用于控制台请求和 SQL，修改数据的请求会先询问。在 Elasticsearch 和 OpenSearch 上被拒绝的有：<code>explain</code>、<code>get_er_diagram</code>、<code>propose_edits</code> 和 <code>query_across_databases</code>。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>应用拒绝低于 7.10 的 Elasticsearch 和低于 1.0 的 OpenSearch：与其他数据库不同，连接会失败并提示 &quot;older than … the oldest version supported&quot;。</li>

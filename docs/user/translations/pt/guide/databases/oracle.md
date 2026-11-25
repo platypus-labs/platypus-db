@@ -67,7 +67,7 @@ da sessão (a transação dela sofre rollback e uma nova conexão é aberta).
 
 Agentes somente leitura dependem só da verificação da instrução: o Oracle não tem aqui uma sessão
 somente leitura no servidor. Uma instrução que chama um pacote Oracle, como `UTL_HTTP`, é perguntada
-antes de executar, como uma alteração. Veja [Agentes e a CLI](../../AGENTS.md).
+antes de executar, como uma alteração. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

@@ -151,7 +151,7 @@ Treiber und Logs in ihrem Datenordner; beide heißen `dev.platypusdb.desktop`:
 Eine portable Kopie hält alles in ihrem `data`-Ordner, und die Umgebungsvariable `PLATYPUS_DATA_DIR`
 legt alles in den Ordner, den sie nennt.
 
-![Einstellungen, die Seite Diagnose](../../screenshots/guide/diagnostics.png)
+![Einstellungen, die Seite Diagnose](../../../../screenshots/guide/diagnostics.png)
 
 Das Log ist `logs/platypus.log` im Datenordner: eine Zeile pro Start, Fehler und Absturz, rotiert bei
 1 MB mit zwei älteren Dateien (`platypus.1.log`, `platypus.2.log`). Einstellungen › **Diagnose** zeigt
@@ -179,5 +179,5 @@ brauchen das Netzwerk.
 **Wo melde ich einen Fehler?** Im [Issue-Tracker](https://github.com/platypus-labs/platypus-db/issues),
 wenn möglich mit dem Diagnosepaket.
 
-**Wo sind die Tastenkürzel?** In [SHORTCUTS.md](../SHORTCUTS.md), und unter Einstellungen › Tastenkürzel
+**Wo sind die Tastenkürzel?** In [SHORTCUTS.md](../../../SHORTCUTS.md), und unter Einstellungen › Tastenkürzel
 kannst du sie ändern.

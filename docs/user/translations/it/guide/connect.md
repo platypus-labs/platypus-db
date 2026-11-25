@@ -3,7 +3,7 @@
 
 # Connettersi a un database
 
-![Scelta del database per una nuova connessione](../../screenshots/connections.png)
+![Scelta del database per una nuova connessione](../../../../screenshots/connections.png)
 
 ## Da un URL
 
@@ -88,7 +88,7 @@ server che autenticano i client con un certificato, indica il **Certificato clie
 
 ## Tunnel SSH
 
-![Un tunnel SSH nella pagina Rete](../../screenshots/guide/connect-network.png)
+![Un tunnel SSH nella pagina Rete](../../../../screenshots/guide/connect-network.png)
 
 1. Nella pagina **Rete**, spunta **Connetti attraverso un tunnel SSH**.
 2. Compila **Host SSH**, la porta e **Utente SSH**.
@@ -111,5 +111,5 @@ togli il tunnel SSH o il proxy.
 
 I dettagli di ogni database: [Database](databases/README.md). L'accesso al cloud, i pooler,
 l'import da DBeaver, DataGrip e pgAdmin (comprese le connessioni Db2) e l'export delle connessioni
-sono in [FEATURES.md](../FEATURES.md#connections). Se non si connette, vedi
+sono in [FEATURES.md](../../../FEATURES.md#connections). Se non si connette, vedi
 [Risoluzione dei problemi](troubleshooting.md#errori-di-connessione).

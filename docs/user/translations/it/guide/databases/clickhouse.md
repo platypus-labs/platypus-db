@@ -67,7 +67,7 @@ Un agente in sola lettura, e una connessione in sola lettura, inviano ogni istru
 con `readonly = 1`, così il server rifiuta le scritture e le table function che raggiungono altri
 server o i suoi file (`url`, `s3`, `remote`, `file` e simili). L'istruzione di un agente viene anche
 controllata rispetto a un elenco di table function che leggono solo dati locali. Vedi
-[Agenti e la CLI](../../AGENTS.md). La modalità terminale non è disponibile: `clickhouse-client` usa
+[Agenti e la CLI](../../../../AGENTS.md). La modalità terminale non è disponibile: `clickhouse-client` usa
 la porta nativa.
 
 ## Limiti noti

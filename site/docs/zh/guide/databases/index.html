@@ -89,7 +89,7 @@
     <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/index.html" lang="en" hreflang="en">English</a> · <a href="../../../de/guide/databases/index.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../../es/guide/databases/index.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/index.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/index.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/index.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
 <p><a href="../index.html">← 指南</a></p>
 <h1 id="数据库">数据库</h1>
-<p>每种数据库一页：如何连接、登录需要什么、哪些功能可用、哪些不可用，以及测试套件在哪些版本上运行。<a href="../connect.html">连接</a>说明所有数据库共有的部分（SSH、代理、钥匙串、项目），<a href="../troubleshooting.html">故障排除</a>说明各种错误，<a href="../../../features.html">FEATURES.md</a> 是按功能编排的参考文档。</p>
+<p>每种数据库一页：如何连接、登录需要什么、哪些功能可用、哪些不可用，以及测试套件在哪些版本上运行。<a href="../connect.html">连接</a>说明所有数据库共有的部分（SSH、代理、钥匙串、项目），<a href="../troubleshooting.html">故障排除</a>说明各种错误，<a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md">FEATURES.md</a> 是按功能编排的参考文档。</p>
 <div class="table-wrap"><table class="grid">
 <thead><tr><th>页面</th><th>数据库</th></tr></thead>
 <tbody>
@@ -169,7 +169,7 @@
 </table></div>
 <p>完全没有测试过的：Azure SQL、Supabase、Neon、AlloyDB、Turso 的云服务、Snowflake、BigQuery、Databricks 和 IBM Db2。</p>
 <h2 id="代理">代理</h2>
-<p><a href="../../../agents.html">代理和 CLI</a>适用于上面的每一种数据库。差异见各页面：只读会话是如何建立的（在 PostgreSQL、CockroachDB、YugabyteDB、MySQL、MariaDB、SQLite、DuckDB 和 ClickHouse 上由服务器拒绝写入；其他地方只靠语句检查），以及哪些会被拒绝（MongoDB、Redis、Elasticsearch 和 Cassandra 上的 <code>explain</code>；MongoDB、Redis 和 Elasticsearch 上的 <code>get_er_diagram</code>；凡是表格不按键编辑行的地方的 <code>propose_edits</code>：Redis、Elasticsearch、Cassandra、ClickHouse 和 ADBC 数据库；在 MongoDB 上它按 <code>_id</code> 指明文档）。<code>server_activity</code> 和 <code>top_queries</code> 适用于 PostgreSQL、MySQL、MariaDB 和 SQL Server。</p>
+<p><a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>适用于上面的每一种数据库。差异见各页面：只读会话是如何建立的（在 PostgreSQL、CockroachDB、YugabyteDB、MySQL、MariaDB、SQLite、DuckDB 和 ClickHouse 上由服务器拒绝写入；其他地方只靠语句检查），以及哪些会被拒绝（MongoDB、Redis、Elasticsearch 和 Cassandra 上的 <code>explain</code>；MongoDB、Redis 和 Elasticsearch 上的 <code>get_er_diagram</code>；凡是表格不按键编辑行的地方的 <code>propose_edits</code>：Redis、Elasticsearch、Cassandra、ClickHouse 和 ADBC 数据库；在 MongoDB 上它按 <code>_id</code> 指明文档）。<code>server_activity</code> 和 <code>top_queries</code> 适用于 PostgreSQL、MySQL、MariaDB 和 SQL Server。</p>
   </article>
 
   <aside class="toc-r">

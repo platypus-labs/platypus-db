@@ -3,7 +3,7 @@
 
 # 数据库
 
-每种数据库一页：如何连接、登录需要什么、哪些功能可用、哪些不可用，以及测试套件在哪些版本上运行。[连接](../connect.md)说明所有数据库共有的部分（SSH、代理、钥匙串、项目），[故障排除](../troubleshooting.md)说明各种错误，[FEATURES.md](../../FEATURES.md) 是按功能编排的参考文档。
+每种数据库一页：如何连接、登录需要什么、哪些功能可用、哪些不可用，以及测试套件在哪些版本上运行。[连接](../connect.md)说明所有数据库共有的部分（SSH、代理、钥匙串、项目），[故障排除](../troubleshooting.md)说明各种错误，[FEATURES.md](../../../../FEATURES.md) 是按功能编排的参考文档。
 
 | 页面 | 数据库 |
 |---|---|
@@ -88,4 +88,4 @@ PostgreSQL、MySQL、SQL Server、SQLite、libSQL、ClickHouse、MongoDB、Redis
 
 ## 代理
 
-[代理和 CLI](../../AGENTS.md)适用于上面的每一种数据库。差异见各页面：只读会话是如何建立的（在 PostgreSQL、CockroachDB、YugabyteDB、MySQL、MariaDB、SQLite、DuckDB 和 ClickHouse 上由服务器拒绝写入；其他地方只靠语句检查），以及哪些会被拒绝（MongoDB、Redis、Elasticsearch 和 Cassandra 上的 `explain`；MongoDB、Redis 和 Elasticsearch 上的 `get_er_diagram`；凡是表格不按键编辑行的地方的 `propose_edits`：Redis、Elasticsearch、Cassandra、ClickHouse 和 ADBC 数据库；在 MongoDB 上它按 `_id` 指明文档）。`server_activity` 和 `top_queries` 适用于 PostgreSQL、MySQL、MariaDB 和 SQL Server。
+[代理和 CLI](../../../../AGENTS.md)适用于上面的每一种数据库。差异见各页面：只读会话是如何建立的（在 PostgreSQL、CockroachDB、YugabyteDB、MySQL、MariaDB、SQLite、DuckDB 和 ClickHouse 上由服务器拒绝写入；其他地方只靠语句检查），以及哪些会被拒绝（MongoDB、Redis、Elasticsearch 和 Cassandra 上的 `explain`；MongoDB、Redis 和 Elasticsearch 上的 `get_er_diagram`；凡是表格不按键编辑行的地方的 `propose_edits`：Redis、Elasticsearch、Cassandra、ClickHouse 和 ADBC 数据库；在 MongoDB 上它按 `_id` 指明文档）。`server_activity` 和 `top_queries` 适用于 PostgreSQL、MySQL、MariaDB 和 SQL Server。

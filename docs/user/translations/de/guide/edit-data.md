@@ -3,7 +3,7 @@
 
 # Daten bearbeiten
 
-![Ausstehende Änderungen im Dateneditor](../../screenshots/data-editor.png)
+![Ausstehende Änderungen im Dateneditor](../../../../screenshots/data-editor.png)
 
 ## Zeilen im Raster ändern
 
@@ -63,5 +63,5 @@ sie speicherst; verwirf sie, um abzulehnen. Siehe [Agenten](agents.md).
 ## Mehr
 
 Fremdschlüssel, Arrays, der Tabelleneditor (Spalten, Schlüssel, Indizes) und Testdaten stehen in
-[FEATURES.md](../FEATURES.md#data-editor). Produktionsverbindungen lassen jede Änderung zuerst
+[FEATURES.md](../../../FEATURES.md#data-editor). Produktionsverbindungen lassen jede Änderung zuerst
 bestätigen: siehe [Sicherheit](safety.md).

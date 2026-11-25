@@ -4,8 +4,8 @@
 # Projekte und Teilen
 
 Ein Projekt ist eine Gruppe aus Verbindungen, Skripten und offenen Tabs, die in der Leiste links
-angezeigt wird. Die Details stehen in [FEATURES.md](../FEATURES.md#workspace) und
-[FEATURES.md](../FEATURES.md#sharing-and-sync).
+angezeigt wird. Die Details stehen in [FEATURES.md](../../../FEATURES.md#workspace) und
+[FEATURES.md](../../../FEATURES.md#sharing-and-sync).
 
 ## Ein Projekt anlegen
 
@@ -47,7 +47,7 @@ importieren** sie. Ohne Passwort enthält die Datei keine Zugangsdaten.
 
 Um Einstellungen, Verbindungen und Skripte auf deinen Computern auf dem gleichen Stand zu halten,
 nimm Einstellungen › **Synchronisierung** mit einem Ordner in einem Cloud-Laufwerk. Siehe
-[FEATURES.md](../FEATURES.md#sharing-and-sync).
+[FEATURES.md](../../../FEATURES.md#sharing-and-sync).
 
 ## Skripte und Git
 

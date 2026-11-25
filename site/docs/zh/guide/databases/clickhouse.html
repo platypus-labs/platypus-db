@@ -125,7 +125,7 @@
 <li>没有外键或唯一约束（主键只用来排序数据）。</li>
 </ul>
 <h2 id="代理">代理</h2>
-<p>只读代理和只读连接发送的每条语句（<code>SET</code> 除外）都带有 <code>readonly = 1</code>，所以服务器会拒绝写入，也拒绝访问其他服务器或其文件的表函数（<code>url</code>、<code>s3</code>、<code>remote</code>、<code>file</code> 等）。代理的语句还会与一份只读取本地数据的表函数列表对照检查。见<a href="../../../agents.html">代理和 CLI</a>。终端模式不可用：<code>clickhouse-client</code> 使用原生端口。</p>
+<p>只读代理和只读连接发送的每条语句（<code>SET</code> 除外）都带有 <code>readonly = 1</code>，所以服务器会拒绝写入，也拒绝访问其他服务器或其文件的表函数（<code>url</code>、<code>s3</code>、<code>remote</code>、<code>file</code> 等）。代理的语句还会与一份只读取本地数据的表函数列表对照检查。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。终端模式不可用：<code>clickhouse-client</code> 使用原生端口。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>除非模式是 <code>require</code> 或更强，否则使用普通 HTTP：默认的 <code>prefer</code> 不加密。</li>

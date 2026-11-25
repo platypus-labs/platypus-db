@@ -72,7 +72,7 @@ para leitura, quando nenhuma outra sessão do app já o mantém aberto; um banco
 ou um arquivo de dados nunca é somente leitura, e a verificação da instrução impede gravações ali. As
 sessões do DuckDB dos agentes não podem ler nem gravar outros arquivos nem carregar extensões, e
 fecham o arquivo depois de cada chamada para que o app possa abri-lo. `query_across_databases`
-roda em um DuckDB próprio, que o app baixa como este. Veja [Agentes e a CLI](../../AGENTS.md).
+roda em um DuckDB próprio, que o app baixa como este. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

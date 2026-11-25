@@ -3,7 +3,7 @@
 
 # 编辑数据
 
-![数据编辑器中的待保存更改](../../screenshots/data-editor.png)
+![数据编辑器中的待保存更改](../../../../screenshots/data-editor.png)
 
 ## 在表格中修改行
 
@@ -39,4 +39,4 @@ Redis、Elasticsearch、Cassandra 和 MongoDB 的结果同样可以编辑，使�
 
 ## 更多
 
-外键、数组、表编辑器（列、键、索引）和假数据见 [FEATURES.md](../FEATURES.md#data-editor)。生产连接会先确认每处更改：见[安全](safety.md)。
+外键、数组、表编辑器（列、键、索引）和假数据见 [FEATURES.md](../../../FEATURES.md#data-editor)。生产连接会先确认每处更改：见[安全](safety.md)。

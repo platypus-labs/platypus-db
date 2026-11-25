@@ -117,7 +117,7 @@
 <li>Der Terminalmodus führt <code>sqlite3</code> aus, falls es im PATH liegt.</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p>Schreibgeschützte Agenten und schreibgeschützte Verbindungen öffnen die Datei nur lesend und führen ihre Abfragen mit <code>query_only</code> aus. <code>estimate_change</code> hat bei SQLite keine Zeilenschätzung zu bieten. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<p>Schreibgeschützte Agenten und schreibgeschützte Verbindungen öffnen die Datei nur lesend und führen ihre Abfragen mit <code>query_only</code> aus. <code>estimate_change</code> hat bei SQLite keine Zeilenschätzung zu bieten. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Ein anderer Prozess hält die Datei vielleicht: Die App wartet bis zu 5 Sekunden auf eine belegte Datei, dann meldet SQLite es.</li>

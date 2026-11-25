@@ -51,7 +51,7 @@ journal) para cambiar algo. Si el archivo está ocupado, se espera antes de dar 
 
 Los agentes de solo lectura y las conexiones de solo lectura abren el archivo en solo lectura, y
 ejecutan sus consultas con `query_only`. `estimate_change` no tiene estimación de filas que dar en
-SQLite. Consulta [Agentes y la CLI](../../AGENTS.md).
+SQLite. Consulta [Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

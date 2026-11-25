@@ -54,7 +54,7 @@ SQLite para el navegador.
 
 Los agentes de solo lectura y las conexiones de solo lectura dependen solo de la comprobación de la
 sentencia; no se le dice al servidor que rechace las escrituras. Consulta
-[Agentes y la CLI](../../AGENTS.md).
+[Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

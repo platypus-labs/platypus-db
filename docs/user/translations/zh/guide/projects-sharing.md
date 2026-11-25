@@ -3,7 +3,7 @@
 
 # 项目与共享
 
-项目是一组连接、脚本和打开的标签页，显示在左侧的栏中。详细信息见 [FEATURES.md](../FEATURES.md#workspace) 和 [FEATURES.md](../FEATURES.md#sharing-and-sync)。
+项目是一组连接、脚本和打开的标签页，显示在左侧的栏中。详细信息见 [FEATURES.md](../../../FEATURES.md#workspace) 和 [FEATURES.md](../../../FEATURES.md#sharing-and-sync)。
 
 ## 创建项目
 
@@ -29,7 +29,7 @@
 
 在欢迎界面，**导出连接**会写出一个 `.platypusconn` 文件：选择连接，并可选择设置至少 8 个字符的密码，它会加密文件，并让文件可以携带已保存的密码。在另一台电脑上，用**导入连接**读取它。没有密码时，文件不含任何凭据。
 
-要让设置、连接和脚本在你的各台电脑之间保持同步，请使用设置 › **同步**，并选择云盘中的文件夹。见 [FEATURES.md](../FEATURES.md#sharing-and-sync)。
+要让设置、连接和脚本在你的各台电脑之间保持同步，请使用设置 › **同步**，并选择云盘中的文件夹。见 [FEATURES.md](../../../FEATURES.md#sharing-and-sync)。
 
 ## 脚本和 Git
 

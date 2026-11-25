@@ -3,7 +3,7 @@
 
 # 运行查询并查看结果
 
-![根据外键补全 JOIN](../../screenshots/autocomplete.png)
+![根据外键补全 JOIN](../../../../screenshots/autocomplete.png)
 
 ## 运行语句
 
@@ -28,12 +28,12 @@
 - `Ctrl+F` 在已加载的行中查找；`Ctrl+Shift+C` 连同标题一起复制所选内容。
 - 结果可以从状态栏由表格切换为图表。
 
-![保存着文件的单元格，带有类型和大小](../../screenshots/guide/file-cell.png)
+![保存着文件的单元格，带有类型和大小](../../../../screenshots/guide/file-cell.png)
 
 ## 理解慢查询
 
-对语句按 `Ctrl+Shift+E` 查看其计划。见 [FEATURES.md](../FEATURES.md#query-plans-and-performance)。
+对语句按 `Ctrl+Shift+E` 查看其计划。见 [FEATURES.md](../../../FEATURES.md#query-plans-and-performance)。
 
 ## 更多
 
-已保存的脚本、代码片段、历史、vim 模式、在多个连接上运行脚本、查询构建器和数据分析见 [FEATURES.md](../FEATURES.md#sql-editor)。结果表格见 [FEATURES.md](../FEATURES.md#results-and-the-data-viewer)。
+已保存的脚本、代码片段、历史、vim 模式、在多个连接上运行脚本、查询构建器和数据分析见 [FEATURES.md](../../../FEATURES.md#sql-editor)。结果表格见 [FEATURES.md](../../../FEATURES.md#results-and-the-data-viewer)。

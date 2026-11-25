@@ -82,7 +82,7 @@ Was immer die Datenbankanmeldung hat. Der Navigator nutzt die Katalogaufrufe von
 ## Agenten
 
 Schreibgeschützte Agenten verlassen sich allein auf die Prüfung der Anweisung. Siehe
-[Agenten und die CLI](../../AGENTS.md).
+[Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

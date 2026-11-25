@@ -57,7 +57,7 @@ che l'utente può vedere; non ci sono schede di amministrazione.
   solo le richieste e l'SQL che leggono.
 - Annulla ferma una ricerca sul server. Il DDL di un oggetto indice è la richiesta che lo crea di
   nuovo.
-- I dettagli sono in [FEATURES.md](../../FEATURES.md#elasticsearch-and-opensearch).
+- I dettagli sono in [FEATURES.md](../../../../FEATURES.md#elasticsearch-and-opensearch).
 
 ## Cosa non funziona
 
@@ -70,7 +70,7 @@ che l'utente può vedere; non ci sono schede di amministrazione.
 
 `run_query` e `sample_rows` funzionano con le richieste della console e con SQL, e di una richiesta
 che cambia dati si chiede prima. Rifiutati su Elasticsearch e OpenSearch: `explain`,
-`get_er_diagram`, `propose_edits` e `query_across_databases`. Vedi [Agenti e la CLI](../../AGENTS.md).
+`get_er_diagram`, `propose_edits` e `query_across_databases`. Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

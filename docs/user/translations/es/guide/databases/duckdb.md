@@ -73,7 +73,7 @@ un archivo de datos nunca es de solo lectura, y la comprobación de la sentencia
 escrituras. Las sesiones DuckDB de los agentes no pueden leer ni escribir otros archivos ni cargar
 extensiones, y cierran el archivo después de cada llamada para que la app pueda abrirlo.
 `query_across_databases` se ejecuta en un DuckDB propio que la app descarga igual que este. Consulta
-[Agentes y la CLI](../../AGENTS.md).
+[Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

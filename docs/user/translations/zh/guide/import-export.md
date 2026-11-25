@@ -3,11 +3,11 @@
 
 # 导入和导出
 
-下面的操作都在导航器的右键菜单和命令面板（`Ctrl+K`）中。格式和选项的完整列表见 [FEATURES.md](../FEATURES.md#import-export-and-transfer)。
+下面的操作都在导航器的右键菜单和命令面板（`Ctrl+K`）中。格式和选项的完整列表见 [FEATURES.md](../../../FEATURES.md#import-export-and-transfer)。
 
 ## 将文件导入表
 
-![待导入文件的预览](../../screenshots/guide/import-preview.png)
+![待导入文件的预览](../../../../screenshots/guide/import-preview.png)
 
 1. 在导航器中右键点击表，然后选择**数据** › **导入数据…**。
 2. 选择文件：CSV、TSV、JSON、NDJSON、Parquet 或 Excel。

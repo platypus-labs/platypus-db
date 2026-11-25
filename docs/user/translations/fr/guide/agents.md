@@ -5,7 +5,7 @@
 
 Claude Code, Codex, Cursor et d'autres clients MCP peuvent utiliser vos connexions enregistrées grâce au
 serveur MCP de PlatypusDB. Cette page est le chemin court ; chaque outil, limite et réglage est dans la
-référence, [AGENTS.md](../AGENTS.md).
+référence, [AGENTS.md](../../../AGENTS.md).
 
 ## Connecter un agent
 
@@ -19,7 +19,7 @@ référence, [AGENTS.md](../AGENTS.md).
 
 ## Choisir ce que chaque connexion autorise
 
-![Paramètres, Agents, la page Sécurité](../../screenshots/guide/agents-security.png)
+![Paramètres, Agents, la page Sécurité](../../../../screenshots/guide/agents-security.png)
 
 1. Paramètres › **Agents** › **Sécurité** liste vos connexions. Le formulaire d'une connexion offre le
    même choix, sous **Agents** dans sa page **Apparence et sécurité**.

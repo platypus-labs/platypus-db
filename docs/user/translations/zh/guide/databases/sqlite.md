@@ -37,7 +37,7 @@ SQLite 在应用内部运行（`rusqlite`，内置 SQLite）：没有服务器�
 
 ## 代理
 
-只读代理和只读连接以只读方式打开文件，并用 `query_only` 运行它们的查询。`estimate_change` 在 SQLite 上无法给出行数估计。见[代理和 CLI](../../AGENTS.md)。
+只读代理和只读连接以只读方式打开文件，并用 `query_only` 运行它们的查询。`estimate_change` 在 SQLite 上无法给出行数估计。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

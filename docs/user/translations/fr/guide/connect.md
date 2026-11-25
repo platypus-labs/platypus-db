@@ -3,7 +3,7 @@
 
 # Se connecter à une base de données
 
-![Choix de la base de données pour une nouvelle connexion](../../screenshots/connections.png)
+![Choix de la base de données pour une nouvelle connexion](../../../../screenshots/connections.png)
 
 ## À partir d'une URL
 
@@ -87,7 +87,7 @@ qui authentifient les clients par certificat, indiquez le **Certificat client (P
 
 ## Tunnel SSH
 
-![Un tunnel SSH sur la page Réseau](../../screenshots/guide/connect-network.png)
+![Un tunnel SSH sur la page Réseau](../../../../screenshots/guide/connect-network.png)
 
 1. Sur la page **Réseau**, cochez **Se connecter via un tunnel SSH**.
 2. Remplissez **Hôte SSH**, le port et **Utilisateur SSH**.
@@ -109,5 +109,5 @@ CLI doit être installée et connectée). Une redirection de port va seule : ret
 
 Les détails de chaque base de données : [Bases de données](databases/README.md). La connexion au cloud, les
 poolers, les imports depuis DBeaver, DataGrip et pgAdmin (connexions Db2 comprises) et l'export des connexions sont
-dans [FEATURES.md](../FEATURES.md#connections). Si la connexion échoue, voir
+dans [FEATURES.md](../../../FEATURES.md#connections). Si la connexion échoue, voir
 [Dépannage](troubleshooting.md#erreurs-de-connexion).

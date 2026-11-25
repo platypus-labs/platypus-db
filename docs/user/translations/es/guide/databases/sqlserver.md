@@ -78,7 +78,7 @@ Navegar necesita lo que el inicio de sesión puede ver. Las pestañas de adminis
 
 En SQL Server, solo la comprobación de la sentencia impide las escrituras a los agentes de solo
 lectura (sin sesión de solo lectura en el servidor); la transacción de un agente se revierte.
-`server_activity` y `top_queries` funcionan. Consulta [Agentes y la CLI](../../AGENTS.md).
+`server_activity` y `top_queries` funcionan. Consulta [Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

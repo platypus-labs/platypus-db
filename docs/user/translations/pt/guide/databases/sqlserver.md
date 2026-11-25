@@ -77,7 +77,7 @@ Navegar exige o que o login consegue ver. As abas de administração leem:
 
 No SQL Server, só a verificação da instrução impede gravações de agentes somente leitura (não há
 sessão somente leitura no servidor); a transação de um agente sofre rollback. `server_activity` e
-`top_queries` funcionam. Veja [Agentes e a CLI](../../AGENTS.md).
+`top_queries` funcionam. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

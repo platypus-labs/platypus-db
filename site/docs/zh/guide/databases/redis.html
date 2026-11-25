@@ -112,7 +112,7 @@
 <li><code>FLUSHDB</code> 和 <code>FLUSHALL</code> 会先询问，与不带 <code>WHERE</code> 的 <code>UPDATE</code> 相同；在生产连接上，更改服务器的命令（<code>CONFIG SET</code>、<code>SHUTDOWN</code>）会像 DDL 一样询问。只读连接只运行读取的命令。</li>
 <li>取消会停止阻塞命令（<code>BLPOP</code>、<code>XREAD BLOCK</code>）。</li>
 <li>终端模式运行 <code>redis-cli</code>（如果它在 PATH 中），密码放在它的环境中。</li>
-<li>所有命令和键类型在 <a href="../../../features.html#redis">FEATURES.md</a> 中说明。</li>
+<li>所有命令和键类型在 <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#redis">FEATURES.md</a> 中说明。</li>
 </ul>
 <h2 id="不可用功能">不可用功能</h2>
 <ul>
@@ -121,7 +121,7 @@
 <li>没有执行计划、没有对象 DDL、没有 SQL 工具（表编辑器、ER 图、模式比较、查询构建器、SQL 导入），没有变更前快照。</li>
 </ul>
 <h2 id="代理">代理</h2>
-<p><code>run_query</code> 和 <code>sample_rows</code>（<code>BROWSE … LIMIT n</code>）可用；任何不是读取的命令都会先询问。显示服务器凭据的命令（<code>ACL GETUSER</code>、<code>ACL LIST</code>，以及模式匹配密码设置的 <code>CONFIG GET</code>）对只读代理会被拒绝。在 Redis 上被拒绝的有：<code>explain</code>、<code>get_er_diagram</code>、<code>propose_edits</code> 和 <code>query_across_databases</code>。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p><code>run_query</code> 和 <code>sample_rows</code>（<code>BROWSE … LIMIT n</code>）可用；任何不是读取的命令都会先询问。显示服务器凭据的命令（<code>ACL GETUSER</code>、<code>ACL LIST</code>，以及模式匹配密码设置的 <code>CONFIG GET</code>）对只读代理会被拒绝。在 Redis 上被拒绝的有：<code>explain</code>、<code>get_er_diagram</code>、<code>propose_edits</code> 和 <code>query_across_databases</code>。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>低于 6.0：它会连接，并警告某些功能可能无法工作。</li>

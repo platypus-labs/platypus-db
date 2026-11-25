@@ -42,7 +42,7 @@
 
 ## 代理
 
-`run_query` 和 `sample_rows`（CQL 的 `SELECT … LIMIT n`）可用；修改数据的语句会先询问。在 Cassandra 上被拒绝的有：`explain` 和 `propose_edits`；`estimate_change` 会以一条说明作答。见[代理和 CLI](../../AGENTS.md)。
+`run_query` 和 `sample_rows`（CQL 的 `SELECT … LIMIT n`）可用；修改数据的语句会先询问。在 Cassandra 上被拒绝的有：`explain` 和 `propose_edits`；`estimate_change` 会以一条说明作答。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

@@ -53,7 +53,7 @@ Anmeldung sehen kann; es gibt keine Verwaltungs-Tabs.
   nach, wie ein `DELETE` ohne `WHERE`. Schreibgeschützte Verbindungen führen nur die Anfragen und das SQL aus,
   die lesen.
 - Abbrechen stoppt eine Suche auf dem Server. Die Objekt-DDL eines Index ist die Anfrage, die ihn neu anlegt.
-- Die Details stehen in [FEATURES.md](../../FEATURES.md#elasticsearch-and-opensearch).
+- Die Details stehen in [FEATURES.md](../../../../FEATURES.md#elasticsearch-and-opensearch).
 
 ## Was nicht
 
@@ -66,7 +66,7 @@ Anmeldung sehen kann; es gibt keine Verwaltungs-Tabs.
 
 `run_query` und `sample_rows` funktionieren mit Konsolenanfragen und SQL, und bei einer Anfrage, die Daten ändert,
 wird zuerst nachgefragt. Bei Elasticsearch und OpenSearch abgelehnt: `explain`, `get_er_diagram`,
-`propose_edits` und `query_across_databases`. Siehe [Agenten und die CLI](../../AGENTS.md).
+`propose_edits` und `query_across_databases`. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

@@ -126,7 +126,7 @@
 <li>Fehler nennen den Server, von dem sie kommen, z. B. <code>Unknown column &#39;x&#39; in &#39;field list&#39; (MySQL 5.7.44)</code>.</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p>Schreibgeschützte Agenten und schreibgeschützte Verbindungen führen <code>SET SESSION TRANSACTION READ ONLY</code> aus, und ihre Abfragen laufen in einer schreibgeschützten Transaktion. <code>server_activity</code> und <code>top_queries</code> funktionieren. Eine <code>@variable</code>, temporäre Tabelle oder ein <code>SET</code> von MySQL oder MariaDB, das ein Agent-Aufruf gemacht hat, ist im nächsten noch da. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<p>Schreibgeschützte Agenten und schreibgeschützte Verbindungen führen <code>SET SESSION TRANSACTION READ ONLY</code> aus, und ihre Abfragen laufen in einer schreibgeschützten Transaktion. <code>server_activity</code> und <code>top_queries</code> funktionieren. Eine <code>@variable</code>, temporäre Tabelle oder ein <code>SET</code> von MySQL oder MariaDB, das ein Agent-Aufruf gemacht hat, ist im nächsten noch da. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Älter als MySQL 5.7 oder MariaDB 10.6: Die App verbindet sich mit einer Warnung, dass manche Funktionen vielleicht nicht gehen.</li>

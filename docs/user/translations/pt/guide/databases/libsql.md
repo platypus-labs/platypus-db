@@ -53,7 +53,7 @@ SQLite para o navegador.
 ## Agentes
 
 Agentes somente leitura e conexões somente leitura dependem só da verificação da instrução; o
-servidor não é instruído a recusar gravações. Veja [Agentes e a CLI](../../AGENTS.md).
+servidor não é instruído a recusar gravações. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

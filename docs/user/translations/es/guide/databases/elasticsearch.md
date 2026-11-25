@@ -59,7 +59,7 @@ inicio de sesión puede ver; no hay pestañas de administración.
   peticiones y el SQL que leen.
 - Cancelar detiene una búsqueda en el servidor. El DDL de objeto de un índice es la petición que lo
   crea de nuevo.
-- Los detalles están en [FEATURES.md](../../FEATURES.md#elasticsearch-and-opensearch).
+- Los detalles están en [FEATURES.md](../../../../FEATURES.md#elasticsearch-and-opensearch).
 
 ## Qué no funciona
 
@@ -72,7 +72,7 @@ inicio de sesión puede ver; no hay pestañas de administración.
 
 `run_query` y `sample_rows` funcionan con peticiones de consola y SQL, y una petición que cambia datos
 se pregunta antes. Rechazados en Elasticsearch y OpenSearch: `explain`, `get_er_diagram`,
-`propose_edits` y `query_across_databases`. Consulta [Agentes y la CLI](../../AGENTS.md).
+`propose_edits` y `query_across_databases`. Consulta [Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

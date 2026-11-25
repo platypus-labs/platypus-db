@@ -142,7 +142,7 @@ pasta de dados, ambas chamadas `dev.platypusdb.desktop`:
 Uma cópia portátil guarda tudo na sua pasta `data`, e a variável de ambiente `PLATYPUS_DATA_DIR`
 coloca tudo na pasta que ela indica.
 
-![Configurações, a página Diagnóstico](../../screenshots/guide/diagnostics.png)
+![Configurações, a página Diagnóstico](../../../../screenshots/guide/diagnostics.png)
 
 O log é `logs/platypus.log` na pasta de dados: uma linha por inicialização, erro e falha, rotacionado
 em 1 MB com dois arquivos mais antigos (`platypus.1.log`, `platypus.2.log`). Configurações ›
@@ -170,5 +170,5 @@ atualizações) precisam de rede.
 **Onde relato um bug?** No [issue tracker](https://github.com/platypus-labs/platypus-db/issues),
 com o pacote de diagnóstico se puder.
 
-**Onde estão os atalhos?** [SHORTCUTS.md](../SHORTCUTS.md), e Configurações › Atalhos de teclado
+**Onde estão os atalhos?** [SHORTCUTS.md](../../../SHORTCUTS.md), e Configurações › Atalhos de teclado
 para alterá-los.

@@ -70,7 +70,7 @@ Le istruzioni che scrivi richiedono i ruoli che richiedono.
 - **Modifica dei documenti nella griglia** (vedi [Modifica i documenti nella griglia](#modifica-i-documenti-nella-griglia)).
 - La definizione di una collection come DDL.
 - **Genera dati** riempie una collection con documenti finti.
-- Lo stesso dettaglio è in [FEATURES.md](../../FEATURES.md#mongodb).
+- Lo stesso dettaglio è in [FEATURES.md](../../../../FEATURES.md#mongodb).
 
 ## Cosa non funziona
 
@@ -219,7 +219,7 @@ modifiche in sospeso, che salvi o scarti come se fossero tue. Un documento si in
 `ObjectId` perché l'`_id` della collection lo è. I valori vengono controllati con le regole del
 salvataggio della griglia (vedi sopra), prima che si apra qualsiasi cosa. Le colonne sensibili sono
 mascherate solo per campo di primo livello: un campo sensibile dentro un documento non viene
-distinto. Vedi [Agenti e la CLI](../../AGENTS.md).
+distinto. Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

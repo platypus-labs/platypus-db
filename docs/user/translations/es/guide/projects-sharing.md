@@ -4,8 +4,8 @@
 # Proyectos y uso compartido
 
 Un proyecto es un grupo de conexiones, scripts y pestañas abiertas, que se muestra en la barra de la
-izquierda. Los detalles están en [FEATURES.md](../FEATURES.md#workspace) y
-[FEATURES.md](../FEATURES.md#sharing-and-sync).
+izquierda. Los detalles están en [FEATURES.md](../../../FEATURES.md#workspace) y
+[FEATURES.md](../../../FEATURES.md#sharing-and-sync).
 
 ## Crear un proyecto
 
@@ -48,7 +48,7 @@ contraseña, el archivo no contiene ninguna credencial.
 
 Para mantener ajustes, conexiones y scripts sincronizados entre tus ordenadores, usa Ajustes ›
 **Sincronización** con una carpeta en una unidad en la nube. Consulta
-[FEATURES.md](../FEATURES.md#sharing-and-sync).
+[FEATURES.md](../../../FEATURES.md#sharing-and-sync).
 
 ## Scripts y Git
 

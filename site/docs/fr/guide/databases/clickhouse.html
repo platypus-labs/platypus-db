@@ -125,7 +125,7 @@
 <li>Pas de clés étrangères ni de contraintes d&#39;unicité (la clé primaire ne fait qu&#39;ordonner les données).</li>
 </ul>
 <h2 id="agents">Agents</h2>
-<p>Un agent en lecture seule, et une connexion en lecture seule, envoient chaque instruction, sauf <code>SET</code>, avec <code>readonly = 1</code>, si bien que le serveur refuse les écritures et les fonctions de table qui atteignent d&#39;autres serveurs ou ses fichiers (<code>url</code>, <code>s3</code>, <code>remote</code>, <code>file</code> et les semblables). L&#39;instruction d&#39;un agent est aussi comparée à une liste de fonctions de table qui ne lisent que des données locales. Voir <a href="../../../agents.html">Agents et la CLI</a>. Le mode terminal n&#39;est pas disponible : <code>clickhouse-client</code> utilise le port natif.</p>
+<p>Un agent en lecture seule, et une connexion en lecture seule, envoient chaque instruction, sauf <code>SET</code>, avec <code>readonly = 1</code>, si bien que le serveur refuse les écritures et les fonctions de table qui atteignent d&#39;autres serveurs ou ses fichiers (<code>url</code>, <code>s3</code>, <code>remote</code>, <code>file</code> et les semblables). L&#39;instruction d&#39;un agent est aussi comparée à une liste de fonctions de table qui ne lisent que des données locales. Voir <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agents et la CLI</a>. Le mode terminal n&#39;est pas disponible : <code>clickhouse-client</code> utilise le port natif.</p>
 <h2 id="limites-connues">Limites connues</h2>
 <ul>
 <li>HTTP simple sauf si le mode est <code>require</code> ou plus strict : le <code>prefer</code> par défaut ne chiffre pas.</li>

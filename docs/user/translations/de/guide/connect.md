@@ -3,7 +3,7 @@
 
 # Mit einer Datenbank verbinden
 
-![Die Datenbank für eine neue Verbindung wählen](../../screenshots/connections.png)
+![Die Datenbank für eine neue Verbindung wählen](../../../../screenshots/connections.png)
 
 ## Über eine URL
 
@@ -90,7 +90,7 @@ die Clients per Zertifikat authentifizieren, gib das **Client-Zertifikat (PEM)**
 
 ## SSH-Tunnel
 
-![Ein SSH-Tunnel auf der Seite Netzwerk](../../screenshots/guide/connect-network.png)
+![Ein SSH-Tunnel auf der Seite Netzwerk](../../../../screenshots/guide/connect-network.png)
 
 1. Hake auf der Seite **Netzwerk** **Über einen SSH-Tunnel verbinden** an.
 2. Fülle **SSH-Host**, den Port und **SSH-Benutzer** aus.
@@ -114,5 +114,5 @@ SSH-Tunnel oder den Proxy.
 
 Details zu jeder Datenbank: [Datenbanken](databases/README.md). Cloud-Anmeldung, Pooler, Importe aus
 DBeaver, DataGrip und pgAdmin (Db2-Verbindungen eingeschlossen) und das Exportieren von Verbindungen
-stehen in [FEATURES.md](../FEATURES.md#connections). Wenn die Verbindung nicht klappt, siehe
+stehen in [FEATURES.md](../../../FEATURES.md#connections). Wenn die Verbindung nicht klappt, siehe
 [Fehlerbehebung](troubleshooting.md#verbindungsfehler).

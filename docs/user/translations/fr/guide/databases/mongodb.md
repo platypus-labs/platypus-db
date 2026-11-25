@@ -71,7 +71,7 @@ d'administration. Les instructions que vous écrivez demandent les rôles dont e
   [Modifier les documents dans la grille](#modifier-les-documents-dans-la-grille)).
 - La définition d'une collection sous forme de DDL.
 - **Générer des données** remplit une collection de faux documents.
-- Le même détail est dans [FEATURES.md](../../FEATURES.md#mongodb).
+- Le même détail est dans [FEATURES.md](../../../../FEATURES.md#mongodb).
 
 ## Ce qui ne fonctionne pas
 
@@ -218,7 +218,7 @@ seul `_id` ; un `_id` de type `ObjectId` est envoyé sous forme de ses 24 chiffr
 `ObjectId` parce que le `_id` de la collection en est un. Les valeurs sont vérifiées selon les règles de
 l'enregistrement de la grille (voir plus haut), avant que rien ne s'ouvre. Les colonnes sensibles ne sont
 masquées que par champ de premier niveau : un champ sensible à l'intérieur d'un document n'est pas distingué.
-Voir [Agents et la CLI](../../AGENTS.md).
+Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

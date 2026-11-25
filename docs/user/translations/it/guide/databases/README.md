@@ -6,7 +6,7 @@
 Una pagina per ogni database: come connettersi, cosa serve al login, cosa funziona e cosa no, e su
 quali versioni gira la suite di test. [Connettersi](../connect.md) spiega le parti comuni a tutti i
 database (SSH, proxy, il portachiavi, i progetti), [Risoluzione dei problemi](../troubleshooting.md)
-gli errori, e [FEATURES.md](../../FEATURES.md) è il riferimento per funzionalità.
+gli errori, e [FEATURES.md](../../../../FEATURES.md) è il riferimento per funzionalità.
 
 | Pagina | Database |
 |---|---|
@@ -115,7 +115,7 @@ Databricks e IBM Db2.
 
 ## Agenti
 
-[Agenti e la CLI](../../AGENTS.md) funziona su tutti i database qui sopra. Le differenze sono in
+[Agenti e la CLI](../../../../AGENTS.md) funziona su tutti i database qui sopra. Le differenze sono in
 ogni pagina: come si crea una sessione di sola lettura (il server rifiuta le scritture su
 PostgreSQL, CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB e ClickHouse; ovunque altrove
 c'è solo il controllo dell'istruzione), e cosa viene rifiutato (`explain` su MongoDB, Redis,

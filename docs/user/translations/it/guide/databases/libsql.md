@@ -54,7 +54,7 @@ per il navigator.
 
 Gli agenti in sola lettura e le connessioni in sola lettura si affidano solo al controllo delle
 istruzioni; al server non viene detto di rifiutare le scritture. Vedi
-[Agenti e la CLI](../../AGENTS.md).
+[Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

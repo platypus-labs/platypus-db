@@ -54,7 +54,7 @@ catalogue SQLite pour le navigateur.
 
 Les agents en lecture seule et les connexions en lecture seule reposent sur la seule vérification de
 l'instruction ; le serveur n'est pas invité à refuser les écritures. Voir
-[Agents et la CLI](../../AGENTS.md).
+[Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

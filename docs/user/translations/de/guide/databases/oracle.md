@@ -70,7 +70,7 @@ Sitzung auf (ihre Transaktion wird zurückgerollt und eine neue Verbindung geöf
 Schreibgeschützte Agenten verlassen sich allein auf die Prüfung der Anweisung: Oracle hat hier keine
 schreibgeschützte Sitzung auf dem Server. Bei einer Anweisung, die ein Oracle-Package aufruft, etwa
 `UTL_HTTP`, wird vor der Ausführung nachgefragt, wie bei einer Änderung. Siehe
-[Agenten und die CLI](../../AGENTS.md).
+[Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

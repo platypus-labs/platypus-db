@@ -3,7 +3,7 @@
 
 # Executar consultas e ler os resultados
 
-![Autocompletar de JOIN a partir das chaves estrangeiras](../../screenshots/autocomplete.png)
+![Autocompletar de JOIN a partir das chaves estrangeiras](../../../../screenshots/autocomplete.png)
 
 ## Executar uma instrução
 
@@ -42,15 +42,15 @@ instrução com variáveis é verificada de novo, já preenchida (veja [Seguran�
 - `Ctrl+F` procura nas linhas carregadas; `Ctrl+Shift+C` copia a seleção com os cabeçalhos.
 - Um resultado pode passar da grade para um gráfico, pela barra de status.
 
-![Células que contêm arquivos, com seu tipo e tamanho](../../screenshots/guide/file-cell.png)
+![Células que contêm arquivos, com seu tipo e tamanho](../../../../screenshots/guide/file-cell.png)
 
 ## Entender uma consulta lenta
 
 Pressione `Ctrl+Shift+E` em uma instrução para ver o plano dela. Veja
-[FEATURES.md](../FEATURES.md#query-plans-and-performance).
+[FEATURES.md](../../../FEATURES.md#query-plans-and-performance).
 
 ## Mais
 
 Scripts salvos, snippets, histórico, modo vim, execução de um script em várias conexões, o query
-builder e a análise de dados estão em [FEATURES.md](../FEATURES.md#sql-editor). A grade de
-resultados está em [FEATURES.md](../FEATURES.md#results-and-the-data-viewer).
+builder e a análise de dados estão em [FEATURES.md](../../../FEATURES.md#sql-editor). A grade de
+resultados está em [FEATURES.md](../../../FEATURES.md#results-and-the-data-viewer).

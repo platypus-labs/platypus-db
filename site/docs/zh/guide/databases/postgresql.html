@@ -160,7 +160,7 @@
 </ul>
 <p><strong>CockroachDB 和 YugabyteDB</strong> 使用同一个驱动打开，但应用会识别出是哪种服务器，并关闭依赖 PostgreSQL 自身视图的服务器工具：没有会话、锁、仪表板、语句、表和索引、参数、用户或维护标签页，也没有调试器。CockroachDB 有自己的计划格式（执行计划和分析执行计划可用），导入以 <code>INSERT</code> 语句而不是 <code>COPY</code> 进行。没有键的 CockroachDB 表通过其隐藏的 <code>rowid</code> 编辑。TimescaleDB（已测试）、Supabase、Neon 和 AlloyDB（没有针对这些服务测试过）在应用看来就是 PostgreSQL，具备上面的一切；托管服务对你的角色有哪些限制，是它自己的规则。</p>
 <h2 id="代理">代理</h2>
-<p>只读代理和只读连接用 <code>default_transaction_read_only</code> 打开会话（PostgreSQL、CockroachDB 和 YugabyteDB），所以由服务器本身拒绝写入；在事务模式连接池之后，则只有语句检查。<code>server_activity</code> 和 <code>top_queries</code> 适用于真正的 PostgreSQL，不适用于 CockroachDB 或 YugabyteDB。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p>只读代理和只读连接用 <code>default_transaction_read_only</code> 打开会话（PostgreSQL、CockroachDB 和 YugabyteDB），所以由服务器本身拒绝写入；在事务模式连接池之后，则只有语句检查。<code>server_activity</code> 和 <code>top_queries</code> 适用于真正的 PostgreSQL，不适用于 CockroachDB 或 YugabyteDB。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>低于 12：应用会连接，并警告某些功能可能无法工作。</li>

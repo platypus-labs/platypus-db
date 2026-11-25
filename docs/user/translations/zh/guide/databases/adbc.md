@@ -48,7 +48,7 @@
 
 ## 代理
 
-`run_query`、`sample_rows` 和其他工具可用，受各项检查约束。没有服务器端的只读会话，只读代理只依靠语句检查。在其之外起作用的语句会在运行前先询问：Trino 的 `query()` 和 Snowflake 的 `SYSTEM$` 函数。见[代理和 CLI](../../AGENTS.md)。
+`run_query`、`sample_rows` 和其他工具可用，受各项检查约束。没有服务器端的只读会话，只读代理只依靠语句检查。在其之外起作用的语句会在运行前先询问：Trino 的 `query()` 和 Snowflake 的 `SYSTEM$` 函数。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

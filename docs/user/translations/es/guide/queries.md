@@ -3,7 +3,7 @@
 
 # Ejecutar consultas y leer los resultados
 
-![Autocompletado de JOIN a partir de las claves foráneas](../../screenshots/autocomplete.png)
+![Autocompletado de JOIN a partir de las claves foráneas](../../../../screenshots/autocomplete.png)
 
 ## Ejecutar una sentencia
 
@@ -42,16 +42,16 @@ sentencia con variables se revisa de nuevo ya rellena (consulta [Seguridad](safe
 - `Ctrl+F` busca en las filas cargadas; `Ctrl+Shift+C` copia la selección con los encabezados.
 - Un resultado puede pasar de la cuadrícula a un gráfico desde la barra de estado.
 
-![Celdas que contienen archivos, con su tipo y tamaño](../../screenshots/guide/file-cell.png)
+![Celdas que contienen archivos, con su tipo y tamaño](../../../../screenshots/guide/file-cell.png)
 
 ## Entender una consulta lenta
 
 Pulsa `Ctrl+Shift+E` en una sentencia para ver su plan. Consulta
-[FEATURES.md](../FEATURES.md#query-plans-and-performance).
+[FEATURES.md](../../../FEATURES.md#query-plans-and-performance).
 
 ## Más
 
 Los scripts guardados, los snippets, el historial, el modo vim, ejecutar un script en varias
 conexiones, el constructor de consultas y el análisis de datos están en
-[FEATURES.md](../FEATURES.md#sql-editor). La cuadrícula de resultados está en
-[FEATURES.md](../FEATURES.md#results-and-the-data-viewer).
+[FEATURES.md](../../../FEATURES.md#sql-editor). La cuadrícula de resultados está en
+[FEATURES.md](../../../FEATURES.md#results-and-the-data-viewer).

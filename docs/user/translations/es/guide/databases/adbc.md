@@ -78,7 +78,7 @@ columnas con la llamada de metadatos de ADBC.
 `run_query`, `sample_rows` y las demás herramientas funcionan, dentro de las comprobaciones. Sin una
 sesión de solo lectura en el servidor, los agentes de solo lectura dependen solo de la comprobación de
 la sentencia. Las sentencias que actúan fuera de ella se preguntan antes de ejecutarse: `query()` de
-Trino y las funciones `SYSTEM$` de Snowflake. Consulta [Agentes y la CLI](../../AGENTS.md).
+Trino y las funciones `SYSTEM$` de Snowflake. Consulta [Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

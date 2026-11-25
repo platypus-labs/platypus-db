@@ -112,7 +112,7 @@
 <li><code>FLUSHDB</code> e <code>FLUSHALL</code> chiedono conferma prima, come un <code>UPDATE</code> senza <code>WHERE</code>; sulle connessioni di produzione i comandi che cambiano il server (<code>CONFIG SET</code>, <code>SHUTDOWN</code>) chiedono come fa il DDL. Le connessioni in sola lettura eseguono solo i comandi che leggono.</li>
 <li>Annulla ferma un comando bloccante (<code>BLPOP</code>, <code>XREAD BLOCK</code>).</li>
 <li>La modalità terminale esegue <code>redis-cli</code> se è nel PATH, con la password nel suo ambiente.</li>
-<li>Tutti i comandi e i tipi di chiave sono descritti in <a href="../../../features.html#redis">FEATURES.md</a>.</li>
+<li>Tutti i comandi e i tipi di chiave sono descritti in <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#redis">FEATURES.md</a>.</li>
 </ul>
 <h2 id="cosa-non-funziona">Cosa non funziona</h2>
 <ul>
@@ -121,7 +121,7 @@
 <li>Niente explain, niente DDL degli oggetti, niente strumenti SQL (editor delle tabelle, diagramma ER, confronto degli schemi, query builder, importazione SQL), niente snapshot prima delle modifiche.</li>
 </ul>
 <h2 id="agenti">Agenti</h2>
-<p><code>run_query</code> e <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) funzionano; di ogni comando che non sia una lettura si chiede prima. I comandi che mostrano le credenziali del server (<code>ACL GETUSER</code>, <code>ACL LIST</code>, e un <code>CONFIG GET</code> il cui pattern corrisponde a un&#39;impostazione di password) sono rifiutati agli agenti in sola lettura. Rifiutati su Redis: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> e <code>query_across_databases</code>. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
+<p><code>run_query</code> e <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) funzionano; di ogni comando che non sia una lettura si chiede prima. I comandi che mostrano le credenziali del server (<code>ACL GETUSER</code>, <code>ACL LIST</code>, e un <code>CONFIG GET</code> il cui pattern corrisponde a un&#39;impostazione di password) sono rifiutati agli agenti in sola lettura. Rifiutati su Redis: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> e <code>query_across_databases</code>. Vedi <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenti e la CLI</a>.</p>
 <h2 id="limiti-noti">Limiti noti</h2>
 <ul>
 <li>Versioni precedenti alla 6.0: si connette con un avviso che alcune funzioni potrebbero non funzionare.</li>

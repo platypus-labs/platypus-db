@@ -3,7 +3,7 @@
 
 # Editar datos
 
-![Cambios pendientes en el editor de datos](../../screenshots/data-editor.png)
+![Cambios pendientes en el editor de datos](../../../../screenshots/data-editor.png)
 
 ## Cambiar filas en la cuadrícula
 
@@ -64,5 +64,5 @@ guardes; descártalas para rechazarlas. Consulta [Agentes](agents.md).
 ## Más
 
 Las claves foráneas, los arrays, el editor de tablas (columnas, claves, índices) y los datos
-ficticios están en [FEATURES.md](../FEATURES.md#data-editor). Las conexiones de producción piden
+ficticios están en [FEATURES.md](../../../FEATURES.md#data-editor). Las conexiones de producción piden
 confirmar cada cambio antes: consulta [Seguridad](safety.md).

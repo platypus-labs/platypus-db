@@ -76,7 +76,7 @@ La navigazione richiede ciò che il login può vedere. Le schede di amministrazi
 
 Su SQL Server il solo controllo delle istruzioni blocca le scritture degli agenti in sola lettura
 (nessuna sessione in sola lettura lato server); la transazione di un agente viene annullata.
-`server_activity` e `top_queries` funzionano. Vedi [Agenti e la CLI](../../AGENTS.md).
+`server_activity` e `top_queries` funzionano. Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

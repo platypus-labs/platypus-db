@@ -55,7 +55,7 @@ peut voir ; il n'y a pas d'onglets d'administration.
   comme un `DELETE` sans `WHERE`. Les connexions en lecture seule n'exécutent que les requêtes et le SQL qui
   lisent.
 - Annuler arrête une recherche sur le serveur. Le DDL d'objet d'un index est la requête qui le recrée.
-- Les détails sont dans [FEATURES.md](../../FEATURES.md#elasticsearch-and-opensearch).
+- Les détails sont dans [FEATURES.md](../../../../FEATURES.md#elasticsearch-and-opensearch).
 
 ## Ce qui ne fonctionne pas
 
@@ -68,7 +68,7 @@ peut voir ; il n'y a pas d'onglets d'administration.
 
 `run_query` et `sample_rows` fonctionnent avec les requêtes de la console et le SQL, et une requête qui modifie
 des données fait d'abord l'objet d'une question. Refusés sur Elasticsearch et OpenSearch : `explain`,
-`get_er_diagram`, `propose_edits` et `query_across_databases`. Voir [Agents et la CLI](../../AGENTS.md).
+`get_er_diagram`, `propose_edits` et `query_across_databases`. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

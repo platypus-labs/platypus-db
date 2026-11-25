@@ -4,9 +4,9 @@
 # Primeiros passos
 
 Instale o PlatypusDB, abra uma conexão e aprenda as poucas teclas que fazem a maior parte do
-trabalho. Todos os recursos, área por área, estão em [FEATURES.md](../FEATURES.md).
+trabalho. Todos os recursos, área por área, estão em [FEATURES.md](../../../FEATURES.md).
 
-![A tela de boas-vindas](../../screenshots/guide/welcome.png)
+![A tela de boas-vindas](../../../../screenshots/guide/welcome.png)
 
 ## Instalar
 
@@ -51,7 +51,7 @@ Toda ação, conexão e tabela fica a poucas letras de distância na paleta de c
 | `Ctrl+T` | Nova aba |
 
 No macOS use `Cmd` no lugar de `Ctrl`. Todo atalho pode ser alterado em Configurações › Atalhos de
-teclado; a lista completa está em [SHORTCUTS.md](../SHORTCUTS.md).
+teclado; a lista completa está em [SHORTCUTS.md](../../../SHORTCUTS.md).
 
 ## Próximo passo
 

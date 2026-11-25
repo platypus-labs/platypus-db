@@ -71,7 +71,7 @@ Navegar exige o que o login consegue ver. As abas de administração leem:
 Agentes somente leitura e conexões somente leitura executam `SET SESSION TRANSACTION READ ONLY`, e as
 consultas deles rodam em uma transação somente leitura. `server_activity` e `top_queries`
 funcionam. Uma `@variable`, uma tabela temporária ou um `SET` do MySQL ou MariaDB feito por uma
-chamada de agente continua lá na seguinte. Veja [Agentes e a CLI](../../AGENTS.md).
+chamada de agente continua lá na seguinte. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

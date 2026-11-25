@@ -125,7 +125,7 @@
 <li>Kein Explain und keine SQL-Tools: kein Tabelleneditor, kein ER-Diagramm, kein Schemavergleich, kein Query Builder, kein SQL-Import, keine Snapshots vor Änderungen und kein Terminalmodus (<code>cqlsh</code> nimmt das Passwort nur auf seiner Kommandozeile).</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p><code>run_query</code> und <code>sample_rows</code> (ein CQL-<code>SELECT … LIMIT n</code>) funktionieren; bei einer Anweisung, die Daten ändert, wird zuerst nachgefragt. Bei Cassandra abgelehnt: <code>explain</code> und <code>propose_edits</code>; <code>estimate_change</code> antwortet mit einem Hinweis. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<p><code>run_query</code> und <code>sample_rows</code> (ein CQL-<code>SELECT … LIMIT n</code>) funktionieren; bei einer Anweisung, die Daten ändert, wird zuerst nachgefragt. Bei Cassandra abgelehnt: <code>explain</code> und <code>propose_edits</code>; <code>estimate_change</code> antwortet mit einem Hinweis. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Cassandra älter als 4.0 und ScyllaDB älter als 5.4 werden beim Verbinden mit „older than … the oldest version supported“ abgelehnt, anders als die anderen Datenbanken, die sich mit einer Warnung verbinden.</li>

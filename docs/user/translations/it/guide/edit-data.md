@@ -3,7 +3,7 @@
 
 # Modificare i dati
 
-![Modifiche in sospeso nell'editor dei dati](../../screenshots/data-editor.png)
+![Modifiche in sospeso nell'editor dei dati](../../../../screenshots/data-editor.png)
 
 ## Modificare le righe nella griglia
 
@@ -64,5 +64,5 @@ le salvi; scartale per rifiutarle. Vedi [Agenti](agents.md).
 ## Altro
 
 Chiavi esterne, array, l'editor delle tabelle (colonne, chiavi, indici) e i dati finti sono in
-[FEATURES.md](../FEATURES.md#data-editor). Le connessioni di produzione chiedono conferma per ogni
+[FEATURES.md](../../../FEATURES.md#data-editor). Le connessioni di produzione chiedono conferma per ogni
 modifica: vedi [Sicurezza](safety.md).

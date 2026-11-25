@@ -125,7 +125,7 @@
 <li>Niente explain, e niente strumenti SQL: niente editor delle tabelle, diagramma ER, confronto degli schemi, query builder, importazione SQL, snapshot prima delle modifiche, né modalità terminale (<code>cqlsh</code> accetta la password solo sulla sua riga di comando).</li>
 </ul>
 <h2 id="agenti">Agenti</h2>
-<p><code>run_query</code> e <code>sample_rows</code> (un <code>SELECT … LIMIT n</code> in CQL) funzionano; di un&#39;istruzione che cambia dati si chiede prima. Rifiutati su Cassandra: <code>explain</code> e <code>propose_edits</code>; <code>estimate_change</code> risponde con una nota. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
+<p><code>run_query</code> e <code>sample_rows</code> (un <code>SELECT … LIMIT n</code> in CQL) funzionano; di un&#39;istruzione che cambia dati si chiede prima. Rifiutati su Cassandra: <code>explain</code> e <code>propose_edits</code>; <code>estimate_change</code> risponde con una nota. Vedi <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenti e la CLI</a>.</p>
 <h2 id="limiti-noti">Limiti noti</h2>
 <ul>
 <li>Cassandra precedente alla 4.0 e ScyllaDB precedente alla 5.4 vengono rifiutati alla connessione, con &quot;older than … the oldest version supported&quot;, a differenza degli altri database, che si connettono con un avviso.</li>

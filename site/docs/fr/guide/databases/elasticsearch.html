@@ -115,7 +115,7 @@
 <li><strong>La grille modifie les documents</strong> : une cellule modifiée est un <code>_update</code> par <code>_id</code>, une nouvelle ligne est un <code>_create</code> (un <code>_id</code> qui existe est refusé par le serveur) ou un document généré, une ligne supprimée est un <code>DELETE</code>. L&#39;aperçu montre les requêtes, qui s&#39;exécutent l&#39;une après l&#39;autre ; si le serveur en refuse une, les suivantes s&#39;arrêtent et les précédentes restent. <em>Script d&#39;annulation</em> remet l&#39;ancien <code>_source</code> (un document avec un <code>_id</code> généré doit être supprimé à la main).</li>
 <li><code>_delete_by_query</code> et <code>_update_by_query</code> sans requête (ou <code>match_all</code>), et <code>DELETE /_all</code>, demandent d&#39;abord comme un <code>DELETE</code> sans <code>WHERE</code>. Les connexions en lecture seule n&#39;exécutent que les requêtes et le SQL qui lisent.</li>
 <li>Annuler arrête une recherche sur le serveur. Le DDL d&#39;objet d&#39;un index est la requête qui le recrée.</li>
-<li>Les détails sont dans <a href="../../../features.html#elasticsearch-and-opensearch">FEATURES.md</a>.</li>
+<li>Les détails sont dans <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#elasticsearch-and-opensearch">FEATURES.md</a>.</li>
 </ul>
 <h2 id="ce-qui-ne-fonctionne-pas">Ce qui ne fonctionne pas</h2>
 <ul>
@@ -124,7 +124,7 @@
 <li>La visionneuse de données n&#39;a pas de barre de filtre et de tri.</li>
 </ul>
 <h2 id="agents">Agents</h2>
-<p><code>run_query</code> et <code>sample_rows</code> fonctionnent avec les requêtes de la console et le SQL, et une requête qui modifie des données fait d&#39;abord l&#39;objet d&#39;une question. Refusés sur Elasticsearch et OpenSearch : <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> et <code>query_across_databases</code>. Voir <a href="../../../agents.html">Agents et la CLI</a>.</p>
+<p><code>run_query</code> et <code>sample_rows</code> fonctionnent avec les requêtes de la console et le SQL, et une requête qui modifie des données fait d&#39;abord l&#39;objet d&#39;une question. Refusés sur Elasticsearch et OpenSearch : <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> et <code>query_across_databases</code>. Voir <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agents et la CLI</a>.</p>
 <h2 id="limites-connues">Limites connues</h2>
 <ul>
 <li>L&#39;application refuse Elasticsearch antérieur à 7.10 et OpenSearch antérieur à 1.0 : contrairement aux autres bases de données, la connexion échoue avec « older than … the oldest version supported ».</li>

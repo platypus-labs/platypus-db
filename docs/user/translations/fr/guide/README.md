@@ -1,7 +1,7 @@
 <!-- source: c5a23b4f7aee -->
 # Guide utilisateur
 
-Des pages courtes, chacune une tâche à suivre pas à pas. [FEATURES.md](../FEATURES.md) reste la
+Des pages courtes, chacune une tâche à suivre pas à pas. [FEATURES.md](../../../FEATURES.md) reste la
 référence, domaine par domaine ; ces pages y renvoient pour les détails.
 
 | Je veux | Page |
@@ -17,4 +17,4 @@ référence, domaine par domaine ; ces pages y renvoient pour les détails.
 | Laisser Claude Code, Codex ou un autre agent utiliser mes connexions | [Agents](agents.md) |
 | Réparer une connexion, un téléchargement de pilote, un agent ou une mise à jour | [Dépannage et FAQ](troubleshooting.md) |
 
-Les touches sont dans [SHORTCUTS.md](../SHORTCUTS.md) ; sur macOS, utilisez `Cmd` à la place de `Ctrl`.
+Les touches sont dans [SHORTCUTS.md](../../../SHORTCUTS.md) ; sur macOS, utilisez `Cmd` à la place de `Ctrl`.

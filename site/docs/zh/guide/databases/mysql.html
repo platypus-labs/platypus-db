@@ -126,7 +126,7 @@
 <li>错误会指出它们来自哪个服务器，例如 <code>Unknown column &#39;x&#39; in &#39;field list&#39; (MySQL 5.7.44)</code>。</li>
 </ul>
 <h2 id="代理">代理</h2>
-<p>只读代理和只读连接运行 <code>SET SESSION TRANSACTION READ ONLY</code>，它们的查询在只读事务中运行。<code>server_activity</code> 和 <code>top_queries</code> 可用。一次代理调用设置的 MySQL 或 MariaDB <code>@variable</code>、临时表或 <code>SET</code>，在下一次调用中仍然存在。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p>只读代理和只读连接运行 <code>SET SESSION TRANSACTION READ ONLY</code>，它们的查询在只读事务中运行。<code>server_activity</code> 和 <code>top_queries</code> 可用。一次代理调用设置的 MySQL 或 MariaDB <code>@variable</code>、临时表或 <code>SET</code>，在下一次调用中仍然存在。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>低于 MySQL 5.7 或 MariaDB 10.6：它会连接，并警告某些功能可能无法工作。</li>

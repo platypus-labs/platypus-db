@@ -75,7 +75,7 @@
     <nav class="crumbs" aria-label="Languages"><a href="../../guide/connect.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/connect.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/connect.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/connect.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/connect.html" lang="it" hreflang="it">Italiano</a> · <span lang="pt">Português</span> · <a href="../../zh/guide/connect.html" lang="zh" hreflang="zh">中文</a></nav>
 <p><a href="index.html">← Guia do usuário</a></p>
 <h1 id="conectar-a-um-banco-de-dados">Conectar a um banco de dados</h1>
-<p><img src="../../../img/screenshots/connections.png" alt="Escolhendo o banco de dados para uma nova conexão" loading="lazy"></p>
+<p>Escolhendo o banco de dados para uma nova conexão</p>
 <h2 id="a-partir-de-uma-url">A partir de uma URL</h2>
 <ol>
 <li>Clique em <strong>Nova conexão</strong> (ou no <code>+</code> do navegador).</li>
@@ -113,7 +113,7 @@
 <h2 id="tls">TLS</h2>
 <p>Na página <strong>Rede</strong>, o <strong>Modo SSL</strong> aceita os valores da libpq: <code>disable</code>, <code>prefer</code>, <code>require</code>, <code>verify-ca</code> e <code>verify-full</code>. <code>prefer</code> e <code>require</code> criptografam sem verificar o certificado; <code>verify-ca</code> e <code>verify-full</code> o verificam, então pode ser preciso um <strong>Certificado CA (PEM)</strong>. Para servidores que autenticam clientes por certificado, informe o <strong>Certificado de cliente (PEM)</strong> e a <strong>Chave do cliente (PEM)</strong> (PostgreSQL e MySQL).</p>
 <h2 id="túnel-ssh">Túnel SSH</h2>
-<p><img src="../../../img/screenshots/guide/connect-network.png" alt="Um túnel SSH na página Rede" loading="lazy"></p>
+<p>Um túnel SSH na página Rede</p>
 <ol>
 <li>Na página <strong>Rede</strong>, marque <strong>Conectar por um túnel SSH</strong>.</li>
 <li>Preencha <strong>Host SSH</strong>, a porta e <strong>Usuário SSH</strong>.</li>
@@ -124,7 +124,7 @@
 <h2 id="proxy-e-port-forward">Proxy e port forward</h2>
 <p>Também em <strong>Rede</strong>: um proxy SOCKS5 ou HTTP (<code>socks5://user:password@host:1080</code>, <code>http://host:3128</code>), ou um port forward por <code>kubectl</code> ou por uma sessão do AWS Systems Manager (a CLI precisa estar instalada e com a sessão iniciada). Um port forward vai sozinho: remova o túnel SSH ou o proxy.</p>
 <h2 id="próximo-passo">Próximo passo</h2>
-<p>Detalhes de cada banco de dados: <a href="databases/index.html">Bancos de dados</a>. Login em nuvens, poolers, importações do DBeaver, DataGrip e pgAdmin (incluindo conexões do Db2) e exportação de conexões estão em <a href="../../features.html#connections">FEATURES.md</a>. Se não conectar, veja <a href="troubleshooting.html#erros-de-conexão">Solução de problemas</a>.</p>
+<p>Detalhes de cada banco de dados: <a href="databases/index.html">Bancos de dados</a>. Login em nuvens, poolers, importações do DBeaver, DataGrip e pgAdmin (incluindo conexões do Db2) e exportação de conexões estão em <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#connections">FEATURES.md</a>. Se não conectar, veja <a href="troubleshooting.html#erros-de-conexão">Solução de problemas</a>.</p>
   </article>
 
   <aside class="toc-r">

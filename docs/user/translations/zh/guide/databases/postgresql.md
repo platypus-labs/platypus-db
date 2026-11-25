@@ -80,7 +80,7 @@
 
 ## 代理
 
-只读代理和只读连接用 `default_transaction_read_only` 打开会话（PostgreSQL、CockroachDB 和 YugabyteDB），所以由服务器本身拒绝写入；在事务模式连接池之后，则只有语句检查。`server_activity` 和 `top_queries` 适用于真正的 PostgreSQL，不适用于 CockroachDB 或 YugabyteDB。见[代理和 CLI](../../AGENTS.md)。
+只读代理和只读连接用 `default_transaction_read_only` 打开会话（PostgreSQL、CockroachDB 和 YugabyteDB），所以由服务器本身拒绝写入；在事务模式连接池之后，则只有语句检查。`server_activity` 和 `top_queries` 适用于真正的 PostgreSQL，不适用于 CockroachDB 或 YugabyteDB。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

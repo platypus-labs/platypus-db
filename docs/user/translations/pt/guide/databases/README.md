@@ -6,7 +6,7 @@
 Uma página para cada banco de dados: como conectar, o que o login exige, o que funciona e o que não
 funciona, e em quais versões a suíte de testes roda. [Conectar](../connect.md) explica as partes que
 todo banco de dados compartilha (SSH, proxy, o chaveiro, projetos),
-[Solução de problemas](../troubleshooting.md) os erros, e [FEATURES.md](../../FEATURES.md) é a
+[Solução de problemas](../troubleshooting.md) os erros, e [FEATURES.md](../../../../FEATURES.md) é a
 referência por recurso.
 
 | Página | Bancos de dados |
@@ -115,7 +115,7 @@ BigQuery, Databricks e IBM Db2.
 
 ## Agentes
 
-[Agentes e a CLI](../../AGENTS.md) funciona em todos os bancos de dados acima. As diferenças estão em
+[Agentes e a CLI](../../../../AGENTS.md) funciona em todos os bancos de dados acima. As diferenças estão em
 cada página: como uma sessão somente leitura é feita (o servidor recusa gravações no PostgreSQL,
 CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB e ClickHouse; em todos os outros, só a
 verificação da instrução), e o que é recusado (`explain` no MongoDB, Redis, Elasticsearch e

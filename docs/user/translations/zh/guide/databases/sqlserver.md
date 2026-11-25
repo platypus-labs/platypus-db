@@ -53,7 +53,7 @@
 
 ## 代理
 
-在 SQL Server 上，只读代理只靠语句检查来阻止写入（没有服务器端的只读会话）；代理的事务会被回滚。`server_activity` 和 `top_queries` 可用。见[代理和 CLI](../../AGENTS.md)。
+在 SQL Server 上，只读代理只靠语句检查来阻止写入（没有服务器端的只读会话）；代理的事务会被回滚。`server_activity` 和 `top_queries` 可用。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

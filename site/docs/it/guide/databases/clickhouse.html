@@ -125,7 +125,7 @@
 <li>Niente chiavi esterne né vincoli di unicità (la chiave primaria si limita a ordinare i dati).</li>
 </ul>
 <h2 id="agenti">Agenti</h2>
-<p>Un agente in sola lettura, e una connessione in sola lettura, inviano ogni istruzione tranne <code>SET</code> con <code>readonly = 1</code>, così il server rifiuta le scritture e le table function che raggiungono altri server o i suoi file (<code>url</code>, <code>s3</code>, <code>remote</code>, <code>file</code> e simili). L&#39;istruzione di un agente viene anche controllata rispetto a un elenco di table function che leggono solo dati locali. Vedi <a href="../../../agents.html">Agenti e la CLI</a>. La modalità terminale non è disponibile: <code>clickhouse-client</code> usa la porta nativa.</p>
+<p>Un agente in sola lettura, e una connessione in sola lettura, inviano ogni istruzione tranne <code>SET</code> con <code>readonly = 1</code>, così il server rifiuta le scritture e le table function che raggiungono altri server o i suoi file (<code>url</code>, <code>s3</code>, <code>remote</code>, <code>file</code> e simili). L&#39;istruzione di un agente viene anche controllata rispetto a un elenco di table function che leggono solo dati locali. Vedi <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenti e la CLI</a>. La modalità terminale non è disponibile: <code>clickhouse-client</code> usa la porta nativa.</p>
 <h2 id="limiti-noti">Limiti noti</h2>
 <ul>
 <li>HTTP in chiaro a meno che la modalità non sia <code>require</code> o più forte: il predefinito <code>prefer</code> non cifra.</li>

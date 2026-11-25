@@ -125,7 +125,7 @@
 <li>Der Terminalmodus ist nicht verfügbar.</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p><code>run_query</code>, <code>sample_rows</code> und die anderen Tools funktionieren, im Rahmen der Prüfungen. Ohne schreibgeschützte Sitzung auf dem Server verlassen sich schreibgeschützte Agenten allein auf die Prüfung der Anweisung. Anweisungen, die außerhalb davon wirken, werden vor der Ausführung nachgefragt: <code>query()</code> bei Trino und die <code>SYSTEM$</code>-Funktionen von Snowflake. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<p><code>run_query</code>, <code>sample_rows</code> und die anderen Tools funktionieren, im Rahmen der Prüfungen. Ohne schreibgeschützte Sitzung auf dem Server verlassen sich schreibgeschützte Agenten allein auf die Prüfung der Anweisung. Anweisungen, die außerhalb davon wirken, werden vor der Ausführung nachgefragt: <code>query()</code> bei Trino und die <code>SYSTEM$</code>-Funktionen von Snowflake. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Eine Anmeldung bei einem Cloud-Warehouse, die nicht zu den obigen Feldern passt (Schlüsselpaar, Single Sign-on), steht nicht im Formular; der generische Treiber nimmt die eigenen Optionen des Treibers.</li>

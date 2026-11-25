@@ -3,9 +3,9 @@
 
 # 快速入门
 
-安装 PlatypusDB，打开一个连接，并学会几个承担大部分工作的快捷键。所有功能按区域分类，见 [FEATURES.md](../FEATURES.md)。
+安装 PlatypusDB，打开一个连接，并学会几个承担大部分工作的快捷键。所有功能按区域分类，见 [FEATURES.md](../../../FEATURES.md)。
 
-![欢迎界面](../../screenshots/guide/welcome.png)
+![欢迎界面](../../../../screenshots/guide/welcome.png)
 
 ## 安装
 
@@ -38,7 +38,7 @@
 | `Ctrl+Shift+E` | 解释光标所在的语句 |
 | `Ctrl+T` | 新建标签页 |
 
-在 macOS 上用 `Cmd` 代替 `Ctrl`。每个快捷键都可以在“设置 › 键盘快捷键”中更改；完整列表见 [SHORTCUTS.md](../SHORTCUTS.md)。
+在 macOS 上用 `Cmd` 代替 `Ctrl`。每个快捷键都可以在“设置 › 键盘快捷键”中更改；完整列表见 [SHORTCUTS.md](../../../SHORTCUTS.md)。
 
 ## 下一步
 

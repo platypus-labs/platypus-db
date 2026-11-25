@@ -50,7 +50,7 @@ Ceux du système d'exploitation : l'application doit pouvoir lire le fichier, et
 
 Les agents en lecture seule et les connexions en lecture seule ouvrent le fichier en lecture seule, et
 exécutent leurs requêtes avec `query_only`. `estimate_change` n'a pas d'estimation de lignes à donner sur
-SQLite. Voir [Agents et la CLI](../../AGENTS.md).
+SQLite. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

@@ -63,7 +63,7 @@ Ein schreibgeschützter Agent und eine schreibgeschützte Verbindung senden jede
 `readonly = 1`, sodass der Server Schreibzugriffe und die Tabellenfunktionen ablehnt, die andere Server oder
 seine Dateien erreichen (`url`, `s3`, `remote`, `file` und ähnliche). Die Anweisung eines Agenten wird
 außerdem gegen eine Liste von Tabellenfunktionen geprüft, die nur lokale Daten lesen. Siehe
-[Agenten und die CLI](../../AGENTS.md). Der Terminalmodus ist nicht verfügbar: `clickhouse-client` nutzt den
+[Agenten und die CLI](../../../../AGENTS.md). Der Terminalmodus ist nicht verfügbar: `clickhouse-client` nutzt den
 nativen Port.
 
 ## Bekannte Grenzen

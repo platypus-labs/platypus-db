@@ -57,7 +57,7 @@ consegue ver; não há abas de administração.
   SQL que leem.
 - Cancelar interrompe uma busca no servidor. O DDL de objeto de um índice é a requisição que o cria
   de novo.
-- Os detalhes estão em [FEATURES.md](../../FEATURES.md#elasticsearch-and-opensearch).
+- Os detalhes estão em [FEATURES.md](../../../../FEATURES.md#elasticsearch-and-opensearch).
 
 ## O que não funciona
 
@@ -70,7 +70,7 @@ consegue ver; não há abas de administração.
 
 `run_query` e `sample_rows` funcionam com requisições do console e SQL, e uma requisição que altera
 dados é perguntada antes. Recusados no Elasticsearch e no OpenSearch: `explain`, `get_er_diagram`,
-`propose_edits` e `query_across_databases`. Veja [Agentes e a CLI](../../AGENTS.md).
+`propose_edits` e `query_across_databases`. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

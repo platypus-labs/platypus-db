@@ -51,7 +51,7 @@ Le regole ACL dell'utente decidono cosa possono fare il navigator e i comandi. I
   connessioni in sola lettura eseguono solo i comandi che leggono.
 - Annulla ferma un comando bloccante (`BLPOP`, `XREAD BLOCK`).
 - La modalità terminale esegue `redis-cli` se è nel PATH, con la password nel suo ambiente.
-- Tutti i comandi e i tipi di chiave sono descritti in [FEATURES.md](../../FEATURES.md#redis).
+- Tutti i comandi e i tipi di chiave sono descritti in [FEATURES.md](../../../../FEATURES.md#redis).
 
 ## Cosa non funziona
 
@@ -67,7 +67,7 @@ Le regole ACL dell'utente decidono cosa possono fare il navigator e i comandi. I
 si chiede prima. I comandi che mostrano le credenziali del server (`ACL GETUSER`, `ACL LIST`, e un
 `CONFIG GET` il cui pattern corrisponde a un'impostazione di password) sono rifiutati agli agenti in
 sola lettura. Rifiutati su Redis: `explain`, `get_er_diagram`, `propose_edits` e
-`query_across_databases`. Vedi [Agenti e la CLI](../../AGENTS.md).
+`query_across_databases`. Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

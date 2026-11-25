@@ -67,7 +67,7 @@ Anweisungen, die du schreibst, brauchen die Rollen, die sie brauchen.
 - **Dokumente im Raster bearbeiten** (siehe [Dokumente im Raster bearbeiten](#dokumente-im-raster-bearbeiten)).
 - Die Definition einer Collection als DDL.
 - **Daten generieren…** füllt eine Collection mit Testdokumenten.
-- Dasselbe Detail steht in [FEATURES.md](../../FEATURES.md#mongodb).
+- Dasselbe Detail steht in [FEATURES.md](../../../../FEATURES.md#mongodb).
 
 ## Was nicht
 
@@ -204,7 +204,7 @@ ausstehenden Änderungen, die du wie deine eigenen Bearbeitungen speicherst oder
 über `_id` benannt; eine `_id` vom Typ `ObjectId` wird als ihre 24 Hexadezimalziffern gesendet und als `ObjectId`
 gelesen, weil die `_id` der Collection eine ist. Werte werden nach den Regeln des Speicherns im Raster geprüft
 (siehe oben), bevor sich etwas öffnet. Sensible Spalten werden nur nach Feld der obersten Ebene maskiert: Ein
-sensibles Feld innerhalb eines Dokuments wird nicht unterschieden. Siehe [Agenten und die CLI](../../AGENTS.md).
+sensibles Feld innerhalb eines Dokuments wird nicht unterschieden. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

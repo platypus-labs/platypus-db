@@ -6,7 +6,7 @@
 Eine Seite pro Datenbank: wie du dich verbindest, was die Anmeldung braucht, was funktioniert und was
 nicht, und auf welchen Versionen die Testsuite läuft. [Verbinden](../connect.md) erklärt, was alle
 Datenbanken gemeinsam haben (SSH, Proxy, der Schlüsselbund, Projekte),
-[Fehlerbehebung](../troubleshooting.md) die Fehler, und [FEATURES.md](../../FEATURES.md) ist die
+[Fehlerbehebung](../troubleshooting.md) die Fehler, und [FEATURES.md](../../../../FEATURES.md) ist die
 Referenz nach Funktionen.
 
 | Seite | Datenbanken |
@@ -114,7 +114,7 @@ Databricks und IBM Db2.
 
 ## Agenten
 
-[Agenten und die CLI](../../AGENTS.md) funktioniert mit jeder der obigen Datenbanken. Die Unterschiede
+[Agenten und die CLI](../../../../AGENTS.md) funktioniert mit jeder der obigen Datenbanken. Die Unterschiede
 stehen auf jeder Seite: wie eine schreibgeschützte Sitzung entsteht (der Server lehnt Schreibzugriffe
 bei PostgreSQL, CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB und ClickHouse ab; überall sonst
 nur die Prüfung der Anweisung) und was abgelehnt wird (`explain` bei MongoDB, Redis, Elasticsearch und

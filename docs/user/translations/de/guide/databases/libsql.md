@@ -53,7 +53,7 @@ SQLite für den Navigator.
 ## Agenten
 
 Schreibgeschützte Agenten und schreibgeschützte Verbindungen verlassen sich allein auf die Prüfung der
-Anweisung; dem Server wird nicht gesagt, Schreibzugriffe abzulehnen. Siehe [Agenten und die CLI](../../AGENTS.md).
+Anweisung; dem Server wird nicht gesagt, Schreibzugriffe abzulehnen. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

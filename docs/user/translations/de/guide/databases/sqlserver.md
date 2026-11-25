@@ -78,7 +78,7 @@ Zum Durchsuchen reicht, was die Anmeldung sehen kann. Die Verwaltungs-Tabs lesen
 
 Bei SQL Server hält allein die Prüfung der Anweisung Schreibzugriffe schreibgeschützter Agenten auf (keine
 schreibgeschützte Sitzung auf dem Server); die Transaktion eines Agenten wird zurückgerollt.
-`server_activity` und `top_queries` funktionieren. Siehe [Agenten und die CLI](../../AGENTS.md).
+`server_activity` und `top_queries` funktionieren. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

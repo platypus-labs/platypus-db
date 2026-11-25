@@ -51,7 +51,7 @@ Quelli del sistema operativo: l'app deve poter leggere il file, e scrivere il fi
 
 Gli agenti in sola lettura e le connessioni in sola lettura aprono il file in sola lettura, ed
 eseguono le query con `query_only`. `estimate_change` su SQLite non ha una stima delle righe da dare.
-Vedi [Agenti e la CLI](../../AGENTS.md).
+Vedi [Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

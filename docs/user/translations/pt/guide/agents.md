@@ -5,7 +5,7 @@
 
 O Claude Code, o Codex, o Cursor e outros clientes MCP podem usar suas conexões salvas pelo
 servidor MCP do PlatypusDB. Esta página é o caminho curto; cada ferramenta, limite e configuração
-está na referência, [AGENTS.md](../AGENTS.md).
+está na referência, [AGENTS.md](../../../AGENTS.md).
 
 ## Conectar um agente
 
@@ -19,7 +19,7 @@ está na referência, [AGENTS.md](../AGENTS.md).
 
 ## Escolher o que cada conexão permite
 
-![Configurações, Agentes, a página Segurança](../../screenshots/guide/agents-security.png)
+![Configurações, Agentes, a página Segurança](../../../../screenshots/guide/agents-security.png)
 
 1. Configurações › **Agentes** › **Segurança** lista as suas conexões. O formulário de cada
    conexão tem a mesma escolha, em **Agentes**, na página **Aparência e segurança**.

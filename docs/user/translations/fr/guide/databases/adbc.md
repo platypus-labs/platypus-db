@@ -79,7 +79,7 @@ colonnes avec l'appel de métadonnées d'ADBC.
 `run_query`, `sample_rows` et les autres outils fonctionnent, dans le cadre des vérifications. Sans session en
 lecture seule côté serveur, les agents en lecture seule reposent sur la seule vérification de l'instruction.
 Les instructions qui agissent en dehors de la base sont soumises à une question avant de s'exécuter : le
-`query()` de Trino et les fonctions `SYSTEM$` de Snowflake. Voir [Agents et la CLI](../../AGENTS.md).
+`query()` de Trino et les fonctions `SYSTEM$` de Snowflake. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

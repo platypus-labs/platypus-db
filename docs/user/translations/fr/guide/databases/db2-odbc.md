@@ -83,7 +83,7 @@ Tout ce que le login de la base de données a. Le navigateur utilise les appels 
 ## Agents
 
 Les agents en lecture seule reposent sur la seule vérification de l'instruction. Voir
-[Agents et la CLI](../../AGENTS.md).
+[Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

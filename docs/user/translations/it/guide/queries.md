@@ -3,7 +3,7 @@
 
 # Eseguire query e leggere i risultati
 
-![Completamento di JOIN dalle chiavi esterne](../../screenshots/autocomplete.png)
+![Completamento di JOIN dalle chiavi esterne](../../../../screenshots/autocomplete.png)
 
 ## Eseguire un'istruzione
 
@@ -43,15 +43,15 @@ così com'è, quindi un'istruzione con variabili viene controllata di nuovo una 
 - `Ctrl+F` cerca nelle righe caricate; `Ctrl+Shift+C` copia la selezione con le intestazioni.
 - Un risultato può passare dalla griglia a un grafico dalla barra di stato.
 
-![Celle che contengono file, con tipo e dimensione](../../screenshots/guide/file-cell.png)
+![Celle che contengono file, con tipo e dimensione](../../../../screenshots/guide/file-cell.png)
 
 ## Capire una query lenta
 
 Premi `Ctrl+Shift+E` su un'istruzione per vederne il piano. Vedi
-[FEATURES.md](../FEATURES.md#query-plans-and-performance).
+[FEATURES.md](../../../FEATURES.md#query-plans-and-performance).
 
 ## Altro
 
 Script salvati, snippet, cronologia, modalità vim, esecuzione di uno script su più connessioni,
-query builder e analisi dei dati sono in [FEATURES.md](../FEATURES.md#sql-editor). La griglia dei
-risultati è in [FEATURES.md](../FEATURES.md#results-and-the-data-viewer).
+query builder e analisi dei dati sono in [FEATURES.md](../../../FEATURES.md#sql-editor). La griglia dei
+risultati è in [FEATURES.md](../../../FEATURES.md#results-and-the-data-viewer).

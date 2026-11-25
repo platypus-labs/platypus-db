@@ -4,9 +4,9 @@
 # Erste Schritte
 
 Installiere PlatypusDB, öffne eine Verbindung und lerne die wenigen Tasten, die den Großteil der Arbeit
-erledigen. Alle Funktionen, Bereich für Bereich, stehen in [FEATURES.md](../FEATURES.md).
+erledigen. Alle Funktionen, Bereich für Bereich, stehen in [FEATURES.md](../../../FEATURES.md).
 
-![Der Willkommensbildschirm](../../screenshots/guide/welcome.png)
+![Der Willkommensbildschirm](../../../../screenshots/guide/welcome.png)
 
 ## Installation
 
@@ -52,7 +52,7 @@ Jede Aktion, Verbindung und Tabelle ist in der Befehlspalette nur ein paar Buchs
 | `Ctrl+T` | Neuer Tab |
 
 Auf macOS nimmst du `Cmd` statt `Ctrl`. Jedes Tastenkürzel lässt sich unter Einstellungen ›
-Tastenkürzel ändern; die vollständige Liste steht in [SHORTCUTS.md](../SHORTCUTS.md).
+Tastenkürzel ändern; die vollständige Liste steht in [SHORTCUTS.md](../../../SHORTCUTS.md).
 
 ## Wie es weitergeht
 

@@ -76,7 +76,7 @@ Parcourir ne demande que ce que le login peut voir. Les onglets d'administration
 
 Sur SQL Server, la seule vérification de l'instruction empêche les écritures des agents en lecture seule
 (pas de session en lecture seule côté serveur) ; la transaction d'un agent est annulée. `server_activity` et
-`top_queries` fonctionnent. Voir [Agents et la CLI](../../AGENTS.md).
+`top_queries` fonctionnent. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

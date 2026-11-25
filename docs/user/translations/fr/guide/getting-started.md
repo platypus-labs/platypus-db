@@ -4,9 +4,9 @@
 # Premiers pas
 
 Installez PlatypusDB, ouvrez une connexion et apprenez les quelques touches qui font l'essentiel du
-travail. Toutes les fonctionnalités, domaine par domaine, sont dans [FEATURES.md](../FEATURES.md).
+travail. Toutes les fonctionnalités, domaine par domaine, sont dans [FEATURES.md](../../../FEATURES.md).
 
-![L'écran d'accueil](../../screenshots/guide/welcome.png)
+![L'écran d'accueil](../../../../screenshots/guide/welcome.png)
 
 ## Installation
 
@@ -51,7 +51,7 @@ Chaque action, connexion et table est à quelques lettres de distance dans la pa
 | `Ctrl+T` | Nouvel onglet |
 
 Sur macOS, utilisez `Cmd` à la place de `Ctrl`. Chaque raccourci peut être modifié dans Paramètres ›
-Raccourcis clavier ; la liste complète est dans [SHORTCUTS.md](../SHORTCUTS.md).
+Raccourcis clavier ; la liste complète est dans [SHORTCUTS.md](../../../SHORTCUTS.md).
 
 ## Et ensuite
 

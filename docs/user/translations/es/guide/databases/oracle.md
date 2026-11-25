@@ -67,7 +67,7 @@ eso falla abandona la sesión (su transacción se revierte y se abre una conexi�
 Los agentes de solo lectura dependen solo de la comprobación de la sentencia: aquí Oracle no tiene
 sesión de solo lectura en el servidor. Una sentencia que llama a un paquete de Oracle, como
 `UTL_HTTP`, se pregunta antes de ejecutarse, como un cambio. Consulta
-[Agentes y la CLI](../../AGENTS.md).
+[Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

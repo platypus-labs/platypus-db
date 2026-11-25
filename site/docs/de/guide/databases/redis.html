@@ -112,7 +112,7 @@
 <li><code>FLUSHDB</code> und <code>FLUSHALL</code> fragen zuerst nach, wie ein <code>UPDATE</code> ohne <code>WHERE</code>; bei Produktionsverbindungen fragen Befehle, die den Server ändern (<code>CONFIG SET</code>, <code>SHUTDOWN</code>), wie DDL nach. Schreibgeschützte Verbindungen führen nur lesende Befehle aus.</li>
 <li>Abbrechen stoppt einen blockierenden Befehl (<code>BLPOP</code>, <code>XREAD BLOCK</code>).</li>
 <li>Der Terminalmodus führt <code>redis-cli</code> aus, falls es im PATH liegt, mit dem Passwort in seiner Umgebung.</li>
-<li>Alle Befehle und Schlüsseltypen sind in <a href="../../../features.html#redis">FEATURES.md</a> beschrieben.</li>
+<li>Alle Befehle und Schlüsseltypen sind in <a href="https://github.com/platypus-labs/platypus-db/blob/main/FEATURES.md#redis">FEATURES.md</a> beschrieben.</li>
 </ul>
 <h2 id="was-nicht">Was nicht</h2>
 <ul>
@@ -121,7 +121,7 @@
 <li>Kein Explain, keine Objekt-DDL, keine SQL-Tools (Tabelleneditor, ER-Diagramm, Schemavergleich, Query Builder, SQL-Import), keine Snapshots vor Änderungen.</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p><code>run_query</code> und <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) funktionieren; bei jedem Befehl, der kein Lesen ist, wird zuerst nachgefragt. Die Befehle, die die Zugangsdaten des Servers zeigen (<code>ACL GETUSER</code>, <code>ACL LIST</code> und ein <code>CONFIG GET</code>, dessen Muster auf eine Passwort-Einstellung passt), werden schreibgeschützten Agenten verweigert. Bei Redis abgelehnt: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> und <code>query_across_databases</code>. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<p><code>run_query</code> und <code>sample_rows</code> (<code>BROWSE … LIMIT n</code>) funktionieren; bei jedem Befehl, der kein Lesen ist, wird zuerst nachgefragt. Die Befehle, die die Zugangsdaten des Servers zeigen (<code>ACL GETUSER</code>, <code>ACL LIST</code> und ein <code>CONFIG GET</code>, dessen Muster auf eine Passwort-Einstellung passt), werden schreibgeschützten Agenten verweigert. Bei Redis abgelehnt: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> und <code>query_across_databases</code>. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Älter als 6.0: Die App verbindet sich mit einer Warnung, dass manche Funktionen vielleicht nicht gehen.</li>

@@ -3,9 +3,9 @@
 
 # Sicher arbeiten: Produktion, Schreibschutz, Bestätigungen, Maskierung
 
-Alles hier steht auch in [FEATURES.md](../FEATURES.md#transactions-and-safety).
+Alles hier steht auch in [FEATURES.md](../../../FEATURES.md#transactions-and-safety).
 
-![Einstellungen, die Seite Sicherheit](../../screenshots/guide/safety.png)
+![Einstellungen, die Seite Sicherheit](../../../../screenshots/guide/safety.png)
 
 ## Eine Verbindung als Produktion markieren
 

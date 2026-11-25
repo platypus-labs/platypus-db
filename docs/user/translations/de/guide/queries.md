@@ -3,7 +3,7 @@
 
 # Abfragen ausführen und Ergebnisse lesen
 
-![JOIN-Vervollständigung aus den Fremdschlüsseln](../../screenshots/autocomplete.png)
+![JOIN-Vervollständigung aus den Fremdschlüsseln](../../../../screenshots/autocomplete.png)
 
 ## Eine Anweisung ausführen
 
@@ -41,15 +41,15 @@ wird eine Anweisung mit Variablen ausgefüllt noch einmal geprüft (siehe [Siche
 - `Ctrl+F` sucht in den geladenen Zeilen; `Ctrl+Shift+C` kopiert die Auswahl mit Überschriften.
 - Ein Ergebnis kann in der Statusleiste vom Raster zu einem Diagramm wechseln.
 
-![Zellen mit Dateien, mit Typ und Größe](../../screenshots/guide/file-cell.png)
+![Zellen mit Dateien, mit Typ und Größe](../../../../screenshots/guide/file-cell.png)
 
 ## Eine langsame Abfrage verstehen
 
 Drücke `Ctrl+Shift+E` auf einer Anweisung, um ihren Plan zu sehen. Siehe
-[FEATURES.md](../FEATURES.md#query-plans-and-performance).
+[FEATURES.md](../../../FEATURES.md#query-plans-and-performance).
 
 ## Mehr
 
 Gespeicherte Skripte, Snippets, Verlauf, Vim-Modus, ein Skript auf mehreren Verbindungen ausführen,
-der Query Builder und die Datenanalyse stehen in [FEATURES.md](../FEATURES.md#sql-editor). Das
-Ergebnisraster steht in [FEATURES.md](../FEATURES.md#results-and-the-data-viewer).
+der Query Builder und die Datenanalyse stehen in [FEATURES.md](../../../FEATURES.md#sql-editor). Das
+Ergebnisraster steht in [FEATURES.md](../../../FEATURES.md#results-and-the-data-viewer).

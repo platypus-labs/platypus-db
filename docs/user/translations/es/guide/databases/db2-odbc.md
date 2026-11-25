@@ -84,7 +84,7 @@ administración.
 ## Agentes
 
 Los agentes de solo lectura dependen solo de la comprobación de la sentencia. Consulta
-[Agentes y la CLI](../../AGENTS.md).
+[Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

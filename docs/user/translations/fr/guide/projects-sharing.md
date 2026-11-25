@@ -4,8 +4,8 @@
 # Projets et partage
 
 Un projet est un groupe de connexions, de scripts et d'onglets ouverts, affiché dans la barre de gauche. Les
-détails sont dans [FEATURES.md](../FEATURES.md#workspace) et
-[FEATURES.md](../FEATURES.md#sharing-and-sync).
+détails sont dans [FEATURES.md](../../../FEATURES.md#workspace) et
+[FEATURES.md](../../../FEATURES.md#sharing-and-sync).
 
 ## Créer un projet
 
@@ -47,7 +47,7 @@ Sans mot de passe, le fichier ne contient aucun identifiant.
 
 Pour garder les paramètres, les connexions et les scripts synchronisés entre vos ordinateurs, utilisez
 Paramètres › **Synchronisation** avec un dossier d'un disque cloud. Voir
-[FEATURES.md](../FEATURES.md#sharing-and-sync).
+[FEATURES.md](../../../FEATURES.md#sharing-and-sync).
 
 ## Scripts et Git
 

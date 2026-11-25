@@ -75,7 +75,7 @@ mit dem Metadatenaufruf von ADBC.
 `run_query`, `sample_rows` und die anderen Tools funktionieren, im Rahmen der Prüfungen. Ohne
 schreibgeschützte Sitzung auf dem Server verlassen sich schreibgeschützte Agenten allein auf die Prüfung der
 Anweisung. Anweisungen, die außerhalb davon wirken, werden vor der Ausführung nachgefragt: `query()` bei Trino
-und die `SYSTEM$`-Funktionen von Snowflake. Siehe [Agenten und die CLI](../../AGENTS.md).
+und die `SYSTEM$`-Funktionen von Snowflake. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

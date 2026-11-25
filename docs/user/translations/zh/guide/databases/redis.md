@@ -30,7 +30,7 @@
 - `FLUSHDB` 和 `FLUSHALL` 会先询问，与不带 `WHERE` 的 `UPDATE` 相同；在生产连接上，更改服务器的命令（`CONFIG SET`、`SHUTDOWN`）会像 DDL 一样询问。只读连接只运行读取的命令。
 - 取消会停止阻塞命令（`BLPOP`、`XREAD BLOCK`）。
 - 终端模式运行 `redis-cli`（如果它在 PATH 中），密码放在它的环境中。
-- 所有命令和键类型在 [FEATURES.md](../../FEATURES.md#redis) 中说明。
+- 所有命令和键类型在 [FEATURES.md](../../../../FEATURES.md#redis) 中说明。
 
 ## 不可用功能
 
@@ -40,7 +40,7 @@
 
 ## 代理
 
-`run_query` 和 `sample_rows`（`BROWSE … LIMIT n`）可用；任何不是读取的命令都会先询问。显示服务器凭据的命令（`ACL GETUSER`、`ACL LIST`，以及模式匹配密码设置的 `CONFIG GET`）对只读代理会被拒绝。在 Redis 上被拒绝的有：`explain`、`get_er_diagram`、`propose_edits` 和 `query_across_databases`。见[代理和 CLI](../../AGENTS.md)。
+`run_query` 和 `sample_rows`（`BROWSE … LIMIT n`）可用；任何不是读取的命令都会先询问。显示服务器凭据的命令（`ACL GETUSER`、`ACL LIST`，以及模式匹配密码设置的 `CONFIG GET`）对只读代理会被拒绝。在 Redis 上被拒绝的有：`explain`、`get_er_diagram`、`propose_edits` 和 `query_across_databases`。见[代理和 CLI](../../../../AGENTS.md)。
 
 ## 已知限制
 

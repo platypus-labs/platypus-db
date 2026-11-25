@@ -1,7 +1,7 @@
 <!-- source: c5a23b4f7aee -->
 # Guia do usuário
 
-Páginas curtas, cada uma uma tarefa para seguir passo a passo. [FEATURES.md](../FEATURES.md) continua
+Páginas curtas, cada uma uma tarefa para seguir passo a passo. [FEATURES.md](../../../FEATURES.md) continua
 sendo a referência, área por área; estas páginas remetem a ele para os detalhes.
 
 | Quero | Página |
@@ -17,4 +17,4 @@ sendo a referência, área por área; estas páginas remetem a ele para os detal
 | Deixar o Claude Code, o Codex ou outro agente usar minhas conexões | [Agentes](agents.md) |
 | Resolver um problema de conexão, de download de driver, de agente ou de atualização | [Solução de problemas e FAQ](troubleshooting.md) |
 
-Os atalhos estão em [SHORTCUTS.md](../SHORTCUTS.md); no macOS use `Cmd` no lugar de `Ctrl`.
+Os atalhos estão em [SHORTCUTS.md](../../../SHORTCUTS.md); no macOS use `Cmd` no lugar de `Ctrl`.

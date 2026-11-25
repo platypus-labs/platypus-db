@@ -64,7 +64,7 @@ Um agente somente leitura, e uma conexão somente leitura, enviam toda instruç�
 `readonly = 1`, então o servidor recusa gravações e as funções de tabela que alcançam outros
 servidores ou os arquivos dele (`url`, `s3`, `remote`, `file` e semelhantes). A instrução de um
 agente também é verificada contra uma lista de funções de tabela que só leem dados locais. Veja
-[Agentes e a CLI](../../AGENTS.md). O modo terminal não está disponível: o `clickhouse-client` usa
+[Agentes e a CLI](../../../../AGENTS.md). O modo terminal não está disponível: o `clickhouse-client` usa
 a porta nativa.
 
 ## Limites conhecidos

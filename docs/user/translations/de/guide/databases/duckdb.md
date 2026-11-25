@@ -71,7 +71,7 @@ keine andere Sitzung der App sie schon offen hält; eine In-Memory-Datenbank ode
 schreibgeschützt, und die Prüfung der Anweisung hält dort Schreibzugriffe auf. Die DuckDB-Sitzungen der Agenten
 können weder andere Dateien lesen oder schreiben noch Erweiterungen laden und schließen die Datei nach jedem
 Aufruf, damit die App sie öffnen kann. `query_across_databases` läuft in einem eigenen DuckDB, das die App wie
-dieses herunterlädt. Siehe [Agenten und die CLI](../../AGENTS.md).
+dieses herunterlädt. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

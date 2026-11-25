@@ -125,7 +125,7 @@
 <li>终端模式不可用。</li>
 </ul>
 <h2 id="代理">代理</h2>
-<p><code>run_query</code>、<code>sample_rows</code> 和其他工具可用，受各项检查约束。没有服务器端的只读会话，只读代理只依靠语句检查。在其之外起作用的语句会在运行前先询问：Trino 的 <code>query()</code> 和 Snowflake 的 <code>SYSTEM$</code> 函数。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p><code>run_query</code>、<code>sample_rows</code> 和其他工具可用，受各项检查约束。没有服务器端的只读会话，只读代理只依靠语句检查。在其之外起作用的语句会在运行前先询问：Trino 的 <code>query()</code> 和 Snowflake 的 <code>SYSTEM$</code> 函数。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>上述字段之外的云仓库登录方式（密钥对、单点登录）不在表单中；通用驱动接受驱动自己的选项。</li>

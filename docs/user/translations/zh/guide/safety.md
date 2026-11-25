@@ -3,9 +3,9 @@
 
 # 安全工作：生产环境、只读、确认、遮蔽
 
-这里的所有内容也在 [FEATURES.md](../FEATURES.md#transactions-and-safety) 中。
+这里的所有内容也在 [FEATURES.md](../../../FEATURES.md#transactions-and-safety) 中。
 
-![设置，安全页面](../../screenshots/guide/safety.png)
+![设置，安全页面](../../../../screenshots/guide/safety.png)
 
 ## 将连接标记为生产环境
 

@@ -69,7 +69,7 @@ demandent les permissions que CQL exige.
 
 `run_query` et `sample_rows` (un `SELECT … LIMIT n` CQL) fonctionnent ; une instruction qui modifie des
 données fait d'abord l'objet d'une question. Refusés sur Cassandra : `explain` et `propose_edits` ;
-`estimate_change` répond par une note. Voir [Agents et la CLI](../../AGENTS.md).
+`estimate_change` répond par une note. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

@@ -145,7 +145,7 @@ descargados y los registros en su carpeta de datos, ambas llamadas `dev.platypus
 Una copia portátil guarda todo en su carpeta `data`, y la variable de entorno `PLATYPUS_DATA_DIR`
 pone todo en la carpeta que nombra.
 
-![Ajustes, la página Diagnóstico](../../screenshots/guide/diagnostics.png)
+![Ajustes, la página Diagnóstico](../../../../screenshots/guide/diagnostics.png)
 
 El registro es `logs/platypus.log` en la carpeta de datos: una línea por inicio, error y fallo
 grave, rotado a 1 MB con dos archivos anteriores (`platypus.1.log`, `platypus.2.log`). Ajustes ›
@@ -174,5 +174,5 @@ actualizaciones) necesitan red.
 **¿Dónde informo de un error?** En el [gestor de incidencias](https://github.com/platypus-labs/platypus-db/issues),
 con el paquete de diagnóstico si puedes.
 
-**¿Dónde están los atajos?** [SHORTCUTS.md](../SHORTCUTS.md), y Ajustes › Atajos de teclado para
+**¿Dónde están los atajos?** [SHORTCUTS.md](../../../SHORTCUTS.md), y Ajustes › Atajos de teclado para
 cambiarlos.

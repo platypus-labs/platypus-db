@@ -71,7 +71,7 @@ que você escreve exigem os papéis de que precisam.
 - **Edição de documentos na grade** (veja [Editar documentos na grade](#editar-documentos-na-grade)).
 - A definição de uma coleção como DDL.
 - **Gerar dados** preenche uma coleção com documentos falsos.
-- O mesmo detalhe está em [FEATURES.md](../../FEATURES.md#mongodb).
+- O mesmo detalhe está em [FEATURES.md](../../../../FEATURES.md#mongodb).
 
 ## O que não funciona
 
@@ -214,7 +214,7 @@ que você salva ou descarta como as suas próprias edições. Um documento é no
 `_id` `ObjectId` é enviado como os 24 dígitos hexadecimais dele e lido como um `ObjectId` porque o
 `_id` da coleção é um. Os valores são verificados pelas regras do salvamento da grade (veja acima),
 antes de qualquer coisa abrir. As colunas sensíveis são mascaradas só por campo de nível superior: um
-campo sensível dentro de um documento não é distinguido. Veja [Agentes e a CLI](../../AGENTS.md).
+campo sensível dentro de um documento não é distinguido. Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

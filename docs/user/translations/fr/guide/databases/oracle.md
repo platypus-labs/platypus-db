@@ -67,7 +67,7 @@ seconde session avec `ALTER SYSTEM CANCEL SQL`, ce qui demande ce privilège, et
 
 Les agents en lecture seule reposent sur la seule vérification de l'instruction : Oracle n'a pas ici de session
 en lecture seule côté serveur. Une instruction qui appelle un package Oracle, comme `UTL_HTTP`, fait l'objet
-d'une question avant de s'exécuter, comme une modification. Voir [Agents et la CLI](../../AGENTS.md).
+d'une question avant de s'exécuter, comme une modification. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

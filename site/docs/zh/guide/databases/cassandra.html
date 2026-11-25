@@ -125,7 +125,7 @@
 <li>没有执行计划，也没有 SQL 工具：没有表编辑器、ER 图、模式比较、查询构建器、SQL 导入、变更前快照或终端模式（<code>cqlsh</code> 只在命令行上接受密码）。</li>
 </ul>
 <h2 id="代理">代理</h2>
-<p><code>run_query</code> 和 <code>sample_rows</code>（CQL 的 <code>SELECT … LIMIT n</code>）可用；修改数据的语句会先询问。在 Cassandra 上被拒绝的有：<code>explain</code> 和 <code>propose_edits</code>；<code>estimate_change</code> 会以一条说明作答。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<p><code>run_query</code> 和 <code>sample_rows</code>（CQL 的 <code>SELECT … LIMIT n</code>）可用；修改数据的语句会先询问。在 Cassandra 上被拒绝的有：<code>explain</code> 和 <code>propose_edits</code>；<code>estimate_change</code> 会以一条说明作答。见<a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">代理和 CLI</a>。</p>
 <h2 id="已知限制">已知限制</h2>
 <ul>
 <li>低于 4.0 的 Cassandra 和低于 5.4 的 ScyllaDB 在连接时会被拒绝，并提示 &quot;older than … the oldest version supported&quot;，这与会带警告连接的其他数据库不同。</li>

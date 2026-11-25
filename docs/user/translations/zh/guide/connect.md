@@ -3,7 +3,7 @@
 
 # 连接数据库
 
-![为新连接选择数据库](../../screenshots/connections.png)
+![为新连接选择数据库](../../../../screenshots/connections.png)
 
 ## 通过 URL
 
@@ -52,7 +52,7 @@
 
 ## SSH 隧道
 
-![网络页面上的 SSH 隧道](../../screenshots/guide/connect-network.png)
+![网络页面上的 SSH 隧道](../../../../screenshots/guide/connect-network.png)
 
 1. 在**网络**页面，勾选**通过 SSH 隧道连接**。
 2. 填写 **SSH 主机**、端口和 **SSH 用户**。
@@ -67,4 +67,4 @@
 
 ## 下一步
 
-各数据库的详细信息：[数据库](databases/README.md)。云登录、连接池、从 DBeaver、DataGrip 和 pgAdmin 导入（包括 Db2 连接）以及导出连接，见 [FEATURES.md](../FEATURES.md#connections)。如果无法连接，见[故障排除](troubleshooting.md#连接错误)。
+各数据库的详细信息：[数据库](databases/README.md)。云登录、连接池、从 DBeaver、DataGrip 和 pgAdmin 导入（包括 Db2 连接）以及导出连接，见 [FEATURES.md](../../../FEATURES.md#connections)。如果无法连接，见[故障排除](troubleshooting.md#连接错误)。

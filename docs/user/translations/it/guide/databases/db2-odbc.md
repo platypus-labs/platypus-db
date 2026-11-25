@@ -85,7 +85,7 @@ Quelli che ha il login del database. Il navigator usa le chiamate di catalogo di
 ## Agenti
 
 Gli agenti in sola lettura si affidano solo al controllo delle istruzioni. Vedi
-[Agenti e la CLI](../../AGENTS.md).
+[Agenti e la CLI](../../../../AGENTS.md).
 
 ## Limiti noti
 

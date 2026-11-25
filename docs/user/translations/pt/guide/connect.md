@@ -3,7 +3,7 @@
 
 # Conectar a um banco de dados
 
-![Escolhendo o banco de dados para uma nova conexão](../../screenshots/connections.png)
+![Escolhendo o banco de dados para uma nova conexão](../../../../screenshots/connections.png)
 
 ## A partir de uma URL
 
@@ -85,7 +85,7 @@ servidores que autenticam clientes por certificado, informe o **Certificado de c
 
 ## Túnel SSH
 
-![Um túnel SSH na página Rede](../../screenshots/guide/connect-network.png)
+![Um túnel SSH na página Rede](../../../../screenshots/guide/connect-network.png)
 
 1. Na página **Rede**, marque **Conectar por um túnel SSH**.
 2. Preencha **Host SSH**, a porta e **Usuário SSH**.
@@ -108,5 +108,5 @@ SSH ou o proxy.
 
 Detalhes de cada banco de dados: [Bancos de dados](databases/README.md). Login em nuvens, poolers,
 importações do DBeaver, DataGrip e pgAdmin (incluindo conexões do Db2) e exportação de conexões
-estão em [FEATURES.md](../FEATURES.md#connections). Se não conectar, veja
+estão em [FEATURES.md](../../../FEATURES.md#connections). Se não conectar, veja
 [Solução de problemas](troubleshooting.md#erros-de-conexão).

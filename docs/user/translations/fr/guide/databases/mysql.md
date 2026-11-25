@@ -72,7 +72,7 @@ Parcourir ne demande que ce que le login peut voir. Les onglets d'administration
 Les agents en lecture seule et les connexions en lecture seule exécutent `SET SESSION TRANSACTION READ ONLY`,
 et leurs requêtes s'exécutent dans une transaction en lecture seule. `server_activity` et `top_queries`
 fonctionnent. Une `@variable`, une table temporaire ou un `SET` MySQL ou MariaDB créés par un appel d'agent
-sont encore là au suivant. Voir [Agents et la CLI](../../AGENTS.md).
+sont encore là au suivant. Voir [Agents et la CLI](../../../../AGENTS.md).
 
 ## Limites connues
 

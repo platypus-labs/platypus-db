@@ -83,7 +83,7 @@ O que o login do banco de dados tiver. O navegador usa as chamadas de catálogo 
 ## Agentes
 
 Agentes somente leitura dependem só da verificação da instrução. Veja
-[Agentes e a CLI](../../AGENTS.md).
+[Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

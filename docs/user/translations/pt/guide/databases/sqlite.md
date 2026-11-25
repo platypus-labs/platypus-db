@@ -51,7 +51,7 @@ journal) para alterar qualquer coisa. Um arquivo ocupado é aguardado antes de u
 
 Agentes somente leitura e conexões somente leitura abrem o arquivo somente para leitura, e executam
 as consultas com `query_only`. `estimate_change` não tem estimativa de linhas para dar no SQLite.
-Veja [Agentes e a CLI](../../AGENTS.md).
+Veja [Agentes e a CLI](../../../../AGENTS.md).
 
 ## Limites conhecidos
 

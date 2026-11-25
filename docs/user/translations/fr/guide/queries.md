@@ -3,7 +3,7 @@
 
 # Exécuter des requêtes et lire les résultats
 
-![Complétion de JOIN à partir des clés étrangères](../../screenshots/autocomplete.png)
+![Complétion de JOIN à partir des clés étrangères](../../../../screenshots/autocomplete.png)
 
 ## Exécuter une instruction
 
@@ -43,16 +43,16 @@ telle quelle : une instruction avec des variables est donc vérifiée de nouveau
 - `Ctrl+F` cherche dans les lignes chargées ; `Ctrl+Shift+C` copie la sélection avec les en-têtes.
 - Un résultat peut passer de la grille à un graphique depuis la barre d'état.
 
-![Cellules contenant des fichiers, avec leur type et leur taille](../../screenshots/guide/file-cell.png)
+![Cellules contenant des fichiers, avec leur type et leur taille](../../../../screenshots/guide/file-cell.png)
 
 ## Comprendre une requête lente
 
 Appuyez sur `Ctrl+Shift+E` sur une instruction pour voir son plan. Voir
-[FEATURES.md](../FEATURES.md#query-plans-and-performance).
+[FEATURES.md](../../../FEATURES.md#query-plans-and-performance).
 
 ## Pour aller plus loin
 
 Les scripts enregistrés, les snippets, l'historique, le mode vim, l'exécution d'un script sur plusieurs
 connexions, le constructeur de requêtes et l'analyse de données sont dans
-[FEATURES.md](../FEATURES.md#sql-editor). La grille de résultats est dans
-[FEATURES.md](../FEATURES.md#results-and-the-data-viewer).
+[FEATURES.md](../../../FEATURES.md#sql-editor). La grille de résultats est dans
+[FEATURES.md](../../../FEATURES.md#results-and-the-data-viewer).

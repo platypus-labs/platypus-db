@@ -118,7 +118,7 @@
 <li>Importe laufen über den Appender von DuckDB, in der Transaktion der Sitzung.</li>
 </ul>
 <h2 id="agenten">Agenten</h2>
-<p>Ein schreibgeschützter Agent und eine schreibgeschützte Verbindung öffnen die Datenbankdatei nur lesend, wenn keine andere Sitzung der App sie schon offen hält; eine In-Memory-Datenbank oder eine Datendatei ist nie schreibgeschützt, und die Prüfung der Anweisung hält dort Schreibzugriffe auf. Die DuckDB-Sitzungen der Agenten können weder andere Dateien lesen oder schreiben noch Erweiterungen laden und schließen die Datei nach jedem Aufruf, damit die App sie öffnen kann. <code>query_across_databases</code> läuft in einem eigenen DuckDB, das die App wie dieses herunterlädt. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<p>Ein schreibgeschützter Agent und eine schreibgeschützte Verbindung öffnen die Datenbankdatei nur lesend, wenn keine andere Sitzung der App sie schon offen hält; eine In-Memory-Datenbank oder eine Datendatei ist nie schreibgeschützt, und die Prüfung der Anweisung hält dort Schreibzugriffe auf. Die DuckDB-Sitzungen der Agenten können weder andere Dateien lesen oder schreiben noch Erweiterungen laden und schließen die Datei nach jedem Aufruf, damit die App sie öffnen kann. <code>query_across_databases</code> läuft in einem eigenen DuckDB, das die App wie dieses herunterlädt. Siehe <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agenten und die CLI</a>.</p>
 <h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
 <ul>
 <li>Excel-Dateien werden mit dem eigenen Leser der App gelesen, nicht mit der Excel-Erweiterung von DuckDB.</li>

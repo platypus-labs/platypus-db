@@ -66,7 +66,7 @@ CQL verlangt.
 
 `run_query` und `sample_rows` (ein CQL-`SELECT … LIMIT n`) funktionieren; bei einer Anweisung, die Daten
 ändert, wird zuerst nachgefragt. Bei Cassandra abgelehnt: `explain` und `propose_edits`; `estimate_change`
-antwortet mit einem Hinweis. Siehe [Agenten und die CLI](../../AGENTS.md).
+antwortet mit einem Hinweis. Siehe [Agenten und die CLI](../../../../AGENTS.md).
 
 ## Bekannte Grenzen
 

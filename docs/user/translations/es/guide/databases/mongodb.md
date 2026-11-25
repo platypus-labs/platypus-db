@@ -72,7 +72,7 @@ de administración. Las sentencias que escribas necesitan los roles que necesite
   [Editar documentos en la cuadrícula](#editar-documentos-en-la-cuadrícula)).
 - La definición de una colección como DDL.
 - **Generar datos…** rellena una colección con documentos ficticios.
-- El mismo detalle está en [FEATURES.md](../../FEATURES.md#mongodb).
+- El mismo detalle está en [FEATURES.md](../../../../FEATURES.md#mongodb).
 
 ## Qué no funciona
 
@@ -222,7 +222,7 @@ pendientes, que guardas o descartas como tus propias ediciones. Un documento se 
 `ObjectId` porque el `_id` de la colección lo es. Los valores se comprueban con las reglas del
 guardado de la cuadrícula (consulta más arriba), antes de que se abra nada. Las columnas sensibles se
 enmascaran solo por campo de primer nivel: un campo sensible dentro de un documento no se distingue.
-Consulta [Agentes y la CLI](../../AGENTS.md).
+Consulta [Agentes y la CLI](../../../../AGENTS.md).
 
 ## Límites conocidos
 

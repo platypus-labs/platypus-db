@@ -5,11 +5,11 @@
 
 Die folgenden Aktionen stehen im Kontextmenü des Navigators (Rechtsklick) und in der Befehlspalette
 (`Ctrl+K`). Die vollständige Liste der Formate und Optionen steht in
-[FEATURES.md](../FEATURES.md#import-export-and-transfer).
+[FEATURES.md](../../../FEATURES.md#import-export-and-transfer).
 
 ## Eine Datei in eine Tabelle importieren
 
-![Die Vorschau einer zu importierenden Datei](../../screenshots/guide/import-preview.png)
+![Die Vorschau einer zu importierenden Datei](../../../../screenshots/guide/import-preview.png)
 
 1. Klicke im Navigator mit der rechten Maustaste auf die Tabelle, dann auf **Daten** › **Daten
    importieren…**.

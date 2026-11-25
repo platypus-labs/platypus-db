@@ -93,7 +93,7 @@ DuckDB、Snowflake、BigQuery、Databricks、Trino、其他 ADBC 驱动、Oracle
 
 便携版把所有内容保存在它的 `data` 文件夹中，环境变量 `PLATYPUS_DATA_DIR` 则会把所有内容放进它所指定的文件夹。
 
-![设置，诊断页面](../../screenshots/guide/diagnostics.png)
+![设置，诊断页面](../../../../screenshots/guide/diagnostics.png)
 
 日志是数据文件夹中的 `logs/platypus.log`：每次启动、错误和崩溃各占一行，达到 1 MB 时轮换，保留两个旧文件（`platypus.1.log`、`platypus.2.log`）。设置 › **诊断**显示该文件夹（**复制**）和**保存诊断包…**，这是一个 zip，包含版本、系统、不含密码的设置和日志，可附在错误报告中。不会向任何地方发送任何内容；分享之前请先阅读日志，因为错误中可能出现服务器或表的名称。崩溃之后，下次启动时会提供同样的诊断包。
 
@@ -109,4 +109,4 @@ DuckDB、Snowflake、BigQuery、Databricks、Trino、其他 ADBC 驱动、Oracle
 
 **在哪里报告错误？** 在[问题跟踪页面](https://github.com/platypus-labs/platypus-db/issues)，如果可以，请附上诊断包。
 
-**快捷键在哪里？** 见 [SHORTCUTS.md](../SHORTCUTS.md)，要更改它们，请到设置 › 键盘快捷键。
+**快捷键在哪里？** 见 [SHORTCUTS.md](../../../SHORTCUTS.md)，要更改它们，请到设置 › 键盘快捷键。

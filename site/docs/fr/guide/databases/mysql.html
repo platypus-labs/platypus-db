@@ -126,7 +126,7 @@
 <li>Les erreurs nomment le serveur d&#39;où elles viennent, par exemple <code>Unknown column &#39;x&#39; in &#39;field list&#39; (MySQL 5.7.44)</code>.</li>
 </ul>
 <h2 id="agents">Agents</h2>
-<p>Les agents en lecture seule et les connexions en lecture seule exécutent <code>SET SESSION TRANSACTION READ ONLY</code>, et leurs requêtes s&#39;exécutent dans une transaction en lecture seule. <code>server_activity</code> et <code>top_queries</code> fonctionnent. Une <code>@variable</code>, une table temporaire ou un <code>SET</code> MySQL ou MariaDB créés par un appel d&#39;agent sont encore là au suivant. Voir <a href="../../../agents.html">Agents et la CLI</a>.</p>
+<p>Les agents en lecture seule et les connexions en lecture seule exécutent <code>SET SESSION TRANSACTION READ ONLY</code>, et leurs requêtes s&#39;exécutent dans une transaction en lecture seule. <code>server_activity</code> et <code>top_queries</code> fonctionnent. Une <code>@variable</code>, une table temporaire ou un <code>SET</code> MySQL ou MariaDB créés par un appel d&#39;agent sont encore là au suivant. Voir <a href="https://github.com/platypus-labs/platypus-db/blob/main/AGENTS.md">Agents et la CLI</a>.</p>
 <h2 id="limites-connues">Limites connues</h2>
 <ul>
 <li>Plus ancien que MySQL 5.7 ou MariaDB 10.6 : il se connecte, avec un avertissement disant que certaines fonctionnalités peuvent ne pas marcher.</li>
