@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · PostgreSQL, CockroachDB, YugabyteDB, TimescaleDB e gli altri</title>
+  <meta name="description" content="Un solo driver, basato su tokio-postgres, parla il protocollo PostgreSQL. Apre PostgreSQL 12 e successivi, e i server e i servizi che parlano lo stesso…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Per iniziare</a>
+<a href="../index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="../connect.html">Connettersi a un database</a>
+<a href="../queries.html">Eseguire query e leggere i risultati</a>
+<a href="../edit-data.html">Modificare i dati</a>
+<a href="../import-export.html">Importare ed esportare</a>
+<a href="../safety.html">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="../projects-sharing.html">Progetti e condivisione</a>
+<a href="../agents.html">Usare PlatypusDB da un agente</a>
+<a href="../troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="index.html">Database</a>
+<a href="postgresql.html" class="sub on" aria-current="page">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 e ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / PostgreSQL, CockroachDB, YugabyteDB, TimescaleDB e gli altri</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/postgresql.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="index.html">← Database</a></p>
+<h1 id="postgresql-cockroachdb-yugabytedb-timescaledb-e-gli-altri">PostgreSQL, CockroachDB, YugabyteDB, TimescaleDB e gli altri</h1>
+<p>Un solo driver, basato su <code>tokio-postgres</code>, parla il protocollo PostgreSQL. Apre PostgreSQL 12 e successivi, e i server e i servizi che parlano lo stesso protocollo. Non si scarica nulla: il driver fa parte dell&#39;app.</p>
+<h2 id="connettersi">Connettersi</h2>
+<p>Scegli <strong>PostgreSQL</strong> nella griglia dei database, oppure incolla un URL: il modulo si compila da solo.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Incolli</th><th>Letto come</th></tr></thead>
+<tbody>
+<tr><td><code>postgres://user:pass@host:5432/db?sslmode=require</code> (o <code>postgresql://</code>)</td><td>la forma URL; la porta predefinita è 5432</td></tr>
+<tr><td><code>jdbc:postgresql://host/db?sslmode=require</code></td><td>un URL JDBC, come lo conservano DBeaver e DataGrip</td></tr>
+<tr><td><code>host=db port=5432 dbname=shop user=app sslmode=require</code></td><td>una stringa di connessione libpq</td></tr>
+<tr><td><code>Host=db;Database=shop;Username=app;Password=…</code></td><td>una stringa di connessione Npgsql</td></tr>
+</tbody>
+</table></div>
+<p>Parametri URL che l&#39;app conosce: <code>sslmode</code>, <code>sslrootcert</code>, <code>sslcert</code>, <code>sslkey</code>, <code>application_name</code>, <code>connect_timeout</code> e <code>pgbouncer=true</code>. Ogni altro parametro viene lasciato fuori, e il modulo dice quale. Un elenco di host per il failover (<code>h1:5432,h2:5432</code>) tiene il primo host.</p>
+<p><strong>TLS</strong> segue il <code>sslmode</code> di libpq:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Modalità</th><th>Cosa succede</th></tr></thead>
+<tbody>
+<tr><td><code>disable</code></td><td>niente TLS</td></tr>
+<tr><td><code>prefer</code> (il predefinito)</td><td>TLS se il server lo offre, altrimenti in chiaro; il certificato non viene controllato</td></tr>
+<tr><td><code>require</code></td><td>TLS, certificato non controllato</td></tr>
+<tr><td><code>verify-ca</code></td><td>TLS, si controlla la catena del certificato, non il nome dell&#39;host</td></tr>
+<tr><td><code>verify-full</code></td><td>TLS, si controllano catena e nome dell&#39;host</td></tr>
+</tbody>
+</table></div>
+<p>La catena viene controllata con il file indicato in <code>sslrootcert</code> se c&#39;è, altrimenti con i certificati attendibili del sistema. Un certificato client (<code>sslcert</code> e <code>sslkey</code>) viene inviato in ogni modalità che usa TLS.</p>
+<p><strong>L&#39;accesso</strong> avviene con la password, oppure con un token che lo strumento a riga di comando di un cloud crea a ogni connessione: AWS IAM (<code>aws</code>), Google Cloud IAM (<code>gcloud</code>) e Microsoft Entra ID (<code>az</code>) sono nella scelta <em>Autenticazione</em> della connessione. Lo strumento deve essere installato e con l&#39;accesso effettuato sul tuo computer. Oppure con <strong>Kerberos</strong>, qui sotto.</p>
+<p><strong>Kerberos (GSSAPI).</strong> Scegli <em>Ticket Kerberos (GSSAPI)</em> sotto <em>Password from</em>. Il campo della password sparisce: nessuna password viene chiesta, salvata o inviata. Se il server ne chiede una, o ti fa entrare senza chiedere Kerberos, la connessione viene rifiutata e te lo dice.</p>
+<ul>
+<li><strong>Il nome del servizio</strong> è <code>postgres</code>, a meno che tu non lo compili (il <code>krb_srvname</code> del server). Il ticket richiesto è <code>service/host</code>, nel tuo realm predefinito: l&#39;host deve essere il nome nel principal del servizio, non un indirizzo IP né un alias, perché l&#39;app non lo risolve. Attraverso un tunnel SSH o un port forward è comunque il nome del server.</li>
+<li><strong>L&#39;utente</strong> è il ruolo PostgreSQL, che il server ricava dal tuo principal (<code>include_realm</code> e <code>pg_ident.conf</code>). Se è vuoto, l&#39;app usa il nome utente del tuo sistema.</li>
+<li><strong>Il ticket</strong> su Linux viene da <code>kinit</code>, nella cache indicata da <code>KRB5CCNAME</code> (o in quella predefinita), o da un keytab: con <code>KRB5_CLIENT_KTNAME</code> impostata, Kerberos ottiene il ticket da solo. Queste variabili devono essere impostate dove parte l&#39;app. Su Windows è il ticket della tua sessione Windows.</li>
+<li><strong>Senza un ticket</strong> la prova dice cosa eseguire: <code>kinit</code>, le due variabili e <code>klist</code>, seguiti dal testo di Kerberos. Lo stesso vale per un ticket scaduto, un servizio sconosciuto e un KDC irraggiungibile.</li>
+<li><strong><code>psql</code>, <code>pg_dump</code> e <code>pg_restore</code></strong> accedono allo stesso modo (<code>PGKRBSRVNAME</code>, <code>PGREQUIREAUTH=gss</code>, e niente <code>PGPASSWORD</code>). La loro copia di libpq deve essere stata compilata con GSSAPI.</li>
+<li><strong>Quali build lo hanno.</strong> I pacchetti per Windows (SSPI) e Linux (GSSAPI, MIT Kerberos). Quelli per macOS no: nessun Mac l&#39;ha ancora compilato, e il modulo lo dice. La feature Cargo <code>kerberos</code> di <code>platypus-driver-pg</code> lo attiva; senza, di Kerberos non si collega e non si esegue nulla.</li>
+<li><strong>La cifratura GSS</strong> (<code>hostgssenc</code>, <code>gssencmode</code>) non si usa: per cifrare usa TLS, con righe <code>hostssl</code> o <code>host</code>. Un <code>krbsrvname</code> in un URL incollato viene lasciato fuori, come ogni altro parametro che l&#39;app non conosce.</li>
+</ul>
+<p><strong>Pooler.</strong> Dietro PgBouncer, Supavisor o il pooler di Neon in transaction mode, scegli <em>Transaction mode</em> nel modulo (o aggiungi <code>pgbouncer=true</code> all&#39;URL). Le istruzioni girano allora senza nome, perché la transazione successiva potrebbe essere su un&#39;altra sessione del server. Il modulo lo suggerisce per gli host che finiscono con <code>.pooler.supabase.com</code> e per gli host Neon con <code>-pooler</code> nel nome. In questa modalità il debugger PL/pgSQL è spento, e le sessioni di sola lettura degli agenti si affidano solo al controllo dell&#39;istruzione.</p>
+<p>Gli altri server hanno riquadri propri, che impostano soltanto dei valori predefiniti:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Riquadro</th><th>Valori predefiniti che imposta</th></tr></thead>
+<tbody>
+<tr><td>CockroachDB</td><td>porta 26257</td></tr>
+<tr><td>YugabyteDB</td><td>porta 5433, utente e database <code>yugabyte</code></td></tr>
+<tr><td>TimescaleDB</td><td>nessuno</td></tr>
+<tr><td>Supabase</td><td>utente e database <code>postgres</code>, TLS <code>require</code></td></tr>
+<tr><td>Neon, AlloyDB</td><td>TLS <code>require</code></td></tr>
+</tbody>
+</table></div>
+<h2 id="privilegi">Privilegi</h2>
+<p>Per esplorare basta ciò che il server mostra al login. Le schede di amministrazione leggono questi:</p>
+<ul>
+<li><strong>Sessioni</strong> e <strong>Lock</strong>: <code>pg_stat_activity</code> e <code>pg_locks</code>. L&#39;app elenca le sessioni client che il server restituisce; quanto delle sessioni e delle istruzioni degli altri utenti il server mostri al login è una regola del server, che l&#39;app non controlla. <em>Annulla istruzione</em> e <em>Chiudi sessione</em> chiamano <code>pg_cancel_backend</code> e <code>pg_terminate_backend</code>; è il server a decidere se il login può farlo.</li>
+<li><strong>Istruzioni più costose</strong>: l&#39;estensione <code>pg_stat_statements</code>. Senza, la scheda dice come attivarla (aggiungerla a <code>shared_preload_libraries</code>, riavviare, <code>CREATE EXTENSION</code>).</li>
+<li><strong>Tabelle e indici</strong>: <code>pg_stat_user_tables</code> e <code>pg_stat_user_indexes</code>.</li>
+<li><strong>Parametri</strong> e <strong>Dashboard</strong>: <code>pg_settings</code>, <code>pg_stat_database</code>, <code>pg_stat_activity</code> e le viste della replica; gli standby sono elencati solo a un membro di <code>pg_monitor</code>. Un valore che il login non può leggere mostra &quot;—&quot; e il motivo.</li>
+<li><strong>Utenti e ruoli</strong>: <code>pg_roles</code> e <code>pg_auth_members</code>; per modificarli servono i diritti che richiedono le istruzioni.</li>
+<li><strong>Manutenzione</strong>: <code>VACUUM</code>, <code>ANALYZE</code> e <code>REINDEX</code> sulla tabella.</li>
+<li><strong>Backup…</strong> e <strong>Ripristina…</strong> eseguono <code>pg_dump</code>, <code>pg_restore</code> e <code>psql</code>, che devono essere nel PATH.</li>
+<li><strong>Debug…</strong> richiede l&#39;estensione <code>pldebugger</code> sul server.</li>
+</ul>
+<h2 id="cosa-funziona">Cosa funziona</h2>
+<ul>
+<li>Modifica dei dati nella griglia, per chiave primaria (o una chiave univoca su colonne non nulle, o una chiave virtuale che imposti tu). Array e valori compositi si modificano un elemento o un campo per riga.</li>
+<li>Transazioni con commit manuale, e istruzioni annullate sul server.</li>
+<li>Explain ed Explain analyze; il piano viene letto dal JSON o dal testo di PostgreSQL.</li>
+<li>Più database per connessione, partizioni, geometrie PostGIS, array e tipi compositi.</li>
+<li>Le importazioni e le copie in PostgreSQL usano <code>COPY</code>.</li>
+<li>Tutte le schede di amministrazione qui sopra, il debugger PL/pgSQL e gli strumenti di schema (editor di tabelle, diagramma ER, confronto).</li>
+</ul>
+<p><strong>CockroachDB e YugabyteDB</strong> si aprono con lo stesso driver, ma l&#39;app capisce di che server si tratta, e gli strumenti del server che si basano sulle viste proprie di PostgreSQL sono spenti: niente schede sessioni, lock, dashboard, istruzioni, tabelle e indici, parametri, utenti o manutenzione, e niente debugger. CockroachDB ha un proprio formato di piano (Explain ed Explain analyze funzionano) e le importazioni passano come istruzioni <code>INSERT</code> invece di <code>COPY</code>. Una tabella di CockroachDB senza chiave si modifica con il suo <code>rowid</code> nascosto. TimescaleDB (testato), Supabase, Neon e AlloyDB (non testati sui servizi) per l&#39;app sono PostgreSQL, con tutto ciò che sta sopra; ciò che un servizio ospitato limita per il tuo ruolo è una sua regola.</p>
+<h2 id="agenti">Agenti</h2>
+<p>Gli agenti di sola lettura e le connessioni di sola lettura aprono la sessione con <code>default_transaction_read_only</code> (PostgreSQL, CockroachDB e YugabyteDB), così è il server stesso a rifiutare le scritture; dietro un pooler in transaction mode c&#39;è solo il controllo dell&#39;istruzione. <code>server_activity</code> e <code>top_queries</code> funzionano su PostgreSQL vero e proprio, non su CockroachDB né su YugabyteDB. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
+<h2 id="limiti-noti">Limiti noti</h2>
+<ul>
+<li>Più vecchio di 12: l&#39;app si connette e avvisa che alcune funzioni potrebbero non funzionare.</li>
+<li>Il debugger è spento dietro un pooler in transaction mode.</li>
+<li>La modalità terminale richiede <code>psql</code> nel PATH.</li>
+</ul>
+<h2 id="testato-su">Testato su</h2>
+<p>La suite di conformance gira su PostgreSQL 12, 14, 16 e 17, TimescaleDB 2.30 su PostgreSQL 17, CockroachDB 26.2 e YugabyteDB 2025.2, più PgBouncer in transaction mode, un certificato client su TLS reciproco, e il debugger su un server con <code>pldebugger</code>. Supabase, Neon e AlloyDB non sono testati: sono il driver PostgreSQL con dei valori predefiniti.</p>
+<p>Kerberos è testato con un ticket vero da un KDC vero (MIT Kerberos, nel profilo <code>kerberos</code> di <code>docker/compose.yml</code>) su PostgreSQL 17, da un client Linux con GSSAPI: un ticket da <code>kinit</code>, un keytab, TLS, <code>psql</code>, nessun ticket, un ticket scaduto e un nome di servizio sbagliato. <strong>L&#39;accesso tramite SSPI di Windows non è stato provato con un ticket vero:</strong> un computer Windows fuori da un dominio non può raggiungere il KDC di prova senza cambiare le impostazioni di sistema (<code>ksetup</code>). Su Windows si testa solo ciò che succede senza un ticket. Neanche una riga <code>sspi</code> del server (PostgreSQL su Windows) è stata provata.</p>
+<p>Vedi anche: <a href="../connect.html">Connettersi</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#connettersi">Connettersi</a>
+    <a href="#privilegi">Privilegi</a>
+    <a href="#cosa-funziona">Cosa funziona</a>
+    <a href="#agenti">Agenti</a>
+    <a href="#limiti-noti">Limiti noti</a>
+    <a href="#testato-su">Testato su</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

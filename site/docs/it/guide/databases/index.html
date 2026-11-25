@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Database</title>
+  <meta name="description" content="Una pagina per ogni database: come connettersi, cosa serve al login, cosa funziona e cosa no, e su quali versioni gira la suite di test. Connettersi spiega…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Per iniziare</a>
+<a href="../index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="../connect.html">Connettersi a un database</a>
+<a href="../queries.html">Eseguire query e leggere i risultati</a>
+<a href="../edit-data.html">Modificare i dati</a>
+<a href="../import-export.html">Importare ed esportare</a>
+<a href="../safety.html">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="../projects-sharing.html">Progetti e condivisione</a>
+<a href="../agents.html">Usare PlatypusDB da un agente</a>
+<a href="../troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="index.html" class="on" aria-current="page">Database</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 e ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Database</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/index.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="../index.html">← Guida</a></p>
+<h1 id="database">Database</h1>
+<p>Una pagina per ogni database: come connettersi, cosa serve al login, cosa funziona e cosa no, e su quali versioni gira la suite di test. <a href="../connect.html">Connettersi</a> spiega le parti comuni a tutti i database (SSH, proxy, il portachiavi, i progetti), <a href="../troubleshooting.html">Risoluzione dei problemi</a> gli errori, e <a href="../../../features.html">FEATURES.md</a> è il riferimento per funzionalità.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Pagina</th><th>Database</th></tr></thead>
+<tbody>
+<tr><td><a href="postgresql.html">PostgreSQL</a></td><td>PostgreSQL, CockroachDB, YugabyteDB, TimescaleDB, Supabase, Neon, AlloyDB</td></tr>
+<tr><td><a href="mysql.html">MySQL</a></td><td>MySQL, MariaDB</td></tr>
+<tr><td><a href="sqlite.html">SQLite</a></td><td>SQLite</td></tr>
+<tr><td><a href="sqlserver.html">SQL Server</a></td><td>SQL Server, Azure SQL</td></tr>
+<tr><td><a href="oracle.html">Oracle</a></td><td>Oracle Database</td></tr>
+<tr><td><a href="clickhouse.html">ClickHouse</a></td><td>ClickHouse</td></tr>
+<tr><td><a href="duckdb.html">DuckDB</a></td><td>DuckDB, e file CSV, JSON, Parquet ed Excel</td></tr>
+<tr><td><a href="libsql.html">libSQL</a></td><td>libSQL (<code>sqld</code>), Turso</td></tr>
+<tr><td><a href="mongodb.html">MongoDB</a></td><td>MongoDB</td></tr>
+<tr><td><a href="redis.html">Redis</a></td><td>Redis</td></tr>
+<tr><td><a href="elasticsearch.html">Elasticsearch</a></td><td>Elasticsearch, OpenSearch</td></tr>
+<tr><td><a href="cassandra.html">Cassandra</a></td><td>Apache Cassandra, ScyllaDB</td></tr>
+<tr><td><a href="adbc.html">ADBC</a></td><td>Snowflake, BigQuery, Databricks, Trino, qualsiasi altro driver ADBC</td></tr>
+<tr><td><a href="db2-odbc.html">Db2 e ODBC</a></td><td>IBM Db2, qualsiasi driver o origine dati ODBC (Windows)</td></tr>
+</tbody>
+</table></div>
+<p>Azure SQL, Supabase, Neon, AlloyDB, il cloud di Turso, Snowflake, BigQuery, Databricks e IBM Db2 sono elencati perché l&#39;app ha per loro un driver, un preset o un riquadro; nessuno ha provato l&#39;app su quei servizi (vedi &quot;Testato su&quot; qui sotto e in ogni pagina).</p>
+<h2 id="cosa-funziona-dove">Cosa funziona dove</h2>
+<p>&quot;Righe&quot; è la modifica nella griglia. &quot;Admin&quot; sono le schede del server di <em>Attività del server…</em> (sessioni, lock, dashboard, istruzioni più costose, tabelle e indici, parametri, utenti e ruoli, manutenzione). Un trattino vuol dire &quot;non disponibile&quot;; &quot;non provato&quot; vuol dire che l&#39;app non lo blocca ma nessuno lo esegue.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Database</th><th>Porta predefinita</th><th>Commit manuale</th><th>Annulla</th><th>Explain</th><th>Righe</th><th>Admin</th></tr></thead>
+<tbody>
+<tr><td>PostgreSQL</td><td>5432</td><td>sì</td><td>sì</td><td>piano, analyze</td><td>sì</td><td>tutto</td></tr>
+<tr><td>CockroachDB, YugabyteDB</td><td>26257, 5433</td><td>sì</td><td>sì</td><td>piano, analyze</td><td>sì</td><td>–</td></tr>
+<tr><td>MySQL, MariaDB</td><td>3306</td><td>sì</td><td>sì</td><td>piano; analyze da MySQL 8.0.18 e su MariaDB</td><td>sì</td><td>tutto</td></tr>
+<tr><td>SQL Server</td><td>1433</td><td>sì</td><td>sì</td><td>piano stimato</td><td>sì</td><td>tutto; chiude le sessioni, non può annullare l&#39;istruzione di un altro</td></tr>
+<tr><td>Oracle</td><td>1521</td><td>sì</td><td>sì</td><td>piano stimato</td><td>sì</td><td>–</td></tr>
+<tr><td>ClickHouse</td><td>8123 (8443 con TLS)</td><td>–</td><td>sì</td><td>piano</td><td>–</td><td>parametri, dashboard, utenti</td></tr>
+<tr><td>SQLite</td><td>un file</td><td>sì</td><td>sì</td><td>piano della query</td><td>sì</td><td>parametri</td></tr>
+<tr><td>DuckDB</td><td>un file</td><td>sì</td><td>sì</td><td>piano, analyze</td><td>sì</td><td>parametri</td></tr>
+<tr><td>libSQL, Turso</td><td>443 (80 senza TLS)</td><td>sì</td><td>–</td><td>piano della query</td><td>sì</td><td>–</td></tr>
+<tr><td>MongoDB</td><td>27017</td><td>–</td><td>sì</td><td>–</td><td>–</td><td>–</td></tr>
+<tr><td>Redis</td><td>6379</td><td>solo <code>MULTI</code>/<code>EXEC</code></td><td>sì</td><td>–</td><td>sì</td><td>–</td></tr>
+<tr><td>Elasticsearch, OpenSearch</td><td>9200</td><td>–</td><td>sì</td><td>–</td><td>sì</td><td>–</td></tr>
+<tr><td>Cassandra, ScyllaDB</td><td>9042</td><td>–</td><td>sì</td><td>–</td><td>sì, per chiave primaria completa</td><td>–</td></tr>
+<tr><td>Snowflake, BigQuery, Databricks, Trino</td><td>vedi la pagina</td><td>–</td><td>sì</td><td>–</td><td>–</td><td>–</td></tr>
+<tr><td>Db2, altri ODBC</td><td>50000 per Db2</td><td>sì</td><td>sì</td><td>–</td><td>non provato</td><td>–</td></tr>
+</tbody>
+</table></div>
+<p>&quot;Admin&quot; è disattivato su CockroachDB e YugabyteDB perché quei server non hanno alcune parti che le schede richiamano (CockroachDB non ha <code>pg_blocking_pids</code> né <code>pg_terminate_backend</code>, YugabyteDB tiene i suoi lock altrove). I database senza SQL (MongoDB, Redis, Elasticsearch, Cassandra) non hanno nemmeno l&#39;editor di tabelle, il diagramma ER, il confronto di schemi, il query builder, l&#39;importazione SQL, gli snapshot prima delle modifiche o i piani delle query; le loro pagine dicono cosa hanno al loro posto.</p>
+<p>Ogni database ha l&#39;editor, la griglia e il navigatore. Le righe nella griglia si trovano con la chiave primaria della tabella, con una chiave univoca su colonne non nulle, o con una <em>chiave virtuale</em> che imposti tu.</p>
+<h2 id="driver-scaricati-al-primo-utilizzo">Driver scaricati al primo utilizzo</h2>
+<p>PostgreSQL, MySQL, SQL Server, SQLite, libSQL, ClickHouse, MongoDB, Redis, Elasticsearch e Cassandra sono integrati nell&#39;app. Gli altri hanno bisogno di una libreria che l&#39;app scarica una volta sola:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Database</th><th>Cosa viene scaricato</th><th>Da dove</th></tr></thead>
+<tbody>
+<tr><td>DuckDB</td><td>la libreria di DuckDB, 2.0.0</td><td>la release di DuckDB su GitHub</td></tr>
+<tr><td>Oracle</td><td>Oracle Instant Client, Basic Light 23.26.4 (Windows, Linux; non macOS)</td><td>Oracle</td></tr>
+<tr><td>IBM Db2</td><td>IBM Data Server Driver for ODBC and CLI 12.1.4 (Windows)</td><td>IBM</td></tr>
+<tr><td>Snowflake, BigQuery, Databricks, Trino</td><td>il loro driver ADBC</td><td>il registro dei driver dbc (Columnar)</td></tr>
+</tbody>
+</table></div>
+<p><strong>Quando scegli il database</strong> per una nuova connessione, e la libreria non è su questo computer, si apre sopra il modulo un popup che dice cos&#39;è, la sua versione e dimensione, la sua licenza e da dove viene, e che il download viene verificato con uno SHA-256. <strong>Scarica</strong> la scarica (Windows chiede il permesso di amministratore per registrare il driver di IBM); <strong>Annulla</strong> lascia il modulo utilizzabile. L&#39;offerta ritorna a <em>Prova la connessione</em> e alla prima apertura. Il controllo legge solo questo computer, quindi compare anche offline, mentre il download ha bisogno della rete. <em>Impostazioni › Driver</em> elenca, aggiorna e rimuove ciò che è stato scaricato.</p>
+<h2 id="versioni">Versioni</h2>
+<p>La versione più vecchia con cui si controlla ogni database, e su cosa gira la suite di conformance (<code>docker/compose.yml</code> e il profilo <code>versions</code>). Un server più vecchio del minimo si connette con un avviso che alcune funzioni potrebbero non funzionare, tranne Cassandra, ScyllaDB, Elasticsearch e OpenSearch, che lo rifiutano.</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Database</th><th>Minimo</th><th>La suite gira su</th></tr></thead>
+<tbody>
+<tr><td>PostgreSQL</td><td>12</td><td>12, 14, 16, 17</td></tr>
+<tr><td>MySQL</td><td>5.7</td><td>5.7, 8.0, 8.4</td></tr>
+<tr><td>MariaDB</td><td>10.6</td><td>10.6, 11.4</td></tr>
+<tr><td>SQL Server</td><td>2017</td><td>2017, 2022</td></tr>
+<tr><td>MongoDB</td><td>5.0</td><td>5.0, 8.0</td></tr>
+<tr><td>Redis</td><td>6.0</td><td>Redis Stack 7.4</td></tr>
+<tr><td>Elasticsearch, OpenSearch</td><td>7.10, 1.0</td><td>8.15.3, 2.17.1</td></tr>
+<tr><td>Cassandra, ScyllaDB</td><td>4.0, 5.4</td><td>5, 2025.1</td></tr>
+<tr><td>ClickHouse</td><td>nessuno</td><td>26.3</td></tr>
+<tr><td>TimescaleDB, CockroachDB, YugabyteDB</td><td>nessuno</td><td>2.30 (su PostgreSQL 17), 26.2, 2025.2</td></tr>
+<tr><td>libSQL (<code>sqld</code>)</td><td>nessuno</td><td>0.24.33</td></tr>
+<tr><td>Oracle</td><td>nessuno</td><td>Free 23.26</td></tr>
+<tr><td>Trino</td><td>nessuno</td><td>484</td></tr>
+<tr><td>SQLite, DuckDB</td><td>nessuno</td><td>la versione integrata nell&#39;app, DuckDB 2.0</td></tr>
+</tbody>
+</table></div>
+<p>Per niente testati: Azure SQL, Supabase, Neon, AlloyDB, il cloud di Turso, Snowflake, BigQuery, Databricks e IBM Db2.</p>
+<h2 id="agenti">Agenti</h2>
+<p><a href="../../../agents.html">Agenti e la CLI</a> funziona su tutti i database qui sopra. Le differenze sono in ogni pagina: come si crea una sessione di sola lettura (il server rifiuta le scritture su PostgreSQL, CockroachDB, YugabyteDB, MySQL, MariaDB, SQLite, DuckDB e ClickHouse; ovunque altrove c&#39;è solo il controllo dell&#39;istruzione), e cosa viene rifiutato (<code>explain</code> su MongoDB, Redis, Elasticsearch e Cassandra; <code>get_er_diagram</code> su MongoDB, Redis ed Elasticsearch; <code>propose_edits</code> dovunque la griglia non modifichi le righe per chiave: Redis, Elasticsearch, Cassandra, ClickHouse e i database ADBC; su MongoDB nomina i documenti per <code>_id</code>). <code>server_activity</code> e <code>top_queries</code> funzionano su PostgreSQL, MySQL, MariaDB e SQL Server.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#cosa-funziona-dove">Cosa funziona dove</a>
+    <a href="#driver-scaricati-al-primo-utilizzo">Driver scaricati al primo utilizzo</a>
+    <a href="#versioni">Versioni</a>
+    <a href="#agenti">Agenti</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

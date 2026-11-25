@@ -8,6 +8,11 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ### Added
 
+- **The user guide in Italian**: the Help dialog shows each guide page in the app's language when
+  it is translated (all 25 pages are, in Italian) and in English otherwise; the site has the
+  Italian pages at `docs/it/guide/` with a language list on each page. Translations live in
+  `docs/user/translations/<lang>/guide/`, and `scripts/guide-translations.mjs` lists the pages
+  that are missing or out of date.
 - **JDBC drivers the app downloads**: a new "JDBC driver" connection (in the new-connection picker and
   the Driver list) opens any database that has a JDBC driver, with a catalog that the app downloads
   from Maven Central when a version is chosen, as it does for Db2: H2, HSQLDB, Firebird (Jaybird),

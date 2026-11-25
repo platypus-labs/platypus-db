@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · MongoDB</title>
+  <meta name="description" content="Il driver è quello ufficiale di MongoDB per Rust (con rustls, quindi senza OpenSSL). Apre MongoDB 5.0 e successivi. L&#39;editor accetta la sintassi di mongosh,…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Per iniziare</a>
+<a href="../index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="../connect.html">Connettersi a un database</a>
+<a href="../queries.html">Eseguire query e leggere i risultati</a>
+<a href="../edit-data.html">Modificare i dati</a>
+<a href="../import-export.html">Importare ed esportare</a>
+<a href="../safety.html">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="../projects-sharing.html">Progetti e condivisione</a>
+<a href="../agents.html">Usare PlatypusDB da un agente</a>
+<a href="../troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="index.html">Database</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub on" aria-current="page">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 e ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / MongoDB</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/mongodb.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="index.html">← Database</a></p>
+<h1 id="mongodb">MongoDB</h1>
+<p>Il driver è quello ufficiale di MongoDB per Rust (con rustls, quindi senza OpenSSL). Apre MongoDB 5.0 e successivi. L&#39;editor accetta la <strong>sintassi di mongosh</strong>, non SQL. Il driver fa parte dell&#39;app; non si scarica nulla.</p>
+<h2 id="connessione">Connessione</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Incolli</th><th>Lo legge come</th></tr></thead>
+<tbody>
+<tr><td><code>mongodb://user:pass@host:27017/shop?authSource=admin&amp;replicaSet=rs0</code></td><td>la forma URL; porta predefinita 27017</td></tr>
+<tr><td><code>mongodb://a:27017,b:27018/?authSource=admin</code></td><td>un elenco di seed, tenuto intero nel campo Host</td></tr>
+<tr><td><code>mongodb+srv://user:pass@cluster0.example.net/shop</code></td><td>SRV: gli host vengono dal DNS</td></tr>
+</tbody>
+</table></div>
+<p>Quello che non entra nei campi del modulo va nel <strong>campo Database</strong>, dopo un <code>?</code>, come opzioni della stringa di connessione: <code>shop?authSource=admin&amp;replicaSet=rs0</code>, con <code>srv=true</code> per <code>mongodb+srv</code>. Il nome prima del <code>?</code> è il database in cui girano le istruzioni finché <code>use</code> non lo cambia (<code>test</code> se è vuoto).</p>
+<ul>
+<li><strong>Accesso</strong>: utente e password, autenticati su <code>admin</code> salvo diversa indicazione di <code>authSource</code>. Un URL incollato il cui percorso nomina un database lo usa come auth source, come dice la specifica della stringa di connessione. Le opzioni che contengono un segreto (una password in <code>authMechanismProperties</code>, per esempio) non vengono conservate quando incolli un URL; il modulo elenca quello che ha lasciato fuori.</li>
+<li><strong>TLS</strong>: <code>tls=true</code> o <code>ssl=true</code> nell&#39;URL significa <code>verify-full</code>; <code>tls=false</code> significa <code>disable</code>. MongoDB non ha un TLS opportunistico, quindi <code>prefer</code> (il predefinito) mantiene quello che la stringa di connessione implica: TLS attivo per <code>mongodb+srv</code>, disattivo negli altri casi. <code>require</code> attiva il TLS e accetta qualsiasi certificato; <code>verify-ca</code> e <code>verify-full</code> controllano entrambi la catena e il nome dell&#39;host. <code>sslrootcert</code> (o <code>tlsCAFile</code>) indica il file della tua CA; un certificato client si può dare nel modulo, oppure con <code>tlsCertificateKeyFile</code> nel campo Database. Le opzioni TLS della stringa di connessione vengono mantenute in ogni modalità.</li>
+<li><strong>Con un tunnel SSH</strong> si raggiunge solo il server che ci sta dietro (<code>directConnection=true</code>).</li>
+</ul>
+<h2 id="privilegi">Privilegi</h2>
+<p>Il navigator elenca i database e le collection che l&#39;utente può elencare, e campiona i documenti per mostrare i campi. Non si legge altro per l&#39;amministrazione: non ci sono schede di amministrazione. Le istruzioni che scrivi richiedono i ruoli che richiedono.</p>
+<h2 id="cosa-funziona">Cosa funziona</h2>
+<ul>
+<li><p>Istruzioni in sintassi mongosh, con i valori della shell (<code>ObjectId(...)</code>, <code>ISODate(...)</code>, <code>NumberLong(...)</code>, <code>/regex/i</code>) ed Extended JSON:</p>
+<ul>
+<li><strong>Lettura</strong>: <code>find</code> con <code>sort</code>, <code>limit</code>, <code>skip</code>, <code>projection</code>, <code>collation</code>, <code>hint</code>, <code>min</code>, <code>max</code>, <code>maxTimeMS</code>, <code>readConcern</code> e simili, <code>findOne</code>, <code>aggregate</code>, <code>countDocuments</code>, <code>estimatedDocumentCount</code>, <code>distinct</code>.</li>
+<li><strong>Scrittura</strong>: <code>insertOne</code>/<code>insertMany</code>, <code>updateOne</code>/<code>updateMany</code>, <code>replaceOne</code>, <code>deleteOne</code>/<code>deleteMany</code>, <code>bulkWrite</code>, <code>findOneAndUpdate</code>/<code>findOneAndReplace</code>/<code>findOneAndDelete</code> e <code>findAndModify</code>, con le loro opzioni (<code>arrayFilters</code>, <code>collation</code>, <code>hint</code>, <code>let</code>, <code>upsert</code>, <code>ordered</code>, <code>writeConcern</code>). Un&#39;opzione che PlatypusDB non conosce viene rifiutata per nome, mai scartata.</li>
+<li><strong>Indici e collection</strong>: <code>createIndex</code>, <code>createIndexes</code>, <code>dropIndex</code>, <code>dropIndexes</code>, <code>hideIndex</code>, <code>unhideIndex</code>, <code>getIndexes</code>, <code>createCollection</code>, <code>createView</code>, <code>drop</code>, <code>renameCollection</code>, <code>convertToCapped</code>, <code>stats</code>, <code>validate</code>, <code>latencyStats</code>, <code>dataSize</code>, <code>storageSize</code>, <code>totalIndexSize</code>, <code>totalSize</code>, <code>isCapped</code>, <code>exists</code>.</li>
+<li><strong>Piani</strong>: <code>.explain()</code> dopo un&#39;istruzione o <code>db.c.explain().find(…)</code> prima, con una verbosity, e l&#39;<strong>Explain</strong> dell&#39;editor. Un piano non applica mai una scrittura.</li>
+<li><strong>Il server</strong>: <code>db.runCommand</code>, <code>db.adminCommand</code>, <code>db.aggregate</code>, <code>db.serverStatus</code>, <code>db.currentOp</code>, <code>db.killOp</code>, il profiler, utenti e ruoli (<code>db.createUser</code> e simili), <code>rs.status</code>, <code>rs.conf</code>, <code>sh.status</code>, <code>show dbs</code>, <code>show collections</code>, <code>show users</code>, <code>show roles</code>, <code>show profile</code>, <code>show logs</code> e <code>use</code>.</li>
+</ul></li>
+<li>I risultati sono una griglia dei campi di primo livello, con il documento selezionato come albero accanto (<code>F7</code>). Il navigator elenca database, collection, campi campionati dai documenti e indici; l&#39;editor completa collection, metodi e campi.</li>
+<li>Annulla ferma un&#39;istruzione in corso; un risultato abbandonato libera la connessione.</li>
+<li><strong>Commit manuale</strong> su un replica set o un cluster shardato (vedi <a href="#transazioni">Transazioni</a>).</li>
+<li><strong>Modifica dei documenti nella griglia</strong> (vedi <a href="#modifica-i-documenti-nella-griglia">Modifica i documenti nella griglia</a>).</li>
+<li>La definizione di una collection come DDL.</li>
+<li><strong>Genera dati</strong> riempie una collection con documenti finti.</li>
+<li>Lo stesso dettaglio è in <a href="../../../features.html#mongodb">FEATURES.md</a>.</li>
+</ul>
+<h2 id="cosa-non-funziona">Cosa non funziona</h2>
+<ul>
+<li><strong>Solo alcuni risultati si modificano nella griglia</strong>: i documenti di una sola collection (vedi <a href="#modifica-i-documenti-nella-griglia">Modifica i documenti nella griglia</a>). Ogni altro risultato, come un&#39;aggregazione, una vista o un <code>findOne</code>, resta in sola lettura. Cambia quei documenti con <code>updateOne</code>, <code>insertOne</code> e simili.</li>
+<li><strong>Nessuna transazione su un server standalone</strong>: MongoDB le esegue solo su un replica set o un cluster shardato. Lì il commit manuale viene rifiutato, e lo dice.</li>
+<li><strong>Niente JavaScript</strong>: l&#39;editor esegue istruzioni, quindi <code>forEach</code>, <code>map</code>, <code>next</code>, <code>mapReduce</code>, i vecchi bulk builder (usa <code>bulkWrite</code>) e le variabili vengono rifiutati, e lo dicono. Anche <code>watch</code> è rifiutato: un change stream prenderebbe il controllo della connessione. Un <code>.comment()</code> su una lettura viene omesso: lo usa l&#39;app stessa per trovare l&#39;operazione da annullare.</li>
+<li><code>bulkWrite</code> non è atomico, come in mongosh: quello che è girato prima di un errore resta, e l&#39;errore dice fin dove è arrivato. Gli insert vicini viaggiano insieme, ogni altra scrittura per conto suo.</li>
+<li>Niente SQL: niente editor delle tabelle, diagramma ER, confronto degli schemi, query builder, importazione SQL, snapshot prima delle modifiche, né modalità terminale (<code>mongosh</code> accetta la password solo sulla sua riga di comando).</li>
+</ul>
+<h2 id="modifica-i-documenti-nella-griglia">Modifica i documenti nella griglia</h2>
+<p>La griglia modifica il risultato di un semplice <code>find</code> su una collection: il visualizzatore dei dati, o un&#39;istruzione che scrivi tu, come <code>db.orders.find({ status: &#39;paid&#39; }).sort({ _id: 1 }).limit(20)</code>. La collection si può nominare con <code>getCollection(&quot;my orders&quot;)</code> o <code>db.getSiblingDB(&quot;shop&quot;).orders</code>. Dopo <code>use</code>, la collection è quella del database a cui sei passato. Una projection va bene se elenca soltanto campi da includere e tiene <code>_id</code>. Viste, aggregazioni, <code>findOne</code>, <code>distinct</code>, conteggi, una projection senza <code>_id</code> e una projection che esclude dei campi restano in sola lettura.</p>
+<p>Un documento si trova dal suo <code>_id</code>. Un risultato senza <code>_id</code> è in sola lettura. <strong>Anteprima dell&#39;SQL</strong> mostra il mongosh che verrà eseguito, un&#39;istruzione per documento:</p>
+<ul>
+<li>un documento modificato è <code>updateOne({ _id: … }, { $set: { … } })</code>. Una cella NULL scrive <code>null</code>. Quando un numero cambia, l&#39;update diventa invece una pipeline, <code>[{ $set: { … } }]</code>: il numero è scritto con uno <code>$switch</code> sul tipo che il documento memorizza (vedi sotto), e ogni altro valore come <code>$literal</code>, così una stringa come <code>$total</code> o un documento con chiavi <code>$</code> viene salvato com&#39;è;</li>
+<li>un documento nuovo è <code>insertOne({ … })</code>. Le celle lasciate NULL non vengono inviate. Senza <code>_id</code>, l&#39;app crea un <code>ObjectId</code>;</li>
+<li>un documento eliminato è <code>deleteOne({ _id: … })</code>.</li>
+</ul>
+<p>I valori sono scritti con il tipo BSON della loro colonna: <code>bool</code>, <code>string</code>, <code>objectId</code>, <code>date</code>, e <code>document</code> e <code>array</code> dal JSON che mostra la griglia. Una data si scrive come <code>2024-01-02 10:30:00</code>, con o senza fuso orario (UTC se manca). I numeri dentro un documento o un array mantengono il tipo che dà loro il JSON: un numero intero è un int (un long oltre i 32 bit), un numero con una frazione o un esponente un double.</p>
+<p>Un numero mantiene il tipo che il documento memorizza, <code>int</code>, <code>long</code>, <code>double</code> o <code>decimal</code>, ogni volta che quel tipo contiene esattamente il nuovo valore: il tipo di una colonna è solo ciò che i suoi documenti hanno in comune (int e long fanno una colonna <code>long</code>, uno qualsiasi dei due con dei double una colonna <code>double</code>), quindi non dice cosa contiene un singolo documento. Un int modificato in <code>7</code> resta un int, un long un long, un double un double. Un valore che il tipo memorizzato non può contenere prende il tipo della colonna, o il primo tipo numerico che lo contiene: <code>3.5</code> in un campo int diventa un double, <code>3000000000</code> un long. Un long oltre 2^53 non viene mai scritto come double, perché perderebbe cifre. Sul server non si converte nulla: l&#39;app scrive il numero solo nei tipi che sa contenerlo esattamente.</p>
+<p>Queste operazioni vengono rifiutate prima che giri qualsiasi cosa, con il motivo:</p>
+<ul>
+<li>una modifica a <code>_id</code>: MongoDB non lo cambia mai. Elimina il documento e inseriscilo di nuovo;</li>
+<li>una colonna di tipi misti (<code>mixed</code>): il testo di un valore non distingue una stringa da un numero;</li>
+<li>i dati binari e gli altri tipi che la griglia non sa riscrivere esattamente (espressioni regolari, timestamp, JavaScript);</li>
+<li>un campo con un <code>.</code> nel nome o con un nome che inizia per <code>$</code>: <code>$set</code> lo leggerebbe come un percorso o un operatore;</li>
+<li>un valore che non rientra nel suo tipo, come <code>many</code> in una colonna <code>int</code> o un array in una colonna <code>document</code>.</li>
+</ul>
+<p>Ogni istruzione deve cambiare esattamente un documento. Se una non ne trova nessuno, perché il documento è stato eliminato o il suo <code>_id</code> è cambiato da quando la griglia l&#39;ha letto, il salvataggio si ferma e dice quale comando.</p>
+<p><strong>Tutto o niente richiede un replica set.</strong> Su un replica set o un cluster shardato, un salvataggio gira in una transazione tutta sua e fa commit solo se ogni comando è riuscito. Se hai una transazione aperta (commit manuale), il salvataggio gira al suo interno e aspetta il Commit. Se un comando fallisce, MongoDB non ha savepoint: l&#39;intera transazione viene annullata, insieme alle modifiche che non avevi ancora confermato, e l&#39;errore lo dice. Su un server standalone non ci sono transazioni: i comandi girano uno dopo l&#39;altro, e un errore ferma i restanti. I comandi prima dell&#39;errore restano salvati, e l&#39;errore dice quanti.</p>
+<p>Lo script di annullamento che segue un salvataggio rimette a posto i documenti: <code>$set</code> dei vecchi valori per le modifiche, <code>deleteOne</code> per i documenti nuovi, <code>insertOne</code> dei campi caricati per quelli eliminati. Le righe che iniziano con <code>//</code> dicono cosa non può ripristinare esattamente: i campi che il risultato non mostrava, le colonne di tipi che la griglia non sa scrivere, i campi che erano NULL (tornano come <code>null</code>, o vengono omessi) e i numeri il cui tipo la modifica può aver cambiato (tornano come numeri del tipo che hanno allora, con lo stesso <code>$switch</code>).</p>
+<h2 id="transazioni">Transazioni</h2>
+<p>Il commit manuale funziona su un replica set o un cluster shardato (un <code>mongos</code>); basta un replica set con un solo nodo. Su un server standalone viene rifiutato: il pulsante <strong>Auto-commit</strong> è disabilitato e ne spiega il motivo. Una connessione di produzione a un replica set si apre in commit manuale, con Commit e Rollback. La connessione tiene una sola sessione: la prima modifica dopo il passaggio al commit manuale, o dopo un Commit o un Rollback, apre una transazione al suo interno (un insert, update o delete, <code>createCollection</code>, <code>createIndex</code>, un salvataggio della griglia), e Commit o Rollback la chiude. Le letture prima non ne aprono nessuna: vedono ciò che è confermato, come in auto-commit, così sfogliare i dati non lascia mai una transazione aperta che il server chiuderebbe allo scadere della sua durata. Quando una transazione è aperta, le tue letture girano al suo interno e vedono le sue scritture; le altre sessioni le vedono solo dopo il Commit.</p>
+<ul>
+<li><strong>Nella transazione</strong>, quando ce n&#39;è una aperta (le letture) o la aprono (il resto): <code>find</code>, <code>findOne</code>, <code>aggregate</code>, <code>countDocuments</code>, <code>distinct</code>, gli insert, gli update, i replace e i delete, <code>bulkWrite</code>, i metodi <code>findOneAnd…</code>, <code>createCollection</code> e <code>createIndex</code>, e <code>db.runCommand</code> o <code>db.adminCommand</code> con un comando che legge o scrive documenti (<code>find</code>, <code>aggregate</code>, <code>insert</code>, <code>update</code>, <code>delete</code>, <code>findAndModify</code>, …). MongoDB accetta un indice in una transazione solo su una collection creata nella stessa transazione: su una già esistente, il server lo rifiuta e chiude la transazione.</li>
+<li><strong>Fuori da essa</strong>, come in modalità auto-commit, senza toccarla: ciò che legge metadati o parla con il server. <code>show …</code>, <code>use</code>, <code>db.stats()</code>, <code>db.getCollectionNames()</code>, <code>getIndexes</code>, le statistiche della collection, <code>estimatedDocumentCount</code>, <code>.explain()</code>, gli altri comandi di <code>db.runCommand</code> e <code>db.adminCommand</code>, <code>rs.*</code>, <code>sh.*</code>, utenti e ruoli, il profiler, il navigator e il completamento. Anche le letture dei database <code>admin</code>, <code>config</code> e <code>local</code> e delle collection <code>system.*</code> girano fuori.</li>
+<li><strong>Rifiutati in commit manuale</strong>: <code>drop</code>, <code>renameCollection</code>, <code>dropIndex</code>, <code>dropIndexes</code>, <code>hideIndex</code>, <code>convertToCapped</code>, <code>createView</code>, un <code>createCollection</code> time-series, un <code>aggregate</code> con <code>$out</code> o <code>$merge</code>, e le scritture su <code>admin</code>, <code>config</code>, <code>local</code> o <code>system.*</code>. MongoDB non li esegue in una transazione, e se girassero fuori si applicherebbero subito, cosa che il Rollback non potrebbe annullare. L&#39;errore lo dice; non viene inviato nulla e la transazione aperta resta com&#39;era. Passa all&#39;auto-commit per eseguirli.</li>
+<li>Un risultato letto in una transazione continua a caricarsi mentre scorri, un batch alla volta, e nel frattempo possono girare altre istruzioni. Un risultato letto prima che la transazione si aprisse continua a caricarsi fuori da essa. Le sue colonne vengono dai suoi primi documenti. Dopo un Commit o un Rollback il resto non si può più leggere: esegui di nuovo l&#39;istruzione.</li>
+</ul>
+<p><strong>Quando il server chiude una transazione.</strong> MongoDB interrompe una transazione che resta aperta più di <code>transactionLifetimeLimitSeconds</code>, 60 secondi per impostazione predefinita. Ne interrompe una anche per alcuni errori: una chiave duplicata, un conflitto di scrittura con un&#39;altra sessione, un&#39;istruzione che rifiuta in una transazione, un limite di tempo (<code>maxTimeMS</code>) raggiunto. Altri errori, come una fase di pipeline sconosciuta, la lasciano aperta. Dopo un errore PlatypusDB chiede al server se la transazione esiste ancora. Quando non esiste più, l&#39;errore dell&#39;istruzione o del Commit dice che il server ha chiuso la transazione e che le sue modifiche sono state scartate (con il limite di tempo, quando è stato quello il motivo), la transazione risulta chiusa, e l&#39;istruzione successiva ne apre una nuova. Annullare un&#39;istruzione in una transazione fa il rollback della transazione: il server chiude una transazione la cui operazione viene terminata, e ciò che l&#39;istruzione ha fatto non è noto.</p>
+<h2 id="agenti">Agenti</h2>
+<p><code>run_query</code>, <code>sample_rows</code> (<code>find({}).limit(n)</code>) e gli altri funzionano con istruzioni mongosh; di un&#39;istruzione che non è una semplice query si chiede prima. Rifiutati su MongoDB: <code>explain</code>, <code>get_er_diagram</code> e <code>query_across_databases</code>; <code>estimate_change</code> risponde con una nota.</p>
+<p><code>propose_edits</code> propone documenti da inserire, aggiornare o eliminare in una collection (non una vista): la collection si apre nel suo visualizzatore dei dati con un <code>find</code> degli <code>_id</code> proposti e le modifiche in sospeso, che salvi o scarti come se fossero tue. Un documento si indica solo con <code>_id</code>; un <code>_id</code> di tipo <code>ObjectId</code> viene inviato come le sue 24 cifre esadecimali e letto come <code>ObjectId</code> perché l&#39;<code>_id</code> della collection lo è. I valori vengono controllati con le regole del salvataggio della griglia (vedi sopra), prima che si apra qualsiasi cosa. Le colonne sensibili sono mascherate solo per campo di primo livello: un campo sensibile dentro un documento non viene distinto. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
+<h2 id="limiti-noti">Limiti noti</h2>
+<ul>
+<li>Versioni precedenti alla 5.0: si connette con un avviso che alcune funzioni potrebbero non funzionare.</li>
+<li>Il driver è un pool che si riconnette da solo, quindi una connessione persa non viene segnalata come per gli altri database.</li>
+</ul>
+<h2 id="testato-su">Testato su</h2>
+<p>La conformance suite gira su MongoDB 5.0 e 8.0: informazioni sul server, metadati, annullamento, risultati abbandonati, errori con la loro posizione, documenti finti, e valori nei documenti successivi che differiscono dal primo. Le transazioni sono testate su un replica set con un solo nodo di MongoDB 8.0: commit, rollback, letture dentro e fuori, un risultato di più batch, metadati in commit manuale, e una transazione che il server ha chiuso per il limite di tempo.</p>
+<p>Vedi anche: <a href="../connect.html">Connettersi</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#connessione">Connessione</a>
+    <a href="#privilegi">Privilegi</a>
+    <a href="#cosa-funziona">Cosa funziona</a>
+    <a href="#cosa-non-funziona">Cosa non funziona</a>
+    <a href="#modifica-i-documenti-nella-griglia">Modifica i documenti nella griglia</a>
+    <a href="#transazioni">Transazioni</a>
+    <a href="#agenti">Agenti</a>
+    <a href="#limiti-noti">Limiti noti</a>
+    <a href="#testato-su">Testato su</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

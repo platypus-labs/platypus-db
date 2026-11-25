@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Modificare i dati</title>
+  <meta name="description" content="Modifiche in sospeso nell&#39;editor dei dati">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Per iniziare</a>
+<a href="index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="connect.html">Connettersi a un database</a>
+<a href="queries.html">Eseguire query e leggere i risultati</a>
+<a href="edit-data.html" class="on" aria-current="page">Modificare i dati</a>
+<a href="import-export.html">Importare ed esportare</a>
+<a href="safety.html">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="projects-sharing.html">Progetti e condivisione</a>
+<a href="agents.html">Usare PlatypusDB da un agente</a>
+<a href="troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="databases/index.html">Database</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Modificare i dati</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/edit-data.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="index.html">← Guida utente</a></p>
+<h1 id="modificare-i-dati">Modificare i dati</h1>
+<p><img src="../../../img/screenshots/data-editor.png" alt="Modifiche in sospeso nell&#39;editor dei dati" loading="lazy"></p>
+<h2 id="modificare-le-righe-nella-griglia">Modificare le righe nella griglia</h2>
+<ol>
+<li>Apri una tabella dal navigatore, oppure esegui una query che legge una sola tabella.</li>
+<li>Fai doppio clic su una cella, premi <code>F2</code>, o semplicemente scrivi, per modificarla. <code>Shift+Delete</code> imposta a NULL le celle selezionate.</li>
+<li><code>Insert</code> aggiunge una riga, <code>Ctrl+D</code> duplica quella selezionata, <code>Delete</code> la elimina.</li>
+<li>Le modifiche restano evidenziate finché non salvi. Usa <strong>Anteprima dell&#39;SQL</strong> per leggere le istruzioni.</li>
+<li>Premi <code>Ctrl+S</code> (o <strong>Salva le modifiche</strong>) per salvarle tutte, oppure nessuna se una fallisce. <code>Ctrl+Z</code> annulla le modifiche non ancora salvate.</li>
+</ol>
+<p>Ogni salvataggio lascia uno script di annullamento che rimette a posto le righe. In modalità commit manuale le modifiche entrano nella transazione aperta.</p>
+<h2 id="quando-la-griglia-è-in-sola-lettura">Quando la griglia è in sola lettura</h2>
+<p>Una tabella ha bisogno di una chiave primaria, o di una chiave univoca su colonne non nulle, o di una chiave virtuale che scegli tu; altrimenti la griglia dice perché non si può modificare. Una connessione può anche vietare la modifica dei dati (pagina <strong>Aspetto e sicurezza</strong> delle sue impostazioni): le righe allora cambiano solo con SQL.</p>
+<h2 id="modificare-documenti-chiavi-e-righe-senza-sql">Modificare documenti, chiavi e righe senza SQL</h2>
+<p>Si modificano anche i risultati di Redis, Elasticsearch, Cassandra e MongoDB, con i loro comandi invece dell&#39;SQL: <strong>Anteprima dell&#39;SQL</strong> li mostra. Su MongoDB il risultato di un semplice <code>find</code> su una sola collezione si modifica per <code>_id</code>. Ogni modifica è una <code>updateOne</code>, <code>insertOne</code> o <code>deleteOne</code>, scritta con il tipo BSON della colonna; un numero modificato mantiene il tipo numerico che il documento memorizza, quando quel tipo lo contiene esattamente. La modifica di <code>_id</code>, di colonne di tipi misti e di campi con un <code>.</code> nel nome viene rifiutata, con il motivo. Su un replica set un salvataggio è tutto o niente; su un server standalone i comandi vengono eseguiti uno dopo l&#39;altro e l&#39;errore dice quanti sono stati salvati. Vedi <a href="databases/mongodb.html#modifica-i-documenti-nella-griglia">MongoDB</a>.</p>
+<h2 id="modificare-molte-celle-insieme">Modificare molte celle insieme</h2>
+<p>Seleziona le celle e usa <strong>Modifica la selezione</strong> nel menu della griglia: un valore, NULL o DEFAULT in ogni cella, trova e sostituisci nelle celle di testo, o una sequenza di numeri. <code>Ctrl+Alt+D</code> riempie verso il basso a partire dalla prima riga (<code>⌃⇧D</code> su macOS). Cambiano solo le righe caricate nella griglia, e il risultato sono modifiche in sospeso che vedi in anteprima, salvi o annulli insieme.</p>
+<p>Incolla da un foglio di calcolo con <code>Ctrl+V</code> sulle celle, oppure con <code>Ctrl+Shift+V</code> come nuove righe.</p>
+<h2 id="caricare-un-file-in-una-cella">Caricare un file in una cella</h2>
+<p>Dal menu della griglia, o dal pulsante <code>…</code> dell&#39;editor della cella: i byte vanno nelle colonne binarie e il testo UTF-8 nelle colonne di testo. I file oltre 50 MB chiedono prima conferma; quelli oltre 200 MB vengono rifiutati.</p>
+<h2 id="righe-proposte-da-un-agente">Righe proposte da un agente</h2>
+<p>Quando un agente chiama <code>propose_edits</code>, la tabella si apre nel suo visualizzatore di dati con le righe proposte come modifiche in sospeso, colorate come le tue. Non viene scritto nulla finché non le salvi; scartale per rifiutarle. Vedi <a href="agents.html">Agenti</a>.</p>
+<h2 id="altro">Altro</h2>
+<p>Chiavi esterne, array, l&#39;editor delle tabelle (colonne, chiavi, indici) e i dati finti sono in <a href="../../features.html#data-editor">FEATURES.md</a>. Le connessioni di produzione chiedono conferma per ogni modifica: vedi <a href="safety.html">Sicurezza</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#modificare-le-righe-nella-griglia">Modificare le righe nella griglia</a>
+    <a href="#quando-la-griglia-è-in-sola-lettura">Quando la griglia è in sola lettura</a>
+    <a href="#modificare-documenti-chiavi-e-righe-senza-sql">Modificare documenti, chiavi e righe senza SQL</a>
+    <a href="#modificare-molte-celle-insieme">Modificare molte celle insieme</a>
+    <a href="#caricare-un-file-in-una-cella">Caricare un file in una cella</a>
+    <a href="#righe-proposte-da-un-agente">Righe proposte da un agente</a>
+    <a href="#altro">Altro</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>
