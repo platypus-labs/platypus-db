@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · IBM Db2 y ODBC (Windows)</title>
+  <meta name="description" content="A Db2, y a cualquier base de datos con un driver ODBC o un origen de datos (DSN), se llega mediante el administrador de drivers ODBC del sistema. Por ahora…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Primeros pasos</a>
+<a href="../index.html">Guía del usuario</a>
+<h6>Guide</h6>
+<a href="../connect.html">Conectar a una base de datos</a>
+<a href="../queries.html">Ejecutar consultas y leer los resultados</a>
+<a href="../edit-data.html">Editar datos</a>
+<a href="../import-export.html">Importar y exportar</a>
+<a href="../safety.html">Trabajar con seguridad: producción, solo lectura, confirmaciones, enmascarado</a>
+<a href="../projects-sharing.html">Proyectos y uso compartido</a>
+<a href="../agents.html">Usar PlatypusDB desde un agente</a>
+<a href="../troubleshooting.html">Solución de problemas y preguntas frecuentes</a>
+<a href="index.html">Bases de datos</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub on" aria-current="page">Db2 y ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / IBM Db2 y ODBC (Windows)</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/db2-odbc.html" lang="en" hreflang="en">English</a> · <a href="../../../de/guide/databases/db2-odbc.html" lang="de" hreflang="de">Deutsch</a> · <span lang="es">Español</span> · <a href="../../../fr/guide/databases/db2-odbc.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/db2-odbc.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/db2-odbc.html" lang="pt" hreflang="pt">Português</a> · <a href="../../../zh/guide/databases/db2-odbc.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Bases de datos</a></p>
+<h1 id="ibm-db2-y-odbc-windows">IBM Db2 y ODBC (Windows)</h1>
+<p>A Db2, y a cualquier base de datos con un driver ODBC o un origen de datos (DSN), se llega mediante el administrador de drivers ODBC del sistema. Por ahora esto funciona <strong>solo en Windows</strong>: en macOS y Linux una conexión de Db2 u ODBC dice que a los drivers ODBC solo se llega en Windows.</p>
+<h2 id="primer-uso-el-driver-odbc-de-ibm-db2">Primer uso: el driver ODBC de IBM (Db2)</h2>
+<p>Cuando eliges <strong>IBM Db2</strong> para una conexión nueva y no hay ningún driver ODBC de IBM registrado en este equipo, se abre una ventana sobre el formulario: <em>IBM Db2 requiere IBM Data Server Driver for ODBC and CLI</em>. Muestra el paquete (versión 12.1.4), su tamaño, los términos de IBM y de dónde viene, y comprueba la descarga con un SHA-256. <strong>Descargar e instalar</strong> lo descarga en la carpeta de datos de la app y lo registra con <code>db2cli install -setup</code>; para ello <strong>Windows pide permiso de administrador (Control de cuentas de usuario)</strong>. <strong>Cancelar</strong> deja el formulario utilizable, y la oferta vuelve en <em>Probar la conexión</em> y en la primera apertura.</p>
+<p>Un driver que ya está en el sistema cuenta: la app busca uno llamado <code>IBM DB2 ODBC DRIVER…</code> o <code>IBM DATA SERVER…</code>, ya lo haya creado su propio registro o un cliente completo de IBM, y toma el más reciente por nombre. La opción <code>driver</code> de la conexión sustituye esa elección. <em>Ajustes › Drivers</em> lista y elimina el driver descargado, y muestra los drivers ODBC y los orígenes de datos del sistema.</p>
+<h2 id="conectar">Conectar</h2>
+<p><strong>IBM Db2</strong>: host, puerto (50000 por defecto), <strong>base de datos</strong> (se requieren tanto el host como la base de datos), usuario y contraseña. La app construye ella misma la cadena de conexión (<code>DATABASE</code>, <code>HOSTNAME</code>, <code>PORT</code>, <code>PROTOCOL=TCPIP</code>, <code>UID</code>, <code>PWD</code>). TLS: los modos <code>disable</code> y <code>prefer</code> conectan sin él; <code>require</code> y superiores añaden <code>Security=SSL</code>, y <code>sslrootcert</code> pasa a ser <code>SSLServerCertificate</code>. Los servidores Db2 escuchan TLS en un puerto distinto del de texto plano, así que define el puerto. A través de un túnel SSH se usa el extremo local del túnel.</p>
+<p><strong>Plataforma</strong> elige el tipo de servidor Db2:</p>
+<ul>
+<li><em>Db2 for Linux, UNIX and Windows (LUW)</em>, el valor por defecto, también para servidores 8.x antiguos.</li>
+<li><em>Db2 for z/OS</em>: el mismo driver de IBM, puerto 446 por defecto, y la <strong>base de datos</strong> es el nombre de la ubicación. El driver de IBM llega a z/OS solo con una licencia de Db2 Connect en este equipo.</li>
+<li><em>Db2 for IBM i</em> (AS/400): el propio <em>IBM i Access ODBC Driver</em> de IBM (IBM i Access Client Solutions, que se instala desde IBM, no con la app; el driver más antiguo iSeries Access también sirve). El host es el nombre del sistema, la base de datos es opcional y fija la biblioteca por defecto, no hay puerto, y TLS añade <code>SSL=1</code>. No pasa por un túnel SSH, porque el driver abre varios puertos del servidor.</li>
+</ul>
+<p><strong>Otro driver ODBC</strong> (la opción genérica): indica una de estas</p>
+<ul>
+<li>un <strong>origen de datos (DSN)</strong> que el sistema conozca, escrito o tomado de las sugerencias;</li>
+<li>un nombre de <strong>driver</strong> (sugerido a partir de los drivers ODBC del sistema) con una <strong>cadena de conexión</strong> que contenga el resto, como <code>Server=host;Database=sales</code>;</li>
+<li>una <strong>cadena de conexión</strong> sola, usada tal como está escrita (puede nombrar su propio <code>DRIVER=</code>).</li>
+</ul>
+<p>Los campos de usuario y contraseña se añaden como <code>UID</code> y <code>PWD</code> salvo que la cadena ya los tenga. Una cadena ADO.NET u ODBC pegada con <code>Driver={…}</code> se lee en el formulario correspondiente cuando el driver es SQL Server, PostgreSQL, MySQL/MariaDB o ClickHouse; cualquier otro driver o un <code>DSN=</code> pasa a ser una conexión ODBC genérica con la cadena tal cual.</p>
+<h2 id="privilegios">Privilegios</h2>
+<p>Lo que tenga el inicio de sesión de la base de datos. El navegador usa las llamadas de catálogo de ODBC (<code>SQLTables</code>, <code>SQLColumns</code>, <code>SQLPrimaryKeys</code>, <code>SQLForeignKeys</code>). No hay pestañas de administración.</p>
+<h2 id="qué-funciona">Qué funciona</h2>
+<ul>
+<li>Consultas y resultados, con los tipos que informa el driver.</li>
+<li>Confirmación manual y rollback.</li>
+<li>Cancelar: la llamada de cancelación de ODBC no es accesible, así que una sentencia que aún no ha empezado se abandona junto con su sesión (la app abre una nueva); una que está devolviendo filas se detiene cuando se descarta su stream.</li>
+<li>El navegador, a partir de las llamadas de catálogo. El SQL de Db2 se escribe con las comillas de Db2 (los nombres sin comillas pasan a mayúsculas, las filas se limitan con <code>FETCH FIRST</code>); el driver genérico escribe SQL estándar.</li>
+</ul>
+<h2 id="qué-no-funciona">Qué no funciona</h2>
+<ul>
+<li>Sin explain, sin DDL de objetos, sin pestañas de administración, sin carga masiva (las importaciones usan <code>INSERT</code>).</li>
+<li><strong>Los valores de texto y binarios de más de 64 KiB son un error</strong>, en lugar de un buffer enorme.</li>
+<li>La <strong>edición de datos en la cuadrícula</strong> no está probada en estas bases de datos. La cuadrícula no la bloquea, pero sin savepoints un guardado fallido en modo de confirmación manual revierte toda la transacción de la sesión y lo dice.</li>
+<li>El modo terminal no está disponible.</li>
+</ul>
+<h2 id="agentes">Agentes</h2>
+<p>Los agentes de solo lectura dependen solo de la comprobación de la sentencia. Consulta <a href="../../../agents.html">Agentes y la CLI</a>.</p>
+<h2 id="límites-conocidos">Límites conocidos</h2>
+<ul>
+<li>Solo Windows.</li>
+<li>Db2 no tiene contenedor en el entorno de pruebas, así que la cadena de conexión de Db2 y la detección del driver solo se comprueban con pruebas unitarias.</li>
+</ul>
+<h2 id="probado-en">Probado en</h2>
+<p>El driver ODBC genérico se ejecuta contra SQL Server 2022 mediante el propio driver <code>SQL Server</code> de Windows: tipos, resultados largos, errores con su SQLSTATE, metadatos, confirmar y revertir, cancelar una sentencia en espera, los literales y tipos propios de SQL Server, e importaciones. IBM Db2 no está probado contra un servidor.</p>
+<p>Consulta también: <a href="../connect.html">Conectar</a>, <a href="../troubleshooting.html">Solución de problemas</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#primer-uso-el-driver-odbc-de-ibm-db2">Primer uso: el driver ODBC de IBM (Db2)</a>
+    <a href="#conectar">Conectar</a>
+    <a href="#privilegios">Privilegios</a>
+    <a href="#qué-funciona">Qué funciona</a>
+    <a href="#qué-no-funciona">Qué no funciona</a>
+    <a href="#agentes">Agentes</a>
+    <a href="#límites-conocidos">Límites conocidos</a>
+    <a href="#probado-en">Probado en</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

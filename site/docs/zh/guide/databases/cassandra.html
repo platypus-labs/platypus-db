@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Apache Cassandra 和 ScyllaDB</title>
+  <meta name="description" content="一个基于 scylla crate（使用 rustls）的驱动，通过原生协议用 CQL 与两者通信。服务器会说明它是哪一种，连接中会显示出来。驱动是应用的一部分，无需下载任何东西。编辑器接受 CQL。">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">快速入门</a>
+<a href="../index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="../connect.html">连接数据库</a>
+<a href="../queries.html">运行查询并查看结果</a>
+<a href="../edit-data.html">编辑数据</a>
+<a href="../import-export.html">导入和导出</a>
+<a href="../safety.html">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="../projects-sharing.html">项目与共享</a>
+<a href="../agents.html">通过代理使用 PlatypusDB</a>
+<a href="../troubleshooting.html">故障排除与常见问题</a>
+<a href="index.html">数据库</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub on" aria-current="page">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 和 ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Apache Cassandra 和 ScyllaDB</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/cassandra.html" lang="en" hreflang="en">English</a> · <a href="../../../de/guide/databases/cassandra.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../../es/guide/databases/cassandra.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/cassandra.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/cassandra.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/cassandra.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 数据库</a></p>
+<h1 id="apache-cassandra-和-scylladb">Apache Cassandra 和 ScyllaDB</h1>
+<p>一个基于 <code>scylla</code> crate（使用 rustls）的驱动，通过原生协议用 CQL 与两者通信。服务器会说明它是哪一种，连接中会显示出来。驱动是应用的一部分，无需下载任何东西。编辑器接受 CQL。</p>
+<h2 id="连接">连接</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>你粘贴的内容</th><th>解读为</th></tr></thead>
+<tbody>
+<tr><td><code>cassandra://cassandra:s%40cret@node1:9043/shop</code></td><td>明文，端口 9043，键空间 <code>shop</code></td></tr>
+<tr><td><code>scylla://node1</code></td><td>同一个驱动，用于 ScyllaDB</td></tr>
+<tr><td><code>cassandras://…</code> 和 <code>scyllas://…</code></td><td>使用 TLS（经过验证：<code>verify-full</code>）</td></tr>
+</tbody>
+</table></div>
+<p>默认端口是 9042。<strong>主机</strong>字段是一个联系点，或用逗号分隔的多个 <code>host:port</code>。<strong>键空间（可选）</strong>字段是会话起始所在的键空间；无论是否填写，导航器都会列出所有键空间。</p>
+<ul>
+<li><strong>一个联系点，或隧道</strong>：该节点独自处理每条语句。集群会公布各节点自己的地址，而容器、NAT 或隧道会隐藏这些地址，所以驱动不会去跟随它们。有多个联系点时，驱动会拿到全部联系点，可以使用其中任何一个。</li>
+<li><strong>登录</strong>：用户和密码，用于服务器的密码认证器。没有用户时，连接是匿名的。</li>
+<li><strong>TLS</strong>：CQL 无法协商它，所以对 <code>cassandras://</code> 和 <code>scyllas://</code> URL，以及从 <code>require</code> 起的 SSL 模式，TLS 都是开启的；<code>prefer</code> 是明文。<code>require</code> 不检查证书；<code>verify-ca</code> 和 <code>verify-full</code> 会检查。CA 文件和客户端证书填在 TLS 字段中。</li>
+<li><strong>语句没有驱动自己的超时</strong>：语句会一直运行到结束，或由你取消。</li>
+</ul>
+<h2 id="权限">权限</h2>
+<p>导航器读取 <code>system_schema</code>，Cassandra 3 及更高版本和 ScyllaDB 共用它；该登录能看到服务器允许它在那里读取的内容。没有管理标签页。写入需要 CQL 所要求的权限。</p>
+<h2 id="可用功能">可用功能</h2>
+<ul>
+<li>由编辑器拆分的 CQL 脚本（能识别 <code>$$ … $$</code> 字符串、<code>//</code> 注释和 <code>BEGIN BATCH … APPLY BATCH</code>），带类型的结果在你滚动时使用服务器的分页状态逐页读取。</li>
+<li>导航器：键空间作为模式、表、物化视图、用户定义类型、函数和聚合，以及每张表的分区键和聚簇键及其索引；每个对象的 DDL。</li>
+<li><strong>表格可以编辑行</strong>，按完整主键（分区列和聚簇列）：编辑过的行是 <code>UPDATE</code>，新行是需要每个键列的 <code>INSERT</code>，删除的行是 <code>DELETE</code>。预览显示这些语句，它们会依次运行；服务器拒绝其中一条时，其余的会停止。<em>撤销脚本</em>会恢复旧值。键列不能更改（请删除该行并插入另一行），计数器会被拒绝。</li>
+<li>轻量级事务（<code>IF …</code>）会作为轻量级事务报告并附上结果。</li>
+<li>取消会停止正在读取的结果。错误保留服务器的消息。</li>
+<li><code>USE keyspace</code> 会更改会话的键空间，驱动会记住它。</li>
+</ul>
+<h2 id="不可用功能">不可用功能</h2>
+<ul>
+<li><strong>没有事务</strong>：每条语句单独生效，也没有手动提交。</li>
+<li><strong>CQL 写入是 upsert，不报告行数</strong>，所以不返回行的语句报告没有更改；对期间被别人删除的行执行更新会重新写入它。</li>
+<li>数据查看器没有过滤和排序栏，也不显示行数。</li>
+<li>没有执行计划，也没有 SQL 工具：没有表编辑器、ER 图、模式比较、查询构建器、SQL 导入、变更前快照或终端模式（<code>cqlsh</code> 只在命令行上接受密码）。</li>
+</ul>
+<h2 id="代理">代理</h2>
+<p><code>run_query</code> 和 <code>sample_rows</code>（CQL 的 <code>SELECT … LIMIT n</code>）可用；修改数据的语句会先询问。在 Cassandra 上被拒绝的有：<code>explain</code> 和 <code>propose_edits</code>；<code>estimate_change</code> 会以一条说明作答。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<h2 id="已知限制">已知限制</h2>
+<ul>
+<li>低于 4.0 的 Cassandra 和低于 5.4 的 ScyllaDB 在连接时会被拒绝，并提示 &quot;older than … the oldest version supported&quot;，这与会带警告连接的其他数据库不同。</li>
+<li>没有连接（join），没有 <code>OFFSET</code>，行只能通过主键找到，这是 CQL 的规则。</li>
+</ul>
+<h2 id="测试环境">测试环境</h2>
+<p>一致性测试套件在 Apache Cassandra 5 和 ScyllaDB 2025.1 上运行，不带登录：服务器信息、脚本、每种类型作为带类型的列、分页、轻量级事务、错误、取消、目录及其 DDL（也包括函数和聚合）、保存表格的更改并撤销、错误或缺失的登录被拒绝，以及隧道地址。Cassandra 4.0 和 ScyllaDB 5.4 是驱动接受的最低版本，测试套件没有运行它们。</p>
+<p>另见：<a href="../connect.html">连接</a>、<a href="../troubleshooting.html">故障排除</a>。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#连接">连接</a>
+    <a href="#权限">权限</a>
+    <a href="#可用功能">可用功能</a>
+    <a href="#不可用功能">不可用功能</a>
+    <a href="#代理">代理</a>
+    <a href="#已知限制">已知限制</a>
+    <a href="#测试环境">测试环境</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

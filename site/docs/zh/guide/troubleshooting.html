@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · 故障排除与常见问题</title>
+  <meta name="description" content="先在连接表单中点击测试连接：它会报告失败原因，附上服务器自己的消息，并在有帮助时给出服务器版本。">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">快速入门</a>
+<a href="index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="connect.html">连接数据库</a>
+<a href="queries.html">运行查询并查看结果</a>
+<a href="edit-data.html">编辑数据</a>
+<a href="import-export.html">导入和导出</a>
+<a href="safety.html">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="projects-sharing.html">项目与共享</a>
+<a href="agents.html">通过代理使用 PlatypusDB</a>
+<a href="troubleshooting.html" class="on" aria-current="page">故障排除与常见问题</a>
+<a href="databases/index.html">数据库</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / 故障排除与常见问题</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/troubleshooting.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/troubleshooting.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/troubleshooting.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/troubleshooting.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/troubleshooting.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/troubleshooting.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 用户指南</a></p>
+<h1 id="故障排除与常见问题">故障排除与常见问题</h1>
+<p>先在连接表单中点击<strong>测试连接</strong>：它会报告失败原因，附上服务器自己的消息，并在有帮助时给出服务器版本。</p>
+<h2 id="连接错误">连接错误</h2>
+<h3 id="无法访问主机">无法访问主机</h3>
+<p>先检查主机和端口（表单会提示“缺少主机。”或“端口必须是 1 到 65535 之间的数字。”）。然后看你与服务器之间有什么：SSH 隧道、代理、端口转发，或在连接前后执行的、用来启动 VPN 的命令（<strong>网络</strong>页面）。它们各自会给出自己的消息，见下文。</p>
+<h3 id="tls">TLS</h3>
+<p>在<strong>网络</strong>页面，<strong>SSL 模式</strong>决定检查什么（见<a href="connect.html#tls">连接</a>）。</p>
+<ul>
+<li>拒绝未加密连接的服务器需要 <code>require</code> 或更高；证书不被你的电脑信任的服务器，需要 <code>verify-ca</code> 或 <code>verify-full</code> 并提供 <strong>CA 证书 (PEM)</strong>，或用 <code>require</code> 只加密而不检查。</li>
+<li>&quot;invalid certificate&quot; 和 &quot;invalid root certificates&quot; 表示 PEM 文件无法读取：检查它是证书本身，而不是密钥。</li>
+<li>&quot;a client certificate needs both the certificate and its key&quot;：请同时填写<strong>客户端证书 (PEM)</strong> 和<strong>客户端密钥（PEM）</strong>。&quot;invalid client certificate or key&quot; 表示两者不匹配，或不是 PEM。</li>
+<li>Redis、Elasticsearch 和 Cassandra 在 SSL 模式为 <code>require</code> 或更高时启用 TLS。</li>
+</ul>
+<h3 id="ssh">SSH</h3>
+<p>错误以 <code>SSH &lt;user&gt;@&lt;host&gt;:&lt;port&gt;:</code> 开头。</p>
+<ul>
+<li><code>no answer within 10 s</code> 或 <code>cannot reach &lt;host&gt;:&lt;port&gt;</code>：从这里无法访问 SSH 服务器（或它前面的代理）。</li>
+<li><code>cannot read the key &lt;path&gt;</code>：<strong>私钥文件</strong>不存在、无法读取，或需要口令。</li>
+<li><code>no SSH agent is running</code>：启动你的 SSH 代理，或改用密钥文件或密码。</li>
+<li>密码或密钥被拒绝是服务器的回答：检查 <strong>SSH 用户</strong>和验证方式。</li>
+<li>自第一次连接以来密钥发生变化的服务器会被拒绝。密钥来自 <code>~/.ssh/known_hosts</code>，与 OpenSSH 共用：如果变化是预期的，请删除其中的旧行。</li>
+</ul>
+<h3 id="代理">代理</h3>
+<p>错误会指明代理，例如 <code>SOCKS5 proxy host:1080: …</code> 或 <code>HTTP proxy host:3128: …</code>。</p>
+<ul>
+<li><code>no answer within 10 s</code>：代理没有响应。</li>
+<li><code>the proxy asks for a user and password, or refused them</code>：把它们写进 URL（<code>http://user:password@host:3128</code>）。</li>
+<li><code>cannot reach &lt;host&gt;:&lt;port&gt;: …</code>：代理有响应，但无法到达数据库。</li>
+<li>无法识别的 URL 会报告为 <code>proxy &quot;&lt;url&gt;&quot;: …</code>。端口转发要单独使用：请移除 SSH 隧道或代理。</li>
+</ul>
+<h3 id="钥匙串">钥匙串</h3>
+<ul>
+<li><code>keychain error: …</code>，或 &quot;the system has no keychain to save the password in&quot;：在 Linux 上必须运行 Secret Service，例如 GNOME Keyring 或 KWallet。没有的话，请设置主密码（设置 › <strong>主密码</strong>），或为密码选择<strong>每次询问</strong>。</li>
+<li>“此连接未保存密码：密码将保存在钥匙串中。”只是一个提示。</li>
+<li>从其他工具导入而没有带上密码的情况（例如使用自己主密码的 DBeaver），会在首次使用时询问密码。</li>
+</ul>
+<h3 id="主密码">主密码</h3>
+<ul>
+<li>“PlatypusDB 已锁定”或“请输入主密码以使用它们”：输入主密码并点击<strong>解锁</strong>。空闲锁定在设置 › <strong>安全</strong>；生产连接在使用时会重新连接。</li>
+<li>它无法找回。如果丢失，已保存的密码也就丢失了：请在每个连接中重新设置密码。</li>
+<li>要回到钥匙串，设置 › <strong>主密码</strong> › <strong>关闭…</strong>（会要求输入当前的主密码）。</li>
+</ul>
+<h2 id="驱动下载失败">驱动下载失败</h2>
+<p>DuckDB、Snowflake、BigQuery、Databricks、Trino、其他 ADBC 驱动、Oracle 和 IBM Db2 在首次使用时下载它们的库。弹窗显示“正在下载 <code>&lt;name&gt;</code> 驱动…”和一个<strong>取消</strong>按钮，失败时显示带有<strong>重试</strong>的消息。</p>
+<ul>
+<li><code>the download failed (check the internet connection)</code> 或 <code>cannot reach the driver registry</code>：无法连到注册表；检查网络、代理或防火墙，然后点击<strong>重试</strong>。</li>
+<li><code>the downloaded driver is corrupted (its SHA-256 does not match)</code>：文件在传输中被改动或被截断；请重试，如果问题持续，请反馈。</li>
+<li><code>no &lt;name&gt; driver for this platform</code>，或“PlatypusDB 可在 x64 和 ARM 处理器的 Windows、macOS 和 Linux 上下载 DuckDB；当前系统不支持。”：没有适用于你系统的版本。</li>
+<li><code>the driver&#39;s license (…) does not allow downloading it here</code>：应用不会下载许可证禁止下载的驱动。</li>
+<li>IBM Db2 目前只在 Windows 上通过 ODBC 连接；注册它的驱动需要管理员权限（用户帐户控制）。请选择“是”，否则驱动不会被注册。</li>
+<li><strong>取消</strong>后表单仍可使用；在<strong>测试连接</strong>或第一次打开时会再次提示。</li>
+</ul>
+<p>设置 › <strong>驱动</strong>列出已下载的内容、移除驱动，并显示系统的 ODBC 驱动。Windows 拒绝的移除操作会在下次启动时完成。</p>
+<h2 id="代理看不到连接">代理看不到连接</h2>
+<p>按下面的清单逐项排查。</p>
+<ol>
+<li><strong>访问已关闭。</strong> 代理回答 &quot;<code>&lt;name&gt;</code> is not available to agents&quot;。在设置 › <strong>代理</strong> › <strong>安全</strong>中，把该连接设为<strong>只读</strong>或<strong>读写</strong>。来自共享项目的连接在你的电脑上起初是<strong>关闭</strong>。</li>
+<li><strong>主密码。</strong> 代理回答 &quot;the saved password of <code>&lt;name&gt;</code> is locked by PlatypusDB&#39;s master password, which agents cannot enter&quot;。请为该连接配置密码命令或 <code>.pgpass</code>，或关闭主密码。</li>
+<li><strong>每次询问密码。</strong> 代理回答 &quot;<code>&lt;name&gt;</code> asks for its password at each connection, and agents cannot type it&quot;。请把密码保存在钥匙串中，或使用 <code>.pgpass</code> 或密码命令。</li>
+<li><strong>写入被拒绝。</strong> 生产连接和只读连接最多只能是只读；其他连接的更改会等待你在应用中回答（<a href="agents.html">代理</a>）。</li>
+<li><strong>客户端没有重启</strong>（在点击<strong>安装</strong>之后），或条目缺失：设置 › <strong>代理</strong> › <strong>配置</strong>会说明 PlatypusDB 是否在客户端的文件中。</li>
+<li><strong>便携版或另一个配置文件。</strong> 代理读取的是它启动时所用配置文件的连接；用已安装的应用配置的客户端看不到便携版的 <code>data</code> 文件夹。</li>
+</ol>
+<h2 id="便携版">便携版</h2>
+<ul>
+<li>它是一个可执行文件，旁边有一个空的 <code>data</code> 文件夹。如果启动时找不到这个文件夹，应用会改用系统的文件夹，所以重命名过的 <code>data</code> 文件夹看起来就像连接丢失了：把它改回原名。</li>
+<li>所有内容都在 <code>data</code> 中，包括日志；这个文件夹随可执行文件一起移动。已保存的密码留在这台电脑的系统钥匙串中，除非主密码把它们也保存在该文件夹中：在另一台电脑上，要么先设置主密码，要么重新输入密码。</li>
+<li>它不会自动更新：用新的可执行文件替换它。欢迎界面在版本号旁边显示 <code>portable</code>。</li>
+</ul>
+<h2 id="数据和日志的位置">数据和日志的位置</h2>
+<p>应用把连接和设置（<code>connections.toml</code>、<code>settings.toml</code>，以及使用主密码时的 <code>secrets.vault</code>）放在它的配置文件夹中，把历史、脚本、已下载的驱动和日志放在它的数据文件夹中，两者都叫 <code>dev.platypusdb.desktop</code>：</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>系统</th><th>配置文件夹</th><th>数据文件夹</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td><code>%APPDATA%\dev.platypusdb.desktop</code></td><td><code>%APPDATA%\dev.platypusdb.desktop</code></td></tr>
+<tr><td>macOS</td><td><code>~/Library/Application Support/dev.platypusdb.desktop</code></td><td>相同</td></tr>
+<tr><td>Linux</td><td><code>~/.config/dev.platypusdb.desktop</code></td><td><code>~/.local/share/dev.platypusdb.desktop</code></td></tr>
+</tbody>
+</table></div>
+<p>便携版把所有内容保存在它的 <code>data</code> 文件夹中，环境变量 <code>PLATYPUS_DATA_DIR</code> 则会把所有内容放进它所指定的文件夹。</p>
+<p><img src="../../../img/screenshots/guide/diagnostics.png" alt="设置，诊断页面" loading="lazy"></p>
+<p>日志是数据文件夹中的 <code>logs/platypus.log</code>：每次启动、错误和崩溃各占一行，达到 1 MB 时轮换，保留两个旧文件（<code>platypus.1.log</code>、<code>platypus.2.log</code>）。设置 › <strong>诊断</strong>显示该文件夹（<strong>复制</strong>）和<strong>保存诊断包…</strong>，这是一个 zip，包含版本、系统、不含密码的设置和日志，可附在错误报告中。不会向任何地方发送任何内容；分享之前请先阅读日志，因为错误中可能出现服务器或表的名称。崩溃之后，下次启动时会提供同样的诊断包。</p>
+<h2 id="更新">更新</h2>
+<ul>
+<li>启动时应用会检查是否有更新的版本，并显示“PlatypusDB <code>&lt;version&gt;</code> 已可用”，带有<strong>稍后</strong>和<strong>安装并重启</strong>。</li>
+<li>便携版只会提示：请替换它的可执行文件。通过包管理器（Flatpak、AUR）安装的版本也会提示，并把更新交给包管理器。</li>
+<li>已下载的驱动单独更新：设置 › <strong>驱动</strong> › <strong>检查更新</strong>，或设置项<strong>启动时检查驱动更新</strong>（开启，最多每天一次）和<strong>自动安装驱动更新</strong>（关闭）。内置驱动随应用更新。</li>
+</ul>
+<h2 id="常见问题">常见问题</h2>
+<p><strong>PlatypusDB 能离线使用吗？</strong> 可以，配合本地数据库。下载（驱动、更新）需要网络。</p>
+<p><strong>在哪里报告错误？</strong> 在<a href="https://github.com/platypus-labs/platypus-db/issues">问题跟踪页面</a>，如果可以，请附上诊断包。</p>
+<p><strong>快捷键在哪里？</strong> 见 <a href="../../shortcuts.html">SHORTCUTS.md</a>，要更改它们，请到设置 › 键盘快捷键。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#连接错误">连接错误</a>
+    <a href="#驱动下载失败">驱动下载失败</a>
+    <a href="#代理看不到连接">代理看不到连接</a>
+    <a href="#便携版">便携版</a>
+    <a href="#数据和日志的位置">数据和日志的位置</a>
+    <a href="#更新">更新</a>
+    <a href="#常见问题">常见问题</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

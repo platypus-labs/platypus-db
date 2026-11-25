@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · DuckDB</title>
+  <meta name="description" content="DuckDB tourne à l&#39;intérieur de l&#39;application, comme SQLite : pas de serveur, d&#39;hôte, d&#39;utilisateur ni de mot de passe. Contrairement à SQLite, l&#39;application…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Premiers pas</a>
+<a href="../index.html">Guide utilisateur</a>
+<h6>Guide</h6>
+<a href="../connect.html">Se connecter à une base de données</a>
+<a href="../queries.html">Exécuter des requêtes et lire les résultats</a>
+<a href="../edit-data.html">Modifier les données</a>
+<a href="../import-export.html">Import et export</a>
+<a href="../safety.html">Travailler en sécurité : production, lecture seule, confirmations, masquage</a>
+<a href="../projects-sharing.html">Projets et partage</a>
+<a href="../agents.html">Utiliser PlatypusDB depuis un agent</a>
+<a href="../troubleshooting.html">Dépannage et FAQ</a>
+<a href="index.html">Bases de données</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub on" aria-current="page">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 et ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / DuckDB</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/duckdb.html" lang="en" hreflang="en">English</a> · <a href="../../../de/guide/databases/duckdb.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../../es/guide/databases/duckdb.html" lang="es" hreflang="es">Español</a> · <span lang="fr">Français</span> · <a href="../../../it/guide/databases/duckdb.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/duckdb.html" lang="pt" hreflang="pt">Português</a> · <a href="../../../zh/guide/databases/duckdb.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Bases de données</a></p>
+<h1 id="duckdb">DuckDB</h1>
+<p>DuckDB tourne à l&#39;intérieur de l&#39;application, comme SQLite : pas de serveur, d&#39;hôte, d&#39;utilisateur ni de mot de passe. Contrairement à SQLite, l&#39;application ne contient pas la bibliothèque de DuckDB ; elle <strong>la télécharge la première fois</strong> qu&#39;une base de données DuckDB ou un fichier de données est ouvert.</p>
+<h2 id="première-utilisation--la-bibliothèque-de-duckdb">Première utilisation : la bibliothèque de DuckDB</h2>
+<p>Quand vous choisissez <strong>DuckDB</strong> pour une nouvelle connexion et que la bibliothèque n&#39;est pas sur cette machine, une fenêtre s&#39;ouvre au-dessus du formulaire : <em>Télécharger DuckDB ?</em> Elle montre le paquet (DuckDB 2.0.0, de la version de DuckDB sur GitHub, licence MIT), sa taille et sa source, et vérifie le téléchargement par un SHA-256. <strong>Télécharger</strong> la place dans le dossier de données de l&#39;application, une fois pour toutes les bases de données et tous les fichiers DuckDB ; <strong>Annuler</strong> laisse le formulaire utilisable, et la proposition revient à <em>Tester la connexion</em> et à la première ouverture. <em>Paramètres › Pilotes</em> liste la bibliothèque et la supprime.</p>
+<p>L&#39;application la télécharge pour Windows (x64, ARM64), Linux (x64, ARM64) et macOS (une seule bibliothèque pour les deux processeurs). L&#39;application utilise exactement la version avec laquelle elle a été compilée (2.0.x) et propose celle-là si une autre est installée. Hors ligne, avec la bibliothèque absente, la connexion ne peut pas s&#39;ouvrir.</p>
+<h2 id="connexion">Connexion</h2>
+<p>Choisissez <strong>DuckDB</strong> et indiquez le chemin du fichier de base de données, ou collez une URL :</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Vous collez</th><th>Signification</th></tr></thead>
+<tbody>
+<tr><td><code>duckdb:///home/ana/analytics.duckdb</code></td><td>ce fichier, créé s&#39;il manque (son dossier doit exister)</td></tr>
+<tr><td><code>duckdb:///C:/data/analytics.duckdb</code></td><td>un fichier sur un lecteur Windows</td></tr>
+<tr><td><code>duckdb:///:memory:</code></td><td>la base de données en mémoire que partagent les sessions de l&#39;application</td></tr>
+<tr><td><code>:memory:&lt;name&gt;</code> comme chemin</td><td>une base de données en mémoire à part, désignée par son nom</td></tr>
+</tbody>
+</table></div>
+<p><strong>Des fichiers de données comme bases de données.</strong> Un chemin qui se termine par <code>.csv</code>, <code>.tsv</code>, <code>.json</code>, <code>.ndjson</code>, <code>.jsonl</code>, <code>.parquet</code>, <code>.xlsx</code>, <code>.xlsm</code>, <code>.xls</code> ou <code>.ods</code> s&#39;ouvre comme une base de données en mémoire sur ce fichier (vous pouvez aussi déposer un fichier sur la fenêtre). CSV, TSV, JSON, NDJSON et Parquet deviennent une vue nommée d&#39;après le fichier, que DuckDB relit à chaque requête ; chaque feuille d&#39;un classeur devient une table, chargée une fois. Un CSV ou TSV est d&#39;abord vérifié (chaque ligne doit avoir autant de valeurs que l&#39;en-tête), son encodage de texte est détecté (ou vous le donnez), et les options d&#39;import permettent d&#39;ignorer les mauvaises lignes.</p>
+<p>Les extensions ne sont ni téléchargées ni chargées toutes seules ; seules celles intégrées à la bibliothèque (Parquet, JSON) sont là.</p>
+<h2 id="privilèges">Privilèges</h2>
+<p>Ceux du système d&#39;exploitation : accès en lecture au fichier, accès en écriture à lui et à son dossier pour modifier quoi que ce soit. Un seul processus à la fois peut ouvrir un fichier DuckDB en écriture : tant que l&#39;application a un fichier ouvert, un autre programme (la ligne de commande <code>duckdb</code>, par exemple) ne peut pas l&#39;utiliser ; les sessions de l&#39;application sur un même fichier partagent une seule instance. Le mode terminal n&#39;est donc pas proposé.</p>
+<h2 id="ce-qui-fonctionne">Ce qui fonctionne</h2>
+<ul>
+<li>La modification des données dans la grille, par clé primaire (ou clé unique sur des colonnes non nulles, ou clé virtuelle). Un fichier de données est lu en mémoire : une vue CSV, JSON ou Parquet n&#39;est pas une table et ne peut pas être modifiée, et les modifications des feuilles d&#39;un classeur ne sont pas réécrites dans le fichier.</li>
+<li>Le commit et le rollback manuels ; l&#39;annulation d&#39;une instruction (<code>duckdb_interrupt</code>).</li>
+<li>Explain montre le plan (<code>EXPLAIN (FORMAT JSON)</code>) ; <strong>Explain analyze</strong> exécute l&#39;instruction dans une transaction qu&#39;il annule, et est refusé tant que vous avez une transaction ouverte.</li>
+<li>Onglet Paramètres : les réglages de DuckDB. Pas d&#39;onglets sessions, verrous, tableau de bord, utilisateurs ou instructions.</li>
+<li>La recherche de métadonnées, le DDL des objets, les outils de schéma. DuckDB modifie peu de choses sur place, donc changer une table la recrée et copie ses lignes.</li>
+<li>Les imports passent par l&#39;appender de DuckDB, dans la transaction de la session.</li>
+</ul>
+<h2 id="agents">Agents</h2>
+<p>Un agent en lecture seule, et une connexion en lecture seule, ouvrent le fichier de base de données en lecture seule, quand aucune autre session de l&#39;application ne le tient déjà ouvert ; une base de données en mémoire ou un fichier de données n&#39;est jamais en lecture seule, et la vérification de l&#39;instruction y arrête les écritures. Les sessions DuckDB des agents ne peuvent ni lire ni écrire d&#39;autres fichiers ni charger d&#39;extensions, et ferment le fichier après chaque appel pour que l&#39;application puisse l&#39;ouvrir. <code>query_across_databases</code> s&#39;exécute dans un DuckDB à part que l&#39;application télécharge comme celui-ci. Voir <a href="../../../agents.html">Agents et la CLI</a>.</p>
+<h2 id="limites-connues">Limites connues</h2>
+<ul>
+<li>Les fichiers Excel sont lus avec le lecteur propre de l&#39;application, pas avec l&#39;extension Excel de DuckDB.</li>
+<li>Une version de DuckDB autre que 2.0.x n&#39;est pas chargée.</li>
+</ul>
+<h2 id="testé-sur">Testé sur</h2>
+<p>La suite de conformité tourne sur un fichier DuckDB, avec la bibliothèque qui correspond aux liaisons de l&#39;application : transactions, plans, modification de tables, valeurs spéciales, nombres 128 bits et non signés, et heures avec fuseau.</p>
+<p>Voir aussi : <a href="../connect.html">Se connecter</a>, <a href="../troubleshooting.html">Dépannage</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#première-utilisation--la-bibliothèque-de-duckdb">Première utilisation : la bibliothèque de DuckDB</a>
+    <a href="#connexion">Connexion</a>
+    <a href="#privilèges">Privilèges</a>
+    <a href="#ce-qui-fonctionne">Ce qui fonctionne</a>
+    <a href="#agents">Agents</a>
+    <a href="#limites-connues">Limites connues</a>
+    <a href="#testé-sur">Testé sur</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

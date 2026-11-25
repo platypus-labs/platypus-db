@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · 连接数据库</title>
+  <meta name="description" content="为新连接选择数据库">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">快速入门</a>
+<a href="index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="connect.html" class="on" aria-current="page">连接数据库</a>
+<a href="queries.html">运行查询并查看结果</a>
+<a href="edit-data.html">编辑数据</a>
+<a href="import-export.html">导入和导出</a>
+<a href="safety.html">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="projects-sharing.html">项目与共享</a>
+<a href="agents.html">通过代理使用 PlatypusDB</a>
+<a href="troubleshooting.html">故障排除与常见问题</a>
+<a href="databases/index.html">数据库</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / 连接数据库</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/connect.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/connect.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/connect.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/connect.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/connect.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/connect.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 用户指南</a></p>
+<h1 id="连接数据库">连接数据库</h1>
+<p><img src="../../../img/screenshots/connections.png" alt="为新连接选择数据库" loading="lazy"></p>
+<h2 id="通过-url">通过 URL</h2>
+<ol>
+<li>点击<strong>新建连接</strong>（或导航器的 <code>+</code>）。</li>
+<li>在标志下方粘贴 URL：<code>postgres://</code>、<code>mysql://</code>、<code>sqlserver://</code>、<code>clickhouse://</code>、<code>libsql://</code>、<code>mongodb://</code>、<code>redis://</code>、<code>rediss://</code>、<code>elasticsearch://</code>、<code>opensearch://</code>、JDBC URL，或 ADO.NET / ODBC 字符串。表单打开时已按该数据库填好。</li>
+<li>把密码填在<strong>密码</strong>字段，而不是 URL 里：如果 URL 中带有密码，表单会提示。</li>
+<li>点击<strong>测试连接</strong>，然后点击<strong>保存</strong>。</li>
+</ol>
+<p>或者从标志中选择数据库（顶部的搜索框按 <code>Enter</code> 选中第一个匹配项）。这个选择决定驱动；<strong>返回</strong>会回到标志界面。</p>
+<h2 id="表单">表单</h2>
+<p>表单有四页：<strong>常规</strong>、<strong>外观与安全</strong>、<strong>网络</strong>和<strong>初始化</strong>。页面名称后的圆点表示该页中有设置。</p>
+<ul>
+<li><strong>常规</strong>：主机、端口、用户、数据库，以及密码的来源（见下文）。</li>
+<li><strong>外观与安全</strong>：环境（开发、测试或生产）、颜色、<strong>只读（拒绝修改数据）</strong>复选框、禁止导出和禁止编辑数据的复选框，以及代理的访问权限。见<a href="safety.html">安全</a>和<a href="agents.html">代理</a>。</li>
+<li><strong>网络</strong>：SSH 隧道、SSL 模式和证书、代理、端口转发，以及围绕连接执行的命令。</li>
+<li><strong>初始化</strong>：变量文件、默认模式或时区，以及每次连接时运行的语句。</li>
+</ul>
+<h2 id="密码">密码</h2>
+<p>在<strong>常规</strong>中，密码来自以下之一：</p>
+<ul>
+<li><strong>保存在钥匙串中</strong>：系统钥匙串。<strong>测试连接</strong>只会把它发送给保存它时对应的服务器：如果你更改了主机、端口或途经的 SSH 服务器，就会要求你为这次测试输入密码。同一个 PostgreSQL 或 MySQL 服务器上的另一个数据库不算另一台服务器。</li>
+<li><strong>每次询问</strong>：每次连接时输入。代理无法打开这样的连接。</li>
+<li><strong>.pgpass 文件</strong>（仅限 PostgreSQL；由连接的主机、端口、数据库和用户来选定行，与 libpq 相同）。</li>
+<li><strong>Shell 命令</strong>：打印出密码的命令。</li>
+</ul>
+<p>任何字段都可以读取写成 <code>${env:NAME}</code> 的环境变量。密码管理器（1Password、Bitwarden、HashiCorp Vault、AWS Secrets Manager）出现在同一个列表中，适用于表单要求填写密码或令牌的每一种数据库；没有哪一个只限于某一种数据库。填写密钥的引用：应用据此构建 shell 命令（<code>op read</code>、<code>bw get password</code>、<code>vault kv get</code>、<code>aws secretsmanager get-secret-value</code>），并在每次连接时运行。必须已安装并登录它们的命令行工具。这里的内容都没有针对真实的 1Password、Bitwarden、Vault 或 AWS 账户运行过：只测试了应用构建的命令和 shell 命令本身。</p>
+<p>有些数据库完全不用密码登录，同一个列表也提供这些方式：来自云命令行工具的令牌（PostgreSQL 和 MySQL 用 AWS IAM 和 Google Cloud IAM，这两者和 SQL Server 用 Microsoft Entra ID）、SQL Server 的 Windows 登录，以及 Windows 和 Linux 上 PostgreSQL 的 <strong>Kerberos 票据</strong>。先运行 <code>kinit</code>，或设置 <code>KRB5CCNAME</code> 或 <code>KRB5_CLIENT_KTNAME</code>；在 Windows 上，票据是你当前会话的。发送给服务器的只有票据，没有票据的测试会说明该运行什么。详细信息，以及哪些测试过、哪些没有测试过，见 <a href="databases/postgresql.html">PostgreSQL 页面</a>：已有一张真实票据在 Linux 上登录成功，但尚未通过 Windows 的 SSPI。</p>
+<h3 id="主密码">主密码</h3>
+<p>主密码会把已保存的密码放在加密文件中，而不是钥匙串中。</p>
+<ol>
+<li>打开设置（<code>Ctrl+,</code>）› <strong>主密码</strong>。</li>
+<li>点击<strong>设置主密码…</strong>，输入两次（至少 8 个字符）并确认。</li>
+<li>要回到钥匙串，在同一页面点击<strong>关闭…</strong>。<strong>立即锁定</strong>会马上锁定。</li>
+</ol>
+<p>它无法找回：没有它，已保存的密码就会丢失。代理无法输入它（见<a href="troubleshooting.html#代理看不到连接">故障排除</a>）。</p>
+<h2 id="tls">TLS</h2>
+<p>在<strong>网络</strong>页面，<strong>SSL 模式</strong>取 libpq 的值：<code>disable</code>、<code>prefer</code>、<code>require</code>、<code>verify-ca</code> 和 <code>verify-full</code>。<code>prefer</code> 和 <code>require</code> 只加密而不检查证书；<code>verify-ca</code> 和 <code>verify-full</code> 会检查证书，因此可能需要 <strong>CA 证书 (PEM)</strong>。对于通过证书验证客户端的服务器，请提供<strong>客户端证书 (PEM)</strong> 和<strong>客户端密钥（PEM）</strong>（PostgreSQL 和 MySQL）。</p>
+<h2 id="ssh-隧道">SSH 隧道</h2>
+<p><img src="../../../img/screenshots/guide/connect-network.png" alt="网络页面上的 SSH 隧道" loading="lazy"></p>
+<ol>
+<li>在<strong>网络</strong>页面，勾选<strong>通过 SSH 隧道连接</strong>。</li>
+<li>填写 <strong>SSH 主机</strong>、端口和 <strong>SSH 用户</strong>。</li>
+<li>用密码、<strong>私钥文件</strong>（及其口令）或 <strong>SSH 代理</strong>进行验证。如果有堡垒机，添加<strong>跳板机</strong>（<strong>先经过跳板机</strong>）。</li>
+<li>点击<strong>测试连接</strong>。</li>
+</ol>
+<p>服务器的密钥会与 <code>~/.ssh/known_hosts</code> 核对：未知的服务器在第一次连接时被记住，之后密钥发生变化的服务器会被拒绝。<strong>网络配置</strong>可以在多个连接之间共用同一套隧道和 SSL 设置。</p>
+<h2 id="代理和端口转发">代理和端口转发</h2>
+<p>同样在<strong>网络</strong>页面：SOCKS5 或 HTTP 代理（<code>socks5://user:password@host:1080</code>、<code>http://host:3128</code>），或通过 <code>kubectl</code> 或 AWS Systems Manager 会话进行端口转发（必须已安装并登录相应的 CLI）。端口转发要单独使用：请移除 SSH 隧道或代理。</p>
+<h2 id="下一步">下一步</h2>
+<p>各数据库的详细信息：<a href="databases/index.html">数据库</a>。云登录、连接池、从 DBeaver、DataGrip 和 pgAdmin 导入（包括 Db2 连接）以及导出连接，见 <a href="../../features.html#connections">FEATURES.md</a>。如果无法连接，见<a href="troubleshooting.html#连接错误">故障排除</a>。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#通过-url">通过 URL</a>
+    <a href="#表单">表单</a>
+    <a href="#密码">密码</a>
+    <a href="#tls">TLS</a>
+    <a href="#ssh-隧道">SSH 隧道</a>
+    <a href="#代理和端口转发">代理和端口转发</a>
+    <a href="#下一步">下一步</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

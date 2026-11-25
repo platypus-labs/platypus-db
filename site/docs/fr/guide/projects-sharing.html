@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Projets et partage</title>
+  <meta name="description" content="Un projet est un groupe de connexions, de scripts et d&#39;onglets ouverts, affiché dans la barre de gauche. Les détails sont dans FEATURES.md et FEATURES.md.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Premiers pas</a>
+<a href="index.html">Guide utilisateur</a>
+<h6>Guide</h6>
+<a href="connect.html">Se connecter à une base de données</a>
+<a href="queries.html">Exécuter des requêtes et lire les résultats</a>
+<a href="edit-data.html">Modifier les données</a>
+<a href="import-export.html">Import et export</a>
+<a href="safety.html">Travailler en sécurité : production, lecture seule, confirmations, masquage</a>
+<a href="projects-sharing.html" class="on" aria-current="page">Projets et partage</a>
+<a href="agents.html">Utiliser PlatypusDB depuis un agent</a>
+<a href="troubleshooting.html">Dépannage et FAQ</a>
+<a href="databases/index.html">Bases de données</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Projets et partage</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/projects-sharing.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/projects-sharing.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/projects-sharing.html" lang="es" hreflang="es">Español</a> · <span lang="fr">Français</span> · <a href="../../it/guide/projects-sharing.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/projects-sharing.html" lang="pt" hreflang="pt">Português</a> · <a href="../../zh/guide/projects-sharing.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Guide utilisateur</a></p>
+<h1 id="projets-et-partage">Projets et partage</h1>
+<p>Un projet est un groupe de connexions, de scripts et d&#39;onglets ouverts, affiché dans la barre de gauche. Les détails sont dans <a href="../../features.html#workspace">FEATURES.md</a> et <a href="../../features.html#sharing-and-sync">FEATURES.md</a>.</p>
+<h2 id="créer-un-projet">Créer un projet</h2>
+<ol>
+<li>Lancez <strong>Nouveau projet…</strong> depuis la palette de commandes (<code>Ctrl+K</code>).</li>
+<li>Donnez-lui un nom, puis choisissez les connexions à y afficher. Une connexion peut aussi être ajoutée depuis son propre formulaire : <strong>Projets</strong> à la fin de la page <strong>Apparence et sécurité</strong>.</li>
+<li><code>Ctrl+1</code> affiche toutes les connexions, <code>Ctrl+2</code> à <code>Ctrl+9</code> les projets dans l&#39;ordre de la barre.</li>
+</ol>
+<h2 id="partager-une-requête">Partager une requête</h2>
+<ol>
+<li>Dans un onglet d&#39;éditeur SQL, lancez <strong>Partager la requête…</strong> (menu de l&#39;onglet ou palette de commandes).</li>
+<li>Copiez le lien <code>platypus://…</code>, ou enregistrez un fichier <code>.platypus</code>. Il contient le SQL, son titre et, si vous le demandez, les valeurs des paramètres ; il nomme la base de données mais jamais un mot de passe.</li>
+<li>Le collègue l&#39;ouvre avec <strong>Ouvrir un lien partagé…</strong> ou <strong>Ouvrir une requête partagée…</strong>, ou en déposant le fichier sur la fenêtre. L&#39;application trouve la connexion enregistrée correspondante ou en propose une nouvelle déjà remplie, et affiche la requête sans l&#39;exécuter.</li>
+</ol>
+<h2 id="partager-un-projet-avec-une-équipe">Partager un projet avec une équipe</h2>
+<ol>
+<li>Faites un clic droit sur le projet dans la barre et choisissez <strong>Partager le projet…</strong>, puis choisissez un dossier que l&#39;équipe garde dans Git ou sur un disque partagé. Il contient les connexions (sans identifiants) et les scripts.</li>
+<li>Chaque collègue clique sur <strong>Ouvrir un projet partagé…</strong> sur l&#39;écran d&#39;accueil, choisit le dossier, et saisit ses propres mots de passe.</li>
+<li>Après une modification dans le dossier, lancez <strong>Relire le dossier partagé</strong> depuis le menu du projet.</li>
+</ol>
+<p>Sûr par conception : une connexion nouvelle venue d&#39;un projet partagé ne donne <strong>aucun accès</strong> aux agents sur votre ordinateur tant que vous ne décidez pas autrement, et les instructions que le fichier exécute à chaque connexion sont d&#39;abord affichées et ne s&#39;exécutent qu&#39;après votre accord sur ce texte précis.</p>
+<h2 id="emporter-des-connexions-sur-un-autre-ordinateur">Emporter des connexions sur un autre ordinateur</h2>
+<p>Sur l&#39;écran d&#39;accueil, <strong>Exporter les connexions</strong> écrit un fichier <code>.platypusconn</code> : choisissez les connexions et, si vous le souhaitez, un mot de passe d&#39;au moins 8 caractères, qui chiffre le fichier et lui permet de contenir les mots de passe enregistrés. Sur l&#39;autre ordinateur, <strong>Importer des connexions</strong> le lit. Sans mot de passe, le fichier ne contient aucun identifiant.</p>
+<p>Pour garder les paramètres, les connexions et les scripts synchronisés entre vos ordinateurs, utilisez Paramètres › <strong>Synchronisation</strong> avec un dossier d&#39;un disque cloud. Voir <a href="../../features.html#sharing-and-sync">FEATURES.md</a>.</p>
+<h2 id="scripts-et-git">Scripts et Git</h2>
+<p>Quand le dossier de scripts d&#39;un projet est un dépôt Git, le panneau Scripts affiche la branche et les modifications par script, et propose <strong>Valider…</strong>, <strong>Pull</strong> et <strong>Push</strong>. Git doit être installé.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#créer-un-projet">Créer un projet</a>
+    <a href="#partager-une-requête">Partager une requête</a>
+    <a href="#partager-un-projet-avec-une-équipe">Partager un projet avec une équipe</a>
+    <a href="#emporter-des-connexions-sur-un-autre-ordinateur">Emporter des connexions sur un autre ordinateur</a>
+    <a href="#scripts-et-git">Scripts et Git</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

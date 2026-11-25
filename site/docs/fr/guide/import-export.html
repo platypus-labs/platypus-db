@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Import et export</title>
+  <meta name="description" content="Les actions ci-dessous sont dans le menu contextuel du navigateur et dans la palette de commandes (Ctrl+K). La liste complète des formats et des options est…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Premiers pas</a>
+<a href="index.html">Guide utilisateur</a>
+<h6>Guide</h6>
+<a href="connect.html">Se connecter à une base de données</a>
+<a href="queries.html">Exécuter des requêtes et lire les résultats</a>
+<a href="edit-data.html">Modifier les données</a>
+<a href="import-export.html" class="on" aria-current="page">Import et export</a>
+<a href="safety.html">Travailler en sécurité : production, lecture seule, confirmations, masquage</a>
+<a href="projects-sharing.html">Projets et partage</a>
+<a href="agents.html">Utiliser PlatypusDB depuis un agent</a>
+<a href="troubleshooting.html">Dépannage et FAQ</a>
+<a href="databases/index.html">Bases de données</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Import et export</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/import-export.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/import-export.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/import-export.html" lang="es" hreflang="es">Español</a> · <span lang="fr">Français</span> · <a href="../../it/guide/import-export.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/import-export.html" lang="pt" hreflang="pt">Português</a> · <a href="../../zh/guide/import-export.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Guide utilisateur</a></p>
+<h1 id="import-et-export">Import et export</h1>
+<p>Les actions ci-dessous sont dans le menu contextuel du navigateur et dans la palette de commandes (<code>Ctrl+K</code>). La liste complète des formats et des options est dans <a href="../../features.html#import-export-and-transfer">FEATURES.md</a>.</p>
+<h2 id="importer-un-fichier-dans-une-table">Importer un fichier dans une table</h2>
+<p><img src="../../../img/screenshots/guide/import-preview.png" alt="L&#39;aperçu d&#39;un fichier à importer" loading="lazy"></p>
+<ol>
+<li>Faites un clic droit sur la table dans le navigateur, puis <strong>Données</strong> › <strong>Importer des données…</strong>.</li>
+<li>Choisissez le fichier : CSV, TSV, JSON, NDJSON, Parquet ou Excel.</li>
+<li>Vérifiez l&#39;aperçu et la correspondance des colonnes.</li>
+<li>Choisissez <strong>Ajouter les lignes</strong>, <strong>Remplacer toutes les lignes</strong> ou <strong>Mettre à jour les lignes avec la même clé, ajouter les autres</strong>, puis cliquez sur <strong>Importer</strong>. Le dernier choix demande une clé primaire sur la table, et n&#39;est pas proposé sur ClickHouse.</li>
+</ol>
+<p><strong>Importer des données…</strong> est proposé sur les tables, pas sur les vues. Pour une nouvelle table, faites un clic droit sur le schéma et choisissez <strong>Importer des données dans une nouvelle table…</strong> : les types sont ceux que DuckDB déduit du fichier, et il n&#39;y a pas de choix de mode. <strong>Coller un CSV comme nouvelle table…</strong> (même menu) importe le contenu du presse-papiers.</p>
+<p>L&#39;import n&#39;est pas proposé sur une connexion en lecture seule, sur une connexion qui interdit la modification des données, ni sur les bases de données NoSQL.</p>
+<h2 id="exporter-des-tables-vers-un-fichier">Exporter des tables vers un fichier</h2>
+<ol>
+<li>Faites un clic droit sur une table, ou sélectionnez-en plusieurs, puis <strong>Données</strong> › <strong>Exporter les données…</strong>. Pour toutes les tables d&#39;un schéma, faites un clic droit sur le schéma et choisissez <strong>Exporter toutes les tables…</strong>.</li>
+<li>Choisissez le <strong>Formater</strong> (CSV, JSON, NDJSON, Parquet, Excel, SQL <code>INSERT</code>, Markdown, HTML ou XML) et cliquez sur <strong>Exporter vers un dossier…</strong> : même pour une seule table, l&#39;application demande un dossier, et écrit un fichier par table, nommé d&#39;après elle.</li>
+<li>Réglez si vous le souhaitez la <strong>Compression</strong> (gzip ou zstd ; pas pour Parquet et Excel, qui sont déjà compressés) et <strong>Envoyer aussi vers…</strong> un bucket (S3, GCS, R2 ou MinIO).</li>
+</ol>
+<p>Quand vous exportez à la place le résultat d&#39;une requête (l&#39;export de la grille de résultats), la boîte de dialogue demande un seul fichier, et l&#39;envoi peut aussi aller vers une URL signée (S3 ou GCS).</p>
+<p>Les cellules CSV qu&#39;un tableur exécuterait comme une formule reçoivent un <code>&#39;</code> au début, sauf si vous désactivez <strong>Formules en texte, pour les tableurs</strong>. Une connexion peut interdire les exports (page <strong>Apparence et sécurité</strong>) ; l&#39;action n&#39;est alors pas proposée. Voir <a href="safety.html">Sécurité</a>.</p>
+<p>Pour sortir le résultat d&#39;une requête, copiez-le depuis la grille en CSV, JSON, Markdown, HTML, SQL <code>INSERT</code> ou liste <code>IN</code>.</p>
+<h2 id="copier-une-table-ou-un-schéma-vers-une-autre-base-de-données">Copier une table ou un schéma vers une autre base de données</h2>
+<p>Faites un clic droit sur une table et choisissez <strong>Données</strong> › <strong>Copier vers une base de données…</strong> (elle permet de faire correspondre les colonnes), sélectionnez plusieurs tables d&#39;un schéma et choisissez <strong>Données</strong> › <strong>Copier les tables vers une base de données…</strong>, ou faites un clic droit sur le schéma et choisissez <strong>Copier le schéma vers une base de données…</strong>. Les types sont convertis. La cible est une connexion SQL qui n&#39;est pas en lecture seule et qui autorise la modification des données. Copier plusieurs tables ou un schéma est réservé aux sources SQL ; une collection MongoDB ou un type de clé Redis peut être copié vers une base de données SQL. Aucune de ces actions n&#39;est proposée quand la connexion interdit les exports.</p>
+<h2 id="exécuter-un-fichier-sql-ou-exporter-vers-un-fichier">Exécuter un fichier SQL, ou exporter vers un fichier</h2>
+<p>Faites un clic droit sur une connexion ou une base de données et choisissez <strong>Exécuter un fichier SQL…</strong> : cela exécute un fichier <code>.sql</code> (ou <code>.sql.gz</code>, <code>.sql.zst</code>) de toute taille instruction par instruction, avec progression et Arrêter, par défaut dans une transaction qu&#39;un échec annule. <strong>Exporter dans un fichier SQL…</strong> (sur un schéma, ou sur des tables sous <strong>Données</strong>) écrit dans un seul fichier le DDL d&#39;un schéma ou des objets choisis, et si on le veut leurs lignes.</p>
+<h2 id="enregistrer-un-transfert-pour-plus-tard">Enregistrer un transfert pour plus tard</h2>
+<p>Chaque boîte de dialogue d&#39;export, d&#39;import et de copie a <strong>Enregistrer comme profil…</strong>. <strong>Profils de transfert…</strong> (palette de commandes) les exécute, les renomme, les supprime et les planifie. La clé secrète d&#39;un bucket n&#39;est jamais enregistrée dans le fichier de profil.</p>
+<h2 id="interroger-un-fichier-de-données-sans-limporter">Interroger un fichier de données sans l&#39;importer</h2>
+<p>Déposez un fichier CSV, JSON, Parquet ou Excel sur la fenêtre, ou cliquez sur <strong>Ouvrir un fichier de données</strong> sur l&#39;écran d&#39;accueil : il s&#39;ouvre comme une base de données (chaque feuille Excel est une table). La première fois, l&#39;application propose de télécharger la bibliothèque de DuckDB.</p>
+<h2 id="importer-des-connexions">Importer des connexions</h2>
+<p>Sur l&#39;écran d&#39;accueil, <strong>Importer des connexions</strong> lit DBeaver, DataGrip et pgAdmin (et <code>pg_service.conf</code>) ; les connexions Db2 de DBeaver et DataGrip, et les URL <code>jdbc:db2:</code>, sont lues aussi. <strong>Exporter les connexions</strong> écrit un fichier <code>.platypusconn</code> pour un autre ordinateur : voir <a href="projects-sharing.html">Projets et partage</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#importer-un-fichier-dans-une-table">Importer un fichier dans une table</a>
+    <a href="#exporter-des-tables-vers-un-fichier">Exporter des tables vers un fichier</a>
+    <a href="#copier-une-table-ou-un-schéma-vers-une-autre-base-de-données">Copier une table ou un schéma vers une autre base de données</a>
+    <a href="#exécuter-un-fichier-sql-ou-exporter-vers-un-fichier">Exécuter un fichier SQL, ou exporter vers un fichier</a>
+    <a href="#enregistrer-un-transfert-pour-plus-tard">Enregistrer un transfert pour plus tard</a>
+    <a href="#interroger-un-fichier-de-données-sans-limporter">Interroger un fichier de données sans l&#39;importer</a>
+    <a href="#importer-des-connexions">Importer des connexions</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

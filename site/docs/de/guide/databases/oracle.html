@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Oracle</title>
+  <meta name="description" content="Der Treiber nutzt die Client-Bibliothek von Oracle (ODPI-C, über das Crate oracle), die beim Verbinden geladen wird. Die Bibliothek ist Oracle Instant…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Erste Schritte</a>
+<a href="../index.html">Benutzerhandbuch</a>
+<h6>Guide</h6>
+<a href="../connect.html">Mit einer Datenbank verbinden</a>
+<a href="../queries.html">Abfragen ausführen und Ergebnisse lesen</a>
+<a href="../edit-data.html">Daten bearbeiten</a>
+<a href="../import-export.html">Import und Export</a>
+<a href="../safety.html">Sicher arbeiten: Produktion, Schreibschutz, Bestätigungen, Maskierung</a>
+<a href="../projects-sharing.html">Projekte und Teilen</a>
+<a href="../agents.html">PlatypusDB von einem Agenten aus nutzen</a>
+<a href="../troubleshooting.html">Fehlerbehebung und FAQ</a>
+<a href="index.html">Datenbanken</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub on" aria-current="page">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 und ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Oracle</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/oracle.html" lang="en" hreflang="en">English</a> · <span lang="de">Deutsch</span> · <a href="../../../es/guide/databases/oracle.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/oracle.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/oracle.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/oracle.html" lang="pt" hreflang="pt">Português</a> · <a href="../../../zh/guide/databases/oracle.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Datenbanken</a></p>
+<h1 id="oracle">Oracle</h1>
+<p>Der Treiber nutzt die Client-Bibliothek von Oracle (ODPI-C, über das Crate <code>oracle</code>), die beim Verbinden geladen wird. Die Bibliothek ist Oracle Instant Client, den die App bei der ersten Verwendung herunterlädt.</p>
+<h2 id="erste-verwendung-instant-client">Erste Verwendung: Instant Client</h2>
+<p>Wählst du <strong>Oracle</strong> für eine neue Verbindung und der Client liegt nicht auf diesem Rechner, öffnet sich über dem Formular ein Popup: <em>Oracle benötigt Oracle Instant Client</em>. Es zeigt das Paket (Basic Light 23.26.4), seine Größe, seine Lizenz (Oracle Free Use Terms and Conditions) und woher es kommt, und prüft den Download gegen eine SHA-256. <strong>Herunterladen</strong> holt ihn in den Datenordner der App; <strong>Abbrechen</strong> lässt das Formular benutzbar, und das Angebot kommt bei <em>Verbindung testen</em> und beim ersten Öffnen wieder. <em>Einstellungen › Treiber</em> listet den Client auf und entfernt ihn.</p>
+<ul>
+<li>Die App lädt ihn unter Windows (x64) und Linux (x64 und ARM64) herunter. Unter macOS lädt sie nichts herunter: Installiere Instant Client von Oracle und lege seinen Ordner in den Bibliothekspfad.</li>
+<li>Hat die App keinen heruntergeladen, nutzt sie einen Instant Client oder vollen Client, den das System laden kann.</li>
+<li>Windows braucht das Microsoft Visual C++ Redistributable und Linux die Bibliothek <code>libaio</code> (<code>libaio1</code>, <code>libaio1t64</code> oder <code>libaio</code>, je nach Distribution); lässt sich der Client nicht laden, nennt der Fehler das fehlende Stück.</li>
+</ul>
+<h2 id="verbinden">Verbinden</h2>
+<p>Es gibt keine <code>oracle://</code>-URL; füge stattdessen eine JDBC-URL ein, etwa <code>jdbc:oracle:thin:@host:1521/service</code> (Thin- und OCI-Formen werden gelesen), oder fülle das Formular aus:</p>
+<ul>
+<li><strong>Host</strong> und <strong>Port</strong> (Standard 1521) und <strong>Dienstname</strong> im Feld Datenbank (zum Beispiel <code>FREEPDB1</code>). Sie werden als Easy-Connect-Zeichenfolge geschrieben, <code>host:port/service</code>.</li>
+<li><strong>Ohne Host</strong> ist das Feld Datenbank ein Net-Service-Name aus <code>tnsnames.ora</code> oder ein ganzer Connect-Descriptor, so geschrieben, wie er ist.</li>
+<li><strong>Benutzer und Passwort.</strong> Ohne Benutzer meldet das Konto des Betriebssystems oder ein Oracle-Wallet an. Der Benutzer kann auf die SQL<em>Plus-Art geschrieben werden, <code>sys as sysdba</code>, oder du wählst die <em>*Rolle</em></em> (<code>SYSDBA</code>, <code>SYSOPER</code>, <code>SYSBACKUP</code>, <code>SYSDG</code>, <code>SYSKM</code>, <code>SYSASM</code>).</li>
+<li><strong>TLS</strong>: Die Modi <code>disable</code> und <code>prefer</code> nutzen einfaches TCP; <code>require</code> und darüber nutzen <code>tcps://</code> mit den vertrauenswürdigen Zertifikaten des Systems. <code>require</code> überspringt den Abgleich des Servernamens; <code>verify-ca</code> und <code>verify-full</code> prüfen ihn. Der Verbindungs-Timeout gilt. Durch einen SSH-Tunnel wird das lokale Ende des Tunnels genutzt.</li>
+</ul>
+<h2 id="berechtigungen">Berechtigungen</h2>
+<p>Das Durchsuchen liest die <code>ALL_*</code>-Views, daher sieht die Anmeldung die Objekte, auf die sie Rechte hat. Abbrechen sendet einen Break; läuft die Anweisung nach ein paar Sekunden noch, bricht die App sie aus einer zweiten Sitzung mit <code>ALTER SYSTEM CANCEL SQL</code> ab, was dieses Recht braucht, und gibt andernfalls die Sitzung auf (ihre Transaktion wird zurückgerollt und eine neue Verbindung geöffnet).</p>
+<h2 id="was-funktioniert">Was funktioniert</h2>
+<ul>
+<li>Datenbearbeitung im Raster, über den Primärschlüssel (oder einen eindeutigen Schlüssel auf Spalten ohne NULL oder einen virtuellen Schlüssel).</li>
+<li>Manueller Commit und Rollback.</li>
+<li>PL/SQL-Blöcke: Ein Skript beendet einen Block mit einer <code>/</code>-Zeile. Der Text von <code>DBMS_OUTPUT</code> kommt als Meldungen zurück.</li>
+<li>Navigator (Tabellen, Views, materialisierte Views, Sequenzen, Synonyme, Funktionen, Prozeduren, Trigger, Typen und Packages), Objekt-DDL und Schema-Tools.</li>
+<li>Explain zeigt den Plan aus <code>EXPLAIN PLAN</code> und <code>DBMS_XPLAN</code>, nur geschätzt: Es gibt kein Explain analyze.</li>
+<li>Kompilierfehler, Zahlen und Nanosekunden-Zeiten, JSON, Vektoren, Cursor, lange LOBs und Dateispalten werden so zurückgelesen, wie die Datenbank sie hält.</li>
+<li>Keine Tabs für Sitzungen, Sperren, Dashboard, Anweisungen, Benutzer oder Parameter.</li>
+<li>Der Terminalmodus ist nicht verfügbar.</li>
+</ul>
+<h2 id="agenten">Agenten</h2>
+<p>Schreibgeschützte Agenten verlassen sich allein auf die Prüfung der Anweisung: Oracle hat hier keine schreibgeschützte Sitzung auf dem Server. Bei einer Anweisung, die ein Oracle-Package aufruft, etwa <code>UTL_HTTP</code>, wird vor der Ausführung nachgefragt, wie bei einer Änderung. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
+<ul>
+<li>Die App vergleicht die Version des Servers nicht mit einem Minimum; der Client, den sie herunterlädt, ist 23.26.4.</li>
+<li>Für einen Server älter als 12 liest der Navigator das Wörterbuch anders (kein <code>ORACLE_MAINTAINED</code>, kein <code>FETCH FIRST</code>). In den Tests läuft nur Oracle Free 23.26, daher ist dieser Pfad ungeprüft. Autonomous Database und andere Oracle-Clouddienste sind ebenfalls nicht getestet.</li>
+<li>Instant Client wird unter macOS nicht heruntergeladen.</li>
+</ul>
+<h2 id="getestet-auf">Getestet auf</h2>
+<p>Die Konformitätssuite läuft auf Oracle Free 23.26 (Container <code>gvenzl/oracle-free</code>), mit heruntergeladenem Instant Client oder dem des Systems: Typen, lange Ergebnisse, Fehler, die auf den Fehler zeigen, PL/SQL, Navigator, Commit und Rollback, das Speichern vieler bearbeiteter Zeilen, Abbrechen (auch eines PL/SQL-Sleeps), Pläne, DDL, das sich zurückspielen lässt, Verbinden als <code>SYSDBA</code> und Schemavergleich. Andere Versionen sind nicht getestet.</p>
+<p>Siehe auch: <a href="../connect.html">Verbinden</a>, <a href="../troubleshooting.html">Fehlerbehebung</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#erste-verwendung-instant-client">Erste Verwendung: Instant Client</a>
+    <a href="#verbinden">Verbinden</a>
+    <a href="#berechtigungen">Berechtigungen</a>
+    <a href="#was-funktioniert">Was funktioniert</a>
+    <a href="#agenten">Agenten</a>
+    <a href="#bekannte-grenzen">Bekannte Grenzen</a>
+    <a href="#getestet-auf">Getestet auf</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

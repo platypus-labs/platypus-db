@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Usar PlatypusDB desde un agente</title>
+  <meta name="description" content="Claude Code, Codex, Cursor y otros clientes MCP pueden usar tus conexiones guardadas a través del servidor MCP de PlatypusDB. Esta página es el camino…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Primeros pasos</a>
+<a href="index.html">Guía del usuario</a>
+<h6>Guide</h6>
+<a href="connect.html">Conectar a una base de datos</a>
+<a href="queries.html">Ejecutar consultas y leer los resultados</a>
+<a href="edit-data.html">Editar datos</a>
+<a href="import-export.html">Importar y exportar</a>
+<a href="safety.html">Trabajar con seguridad: producción, solo lectura, confirmaciones, enmascarado</a>
+<a href="projects-sharing.html">Proyectos y uso compartido</a>
+<a href="agents.html" class="on" aria-current="page">Usar PlatypusDB desde un agente</a>
+<a href="troubleshooting.html">Solución de problemas y preguntas frecuentes</a>
+<a href="databases/index.html">Bases de datos</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Usar PlatypusDB desde un agente</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/agents.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/agents.html" lang="de" hreflang="de">Deutsch</a> · <span lang="es">Español</span> · <a href="../../fr/guide/agents.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/agents.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/agents.html" lang="pt" hreflang="pt">Português</a> · <a href="../../zh/guide/agents.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Guía del usuario</a></p>
+<h1 id="usar-platypusdb-desde-un-agente">Usar PlatypusDB desde un agente</h1>
+<p>Claude Code, Codex, Cursor y otros clientes MCP pueden usar tus conexiones guardadas a través del servidor MCP de PlatypusDB. Esta página es el camino corto; cada herramienta, límite y ajuste está en la referencia, <a href="../../agents.html">AGENTS.md</a>.</p>
+<h2 id="conectar-un-agente">Conectar un agente</h2>
+<ol>
+<li>Abre Ajustes (<code>Ctrl+,</code>) › <strong>Agentes</strong> › <strong>Configuración</strong>.</li>
+<li>Busca tu cliente en la lista (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, Gemini CLI). Haz clic en <strong>Instalar</strong>: la app te pregunta, guarda una copia del archivo del cliente a su lado y escribe el servidor en él. Si tu cliente no está en la lista, copia la entrada a mano desde la misma página.</li>
+<li>Reinicia el cliente. Él mismo inicia PlatypusDB con <code>--mcp</code>; no se abre ninguna ventana, y la app no tiene que estar abierta para leer.</li>
+</ol>
+<h2 id="elegir-qué-permite-cada-conexión">Elegir qué permite cada conexión</h2>
+<p><img src="../../../img/screenshots/guide/agents-security.png" alt="Ajustes, Agentes, la página Seguridad" loading="lazy"></p>
+<ol>
+<li>Ajustes › <strong>Agentes</strong> › <strong>Seguridad</strong> lista tus conexiones. El formulario de cada conexión tiene la misma opción, en <strong>Agentes</strong>, dentro de su página <strong>Apariencia y seguridad</strong>.</li>
+<li>Elige <strong>Desactivado</strong>, <strong>Solo lectura</strong> (el valor por defecto) o <strong>Lectura y escritura</strong>.</li>
+</ol>
+<p>Las conexiones de producción y las de solo lectura nunca pasan de solo lectura: el panel dice &quot;No disponible: las conexiones de producción y de solo lectura siguen en solo lectura.&quot; Una conexión nueva de un proyecto compartido empieza en <strong>Desactivado</strong> en tu ordenador.</p>
+<h2 id="límites-y-enmascarado">Límites y enmascarado</h2>
+<ul>
+<li>En <strong>Seguridad</strong>, <strong>Límites para agentes</strong> fija, por conexión, el máximo de filas, bytes y segundos de un resultado o una sentencia, las llamadas por minuto, y las filas o el coste de plan estimados de una lectura, por encima de los cuales la lectura se rechaza junto con su plan. Vacío significa sin más límite que los topes fijos.</li>
+<li>Las columnas sensibles se leen como <code>••••••</code> para los agentes, igual que en la cuadrícula con el enmascarado activo. Marca <strong>Mostrar a los agentes los valores de las columnas sensibles</strong> en una conexión para mostrarlas. Consulta <a href="safety.html">Seguridad</a>.</li>
+</ul>
+<h2 id="los-cambios-esperan-tu-respuesta">Los cambios esperan tu respuesta</h2>
+<p>En una conexión de <strong>Lectura y escritura</strong>, cada cambio que un agente quiere ejecutar abre un diálogo en la app con la sentencia, con los colores del editor y maquetada en las bases de datos SQL (<strong>Mostrar tal como lo envió el agente</strong> muestra el texto que se ejecuta, al pie de la letra), las filas que la base de datos espera cambiar y su plan. Haz clic en <strong>Rechazar</strong> (el agente lee tu motivo), <strong>Permitir una vez</strong> o <strong>Permitir en esta sesión</strong>. Si pasan cinco minutos sin respuesta, se rechaza, y con la app cerrada los cambios se rechazan. Ajustes › <strong>Seguridad</strong> › <strong>Preguntar antes de que los agentes cambien datos</strong> desactiva las preguntas.</p>
+<p>Un agente también puede proponer, sin ejecutar nada:</p>
+<ul>
+<li>SQL con <code>propose_sql</code>: se abre en una pestaña de editor nueva, para que lo leas y lo ejecutes.</li>
+<li>Filas para insertar, actualizar o borrar con <code>propose_edits</code>: la tabla se abre en su visor de datos con ellas como cambios pendientes, para que las guardes o las descartes (consulta <a href="edit-data.html">Editar datos</a>).</li>
+</ul>
+<h2 id="ver-qué-hicieron-los-agentes">Ver qué hicieron los agentes</h2>
+<p>Ajustes › <strong>Agentes</strong> › <strong>Actividad</strong> lista cada llamada a una herramienta por sesión, con un filtro y <strong>Exportar CSV</strong>. Sus consultas están en el historial con el nombre del agente.</p>
+<p>Encima de la lista, <strong>Resumen por agente y sesión</strong> (plegado hasta que lo abres) suma las llamadas que seleccionan los filtros: una fila por agente y, debajo, una por sesión, con el periodo, las llamadas, las tablas leídas, las filas devueltas, los cambios permitidos, los cambios rechazados y los errores. <strong>Exportar Markdown</strong> y <strong>Exportar HTML</strong> lo guardan como un documento para compartir; el HTML es un solo archivo, sin scripts y sin nada cargado desde fuera.</p>
+<ul>
+<li>Una <strong>sesión</strong> es un arranque del servidor MCP, tal como lo anota el registro (un cliente que sigue conectado durante días es una sola sesión).</li>
+<li>Un <strong>cambio</strong> es una sentencia que modifica datos o el esquema. Es <em>permitido</em> si se ejecutó y <em>rechazado</em> si el acceso de la conexión, un ajuste de seguridad o tu respuesta en la app dijeron que no. Una sentencia que falló por otro motivo cuenta solo como error.</li>
+<li><strong>Tablas leídas</strong> es exacto para <code>sample_rows</code> y <code>profile_table</code> y para las fuentes de <code>query_across_databases</code>, y una estimación para una sentencia: las tablas nombradas después de <code>FROM</code> y <code>JOIN</code>. Una sentencia en un lenguaje que no es SQL (MongoDB, Redis, Elasticsearch, Cassandra) no nombra ninguna.</li>
+<li>Solo se guardan nombres y recuentos: ningún valor, y las sentencias siguen enmascaradas como en el registro.</li>
+<li>Las llamadas hechas antes de que esta versión guardara estas cifras muestran <strong>–</strong>, nunca un 0; las demás cifras cuentan solo las llamadas que las tienen, y el resumen lo dice.</li>
+</ul>
+<h2 id="cuando-no-funciona">Cuando no funciona</h2>
+<p>Consulta <a href="troubleshooting.html#un-agente-no-ve-una-conexión">Solución de problemas</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#conectar-un-agente">Conectar un agente</a>
+    <a href="#elegir-qué-permite-cada-conexión">Elegir qué permite cada conexión</a>
+    <a href="#límites-y-enmascarado">Límites y enmascarado</a>
+    <a href="#los-cambios-esperan-tu-respuesta">Los cambios esperan tu respuesta</a>
+    <a href="#ver-qué-hicieron-los-agentes">Ver qué hicieron los agentes</a>
+    <a href="#cuando-no-funciona">Cuando no funciona</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>
