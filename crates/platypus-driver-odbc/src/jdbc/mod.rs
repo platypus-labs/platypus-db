@@ -81,7 +81,8 @@ fn chosen_driver(config: &ConnectionConfig) -> Result<Option<String>> {
         .map(|p| Some(p.to_string_lossy().into_owned()))
         .ok_or_else(|| {
             Error::Config(format!(
-                "the IBM JDBC driver {version} is not downloaded: choose it in the connection to                  download it"
+                "the IBM JDBC driver {version} is not downloaded: choose it in the connection to \
+                 download it"
             ))
         })
 }
@@ -159,7 +160,11 @@ fn db2_url(config: &ConnectionConfig) -> Result<(String, String)> {
     }
     // Through an SSH tunnel: its local end.
     let (host, port) = if let Some(addr) = config.connect_addr {
-        (addr.ip().to_string(), addr.port())
+        let host = match addr.ip() {
+            std::net::IpAddr::V6(ip) => format!("[{ip}]"),
+            ip @ std::net::IpAddr::V4(_) => ip.to_string(),
+        };
+        (host, addr.port())
     } else {
         let default = if profile::option(config, profile::DB2_PLATFORM) == Some("zos") {
             446
@@ -222,7 +227,14 @@ impl Worker {
         )?;
         let answer = answer(&mut bridge, id)?;
         let product = answer["product"].as_str().map(str::to_owned);
-        Ok((Self { bridge }, Opened { dbms: product }))
+        let interrupt = Some(bridge.interrupter());
+        Ok((
+            Self { bridge },
+            Opened {
+                dbms: product,
+                interrupt,
+            },
+        ))
     }
 
     fn run(&mut self, command: Command) {

@@ -282,7 +282,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
   const [jdbc, setJdbc] = useState<JdbcStatus | null>(null);
   const [jdbcProgress, setJdbcProgress] = useState<{ done: number; total: number | null } | null>(null);
   const [jdbcError, setJdbcError] = useState<string | null>(null);
-  // The Java the app finds by itself: shown as it is, not to be edited.
+  // The Java the app finds by itself: the field's placeholder, used unless the connection names one.
   const [javaFound, setJavaFound] = useState<string | null>(null);
   useEffect(() => {
     if (conn.driver !== "db2") return;
@@ -1110,10 +1110,9 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                           <label className="field">
                             <span>{t("Java")}</span>
                             <input
-                              value={javaFound ?? conn.options?.["jdbc.java"] ?? ""}
-                              disabled={javaFound !== null}
+                              value={conn.options?.["jdbc.java"] ?? ""}
                               onChange={(e) => setOption("jdbc.java", e.target.value)}
-                              placeholder={t("Not found: the java program, or the folder of a Java 11 or later")}
+                              placeholder={javaFound ?? t("Not found: the java program, or the folder of a Java 11 or later")}
                               data-field="jdbc_java"
                               title={javaFound !== null ? t("Found by itself (JAVA_HOME, the PATH, DBeaver's)") : t("The java program, or the folder of a Java 11 or later.")}
                             />
@@ -1134,7 +1133,7 @@ export function ConnectionDialog({ initial, existing, projects, memberOf, driver
                     </button>
                   </div>
                 )}
-                {VENDOR_DRIVERS.includes(conn.driver) && !conn.options?.["jdbc.jars"]?.trim() ? <VendorDriverState driver={conn.driver} /> : null}
+                {VENDOR_DRIVERS.includes(conn.driver) && !jdbcOn ? <VendorDriverState driver={conn.driver} /> : null}
                 </section>
 
                 <section className="form-section">

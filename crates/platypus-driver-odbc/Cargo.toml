@@ -26,7 +26,7 @@ tokio = { workspace = true, features = ["sync", "rt"] }
 arrow-odbc = "26"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]
 workspace = true

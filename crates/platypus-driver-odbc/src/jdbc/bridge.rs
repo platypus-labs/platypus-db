@@ -10,14 +10,20 @@ use std::time::{Duration, Instant};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use platypus_core::{DbError, Error, Result};
+
+use crate::command::Interrupt;
 use serde_json::Value;
+
+/// The request that cancels the running statement; the bridge answers nothing to it.
+const CANCEL: &str = "0\tCANCEL\n";
 
 /// How much of the bridge's standard error is kept, for the error of a bridge that stops.
 const STDERR_KEPT: usize = 4096;
 
 pub struct Bridge {
     child: Child,
-    stdin: Option<ChildStdin>,
+    /// Shared with [`Bridge::interrupter`]: a cancel is written while the worker waits.
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
     stdout: BufReader<ChildStdout>,
     stderr: Arc<Mutex<String>>,
     next: u64,
@@ -71,7 +77,7 @@ impl Bridge {
         }
         Ok(Self {
             child,
-            stdin: Some(stdin),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
             stdout,
             stderr,
             next: 0,
@@ -93,15 +99,38 @@ impl Bridge {
 
     /// Asks the bridge to cancel the statement it is running. It answers nothing.
     pub fn cancel(&mut self) {
-        let _ = self.write("0\tCANCEL\n");
+        let _ = self.write(CANCEL);
+    }
+
+    /// What cancels the running statement from another thread than the worker's, which is
+    /// waiting for the bridge's answer.
+    pub fn interrupter(&self) -> Interrupt {
+        let stdin = Arc::clone(&self.stdin);
+        Interrupt(Arc::new(move || {
+            if let Some(stdin) = stdin
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_mut()
+            {
+                let _ = stdin
+                    .write_all(CANCEL.as_bytes())
+                    .and_then(|()| stdin.flush());
+            }
+        }))
     }
 
     fn write(&mut self, line: &str) -> Result<()> {
-        let stdin = self.stdin.as_mut().ok_or(Error::Closed)?;
-        stdin
-            .write_all(line.as_bytes())
-            .and_then(|()| stdin.flush())
-            .map_err(|_| self.stopped())
+        let written = {
+            let mut stdin = self
+                .stdin
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let stdin = stdin.as_mut().ok_or(Error::Closed)?;
+            stdin
+                .write_all(line.as_bytes())
+                .and_then(|()| stdin.flush())
+        };
+        written.map_err(|_| self.stopped())
     }
 
     /// The next answer of the bridge.
@@ -137,7 +166,12 @@ impl Drop for Bridge {
     /// Closing the input ends the bridge, which closes the database connection; a bridge
     /// still there after a moment is killed.
     fn drop(&mut self) {
-        drop(self.stdin.take());
+        drop(
+            self.stdin
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take(),
+        );
         let until = Instant::now() + Duration::from_secs(2);
         while Instant::now() < until {
             if matches!(self.child.try_wait(), Ok(Some(_))) {

@@ -15,7 +15,7 @@ use platypus_core::{
 };
 use tokio::sync::{Notify, oneshot};
 
-use crate::command::{CatalogRequest, CatalogRows, Command, Opened, Started};
+use crate::command::{CatalogRequest, CatalogRows, Command, Interrupt, Opened, Started};
 use crate::meta;
 
 /// The queries that read the server's version and the session's schema, where the
@@ -44,7 +44,10 @@ impl OdbcConnection {
         let opened = opened.await.map_err(|_| Error::Closed)??;
         let mut conn = Self {
             commands: Mutex::new(commands),
-            canceller: OdbcCanceller::default(),
+            canceller: OdbcCanceller {
+                interrupt: opened.interrupt.clone(),
+                ..OdbcCanceller::default()
+            },
             kind: config.driver,
             server: ServerInfo {
                 product: match config.driver {
@@ -139,7 +142,8 @@ fn spawn_worker(
     }
     #[cfg(not(windows))]
     Err(Error::Unsupported(format!(
-        "{} through ODBC on this system: ODBC drivers are reached on Windows only for now          (a JDBC driver is reached everywhere)",
+        "{} through ODBC on this system: ODBC drivers are reached on Windows only for now \
+         (a JDBC driver is reached everywhere)",
         config.driver.name()
     )))
 }
@@ -310,17 +314,23 @@ struct CancelState {
     abandon: Notify,
 }
 
-/// ODBC's `SQLCancel` is not reachable without unsafe code: a statement still waiting to
-/// start is given up instead, with its session, which the app replaces; one returning rows
-/// stops when its stream is dropped.
+/// Through the JDBC bridge, the statement is cancelled in the bridge. ODBC's `SQLCancel` is
+/// not reachable without unsafe code: a statement still waiting to start is given up instead,
+/// with its session, which the app replaces; one returning rows stops when its stream is
+/// dropped.
 #[derive(Debug, Clone, Default)]
 struct OdbcCanceller {
     state: Arc<CancelState>,
+    interrupt: Option<Interrupt>,
 }
 
 #[async_trait]
 impl Canceller for OdbcCanceller {
     async fn cancel(&self) -> Result<()> {
+        if let Some(interrupt) = &self.interrupt {
+            (interrupt.0)();
+            return Ok(());
+        }
         if self.state.starting.load(Ordering::SeqCst) > 0 {
             self.state.abandoned.store(true, Ordering::SeqCst);
             self.state.abandon.notify_waiters();

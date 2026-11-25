@@ -156,7 +156,8 @@ pub struct JdbcStatus {
     found_license: Option<String>,
 }
 
-#[tauri::command]
+// `async`: off the main thread, which the search for jars on the disk would freeze.
+#[tauri::command(async)]
 pub fn jdbc_status() -> CommandResult<JdbcStatus> {
     let dir = data_dir()?;
     let found = platypus_driver_odbc::find_jdbc_jars(&[]);
@@ -201,7 +202,7 @@ pub async fn install_jdbc_driver(
 }
 
 /// Deletes a downloaded version of the JDBC driver.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_jdbc_driver(version: String) -> CommandResult<JdbcStatus> {
     platypus_drivers::remove_jdbc(data_dir()?, &jdbc_version(&version)?).map_err(driver_error)?;
     jdbc_status()

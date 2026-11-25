@@ -99,7 +99,13 @@ fn open(
         .database_management_system_name()
         .ok()
         .filter(|n| !n.is_empty());
-    Ok((connection, Opened { dbms }))
+    Ok((
+        connection,
+        Opened {
+            dbms,
+            interrupt: None,
+        },
+    ))
 }
 
 /// Starts the thread; answers once the connection is open or has failed.

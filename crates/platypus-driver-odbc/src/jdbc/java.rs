@@ -64,13 +64,18 @@ fn candidates() -> Vec<PathBuf> {
     found
 }
 
-/// The bridge's jar, written to the temporary folder when it is not there as it should be.
+/// The bridge's jar, written when it is not there as it should be: to the app's drivers folder,
+/// which is the user's own (the temporary folder is shared by every user on Linux), else to
+/// the temporary folder.
 pub fn bridge_jar() -> Result<PathBuf> {
     use std::hash::{DefaultHasher, Hash as _, Hasher as _};
     let mut hasher = DefaultHasher::new();
     BRIDGE_JAR.hash(&mut hasher);
-    let path =
-        std::env::temp_dir().join(format!("platypus-jdbc-bridge-{:016x}.jar", hasher.finish()));
+    let dir = platypus_drivers::data_dir()
+        .map(platypus_drivers::jdbc_dir)
+        .filter(|d| std::fs::create_dir_all(d).is_ok())
+        .unwrap_or_else(std::env::temp_dir);
+    let path = dir.join(format!("platypus-jdbc-bridge-{:016x}.jar", hasher.finish()));
     // It is code the app runs: whatever is there is replaced unless it is exactly the jar.
     if std::fs::read(&path).is_ok_and(|on_disk| on_disk == BRIDGE_JAR) {
         return Ok(path);

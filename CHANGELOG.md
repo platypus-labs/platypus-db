@@ -6,6 +6,19 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Db2 through JDBC**: Cancel stops the statement in the JDBC bridge, also before its first rows;
+  before, the query went on running on the server in the background.
+- **Db2 through JDBC**: the Java field can be edited even when the app finds a Java by itself (shown
+  as its placeholder), so a Java older than 11 on the `PATH` can be replaced.
+- **Db2 through JDBC**: a connection that uses a version of IBM's JDBC driver no longer shows the
+  ODBC client as "not installed".
+- **Connections**: opening a Db2 connection no longer freezes the window while the app looks for
+  IBM's JDBC jars on the disk.
+- **JDBC**: the bridge is kept in the app's drivers folder, not in the temporary folder that other
+  users share on Linux; an SSH tunnel on an IPv6 address gives a valid Db2 URL.
+
 ## [0.6.10] - 2026-11-24
 
 ### Added

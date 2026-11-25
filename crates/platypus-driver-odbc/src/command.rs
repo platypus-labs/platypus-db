@@ -74,4 +74,17 @@ pub enum CatalogRows {
 pub struct Opened {
     /// `SQL_DBMS_NAME`: `Oracle`, `DB2/NT64`, `Microsoft SQL Server`.
     pub dbms: Option<String>,
+    /// What cancels the running statement, where the worker can be reached while it waits
+    /// (the JDBC bridge); `None` for ODBC.
+    pub interrupt: Option<Interrupt>,
+}
+
+/// Cancels the statement a worker is running, from another thread.
+#[derive(Clone)]
+pub struct Interrupt(pub std::sync::Arc<dyn Fn() + Send + Sync>);
+
+impl std::fmt::Debug for Interrupt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Interrupt")
+    }
 }

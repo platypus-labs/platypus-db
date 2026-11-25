@@ -145,3 +145,30 @@ async fn commit_and_rollback_end_a_manual_transaction() {
         .unwrap();
     assert_eq!(n.value(0), 1);
 }
+
+#[tokio::test]
+async fn cancel_stops_a_statement_that_has_not_returned_yet() {
+    let Some(conn) = connect().await else {
+        eprintln!("skipping: PLATYPUS_TEST_JAVA and PLATYPUS_TEST_JARS are not set");
+        return;
+    };
+    let cancel = conn.cancel_handle();
+    let canceller = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        cancel.cancel().await
+    });
+    let started = std::time::Instant::now();
+    let outcome = conn
+        .execute(
+            "select count(*) from system_range(1, 100000000000)",
+            &ExecOptions::default(),
+        )
+        .await;
+    canceller.await.unwrap().unwrap();
+    assert!(outcome.is_err(), "the statement was not cancelled");
+    assert!(started.elapsed() < std::time::Duration::from_secs(20));
+    // The session is still there: the bridge cancelled the statement, not the connection.
+    assert!(!conn.is_closed());
+    let batches = rows(&*conn, "select 1").await;
+    assert_eq!(batches[0].num_rows(), 1);
+}
