@@ -9,6 +9,9 @@
 //                                               documents produce (nothing is written)
 //   node scripts/copy-site-screenshots.mjs      copies the pictures the pages show
 //
+// The guide's translations (docs/user/translations/<lang>/guide/) become docs/<lang>/guide/*.html;
+// each guide page lists the languages it exists in.
+//
 // The output is the same bytes every time: no dates, no order that depends on the disk.
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
@@ -41,8 +44,23 @@ const ON_GITHUB = [
   ["README", "README.md"],
 ];
 
+/** Where the guide's translations are in the repository, and the name of each language. */
+const TRANSLATIONS = "docs/user/translations/";
+const LANGUAGES = { en: "English", it: "Italiano", es: "Español", de: "Deutsch", fr: "Français", pt: "Português", zh: "中文" };
+
+/** The language and the English page (`docs/user/guide/...`) of a translated source, else `null`. */
+export function translationOf(src) {
+  const m = /^docs\/user\/translations\/([a-z]{2})\/guide\/(.+\.md)$/.exec(src);
+  return m ? { lang: m[1], english: `${GUIDE}${m[2]}` } : null;
+}
+
 /** The page (path below site/) that a source document becomes. */
 export function outputOf(src) {
+  const tr = translationOf(src);
+  if (tr) {
+    const english = outputOf(tr.english);
+    return english === "docs.html" ? `docs/${tr.lang}/guide/getting-started.html` : english.replace(/^docs\/guide\//, `docs/${tr.lang}/guide/`);
+  }
   const extra = EXTRA.find(([s]) => s === src);
   if (extra) return extra[1];
   if (src === `${GUIDE}getting-started.md`) return "docs.html";
@@ -56,7 +74,13 @@ export function sourcesIn(dir = root) {
     .map((f) => `${GUIDE}${String(f).replaceAll("\\", "/")}`)
     .filter((f) => f.endsWith(".md"))
     .sort();
-  return [...guide, ...EXTRA.map(([s]) => s)];
+  const translated = existsSync(join(dir, TRANSLATIONS))
+    ? readdirSync(join(dir, TRANSLATIONS), { recursive: true })
+        .map((f) => `${TRANSLATIONS}${String(f).replaceAll("\\", "/")}`)
+        .filter((f) => translationOf(f))
+        .sort()
+    : [];
+  return [...guide, ...EXTRA.map(([s]) => s), ...translated];
 }
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -212,7 +236,7 @@ function menu(out, entries) {
   };
   const group = (title, items) => `<h6>${esc(title)}</h6>\n${items.join("\n")}`;
   const page = (label, sub) => link(label, relativeUrl(out, entries.byLabel.get(label)), sub);
-  const inDatabases = out.startsWith("docs/guide/databases/");
+  const inDatabases = /^docs\/(?:[a-z]{2}\/)?guide\/databases\//.test(out);
   const parts = [
     group("Start", [page(entries.start, false), page(entries.guide, false)]),
     group("Guide", [...entries.tasks.map((l) => page(l, false)), page(entries.databases, false), ...(inDatabases ? entries.dbPages.map((l) => page(l, true)) : [])]),
@@ -230,8 +254,15 @@ const NAV_PAGES = [
   ["docs.html", "Docs"],
 ];
 
+/** The list of the languages a page exists in (`versions` is `[[lang, page]]`), or nothing when it has one. */
+function languageLinks(out, current, versions) {
+  if (versions.length < 2) return "";
+  const items = versions.map(([lang, page]) => (lang === current ? `<span lang="${lang}">${esc(LANGUAGES[lang])}</span>` : `<a href="${esc(relativeUrl(out, page))}" lang="${lang}" hreflang="${lang}">${esc(LANGUAGES[lang])}</a>`));
+  return `\n    <nav class="crumbs" aria-label="Languages">${items.join(" · ")}</nav>`;
+}
+
 /** The whole page. `body` is HTML, `toc` the headings `[anchor, text]` of the right column. */
-function layout({ out, title, description, body, toc, menuHtml, extra }) {
+function layout({ out, title, description, body, toc, menuHtml, extra, lang = "en", versions = [] }) {
   const up = rootOf(out);
   const nav = NAV_PAGES.map(([href, label]) => `<a href="${up}${href}"${label === "Docs" ? ' aria-current="page"' : ""}>${label}</a>`).join("\n        ");
   const crumbs = out === "docs.html" ? "Start / Getting started" : `Docs / ${esc(title)}`;
@@ -239,7 +270,7 @@ function layout({ out, title, description, body, toc, menuHtml, extra }) {
   const f = (path, label) => `<li><a href="${up}${path}">${label}</a></li>`;
   const g = (path, label) => `<li><a href="${REPO}/blob/main/docs/${path}">${label}</a></li>`;
   return `<!doctype html>
-<html lang="en">
+<html lang="${lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -282,7 +313,7 @@ function layout({ out, title, description, body, toc, menuHtml, extra }) {
   </nav>
 
   <article>
-    <div class="crumbs">${crumbs}</div>
+    <div class="crumbs">${crumbs}</div>${languageLinks(out, lang, versions)}
 ${body}${extra}
   </article>
 
@@ -361,13 +392,8 @@ function databaseNames(blocks, pages) {
   return names;
 }
 
-/**
- * Every generated file as `{ path: html }`, from the documents read by `read(src)`.
- * `sources` are the repository paths of the documents.
- */
-export function buildSite(sources, read) {
-  const pages = new Map(sources.map((s) => [s, outputOf(s)]));
-  const parsed = new Map(sources.map((s) => [s, parseMarkdown(read(s))]));
+/** The menu's entries for the documents `sources`, shown as the pages `pages` with the blocks `parsed`. */
+function entriesOf(sources, pages, parsed) {
   const dbNames = databaseNames(parsed.get(`${GUIDE}databases/README.md`) ?? [], pages);
   const label = (s) => dbNames.get(s) ?? titleOf(parsed.get(s), s);
   const byLabel = new Map();
@@ -385,7 +411,8 @@ export function buildSite(sources, read) {
   guideTasks.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   const dbOrder = [...dbNames.keys()];
   const dbRank = (s) => (dbOrder.includes(s) ? dbOrder.indexOf(s) : dbOrder.length);
-  const entries = {
+  return {
+    label,
     byLabel,
     blurbs,
     start: label(`${GUIDE}getting-started.md`),
@@ -395,8 +422,22 @@ export function buildSite(sources, read) {
     dbPages: sources.filter((s) => /^docs\/user\/guide\/databases\/(?!README)[^/]+\.md$/.test(s)).sort((a, b) => dbRank(a) - dbRank(b) || a.localeCompare(b)).map(label),
     reference: EXTRA.map(([s]) => label(s)),
   };
+}
+
+/**
+ * Every generated file as `{ path: html }`, from the documents read by `read(src)`.
+ * `sources` are the repository paths of the documents, English ones and translations.
+ */
+export function buildSite(sources, read) {
+  const english = sources.filter((s) => !translationOf(s));
+  const translated = sources.filter((s) => translationOf(s));
+  const pages = new Map(english.map((s) => [s, outputOf(s)]));
+  const parsed = new Map(english.map((s) => [s, parseMarkdown(read(s))]));
+  const entries = entriesOf(english, pages, parsed);
+  /** The languages each English page exists in, as `[lang, page]`; English first. */
+  const versionsOf = (s) => [["en", pages.get(s)], ...translated.filter((t) => translationOf(t).english === s).map((t) => [translationOf(t).lang, outputOf(t)])];
   const files = {};
-  for (const s of sources) {
+  for (const s of english) {
     const out = pages.get(s);
     const blocks = parsed.get(s);
     const ctx = { src: s, out, pages };
@@ -406,11 +447,40 @@ export function buildSite(sources, read) {
     files[out] = layout({
       out,
       title: titleOf(blocks, s),
-      description: describe(blocks) || label(s),
+      description: describe(blocks) || entries.label(s),
       body: renderBlocks(blocks, ctx),
       extra: isStart ? indexSection(out, entries) : "",
       toc,
       menuHtml: menu(out, entries),
+      versions: versionsOf(s),
+    });
+  }
+  for (const lang of new Set(translated.map((t) => translationOf(t).lang))) Object.assign(files, languageFiles(lang, { english, translated, pages, parsed, read, versionsOf }));
+  return files;
+}
+
+/** The pages of the translation into `lang`: a page without a translation links to the English one. */
+function languageFiles(lang, { english, translated, pages, parsed, read, versionsOf }) {
+  const mine = translated.filter((t) => translationOf(t).lang === lang);
+  const sourceOf = new Map(mine.map((t) => [translationOf(t).english, t]));
+  const pagesL = new Map(english.map((s) => [s, sourceOf.has(s) ? outputOf(sourceOf.get(s)) : pages.get(s)]));
+  const parsedL = new Map(english.map((s) => [s, sourceOf.has(s) ? parseMarkdown(read(sourceOf.get(s))) : parsed.get(s)]));
+  const entries = entriesOf(english, pagesL, parsedL);
+  const files = {};
+  for (const [s, t] of sourceOf) {
+    if (!english.includes(s)) throw new Error(`${t} has no English page`);
+    const out = pagesL.get(s);
+    const blocks = parsedL.get(s);
+    files[out] = layout({
+      out,
+      title: titleOf(blocks, s),
+      description: describe(blocks) || entries.label(s),
+      body: renderBlocks(blocks, { src: s, out, pages: pagesL }),
+      extra: "",
+      toc: blocks.filter((b) => b.kind === "heading" && b.level === 2).map((b) => [b.anchor, plainText(b.children)]),
+      menuHtml: menu(out, entries),
+      lang,
+      versions: versionsOf(s),
     });
   }
   return files;
