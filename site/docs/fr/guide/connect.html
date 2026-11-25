@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Se connecter à une base de données</title>
+  <meta name="description" content="Choix de la base de données pour une nouvelle connexion">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Premiers pas</a>
+<a href="index.html">Guide utilisateur</a>
+<h6>Guide</h6>
+<a href="connect.html" class="on" aria-current="page">Se connecter à une base de données</a>
+<a href="queries.html">Exécuter des requêtes et lire les résultats</a>
+<a href="edit-data.html">Modifier les données</a>
+<a href="import-export.html">Import et export</a>
+<a href="safety.html">Travailler en sécurité : production, lecture seule, confirmations, masquage</a>
+<a href="projects-sharing.html">Projets et partage</a>
+<a href="agents.html">Utiliser PlatypusDB depuis un agent</a>
+<a href="troubleshooting.html">Dépannage et FAQ</a>
+<a href="databases/index.html">Bases de données</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Se connecter à une base de données</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/connect.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/connect.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/connect.html" lang="es" hreflang="es">Español</a> · <span lang="fr">Français</span> · <a href="../../it/guide/connect.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/connect.html" lang="pt" hreflang="pt">Português</a> · <a href="../../zh/guide/connect.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Guide utilisateur</a></p>
+<h1 id="se-connecter-à-une-base-de-données">Se connecter à une base de données</h1>
+<p><img src="../../../img/screenshots/connections.png" alt="Choix de la base de données pour une nouvelle connexion" loading="lazy"></p>
+<h2 id="à-partir-dune-url">À partir d&#39;une URL</h2>
+<ol>
+<li>Cliquez sur <strong>Nouvelle connexion</strong> (ou sur le <code>+</code> du navigateur).</li>
+<li>Collez l&#39;URL sous les logos : <code>postgres://</code>, <code>mysql://</code>, <code>sqlserver://</code>, <code>clickhouse://</code>, <code>libsql://</code>, <code>mongodb://</code>, <code>redis://</code>, <code>rediss://</code>, <code>elasticsearch://</code>, <code>opensearch://</code>, une URL JDBC ou une chaîne ADO.NET / ODBC. Le formulaire s&#39;ouvre déjà rempli pour cette base de données.</li>
+<li>Mettez le mot de passe dans le champ <strong>Mot de passe</strong>, pas dans l&#39;URL : le formulaire vous le signale si l&#39;URL en contient un.</li>
+<li>Cliquez sur <strong>Tester la connexion</strong>, puis sur <strong>Enregistrer</strong>.</li>
+</ol>
+<p>Ou choisissez la base de données parmi les logos (la recherche en haut accepte <code>Enter</code> pour le premier résultat). Ce choix fixe le pilote ; <strong>Retour</strong> ramène aux logos.</p>
+<h2 id="le-formulaire">Le formulaire</h2>
+<p>Le formulaire a quatre pages : <strong>Général</strong>, <strong>Apparence et sécurité</strong>, <strong>Réseau</strong> et <strong>Initialisation</strong>. Un point après le nom d&#39;une page indique qu&#39;elle contient des réglages.</p>
+<ul>
+<li><strong>Général</strong> : hôte, port, utilisateur, base de données et origine du mot de passe (voir plus bas).</li>
+<li><strong>Apparence et sécurité</strong> : l&#39;environnement (Développement, Test ou Production), une couleur, la case <strong>Lecture seule (refuse les modifications de données)</strong>, les cases qui bloquent les exports et la modification des données, et l&#39;accès des agents. Voir <a href="safety.html">Sécurité</a> et <a href="agents.html">Agents</a>.</li>
+<li><strong>Réseau</strong> : tunnel SSH, mode SSL et certificats, proxy, redirection de port et commandes autour de la connexion.</li>
+<li><strong>Initialisation</strong> : un fichier de variables, un schéma ou un fuseau horaire par défaut, et des instructions exécutées à chaque connexion.</li>
+</ul>
+<h2 id="mots-de-passe">Mots de passe</h2>
+<p>Dans <strong>Général</strong>, le mot de passe vient de l&#39;une de ces sources :</p>
+<ul>
+<li><strong>Enregistré dans le trousseau</strong> : le trousseau du système. <strong>Tester la connexion</strong> ne l&#39;envoie qu&#39;au serveur pour lequel il a été enregistré : si vous changez l&#39;hôte, le port ou les serveurs SSH intermédiaires, l&#39;application vous demande de saisir le mot de passe pour ce test. Une autre base de données du même serveur PostgreSQL ou MySQL n&#39;est pas un autre serveur.</li>
+<li><strong>Demander à chaque fois</strong> : saisi à chaque connexion. Les agents ne peuvent pas ouvrir une telle connexion.</li>
+<li><strong>Fichier .pgpass</strong> (PostgreSQL uniquement ; l&#39;hôte, le port, la base de données et l&#39;utilisateur de la connexion choisissent la ligne, comme le fait libpq).</li>
+<li><strong>Commande shell</strong> : une commande qui affiche le mot de passe.</li>
+</ul>
+<p>Tout champ peut lire une variable d&#39;environnement écrite <code>${env:NAME}</code>. Les gestionnaires de mots de passe (1Password, Bitwarden, HashiCorp Vault, AWS Secrets Manager) figurent dans la même liste pour toute base de données dont le formulaire demande un mot de passe ou un jeton ; aucun n&#39;est limité à une seule base de données. Indiquez la référence du secret : l&#39;application construit la commande shell à partir de celle-ci (<code>op read</code>, <code>bw get password</code>, <code>vault kv get</code>, <code>aws secretsmanager get-secret-value</code>) et l&#39;exécute à chaque connexion. Leur outil en ligne de commande doit être installé et connecté. Rien de tout cela n&#39;a été essayé avec un vrai compte 1Password, Bitwarden, Vault ou AWS : seules les commandes construites par l&#39;application et la commande shell elle-même sont testées.</p>
+<p>Certaines bases de données se connectent sans aucun mot de passe, et la même liste les propose : un jeton obtenu avec l&#39;outil en ligne de commande d&#39;un cloud (AWS IAM et Google Cloud IAM pour PostgreSQL et MySQL, Microsoft Entra ID pour ces deux bases et SQL Server), la connexion Windows pour SQL Server, et un <strong>Kerberos ticket</strong> pour PostgreSQL sous Windows et Linux. Lancez d&#39;abord <code>kinit</code>, ou définissez <code>KRB5CCNAME</code> ou <code>KRB5_CLIENT_KTNAME</code> ; sous Windows, le ticket est celui de votre session. Le ticket est la seule chose envoyée au serveur, et un test sans ticket indique ce qu&#39;il faut lancer. La <a href="databases/postgresql.html">page PostgreSQL</a> donne les détails, et ce qui est testé ou non : un vrai ticket a permis de se connecter depuis Linux, pas encore par le SSPI de Windows.</p>
+<h3 id="mot-de-passe-principal">Mot de passe principal</h3>
+<p>Un mot de passe principal garde les mots de passe enregistrés dans un fichier chiffré au lieu du trousseau.</p>
+<ol>
+<li>Ouvrez Paramètres (<code>Ctrl+,</code>) › <strong>Mot de passe principal</strong>.</li>
+<li>Cliquez sur <strong>Définir un mot de passe principal…</strong>, saisissez-le deux fois (8 caractères au minimum) et confirmez.</li>
+<li>Pour revenir au trousseau, cliquez sur <strong>Désactiver…</strong> sur la même page. <strong>Verrouiller maintenant</strong> verrouille aussitôt.</li>
+</ol>
+<p>Il est impossible de le récupérer : sans lui, les mots de passe enregistrés sont perdus. Les agents ne peuvent pas le saisir (voir <a href="troubleshooting.html#un-agent-ne-voit-pas-une-connexion">Dépannage</a>).</p>
+<h2 id="tls">TLS</h2>
+<p>Sur la page <strong>Réseau</strong>, <strong>Mode SSL</strong> prend les valeurs de libpq : <code>disable</code>, <code>prefer</code>, <code>require</code>, <code>verify-ca</code> et <code>verify-full</code>. <code>prefer</code> et <code>require</code> chiffrent sans vérifier le certificat ; <code>verify-ca</code> et <code>verify-full</code> le vérifient, donc un <strong>Certificat CA (PEM)</strong> peut être nécessaire. Pour les serveurs qui authentifient les clients par certificat, indiquez le <strong>Certificat client (PEM)</strong> et la <strong>Clé client (PEM)</strong> (PostgreSQL et MySQL).</p>
+<h2 id="tunnel-ssh">Tunnel SSH</h2>
+<p><img src="../../../img/screenshots/guide/connect-network.png" alt="Un tunnel SSH sur la page Réseau" loading="lazy"></p>
+<ol>
+<li>Sur la page <strong>Réseau</strong>, cochez <strong>Se connecter via un tunnel SSH</strong>.</li>
+<li>Remplissez <strong>Hôte SSH</strong>, le port et <strong>Utilisateur SSH</strong>.</li>
+<li>Authentifiez-vous avec un mot de passe, un <strong>Fichier de clé privée</strong> (et sa phrase secrète) ou l&#39;<strong>Agent SSH</strong>. Pour un bastion, ajoutez un <strong>Hôte de rebond</strong> (<strong>D&#39;abord via un hôte de rebond</strong>).</li>
+<li>Cliquez sur <strong>Tester la connexion</strong>.</li>
+</ol>
+<p>La clé du serveur est comparée à <code>~/.ssh/known_hosts</code> : un serveur inconnu est mémorisé la première fois, et une clé qui a changé depuis est refusée. Un <strong>Profil réseau</strong> partage un même tunnel et les mêmes réglages SSL entre plusieurs connexions.</p>
+<h2 id="proxy-et-redirection-de-port">Proxy et redirection de port</h2>
+<p>Toujours sur <strong>Réseau</strong> : un proxy SOCKS5 ou HTTP (<code>socks5://user:password@host:1080</code>, <code>http://host:3128</code>), ou une redirection de port via <code>kubectl</code> ou une session AWS Systems Manager (la CLI doit être installée et connectée). Une redirection de port va seule : retirez le tunnel SSH ou le proxy.</p>
+<h2 id="et-ensuite">Et ensuite</h2>
+<p>Les détails de chaque base de données : <a href="databases/index.html">Bases de données</a>. La connexion au cloud, les poolers, les imports depuis DBeaver, DataGrip et pgAdmin (connexions Db2 comprises) et l&#39;export des connexions sont dans <a href="../../features.html#connections">FEATURES.md</a>. Si la connexion échoue, voir <a href="troubleshooting.html#erreurs-de-connexion">Dépannage</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#à-partir-dune-url">À partir d&#39;une URL</a>
+    <a href="#le-formulaire">Le formulaire</a>
+    <a href="#mots-de-passe">Mots de passe</a>
+    <a href="#tls">TLS</a>
+    <a href="#tunnel-ssh">Tunnel SSH</a>
+    <a href="#proxy-et-redirection-de-port">Proxy et redirection de port</a>
+    <a href="#et-ensuite">Et ensuite</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

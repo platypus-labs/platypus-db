@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · PlatypusDB von einem Agenten aus nutzen</title>
+  <meta name="description" content="Claude Code, Codex, Cursor und andere MCP-Clients können deine gespeicherten Verbindungen über den MCP-Server von PlatypusDB nutzen. Diese Seite ist der…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Erste Schritte</a>
+<a href="index.html">Benutzerhandbuch</a>
+<h6>Guide</h6>
+<a href="connect.html">Mit einer Datenbank verbinden</a>
+<a href="queries.html">Abfragen ausführen und Ergebnisse lesen</a>
+<a href="edit-data.html">Daten bearbeiten</a>
+<a href="import-export.html">Import und Export</a>
+<a href="safety.html">Sicher arbeiten: Produktion, Schreibschutz, Bestätigungen, Maskierung</a>
+<a href="projects-sharing.html">Projekte und Teilen</a>
+<a href="agents.html" class="on" aria-current="page">PlatypusDB von einem Agenten aus nutzen</a>
+<a href="troubleshooting.html">Fehlerbehebung und FAQ</a>
+<a href="databases/index.html">Datenbanken</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / PlatypusDB von einem Agenten aus nutzen</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/agents.html" lang="en" hreflang="en">English</a> · <span lang="de">Deutsch</span> · <a href="../../es/guide/agents.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/agents.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/agents.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/agents.html" lang="pt" hreflang="pt">Português</a> · <a href="../../zh/guide/agents.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Benutzerhandbuch</a></p>
+<h1 id="platypusdb-von-einem-agenten-aus-nutzen">PlatypusDB von einem Agenten aus nutzen</h1>
+<p>Claude Code, Codex, Cursor und andere MCP-Clients können deine gespeicherten Verbindungen über den MCP-Server von PlatypusDB nutzen. Diese Seite ist der kurze Weg; jedes Tool, jedes Limit und jede Einstellung steht in der Referenz, <a href="../../agents.html">AGENTS.md</a>.</p>
+<h2 id="einen-agenten-verbinden">Einen Agenten verbinden</h2>
+<ol>
+<li>Öffne die Einstellungen (<code>Ctrl+,</code>) › <strong>Agenten</strong> › <strong>Einrichtung</strong>.</li>
+<li>Suche deinen Client in der Liste (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, Gemini CLI). Klicke auf <strong>Installieren</strong>: Die App fragt nach, speichert eine Kopie der Datei des Clients daneben und trägt den Server darin ein. Für einen Client, der nicht in der Liste steht, kopierst du den Eintrag von Hand von derselben Seite.</li>
+<li>Starte den Client neu. Er startet PlatypusDB selbst mit <code>--mcp</code>; es öffnet sich kein Fenster, und zum Lesen muss die App nicht geöffnet sein.</li>
+</ol>
+<h2 id="festlegen-was-jede-verbindung-erlaubt">Festlegen, was jede Verbindung erlaubt</h2>
+<p><img src="../../../img/screenshots/guide/agents-security.png" alt="Einstellungen, Agenten, die Seite Sicherheit" loading="lazy"></p>
+<ol>
+<li>Einstellungen › <strong>Agenten</strong> › <strong>Sicherheit</strong> listet deine Verbindungen auf. Auch das Formular einer Verbindung hat dieselbe Auswahl, unter <strong>Agenten</strong> auf der Seite <strong>Darstellung und Sicherheit</strong>.</li>
+<li>Wähle <strong>Aus</strong>, <strong>Nur lesen</strong> (der Standard) oder <strong>Lesen und schreiben</strong>.</li>
+</ol>
+<p>Produktions- und schreibgeschützte Verbindungen sind nie mehr als „Nur lesen“: Das Panel sagt „Nicht verfügbar: Produktions- und schreibgeschützte Verbindungen bleiben schreibgeschützt.“ Eine Verbindung, die neu aus einem geteilten Projekt kommt, startet auf deinem Computer mit <strong>Aus</strong>.</p>
+<h2 id="limits-und-maskierung">Limits und Maskierung</h2>
+<ul>
+<li>Unter <strong>Sicherheit</strong> begrenzt <strong>Grenzen für Agenten</strong> pro Verbindung die Zeilen, Bytes und Sekunden eines Ergebnisses oder einer Anweisung, die Aufrufe pro Minute und die geschätzten Zeilen oder Plankosten eines Lesezugriffs; darüber wird der Lesezugriff mit seinem Plan abgelehnt. Leer heißt kein Limit über die festen Obergrenzen hinaus.</li>
+<li>Sensible Spalten erscheinen für Agenten als <code>••••••</code>, wie im Raster bei aktiver Maskierung. Hake bei einer Verbindung <strong>Agenten die Werte sensibler Spalten zeigen</strong> an, um sie zu zeigen. Siehe <a href="safety.html">Sicherheit</a>.</li>
+</ul>
+<h2 id="änderungen-warten-auf-dich">Änderungen warten auf dich</h2>
+<p>Bei einer Verbindung mit <strong>Lesen und schreiben</strong> öffnet jede Änderung, die ein Agent ausführen will, einen Dialog in der App mit der Anweisung, in den Farben des Editors und bei SQL-Datenbanken formatiert (<strong>So anzeigen, wie der Agent es gesendet hat</strong> zeigt den Text, der läuft, auf den Buchstaben genau), den Zeilen, die die Datenbank voraussichtlich ändert, und ihrem Plan. Klicke auf <strong>Ablehnen</strong> (der Agent liest deinen Grund), <strong>Einmal erlauben</strong> oder <strong>Für diese Sitzung erlauben</strong>. Nach fünf Minuten ohne Antwort wird sie abgelehnt, und bei geschlossener App werden die Änderungen abgelehnt. Einstellungen › <strong>Sicherheit</strong> › <strong>Fragen, bevor Agenten Daten ändern</strong> schaltet die Fragen aus.</p>
+<p>Ein Agent kann auch etwas vorschlagen, ohne etwas auszuführen:</p>
+<ul>
+<li>SQL mit <code>propose_sql</code>: Es öffnet sich in einem neuen Editor-Tab, damit du es liest und ausführst.</li>
+<li>Zeilen zum Einfügen, Aktualisieren oder Löschen mit <code>propose_edits</code>: Die Tabelle öffnet sich in ihrem Datenviewer mit ihnen als ausstehenden Änderungen, die du speicherst oder verwirfst (siehe <a href="edit-data.html">Daten bearbeiten</a>).</li>
+</ul>
+<h2 id="sehen-was-agenten-getan-haben">Sehen, was Agenten getan haben</h2>
+<p>Einstellungen › <strong>Agenten</strong> › <strong>Aktivität</strong> listet jeden Tool-Aufruf nach Sitzung auf, mit einem Filter und <strong>CSV exportieren</strong>. Ihre Abfragen stehen im Verlauf unter dem Namen des Agenten.</p>
+<p>Über der Liste addiert <strong>Zusammenfassung pro Agent und Sitzung</strong> (eingeklappt, bis du sie öffnest) die Aufrufe, die die Filter auswählen: eine Zeile pro Agent und darunter eine pro Sitzung, mit dem Zeitraum, den Aufrufen, den gelesenen Tabellen, den gelieferten Zeilen, den erlaubten Änderungen, den abgelehnten Änderungen und den Fehlern. <strong>Markdown exportieren</strong> und <strong>HTML exportieren</strong> speichern sie als Dokument zum Teilen; das HTML ist eine einzige Datei ohne Skript und ohne etwas, das von außen geladen wird.</p>
+<ul>
+<li>Eine <strong>Sitzung</strong> ist ein Start des MCP-Servers, wie das Log ihn aufzeichnet (ein Client, der tagelang verbunden bleibt, ist eine Sitzung).</li>
+<li>Eine <strong>Änderung</strong> ist eine Anweisung, die Daten oder das Schema ändert. Sie ist <em>erlaubt</em>, wenn sie lief, und <em>abgelehnt</em>, wenn der Zugriff der Verbindung, eine Sicherheitseinstellung oder deine Antwort in der App nein gesagt hat. Eine Anweisung, die aus einem anderen Grund fehlschlug, zählt nur als Fehler.</li>
+<li><strong>Gelesene Tabellen</strong> ist exakt bei <code>sample_rows</code> und <code>profile_table</code> und bei den Quellen von <code>query_across_databases</code>, und bei einer Anweisung eine Schätzung: die Tabellen, die nach <code>FROM</code> und <code>JOIN</code> genannt werden. Eine Anweisung in der Sprache einer anderen Datenbank als SQL (MongoDB, Redis, Elasticsearch, Cassandra) nennt keine.</li>
+<li>Es werden nur Namen und Zahlen gespeichert: kein Wert, und Anweisungen bleiben maskiert, wie sie im Log stehen.</li>
+<li>Aufrufe, die vor dieser Version gemacht wurden und diese Zahlen nicht aufgezeichnet haben, zeigen <strong>–</strong>, nie eine 0; die übrigen Zahlen zählen nur die Aufrufe, die sie haben, und die Zusammenfassung sagt das.</li>
+</ul>
+<h2 id="wenn-es-nicht-funktioniert">Wenn es nicht funktioniert</h2>
+<p>Siehe <a href="troubleshooting.html#ein-agent-sieht-eine-verbindung-nicht">Fehlerbehebung</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#einen-agenten-verbinden">Einen Agenten verbinden</a>
+    <a href="#festlegen-was-jede-verbindung-erlaubt">Festlegen, was jede Verbindung erlaubt</a>
+    <a href="#limits-und-maskierung">Limits und Maskierung</a>
+    <a href="#änderungen-warten-auf-dich">Änderungen warten auf dich</a>
+    <a href="#sehen-was-agenten-getan-haben">Sehen, was Agenten getan haben</a>
+    <a href="#wenn-es-nicht-funktioniert">Wenn es nicht funktioniert</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

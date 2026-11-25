@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · 导入和导出</title>
+  <meta name="description" content="下面的操作都在导航器的右键菜单和命令面板（Ctrl+K）中。格式和选项的完整列表见 FEATURES.md。">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">快速入门</a>
+<a href="index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="connect.html">连接数据库</a>
+<a href="queries.html">运行查询并查看结果</a>
+<a href="edit-data.html">编辑数据</a>
+<a href="import-export.html" class="on" aria-current="page">导入和导出</a>
+<a href="safety.html">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="projects-sharing.html">项目与共享</a>
+<a href="agents.html">通过代理使用 PlatypusDB</a>
+<a href="troubleshooting.html">故障排除与常见问题</a>
+<a href="databases/index.html">数据库</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / 导入和导出</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/import-export.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/import-export.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/import-export.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/import-export.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/import-export.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/import-export.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 用户指南</a></p>
+<h1 id="导入和导出">导入和导出</h1>
+<p>下面的操作都在导航器的右键菜单和命令面板（<code>Ctrl+K</code>）中。格式和选项的完整列表见 <a href="../../features.html#import-export-and-transfer">FEATURES.md</a>。</p>
+<h2 id="将文件导入表">将文件导入表</h2>
+<p><img src="../../../img/screenshots/guide/import-preview.png" alt="待导入文件的预览" loading="lazy"></p>
+<ol>
+<li>在导航器中右键点击表，然后选择<strong>数据</strong> › <strong>导入数据…</strong>。</li>
+<li>选择文件：CSV、TSV、JSON、NDJSON、Parquet 或 Excel。</li>
+<li>检查预览和列的映射。</li>
+<li>选择<strong>添加这些行</strong>、<strong>替换所有行</strong>或<strong>更新键相同的行，添加其他行</strong>，然后点击<strong>导入</strong>。最后一项需要表上有主键，且 ClickHouse 不提供。</li>
+</ol>
+<p><strong>导入数据…</strong>适用于表，不适用于视图。要导入到新表，请右键点击模式并选择<strong>将数据导入新表…</strong>：类型由 DuckDB 根据文件推断，且不能选择导入方式。<strong>将 CSV 粘贴为新表…</strong>（同一菜单）会导入剪贴板的内容。</p>
+<p>在只读连接、禁止编辑数据的连接以及 NoSQL 数据库上不提供导入。</p>
+<h2 id="将表导出到文件">将表导出到文件</h2>
+<ol>
+<li>右键点击一张表，或选中多张表，然后选择<strong>数据</strong> › <strong>导出数据…</strong>。要导出某个模式的所有表，请右键点击该模式并选择<strong>导出所有表…</strong>。</li>
+<li>选择<strong>格式化</strong>（CSV、JSON、NDJSON、Parquet、Excel、SQL <code>INSERT</code>、Markdown、HTML 或 XML），然后点击<strong>导出到文件夹…</strong>：即使只有一张表，应用也会要求选择文件夹，并为每张表写入一个以其命名的文件。</li>
+<li>可以设置<strong>压缩</strong>（gzip 或 zstd；Parquet 和 Excel 不适用，它们本身已经压缩），以及<strong>同时上传到…</strong>存储桶（S3、GCS、R2 或 MinIO）。</li>
+</ol>
+<p>当你导出的是查询结果（结果表格的导出）时，对话框要求选择一个文件，上传还可以发送到签名 URL（S3 或 GCS）。</p>
+<p>电子表格会当作公式执行的 CSV 单元格，会在开头加上 <code>&#39;</code>，除非你关闭<strong>公式按文本写入（用于电子表格）</strong>。连接可以禁止导出（<strong>外观与安全</strong>页面）；此时不提供这项操作。见<a href="safety.html">安全</a>。</p>
+<p>要取出查询的结果，可以从表格中把它复制为 CSV、JSON、Markdown、HTML、SQL <code>INSERT</code> 或 <code>IN</code> 列表。</p>
+<h2 id="将表或模式复制到另一个数据库">将表或模式复制到另一个数据库</h2>
+<p>右键点击一张表并选择<strong>数据</strong> › <strong>复制到数据库…</strong>（可以映射列），选中某个模式的多张表并选择<strong>数据</strong> › <strong>将表复制到数据库…</strong>，或右键点击模式并选择<strong>将模式复制到数据库…</strong>。类型会被映射。目标是一个不是只读、且允许编辑数据的 SQL 连接。复制多张表或整个模式仅适用于 SQL 数据源；一个 MongoDB 集合或一种 Redis 键类型可以复制到 SQL 数据库。当连接禁止导出时，这些操作都不提供。</p>
+<h2 id="运行-sql-文件或转储为-sql-文件">运行 SQL 文件，或转储为 SQL 文件</h2>
+<p>右键点击连接或数据库并选择<strong>运行 SQL 文件…</strong>：它会逐条语句运行任意大小的 <code>.sql</code> 文件（或 <code>.sql.gz</code>、<code>.sql.zst</code>），带进度和停止按钮，默认放在一个事务中，失败时回滚。<strong>转储到 SQL 文件…</strong>（在模式上，或在<strong>数据</strong>下的表上）会把模式或所选对象的 DDL，以及需要时它们的行，写入一个文件。</p>
+<h2 id="保存传输以便以后使用">保存传输以便以后使用</h2>
+<p>每个导出、导入和复制对话框都有<strong>另存为配置…</strong>。<strong>传输配置…</strong>（命令面板）可以运行、重命名、删除和调度它们。存储桶的密钥绝不会保存到配置文件中。</p>
+<h2 id="不导入也能查询数据文件">不导入也能查询数据文件</h2>
+<p>把 CSV、JSON、Parquet 或 Excel 文件拖到窗口上，或点击欢迎界面上的<strong>打开数据文件</strong>：它会作为数据库打开（每个 Excel 工作表是一张表）。第一次时，应用会提示下载 DuckDB 的库。</p>
+<h2 id="导入连接">导入连接</h2>
+<p>在欢迎界面，<strong>导入连接</strong>可以读取 DBeaver、DataGrip 和 pgAdmin（以及 <code>pg_service.conf</code>）；DBeaver 和 DataGrip 的 Db2 连接以及 <code>jdbc:db2:</code> URL 也能读取。<strong>导出连接</strong>会写出一个 <code>.platypusconn</code> 文件，供另一台电脑使用：见<a href="projects-sharing.html">项目与共享</a>。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#将文件导入表">将文件导入表</a>
+    <a href="#将表导出到文件">将表导出到文件</a>
+    <a href="#将表或模式复制到另一个数据库">将表或模式复制到另一个数据库</a>
+    <a href="#运行-sql-文件或转储为-sql-文件">运行 SQL 文件，或转储为 SQL 文件</a>
+    <a href="#保存传输以便以后使用">保存传输以便以后使用</a>
+    <a href="#不导入也能查询数据文件">不导入也能查询数据文件</a>
+    <a href="#导入连接">导入连接</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

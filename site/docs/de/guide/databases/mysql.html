@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · MySQL und MariaDB</title>
+  <meta name="description" content="Ein Treiber (der Client mysql_async) öffnet MySQL 5.7 und neuer sowie MariaDB 10.6 und neuer. Beide haben eine Kachel im Raster der Datenbanken; der Treiber…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Erste Schritte</a>
+<a href="../index.html">Benutzerhandbuch</a>
+<h6>Guide</h6>
+<a href="../connect.html">Mit einer Datenbank verbinden</a>
+<a href="../queries.html">Abfragen ausführen und Ergebnisse lesen</a>
+<a href="../edit-data.html">Daten bearbeiten</a>
+<a href="../import-export.html">Import und Export</a>
+<a href="../safety.html">Sicher arbeiten: Produktion, Schreibschutz, Bestätigungen, Maskierung</a>
+<a href="../projects-sharing.html">Projekte und Teilen</a>
+<a href="../agents.html">PlatypusDB von einem Agenten aus nutzen</a>
+<a href="../troubleshooting.html">Fehlerbehebung und FAQ</a>
+<a href="index.html">Datenbanken</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub on" aria-current="page">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 und ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / MySQL und MariaDB</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/mysql.html" lang="en" hreflang="en">English</a> · <span lang="de">Deutsch</span> · <a href="../../../es/guide/databases/mysql.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/mysql.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/mysql.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/mysql.html" lang="pt" hreflang="pt">Português</a> · <a href="../../../zh/guide/databases/mysql.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Datenbanken</a></p>
+<h1 id="mysql-und-mariadb">MySQL und MariaDB</h1>
+<p>Ein Treiber (der Client <code>mysql_async</code>) öffnet MySQL 5.7 und neuer sowie MariaDB 10.6 und neuer. Beide haben eine Kachel im Raster der Datenbanken; der Treiber erkennt, welchen Server er erreicht hat, und zeigt ihn in der Verbindung (<code>Connected: MariaDB 11.4</code>). Es wird nichts heruntergeladen.</p>
+<h2 id="verbinden">Verbinden</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Du fügst ein</th><th>Gelesen als</th></tr></thead>
+<tbody>
+<tr><td><code>mysql://user:pass@host:3306/db?sslMode=REQUIRED</code> (oder <code>mariadb://</code>)</td><td>die URL-Form; Standardport 3306</td></tr>
+<tr><td><code>jdbc:mysql://host:3307/db</code>, <code>jdbc:mariadb://…</code></td><td>eine JDBC-URL</td></tr>
+<tr><td><code>Server=db;Port=3306;Database=shop;Uid=app;Pwd=…</code></td><td>eine Connector/NET-Verbindungszeichenfolge, wenn sie auch <code>Driver=</code> enthält oder du sie in ein MySQL-Formular eingefügt hast</td></tr>
+</tbody>
+</table></div>
+<p>URL-Parameter, die die App kennt: <code>sslmode</code> (auch als <code>ssl-mode</code>, <code>sslMode</code>, <code>ssl_mode</code> geschrieben), <code>sslrootcert</code>, <code>sslcert</code>, <code>sslkey</code>, <code>application_name</code> und <code>connect_timeout</code>.</p>
+<p><strong>TLS</strong>: <code>disable</code> schaltet es aus. <code>prefer</code> (der Standard) nutzt TLS und fällt auf unverschlüsselt zurück, wenn der Server keines hat oder nur Versionen anbietet, die der Client ablehnt (die Images von MySQL 5.7 tun das); bei der Anmeldung mit einem Token fällt es nie zurück. <code>prefer</code> und <code>require</code> prüfen das Zertifikat nicht. <code>verify-ca</code> prüft die Kette gegen <code>sslrootcert</code> und nicht den Hostnamen; <code>verify-full</code> prüft beides. Die eigenen Namen von MySQL (<code>REQUIRED</code>, <code>VERIFY_IDENTITY</code>) werden verstanden. Ein Client-Zertifikat braucht <code>sslcert</code> und <code>sslkey</code> zusammen.</p>
+<p><strong>Die Anmeldung</strong> läuft über ein Passwort oder über ein Token von AWS IAM, Google Cloud IAM oder Microsoft Entra ID, das das Tool <code>aws</code>, <code>gcloud</code> oder <code>az</code> erzeugt; das Token geht über TLS, wie der Server es verlangt. Kerberos (<code>auth_gssapi</code> von MariaDB, das Kerberos-Plugin von MySQL) wird noch nicht unterstützt.</p>
+<p>Die Verbindung ist immer TCP: Ein Unix-Socket oder eine benannte Pipe von Windows wird nicht genutzt.</p>
+<h2 id="berechtigungen">Berechtigungen</h2>
+<p>Zum Durchsuchen reicht, was die Anmeldung sehen kann. Die Verwaltungs-Tabs lesen:</p>
+<ul>
+<li><strong>Sitzungen</strong>: die Prozessliste, aus <code>performance_schema.threads</code> bei MySQL 8 und aus <code>information_schema.PROCESSLIST</code> bei MariaDB, MySQL 5.7 oder einem Server mit ausgeschaltetem <code>performance_schema</code>. Wie viel von den Sitzungen anderer Benutzer der Server zeigt, ist die Regel des Servers, die die App nicht prüft.</li>
+<li><strong>Sperren</strong>: <code>performance_schema.data_lock_waits</code>, <code>data_locks</code> und <code>metadata_locks</code> bei MySQL 8 (um die Wartezeiten anderer Sitzungen zu sehen, braucht es <code>PROCESS</code>; ohne es hat die Liste keine Wartezeiten und sagt das), <code>INNODB_LOCK_WAITS</code> in <code>information_schema</code> bei MariaDB und älterem MySQL.</li>
+<li><strong>Teuerste Anweisungen</strong>: <code>performance_schema.events_statements_summary_by_digest</code>. Ist <code>performance_schema</code> aus, sagt der Tab, dass der Server damit gestartet werden soll.</li>
+<li><strong>Tabellen und Indizes</strong>: <code>information_schema</code>, dazu <code>performance_schema</code>, um zu wissen, wie viel jeder Index gelesen wird; ohne es ist die Index-Nutzung unbekannt.</li>
+<li><strong>Anweisung abbrechen</strong> und <strong>Sitzung beenden</strong> führen <code>KILL QUERY</code> und <code>KILL CONNECTION</code> aus.</li>
+<li><strong>Parameter</strong> und <strong>Dashboard</strong>: Servervariablen und Statuszähler.</li>
+<li><strong>Benutzer und Rollen</strong>: die Konten und Berechtigungen des Servers.</li>
+<li><strong>Wartung</strong>: <code>ANALYZE</code>, <code>OPTIMIZE</code> und <code>CHECK TABLE</code>.</li>
+<li><strong>Sichern…</strong> und <strong>Wiederherstellen…</strong> führen <code>mysqldump</code> und <code>mysql</code> aus, die im PATH liegen müssen.</li>
+</ul>
+<h2 id="was-funktioniert">Was funktioniert</h2>
+<ul>
+<li>Datenbearbeitung im Raster, über den Primärschlüssel (oder einen eindeutigen Schlüssel auf Spalten ohne NULL oder einen virtuellen Schlüssel).</li>
+<li>Manueller Commit und Rollback sowie das Abbrechen einer Anweisung auf dem Server.</li>
+<li>Explain: MySQL 8.0.16 und neuer liefern <code>EXPLAIN FORMAT=TREE</code>; älteres MySQL und MariaDB liefern <code>EXPLAIN FORMAT=JSON</code>. <strong>Explain analyze</strong> ist <code>EXPLAIN ANALYZE</code> ab MySQL 8.0.18 und <code>ANALYZE FORMAT=JSON</code> bei MariaDB; MySQL 5.7 und 8.0.0 bis 8.0.17 lehnen es ab.</li>
+<li>Jeder Verwaltungs-Tab oben und die Schema-Tools (Tabelleneditor, ER-Diagramm, Vergleich).</li>
+<li>Importe nutzen <code>LOAD DATA LOCAL</code>, wenn der Server es erlaubt (<code>local_infile</code> an), sonst <code>INSERT</code>-Anweisungen.</li>
+<li>Fehler nennen den Server, von dem sie kommen, z. B. <code>Unknown column &#39;x&#39; in &#39;field list&#39; (MySQL 5.7.44)</code>.</li>
+</ul>
+<h2 id="agenten">Agenten</h2>
+<p>Schreibgeschützte Agenten und schreibgeschützte Verbindungen führen <code>SET SESSION TRANSACTION READ ONLY</code> aus, und ihre Abfragen laufen in einer schreibgeschützten Transaktion. <code>server_activity</code> und <code>top_queries</code> funktionieren. Eine <code>@variable</code>, temporäre Tabelle oder ein <code>SET</code> von MySQL oder MariaDB, das ein Agent-Aufruf gemacht hat, ist im nächsten noch da. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
+<ul>
+<li>Älter als MySQL 5.7 oder MariaDB 10.6: Die App verbindet sich mit einer Warnung, dass manche Funktionen vielleicht nicht gehen.</li>
+<li>Der Tabelleneditor speichert mit dem DDL von MySQL, das pro Anweisung committet: Ein fehlgeschlagenes Skript kann teilweise angewendet bleiben.</li>
+<li>Der Terminalmodus braucht <code>mysql</code> im PATH.</li>
+</ul>
+<h2 id="getestet-auf">Getestet auf</h2>
+<p>Die Konformitätssuite läuft auf MySQL 5.7, 8.0 und 8.4 sowie MariaDB 10.6 und 11.4, mit einem Client-Zertifikat über gegenseitiges TLS auf MySQL 8.4 und mit Sitzungen, die der Server beendet hat.</p>
+<p>Siehe auch: <a href="../connect.html">Verbinden</a>, <a href="../troubleshooting.html">Fehlerbehebung</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#verbinden">Verbinden</a>
+    <a href="#berechtigungen">Berechtigungen</a>
+    <a href="#was-funktioniert">Was funktioniert</a>
+    <a href="#agenten">Agenten</a>
+    <a href="#bekannte-grenzen">Bekannte Grenzen</a>
+    <a href="#getestet-auf">Getestet auf</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

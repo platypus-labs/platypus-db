@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · MongoDB</title>
+  <meta name="description" content="驱动是 MongoDB 官方的 Rust 驱动（使用 rustls，因此不需要 OpenSSL）。它可以打开 MongoDB 5.0 及更高版本。编辑器接受 mongosh 语法，而不是 SQL。驱动是应用的一部分，无需下载任何东西。">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">快速入门</a>
+<a href="../index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="../connect.html">连接数据库</a>
+<a href="../queries.html">运行查询并查看结果</a>
+<a href="../edit-data.html">编辑数据</a>
+<a href="../import-export.html">导入和导出</a>
+<a href="../safety.html">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="../projects-sharing.html">项目与共享</a>
+<a href="../agents.html">通过代理使用 PlatypusDB</a>
+<a href="../troubleshooting.html">故障排除与常见问题</a>
+<a href="index.html">数据库</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub on" aria-current="page">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 和 ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / MongoDB</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/mongodb.html" lang="en" hreflang="en">English</a> · <a href="../../../de/guide/databases/mongodb.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../../es/guide/databases/mongodb.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/mongodb.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/mongodb.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/mongodb.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 数据库</a></p>
+<h1 id="mongodb">MongoDB</h1>
+<p>驱动是 MongoDB 官方的 Rust 驱动（使用 rustls，因此不需要 OpenSSL）。它可以打开 MongoDB 5.0 及更高版本。编辑器接受 <strong>mongosh 语法</strong>，而不是 SQL。驱动是应用的一部分，无需下载任何东西。</p>
+<h2 id="连接">连接</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>你粘贴的内容</th><th>解读为</th></tr></thead>
+<tbody>
+<tr><td><code>mongodb://user:pass@host:27017/shop?authSource=admin&amp;replicaSet=rs0</code></td><td>URL 形式；默认端口 27017</td></tr>
+<tr><td><code>mongodb://a:27017,b:27018/?authSource=admin</code></td><td>种子列表，完整保留在“主机”字段中</td></tr>
+<tr><td><code>mongodb+srv://user:pass@cluster0.example.net/shop</code></td><td>SRV：主机来自 DNS</td></tr>
+</tbody>
+</table></div>
+<p>表单字段容纳不下的内容，作为连接字符串选项写在<strong>“数据库”字段</strong>中的 <code>?</code> 之后：<code>shop?authSource=admin&amp;replicaSet=rs0</code>，对 <code>mongodb+srv</code> 则加上 <code>srv=true</code>。<code>?</code> 之前的名称是语句运行所在的数据库，直到 <code>use</code> 更改它（为空时是 <code>test</code>）。</p>
+<ul>
+<li><strong>登录</strong>：用户和密码，除非 <code>authSource</code> 另有说明，否则对 <code>admin</code> 进行认证。粘贴的 URL 如果路径中指定了数据库，就按连接字符串规范把它用作认证源。带有机密的选项（例如 <code>authMechanismProperties</code> 中的密码）在你粘贴 URL 时不会保留；表单会列出它省略了什么。</li>
+<li><strong>TLS</strong>：URL 中的 <code>tls=true</code> 或 <code>ssl=true</code> 表示 <code>verify-full</code>；<code>tls=false</code> 表示 <code>disable</code>。MongoDB 没有机会性 TLS，所以 <code>prefer</code>（默认）保持连接字符串所暗示的：<code>mongodb+srv</code> 开启 TLS，其他情况关闭。<code>require</code> 开启 TLS 并接受任何证书；<code>verify-ca</code> 和 <code>verify-full</code> 都会检查证书链和主机名。<code>sslrootcert</code>（或 <code>tlsCAFile</code>）指定你的 CA 文件；客户端证书可以在表单中给出，或在“数据库”字段中用 <code>tlsCertificateKeyFile</code> 给出。连接字符串中的 TLS 选项在每种模式下都会保留。</li>
+<li><strong>通过 SSH 隧道</strong>只能访问其后的那一台服务器（<code>directConnection=true</code>）。</li>
+</ul>
+<h2 id="权限">权限</h2>
+<p>导航器列出该登录能列出的数据库和集合，并抽样文档以显示字段。不会为管理而读取其他任何内容：没有管理标签页。你写的语句需要它们所需的角色。</p>
+<h2 id="可用功能">可用功能</h2>
+<ul>
+<li><p>mongosh 语法的语句，支持 shell 的值（<code>ObjectId(...)</code>、<code>ISODate(...)</code>、<code>NumberLong(...)</code>、<code>/regex/i</code>）和 Extended JSON：</p>
+<ul>
+<li><strong>读取</strong>：带 <code>sort</code>、<code>limit</code>、<code>skip</code>、<code>projection</code>、<code>collation</code>、<code>hint</code>、<code>min</code>、<code>max</code>、<code>maxTimeMS</code>、<code>readConcern</code> 等的 <code>find</code>，以及 <code>findOne</code>、<code>aggregate</code>、<code>countDocuments</code>、<code>estimatedDocumentCount</code>、<code>distinct</code>。</li>
+<li><strong>写入</strong>：<code>insertOne</code>/<code>insertMany</code>、<code>updateOne</code>/<code>updateMany</code>、<code>replaceOne</code>、<code>deleteOne</code>/<code>deleteMany</code>、<code>bulkWrite</code>、<code>findOneAndUpdate</code>/<code>findOneAndReplace</code>/<code>findOneAndDelete</code> 和 <code>findAndModify</code>，以及它们的选项（<code>arrayFilters</code>、<code>collation</code>、<code>hint</code>、<code>let</code>、<code>upsert</code>、<code>ordered</code>、<code>writeConcern</code>）。PlatypusDB 不认识的选项会按名称被拒绝，绝不会被丢弃。</li>
+<li><strong>索引和集合</strong>：<code>createIndex</code>、<code>createIndexes</code>、<code>dropIndex</code>、<code>dropIndexes</code>、<code>hideIndex</code>、<code>unhideIndex</code>、<code>getIndexes</code>、<code>createCollection</code>、<code>createView</code>、<code>drop</code>、<code>renameCollection</code>、<code>convertToCapped</code>、<code>stats</code>、<code>validate</code>、<code>latencyStats</code>、<code>dataSize</code>、<code>storageSize</code>、<code>totalIndexSize</code>、<code>totalSize</code>、<code>isCapped</code>、<code>exists</code>。</li>
+<li><strong>计划</strong>：语句之后的 <code>.explain()</code> 或之前的 <code>db.c.explain().find(…)</code>，可带详细级别，以及编辑器的<strong>执行计划</strong>。计划绝不会执行写入。</li>
+<li><strong>服务器</strong>：<code>db.runCommand</code>、<code>db.adminCommand</code>、<code>db.aggregate</code>、<code>db.serverStatus</code>、<code>db.currentOp</code>、<code>db.killOp</code>、分析器、用户和角色（<code>db.createUser</code> 等）、<code>rs.status</code>、<code>rs.conf</code>、<code>sh.status</code>、<code>show dbs</code>、<code>show collections</code>、<code>show users</code>、<code>show roles</code>、<code>show profile</code>、<code>show logs</code> 和 <code>use</code>。</li>
+</ul></li>
+<li>结果是顶层字段的表格，聚焦的文档以树的形式显示在旁边（<code>F7</code>）。导航器列出数据库、集合、从文档中抽样得到的字段和索引；编辑器会补全集合、方法和字段。</li>
+<li>取消会停止正在运行的语句；被放弃的结果会释放连接。</li>
+<li>在副本集或分片集群上可使用<strong>手动提交</strong>（见<a href="#事务">事务</a>）。</li>
+<li><strong>在表格中编辑文档</strong>（见<a href="#在表格中编辑文档">在表格中编辑文档</a>）。</li>
+<li>集合的定义以 DDL 形式提供。</li>
+<li><strong>生成数据…</strong>会用假文档填充集合。</li>
+<li>同样的细节见 <a href="../../../features.html#mongodb">FEATURES.md</a>。</li>
+</ul>
+<h2 id="不可用功能">不可用功能</h2>
+<ul>
+<li><strong>只有部分结果可以在表格中编辑</strong>：单个集合的文档（见<a href="#在表格中编辑文档">在表格中编辑文档</a>）。其他所有结果，例如聚合、视图或 <code>findOne</code>，保持只读。请用 <code>updateOne</code>、<code>insertOne</code> 等来修改这些文档。</li>
+<li><strong>独立服务器上没有事务</strong>：MongoDB 只在副本集或分片集群上运行事务。那里的手动提交会被拒绝，并说明原因。</li>
+<li><strong>没有 JavaScript</strong>：编辑器运行的是语句，所以 <code>forEach</code>、<code>map</code>、<code>next</code>、<code>mapReduce</code>、较旧的批量构建器（请用 <code>bulkWrite</code>）和变量会被拒绝，并说明原因。<code>watch</code> 也会被拒绝：变更流会占用整个连接。读取上的 <code>.comment()</code> 会被省略：应用自己的注释用来找到要取消的操作。</li>
+<li><code>bulkWrite</code> 不是原子的，与 mongosh 相同：失败之前已运行的内容会保留，错误会说明执行到了哪里。相邻的插入一起发送，其他每个写入各自单独发送。</li>
+<li>没有 SQL：没有表编辑器、ER 图、模式比较、查询构建器、SQL 导入、变更前快照或终端模式（<code>mongosh</code> 只在命令行上接受密码）。</li>
+</ul>
+<h2 id="在表格中编辑文档">在表格中编辑文档</h2>
+<p>表格可以编辑单个集合上普通 <code>find</code> 的结果：数据查看器，或你输入的语句，例如 <code>db.orders.find({ status: &#39;paid&#39; }).sort({ _id: 1 }).limit(20)</code>。集合可以用 <code>getCollection(&quot;my orders&quot;)</code> 或 <code>db.getSiblingDB(&quot;shop&quot;).orders</code> 指定。在 <code>use</code> 之后，集合是你切换到的那个数据库的集合。投影只要只列出要包含的字段并保留 <code>_id</code> 就可以。视图、聚合、<code>findOne</code>、<code>distinct</code>、计数、不带 <code>_id</code> 的投影以及排除字段的投影保持只读。</p>
+<p>文档通过其 <code>_id</code> 找到。没有 <code>_id</code> 的结果是只读的。<strong>预览 SQL</strong> 显示将要运行的 mongosh，每个文档一条语句：</p>
+<ul>
+<li>编辑过的文档是 <code>updateOne({ _id: … }, { $set: { … } })</code>。NULL 单元格写入 <code>null</code>。当数字发生变化时，更新改用管道 <code>[{ $set: { … } }]</code>：数字用 <code>$switch</code> 按文档存储的类型写入（见下文），其他每个值作为 <code>$literal</code>，这样像 <code>$total</code> 这样的字符串或带 <code>$</code> 键的文档就会原样保存；</li>
+<li>新文档是 <code>insertOne({ … })</code>。保持为 NULL 的单元格不会发送。没有 <code>_id</code> 时，应用会生成一个 <code>ObjectId</code>；</li>
+<li>删除的文档是 <code>deleteOne({ _id: … })</code>。</li>
+</ul>
+<p>值按其列的 BSON 类型写入：<code>bool</code>、<code>string</code>、<code>objectId</code>、<code>date</code>，以及根据表格显示的 JSON 得到的 <code>document</code> 和 <code>array</code>。日期写成 <code>2024-01-02 10:30:00</code> 的形式，带不带时区都可以（不带时按 UTC）。文档或数组内部的数字保持 JSON 赋予它们的类型：整数是 int（超过 32 位则是 long），带小数或指数的数字是 double。</p>
+<p>只要文档存储的类型 <code>int</code>、<code>long</code>、<code>double</code> 或 <code>decimal</code> 能精确容纳新值，数字就保持该类型：列的类型只是其文档共有的类型（int 和 long 组成 <code>long</code> 列，其中任何一个与 double 混合则是 <code>double</code> 列），所以它并不说明某个文档里存的是什么。被改成 <code>7</code> 的 int 仍是 int，long 仍是 long，double 仍是 double。存储的类型无法容纳的值会采用列的类型，或第一个能容纳它的数值类型：int 字段中的 <code>3.5</code> 变成 double，<code>3000000000</code> 变成 long。超过 2^53 的 long 绝不会写成 double，那样会丢失位数。服务器上不做任何转换：应用只会用它知道能精确容纳该数字的类型来写入。</p>
+<p>下面这些会在运行任何内容之前被拒绝，并说明原因：</p>
+<ul>
+<li>修改 <code>_id</code>：MongoDB 从不更改它。请删除该文档再重新插入；</li>
+<li>混合类型的列（<code>mixed</code>）：值的文本无法区分字符串和数字；</li>
+<li>二进制数据以及表格无法精确写回的其他类型（正则表达式、时间戳、JavaScript）；</li>
+<li>名称中带 <code>.</code> 或以 <code>$</code> 开头的字段：<code>$set</code> 会把它当作路径或运算符；</li>
+<li>与其类型不符的值，例如 <code>int</code> 列中的 <code>many</code> 或 <code>document</code> 列中的数组。</li>
+</ul>
+<p>每条语句必须恰好修改一个文档。如果有一条没有找到文档，因为该文档已被删除，或其 <code>_id</code> 在表格读取之后发生了变化，保存就会停止，并说明是哪条命令。</p>
+<p><strong>要么全部成功要么全部不保存，需要副本集。</strong> 在副本集或分片集群上，保存在它自己的事务中运行，只有每条命令都成功才会提交。如果你已打开事务（手动提交），保存就在其中运行并等待提交。如果某条命令失败，MongoDB 没有保存点：整个事务会被回滚，包括你尚未提交的更改，错误会这样说明。在独立服务器上没有事务：命令依次运行，失败会停止其余命令。它之前的命令保持已保存，错误会说明有多少条。</p>
+<p>保存之后的撤销脚本会把文档恢复原状：编辑用旧值的 <code>$set</code>，新文档用 <code>deleteOne</code>，删除的文档用已加载字段的 <code>insertOne</code>。以 <code>//</code> 开头的行会说明它无法精确恢复的内容：结果中没有显示的字段、表格无法写入的类型的列、曾经为 NULL 的字段（它们会以 <code>null</code> 恢复，或被省略），以及编辑可能改变了其类型的数字（它们会以当时所拥有类型的数字恢复，用同样的 <code>$switch</code>）。</p>
+<h2 id="事务">事务</h2>
+<p>手动提交适用于副本集或分片集群（<code>mongos</code>）；单节点副本集就足够了。在独立服务器上它会被拒绝：<strong>自动提交</strong>按钮被禁用并说明原因。到副本集的生产连接以手动提交模式打开，带提交和回滚。连接只保留一个会话：切换到手动提交之后，或在提交或回滚之后的第一次更改，会在其中打开一个事务（插入、更新或删除、<code>createCollection</code>、<code>createIndex</code>、保存表格），提交或回滚会结束它。在它之前的读取不会打开事务：它们看到的是已提交的内容，与自动提交相同，所以浏览数据绝不会留下一个等服务器在其生命周期后结束的事务。一旦事务打开，你的读取就在其中运行，并能看到它的写入；其他会话只有在提交之后才能看到。</p>
+<ul>
+<li><strong>在事务中</strong>，一旦打开（读取）或正在打开（其余）：<code>find</code>、<code>findOne</code>、<code>aggregate</code>、<code>countDocuments</code>、<code>distinct</code>、插入、更新、替换和删除、<code>bulkWrite</code>、<code>findOneAnd…</code> 方法、<code>createCollection</code> 和 <code>createIndex</code>，以及带有读写文档的命令（<code>find</code>、<code>aggregate</code>、<code>insert</code>、<code>update</code>、<code>delete</code>、<code>findAndModify</code>……）的 <code>db.runCommand</code> 或 <code>db.adminCommand</code>。MongoDB 只在同一事务中创建的集合上接受事务中的索引：对已存在的集合，服务器会拒绝它并结束事务。</li>
+<li><strong>在事务之外</strong>，与自动提交模式相同，不触及事务：读取元数据或与服务器通信的内容。<code>show …</code>、<code>use</code>、<code>db.stats()</code>、<code>db.getCollectionNames()</code>、<code>getIndexes</code>、集合的统计信息、<code>estimatedDocumentCount</code>、<code>.explain()</code>、<code>db.runCommand</code> 和 <code>db.adminCommand</code> 的其他命令、<code>rs.*</code>、<code>sh.*</code>、用户和角色、分析器、导航器和补全。对 <code>admin</code>、<code>config</code> 和 <code>local</code> 数据库以及 <code>system.*</code> 集合的读取也在事务之外运行。</li>
+<li><strong>在手动提交中被拒绝</strong>：<code>drop</code>、<code>renameCollection</code>、<code>dropIndex</code>、<code>dropIndexes</code>、<code>hideIndex</code>、<code>convertToCapped</code>、<code>createView</code>、时间序列的 <code>createCollection</code>、带 <code>$out</code> 或 <code>$merge</code> 的 <code>aggregate</code>，以及对 <code>admin</code>、<code>config</code>、<code>local</code> 或 <code>system.*</code> 的写入。MongoDB 不在事务中运行它们，而在事务之外运行它们会立即生效，回滚无法撤销。错误会这样说明；不会发送任何内容，已打开的事务保持原样。请切换到自动提交来运行它们。</li>
+<li>在事务中读取的结果会在你滚动时继续加载，一次一批，其间可以运行其他语句。在事务打开之前读取的结果会在事务之外继续加载。它的列来自它最初的文档。在提交或回滚之后，其余部分无法读取：请重新运行该语句。</li>
+</ul>
+<p><strong>服务器何时结束事务。</strong> MongoDB 会中止保持打开时间超过 <code>transactionLifetimeLimitSeconds</code>（默认 60 秒）的事务。它也会因某些错误而中止事务：重复键、与另一个会话的写入冲突、它拒绝在事务中运行的语句、达到时间限制（<code>maxTimeMS</code>）。其他错误，例如未知的管道阶段，会让它保持打开。出错之后，PlatypusDB 会询问服务器事务是否仍然存在。如果不存在，语句或提交的错误会说明服务器结束了事务，其更改已被丢弃（原因是时间限制时会说明时间限制），事务显示为已关闭，下一条语句会打开新的事务。取消事务中的语句会回滚该事务：服务器会结束其操作被终止的事务，而该语句做了什么是未知的。</p>
+<h2 id="代理">代理</h2>
+<p><code>run_query</code>、<code>sample_rows</code>（<code>find({}).limit(n)</code>）和其余工具可用于 mongosh 语句；不是普通查询的语句会先询问。在 MongoDB 上被拒绝的有：<code>explain</code>、<code>get_er_diagram</code> 和 <code>query_across_databases</code>；<code>estimate_change</code> 会以一条说明作答。</p>
+<p><code>propose_edits</code> 提议要在集合（不是视图）中插入、更新或删除的文档：集合会在其数据查看器中打开，带有针对所提议的 <code>_id</code> 的 <code>find</code>，更改处于待保存状态，你可以像保存自己的编辑一样保存或丢弃它们。文档只用 <code>_id</code> 指明；<code>ObjectId</code> 类型的 <code>_id</code> 以其 24 位十六进制数字发送，并因为集合的 <code>_id</code> 就是 <code>ObjectId</code> 而被读作 <code>ObjectId</code>。值会按表格保存的规则（见上文）在打开任何内容之前检查。敏感列只按顶层字段遮蔽：文档内部的敏感字段无法区分。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<h2 id="已知限制">已知限制</h2>
+<ul>
+<li>低于 5.0：它会连接，并警告某些功能可能无法工作。</li>
+<li>驱动是会自行重新连接的连接池，所以连接丢失不会像其他数据库那样被报告。</li>
+</ul>
+<h2 id="测试环境">测试环境</h2>
+<p>一致性测试套件在 MongoDB 5.0 和 8.0 上运行：服务器信息、元数据、取消、被放弃的结果、带位置的错误、假文档，以及后面的文档中与第一个文档不同的值。事务在 MongoDB 8.0 的单节点副本集上测试：提交、回滚、事务内外的读取、由多个批次组成的结果、手动提交中的元数据，以及服务器因时间限制而结束的事务。</p>
+<p>另见：<a href="../connect.html">连接</a>、<a href="../troubleshooting.html">故障排除</a>。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#连接">连接</a>
+    <a href="#权限">权限</a>
+    <a href="#可用功能">可用功能</a>
+    <a href="#不可用功能">不可用功能</a>
+    <a href="#在表格中编辑文档">在表格中编辑文档</a>
+    <a href="#事务">事务</a>
+    <a href="#代理">代理</a>
+    <a href="#已知限制">已知限制</a>
+    <a href="#测试环境">测试环境</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Solución de problemas y preguntas frecuentes</title>
+  <meta name="description" content="Empieza con Probar la conexión en el formulario de la conexión: informa del fallo con el propio mensaje del servidor, y nombra la versión del servidor…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Primeros pasos</a>
+<a href="index.html">Guía del usuario</a>
+<h6>Guide</h6>
+<a href="connect.html">Conectar a una base de datos</a>
+<a href="queries.html">Ejecutar consultas y leer los resultados</a>
+<a href="edit-data.html">Editar datos</a>
+<a href="import-export.html">Importar y exportar</a>
+<a href="safety.html">Trabajar con seguridad: producción, solo lectura, confirmaciones, enmascarado</a>
+<a href="projects-sharing.html">Proyectos y uso compartido</a>
+<a href="agents.html">Usar PlatypusDB desde un agente</a>
+<a href="troubleshooting.html" class="on" aria-current="page">Solución de problemas y preguntas frecuentes</a>
+<a href="databases/index.html">Bases de datos</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Solución de problemas y preguntas frecuentes</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/troubleshooting.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/troubleshooting.html" lang="de" hreflang="de">Deutsch</a> · <span lang="es">Español</span> · <a href="../../fr/guide/troubleshooting.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/troubleshooting.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/troubleshooting.html" lang="pt" hreflang="pt">Português</a> · <a href="../../zh/guide/troubleshooting.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Guía del usuario</a></p>
+<h1 id="solución-de-problemas-y-preguntas-frecuentes">Solución de problemas y preguntas frecuentes</h1>
+<p>Empieza con <strong>Probar la conexión</strong> en el formulario de la conexión: informa del fallo con el propio mensaje del servidor, y nombra la versión del servidor cuando eso ayuda.</p>
+<h2 id="errores-de-conexión">Errores de conexión</h2>
+<h3 id="no-se-puede-acceder-al-host">No se puede acceder al host</h3>
+<p>Comprueba primero el host y el puerto (el formulario dice &quot;Falta el host.&quot; o &quot;El puerto debe ser un número del 1 al 65535.&quot;). Después mira lo que hay entre tú y el servidor: un túnel SSH, un proxy, un reenvío de puerto, o un comando alrededor de la conexión que levanta una VPN (página <strong>Red</strong>). Cada uno añade su propio mensaje, más abajo.</p>
+<h3 id="tls">TLS</h3>
+<p>En la página <strong>Red</strong>, <strong>Modo SSL</strong> decide qué se comprueba (consulta <a href="connect.html#tls">Conectar</a>).</p>
+<ul>
+<li>Un servidor que rechaza una conexión sin cifrar necesita <code>require</code> o superior; un servidor con un certificado en el que tu ordenador no confía necesita <code>verify-ca</code> o <code>verify-full</code> con el <strong>Certificado CA (PEM)</strong>, o <code>require</code> para cifrar sin comprobar.</li>
+<li>&quot;invalid certificate&quot; e &quot;invalid root certificates&quot; significan un archivo PEM que no se puede leer: comprueba que es el certificado en sí, no una clave.</li>
+<li>&quot;Un certificado de cliente requiere tanto el certificado como su clave&quot;: rellena <strong>Certificado de cliente (PEM)</strong> y <strong>Clave de cliente (PEM)</strong> juntos. &quot;invalid client certificate or key&quot; significa que no coinciden o que no son PEM.</li>
+<li>Redis, Elasticsearch y Cassandra toman TLS de un modo SSL de <code>require</code> o superior.</li>
+</ul>
+<h3 id="ssh">SSH</h3>
+<p>Los errores empiezan con <code>SSH &lt;user&gt;@&lt;host&gt;:&lt;port&gt;:</code>.</p>
+<ul>
+<li><code>no answer within 10 s</code> o <code>cannot reach &lt;host&gt;:&lt;port&gt;</code>: el servidor SSH (o el proxy que tiene delante) no es accesible desde aquí.</li>
+<li><code>cannot read the key &lt;path&gt;</code>: el <strong>Archivo de clave privada</strong> no existe, no se puede leer o necesita su frase de paso.</li>
+<li><code>no SSH agent is running</code>: inicia tu agente SSH, o usa un archivo de clave o una contraseña.</li>
+<li>Una contraseña o clave rechazada es la respuesta del servidor: revisa <strong>Usuario SSH</strong> y el método.</li>
+<li>Un servidor cuya clave cambió desde la primera conexión se rechaza. Las claves son las de <code>~/.ssh/known_hosts</code>, compartido con OpenSSH: elimina allí la línea antigua si el cambio es esperado.</li>
+</ul>
+<h3 id="proxy">Proxy</h3>
+<p>Los errores nombran el proxy, como <code>SOCKS5 proxy host:1080: …</code> o <code>HTTP proxy host:3128: …</code>.</p>
+<ul>
+<li><code>no answer within 10 s</code>: el proxy no responde.</li>
+<li><code>the proxy asks for a user and password, or refused them</code>: escríbelos en la URL (<code>http://user:password@host:3128</code>).</li>
+<li><code>cannot reach &lt;host&gt;:&lt;port&gt;: …</code>: el proxy respondió pero no pudo llegar a la base de datos.</li>
+<li>Una URL que no se entiende se notifica como <code>proxy &quot;&lt;url&gt;&quot;: …</code>. Un reenvío de puerto va solo: quita el túnel SSH o el proxy.</li>
+</ul>
+<h3 id="llavero">Llavero</h3>
+<ul>
+<li><code>keychain error: …</code>, o &quot;the system has no keychain to save the password in&quot;: en Linux debe estar en marcha un Secret Service como GNOME Keyring o KWallet. Sin uno, define una contraseña maestra (Ajustes › <strong>Contraseña maestra</strong>) o elige <strong>Preguntar cada vez</strong> para la contraseña.</li>
+<li>&quot;No hay ninguna contraseña guardada para esta conexión: se guardará en el llavero.&quot; es solo un aviso.</li>
+<li>Las contraseñas importadas de otra herramienta sin las suyas (DBeaver con su propia contraseña maestra, por ejemplo) se piden en el primer uso.</li>
+</ul>
+<h3 id="contraseña-maestra">Contraseña maestra</h3>
+<ul>
+<li>&quot;PlatypusDB está bloqueado&quot; o &quot;Introduce la contraseña maestra para usarlas&quot;: escríbela y haz clic en <strong>Desbloquear</strong>. El bloqueo por inactividad está en Ajustes › <strong>Seguridad</strong>; las conexiones de producción se reconectan al usarlas.</li>
+<li>No se puede recuperar. Si se pierde, las contraseñas guardadas se pierden: vuelve a definir las contraseñas en cada conexión.</li>
+<li>Para volver al llavero, Ajustes › <strong>Contraseña maestra</strong> › <strong>Desactivar…</strong> (pide la actual).</li>
+</ul>
+<h2 id="falla-la-descarga-de-un-driver">Falla la descarga de un driver</h2>
+<p>DuckDB, Snowflake, BigQuery, Databricks, Trino, otros drivers ADBC, Oracle e IBM Db2 descargan su biblioteca la primera vez que se usan. La ventana dice &quot;Descargando el driver de <code>&lt;name&gt;</code>…&quot; con un <strong>Cancelar</strong>, y un fallo muestra un mensaje con <strong>Reintentar</strong>.</p>
+<ul>
+<li><code>la descarga falló (comprueba la conexión a Internet)</code> o <code>no se puede acceder al registro de drivers</code>: no hay ruta hasta el registro; revisa la red, el proxy o el cortafuegos y luego <strong>Reintentar</strong>.</li>
+<li><code>the downloaded driver is corrupted (its SHA-256 does not match)</code>: el archivo se alteró o se cortó en tránsito; inténtalo de nuevo, e infórmanos si persiste.</li>
+<li><code>no &lt;name&gt; driver for this platform</code>, o &quot;PlatypusDB descarga DuckDB en Windows, macOS y Linux, con procesadores x64 y ARM; no en este sistema.&quot;: no hay compilación para tu sistema.</li>
+<li><code>the driver&#39;s license (…) does not allow downloading it here</code>: la app no descarga drivers cuya licencia lo prohíbe.</li>
+<li>IBM Db2 se alcanza por ODBC solo en Windows por ahora; registrar su driver pide permiso de administrador (Control de cuentas de usuario). Responde que sí, o el driver no se registra.</li>
+<li><strong>Cancelar</strong> deja el formulario utilizable; la oferta vuelve en <strong>Probar la conexión</strong> o en la primera apertura.</li>
+</ul>
+<p>Ajustes › <strong>Drivers</strong> lista lo que se ha descargado, elimina un driver y muestra los drivers ODBC del sistema. Una eliminación que Windows rechazó se termina en el siguiente inicio.</p>
+<h2 id="un-agente-no-ve-una-conexión">Un agente no ve una conexión</h2>
+<p>Repasa esta lista en orden.</p>
+<ol>
+<li><strong>El acceso está desactivado.</strong> El agente responde &quot;<code>&lt;name&gt;</code> is not available to agents&quot;. En Ajustes › <strong>Agentes</strong> › <strong>Seguridad</strong>, pon la conexión en <strong>Solo lectura</strong> o <strong>Lectura y escritura</strong>. Una conexión que viene de un proyecto compartido empieza en <strong>Desactivado</strong> en tu ordenador.</li>
+<li><strong>Una contraseña maestra.</strong> El agente responde &quot;the saved password of <code>&lt;name&gt;</code> is locked by PlatypusDB&#39;s master password, which agents cannot enter&quot;. Dale a esa conexión un comando de contraseña o <code>.pgpass</code>, o desactiva la contraseña maestra.</li>
+<li><strong>La contraseña se pide cada vez.</strong> El agente responde &quot;<code>&lt;name&gt;</code> asks for its password at each connection, and agents cannot type it&quot;. Guárdala en el llavero, o usa <code>.pgpass</code> o un comando de contraseña.</li>
+<li><strong>Escrituras rechazadas.</strong> Las conexiones de producción y de solo lectura nunca pasan de solo lectura; en las demás el cambio espera tu respuesta en la app (<a href="agents.html">Agentes</a>).</li>
+<li><strong>El cliente no se reinició</strong> después de <strong>Instalar</strong>, o falta la entrada: Ajustes › <strong>Agentes</strong> › <strong>Configuración</strong> dice si PlatypusDB está en el archivo del cliente.</li>
+<li><strong>Una copia portátil u otro perfil.</strong> El agente lee las conexiones del perfil desde el que se inició; un cliente configurado con la app instalada no ve la carpeta <code>data</code> de una copia portátil.</li>
+</ol>
+<h2 id="la-copia-portátil">La copia portátil</h2>
+<ul>
+<li>Es un ejecutable con una carpeta <code>data</code> vacía al lado. Si la carpeta no está al iniciar, la app usa en su lugar las carpetas del sistema, así que una carpeta <code>data</code> renombrada parece haber perdido las conexiones: ponle de nuevo su nombre.</li>
+<li>Todo está en <code>data</code>, registros incluidos; la carpeta se mueve con el ejecutable. Las contraseñas guardadas se quedan en el llavero del sistema del ordenador, salvo que una contraseña maestra las guarde también en la carpeta: en otro ordenador, define antes la contraseña maestra o vuelve a introducir las contraseñas.</li>
+<li>No se actualiza sola: sustituye su ejecutable por el nuevo. La pantalla de bienvenida dice <code>portable</code> junto a la versión.</li>
+</ul>
+<h2 id="dónde-están-los-datos-y-los-registros">Dónde están los datos y los registros</h2>
+<p>La app guarda las conexiones y los ajustes (<code>connections.toml</code>, <code>settings.toml</code> y <code>secrets.vault</code> con una contraseña maestra) en su carpeta de configuración, y el historial, los scripts, los drivers descargados y los registros en su carpeta de datos, ambas llamadas <code>dev.platypusdb.desktop</code>:</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Sistema</th><th>Carpeta de configuración</th><th>Carpeta de datos</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td><code>%APPDATA%\dev.platypusdb.desktop</code></td><td><code>%APPDATA%\dev.platypusdb.desktop</code></td></tr>
+<tr><td>macOS</td><td><code>~/Library/Application Support/dev.platypusdb.desktop</code></td><td>la misma</td></tr>
+<tr><td>Linux</td><td><code>~/.config/dev.platypusdb.desktop</code></td><td><code>~/.local/share/dev.platypusdb.desktop</code></td></tr>
+</tbody>
+</table></div>
+<p>Una copia portátil guarda todo en su carpeta <code>data</code>, y la variable de entorno <code>PLATYPUS_DATA_DIR</code> pone todo en la carpeta que nombra.</p>
+<p><img src="../../../img/screenshots/guide/diagnostics.png" alt="Ajustes, la página Diagnóstico" loading="lazy"></p>
+<p>El registro es <code>logs/platypus.log</code> en la carpeta de datos: una línea por inicio, error y fallo grave, rotado a 1 MB con dos archivos anteriores (<code>platypus.1.log</code>, <code>platypus.2.log</code>). Ajustes › <strong>Diagnóstico</strong> muestra la carpeta (<strong>Copiar</strong>) y <strong>Guardar el paquete de diagnóstico…</strong>, un zip con la versión, el sistema, los ajustes sin contraseñas y los registros, para adjuntar a un informe de error. No se envía nada a ninguna parte; lee los registros antes de compartirlos, porque un error puede nombrar un servidor o una tabla. Tras un fallo grave, el siguiente inicio ofrece el mismo paquete.</p>
+<h2 id="actualizaciones">Actualizaciones</h2>
+<ul>
+<li>Al iniciar, la app busca una versión más reciente y muestra &quot;PlatypusDB <code>&lt;version&gt;</code> está disponible&quot; con <strong>Más tarde</strong> e <strong>Instalar y reiniciar</strong>.</li>
+<li>Una copia portátil solo lo avisa: sustituye su ejecutable. Una instalación desde un gestor de paquetes (Flatpak, el AUR) lo avisa y deja la actualización en sus manos.</li>
+<li>Los drivers descargados se actualizan aparte: Ajustes › <strong>Drivers</strong> › <strong>Buscar actualizaciones</strong>, o los ajustes <strong>Buscar actualizaciones de controladores al iniciar</strong> (activado, como máximo una vez al día) e <strong>Instalar las actualizaciones de controladores automáticamente</strong> (desactivado). Los drivers integrados se actualizan con la app.</li>
+</ul>
+<h2 id="preguntas-frecuentes">Preguntas frecuentes</h2>
+<p><strong>¿Puedo usar PlatypusDB sin conexión?</strong> Sí, con una base de datos local. Las descargas (drivers, actualizaciones) necesitan red.</p>
+<p><strong>¿Dónde informo de un error?</strong> En el <a href="https://github.com/platypus-labs/platypus-db/issues">gestor de incidencias</a>, con el paquete de diagnóstico si puedes.</p>
+<p><strong>¿Dónde están los atajos?</strong> <a href="../../shortcuts.html">SHORTCUTS.md</a>, y Ajustes › Atajos de teclado para cambiarlos.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#errores-de-conexión">Errores de conexión</a>
+    <a href="#falla-la-descarga-de-un-driver">Falla la descarga de un driver</a>
+    <a href="#un-agente-no-ve-una-conexión">Un agente no ve una conexión</a>
+    <a href="#la-copia-portátil">La copia portátil</a>
+    <a href="#dónde-están-los-datos-y-los-registros">Dónde están los datos y los registros</a>
+    <a href="#actualizaciones">Actualizaciones</a>
+    <a href="#preguntas-frecuentes">Preguntas frecuentes</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

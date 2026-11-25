@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · DuckDB</title>
+  <meta name="description" content="DuckDB 在应用内部运行，与 SQLite 类似：没有服务器、主机、用户或密码。与 SQLite 不同的是，应用本身不带 DuckDB 的库；它会在第一次打开 DuckDB 数据库或数据文件时下载它。">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">快速入门</a>
+<a href="../index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="../connect.html">连接数据库</a>
+<a href="../queries.html">运行查询并查看结果</a>
+<a href="../edit-data.html">编辑数据</a>
+<a href="../import-export.html">导入和导出</a>
+<a href="../safety.html">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="../projects-sharing.html">项目与共享</a>
+<a href="../agents.html">通过代理使用 PlatypusDB</a>
+<a href="../troubleshooting.html">故障排除与常见问题</a>
+<a href="index.html">数据库</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub on" aria-current="page">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 和 ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / DuckDB</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/duckdb.html" lang="en" hreflang="en">English</a> · <a href="../../../de/guide/databases/duckdb.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../../es/guide/databases/duckdb.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/duckdb.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/duckdb.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/duckdb.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 数据库</a></p>
+<h1 id="duckdb">DuckDB</h1>
+<p>DuckDB 在应用内部运行，与 SQLite 类似：没有服务器、主机、用户或密码。与 SQLite 不同的是，应用本身不带 DuckDB 的库；它会在第一次打开 DuckDB 数据库或数据文件时<strong>下载</strong>它。</p>
+<h2 id="首次使用duckdb-的库">首次使用：DuckDB 的库</h2>
+<p>当你为新连接选择 <strong>DuckDB</strong>，而这台机器上没有该库时，表单上方会弹出一个窗口：<em>下载 DuckDB？</em>它会显示软件包（DuckDB 2.0.0，来自 DuckDB 在 GitHub 上的发布版，MIT 许可证）、大小和来源，并用 SHA-256 校验下载。<strong>下载</strong>会把它放进应用的数据文件夹，所有 DuckDB 数据库和文件共用一份；<strong>取消</strong>则表单仍可使用，并在<em>测试连接</em>时和第一次打开时再次提示。<em>设置 › 驱动</em>会列出该库并可移除它。</p>
+<p>应用为 Windows（x64、ARM64）、Linux（x64、ARM64）和 macOS（两种处理器共用一个库）下载它。应用恰好使用它构建时的版本（2.0.x），如果安装的是其他版本，就提供这个版本。离线且缺少该库时，连接无法打开。</p>
+<h2 id="连接">连接</h2>
+<p>选择 <strong>DuckDB</strong> 并给出数据库文件的路径，或粘贴 URL：</p>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>你粘贴的内容</th><th>含义</th></tr></thead>
+<tbody>
+<tr><td><code>duckdb:///home/ana/analytics.duckdb</code></td><td>该文件，不存在时会创建（其文件夹必须存在）</td></tr>
+<tr><td><code>duckdb:///C:/data/analytics.duckdb</code></td><td>Windows 盘上的文件</td></tr>
+<tr><td><code>duckdb:///:memory:</code></td><td>应用的各会话共享的内存数据库</td></tr>
+<tr><td>作为路径的 <code>:memory:&lt;name&gt;</code></td><td>按名称区分的、独立的内存数据库</td></tr>
+</tbody>
+</table></div>
+<p><strong>把数据文件当作数据库。</strong> 以 <code>.csv</code>、<code>.tsv</code>、<code>.json</code>、<code>.ndjson</code>、<code>.jsonl</code>、<code>.parquet</code>、<code>.xlsx</code>、<code>.xlsm</code>、<code>.xls</code> 或 <code>.ods</code> 结尾的路径，会作为基于该文件的内存数据库打开（也可以把文件拖到窗口上）。CSV、TSV、JSON、NDJSON 和 Parquet 会变成一个以文件命名的视图，DuckDB 每次查询时都会重新读取它；工作簿的每个工作表会变成一张表，只加载一次。CSV 或 TSV 会先经过检查（每一行的值数量必须与标题行一致），检测其文本编码（或由你指定），导入选项可以让你跳过有问题的行。</p>
+<p>扩展不会自动下载或加载；只有库中内置的扩展（Parquet、JSON）可用。</p>
+<h2 id="权限">权限</h2>
+<p>由操作系统决定：读取文件的权限，以及写入文件及其文件夹才能更改任何内容的权限。同一时间只有一个进程可以以写入方式打开 DuckDB 文件，所以当应用打开着某个文件时，另一个程序（例如 <code>duckdb</code> 命令行）无法使用它；应用对同一个文件的各会话共享一个实例。因此不提供终端模式。</p>
+<h2 id="可用功能">可用功能</h2>
+<ul>
+<li>在表格中按主键（或非空列上的唯一键，或虚拟键）编辑数据。数据文件会读入内存：CSV、JSON 或 Parquet 视图不是表，无法编辑，对工作簿工作表的编辑也不会写回文件。</li>
+<li>手动提交和回滚；取消语句（<code>duckdb_interrupt</code>）。</li>
+<li>执行计划显示计划（<code>EXPLAIN (FORMAT JSON)</code>）；<strong>分析执行计划</strong>在一个会回滚的事务中运行语句，而当你已打开事务时会被拒绝。</li>
+<li>参数标签页：DuckDB 的设置。没有会话、锁、仪表板、用户或语句标签页。</li>
+<li>元数据搜索、对象 DDL、模式工具。DuckDB 很少能就地修改，所以更改表会重新创建它并复制其行。</li>
+<li>导入通过 DuckDB 的 appender 进行，在会话的事务中。</li>
+</ul>
+<h2 id="代理">代理</h2>
+<p>只读代理和只读连接以只读方式打开数据库文件，前提是应用的其他会话没有已经打开它；内存数据库或数据文件永远不是只读的，那里由语句检查来阻止写入。代理的 DuckDB 会话无法读取或写入其他文件，也无法加载扩展，并在每次调用之后关闭文件，以便应用可以打开它。<code>query_across_databases</code> 在它自己的 DuckDB 中运行，应用会像这个一样下载它。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<h2 id="已知限制">已知限制</h2>
+<ul>
+<li>Excel 文件由应用自己的读取器读取，而不是 DuckDB 的 Excel 扩展。</li>
+<li>不会加载 2.0.x 以外的 DuckDB 版本。</li>
+</ul>
+<h2 id="测试环境">测试环境</h2>
+<p>一致性测试套件在一个 DuckDB 文件上运行，使用与应用绑定相匹配的库：事务、计划、表编辑、特殊值、128 位和无符号数字以及带时区的时间。</p>
+<p>另见：<a href="../connect.html">连接</a>、<a href="../troubleshooting.html">故障排除</a>。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#首次使用duckdb-的库">首次使用：DuckDB 的库</a>
+    <a href="#连接">连接</a>
+    <a href="#权限">权限</a>
+    <a href="#可用功能">可用功能</a>
+    <a href="#代理">代理</a>
+    <a href="#已知限制">已知限制</a>
+    <a href="#测试环境">测试环境</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · 安全工作：生产环境、只读、确认、遮蔽</title>
+  <meta name="description" content="这里的所有内容也在 FEATURES.md 中。">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">快速入门</a>
+<a href="index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="connect.html">连接数据库</a>
+<a href="queries.html">运行查询并查看结果</a>
+<a href="edit-data.html">编辑数据</a>
+<a href="import-export.html">导入和导出</a>
+<a href="safety.html" class="on" aria-current="page">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="projects-sharing.html">项目与共享</a>
+<a href="agents.html">通过代理使用 PlatypusDB</a>
+<a href="troubleshooting.html">故障排除与常见问题</a>
+<a href="databases/index.html">数据库</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / 安全工作：生产环境、只读、确认、遮蔽</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/safety.html" lang="en" hreflang="en">English</a> · <a href="../../de/guide/safety.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../es/guide/safety.html" lang="es" hreflang="es">Español</a> · <a href="../../fr/guide/safety.html" lang="fr" hreflang="fr">Français</a> · <a href="../../it/guide/safety.html" lang="it" hreflang="it">Italiano</a> · <a href="../../pt/guide/safety.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 用户指南</a></p>
+<h1 id="安全工作生产环境只读确认遮蔽">安全工作：生产环境、只读、确认、遮蔽</h1>
+<p>这里的所有内容也在 <a href="../../features.html#transactions-and-safety">FEATURES.md</a> 中。</p>
+<p><img src="../../../img/screenshots/guide/safety.png" alt="设置，安全页面" loading="lazy"></p>
+<h2 id="将连接标记为生产环境">将连接标记为生产环境</h2>
+<ol>
+<li>编辑连接，打开<strong>外观与安全</strong>页面。</li>
+<li>把环境设为<strong>生产</strong>（其他选项是开发和测试）。生产环境在更改前会询问，并以手动提交模式启动。</li>
+<li>可以选一种颜色，方便区分这个连接。</li>
+</ol>
+<p>此后，该连接上的每处更改都会列在一个标题为“<code>&lt;name&gt;</code> 上的更改（生产）”的对话框中，附带相应语句，确认之后才会运行。设置（<code>Ctrl+,</code>）› <strong>安全</strong> › <strong>在生产连接上修改前询问</strong>可以在整个应用中关闭这一行为。代理在生产连接上最多只能是只读。</p>
+<h2 id="将连接设为只读">将连接设为只读</h2>
+<ol>
+<li>在同一页面，勾选<strong>只读（拒绝修改数据）</strong>。</li>
+<li>可能修改数据的语句不会运行。编辑器显示“<code>&lt;name&gt;</code> 是只读的，而此操作可能会修改数据。”，且无法绕过。以下情形同样如此：带分析的执行计划（“此语句可能会修改数据。”）、用 <code>@include</code> 引入的文件、笔记本单元格（“此单元格可能更改数据。”）、命令行客户端，以及在多个连接上运行，后者会把该连接列为已跳过（“只读连接”）。</li>
+<li>完全不提供的功能：<strong>导入数据…</strong>、<strong>将数据导入新表…</strong>、<strong>将 CSV 粘贴为新表…</strong>、<strong>生成数据…</strong>、<strong>运行 SQL 文件…</strong>、创建对象、在表设计器中保存，以及在表格中编辑行。代理仍然只读。</li>
+</ol>
+<p>编辑器标签页的锁定按钮只让该标签页只读，而不改动已保存的连接。这是唯一会询问的情形：编辑器显示同样的消息，并带有一个<strong>仍然运行</strong>按钮，命令行客户端则询问 &quot;Run anyway?&quot;。</p>
+<p>同一页面还有两个复选框：<strong>禁止导出</strong>（其数据不会写入任何文件、其他数据库或代理）和<strong>禁止编辑数据</strong>（行只能通过 SQL 修改，不能在表格、导入或生成的数据中修改）。</p>
+<h2 id="确认">确认</h2>
+<p>设置 › <strong>安全</strong> › <strong>更改之前</strong>：</p>
+<ul>
+<li><strong>不带 WHERE 的 UPDATE 或 DELETE</strong>（也包括 <code>TRUNCATE</code>）：<strong>运行前询问</strong>（默认）、<strong>从不运行</strong>或<strong>直接运行</strong>。对话框询问“修改每一行？”，并说明大约有多少行。</li>
+<li><strong>事务保持打开超过多久时提醒（分钟）</strong>：默认 10，0 表示从不提醒。</li>
+<li><strong>为没有 LIMIT 的查询添加 LIMIT（行数）</strong>：0（默认）表示从不添加。</li>
+<li><strong>代理更改数据前先询问</strong>：见<a href="agents.html">代理</a>。</li>
+</ul>
+<h2 id="撤销更改">撤销更改</h2>
+<p>默认开启的<strong>保留 UPDATE 或 DELETE 将要修改的行，以便恢复</strong>（设置 › 安全 › <strong>锁定和备份</strong>）会保留从编辑器运行的、针对一张表的 <code>UPDATE</code> 或 <code>DELETE</code> 所修改的行，最多 10,000 行。打开编辑器工具栏中的<strong>事务日志</strong>并点击<strong>恢复…</strong>，或从命令面板运行<strong>变更前快照…</strong>，即可得到把这些行恢复原状的脚本。</p>
+<h2 id="遮蔽敏感数据">遮蔽敏感数据</h2>
+<ol>
+<li>按 <code>Ctrl+Alt+M</code>（或从命令面板运行<strong>遮蔽敏感数据</strong>）：共享屏幕时，敏感列的值显示为圆点。复制时保留真实的值。</li>
+<li>设置 › <strong>安全</strong> › <strong>遮蔽</strong>按名称设置哪些列是敏感列（默认有 <code>*password*</code>、<code>*token*</code>、<code>*email*</code> 等；<code>*</code> 代表任意字符），也可以按类型设置。你还可以在表的标签页中标记某一列。</li>
+</ol>
+<p>代理读取到的敏感列同样是被遮蔽的，除非你在设置 › 代理 › <strong>安全</strong>中为该连接勾选<strong>向代理显示敏感列的值</strong>。MongoDB 文档内的敏感字段（<code>user.password</code>）同样会被遮蔽。当代理询问你正在处理什么时，以其他名称读取的列（<code>SELECT email AS contact</code>）同样会被遮蔽；如果语句把它藏在子查询后面，整个共享的结果都会被遮蔽。</p>
+<p>在应用之外移除的规则或标记（例如带文件工具的代理编辑 <code>settings.toml</code> 或 <code>catalog.db</code>），在你接受之前不会对代理生效：应用会询问，设置 › 代理 › <strong>安全</strong>会列出它，并提供接受或撤销的方式。在应用之外新增的规则则立即生效。这只涵盖对这些文件的编辑，仅此而已。能以你的用户身份运行命令的代理可以通过其他途径读取数据库，或读取存放密封信息的系统钥匙串：要防止这样的代理看到这些值，请以另一个用户运行它，并为连接配置一个无权访问这些列的数据库用户。</p>
+<p>答复只对问题列出的内容有效：如果文件在询问期间再次变化，点击<strong>接受更改</strong>不会接受任何内容，并会重新显示列表。</p>
+<h2 id="锁定应用">锁定应用</h2>
+<p>设置了主密码时（见<a href="connect.html#主密码">连接</a>），设置 › <strong>安全</strong> › <strong>空闲多少分钟后锁定应用</strong>（0，即默认值，表示从不锁定）会锁定 PlatypusDB 并关闭生产连接。命令面板中的<strong>锁定 PlatypusDB</strong>会立即锁定。输入主密码即可解锁：生产连接在使用时会重新连接。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#将连接标记为生产环境">将连接标记为生产环境</a>
+    <a href="#将连接设为只读">将连接设为只读</a>
+    <a href="#确认">确认</a>
+    <a href="#撤销更改">撤销更改</a>
+    <a href="#遮蔽敏感数据">遮蔽敏感数据</a>
+    <a href="#锁定应用">锁定应用</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

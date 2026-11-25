@@ -6,6 +6,11 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The user guide in German, Spanish, French, Portuguese and Chinese**: all 25 pages, shown in the
+  Help dialog in the app's language and published on the site next to the Italian ones.
+
 ## [0.6.13] - 2026-11-25
 
 ### Added

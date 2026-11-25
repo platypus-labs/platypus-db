@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Elasticsearch und OpenSearch</title>
+  <meta name="description" content="Ein Treiber spricht mit beiden über ihre HTTP-API (reqwest mit rustls). Der Server sagt beim Verbinden, welcher er ist, und die Verbindung zeigt es…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Erste Schritte</a>
+<a href="../index.html">Benutzerhandbuch</a>
+<h6>Guide</h6>
+<a href="../connect.html">Mit einer Datenbank verbinden</a>
+<a href="../queries.html">Abfragen ausführen und Ergebnisse lesen</a>
+<a href="../edit-data.html">Daten bearbeiten</a>
+<a href="../import-export.html">Import und Export</a>
+<a href="../safety.html">Sicher arbeiten: Produktion, Schreibschutz, Bestätigungen, Maskierung</a>
+<a href="../projects-sharing.html">Projekte und Teilen</a>
+<a href="../agents.html">PlatypusDB von einem Agenten aus nutzen</a>
+<a href="../troubleshooting.html">Fehlerbehebung und FAQ</a>
+<a href="index.html">Datenbanken</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub on" aria-current="page">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 und ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Elasticsearch und OpenSearch</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/elasticsearch.html" lang="en" hreflang="en">English</a> · <span lang="de">Deutsch</span> · <a href="../../../es/guide/databases/elasticsearch.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/elasticsearch.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/elasticsearch.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/elasticsearch.html" lang="pt" hreflang="pt">Português</a> · <a href="../../../zh/guide/databases/elasticsearch.html" lang="zh" hreflang="zh">中文</a></nav>
+<p><a href="index.html">← Datenbanken</a></p>
+<h1 id="elasticsearch-und-opensearch">Elasticsearch und OpenSearch</h1>
+<p>Ein Treiber spricht mit beiden über ihre HTTP-API (<code>reqwest</code> mit rustls). Der Server sagt beim Verbinden, welcher er ist, und die Verbindung zeigt es (<code>Connected: OpenSearch 2.17.1</code>). Der Treiber ist Teil der App; es wird nichts heruntergeladen.</p>
+<h2 id="verbinden">Verbinden</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Du fügst ein</th><th>Gelesen als</th></tr></thead>
+<tbody>
+<tr><td><code>elasticsearch://user:pass@host:9200/logs-*</code></td><td>einfaches HTTP; der Pfad ist ein Index-Muster</td></tr>
+<tr><td><code>elasticsearchs://user:pass@host:9200</code></td><td>HTTPS (geprüft: <code>verify-full</code>)</td></tr>
+<tr><td><code>opensearch://…</code> und <code>opensearchs://…</code></td><td>dasselbe, als OpenSearch gemerkt, damit die URL so zurückgeschrieben wird</td></tr>
+</tbody>
+</table></div>
+<p>Der Standardport ist 9200. Das Feld <strong>Datenbank</strong> ist ein optionales Index-Muster (<code>logs-*</code> oder mehrere, durch Kommas getrennt), das eingrenzt, was der Navigator auflistet; leer listet jeden Index auf, der nicht versteckt ist.</p>
+<ul>
+<li><strong>Anmelden</strong>: Ein Benutzer und ein Passwort nutzen Basic Authentication. Ist der Benutzer leer, ist das Passwortfeld ein <strong>API-Schlüssel</strong> (der <code>encoded</code>-Wert), gesendet als <code>Authorization: ApiKey …</code>.</li>
+<li><strong>TLS</strong>: HTTPS bei <code>elasticsearchs://</code>- und <code>opensearchs://</code>-URLs und bei SSL-Modi ab <code>require</code>; <code>elasticsearch://</code> und <code>prefer</code> sind einfaches HTTP. <code>require</code> prüft das Zertifikat nicht; <code>verify-ca</code> und <code>verify-full</code> tun es. Eine CA-Datei und ein Client-Zertifikat kommen in die TLS-Felder.</li>
+</ul>
+<h2 id="berechtigungen">Berechtigungen</h2>
+<p>Die, die die Anfragen brauchen. Der Navigator liest die Indizes, Aliase, Data Streams und Mappings, die die Anmeldung sehen kann; es gibt keine Verwaltungs-Tabs.</p>
+<h2 id="was-funktioniert">Was funktioniert</h2>
+<ul>
+<li><strong>Anfragen, wie die Dev-Tools-Konsole von Kibana sie schreibt</strong>: eine Zeile wie <code>GET /orders/_search</code> (der Schrägstrich ist optional; Methoden <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>DELETE</code>, <code>HEAD</code>), dann ihr JSON-Body. <code>_bulk</code> und <code>_msearch</code> nehmen NDJSON-Bodys, die an einer Leerzeile oder der nächsten Anfrage enden.</li>
+<li><strong>SQL</strong>: Alles andere ist SQL (<code>_sql</code> bei Elasticsearch, <code>_plugins/_sql</code> bei OpenSearch), mit typisierten Spalten und dem Cursor des Servers für lange Ergebnisse. Fehler behalten den Grund des Servers, und ein SQL-Fehler zeigt auf seine Stelle in der Anweisung.</li>
+<li>Eine Suche liefert Dokumente wie die Ergebnisse von MongoDB: eine Spalte pro Feld der obersten Ebene, mit dem fokussierten Dokument als Baum (<code>F7</code>). Aggregationen kommen als eigene Ergebnisse.</li>
+<li>Der Navigator listet Indizes als Tabellen (Health, Shards und Replicas im Tooltip) und Aliase und Data Streams als Views. Ein Index öffnet sich als Suche über alle seine Dokumente, je 1.000 Zeilen gelesen mit einem Point in Time und <code>search_after</code> (ein Scroll bei OpenSearch), sodass das Lesen nicht bei 10.000 Treffern endet. Ein Feld ohne gemappte Spalte kommt als JSON in eine letzte Spalte <code>_other</code>.</li>
+<li><strong>Das Raster bearbeitet Dokumente</strong>: Eine geänderte Zelle ist ein <code>_update</code> über <code>_id</code>, eine neue Zeile ein <code>_create</code> (eine <code>_id</code>, die existiert, wird vom Server abgelehnt) oder ein generiertes Dokument, eine gelöschte Zeile ein <code>DELETE</code>. Die Vorschau zeigt die Anfragen, die nacheinander laufen; eine, die der Server ablehnt, stoppt den Rest, und die früheren bleiben. <em>Rückgängig-Skript</em> stellt die alte <code>_source</code> wieder her (ein Dokument mit einer generierten <code>_id</code> muss von Hand gelöscht werden).</li>
+<li><code>_delete_by_query</code> und <code>_update_by_query</code> ohne Abfrage (oder <code>match_all</code>) und <code>DELETE /_all</code> fragen zuerst nach, wie ein <code>DELETE</code> ohne <code>WHERE</code>. Schreibgeschützte Verbindungen führen nur die Anfragen und das SQL aus, die lesen.</li>
+<li>Abbrechen stoppt eine Suche auf dem Server. Die Objekt-DDL eines Index ist die Anfrage, die ihn neu anlegt.</li>
+<li>Die Details stehen in <a href="../../../features.html#elasticsearch-and-opensearch">FEATURES.md</a>.</li>
+</ul>
+<h2 id="was-nicht">Was nicht</h2>
+<ul>
+<li>Keine Transaktionen (kein manueller Commit) und kein Explain.</li>
+<li>Keine SQL-Tools: kein Tabelleneditor, kein ER-Diagramm, kein Schemavergleich, kein Query Builder, kein SQL-Import, keine Snapshots vor Änderungen und kein Terminalmodus.</li>
+<li>Der Datenviewer hat keine Filter- und Sortierleiste.</li>
+</ul>
+<h2 id="agenten">Agenten</h2>
+<p><code>run_query</code> und <code>sample_rows</code> funktionieren mit Konsolenanfragen und SQL, und bei einer Anfrage, die Daten ändert, wird zuerst nachgefragt. Bei Elasticsearch und OpenSearch abgelehnt: <code>explain</code>, <code>get_er_diagram</code>, <code>propose_edits</code> und <code>query_across_databases</code>. Siehe <a href="../../../agents.html">Agenten und die CLI</a>.</p>
+<h2 id="bekannte-grenzen">Bekannte Grenzen</h2>
+<ul>
+<li>Die App lehnt Elasticsearch älter als 7.10 und OpenSearch älter als 1.0 ab: Anders als bei den anderen Datenbanken schlägt die Verbindung mit „older than … the oldest version supported“ fehl.</li>
+<li>Getestet auf Elasticsearch 8 und OpenSearch 2, nicht auf 7.x.</li>
+</ul>
+<h2 id="getestet-auf">Getestet auf</h2>
+<p>Die Konformitätssuite läuft auf Elasticsearch 8.15.3 (Anmeldung <code>elastic</code>) und OpenSearch 2.17.1: Serverinfo, SQL mit Typen und Paging, Suchen, die über eine Seite hinaus blättern, der Katalog und die Mappings, Speichern der Rasteränderungen und ihr Rückgängigmachen, Abbrechen einer langsamen Suche und die Fehler des Servers.</p>
+<p>Siehe auch: <a href="../connect.html">Verbinden</a>, <a href="../troubleshooting.html">Fehlerbehebung</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#verbinden">Verbinden</a>
+    <a href="#berechtigungen">Berechtigungen</a>
+    <a href="#was-funktioniert">Was funktioniert</a>
+    <a href="#was-nicht">Was nicht</a>
+    <a href="#agenten">Agenten</a>
+    <a href="#bekannte-grenzen">Bekannte Grenzen</a>
+    <a href="#getestet-auf">Getestet auf</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

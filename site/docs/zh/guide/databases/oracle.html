@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Oracle</title>
+  <meta name="description" content="驱动使用 Oracle 的客户端库（ODPI-C，通过 oracle crate），在连接时加载。这个库就是 Oracle Instant Client，应用会在首次使用时下载它。">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">快速入门</a>
+<a href="../index.html">用户指南</a>
+<h6>Guide</h6>
+<a href="../connect.html">连接数据库</a>
+<a href="../queries.html">运行查询并查看结果</a>
+<a href="../edit-data.html">编辑数据</a>
+<a href="../import-export.html">导入和导出</a>
+<a href="../safety.html">安全工作：生产环境、只读、确认、遮蔽</a>
+<a href="../projects-sharing.html">项目与共享</a>
+<a href="../agents.html">通过代理使用 PlatypusDB</a>
+<a href="../troubleshooting.html">故障排除与常见问题</a>
+<a href="index.html">数据库</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub on" aria-current="page">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 和 ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Oracle</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/oracle.html" lang="en" hreflang="en">English</a> · <a href="../../../de/guide/databases/oracle.html" lang="de" hreflang="de">Deutsch</a> · <a href="../../../es/guide/databases/oracle.html" lang="es" hreflang="es">Español</a> · <a href="../../../fr/guide/databases/oracle.html" lang="fr" hreflang="fr">Français</a> · <a href="../../../it/guide/databases/oracle.html" lang="it" hreflang="it">Italiano</a> · <a href="../../../pt/guide/databases/oracle.html" lang="pt" hreflang="pt">Português</a> · <span lang="zh">中文</span></nav>
+<p><a href="index.html">← 数据库</a></p>
+<h1 id="oracle">Oracle</h1>
+<p>驱动使用 Oracle 的客户端库（ODPI-C，通过 <code>oracle</code> crate），在连接时加载。这个库就是 Oracle Instant Client，应用会在首次使用时下载它。</p>
+<h2 id="首次使用instant-client">首次使用：Instant Client</h2>
+<p>当你为新连接选择 <strong>Oracle</strong>，而这台机器上没有该客户端时，表单上方会弹出一个窗口：<em>Oracle 需要 Oracle Instant Client</em>。它会显示软件包（Basic Light 23.26.4）、大小、许可证（Oracle Free Use Terms and Conditions）和来源，并用 SHA-256 校验下载。<strong>下载</strong>会把它取到应用的数据文件夹中；<strong>取消</strong>则表单仍可使用，并在<em>测试连接</em>时和第一次打开时再次提示。<em>设置 › 驱动</em>会列出该客户端并可移除它。</p>
+<ul>
+<li>应用在 Windows（x64）和 Linux（x64 和 ARM64）上下载它。在 macOS 上不下载任何东西：请从 Oracle 安装 Instant Client，并把它的文件夹放进库路径。</li>
+<li>如果应用没有下载过，它会使用系统能够加载的 Instant Client 或完整客户端。</li>
+<li>Windows 需要 Microsoft Visual C++ Redistributable，Linux 需要 <code>libaio</code> 库（根据发行版是 <code>libaio1</code>、<code>libaio1t64</code> 或 <code>libaio</code>）；客户端无法加载时，错误会指出缺少的部分。</li>
+</ul>
+<h2 id="连接">连接</h2>
+<p>没有 <code>oracle://</code> URL；请改为粘贴 JDBC URL，例如 <code>jdbc:oracle:thin:@host:1521/service</code>（thin 和 OCI 形式都能读取），或填写表单：</p>
+<ul>
+<li><strong>主机</strong>和<strong>端口</strong>（默认 1521），以及“数据库”字段中的<strong>服务名</strong>（例如 <code>FREEPDB1</code>）。它们会写成 Easy Connect 字符串 <code>host:port/service</code>。</li>
+<li><strong>没有主机时</strong>，“数据库”字段是 <code>tnsnames.ora</code> 中的网络服务名，或完整的连接描述符，按原样写入。</li>
+<li><strong>用户和密码。</strong> 没有用户时，由操作系统的账户或 Oracle 钱包登录。用户可以写成 SQL<em>Plus 的方式 <code>sys as sysdba</code>，也可以选择*</em>角色**（<code>SYSDBA</code>、<code>SYSOPER</code>、<code>SYSBACKUP</code>、<code>SYSDG</code>、<code>SYSKM</code>、<code>SYSASM</code>）。</li>
+<li><strong>TLS</strong>：<code>disable</code> 和 <code>prefer</code> 模式使用普通 TCP；<code>require</code> 及以上使用 <code>tcps://</code> 和系统信任的证书。<code>require</code> 跳过服务器名称匹配；<code>verify-ca</code> 和 <code>verify-full</code> 会检查它。连接超时同样适用。通过 SSH 隧道时，使用隧道的本地端。</li>
+</ul>
+<h2 id="权限">权限</h2>
+<p>浏览读取 <code>ALL_*</code> 视图，所以该登录能看到它有权限的对象。取消会发送一个中断；如果语句在几秒后仍在运行，应用会用 <code>ALTER SYSTEM CANCEL SQL</code> 从第二个会话取消它，这需要该权限，如果不行，就放弃该会话（它的事务被回滚，并打开新的连接）。</p>
+<h2 id="可用功能">可用功能</h2>
+<ul>
+<li>在表格中按主键（或非空列上的唯一键，或虚拟键）编辑数据。</li>
+<li>手动提交和回滚。</li>
+<li>PL/SQL 块：脚本用一行 <code>/</code> 结束一个块。<code>DBMS_OUTPUT</code> 的文本会作为消息返回。</li>
+<li>导航器（表、视图、物化视图、序列、同义词、函数、过程、触发器、类型和包）、对象 DDL 和模式工具。</li>
+<li>执行计划显示 <code>EXPLAIN PLAN</code> 和 <code>DBMS_XPLAN</code> 给出的计划，仅为预估：没有分析执行计划。</li>
+<li>编译错误、数字和纳秒时间、JSON、向量、游标、长 LOB 和文件列，都按数据库中的原样读回。</li>
+<li>没有会话、锁、仪表板、语句、用户或参数标签页。</li>
+<li>终端模式不可用。</li>
+</ul>
+<h2 id="代理">代理</h2>
+<p>只读代理只依靠语句检查：这里的 Oracle 没有服务器端的只读会话。调用 Oracle 包（例如 <code>UTL_HTTP</code>）的语句在运行前会先询问，视为一次更改。见<a href="../../../agents.html">代理和 CLI</a>。</p>
+<h2 id="已知限制">已知限制</h2>
+<ul>
+<li>应用不会把服务器的版本与最低版本比较；它下载的客户端是 23.26.4。</li>
+<li>对于低于 12 的服务器，导航器以另一种方式读取数据字典（没有 <code>ORACLE_MAINTAINED</code>，没有 <code>FETCH FIRST</code>）。测试中只运行 Oracle Free 23.26，所以这条路径没有被测试过。Autonomous Database 和其他 Oracle 云服务也没有测试。</li>
+<li>在 macOS 上不下载 Instant Client。</li>
+</ul>
+<h2 id="测试环境">测试环境</h2>
+<p>一致性测试套件在 Oracle Free 23.26（容器 <code>gvenzl/oracle-free</code>）上运行，使用下载的或系统的 Instant Client：类型、长结果、指出错误位置的错误、PL/SQL、导航器、提交和回滚、保存大量已编辑的行、取消（包括 PL/SQL 的休眠）、计划、可以反向执行的 DDL、以 <code>SYSDBA</code> 连接，以及模式比较。其他版本没有测试。</p>
+<p>另见：<a href="../connect.html">连接</a>、<a href="../troubleshooting.html">故障排除</a>。</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#首次使用instant-client">首次使用：Instant Client</a>
+    <a href="#连接">连接</a>
+    <a href="#权限">权限</a>
+    <a href="#可用功能">可用功能</a>
+    <a href="#代理">代理</a>
+    <a href="#已知限制">已知限制</a>
+    <a href="#测试环境">测试环境</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>
