@@ -3406,6 +3406,16 @@ const zh: Record<string, string> = {
   "JDBC driver files…": "JDBC 驱动文件…",
   "More jars (a license jar, if you have one)": "其他 jar（如有，许可证 jar）",
   "Not found: the java program, or the folder of a Java 11 or later": "未找到：java 程序，或 Java 11 及以上版本的文件夹",
+  "JDBC driver": "JDBC 驱动",
+  "Choose a version…": "选择版本…",
+  "{version} (to download, {size})": "{version}（待下载，{size}）",
+  "{title} is not open source: read its license before downloading it.": "{title} 不是开源软件：下载前请先阅读其许可协议。",
+  "License: {license}": "许可协议：{license}",
+  "Accept and download {version}": "接受并下载 {version}",
+  "The jars of the JDBC driver, separated by ;. With them the connection goes through JDBC, which needs Java.": "JDBC 驱动的 jar 文件，用 ; 分隔。使用它们时连接通过 JDBC，需要 Java。",
+  "The JDBC driver the app downloads from Maven Central, or your own jars. It needs Java.": "应用从 Maven Central 下载的 JDBC 驱动，或你自己的 jar。需要 Java。",
+  "JDBC URL": "JDBC URL",
+  "Made from the host, port and database; write it by hand to use another form (jdbc:h2:mem:test).": "由主机、端口和数据库生成；手动编写可使用其他形式（jdbc:h2:mem:test）。",
 };
 
 export default zh;

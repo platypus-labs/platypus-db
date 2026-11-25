@@ -28,6 +28,7 @@ import type { DriverKind, SavedConnection } from "../api";
 import { Icon } from "../ui/Icon";
 import { fold } from "../ui/textSearch";
 import { t, msg } from "../i18n";
+import { JDBC_START } from "../jdbcUrl";
 import { pluginDrivers, usePlugins } from "../plugins/store";
 
 /** What a profile fills in beyond the driver's defaults. */
@@ -90,6 +91,8 @@ const CHOICES: Choice[] = [
   { driver: "oracle", label: "Oracle", path: DATABASE_PATH, bg: "#c74634", fg: "#fff" },
   { driver: "db2", label: "IBM Db2", path: DATABASE_PATH, bg: "#0f62fe", fg: "#fff" },
   { driver: "odbc", label: msg("Other ODBC driver"), path: DATABASE_PATH, bg: DARK, fg: "#fff" },
+  // The ODBC kind with JDBC options: the app downloads the driver (H2, Firebird, Derby…).
+  { driver: "odbc", label: msg("JDBC driver"), path: DATABASE_PATH, bg: "#5382a1", fg: "#fff", preset: JDBC_START },
 ];
 
 /** A driver of a WebAssembly plugin: its tile takes the name the plugin gives it. */

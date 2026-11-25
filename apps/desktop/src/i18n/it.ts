@@ -3406,6 +3406,16 @@ const it: Record<string, string> = {
   "JDBC driver files…": "File del driver JDBC…",
   "More jars (a license jar, if you have one)": "Altri jar (un jar di licenza, se ce l'hai)",
   "Not found: the java program, or the folder of a Java 11 or later": "Non trovato: il programma java, o la cartella di un Java 11 o successivo",
+  "JDBC driver": "Driver JDBC",
+  "Choose a version…": "Scegli una versione…",
+  "{version} (to download, {size})": "{version} (da scaricare, {size})",
+  "{title} is not open source: read its license before downloading it.": "{title} non è open source: leggi la sua licenza prima di scaricarlo.",
+  "License: {license}": "Licenza: {license}",
+  "Accept and download {version}": "Accetta e scarica {version}",
+  "The jars of the JDBC driver, separated by ;. With them the connection goes through JDBC, which needs Java.": "I jar del driver JDBC, separati da ;. Con questi la connessione passa da JDBC, che richiede Java.",
+  "The JDBC driver the app downloads from Maven Central, or your own jars. It needs Java.": "Il driver JDBC che l'app scarica da Maven Central, oppure i tuoi jar. Richiede Java.",
+  "JDBC URL": "URL JDBC",
+  "Made from the host, port and database; write it by hand to use another form (jdbc:h2:mem:test).": "Fatto da host, porta e database; scrivilo a mano per usare un'altra forma (jdbc:h2:mem:test).",
 };
 
 export default it;
