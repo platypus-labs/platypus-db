@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
-import { t } from "../i18n";
+import { language, t } from "../i18n";
 import { workbench } from "../workbench";
-import { changelog, guide } from "./bundled";
+import { changelog, guide, translatedPages } from "./bundled";
 import { openExternal } from "./external";
 import { GuideMarkdown } from "./GuideMarkdown";
-import { changelogSection, type LinkTarget, pageSource, sortedKeys, START_PAGE, titleOf } from "./pages";
+import { changelogSection, type LinkTarget, pageSource, sortedKeys, START_PAGE, titleOf, withTranslations } from "./pages";
 import { advance, arrival, back, type Place } from "./trail";
 
 // Loaded at first use, through `open.ts`: import that one, not this module.
@@ -32,7 +32,18 @@ function scrollTo(reader: HTMLElement, place: Place) {
 function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string | null; onClose: () => void }) {
   const [trail, setTrail] = useState<Place[]>([{ page, anchor, scroll: null }]);
   const here = trail[trail.length - 1]!;
-  const { pages, images } = guide();
+  const { pages: english, images } = guide();
+  // The pages in the app's language, once loaded; until then, and for any page without one, English.
+  const lang = language();
+  const [translated, setTranslated] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let current = true;
+    translatedPages(lang).then((found) => current && setTranslated(found), () => undefined);
+    return () => {
+      current = false;
+    };
+  }, [lang]);
+  const pages = useMemo(() => withTranslations(english, translated), [english, translated]);
   const index = useMemo(
     () =>
       sortedKeys(Object.keys(pages).filter((key) => !key.endsWith(".md"))).map((key) => ({ key, title: titleOf(pages[key]!, key) })),
@@ -99,7 +110,7 @@ function GuideDialog({ page, anchor, onClose }: { page: string; anchor: string |
                 </button>
               ))
             )}
-            <p className="muted small guide-language">{t("The guide is written in English.")}</p>
+            {lang !== "en" && !Object.hasOwn(translated, here.page) && <p className="muted small guide-language">{t("The guide is written in English.")}</p>}
           </nav>
           <div className="guide-reader" ref={reader} tabIndex={0} data-page={here.page}>
             {"missing" in shown ? (
