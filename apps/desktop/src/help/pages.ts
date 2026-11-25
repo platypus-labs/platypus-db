@@ -83,6 +83,22 @@ export function pageKeyOf(path: string): string | null {
   return rest.endsWith(".md") ? rest.slice(0, -3) : rest.includes(".") ? null : rest;
 }
 
+/** Where the translations of the guide live: `docs/user/translations/<lang>/guide/<page>.md`. */
+const TRANSLATIONS = /^(?:.*\/)?docs\/user\/translations\/([a-z]{2})\/guide\/(.+\.md)$/;
+
+/** The language and page key of a translated page's repository path, else `null`. */
+export function translationOf(path: string): { lang: string; key: string } | null {
+  const m = TRANSLATIONS.exec(path);
+  const key = m ? pageKeyOf(`${GUIDE_DIR}${m[2]}`) : null;
+  return m && key ? { lang: m[1]!, key } : null;
+}
+
+/** The pages to show: the English ones, each replaced by its translation when there is one. */
+export const withTranslations = (english: Record<string, string>, translated: Record<string, string>): Record<string, string> => ({
+  ...english,
+  ...Object.fromEntries(Object.entries(translated).filter(([key]) => Object.hasOwn(english, key))),
+});
+
 /** What a link written in the page `from` leads to. */
 export function classifyLink(from: string, href: string): LinkTarget {
   const trimmed = href.trim();

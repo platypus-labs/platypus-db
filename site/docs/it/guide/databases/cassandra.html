@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Apache Cassandra e ScyllaDB</title>
+  <meta name="description" content="Un solo driver, basato sul crate scylla (con rustls), parla CQL con il protocollo nativo a entrambi. Il server dice quale dei due è, e la connessione lo…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Per iniziare</a>
+<a href="../index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="../connect.html">Connettersi a un database</a>
+<a href="../queries.html">Eseguire query e leggere i risultati</a>
+<a href="../edit-data.html">Modificare i dati</a>
+<a href="../import-export.html">Importare ed esportare</a>
+<a href="../safety.html">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="../projects-sharing.html">Progetti e condivisione</a>
+<a href="../agents.html">Usare PlatypusDB da un agente</a>
+<a href="../troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="index.html">Database</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub on" aria-current="page">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 e ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Apache Cassandra e ScyllaDB</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/cassandra.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="index.html">← Database</a></p>
+<h1 id="apache-cassandra-e-scylladb">Apache Cassandra e ScyllaDB</h1>
+<p>Un solo driver, basato sul crate <code>scylla</code> (con rustls), parla CQL con il protocollo nativo a entrambi. Il server dice quale dei due è, e la connessione lo mostra. Il driver fa parte dell&#39;app; non si scarica nulla. L&#39;editor accetta CQL.</p>
+<h2 id="connessione">Connessione</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Incolli</th><th>Lo legge come</th></tr></thead>
+<tbody>
+<tr><td><code>cassandra://cassandra:s%40cret@node1:9043/shop</code></td><td>in chiaro, porta 9043, keyspace <code>shop</code></td></tr>
+<tr><td><code>scylla://node1</code></td><td>lo stesso driver, per ScyllaDB</td></tr>
+<tr><td><code>cassandras://…</code> e <code>scyllas://…</code></td><td>con TLS (verificato: <code>verify-full</code>)</td></tr>
+</tbody>
+</table></div>
+<p>La porta predefinita è 9042. Il campo <strong>Host</strong> è un contact point, oppure più coppie <code>host:port</code> separate da virgole. Il campo <strong>Keyspace</strong> (facoltativo) è il keyspace in cui parte la sessione; il navigator li elenca tutti in ogni caso.</p>
+<ul>
+<li><strong>Un solo contact point, o un tunnel</strong>: quel nodo da solo serve ogni istruzione. Un cluster annuncia gli indirizzi propri dei suoi nodi, che un container, un NAT o un tunnel nascondono, quindi il driver non li segue. Con più contact point il driver li riceve tutti e può usarne uno qualsiasi.</li>
+<li><strong>Accesso</strong>: utente e password, per l&#39;authenticator a password del server. Senza utente la connessione è anonima.</li>
+<li><strong>TLS</strong>: CQL non può negoziarlo, quindi il TLS è attivo per gli URL <code>cassandras://</code> e <code>scyllas://</code> e per le modalità SSL da <code>require</code> in su; <code>prefer</code> è in chiaro. <code>require</code> non controlla il certificato; <code>verify-ca</code> e <code>verify-full</code> sì. Un file CA e un certificato client vanno nei campi TLS.</li>
+<li><strong>Le istruzioni non hanno un timeout</strong> del driver: una gira finché non finisce o finché non la annulli.</li>
+</ul>
+<h2 id="privilegi">Privilegi</h2>
+<p>Il navigator legge <code>system_schema</code>, che Cassandra 3 e successivi e ScyllaDB condividono; l&#39;utente vede quello che il server gli lascia leggere lì. Non ci sono schede di amministrazione. Le scritture richiedono i permessi che chiede CQL.</p>
+<h2 id="cosa-funziona">Cosa funziona</h2>
+<ul>
+<li>Script CQL, divisi dall&#39;editor (le stringhe <code>$$ … $$</code>, i commenti <code>//</code> e un <code>BEGIN BATCH … APPLY BATCH</code> vengono capiti), con risultati tipizzati letti pagina per pagina mentre scorri, usando il paging state del server.</li>
+<li>Il navigator: i keyspace come schema, tabelle, viste materializzate, tipi definiti dall&#39;utente, funzioni e aggregati, con le chiavi di partizione e di clustering di ogni tabella e i suoi indici; il DDL di ogni oggetto.</li>
+<li><strong>La griglia modifica le righe</strong>, per chiave primaria completa (colonne di partizione e di clustering): una riga modificata è un <code>UPDATE</code>, una riga nuova un <code>INSERT</code> che richiede ogni colonna della chiave, una riga eliminata un <code>DELETE</code>. L&#39;anteprima mostra le istruzioni, che girano una dopo l&#39;altra; una che il server rifiuta ferma le restanti. <em>Script di annullamento</em> rimette i vecchi valori. Le colonne della chiave non si possono cambiare (elimina la riga e inseriscine un&#39;altra), e i counter vengono rifiutati.</li>
+<li>Le lightweight transaction (<code>IF …</code>) vengono segnalate come tali con il loro esito.</li>
+<li>Annulla ferma un risultato in lettura. Gli errori mantengono il messaggio del server.</li>
+<li><code>USE keyspace</code> cambia il keyspace della sessione, che il driver ricorda.</li>
+</ul>
+<h2 id="cosa-non-funziona">Cosa non funziona</h2>
+<ul>
+<li><strong>Nessuna transazione</strong>: ogni istruzione ha effetto da sola, e non c&#39;è il commit manuale.</li>
+<li><strong>Le scritture CQL sono upsert e non riportano un numero di righe</strong>, quindi un&#39;istruzione che non restituisce righe ne riporta zero modificate; un update di una riga che qualcuno ha eliminato nel frattempo la riscrive.</li>
+<li>Il visualizzatore dei dati non ha la barra di filtro e ordinamento, e non mostra il numero di righe.</li>
+<li>Niente explain, e niente strumenti SQL: niente editor delle tabelle, diagramma ER, confronto degli schemi, query builder, importazione SQL, snapshot prima delle modifiche, né modalità terminale (<code>cqlsh</code> accetta la password solo sulla sua riga di comando).</li>
+</ul>
+<h2 id="agenti">Agenti</h2>
+<p><code>run_query</code> e <code>sample_rows</code> (un <code>SELECT … LIMIT n</code> in CQL) funzionano; di un&#39;istruzione che cambia dati si chiede prima. Rifiutati su Cassandra: <code>explain</code> e <code>propose_edits</code>; <code>estimate_change</code> risponde con una nota. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
+<h2 id="limiti-noti">Limiti noti</h2>
+<ul>
+<li>Cassandra precedente alla 4.0 e ScyllaDB precedente alla 5.4 vengono rifiutati alla connessione, con &quot;older than … the oldest version supported&quot;, a differenza degli altri database, che si connettono con un avviso.</li>
+<li>Niente join, niente <code>OFFSET</code>, e le righe si trovano solo dalla loro chiave primaria, come previsto da CQL.</li>
+</ul>
+<h2 id="testato-su">Testato su</h2>
+<p>La conformance suite gira su Apache Cassandra 5 e ScyllaDB 2025.1, senza login: informazioni sul server, script, ogni tipo come colonna tipizzata, paging, lightweight transaction, errori, annullamento, il catalogo e il suo DDL (anche funzioni e aggregati), il salvataggio delle modifiche della griglia e il loro annullamento, un login sbagliato o mancante che viene rifiutato, e un indirizzo di tunnel. Cassandra 4.0 e ScyllaDB 5.4 sono le versioni più basse che il driver accetta e non sono eseguite dalla suite.</p>
+<p>Vedi anche: <a href="../connect.html">Connettersi</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#connessione">Connessione</a>
+    <a href="#privilegi">Privilegi</a>
+    <a href="#cosa-funziona">Cosa funziona</a>
+    <a href="#cosa-non-funziona">Cosa non funziona</a>
+    <a href="#agenti">Agenti</a>
+    <a href="#limiti-noti">Limiti noti</a>
+    <a href="#testato-su">Testato su</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

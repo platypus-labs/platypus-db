@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Progetti e condivisione</title>
+  <meta name="description" content="Un progetto è un gruppo di connessioni, script e schede aperte, mostrato nella barra a sinistra. I dettagli sono in FEATURES.md e FEATURES.md.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Per iniziare</a>
+<a href="index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="connect.html">Connettersi a un database</a>
+<a href="queries.html">Eseguire query e leggere i risultati</a>
+<a href="edit-data.html">Modificare i dati</a>
+<a href="import-export.html">Importare ed esportare</a>
+<a href="safety.html">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="projects-sharing.html" class="on" aria-current="page">Progetti e condivisione</a>
+<a href="agents.html">Usare PlatypusDB da un agente</a>
+<a href="troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="databases/index.html">Database</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Progetti e condivisione</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/projects-sharing.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="index.html">← Guida utente</a></p>
+<h1 id="progetti-e-condivisione">Progetti e condivisione</h1>
+<p>Un progetto è un gruppo di connessioni, script e schede aperte, mostrato nella barra a sinistra. I dettagli sono in <a href="../../features.html#workspace">FEATURES.md</a> e <a href="../../features.html#sharing-and-sync">FEATURES.md</a>.</p>
+<h2 id="creare-un-progetto">Creare un progetto</h2>
+<ol>
+<li>Esegui <strong>Nuovo progetto…</strong> dalla palette dei comandi (<code>Ctrl+K</code>).</li>
+<li>Dagli un nome, poi scegli le connessioni da mostrare al suo interno. Una connessione si può aggiungere anche dal suo modulo: <strong>Progetti</strong>, in fondo alla pagina <strong>Aspetto e sicurezza</strong>.</li>
+<li><code>Ctrl+1</code> mostra tutte le connessioni, da <code>Ctrl+2</code> a <code>Ctrl+9</code> i progetti nell&#39;ordine della barra.</li>
+</ol>
+<h2 id="condividere-una-query">Condividere una query</h2>
+<ol>
+<li>In una scheda dell&#39;editor SQL, esegui <strong>Condividi query…</strong> (menu della scheda o palette dei comandi).</li>
+<li>Copia il link <code>platypus://…</code>, oppure salva un file <code>.platypus</code>. Contiene l&#39;SQL, il suo titolo e, se lo chiedi, i valori dei parametri; nomina il database ma mai una password.</li>
+<li>Il collega lo apre con <strong>Apri un link condiviso…</strong> o <strong>Apri una query condivisa…</strong>, oppure trascinando il file sulla finestra. L&#39;app trova la connessione salvata corrispondente oppure ne propone una nuova già compilata, e mostra la query senza eseguirla.</li>
+</ol>
+<h2 id="condividere-un-progetto-con-un-team">Condividere un progetto con un team</h2>
+<ol>
+<li>Fai clic con il tasto destro sul progetto nella barra e scegli <strong>Condividi progetto…</strong>, poi scegli una cartella che il team tiene in Git o su un&#39;unità condivisa. Contiene le connessioni (senza credenziali) e gli script.</li>
+<li>Ogni collega fa clic su <strong>Apri progetto condiviso…</strong> nella schermata di benvenuto, sceglie la cartella e inserisce le proprie password.</li>
+<li>Dopo una modifica nella cartella, esegui <strong>Rileggi la cartella condivisa</strong> dal menu del progetto.</li>
+</ol>
+<p>Sicuro per costruzione: una connessione nuova che arriva da un progetto condiviso dà agli agenti <strong>nessun accesso</strong> sul tuo computer finché non scegli diversamente, e le istruzioni che il file esegue a ogni connessione vengono mostrate prima e vengono eseguite solo dopo che hai approvato quel testo esatto.</p>
+<h2 id="portare-le-connessioni-su-un-altro-computer">Portare le connessioni su un altro computer</h2>
+<p>Nella schermata di benvenuto, <strong>Esporta le connessioni</strong> scrive un file <code>.platypusconn</code>: scegli le connessioni e, se vuoi, una password di almeno 8 caratteri, che cifra il file e gli permette di portare con sé le password salvate. Sull&#39;altro computer, <strong>Importa le connessioni</strong> lo legge. Senza password il file non contiene alcuna credenziale.</p>
+<p>Per tenere allineati impostazioni, connessioni e script tra i tuoi computer, usa Impostazioni › <strong>Sincronizzazione</strong> con una cartella in un cloud drive. Vedi <a href="../../features.html#sharing-and-sync">FEATURES.md</a>.</p>
+<h2 id="script-e-git">Script e Git</h2>
+<p>Quando la cartella degli script di un progetto è un repository Git, il pannello Script mostra il branch e le modifiche per script, e offre <strong>Commit…</strong>, <strong>Pull</strong> e <strong>Push</strong>. Git deve essere installato.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#creare-un-progetto">Creare un progetto</a>
+    <a href="#condividere-una-query">Condividere una query</a>
+    <a href="#condividere-un-progetto-con-un-team">Condividere un progetto con un team</a>
+    <a href="#portare-le-connessioni-su-un-altro-computer">Portare le connessioni su un altro computer</a>
+    <a href="#script-e-git">Script e Git</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

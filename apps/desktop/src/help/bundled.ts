@@ -6,7 +6,7 @@
  * main chunk.
  */
 import changelogText from "../../../../CHANGELOG.md?raw";
-import { pageKeyOf } from "./pages";
+import { pageKeyOf, translationOf } from "./pages";
 import { replacedPages } from "./replaced";
 
 interface Guide {
@@ -42,6 +42,19 @@ export const guide = (): Guide => {
   const pages = replacedPages();
   return pages ? { pages, images: {} } : bundled;
 };
+
+// The translated pages load one language at a time, when the dialog opens: not in the help chunk.
+const translationFiles = import.meta.glob("../../../../docs/user/translations/*/guide/**/*.md", { query: "?raw", import: "default" }) as Record<string, () => Promise<string>>;
+
+/** The guide's pages in `lang` that exist, by key; none for English, for a language without any, or when a test replaced the guide. */
+export async function translatedPages(lang: string): Promise<Record<string, string>> {
+  if (lang === "en" || replacedPages()) return {};
+  const found = Object.entries(translationFiles).flatMap(([file, load]) => {
+    const at = translationOf(fromRoot(file));
+    return at?.lang === lang ? [[at.key, load] as const] : [];
+  });
+  return Object.fromEntries(await Promise.all(found.map(async ([key, load]) => [key, await load()] as const)));
+}
 
 /** The changelog of the repository. */
 export const changelog = changelogText;

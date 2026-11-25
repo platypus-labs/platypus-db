@@ -621,6 +621,17 @@ chosen (`loadLanguage`). A new language is a dictionary with every key of `it.ts
 or on an entry nothing uses; `node scripts/i18n-check.mjs --untranslated` lists the text left in
 JSX without `t`. Messages from the databases and the backend stay as they come.
 
+The user guide has its own translations, page by page, in
+`docs/user/translations/<code>/guide/<same path>.md` (rules in `docs/user/translations/README.md`).
+The Help dialog shows the page in the app's language when there is one, English otherwise; the
+translations load lazily, one language at a time (`help/bundled.ts`), and the site builds them
+at `docs/<code>/guide/`. A translated page starts with `<!-- source: <12 hex> -->`, the hash of
+the English page it follows. After editing an English page, `node scripts/guide-translations.mjs`
+lists the pages missing or stale per language (it never fails), and
+`node scripts/guide-translations.mjs --hash <file>` prints the line to write once the translation
+is updated. A unit test checks that each translated page has an original, a source line and links
+that reach a heading.
+
 ### Projects
 
 `apps/desktop/src/projects/` holds the rail (`ProjectRail.tsx`), the project dialog, the

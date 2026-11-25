@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · libSQL e Turso</title>
+  <meta name="description" content="Il driver parla il protocollo Hrana 3 su HTTP(S) con un server libSQL (sqld) o con Turso. L&#39;SQL è quello di SQLite, quindi anche il navigator, i tipi e i…">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../../img/icon.png">
+  <link rel="preload" href="../../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../../index.html#tour">Tour</a>
+        <a href="../../../../features.html">Features</a>
+        <a href="../../../../databases.html">Databases</a>
+        <a href="../../../../compare.html">Compare</a>
+        <a href="../../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="../getting-started.html">Per iniziare</a>
+<a href="../index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="../connect.html">Connettersi a un database</a>
+<a href="../queries.html">Eseguire query e leggere i risultati</a>
+<a href="../edit-data.html">Modificare i dati</a>
+<a href="../import-export.html">Importare ed esportare</a>
+<a href="../safety.html">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="../projects-sharing.html">Progetti e condivisione</a>
+<a href="../agents.html">Usare PlatypusDB da un agente</a>
+<a href="../troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="index.html">Database</a>
+<a href="postgresql.html" class="sub">PostgreSQL</a>
+<a href="mysql.html" class="sub">MySQL</a>
+<a href="sqlite.html" class="sub">SQLite</a>
+<a href="sqlserver.html" class="sub">SQL Server</a>
+<a href="oracle.html" class="sub">Oracle</a>
+<a href="clickhouse.html" class="sub">ClickHouse</a>
+<a href="duckdb.html" class="sub">DuckDB</a>
+<a href="libsql.html" class="sub on" aria-current="page">libSQL</a>
+<a href="mongodb.html" class="sub">MongoDB</a>
+<a href="redis.html" class="sub">Redis</a>
+<a href="elasticsearch.html" class="sub">Elasticsearch</a>
+<a href="cassandra.html" class="sub">Cassandra</a>
+<a href="adbc.html" class="sub">ADBC</a>
+<a href="db2-odbc.html" class="sub">Db2 e ODBC</a>
+<h6>Reference</h6>
+<a href="../../../features.html">Features</a>
+<a href="../../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../../plugins.html">Plugins</a>
+<a href="../../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / libSQL e Turso</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../../guide/databases/libsql.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="index.html">← Database</a></p>
+<h1 id="libsql-e-turso">libSQL e Turso</h1>
+<p>Il driver parla il protocollo <strong>Hrana 3</strong> su HTTP(S) con un server libSQL (<code>sqld</code>) o con Turso. L&#39;SQL è quello di SQLite, quindi anche il navigator, i tipi e i piani sono quelli di SQLite. Il driver fa parte dell&#39;app; non si scarica nulla.</p>
+<h2 id="connessione">Connessione</h2>
+<div class="table-wrap"><table class="grid">
+<thead><tr><th>Incolli</th><th>Letto come</th></tr></thead>
+<tbody>
+<tr><td><code>libsql://db-acme.turso.io?authToken=…</code></td><td>HTTPS verso quell&#39;host, il token come password</td></tr>
+<tr><td><code>libsql://:token@localhost:8080?sslmode=disable</code></td><td>HTTP in chiaro, il token al posto della password</td></tr>
+<tr><td><code>libsql://localhost:8080?tls=0&amp;authToken=t</code></td><td><code>tls=0</code> è HTTP in chiaro, <code>tls=1</code> è HTTPS</td></tr>
+<tr><td><code>wss://…</code>, <code>ws://…</code></td><td>lo stesso server su HTTP(S): <code>wss</code> è TLS, <code>ws</code> no</td></tr>
+<tr><td><code>https://host</code> o <code>http://host</code> in un modulo libSQL</td><td>l&#39;indirizzo HTTP del server</td></tr>
+</tbody>
+</table></div>
+<p>Senza porta si usa quella predefinita dello schema: 443, oppure 80 se il TLS è spento.</p>
+<ul>
+<li><strong>Token</strong>: il campo password, oppure <code>authToken</code> nell&#39;URL.</li>
+<li><strong>TLS</strong>: un URL <code>libsql://</code> è HTTPS con certificato e nome dell&#39;host controllati (<code>verify-full</code>), perché l&#39;URL porta il token. Anche il riquadro Turso nel modulo parte da <code>verify-full</code>. Per un <code>sqld</code> locale senza TLS scegli <code>disable</code>, oppure usa <code>tls=0</code> nell&#39;URL. <code>sslrootcert</code> indica il file della tua CA; altrimenti si usano i certificati attendibili del sistema.</li>
+</ul>
+<h2 id="privilegi">Privilegi</h2>
+<p>Quelli che permette il token: l&#39;app invia le istruzioni che esegui, e le query sul catalogo SQLite per il navigator.</p>
+<h2 id="cosa-funziona">Cosa funziona</h2>
+<ul>
+<li>Modifica dei dati nella griglia, per chiave primaria (o una chiave unica su colonne non nulle, o una chiave virtuale).</li>
+<li>Commit e rollback manuali. Un&#39;istruzione gira su un flusso che il server tiene aperto tra una richiesta e l&#39;altra (un <code>baton</code>), quindi una transazione e le tabelle temporanee durano. Se il server chiude il flusso fuori da una transazione, l&#39;app ne apre un altro e continua; dentro una transazione, la connessione si dichiara persa e con lei la transazione.</li>
+<li>Explain mostra il piano di query di SQLite; non c&#39;è Explain analyze.</li>
+<li>Ricerca nei metadati e DDL degli oggetti, e strumenti dello schema come per SQLite.</li>
+<li>Niente schede sessioni, lock, dashboard, utenti o parametri.</li>
+</ul>
+<h2 id="cosa-non-funziona">Cosa non funziona</h2>
+<ul>
+<li><strong>Annulla</strong>: con HTTP non c&#39;è modo di fermare un&#39;istruzione in esecuzione, quindi Annulla risponde che annullare le istruzioni libSQL non è supportato.</li>
+<li>I risultati arrivano interi dal server, non riga per riga.</li>
+<li>La modalità terminale non è disponibile: i server libSQL non hanno un client a riga di comando con cui eseguire script.</li>
+</ul>
+<h2 id="agenti">Agenti</h2>
+<p>Gli agenti in sola lettura e le connessioni in sola lettura si affidano solo al controllo delle istruzioni; al server non viene detto di rifiutare le scritture. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
+<h2 id="limiti-noti">Limiti noti</h2>
+<ul>
+<li>Un errore di rete dopo l&#39;invio di un&#39;istruzione può lasciare incerto se sia stata eseguita; l&#39;app non la rimanda.</li>
+</ul>
+<h2 id="provato-su">Provato su</h2>
+<p>La conformance suite gira su <code>sqld</code> v0.24.33 (container <code>ghcr.io/tursodatabase/libsql-server</code>), senza TLS. Il cloud di Turso non è provato.</p>
+<p>Vedi anche: <a href="../connect.html">Connettersi</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#connessione">Connessione</a>
+    <a href="#privilegi">Privilegi</a>
+    <a href="#cosa-funziona">Cosa funziona</a>
+    <a href="#cosa-non-funziona">Cosa non funziona</a>
+    <a href="#agenti">Agenti</a>
+    <a href="#limiti-noti">Limiti noti</a>
+    <a href="#provato-su">Provato su</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../../docs.html">Getting started</a></li>
+          <li><a href="../../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../../docs/features.html">Features</a></li>
+          <li><a href="../../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../../site.js" defer></script>
+</body>
+</html>

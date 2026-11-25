@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatypusDB · Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</title>
+  <meta name="description" content="Tutto quello che c&#39;è qui è anche in FEATURES.md.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d0f">
+  <link rel="icon" type="image/png" href="../../../img/icon.png">
+  <link rel="preload" href="../../../fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../../../style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <div class="nav">
+      <a class="brand" href="../../../index.html" aria-label="PlatypusDB, home">
+        <img src="../../../img/icon.png" alt="" width="28" height="28">
+        <span>PlatypusDB</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="../../../index.html#tour">Tour</a>
+        <a href="../../../features.html">Features</a>
+        <a href="../../../databases.html">Databases</a>
+        <a href="../../../compare.html">Compare</a>
+        <a href="../../../docs.html" aria-current="page">Docs</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="button ghost" href="https://github.com/platypus-labs/platypus-db">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+        </a>
+        <a class="button primary" href="../../../download.html">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="docs" id="main">
+  <nav aria-label="Docs">
+    <details class="docs-nav" open>
+    <summary>Documentation menu</summary>
+    <h6>Start</h6>
+<a href="getting-started.html">Per iniziare</a>
+<a href="index.html">Guida utente</a>
+<h6>Guide</h6>
+<a href="connect.html">Connettersi a un database</a>
+<a href="queries.html">Eseguire query e leggere i risultati</a>
+<a href="edit-data.html">Modificare i dati</a>
+<a href="import-export.html">Importare ed esportare</a>
+<a href="safety.html" class="on" aria-current="page">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</a>
+<a href="projects-sharing.html">Progetti e condivisione</a>
+<a href="agents.html">Usare PlatypusDB da un agente</a>
+<a href="troubleshooting.html">Risoluzione dei problemi e FAQ</a>
+<a href="databases/index.html">Database</a>
+<h6>Reference</h6>
+<a href="../../features.html">Features</a>
+<a href="../../shortcuts.html">Keyboard shortcuts</a>
+<a href="../../agents.html">Agents (MCP) and the CLI</a>
+<a href="../../plugins.html">Plugins</a>
+<a href="../../connections-file.html">The connections file (.platypusconn)</a>
+<h6>On GitHub</h6>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/DEVELOPMENT.md">Development</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a>
+<a href="https://github.com/platypus-labs/platypus-db/blob/main/README.md">README</a>
+    </details>
+  </nav>
+
+  <article>
+    <div class="crumbs">Docs / Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</div>
+    <nav class="crumbs" aria-label="Languages"><a href="../../guide/safety.html" lang="en" hreflang="en">English</a> · <span lang="it">Italiano</span></nav>
+<p><a href="index.html">← Guida utente</a></p>
+<h1 id="lavorare-in-sicurezza-produzione-sola-lettura-conferme-mascheramento">Lavorare in sicurezza: produzione, sola lettura, conferme, mascheramento</h1>
+<p>Tutto quello che c&#39;è qui è anche in <a href="../../features.html#transactions-and-safety">FEATURES.md</a>.</p>
+<p><img src="../../../img/screenshots/guide/safety.png" alt="Impostazioni, la pagina Sicurezza" loading="lazy"></p>
+<h2 id="segnare-una-connessione-come-produzione">Segnare una connessione come produzione</h2>
+<ol>
+<li>Modifica la connessione e apri la pagina <strong>Aspetto e sicurezza</strong>.</li>
+<li>Imposta l&#39;ambiente su <strong>Produzione</strong> (le altre scelte sono Sviluppo e Test). Produzione chiede conferma prima delle modifiche e parte in commit manuale.</li>
+<li>Se vuoi, scegli un colore, per riconoscere facilmente la connessione.</li>
+</ol>
+<p>Da quel momento ogni modifica su quella connessione viene elencata in una finestra intitolata &quot;Modifiche su <code>&lt;name&gt;</code> (produzione)&quot;, con le istruzioni, e viene eseguita solo dopo la tua conferma. Impostazioni (<code>Ctrl+,</code>) › <strong>Sicurezza</strong> › <strong>Chiedi prima delle modifiche sulle connessioni di produzione</strong> lo disattiva per l&#39;app. Gli agenti non vanno mai oltre la sola lettura su una connessione di produzione.</p>
+<h2 id="rendere-una-connessione-di-sola-lettura">Rendere una connessione di sola lettura</h2>
+<ol>
+<li>Nella stessa pagina, spunta <strong>Sola lettura (rifiuta le modifiche ai dati)</strong>.</li>
+<li>Un&#39;istruzione che può modificare i dati non viene eseguita. L&#39;editor mostra &quot;<code>&lt;name&gt;</code> è in sola lettura e questo può modificare i dati.&quot; senza via d&#39;uscita. Lo stesso vale per Explain con analyze (&quot;questa istruzione può modificare i dati.&quot;), per un file incluso con <code>@include</code>, per una cella di notebook (&quot;questa cella potrebbe modificare dati.&quot;), per il client a riga di comando e per un&#39;esecuzione su più connessioni, che elenca la connessione come saltata (&quot;Connessione in sola lettura&quot;).</li>
+<li>Non sono offerti affatto: <strong>Importa i dati…</strong>, <strong>Importa i dati in una nuova tabella…</strong>, <strong>Incolla un CSV come nuova tabella…</strong>, <strong>Genera dati…</strong>, <strong>Esegui file SQL…</strong>, la creazione di oggetti, il salvataggio nel designer delle tabelle e la modifica delle righe nella griglia. Gli agenti restano in sola lettura.</li>
+</ol>
+<p>Il pulsante lucchetto di una scheda dell&#39;editor rende di sola lettura solo quella scheda, senza cambiare la connessione salvata. È l&#39;unico caso che chiede conferma: l&#39;editor mostra lo stesso messaggio con un pulsante <strong>Esegui comunque</strong>, e il client a riga di comando chiede &quot;Run anyway?&quot;.</p>
+<p>La stessa pagina ha altre due caselle: <strong>Niente export</strong> (i suoi dati non vanno in file, altri database o agenti) e <strong>Niente modifica dei dati</strong> (le righe cambiano solo con SQL, non nella griglia, negli import o nei dati generati).</p>
+<h2 id="conferme">Conferme</h2>
+<p>Impostazioni › <strong>Sicurezza</strong> › <strong>Prima delle modifiche</strong>:</p>
+<ul>
+<li><strong>UPDATE o DELETE senza WHERE</strong> (anche <code>TRUNCATE</code>): <strong>Chiedi prima di eseguire</strong> (il predefinito), <strong>Non eseguire mai</strong> o <strong>Esegui senza chiedere</strong>. La finestra chiede &quot;Modificare tutte le righe?&quot; e dice più o meno quante righe.</li>
+<li><strong>Avvisa quando una transazione resta aperta per (minuti)</strong>: 10 per impostazione predefinita, 0 non avvisa mai.</li>
+<li><strong>Aggiungi un LIMIT alle query che non lo hanno (righe)</strong>: 0 (il predefinito) non lo aggiunge mai.</li>
+<li><strong>Chiedi prima che gli agenti modifichino dati</strong>: vedi <a href="agents.html">Agenti</a>.</li>
+</ul>
+<h2 id="annullare-una-modifica">Annullare una modifica</h2>
+<p>Attivo per impostazione predefinita, <strong>Conserva le righe che un UPDATE o DELETE modifica, per rimetterle</strong> (Impostazioni › Sicurezza › <strong>Blocco e copie</strong>) conserva le righe di un <code>UPDATE</code> o <code>DELETE</code> su una tabella, fino a 10.000, eseguito dall&#39;editor. Apri il <strong>Registro delle transazioni</strong> nella barra degli strumenti dell&#39;editor e fai clic su <strong>Ripristina…</strong>, oppure esegui <strong>Snapshot prima delle modifiche…</strong> dalla palette dei comandi, per ottenere lo script che le rimette a posto.</p>
+<h2 id="mascherare-i-dati-sensibili">Mascherare i dati sensibili</h2>
+<ol>
+<li>Premi <code>Ctrl+Alt+M</code> (o esegui <strong>Maschera i dati sensibili</strong> dalla palette dei comandi): i valori delle colonne sensibili appaiono come puntini mentre lo schermo è condiviso. Le copie mantengono i valori reali.</li>
+<li>Impostazioni › <strong>Sicurezza</strong> › <strong>Mascheramento</strong> stabilisce quali colonne sono sensibili, per nome (<code>*password*</code>, <code>*token*</code>, <code>*email*</code> e altri per impostazione predefinita; <code>*</code> è un qualsiasi insieme di caratteri) e per tipo. Puoi anche segnare una colonna nella scheda della sua tabella.</li>
+</ol>
+<p>Anche gli agenti leggono le colonne sensibili mascherate, a meno che tu non spunti <strong>Mostra agli agenti i valori delle colonne sensibili</strong> per quella connessione in Impostazioni › Agenti › <strong>Sicurezza</strong>. Viene mascherato anche un campo sensibile dentro un documento MongoDB (<code>user.password</code>). Quando un agente chiede su cosa stai lavorando, viene mascherata anche una colonna letta con un altro nome (<code>SELECT email AS contact</code>); se l&#39;istruzione la nasconde dietro una subquery, viene mascherato tutto il risultato condiviso.</p>
+<p>Una regola o un segno rimosso fuori dall&#39;app (un agente con strumenti sui file che modifica <code>settings.toml</code> o <code>catalog.db</code>) non arriva agli agenti finché non lo accetti: l&#39;app te lo chiede, e Impostazioni › Agenti › <strong>Sicurezza</strong> lo elenca, con un modo per accettarlo o annullarlo. Quello aggiunto fuori dall&#39;app vale subito. Questo copre le modifiche a quei file e nient&#39;altro. Un agente che può eseguire comandi come te può leggere il database per altre vie, o il portachiavi del sistema in cui vive il sigillo: per tenere i valori lontani da un agente così, eseguilo come un altro utente e dai alla connessione un utente del database senza accesso a quelle colonne.</p>
+<p>Una risposta vale per ciò che la domanda elencava: se i file cambiano ancora mentre è aperta, <strong>Accept</strong> non accetta nulla e l&#39;elenco viene mostrato di nuovo.</p>
+<h2 id="bloccare-lapp">Bloccare l&#39;app</h2>
+<p>Con una password principale impostata (vedi <a href="connect.html#password-principale">Connettersi</a>), Impostazioni › <strong>Sicurezza</strong> › <strong>Blocca l&#39;app dopo questi minuti di inattività</strong> (0, il predefinito, non blocca mai) blocca PlatypusDB e chiude le connessioni di produzione. <strong>Blocca PlatypusDB</strong> nella palette dei comandi lo blocca subito. Inserisci la password principale per sbloccare: le connessioni di produzione si riconnettono quando vengono usate.</p>
+  </article>
+
+  <aside class="toc-r">
+    <div class="lbl">On this page</div>
+    <a href="#segnare-una-connessione-come-produzione">Segnare una connessione come produzione</a>
+    <a href="#rendere-una-connessione-di-sola-lettura">Rendere una connessione di sola lettura</a>
+    <a href="#conferme">Conferme</a>
+    <a href="#annullare-una-modifica">Annullare una modifica</a>
+    <a href="#mascherare-i-dati-sensibili">Mascherare i dati sensibili</a>
+    <a href="#bloccare-lapp">Bloccare l&#39;app</a>
+  </aside>
+</main>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../img/mark.png" alt="" width="26" height="26"><span>PlatypusDB</span></a>
+        <p>A small, fast desktop SQL client, built with Rust and Tauri.</p>
+      </div>
+      <nav aria-labelledby="f-docs">
+        <h2 id="f-docs">Docs</h2>
+        <ul>
+          <li><a href="../../../docs.html">Getting started</a></li>
+          <li><a href="../../../docs/guide/index.html">User guide</a></li>
+          <li><a href="../../../docs/features.html">Features</a></li>
+          <li><a href="../../../docs/shortcuts.html">Shortcuts</a></li>
+          <li><a href="../../../docs/agents.html">Agents and the CLI</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-project">
+        <h2 id="f-project">Project</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/BENCHMARKS.md">Benchmarks</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/EXTENDING.md">Extending</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/blob/main/docs/dev/RELEASING.md">Releasing</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="f-get">
+        <h2 id="f-get">Get it</h2>
+        <ul>
+          <li><a href="https://github.com/platypus-labs/platypus-db/releases">Releases</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db">Source code</a></li>
+          <li><a href="https://github.com/platypus-labs/platypus-db/issues">Issues</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Code under AGPL-3.0. PlatypusDB™ and the PlatypusDB logo are <a href="https://github.com/platypus-labs/platypus-db/blob/main/TRADEMARKS.md">trademarks</a> of the PlatypusDB maintainers.</span>
+      <span>Inter and JetBrains Mono under the <a href="../../../fonts/OFL-Inter.txt">SIL Open Font License</a>. Database logos from simple-icons (CC0); other product names and logos belong to their owners.</span>
+    </div>
+  </footer>
+
+  <svg class="sprite" width="0" height="0" aria-hidden="true">
+    <symbol id="gh" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.580 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </svg>
+
+  <script src="../../../site.js" defer></script>
+</body>
+</html>

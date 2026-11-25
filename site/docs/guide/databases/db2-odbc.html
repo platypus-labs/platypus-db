@@ -86,6 +86,7 @@
 
   <article>
     <div class="crumbs">Docs / IBM Db2 and ODBC (Windows)</div>
+    <nav class="crumbs" aria-label="Languages"><span lang="en">English</span> · <a href="../../it/guide/databases/db2-odbc.html" lang="it" hreflang="it">Italiano</a></nav>
 <p><a href="index.html">← Databases</a></p>
 <h1 id="ibm-db2-and-odbc-windows">IBM Db2 and ODBC (Windows)</h1>
 <p>Db2, and any database with an ODBC driver or a data source (DSN), are reached through the system&#39;s ODBC driver manager. This works <strong>on Windows only</strong> for now: on macOS and Linux a Db2 or ODBC connection says that ODBC drivers are reached on Windows only.</p>
@@ -94,6 +95,12 @@
 <p>A driver already in the system counts: the app looks for one named <code>IBM DB2 ODBC DRIVER…</code> or <code>IBM DATA SERVER…</code>, whether its own registration or a full IBM client made it, and takes the newest by name. The connection&#39;s <code>driver</code> option replaces that choice. <em>Settings › Drivers</em> lists and removes the downloaded driver, and shows the ODBC drivers and data sources of the system.</p>
 <h2 id="connect">Connect</h2>
 <p><strong>IBM Db2</strong>: host, port (50000 by default), <strong>database</strong> (both host and database are required), user and password. The app builds the connection string itself (<code>DATABASE</code>, <code>HOSTNAME</code>, <code>PORT</code>, <code>PROTOCOL=TCPIP</code>, <code>UID</code>, <code>PWD</code>). TLS: the modes <code>disable</code> and <code>prefer</code> connect without it; <code>require</code> and above add <code>Security=SSL</code>, and <code>sslrootcert</code> becomes <code>SSLServerCertificate</code>. Db2 servers listen for TLS on another port than the plain one, so set the port. Through an SSH tunnel the tunnel&#39;s local end is used.</p>
+<p><strong>Platform</strong> picks the kind of Db2 server:</p>
+<ul>
+<li><em>Db2 for Linux, UNIX and Windows (LUW)</em>, the default, also for old 8.x servers.</li>
+<li><em>Db2 for z/OS</em>: the same IBM driver, port 446 by default, and the <strong>database</strong> is the location name. IBM&#39;s driver reaches z/OS only with a Db2 Connect license on this machine.</li>
+<li><em>Db2 for IBM i</em> (AS/400): IBM&#39;s own <em>IBM i Access ODBC Driver</em> (IBM i Access Client Solutions, installed from IBM, not by the app; the older iSeries Access driver works too). The host is the system&#39;s name, the database is optional and sets the default library, there is no port, and TLS adds <code>SSL=1</code>. It does not go through an SSH tunnel, as the driver opens several of the server&#39;s ports.</li>
+</ul>
 <p><strong>Other ODBC driver</strong> (the generic choice): give one of</p>
 <ul>
 <li>a <strong>data source (DSN)</strong> the system knows, typed or taken from the suggestions;</li>
