@@ -6,6 +6,19 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **JDBC drivers the app downloads**: a new "JDBC driver" connection (in the new-connection picker and
+  the Driver list) opens any database that has a JDBC driver, with a catalog that the app downloads
+  from Maven Central when a version is chosen, as it does for Db2: H2, HSQLDB, Firebird (Jaybird),
+  Apache Derby (network client), SAP HANA, Exasol and Vertica, two or three recent versions each,
+  every jar checked with its SHA-256 (Jaybird and Derby's client come with the jars they depend on).
+  Host, port and database fill the driver's URL, which can be written by hand; a driver that is not
+  open source (SAP HANA, Exasol, Vertica, and IBM's for Db2) shows its license before it is
+  downloaded, and downloads only on its button. Needs Java 11 or later. Db2 and the new form share
+  one component; connections saved by 0.6.8 to 0.6.12 open unchanged (a new `jdbc.package` option
+  names the driver, `db2jcc` when it is absent).
+
 ## [0.6.12] - 2026-11-25
 
 ### Fixed
