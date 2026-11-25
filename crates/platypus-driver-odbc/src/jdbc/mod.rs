@@ -303,6 +303,10 @@ impl Worker {
                 return;
             }
             if message["done"].as_bool() == Some(true) {
+                // Stopped by a cancel: the rows sent are not the whole result.
+                if wanted && message["cancelled"].as_bool() == Some(true) {
+                    let _ = tx.blocking_send(Err(Error::Cancelled));
+                }
                 return;
             }
             let Some(batch) = message["batch"].as_array() else {

@@ -2,7 +2,7 @@
 //! (a `java` program or a Java home) and `PLATYPUS_TEST_JARS` (the path of H2's jar) are set.
 
 use arrow_array::{Array as _, Int64Array, RecordBatch, StringArray};
-use futures::TryStreamExt as _;
+use futures::{StreamExt as _, TryStreamExt as _};
 use platypus_core::{
     Connection, ConnectionConfig, Driver as _, DriverKind, Error, ExecOptions, ExecResult,
 };
@@ -160,7 +160,7 @@ async fn cancel_stops_a_statement_that_has_not_returned_yet() {
     let started = std::time::Instant::now();
     let outcome = conn
         .execute(
-            "select count(*) from system_range(1, 100000000000)",
+            "select sum(a.x * b.x) from system_range(1, 200000) a, system_range(1, 200000) b",
             &ExecOptions::default(),
         )
         .await;
@@ -169,6 +169,38 @@ async fn cancel_stops_a_statement_that_has_not_returned_yet() {
     assert!(started.elapsed() < std::time::Duration::from_secs(20));
     // The session is still there: the bridge cancelled the statement, not the connection.
     assert!(!conn.is_closed());
+    let batches = rows(&*conn, "select 1").await;
+    assert_eq!(batches[0].num_rows(), 1);
+}
+
+#[tokio::test]
+async fn cancel_while_rows_arrive_ends_the_result_with_an_error() {
+    let Some(conn) = connect().await else {
+        eprintln!("skipping: PLATYPUS_TEST_JAVA and PLATYPUS_TEST_JARS are not set");
+        return;
+    };
+    // Many batches: the cancel comes while most of them are still to be sent.
+    let outcome = conn
+        .execute(
+            "select x from system_range(1, 2000000)",
+            &ExecOptions::default(),
+        )
+        .await;
+    let Ok(ExecResult::Rows(mut stream)) = outcome else {
+        panic!("no rows: {:?}", outcome.err());
+    };
+    assert!(stream.try_next().await.unwrap().is_some());
+    conn.cancel_handle().cancel().await.unwrap();
+    // A truncated result must not look whole.
+    let mut ended = None;
+    while let Some(next) = stream.next().await {
+        if let Err(e) = next {
+            ended = Some(e);
+            break;
+        }
+    }
+    assert!(matches!(ended, Some(Error::Cancelled)), "{ended:?}");
+    drop(stream);
     let batches = rows(&*conn, "select 1").await;
     assert_eq!(batches[0].num_rows(), 1);
 }
