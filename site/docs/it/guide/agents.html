@@ -107,7 +107,7 @@
 <ul>
 <li>Una <strong>sessione</strong> è un avvio del server MCP, come lo registra il log (un client che resta connesso per giorni è una sola sessione).</li>
 <li>Una <strong>modifica</strong> è un&#39;istruzione che cambia i dati o lo schema. È <em>consentita</em> se è stata eseguita e <em>rifiutata</em> se l&#39;accesso della connessione, un&#39;impostazione di sicurezza o la tua risposta nell&#39;app hanno detto di no. Un&#39;istruzione fallita per un altro motivo conta solo come errore.</li>
-<li>Le <strong>tabelle lette</strong> sono esatte per <code>sample_rows</code> e <code>profile_table</code> e per le sorgenti di <code>query_across_databases</code>, e una stima per un&#39;istruzione: le tabelle nominate dopo <code>FROM</code> e <code>JOIN</code>. Un&#39;istruzione in un linguaggio che non è SQL (MongoDB, Redis, Elasticsearch, Cassandra) non ne nomina nessuna.</li>
+<li>Le <strong>Tabelle lette</strong> sono esatte per <code>sample_rows</code> e <code>profile_table</code> e per le sorgenti di <code>query_across_databases</code>, e una stima per un&#39;istruzione: le tabelle nominate dopo <code>FROM</code> e <code>JOIN</code>. Un&#39;istruzione in un linguaggio che non è SQL (MongoDB, Redis, Elasticsearch, Cassandra) non ne nomina nessuna.</li>
 <li>Si conservano solo nomi e conteggi: nessun valore, e le istruzioni restano mascherate come nel log.</li>
 <li>Le chiamate fatte prima che questa versione registrasse questi dati mostrano <strong>–</strong>, mai uno 0; gli altri numeri contano solo le chiamate che li hanno, e il riepilogo lo dice.</li>
 </ul>

@@ -54,7 +54,7 @@ per il navigator.
 
 Gli agenti in sola lettura e le connessioni in sola lettura si affidano solo al controllo delle
 istruzioni; al server non viene detto di rifiutare le scritture. Vedi
-[Agenti e CLI](../../AGENTS.md).
+[Agenti e la CLI](../../AGENTS.md).
 
 ## Limiti noti
 
@@ -66,4 +66,4 @@ istruzioni; al server non viene detto di rifiutare le scritture. Vedi
 La conformance suite gira su `sqld` v0.24.33 (container `ghcr.io/tursodatabase/libsql-server`),
 senza TLS. Il cloud di Turso non è provato.
 
-Vedi anche: [Connessione](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).
+Vedi anche: [Connettersi](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).

@@ -74,7 +74,7 @@ gli errori. **Esporta Markdown** ed **Esporta HTML** lo salvano come documento d
   eseguita e *rifiutata* se l'accesso della connessione, un'impostazione di sicurezza o la tua
   risposta nell'app hanno detto di no. Un'istruzione fallita per un altro motivo conta solo come
   errore.
-- Le **tabelle lette** sono esatte per `sample_rows` e `profile_table` e per le sorgenti di
+- Le **Tabelle lette** sono esatte per `sample_rows` e `profile_table` e per le sorgenti di
   `query_across_databases`, e una stima per un'istruzione: le tabelle nominate dopo `FROM` e
   `JOIN`. Un'istruzione in un linguaggio che non è SQL (MongoDB, Redis, Elasticsearch, Cassandra)
   non ne nomina nessuna.

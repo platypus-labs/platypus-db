@@ -85,7 +85,7 @@ Quelli che ha il login del database. Il navigator usa le chiamate di catalogo di
 ## Agenti
 
 Gli agenti in sola lettura si affidano solo al controllo delle istruzioni. Vedi
-[Agenti e CLI](../../AGENTS.md).
+[Agenti e la CLI](../../AGENTS.md).
 
 ## Limiti noti
 
@@ -100,4 +100,4 @@ tipi, risultati lunghi, errori con il loro SQLSTATE, metadati, commit e rollback
 un'istruzione in attesa, letterali e tipi propri di SQL Server, e importazioni. IBM Db2 non è provato
 contro un server.
 
-Vedi anche: [Connessione](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).
+Vedi anche: [Connettersi](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).

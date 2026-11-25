@@ -105,7 +105,7 @@
 <p><strong>Accesso</strong>:</p>
 <ul>
 <li><em>Login SQL Server</em>: utente e password.</li>
-<li><em>Accesso con Windows</em> (<code>Integrated Security=SSPI</code> in una stringa incollata): solo quando PlatypusDB gira su Windows; altrove è un errore.</li>
+<li><em>Accesso di Windows</em> (<code>Integrated Security=SSPI</code> in una stringa incollata): solo quando PlatypusDB gira su Windows; altrove è un errore.</li>
 <li><em>Microsoft Entra ID</em>: un token creato dallo strumento <code>az</code>, che deve essere installato e con l&#39;accesso effettuato. È così che si raggiunge l&#39;accesso Entra di Azure SQL.</li>
 </ul>
 <p><strong>Azure SQL</strong>: il gateway può mandare il client al nodo del database stesso; l&#39;app segue un solo reindirizzamento di questo tipo, tranne con un tunnel SSH, che porta a un solo indirizzo.</p>
@@ -133,7 +133,7 @@
 <li>La modalità terminale esegue <code>sqlcmd</code>, se è nel PATH.</li>
 </ul>
 <h2 id="agenti">Agenti</h2>
-<p>Su SQL Server il solo controllo delle istruzioni blocca le scritture degli agenti in sola lettura (nessuna sessione in sola lettura lato server); la transazione di un agente viene annullata. <code>server_activity</code> e <code>top_queries</code> funzionano. Vedi <a href="../../../agents.html">Agenti e CLI</a>.</p>
+<p>Su SQL Server il solo controllo delle istruzioni blocca le scritture degli agenti in sola lettura (nessuna sessione in sola lettura lato server); la transazione di un agente viene annullata. <code>server_activity</code> e <code>top_queries</code> funzionano. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
 <h2 id="limiti-noti">Limiti noti</h2>
 <ul>
 <li>Precedente al 2017: l&#39;app si collega e avvisa che alcune funzioni potrebbero non funzionare.</li>
@@ -141,7 +141,7 @@
 </ul>
 <h2 id="provato-su">Provato su</h2>
 <p>La conformance suite gira su SQL Server 2017 e 2022 (container), e il driver ODBC generico è provato sullo stesso container 2022. Azure SQL non è provato: il suo reindirizzamento, l&#39;accesso Entra e le regole di cifratura sono nel codice ma non sono mai stati eseguiti sul servizio.</p>
-<p>Vedi anche: <a href="../connect.html">Connessione</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
+<p>Vedi anche: <a href="../connect.html">Connettersi</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
   </article>
 
   <aside class="toc-r">

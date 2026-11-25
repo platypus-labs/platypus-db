@@ -30,7 +30,7 @@ entrambi la catena **e** il nome dell'host, perché la libreria TLS controlla se
 **Accesso**:
 
 - *Login SQL Server*: utente e password.
-- *Accesso con Windows* (`Integrated Security=SSPI` in una stringa incollata): solo quando PlatypusDB
+- *Accesso di Windows* (`Integrated Security=SSPI` in una stringa incollata): solo quando PlatypusDB
   gira su Windows; altrove è un errore.
 - *Microsoft Entra ID*: un token creato dallo strumento `az`, che deve essere installato e con
   l'accesso effettuato. È così che si raggiunge l'accesso Entra di Azure SQL.
@@ -76,7 +76,7 @@ La navigazione richiede ciò che il login può vedere. Le schede di amministrazi
 
 Su SQL Server il solo controllo delle istruzioni blocca le scritture degli agenti in sola lettura
 (nessuna sessione in sola lettura lato server); la transazione di un agente viene annullata.
-`server_activity` e `top_queries` funzionano. Vedi [Agenti e CLI](../../AGENTS.md).
+`server_activity` e `top_queries` funzionano. Vedi [Agenti e la CLI](../../AGENTS.md).
 
 ## Limiti noti
 
@@ -89,4 +89,4 @@ La conformance suite gira su SQL Server 2017 e 2022 (container), e il driver ODB
 sullo stesso container 2022. Azure SQL non è provato: il suo reindirizzamento, l'accesso Entra e le
 regole di cifratura sono nel codice ma non sono mai stati eseguiti sul servizio.
 
-Vedi anche: [Connessione](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).
+Vedi anche: [Connettersi](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).

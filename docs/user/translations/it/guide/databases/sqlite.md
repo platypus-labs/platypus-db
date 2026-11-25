@@ -51,7 +51,7 @@ Quelli del sistema operativo: l'app deve poter leggere il file, e scrivere il fi
 
 Gli agenti in sola lettura e le connessioni in sola lettura aprono il file in sola lettura, ed
 eseguono le query con `query_only`. `estimate_change` su SQLite non ha una stima delle righe da dare.
-Vedi [Agenti e CLI](../../AGENTS.md).
+Vedi [Agenti e la CLI](../../AGENTS.md).
 
 ## Limiti noti
 
@@ -64,4 +64,4 @@ Vedi [Agenti e CLI](../../AGENTS.md).
 La conformance suite gira sul SQLite incluso nell'app, comprese transazioni, piani, modifica delle
 tabelle, la ricostruzione che mantiene `AUTOINCREMENT` e i file aperti in sola lettura.
 
-Vedi anche: [Connessione](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).
+Vedi anche: [Connettersi](../connect.md), [Risoluzione dei problemi](../troubleshooting.md).

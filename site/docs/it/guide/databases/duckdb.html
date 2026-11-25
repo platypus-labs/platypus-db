@@ -118,7 +118,7 @@
 <li>Le importazioni passano dall&#39;appender di DuckDB, nella transazione della sessione.</li>
 </ul>
 <h2 id="agenti">Agenti</h2>
-<p>Un agente in sola lettura, e una connessione in sola lettura, aprono il file del database in sola lettura, quando nessun&#39;altra sessione dell&#39;app lo tiene già aperto; un database in memoria o un file di dati non è mai in sola lettura, e il controllo delle istruzioni blocca lì le scritture. Le sessioni DuckDB degli agenti non possono leggere né scrivere altri file né caricare estensioni, e chiudono il file dopo ogni chiamata così che l&#39;app lo possa aprire. <code>query_across_databases</code> gira in un DuckDB tutto suo che l&#39;app scarica come questo. Vedi <a href="../../../agents.html">Agenti e CLI</a>.</p>
+<p>Un agente in sola lettura, e una connessione in sola lettura, aprono il file del database in sola lettura, quando nessun&#39;altra sessione dell&#39;app lo tiene già aperto; un database in memoria o un file di dati non è mai in sola lettura, e il controllo delle istruzioni blocca lì le scritture. Le sessioni DuckDB degli agenti non possono leggere né scrivere altri file né caricare estensioni, e chiudono il file dopo ogni chiamata così che l&#39;app lo possa aprire. <code>query_across_databases</code> gira in un DuckDB tutto suo che l&#39;app scarica come questo. Vedi <a href="../../../agents.html">Agenti e la CLI</a>.</p>
 <h2 id="limiti-noti">Limiti noti</h2>
 <ul>
 <li>I file Excel si leggono con il lettore dell&#39;app, non con l&#39;estensione Excel di DuckDB.</li>
@@ -126,7 +126,7 @@
 </ul>
 <h2 id="provato-su">Provato su</h2>
 <p>La conformance suite gira su un file DuckDB, con la libreria che corrisponde ai binding dell&#39;app: transazioni, piani, modifica delle tabelle, valori speciali, numeri a 128 bit e senza segno e orari con fuso.</p>
-<p>Vedi anche: <a href="../connect.html">Connessione</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
+<p>Vedi anche: <a href="../connect.html">Connettersi</a>, <a href="../troubleshooting.html">Risoluzione dei problemi</a>.</p>
   </article>
 
   <aside class="toc-r">
