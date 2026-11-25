@@ -6,12 +6,13 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
-## [0.6.11] - 2026-11-25
+## [0.6.12] - 2026-11-25
 
 ### Fixed
 
 - **Db2 through JDBC**: Cancel stops the statement in the JDBC bridge, also before its first rows;
-  before, the query went on running on the server in the background.
+  before, the query went on running on the server in the background. A result stopped by Cancel
+  while its rows arrive ends with the cancel, so that it does not look whole.
 - **Db2 through JDBC**: the Java field can be edited even when the app finds a Java by itself (shown
   as its placeholder), so a Java older than 11 on the `PATH` can be replaced.
 - **Db2 through JDBC**: a connection that uses a version of IBM's JDBC driver no longer shows the
@@ -638,8 +639,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.11...HEAD
-[0.6.11]: https://github.com/platypus-labs/platypus-db/compare/v0.6.10...v0.6.11
+[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.12...HEAD
+[0.6.12]: https://github.com/platypus-labs/platypus-db/compare/v0.6.10...v0.6.12
 [0.6.10]: https://github.com/platypus-labs/platypus-db/compare/v0.6.9...v0.6.10
 [0.6.9]: https://github.com/platypus-labs/platypus-db/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/platypus-labs/platypus-db/compare/v0.6.7...v0.6.8
