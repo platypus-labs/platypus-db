@@ -15,13 +15,13 @@ import {
   editConnection,
   fill,
   formField,
-  gridRows,
   newConnection,
   openQueryTab,
   run,
   saveForm,
   seedSqlite,
   testConnection,
+  visibleTab,
 } from "../conn-helpers.mjs";
 
 const NAME = "H2 in memory";
@@ -154,8 +154,11 @@ export default async function (page) {
 
   // And it is queried.
   await openQueryTab(page, NAME);
-  await run(page, "select 41 + 1 as answer", 60_000);
-  assert.deepEqual(await page.eval(gridRows), [["42"]]);
+  // The grid is drawn on a canvas: the row counts say whether the arithmetic was done by H2.
+  await run(page, "select 41 + 1 as answer where 41 + 1 = 42", 60_000);
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.statusbar span').textContent`), "1 row");
+  await run(page, "select 41 + 1 as answer where 41 + 1 = 43", 60_000);
+  assert.equal(await page.eval(`${visibleTab}.querySelector('.statusbar span').textContent`), "0 rows");
 
   // Db2 shares the component: IBM's driver is not open source either, so the license shows
   // before anything is downloaded, and the ODBC choice takes it away.

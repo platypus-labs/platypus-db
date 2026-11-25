@@ -51,7 +51,7 @@ export function JdbcFields({ conn, setConn, db2 = false }: Props) {
   // Connections saved before the catalog name a version of IBM's driver only.
   const name = options["jdbc.package"]?.trim() || (version ? "db2jcc" : "");
   const files = !name && !!options["jdbc.jars"]?.trim();
-  const driver = status?.drivers.find((d) => d.name === name);
+  const driver = status?.drivers.find((d) => d.name === (db2 ? "db2jcc" : name));
   // Db2's own driver is chosen in Db2's connection; here the others (and the one a saved connection names).
   const drivers = (status?.drivers ?? []).filter((d) => d.name === name || (d.name === "db2jcc") === db2);
 
