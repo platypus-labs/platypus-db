@@ -45,6 +45,7 @@ window ready in under a second, and a results grid that scrolls through millions
 Download the installer for your system from the
 [releases page](https://github.com/platypus-labs/platypus-db/releases/latest): `.exe`/`.msi` for
 Windows, `.dmg` for macOS, `.AppImage`/`.deb`/`.rpm` for Linux. The app updates itself.
+On macOS, Homebrew works too: `brew install --cask platypus-labs/tap/platypusdb`.
 
 1. Open PlatypusDB and click **New connection**, or paste a connection URL
    (`postgres://…`, `mysql://…`, a JDBC URL or an ADO.NET string).

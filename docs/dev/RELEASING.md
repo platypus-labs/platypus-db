@@ -144,11 +144,13 @@ are missing is skipped (a Windows-only release fills only winget). Then submit e
 - **winget**: a pull request to `microsoft/winget-pkgs` with the three files under
   `manifests/p/PlatypusLabs/PlatypusDB/X.Y.Z/` (or `wingetcreate submit <folder>`). Check first
   with `winget validate <folder>` and `winget install --manifest <folder>`.
-- **Homebrew**: the first version as a pull request adding `Casks/p/platypusdb.rb` to
-  `Homebrew/homebrew-cask` (`brew audit --new --cask platypusdb` first); later versions are
-  bumped by Homebrew's autobump, or with `brew bump-cask-pr platypusdb --version X.Y.Z`.
-  Homebrew wants a notable, signed and notarized app: until macOS signing is done, a tap
-  of our own (`platypus-labs/homebrew-tap`) is the alternative.
+- **Homebrew**: our tap [platypus-labs/homebrew-tap](https://github.com/platypus-labs/homebrew-tap)
+  (since 0.6.12; users run `brew install --cask platypus-labs/tap/platypusdb`). For each release,
+  copy `target/packaging/X.Y.Z/homebrew/platypusdb.rb` to the tap's `Casks/platypusdb.rb`,
+  commit "Update PlatypusDB to X.Y.Z" and push; installed apps update themselves meanwhile.
+  `Homebrew/homebrew-cask` itself wants a notable, signed and notarized app: once macOS signing
+  is done, the first version goes there as a pull request adding `Casks/p/platypusdb.rb`
+  (`brew audit --new --cask platypusdb` first), and the tap is retired.
 - **AUR**: push `PKGBUILD` and `.SRCINFO` to `ssh://aur@aur.archlinux.org/platypusdb-bin.git`
   (an AUR account with an SSH key); check with `makepkg -si` on Arch first.
 - **Flathub**: two Flathub rules (checked 2026-11-15, docs.flathub.org, "Requirements") rule out

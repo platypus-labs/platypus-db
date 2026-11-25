@@ -49,6 +49,7 @@ milioni di righe.
 Scarica l'installer per il tuo sistema dalla
 [pagina delle release](https://github.com/platypus-labs/platypus-db/releases/latest): `.exe`/`.msi`
 per Windows, `.dmg` per macOS, `.AppImage`/`.deb`/`.rpm` per Linux. L'app si aggiorna da sola.
+Su macOS c'è anche Homebrew: `brew install --cask platypus-labs/tap/platypusdb`.
 
 1. Apri PlatypusDB e fai clic su **New connection**, oppure incolla l'URL di una connessione
    (`postgres://…`, `mysql://…`, un URL JDBC o una stringa ADO.NET).
