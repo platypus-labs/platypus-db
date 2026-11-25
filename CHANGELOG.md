@@ -6,6 +6,8 @@ All notable changes to PlatypusDB are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.13] - 2026-11-25
+
 ### Added
 
 - **The user guide in Italian**: the Help dialog shows each guide page in the app's language when
@@ -20,8 +22,8 @@ All notable changes to PlatypusDB are listed here. The format follows
   every jar checked with its SHA-256 (Jaybird and Derby's client come with the jars they depend on).
   Host, port and database fill the driver's URL, which can be written by hand; a driver that is not
   open source (SAP HANA, Exasol, Vertica, and IBM's for Db2) shows its license before it is
-  downloaded, and downloads only on its button. Needs Java 11 or later (Jaybird 6, 17). Db2 and the new form share
-  one component; connections saved by 0.6.8 to 0.6.12 open unchanged (a new `jdbc.package` option
+  downloaded, and downloads only on its button. Needs Java 11 or later (Jaybird 6, 17). Db2 and the
+  new form share one component; connections saved by 0.6.8 to 0.6.12 open unchanged (a new `jdbc.package` option
   names the driver, `db2jcc` when it is absent).
 
 ## [0.6.12] - 2026-11-25
@@ -657,7 +659,8 @@ First release: a desktop SQL client for PostgreSQL, MySQL, MariaDB and SQLite.
 - Dark and light themes, installers for Windows, macOS and Linux, and automatic updates.
 - `platypus` CLI to run queries from the terminal.
 
-[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.12...HEAD
+[Unreleased]: https://github.com/platypus-labs/platypus-db/compare/v0.6.13...HEAD
+[0.6.13]: https://github.com/platypus-labs/platypus-db/compare/v0.6.12...v0.6.13
 [0.6.12]: https://github.com/platypus-labs/platypus-db/compare/v0.6.10...v0.6.12
 [0.6.10]: https://github.com/platypus-labs/platypus-db/compare/v0.6.9...v0.6.10
 [0.6.9]: https://github.com/platypus-labs/platypus-db/compare/v0.6.8...v0.6.9
